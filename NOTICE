@@ -2,6 +2,11 @@ switch-to-unifi
 Copyright (c) 2026 Clint Goudie-Nice (TechBlueprints)
 Licensed under the MIT License (see LICENSE).
 
+Experimental software, provided "as is" without warranty of any kind,
+express or implied, and without liability for any damages arising from its
+use. It writes configuration to network switches; use it only on equipment
+you own or are authorized to administer, at your own risk.
+
 Not affiliated with Ubiquiti
 ----------------------------
 switch-to-unifi is an independent, unofficial project with no affiliation

@@ -27,6 +27,35 @@ control of port state and VLANs written back as the guest's `tag`/`trunks`
 and its guest NICs; the node's own networking underneath (NICs, bond,
 failover) is reported as one uplink and never configured.
 
+## Status: experimental, no warranty
+
+This is experimental, hobby software from one home user. Read this before
+running it against anything you care about.
+
+- **No warranty of any kind.** It is provided "as is", without warranty of
+  any kind, express or implied, and without any liability for damages or
+  losses arising from its use (see `LICENSE`). If it misconfigures your
+  switch, takes down your network, or locks you out, that is on you.
+- **It writes to your switch.** With `control` enabled it applies whatever
+  the controller pushes: it replaces the switch's VLAN configuration,
+  disables and re-enables ports, changes speeds and breakouts, STP, LACP,
+  storm control, NTP and syslog, and reboots the switch when the controller
+  asks. A wrong click in the UniFi UI, a controller bug, or a bug here can
+  cut off the switch, the hosts behind it, or the bridge itself.
+- **Verified on very little hardware:** one Arista DCS-7160-48TC6-F on EOS
+  4.26.14M and one Proxmox VE 9.1 cluster, against UniFi Network 10.6 on a
+  UniFi OS gateway. Any other switch, OS version or controller version is
+  untested. Several features are marked as modelled but never verified live
+  in `docs/feature-map.md`.
+- **It speaks an undocumented protocol** reverse-engineered by the
+  unifi-emu project and by watching real devices. A controller update can
+  change it and break this bridge silently, or make the controller push
+  something it never pushed before.
+- **Start safe:** run `-collect-once` and then monitoring only; back up the
+  switch's running config; keep an out-of-band way into the switch; turn
+  on `control` for one unused port before `ports: all`; use it only on
+  controllers and switches you own or are authorized to administer.
+
 ## How it works
 
 ```
@@ -86,7 +115,7 @@ is not affiliated with, endorsed by, or supported by Ubiquiti Inc. "UniFi"
 and "Ubiquiti" are trademarks of Ubiquiti Inc., used here only to describe
 what the software talks to. The device protocol it speaks comes from the
 open-source unifi-emu library (see `docs/prior-art.md`); use it on
-controllers you own, at your own risk.
+controllers you own, at your own risk and with no warranty of any kind.
 
 This work exists strictly for integration: it lets a switch you already
 own be managed from a UniFi Network controller that you are authorized to
