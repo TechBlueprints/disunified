@@ -16,6 +16,10 @@ import (
 type Namer interface {
 	// DeviceName is the device's display name, e.g. "Arista DCS-7160-48TC6-F".
 	DeviceName(sys System) string
+	// DefaultDeviceNames lists names an earlier build of this driver gave
+	// the device, so a rename after the convention changes still works
+	// while an operator's own name is kept.
+	DefaultDeviceNames(sys System) []string
 	// PortName is the port's name: its interface name, or a lane range for a
 	// split cage ("Ethernet54/1-4"), or its description when one is set.
 	PortName(p Port) string
@@ -32,6 +36,8 @@ type DefaultNamer struct{}
 func (DefaultNamer) DeviceName(sys System) string {
 	return strings.TrimSpace(sys.Vendor + " " + sys.Model)
 }
+
+func (DefaultNamer) DefaultDeviceNames(sys System) []string { return nil }
 
 func (DefaultNamer) PortName(p Port) string {
 	if p.Description != "" {
