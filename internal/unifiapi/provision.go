@@ -3,6 +3,7 @@ package unifiapi
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
@@ -14,9 +15,37 @@ import (
 // a default for that port index (the caller combines the namer's defaults
 // with the profile's and the controller's generic names).
 func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool) (renamedDevice bool, renamedPorts int, err error) {
+	r, err := c.Provision(ctx, mac, snap, namer, defaultDeviceNames, isDefaultPortName, false)
+	return r.RenamedDevice, r.RenamedPorts, err
+}
+
+// ProvisionResult is what one Provision call changed.
+type ProvisionResult struct {
+	RenamedDevice bool
+	RenamedPorts  int
+	Seeded        int      // ports whose config was written from the switch
+	Cleared       int      // released slots whose stale overrides were dropped
+	Notes         []string // ports that could not be seeded, with the reason
+}
+
+// Provision names the device and its ports (see ProvisionNames) and, when
+// seed is set, also writes each configured port's live state as its port
+// override where the controller has none yet (see SeedPortConfig), in one
+// read-modify-write: two separate updates raced on a stale read and lost a
+// name (2026-09-20). Slots that are empty in the snapshot (a guest deleted)
+// lose their override, name included, so a later guest on that slot starts
+// from the defaults and is seeded from its own state.
+func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool, seed bool) (ProvisionResult, error) {
+	var res ProvisionResult
 	dev, err := c.DeviceByMAC(ctx, mac)
 	if err != nil {
-		return false, 0, err
+		return res, err
+	}
+	var nets []Network
+	if seed {
+		if nets, err = c.Networks(ctx); err != nil {
+			return res, err
+		}
 	}
 	fields := map[string]any{}
 
@@ -27,7 +56,7 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 	}
 	if isDefault && want != "" && dev.Name != want {
 		fields["name"] = want
-		renamedDevice = true
+		res.RenamedDevice = true
 	}
 
 	// Current names as the controller shows them: the override wins, else
@@ -61,17 +90,43 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 		}
 		o["name"] = wantName
 		changed = true
-		renamedPorts++
+		res.RenamedPorts++
+	}
+	// Released slots: drop whatever the controller kept for them.
+	for _, p := range snap.Ports {
+		if p.IfName == "" && !p.Present {
+			if _, ok := overrides[p.Index]; ok {
+				delete(overrides, p.Index)
+				changed = true
+				res.Cleared++
+			}
+		}
+	}
+	if seed {
+		list := make([]map[string]any, 0, len(overrides))
+		for _, o := range overrides {
+			list = append(list, o)
+		}
+		var seeded []map[string]any
+		seeded, res.Seeded, res.Notes = seedOverrides(snap, nets, list)
+		if res.Seeded > 0 {
+			overrides = map[int]map[string]any{}
+			for _, o := range seeded {
+				overrides[overrideIndex(o)] = o
+			}
+			changed = true
+		}
 	}
 	if changed {
 		list := make([]map[string]any, 0, len(overrides))
 		for _, o := range overrides {
 			list = append(list, o)
 		}
+		sort.Slice(list, func(i, j int) bool { return overrideIndex(list[i]) < overrideIndex(list[j]) })
 		fields["port_overrides"] = list
 	}
 	if len(fields) == 0 {
-		return false, 0, nil
+		return res, nil
 	}
 	for _, o := range dev.OOBPortConfig {
 		if on, _ := o["enabled"].(bool); on {
@@ -79,7 +134,18 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 		}
 	}
 	if err := c.UpdateDevice(ctx, dev.ID, fields); err != nil {
-		return false, 0, fmt.Errorf("provision names: %w", err)
+		return res, fmt.Errorf("provision: %w", err)
 	}
-	return renamedDevice, renamedPorts, nil
+	return res, nil
+}
+
+// overrideIndex reads port_idx whether it came from JSON (float64) or us (int).
+func overrideIndex(o map[string]any) int {
+	switch v := o["port_idx"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	}
+	return 0
 }
