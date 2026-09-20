@@ -68,7 +68,7 @@ func (c *Client) SeedPortConfig(ctx context.Context, mac string, snap *switchmod
 	if err != nil {
 		return 0, nil, err
 	}
-	overrides, seeded, notes := seedOverrides(snap, nets, dev.PortOverrides)
+	overrides, seeded, notes := seedOverrides(snap, nets, dev.PortOverrides, nil)
 	if seeded == 0 {
 		return 0, notes, nil
 	}
@@ -108,10 +108,62 @@ func configured(o map[string]any) bool {
 	return false
 }
 
+// disabledOverride is the combination the UI writes for Port State:
+// Disabled (Network 10.6); a bare forward:disabled is normalised back.
+func disabledOverride() map[string]any {
+	return map[string]any{
+		"forward": "disabled", "port_security_enabled": true, "port_security_mac_address": []string{},
+		"native_networkconf_id": "", "tagged_vlan_mgmt": "block_all",
+	}
+}
+
+// isDisabledOverride reports whether an override carries the whole
+// disabled combination (however the values were decoded).
+func isDisabledOverride(o map[string]any) bool {
+	for k, v := range disabledOverride() {
+		if !sameJSON(o[k], v) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameJSON(a, b any) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
+}
+
+// releaseOverride strips a free slot's override down to its port_idx, its
+// name and whatever part of the disabled combination it carries, so a
+// guest that later takes the slot is seeded from its own state and the
+// slot keeps (or gets) the driver's free-slot name. It reports whether
+// anything was removed.
+func releaseOverride(o map[string]any) bool {
+	keep := disabledOverride()
+	removed := false
+	for k, v := range o {
+		if k == "port_idx" || k == "name" {
+			continue
+		}
+		if want, ok := keep[k]; ok && sameJSON(v, want) {
+			continue
+		}
+		delete(o, k)
+		removed = true
+	}
+	return removed
+}
+
 // seedOverrides is the pure part: the full override list to send (existing
 // entries kept, seeded ones added), how many ports were seeded, and notes
-// for ports that could not be expressed.
-func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[string]any) (overrides []map[string]any, seeded int, notes []string) {
+// for ports that could not be expressed. A free slot (nothing attached) is
+// seeded disabled, as the switch reports it. A port that took a slot whose
+// override is that free-slot seed — recognised by the disabled combination
+// plus a name the driver gave (isDefaultName) — is seeded from its own
+// state as if the controller had nothing for it, so a new guest is never
+// left switched off by the slot's previous life.
+func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[string]any, isDefaultName func(idx int, name string) bool) (overrides []map[string]any, seeded int, notes []string) {
 	byVLAN := map[int]string{}
 	var defaultID string
 	for _, n := range nets {
@@ -129,11 +181,29 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 		}
 	}
 	for _, p := range snap.Ports {
-		if p.IfName == "" || !p.Present {
-			continue // an empty slot has nothing to seed
-		}
 		o := byIdx[p.Index]
-		if o != nil && configured(o) {
+		if p.IfName == "" && !p.Present {
+			// A free slot: disabled, and nothing else left over.
+			if o != nil && isDisabledOverride(o) && !releaseOverride(o) {
+				continue
+			}
+			if o == nil {
+				o = map[string]any{"port_idx": p.Index}
+				byIdx[p.Index] = o
+			}
+			releaseOverride(o)
+			for k, v := range disabledOverride() {
+				o[k] = v
+			}
+			seeded++
+			continue
+		}
+		wasFree := false
+		if o != nil && isDisabledOverride(o) && isDefaultName != nil {
+			name, _ := o["name"].(string)
+			wasFree = isDefaultName(p.Index, name)
+		}
+		if o != nil && configured(o) && !wasFree {
 			continue
 		}
 		seed, note := overrideFor(p, byVLAN, defaultID)
@@ -141,11 +211,21 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 			notes = append(notes, fmt.Sprintf("port %d (%s): %s", p.Index, p.IfName, note))
 		}
 		if seed == nil {
+			if wasFree {
+				for k := range disabledOverride() {
+					delete(o, k)
+				}
+				seeded++
+			}
 			continue
 		}
 		if o == nil {
 			o = map[string]any{"port_idx": p.Index}
 			byIdx[p.Index] = o
+		} else if wasFree {
+			for k := range disabledOverride() {
+				delete(o, k)
+			}
 		}
 		for k, v := range seed {
 			o[k] = v
@@ -168,11 +248,7 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 // tagged, enabled) so nothing needs seeding.
 func overrideFor(p switchmodel.Port, byVLAN map[int]string, defaultID string) (map[string]any, string) {
 	if !p.Enabled {
-		// The combination the UI writes for Port State: Disabled (Network 10.6).
-		return map[string]any{
-			"forward": "disabled", "port_security_enabled": true, "port_security_mac_address": []string{},
-			"native_networkconf_id": "", "tagged_vlan_mgmt": "block_all",
-		}, ""
+		return disabledOverride(), ""
 	}
 	v := p.VLAN
 	native := v.NativeVLAN
