@@ -18,6 +18,7 @@ import (
 
 	"github.com/TechBlueprints/switch-to-unifi/internal/device"
 	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
+	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
 // Replay: real controller replies (docs/fixtures/controller-10.6.106/
@@ -27,10 +28,13 @@ import (
 // encrypts them, and the loop drives the real Arista driver against the real
 // EOS captures. What must come out the other end is the exact switch
 // configuration each push produced live.
-const replayKey = "0123456789abcdef0123456789abcdef"
+// The device starts unadopted (default key); the adopt reply in the fixture
+// carries the (scrubbed) site key the rest of the replay is encrypted with.
+const defaultKey = "ba86f2bbe107c7c57eb5f2690775c712" // MD5("ubnt")
 
 type replayRecord struct {
 	Status  int             `json:"status"`
+	SentGCM bool            `json:"sent_gcm"`
 	Payload json.RawMessage `json:"payload"`
 	Effects []struct {
 		Kind string `json:"kind"`
@@ -76,18 +80,21 @@ func TestReplayControllerReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The fake controller: decodes what the device sends (so a malformed
-	// inform fails the test) and answers with the next recorded reply.
+	// The fake controller: decodes what the device sends with the key the
+	// real controller would hold at that point (default until it hands out
+	// the site key in the adopt reply), and answers with the next recorded
+	// reply, encrypted the way the controller did (CBC before, GCM after).
 	next := 0
+	key := defaultKey
 	var lastInform map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("read inform: %v", err)
 		}
-		pkt, err := inform.Decode(body, replayKey)
+		pkt, err := inform.Decode(body, key)
 		if err != nil {
-			t.Errorf("controller could not decode our inform: %v", err)
+			t.Errorf("controller could not decode our inform with key %s: %v", key, err)
 			w.WriteHeader(500)
 			return
 		}
@@ -106,17 +113,27 @@ func TestReplayControllerReplies(t *testing.T) {
 		}
 		var mac [6]byte
 		copy(mac[:], pkt.MAC[:])
-		enc, err := (&inform.Packet{MAC: mac, Payload: rec.Payload}).EncodeGCM(replayKey)
+		p := &inform.Packet{MAC: mac, Payload: rec.Payload}
+		var enc []byte
+		if rec.SentGCM {
+			enc, err = p.EncodeGCM(key)
+		} else {
+			enc, err = p.Encode(key)
+		}
 		if err != nil {
 			t.Fatal(err)
+		}
+		// After handing out the site key the controller expects it next.
+		if m := authKeyRe.FindString(string(rec.Payload)); m != "" {
+			key = strings.TrimPrefix(m, "authkey=")
 		}
 		w.Header().Set("Content-Type", "application/x-binary")
 		w.Write(enc)
 	}))
 	defer srv.Close()
 
-	st := device.State{Key: replayKey, Adopted: true, UseAESGCM: true, InformURL: srv.URL}
-	sess := device.NewSession(desc, srv.URL, st, nil, time.Now())
+	// Fresh device: not adopted, default key, as the bridge starts.
+	sess := device.NewSession(desc, srv.URL, device.State{InformURL: srv.URL}, nil, time.Now())
 	sess.SetSnapshot(snap)
 	logger := log.New(os.Stderr, "", 0)
 	l, err := New(desc, sess, Config{
@@ -140,12 +157,15 @@ func TestReplayControllerReplies(t *testing.T) {
 	// itself the assertion for the "back to normal" pushes).
 	type expect struct{ must, mustNot []string }
 	expectations := map[int]expect{
-		1: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push: port 2 disabled
-		4: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
-		5: {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
-		6: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
-		7: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
+		// 0: 404 (pending), 1: adopt via mgmt_cfg, 2: first system_cfg after adoption
+		3: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push of the day: port 2 disabled
+		6: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
+		7: {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
+		8: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
+		9: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
 	}
+	var connected int
+	l.cfg.OnConnected = func(*switchmodel.Snapshot) { connected++ }
 	for i, rec := range replies {
 		before := len(ft.Configured)
 		l.informOnce(ctx)
@@ -165,6 +185,20 @@ func TestReplayControllerReplies(t *testing.T) {
 			}
 			if len(batches) == 0 {
 				t.Errorf("reply %d: system_cfg %s produced no switch configuration", i, ver)
+			}
+		}
+		switch i {
+		case 0:
+			if sess.Adopted() || l.state != StatePending {
+				t.Errorf("after the 404 the device must still be pending (adopted=%v state=%v)", sess.Adopted(), l.state)
+			}
+		case 1:
+			if !sess.Adopted() || sess.AuthKey() != key || l.state != StateAdopting {
+				t.Errorf("after the adopt reply: adopted=%v key=%s state=%v", sess.Adopted(), sess.AuthKey(), l.state)
+			}
+		case 2:
+			if l.state != StateConnected || connected != 1 {
+				t.Errorf("after the first system_cfg: state=%v, OnConnected calls=%d", l.state, connected)
 			}
 		}
 		if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logBuf.String(), `UNHANDLED cmd "build-ssh-session"`) {
