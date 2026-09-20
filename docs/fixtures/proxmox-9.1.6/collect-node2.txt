@@ -570,12 +570,12 @@ net0: virtio=02:00:00:00:00:6C,bridge=vmbr0,firewall=1
               ],
               "name": [
                 {
-                  "value": "aggregation-switch"
+                  "value": "aggregation-primary"
                 }
               ],
               "descr": [
                 {
-                  "value": "aggregation-switch, 4.0.1.995, Rev.6"
+                  "value": "aggregation-primary, 4.0.1.995, Rev.6"
                 }
               ],
               "mgmt-ip": [
