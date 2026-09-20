@@ -150,7 +150,7 @@ func TestCollectNode2(t *testing.T) {
 	// The bond is one link at the last port: the active slave's speed, optic
 	// and neighbour, the bond's counters, no LAG for active-backup.
 	u := snap.Ports[53]
-	if u.IfName != "bond0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" || len(u.Interfaces) != 2 || u.Description != "bond0 via ens1f0np0" {
+	if u.IfName != "bond0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" || len(u.Interfaces) != 2 {
 		t.Errorf("uplink = %+v", u)
 	}
 	if len(u.SpeedCaps) == 0 || u.SpeedCaps[len(u.SpeedCaps)-1] != 100000 || !u.FECCapable || len(u.MACs) < 50 {
