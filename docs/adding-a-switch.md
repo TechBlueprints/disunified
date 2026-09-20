@@ -91,6 +91,10 @@ What a first-party-looking switch needs beyond ports and counters (all in
 - `System.LoadAvg`, memory, CPU, temperature, fans, PSUs (with `Present`),
   `MACTableCapacity`: Insights graphs and the overview cards.
 - `System.STPRoot`: the topology's root marker.
+- The uplink: mark the port `IsUplink` (the loop picks the LLDP neighbour
+  that is a bridge/router) and nothing else — the device layer reports
+  `uplink` as the management interface *name* plus `if_table`, which is
+  what a real switch sends; the controller derives the rest.
 
 ## 2b. Naming
 
