@@ -389,8 +389,12 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 					ifname = pp.IfName
 				}
 			}
+			// UniFi switches name the uplink after their management interface
+			// (eth0 in ethernet_table/if_table), not the front port, which is
+			// port_idx; the controller drops an uplink whose name it does not know.
+			_ = ifname
 			u := map[string]any{
-				"name": ifname, "port_idx": up, "mac": desc.MAC, "ip": desc.IP,
+				"name": "eth0", "port_idx": up, "mac": desc.MAC, "ip": desc.IP,
 				"type": "wire", "up": p.Up, "speed": p.SpeedMbps, "max_speed": p.SpeedMbps,
 				"full_duplex": p.FullDuplex, "media": mediaLabel(desc, up),
 				"rx_bytes": p.Counters.RxBytes, "tx_bytes": p.Counters.TxBytes,
@@ -408,6 +412,17 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 				}
 			}
 			m["uplink"] = u
+			// if_table: the management interface as UniFi switches report it,
+			// carrying the uplink port's link state and counters.
+			m["if_table"] = []map[string]any{{
+				"name": "eth0", "mac": desc.MAC, "ip": desc.IP, "num_port": len(desc.Ports),
+				"up": p.Up, "speed": p.SpeedMbps, "full_duplex": p.FullDuplex,
+				"rx_bytes": p.Counters.RxBytes, "tx_bytes": p.Counters.TxBytes,
+				"rx_packets": p.Counters.RxPackets, "tx_packets": p.Counters.TxPackets,
+				"rx_errors": p.Counters.RxErrors, "tx_errors": p.Counters.TxErrors,
+				"rx_dropped": p.Counters.RxDropped, "tx_dropped": p.Counters.TxDropped,
+				"rx_multicast": p.Counters.RxMulticast,
+			}}
 		}
 	}
 	return m
