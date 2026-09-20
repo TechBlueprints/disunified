@@ -13,6 +13,9 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
   loudly. If a command is missing on the target version, find the right one
   on that version; do not assume newer syntax (see `docs/arista-eapi.md`).
 - Speed capabilities per port come from the switch's own capability data.
+- No site-specific values in code, comments, tests or docs (addresses,
+  names, MACs, serials): documentation ranges only; the real ones live in
+  `local-information/` (gitignored).
 - Writes are diffs against the last snapshot and idempotent; the loop
   re-applies after every inform.
 - Breakout cages: fold lanes; speed to lane 1 to split/join, to all lanes

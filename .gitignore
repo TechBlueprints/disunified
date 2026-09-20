@@ -27,3 +27,17 @@ config.local.*
 /config.yaml
 /state-backup/
 /config-proxmox.local.yaml
+
+# Site-specific information (addresses, names, topology, deployment hosts,
+# credentials): never tracked. Only the README explaining the folder is.
+/local-information/*
+!/local-information/README.md
+
+# Key material, wherever it lands
+/ssh/
+id_ed25519*
+id_rsa*
+id_ecdsa*
+*.pem
+known_hosts*
+authorized_keys
