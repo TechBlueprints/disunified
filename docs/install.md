@@ -11,7 +11,9 @@ in the UniFi UI.
 - A switch with a supported driver (`switch-to-unifi -list-drivers`) and an
   account on it. For control (not just monitoring) the account needs write
   access; for the Arista driver that is a `network-admin` user and eAPI
-  enabled (`management api http-commands` → `no shutdown`).
+  enabled (`management api http-commands` → `no shutdown`); for the
+  Proxmox driver, root SSH to each node with a key and `apt-get install
+  lldpd` on each node (the driver configures it); `docs/proxmox.md` §5.
 - Optional, for naming the device and ports after the switch: a UniFi API
   key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 
@@ -31,7 +33,8 @@ export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
 ```
 **Check:** JSON with the switch's model, every port, and `suggested_model`.
 If it fails, the error names the command or credential at fault; fix that
-before going on. Pass `-driver <name>` for a non-Arista switch.
+before going on. Pass `-driver <name>` for a non-Arista switch, e.g.
+`-driver proxmox -switch-ssh root@proxmox-2`.
 
 ## 3. Write the config
 
@@ -77,6 +80,11 @@ UniFi's per-network setting (UniFi defaults it off). Read
 - **Quadlet/systemd:** `deploy/switch-to-unifi.container`.
 - Mount a volume at `/var/lib/switch-to-unifi` (state and reply logs) and
   set `state_dir: /var/lib/switch-to-unifi` in the config.
+- An SSH driver (Proxmox, or Arista over SSH) in the container needs a key
+  and a known_hosts file: mount them read-only and name them in the
+  switch's `options` (`ssh_key: /etc/switch-to-unifi/id_ed25519`,
+  `known_hosts: /etc/switch-to-unifi/known_hosts`); the container has no
+  home directory or agent. The key file must be readable by uid 65532.
 
 **Check:** after a container restart the log says `resuming adopted state`
 and the controller never showed the device as disconnected for more than

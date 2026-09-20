@@ -25,3 +25,4 @@ config.local.*
 /run.log
 /switch-to-unifi
 /config.yaml
+/state-backup/

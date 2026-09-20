@@ -51,7 +51,7 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 	for _, p := range snap.Ports {
 		wantName := namer.PortName(p)
 		cur := current[p.Index]
-		if cur == wantName || (cur != "" && !isDefaultPortName(p.Index, cur)) {
+		if wantName == "" || cur == wantName || (cur != "" && !isDefaultPortName(p.Index, cur)) {
 			continue
 		}
 		o := overrides[p.Index]
@@ -72,6 +72,11 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 	}
 	if len(fields) == 0 {
 		return false, 0, nil
+	}
+	for _, o := range dev.OOBPortConfig {
+		if on, _ := o["enabled"].(bool); on {
+			fields["oob_port_config"] = []map[string]any{} // see Device.OOBPortConfig
+		}
 	}
 	if err := c.UpdateDevice(ctx, dev.ID, fields); err != nil {
 		return false, 0, fmt.Errorf("provision names: %w", err)

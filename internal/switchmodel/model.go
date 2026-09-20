@@ -123,6 +123,10 @@ type Snapshot struct {
 	Ports    []Port     // sorted by Index, one entry per front-panel port
 	MACTable []MACEntry // every learned address, including those on non-front-panel ports
 	VLANs    []int      // VLAN IDs that exist on the switch, ascending
+
+	// UplinkHint is the driver's own idea of the uplink port when LLDP is
+	// silent (a virtual switch knows which physical NIC carries it); 0 = none.
+	UplinkHint int
 }
 
 // UplinkPort returns the port carrying the LLDP neighbour that looks like
@@ -140,6 +144,9 @@ func (s *Snapshot) UplinkPort() int {
 		if best == 0 {
 			best = p.Index
 		}
+	}
+	if best == 0 {
+		best = s.UplinkHint
 	}
 	return best
 }
@@ -388,4 +395,34 @@ func (c *Counters) Add(c2 Counters) {
 	c.RxBroadcast += c2.RxBroadcast
 	c.TxMulticast += c2.TxMulticast
 	c.TxBroadcast += c2.TxBroadcast
+}
+
+// Capabilities is what a driver can honour on its switch. The presentation
+// layer turns it into the controller's capability claims, which gate the
+// controls the UI offers, so a driver claims only what it implements: a
+// claimed feature the driver ignores is a silent lie in the UI.
+type Capabilities struct {
+	STP           bool // switch-wide STP mode/priority
+	BPDUGuard     bool // per-port BPDU guard
+	STPPortCost   bool // per-port STP path cost is reported
+	Jumbo         bool // jumbo frames (reported and/or switchable)
+	FEC           bool // per-port forward error correction
+	LACP          bool // link aggregation (Controller honours PortDesired.LAG)
+	StormControl  bool // per-port storm control in percent
+	IGMPSnooping  bool // IGMP snooping (SwitchController honours IGMPSnooping)
+	LLDPMED       bool
+	DHCPSnooping  bool
+	PortIsolation bool
+	SNMP          bool // SwitchController honours SNMPCommunity
+	// MirrorSessions / AggregateSessions are the counts the UI is told; 0
+	// hides the feature.
+	MirrorSessions    int
+	AggregateSessions int
+}
+
+// Capable is implemented by a Switch that wants to declare its own
+// Capabilities; a Switch without it gets the presentation layer's default
+// (the Arista EOS set).
+type Capable interface {
+	Capabilities() Capabilities
 }

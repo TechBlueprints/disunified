@@ -2,7 +2,8 @@
 
 A bridge that makes a non-UniFi switch appear as a real, adopted UniFi
 switch inside the UniFi Network controller — ports, stats, topology, and
-control — starting with Arista EOS.
+control. Drivers today: Arista EOS, and a Proxmox VE node's virtual switch
+(`vmbr0`), whose guests become the ports.
 
 The controller only speaks its own device protocol. This bridge speaks the
 device side of it (the inform protocol, adoption, capabilities) on behalf of
@@ -17,6 +18,15 @@ speed, VLAN membership (plus VLAN creation), FEC, storm control, BPDU guard,
 STP mode/priority, IGMP snooping, and QSFP breakout split/join — all
 end-to-end from the UniFi UI.
 
+Also verified on the same controller: each node of a three-node **Proxmox
+VE 9.1** cluster as a 32-port 100G switch ("ECS Core"), one port per guest
+NIC, numbered the same on every node, VM clients behind their ports in
+the topology, the nodes behind the UniFi aggregation switch via lldpd, and
+control of port state and VLANs written back as the guest's `tag`/`trunks`
+(`docs/proxmox.md`). The switch is the node's virtual switch, `vmbr0`
+and its guest NICs; the node's own networking underneath (NICs, bond,
+failover) is reported as one uplink and never configured.
+
 ## How it works
 
 ```
@@ -26,7 +36,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  switch-to-u
 
 - `internal/switchmodel` — the vendor-neutral model of a switch and the
   driver contract.
-- `internal/drivers/<vendor>` — one driver per vendor/OS (`arista-eos` today).
+- `internal/drivers/<vendor>` — one driver per vendor/OS (`arista-eos`, `proxmox`).
 - `internal/device` — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - `internal/unificfg` — parses the controller's `system_cfg` pushes.

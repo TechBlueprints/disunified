@@ -33,3 +33,22 @@ switches:
       ssh_keys: true                 # the controller's SSH keys are installed on the switch user
       snmp: true                     # UniFi's SNMP v1/v2c community is configured on the switch (read-only)
 
+
+  # A Proxmox VE node: its bridge is the switch, its guests are the ports
+  # (docs/proxmox.md). One entry per node; guests are numbered the same on
+  # every node, so a migrated VM keeps its port number.
+  - name: proxmox-1
+    driver: proxmox
+    ssh: root@proxmox-1              # key auth
+    ip: 192.0.2.101                   # the node's own in-band address
+    model: UDC48X6                   # USW Leaf (48 guest ports + host + NICs); auto picks it too
+    options:
+      bridge: vmbr0                  # default
+      # ports: "54"                  # total ports; uplink_ports: "6" = the host and its NICs at the top
+      # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
+      # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container
+      # known_hosts: /etc/switch-to-unifi/known_hosts
+    control:
+      ports: all                     # port state and VLANs -> qm/pct set (align tagged guests first, docs/proxmox.md §3)
+      igmp: false                    # bridge-wide multicast_snooping follows UniFi
+      ntp: false                     # chrony sources follow UniFi
