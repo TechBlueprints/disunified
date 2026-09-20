@@ -319,6 +319,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
 		if sp, ok := stpPortBy[u.Member]; ok {
 			applyMSTPPort(&p, sp)
+			if u.Standby {
+				p.STPState, p.STPRole = "blocking", "alternate"
+			}
 		}
 		p.FEC = parseEthtoolFEC(fecBodies[u.Active])
 		p.Health.LinkChanges = carrierChanges(carrier, u.Active)
@@ -336,7 +339,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 			macs = append(macs, m)
 			vlanSet[e.VLAN] = true
 		}
-		if uplinkHint == 0 && p.Up {
+		if uplinkHint == 0 && p.Up && !u.Standby {
 			uplinkHint = idx
 		}
 		nicPorts[idx] = p
@@ -683,28 +686,30 @@ func macEntry(e fdbEntry, idx int, now time.Time) switchmodel.MACEntry {
 	return switchmodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
 }
 
-// uplink is one physical path out of the bridge, as one switch port:
+// uplink is one physical port of the node, at the top of the port range:
 //
 //   - a NIC in the bridge: itself;
-//   - an active-backup (or other failover-only) bond: one link, showing
-//     the active slave's speed, optic and LLDP neighbour with the bond's
-//     counters (UniFi has no notion of an active-standby pair, and a bond
-//     is one link to the network; Clint's call, 2026-09-20);
-//   - an LACP (802.3ad) or balance-* bond: one port per member, all in
-//     the same LAG, the way UniFi shows an aggregate;
+//   - a bond: one port per slave, named "<bond>-<n>" ("bond0-1", "bond0-2"),
+//     each with its own link, speed, optic and LLDP neighbour. For an
+//     LACP (802.3ad) or balance-* bond the members form a LAG, the way
+//     UniFi shows an aggregate; for an active-backup (or other failover)
+//     bond they do not: the active slave forwards and the standby shows
+//     link-up but blocking, the bond stays a bond until it is converted
+//     (Clint, 2026-09-20);
 //   - a VLAN device on any of those (bond0.10 as the bridge port): the
 //     device underneath.
 //
-// Member is the bridge port (what `bridge vlan`/fdb key on); Active is the
-// NIC whose speed, optic and LLDP neighbour the port reports; Ifaces are
-// the NICs lldpd names with this port's number.
+// Member is the bridge port the slave belongs to (what `bridge vlan`/fdb
+// key on); Active is the NIC whose speed, optic and LLDP neighbour the port
+// reports; Ifaces are the NICs lldpd names with this port's number.
 type uplink struct {
-	Name   string   // the port's name
-	Member string   // the bridge member this belongs to (bond, NIC or VLAN device)
-	Ifaces []string // the NICs behind it
-	Active string   // the NIC carrying traffic now
-	LAG    string   // aggregate name when the port is one member of a LAG
-	First  bool     // first port of its member: carries the member's MAC table
+	Name    string   // the port's name
+	Member  string   // the bridge member this belongs to (bond, NIC or VLAN device)
+	Ifaces  []string // the NICs behind it
+	Active  string   // the NIC carrying traffic now
+	LAG     string   // aggregate name when the port is one member of a LAG
+	First   bool     // first port of its member: carries the member's MAC table
+	Standby bool     // a failover bond's inactive slave: linked, not forwarding
 }
 
 func uplinkNames(us []uplink) []string {
@@ -753,17 +758,21 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 			if len(slaves) == 0 {
 				continue
 			}
-			if strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast") {
-				for i, sl := range slaves {
-					out = append(out, uplink{Name: sl, Member: m.Ifname, Ifaces: []string{sl}, Active: sl, LAG: b.Name, First: i == 0})
-				}
-				continue
-			}
+			lag := strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast")
 			active := b.ActiveSlave
 			if active == "" {
 				active = slaves[0]
 			}
-			out = append(out, uplink{Name: m.Ifname, Member: m.Ifname, Ifaces: slaves, Active: active, First: true})
+			for i, sl := range slaves {
+				u := uplink{Name: fmt.Sprintf("%s-%d", m.Ifname, i+1), Member: m.Ifname, Ifaces: []string{sl}, Active: sl, First: i == 0}
+				if lag {
+					u.LAG = b.Name
+				} else {
+					u.Standby = sl != active
+					u.First = sl == active // the MAC table belongs to the slave carrying traffic
+				}
+				out = append(out, u)
+			}
 			continue
 		}
 		if isPhys[lower] {
@@ -777,8 +786,8 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 // member (the bond, or the NIC), speed/optic/capabilities from the active NIC.
 func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) switchmodel.Port {
 	stats := member
-	if u.LAG != "" {
-		stats = active // a LAG member reports its own link and counters
+	if len(u.Ifaces) == 1 && u.Ifaces[0] != u.Member {
+		stats = active // a bond slave reports its own link and counters
 	}
 	p := switchmodel.Port{
 		Index: idx, IfName: u.Name, Interfaces: u.Ifaces, Name: u.Name, Lanes: 1,
@@ -800,6 +809,9 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 		p.STPState = "forwarding"
 		if st := brBy[u.Member].Linkinfo.InfoSlaveData.State; st != "" {
 			p.STPState = st
+		}
+		if u.Standby {
+			p.STPState = "blocking" // linked, carrying nothing: the bond's standby path
 		}
 	}
 	if b := brBy[u.Member]; b.Ifname != "" {
@@ -1001,7 +1013,9 @@ func lldpdConfig(phys []uplink, slotFor func(int) int, devMAC string) (config st
 	var b strings.Builder
 	b.WriteString("# managed by switch-to-unifi: this node's bridge as a UniFi switch\n")
 	for _, u := range phys {
-		announce = append(announce, u.Active)
+		if !u.Standby {
+			announce = append(announce, u.Active)
+		}
 	}
 	fmt.Fprintf(&b, "configure system interface pattern %s\n", strings.Join(announce, ","))
 	fmt.Fprintf(&b, "configure system chassisid %s\n", devMAC)
