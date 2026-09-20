@@ -24,29 +24,18 @@ import (
 // no command, and the loop's reconcile after every inform is free.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDesired) (int, error) {
 	c.mu.Lock()
-	node, nics, keyOf := c.node, c.nics, c.keyOf
+	nics := c.nics
 	c.mu.Unlock()
 	if nics == nil {
 		return 0, fmt.Errorf("proxmox apply: no snapshot yet")
 	}
 	changed := 0
 	for _, d := range desired {
-		key, ok := keyOf[d.Index]
+		n, want, ok := c.planPort(d)
 		if !ok {
 			continue
 		}
-		n, ok := nics[key]
-		if !ok || n.Node != node {
-			continue
-		}
-		want := n
-		want.LinkDown = !d.Enabled
-		if d.VLANSet {
-			want.Tag, want.Trunks = vlanToConfig(d)
-		}
-		if want.LinkDown == n.LinkDown && want.Tag == n.Tag && equalInts(want.Trunks, n.Trunks) {
-			continue
-		}
+		key := n.Key()
 		raw := renderNICOptions(n.Raw, want)
 		if err := c.setNIC(ctx, n, raw); err != nil {
 			return changed, err
@@ -58,6 +47,43 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 		changed++
 	}
 	return changed, nil
+}
+
+// planPort is the diff for one port: the guest NIC on this node the port
+// maps to and what it should become; ok is false when nothing changes (or
+// the port has no guest here).
+func (c *Collector) planPort(d switchmodel.PortDesired) (n, want guestNIC, ok bool) {
+	c.mu.Lock()
+	node, nics, keyOf := c.node, c.nics, c.keyOf
+	c.mu.Unlock()
+	key, found := keyOf[d.Index]
+	if !found {
+		return n, want, false
+	}
+	n, found = nics[key]
+	if !found || n.Node != node {
+		return n, want, false
+	}
+	want = n
+	want.LinkDown = !d.Enabled
+	if d.VLANSet {
+		want.Tag, want.Trunks = vlanToConfig(d)
+	}
+	if want.LinkDown == n.LinkDown && want.Tag == n.Tag && equalInts(want.Trunks, n.Trunks) {
+		return n, want, false
+	}
+	return n, want, true
+}
+
+// PlanPorts implements switchmodel.Planner: the ports ApplyPorts would write.
+func (c *Collector) PlanPorts(desired []switchmodel.PortDesired) []int {
+	var out []int
+	for _, d := range desired {
+		if _, _, ok := c.planPort(d); ok {
+			out = append(out, d.Index)
+		}
+	}
+	return out
 }
 
 // vlanToConfig turns the controller's intent into Proxmox tag/trunks.

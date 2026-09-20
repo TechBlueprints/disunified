@@ -65,6 +65,13 @@ type Control struct {
 	Reboot  bool   `yaml:"reboot"`
 	SSHKeys bool   `yaml:"ssh_keys"`
 	SNMP    bool   `yaml:"snmp"`
+	// AllowInitialChanges lets the first push after adoption change ports
+	// (default: held until the controller's config matches the switch — the
+	// bridge seeds it from the switch when api_url is set).
+	AllowInitialChanges bool `yaml:"allow_initial_changes"`
+	// NoSeed skips seeding the controller's port config from the switch on
+	// adoption (default: seed when api_url is set).
+	NoSeed bool `yaml:"no_seed"`
 }
 
 // Load reads and validates a config file.

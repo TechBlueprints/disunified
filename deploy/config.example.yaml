@@ -49,6 +49,8 @@ switches:
       # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container
       # known_hosts: /etc/switch-to-unifi/known_hosts
     control:
-      ports: all                     # port state and VLANs -> qm/pct set (align tagged guests first, docs/proxmox.md §3)
+      ports: all                     # port state and VLANs -> qm/pct set; on adoption the controller is seeded from the guests' VLANs
+      # allow_initial_changes: true  # let the first push after adoption change ports (default: held until it matches)
+      # no_seed: true                # do not write the switch's port state into the controller on adoption
       igmp: false                    # bridge-wide multicast_snooping follows UniFi
       ntp: false                     # chrony sources follow UniFi
