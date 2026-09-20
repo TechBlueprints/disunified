@@ -80,7 +80,7 @@ controllers you own, at your own risk.
 
 ## License and credit
 
-MIT — see `LICENSE`. The inform wire format, crypto and model catalogue come
+MIT — see `LICENSE` (attribution and trademark notes in `NOTICE`). The inform wire format, crypto and model catalogue come
 from [jamesbraid/unifi-emu](https://github.com/jamesbraid/unifi-emu) (MIT),
 whose protocol documentation made this possible; `internal/device` is a fork
 of its inform session.
