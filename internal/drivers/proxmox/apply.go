@@ -24,7 +24,7 @@ import (
 // no command, and the loop's reconcile after every inform is free.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDesired) (int, error) {
 	c.mu.Lock()
-	nics := c.nics
+	nics, node, keyOf := c.nics, c.node, c.keyOf
 	c.mu.Unlock()
 	if nics == nil {
 		return 0, fmt.Errorf("proxmox apply: no snapshot yet")
@@ -45,6 +45,44 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 		c.nics[key] = want
 		c.mu.Unlock()
 		changed++
+	}
+	// BPDU guard on guest ports, when the bridge runs under mstpd.
+	c.mu.Lock()
+	stpManaged, stpPorts := c.stpManaged, c.stpPorts
+	c.mu.Unlock()
+	if stpManaged {
+		var cmds []string
+		for _, d := range desired {
+			key, ok := keyOf[d.Index]
+			if !ok {
+				continue
+			}
+			n, ok := nics[key]
+			if !ok || n.Node != node {
+				continue
+			}
+			member := n.BridgeMember()
+			sp, ok := stpPorts[member]
+			if !ok {
+				continue // the guest is not running here
+			}
+			if (sp.BPDUGuardPort == "yes") != d.BPDUGuard {
+				v := "no"
+				if d.BPDUGuard {
+					v = "yes"
+				}
+				cmds = append(cmds, fmt.Sprintf("setportbpduguard %s %s %s", c.Bridge, member, v))
+				sp.BPDUGuardPort = v
+				stpPorts[member] = sp
+			}
+		}
+		if len(cmds) > 0 {
+			c.Log.Printf("proxmox %s: mstpd: %s", node, strings.Join(cmds, "; "))
+			if _, err := c.r.Run(ctx, "mstpctl -s", strings.Join(cmds, "\n")+"\n"); err != nil {
+				return changed, err
+			}
+			changed += len(cmds)
+		}
 	}
 	return changed, nil
 }
@@ -197,11 +235,33 @@ func (c *Collector) CyclePort(ctx context.Context, idx int) error {
 // target to set.
 func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired) (int, error) {
 	c.mu.Lock()
-	snoop, stpOn, ntpManaged := c.snooping, c.stpOn, c.ntpManaged
+	snoop, ntpManaged := c.snooping, c.ntpManaged
+	stpManaged, stpVersion := c.stpManaged, c.stpVersion
 	c.mu.Unlock()
 	changed := 0
-	if d.STPSet && d.STPEnabled && !stpOn {
-		c.warnOnce("stp", "the controller wants STP %s (priority %d); a Proxmox bridge runs with bridge-stp off and the bridge does not change that", d.STPMode, d.STPPriority)
+	switch {
+	case d.STPSet && !stpManaged && d.STPEnabled:
+		c.warnOnce("stp", "the controller wants STP %s (priority %d); this node's bridge is not under mstpd (docs/proxmox.md §4b) so STP is neither claimed nor changed", d.STPMode, d.STPPriority)
+	case d.STPSet && stpManaged:
+		// Version follows the controller; priority never does (enforceSTP
+		// pins the maximum so the node cannot become root).
+		if d.STPEnabled && d.STPMode != "" && d.STPMode != stpVersion {
+			cmd := fmt.Sprintf("mstpctl setforcevers %s %s", c.Bridge, d.STPMode)
+			c.Log.Printf("proxmox %s: %s", c.node, cmd)
+			if _, err := c.r.Run(ctx, cmd, ""); err != nil {
+				return changed, err
+			}
+			c.mu.Lock()
+			c.stpVersion = d.STPMode
+			c.mu.Unlock()
+			changed++
+		}
+		if !d.STPEnabled {
+			c.warnOnce("stp-off", "the controller wants STP off; a node under mstpd keeps RSTP running (it is what protects the node's own uplinks) and reports it")
+		}
+		if d.STPPriority != 0 && d.STPPriority != nodeSTPPriority {
+			c.warnOnce("stp-prio", "the controller wants STP priority %d; a node keeps the maximum (%d) so it is never elected root", d.STPPriority, nodeSTPPriority)
+		}
 	}
 	if d.IGMPSnooping != nil {
 		want, ok := d.IGMPSnooping[1]
