@@ -116,7 +116,7 @@ one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
 
 Done and verified live: everything in `docs/feature-map.md` marked done,
 including aggregation (every lane of a cage joins), mirroring, per-port STP
-disable, NTP/syslog ownership, port-cycle, locate, real reboot on request,
+disable, NTP/syslog ownership, locate, real reboot on request,
 controller SSH keys on the switch user, emulated firmware upgrades
 (persisted), fault reporting (fan/PSU/overheating claims, errdisabled logged),
 first-provision naming with lane-range names on split, config file with
@@ -208,10 +208,16 @@ the handshake in ~25 s (mgmt_cfg with authkey → ADOPTING → first system_cfg 
 CONNECTED) and the uplink resolves on the first cycle. That handshake (the two
 400s included) is now the head of `docs/fixtures/controller-10.6.106/replies.ndjson`,
 `set-locate`/`unset-locate` its tail, and the replay test starts unadopted
-with the default key. The controller's command names are `set-locate`,
-`unset-locate` and `port-cycle` (`locate`/`power-cycle` are rejected with
-400 by `cmd/devmgr`); port-cycle answers `rc:ok` but never reached the
-device as a cmd reply in two tries, so it is not in the fixture. Found and fixed: naming
+with the default key. The controller's command names are `set-locate`
+and `unset-locate` (`locate` is not one). **`cmd/devmgr` answers `rc:ok` to
+any unknown command name** (even `no-such-command`), so an ok there proves
+nothing; only a recorded cmd reply does. The port power cycle is
+`power-cycle` with `port_idx`, and the controller issues it only for a PoE
+port that is powering a device: `api.err.InvalidTargetPort` for our ports,
+for a free PoE port and for a non-PoE port on a real switch, and the UI's
+"Power Cycle" button exists only on such a port (checked on
+a PoE switch). The 7160 has no PoE, so it can never receive the
+command and there is no capture of the device-side name. Found and fixed: naming
 only ran at startup, so a later adoption left "USW Leaf" — `OnConnected`
 now provisions names; the mgmt_cfg log line masks the authkey.
 
