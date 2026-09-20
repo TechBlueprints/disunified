@@ -152,8 +152,11 @@ func TestCollectNode2(t *testing.T) {
 	if got := c.PortName(snap.Ports[47]); got != "VM-Open-48" {
 		t.Errorf("free guest slot name = %q", got)
 	}
-	if got := c.PortName(snap.Ports[48]); got != "" {
-		t.Errorf("empty uplink cage name = %q, want the controller's default", got)
+	if got := c.PortName(snap.Ports[48]); got != "NIC-Open-49" {
+		t.Errorf("free uplink slot name = %q", got)
+	}
+	if e := snap.Ports[47]; e.Enabled || snap.Ports[48].Enabled {
+		t.Errorf("free slots must report disabled: %+v", e)
 	}
 	if d := c.DefaultPortNames(snap.Ports[0]); len(d) == 0 || d[0] != "VM-Open-1" {
 		t.Errorf("guest slot 1 defaults = %v, want VM-Open-1 first", d)

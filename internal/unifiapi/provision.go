@@ -33,9 +33,9 @@ type ProvisionResult struct {
 // override where the controller has none yet (see SeedPortConfig), in one
 // read-modify-write: two separate updates raced on a stale read and lost a
 // name (2026-09-20). Slots that are empty in the snapshot (a guest deleted)
-// lose their override except its name, so a later guest on that slot starts
-// from the defaults and is seeded from its own state; the name is left for
-// the naming pass, which turns a default into the driver's free-slot name.
+// lose their override except its name and, when seeding, are written
+// disabled as the switch reports them; a later guest on that slot is
+// seeded from its own state (see seedOverrides).
 func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool, seed bool) (ProvisionResult, error) {
 	var res ProvisionResult
 	dev, err := c.DeviceByMAC(ctx, mac)
@@ -111,7 +111,7 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Sn
 			list = append(list, o)
 		}
 		var seeded []map[string]any
-		seeded, res.Seeded, res.Notes = seedOverrides(snap, nets, list)
+		seeded, res.Seeded, res.Notes = seedOverrides(snap, nets, list, isDefaultPortName)
 		if res.Seeded > 0 {
 			overrides = map[int]map[string]any{}
 			for _, o := range seeded {
@@ -140,21 +140,6 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Sn
 		return res, fmt.Errorf("provision: %w", err)
 	}
 	return res, nil
-}
-
-// releaseOverride strips a released slot's override down to its port_idx
-// and name, so a later guest on the slot is seeded from its own state and
-// the slot keeps (or gets) the driver's free-slot name. It reports whether
-// anything was removed.
-func releaseOverride(o map[string]any) bool {
-	removed := false
-	for k := range o {
-		if k != "port_idx" && k != "name" {
-			delete(o, k)
-			removed = true
-		}
-	}
-	return removed
 }
 
 // overrideIndex reads port_idx whether it came from JSON (float64) or us (int).
