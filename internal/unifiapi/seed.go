@@ -137,13 +137,15 @@ func sameJSON(a, b any) bool {
 // releaseOverride strips a free slot's override down to its port_idx, its
 // name and whatever part of the disabled combination it carries, so a
 // guest that later takes the slot is seeded from its own state and the
-// slot keeps (or gets) the driver's free-slot name. It reports whether
-// anything was removed.
+// slot keeps (or gets) the driver's free-slot name. Keys the controller
+// adds with an empty value (`voice_networkconf_id: ""` on Network 10.6)
+// carry no config and are left, or every provision would strip and the
+// controller re-add them. It reports whether anything was removed.
 func releaseOverride(o map[string]any) bool {
 	keep := disabledOverride()
 	removed := false
 	for k, v := range o {
-		if k == "port_idx" || k == "name" {
+		if k == "port_idx" || k == "name" || emptyValue(v) {
 			continue
 		}
 		if want, ok := keep[k]; ok && sameJSON(v, want) {
@@ -153,6 +155,21 @@ func releaseOverride(o map[string]any) bool {
 		removed = true
 	}
 	return removed
+}
+
+// emptyValue reports a JSON value that configures nothing: "", [] or null.
+func emptyValue(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case []any:
+		return len(x) == 0
+	case []string:
+		return len(x) == 0
+	}
+	return false
 }
 
 // seedOverrides is the pure part: the full override list to send (existing
