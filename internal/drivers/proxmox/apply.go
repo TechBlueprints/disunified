@@ -46,6 +46,12 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 		c.mu.Unlock()
 		changed++
 	}
+	// Link aggregation on the node's physical ports (lag.go).
+	n, err := c.applyLAG(ctx, desired)
+	changed += n
+	if err != nil {
+		return changed, err
+	}
 	// BPDU guard on guest ports, when the bridge runs under mstpd.
 	c.mu.Lock()
 	stpManaged, stpPorts := c.stpManaged, c.stpPorts

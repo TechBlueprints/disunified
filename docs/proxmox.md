@@ -43,7 +43,7 @@ matters happens in the bond (100 ms), below the switch we present.
 |---|---|---|
 | one NIC in the bridge | port 54 | verified |
 | active-backup bond | one port per slave (`bond0-1` at 54 active/forwarding, `bond0-2` at 53 standby/blocking), no LAG; lldpd announces on the active slave only; the bond stays a bond | **verified** (Clint's cluster) |
-| LACP (802.3ad) or balance-* bond | one port per member, every member in the same LAG (UniFi's aggregate), each with its own counters, optic and LLDP; the first member carries the MAC table; lldpd announces on every member with its own port number | **modelled, not verified live** — no host here has one (the two NICs go to different switches). Unit-tested against the captured bonding text with the mode line changed. If you run LACP, check the first run: two aggregated ports at 54 and 52, each with its upstream neighbour |
+| LACP (802.3ad) or balance-* bond | one port per member (`bond0-1`, `bond0-2`), every member in the same LAG (UniFi's aggregate), each with its own counters, optic and LLDP; the first member carries the MAC table; lldpd announces on every member with its own port number; a UniFi aggregate/de-aggregate converts the bond (§3b) | **modelled, not verified live** — no host here has one (the two NICs go to different switches). Unit-tested against the captured bonding text with the mode line changed. If you run LACP, check the first run: two aggregated ports at 54 and 53, each with its upstream neighbour |
 | several NICs in the bridge, no bond | one port each | modelled |
 | a VLAN device on the uplink (`bond0.10` as the bridge port) | the device underneath, looked through | **modelled, not verified live** |
 | several bridges (`vmbr1`…) | one `switches:` entry per bridge (`options.bridge`) | verified for `vmbr0` |
@@ -100,6 +100,34 @@ Every other option on the NIC line (model=MAC, bridge, firewall, queues,
 mtu, rate…) is preserved. Writes are diffs against the config as last read;
 a guest on another node is left to that node's bridge. Port cycle =
 `link_down=1`, 3 s, restore.
+
+### 3b. Link aggregation (LACP) — UNTESTED LIVE, PRs welcome
+
+The controller's aggregate on the node's physical ports
+(`switch.port.N.opmode=aggregate` + `lag=<id>`, the keys the Arista driver
+honours) is applied through Proxmox's own API (`pvesh`, so Proxmox writes
+and applies its network config):
+
+- an aggregate over **every slave of a bond** converts the bond to
+  `802.3ad` (`layer2+3` hashing); removing it puts the bond back to
+  `active-backup` with its first slave as primary — the bond is never
+  removed;
+- an aggregate over **plain NICs** joins them into a new bond in the
+  bridge's port list;
+- refused, with a log line: members whose LLDP neighbours are different
+  chassis (a LAG cannot span switches; applying it would take the node off
+  the network), a bond only partly covered, a guest port in the aggregate,
+  a mix of bond slaves and plain NICs.
+
+An 802.3ad or balance-* bond is reported as a LAG (`op_mode aggregate` on
+its member ports). Capability claimed: one aggregate session.
+
+**None of this has run against a real LACP switch port**: this site's
+nodes bond to two different switches, which no LAG can span, and there
+are no spare LACP-capable ports. The commands are Proxmox's documented API
+calls and the unit tests (`lag_test.go`) cover the plan on the captured
+node state with the neighbours rewritten to one switch. If you can run it,
+please report what happens or send a PR.
 
 **Adoption seeds the controller from the switch.** A freshly adopted
 device has no port config in the controller, so its first push says

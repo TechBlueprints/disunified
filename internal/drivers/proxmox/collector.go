@@ -52,9 +52,11 @@ type Collector struct {
 	stpOn      bool
 	// STP through mstpd, when the node has it and the bridge runs under it
 	// (docs/proxmox.md §4b). Without it STP is neither claimed nor touched.
-	mstpd       bool   // mstpctl is installed
-	stpManaged  bool   // the bridge's STP is user-space (mstpd): stp_state 2
-	stpVersion  string // force-protocol-version: "rstp", "stp", "mstp"
+	uplinks     map[int]uplink    // port index -> physical uplink, at the last collect
+	bondModes   map[string]string // bond -> mode string from /proc/net/bonding
+	mstpd       bool              // mstpctl is installed
+	stpManaged  bool              // the bridge's STP is user-space (mstpd): stp_state 2
+	stpVersion  string            // force-protocol-version: "rstp", "stp", "mstp"
 	stpPriority int
 	stpPorts    map[string]mstpPort // by bridge member
 	warned      map[string]bool
@@ -88,7 +90,9 @@ func (c *Collector) Close() error { return c.r.Close() }
 func (c *Collector) Capabilities() switchmodel.Capabilities {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	caps := switchmodel.Capabilities{IGMPSnooping: true}
+	// LACP: an aggregate on the node's physical ports converts their bond
+	// to 802.3ad through the Proxmox API (docs/proxmox.md §3b, untested live).
+	caps := switchmodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
 	if c.stpManaged {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
 	}
@@ -311,7 +315,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	hostMAC := strings.ToLower(bridge["address"])
 	slotFor := func(i int) int { return c.Ports - i } // uplink i -> port index, from the last port down
 	nicPorts := map[int]switchmodel.Port{}
+	uplinkBy := map[int]uplink{}
 	for i, u := range phys {
+		uplinkBy[slotFor(i)] = u
 		idx := slotFor(i)
 		l := linkBy[u.Active]
 		et := parseEthtool(ethBodies[u.Active])
@@ -475,6 +481,11 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	c.stpVersion = stpVersion
 	c.stpPriority = sys.STPPriority
 	c.stpPorts = stpPortBy
+	c.uplinks = uplinkBy
+	c.bondModes = map[string]string{}
+	for _, b := range bonds {
+		c.bondModes[b.Name] = b.Mode
+	}
 	c.mu.Unlock()
 	return snap, nil
 }
