@@ -56,8 +56,9 @@ cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
 `unifi.example.net`, switch `arista` via eAPI at **192.0.2.4**
 (in-band, `Vlan1`, since 2026-09-20; `Management1` is addressless, LLDP off —
 the OOB address broke the controller's topology, see docs/adding-a-switch.md
-§2c and docs/arista-eapi.md §7; Clint's `ssh arista` alias may still point
-at 192.0.2.3), every `control`
+§2c and docs/arista-eapi.md §7; `arista.example.net` is a
+controller static DNS A record → 192.0.2.4 since 2026-09-20, so `ssh admin@arista`
+follows), every `control`
 flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
 `state/arista/device.json`; replies: `inform-log/arista/`.
 
