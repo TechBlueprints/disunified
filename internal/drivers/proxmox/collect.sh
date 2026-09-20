@@ -57,13 +57,13 @@ s qemu
 for f in /etc/pve/nodes/*/qemu-server/*.conf; do
   [ -e "$f" ] || continue
   echo "## $f"
-  sed -n '/^\[/q;p' "$f" | grep -E '^(name|net[0-9]+|hotplug|template):'
+  sed -n '/^\[/q;p' "$f" | grep -E '^(name|net[0-9]+|hotplug|template|tags):'
 done
 s lxc
 for f in /etc/pve/nodes/*/lxc/*.conf; do
   [ -e "$f" ] || continue
   echo "## $f"
-  sed -n '/^\[/q;p' "$f" | grep -E '^(hostname|net[0-9]+|template):'
+  sed -n '/^\[/q;p' "$f" | grep -E '^(hostname|net[0-9]+|template|tags):'
 done
 s mstpctl;    [ -x /usr/sbin/mstpctl ] && echo present
 s mstpbridge; [ -x /usr/sbin/mstpctl ] && [ "$(cat /sys/class/net/$BR/bridge/stp_state 2>/dev/null)" = "2" ] && mstpctl -f json showbridge "$BR" 2>/dev/null
