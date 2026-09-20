@@ -119,6 +119,7 @@ type Loop struct {
 	pendingReboot   bool
 	warnedVersion   string
 	oobWarned       string // last out-of-band warning state, to log on change only
+	uplinkPort      int    // the port last marked as uplink from the snapshot
 	faultSig        string
 
 	mu         sync.Mutex
@@ -687,6 +688,13 @@ func (l *Loop) collect(ctx context.Context) {
 		l.collectFailures = 0
 	}
 	l.session.SetSnapshot(snap)
+	if up := snap.UplinkPort(); up > 0 && up != l.uplinkPort {
+		if l.uplinkPort != 0 {
+			l.cfg.Logger.Printf("[%s] uplink is now port %d (was %d)", l.desc.MAC, up, l.uplinkPort)
+		}
+		l.uplinkPort = up
+		l.session.SetUplinkPort(up)
+	}
 	l.warnOOB(snap)
 	var faults []string
 	for _, p := range snap.Ports {
