@@ -147,3 +147,19 @@ func abs(n int) int {
 	}
 	return n
 }
+
+// ControllerDisplayNames lists the names a Network controller gives a
+// freshly adopted device of the model when the catalogue's model_display
+// differs from (or lacks) what the controller shows: these are treated as
+// "unnamed" by the naming provisioner. Observed on Network 10.6.106.
+func ControllerDisplayNames(model string) []string {
+	switch model {
+	case "USWF07D":
+		return []string{"ECS Core"}
+	case "USWF066":
+		return []string{"ECSAGG", "ECS Aggregation"}
+	case "UDC48X6":
+		return []string{"USW Leaf"}
+	}
+	return nil
+}

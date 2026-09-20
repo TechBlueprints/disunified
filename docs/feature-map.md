@@ -25,6 +25,20 @@ so the captured file (`fixtures/controller-10.6.106-system_cfg.txt`) shows defau
 **Every "verify" row needs a capture: Clint sets the feature in the UI (port 2 for port-level
 settings), the bridge records the delta.** That is the capture campaign in §4.
 
+## 0. Proxmox VE driver
+
+The tables below are the Arista's. The Proxmox driver (`docs/proxmox.md`)
+covers a subset by design: a Linux bridge has no per-port speed, FEC, storm
+control, LAG or mirror, so those capabilities are not claimed and the UI
+hides them. What it does: every device→controller field in §1 except PSUs,
+STP root and flow control; every `port_table` field in §2 except optics DOM
+per lane, FEC and `stp_pathcost` beyond the bridge's cost; controller→device:
+`switch.port.N.status` (`link_down`), the `switch.vlan.*.port.N.mode` set
+(`tag`/`trunks`), `switch.vlan.*.igmp_snooping` (bridge-wide, `control.igmp`),
+`ntpclient.N.server` (chrony, `control.ntp`), `port-cycle`; logged and
+ignored: STP, syslog, reboot (always emulated), SSH keys, everything the
+capabilities hide. Verified live on Network 10.6.106, 2026-09-19/20.
+
 ## 1. Device → controller: switch-level fields
 
 | Field | Meaning | Arista source (EOS 4.26.14M) | Status |

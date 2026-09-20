@@ -16,7 +16,7 @@ func TestLoadExample(t *testing.T) {
 	if f.Controller.Host != "192.0.2.1" || f.Controller.APIKeyEnv != "STU_UNIFI_API_KEY" || f.Controller.Site != "default" {
 		t.Errorf("controller = %+v", f.Controller)
 	}
-	if len(f.Switches) != 1 || f.Switches[0].Name != "arista" || f.Switches[0].Driver != "arista-eos" || f.Switches[0].Username != "stu" || f.Switches[0].Password != "x" {
+	if len(f.Switches) != 2 || f.Switches[1].Driver != "proxmox" || f.Switches[1].SSH == "" || f.Switches[0].Name != "arista" || f.Switches[0].Driver != "arista-eos" || f.Switches[0].Username != "stu" || f.Switches[0].Password != "x" {
 		t.Errorf("switches = %+v", f.Switches)
 	}
 	if f.Switches[0].Model != "auto" || f.Switches[0].UDAPIVersion != "1.0.0" || f.Switches[0].Control.Ports != "all" || !f.Switches[0].Control.IGMP {

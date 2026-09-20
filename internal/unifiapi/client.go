@@ -42,6 +42,12 @@ type Device struct {
 	Name          string           `json:"name"`
 	Model         string           `json:"model"`
 	PortOverrides []map[string]any `json:"port_overrides"`
+	// OOBPortConfig is what the controller stores for models whose real
+	// hardware has an out-of-band management port (the ECS Core): it plants
+	// [{"enabled": true}] on adoption and then rejects every update of the
+	// record with api.err.OobPortNotSupported because the device claims no
+	// such port. Updates must send it back empty.
+	OOBPortConfig []map[string]any `json:"oob_port_config"`
 	PortTable     []struct {
 		PortIdx int    `json:"port_idx"`
 		Name    string `json:"name"`

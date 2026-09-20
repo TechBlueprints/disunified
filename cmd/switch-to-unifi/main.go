@@ -37,6 +37,7 @@ import (
 
 	// Drivers register themselves; add a blank import per driver.
 	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
+	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
 )
 
 func main() {
@@ -197,7 +198,16 @@ func runOne(ctx context.Context, o options) error {
 		if err != nil {
 			return err
 		}
-		cfg := switchmodel.DriverConfig{URL: o.switchURL, SSH: o.switchSSH, Username: o.username, Password: o.password, Options: o.driverOptions}
+		opts := map[string]string{}
+		for k, v := range o.driverOptions {
+			opts[k] = v
+		}
+		if o.stateDir != "" {
+			opts["state_dir"] = o.stateDir // drivers with their own persistent state keep it next to device.json
+		} else if o.stateFile != "" && !o.collectOnce {
+			opts["state_dir"] = filepath.Dir(o.stateFile)
+		}
+		cfg := switchmodel.DriverConfig{URL: o.switchURL, SSH: o.switchSSH, Username: o.username, Password: o.password, Options: opts}
 		sw, err = drv.Open(ctx, cfg)
 		if err != nil {
 			return err
@@ -307,6 +317,13 @@ func runOne(ctx context.Context, o options) error {
 		return err
 	}
 	o.version = desc.Version
+	// Capability claims come from the driver when it declares them (a
+	// bridge honours fewer features than the Arista); they gate the UI.
+	caps := device.DefaultCapabilities
+	if c, ok := sw.(switchmodel.Capable); ok && sw != nil {
+		caps = c.Capabilities()
+	}
+	desc.FWCaps = device.FWCapsFor(caps)
 
 	// --- Session ---
 	store := &device.Store{Path: o.stateFile}
@@ -318,6 +335,7 @@ func runOne(ctx context.Context, o options) error {
 		log.Printf("resuming adopted state from %s (cfgversion %s, gcm=%v)", o.stateFile, st.CfgVersion, st.UseAESGCM)
 	}
 	sess := device.NewSession(desc, url, st, store, time.Now())
+	sess.SetCapabilities(caps)
 	if snap != nil {
 		sess.SetSnapshot(snap)
 	} else {
@@ -350,7 +368,7 @@ func runOne(ctx context.Context, o options) error {
 					return
 				}
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
-				dev, nports, err := api.ProvisionNames(pctx, macStr, snap, namer, []string{profile.ModelDisplay, "USW Leaf", profile.Model}, isDefaultPortName)
+				dev, nports, err := api.ProvisionNames(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortName)
 				pcancel()
 				switch {
 				case err != nil:
