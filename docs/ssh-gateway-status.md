@@ -22,15 +22,15 @@ advertise_ip, switch_ssh}` in the config) that:
 Deployment needs the container to own port 22 on a LAN address:
 `deploy/compose.macvlan.yaml` (macvlan `lan`, fixed MAC
 `02:53:54:55:00:01`, netavark DHCP). The controller holds a DHCP
-reservation for that MAC → 192.0.2.250 (client record "switch-to-unifi
-gateway"); reserve before the bridge reports the address, because the
+reservation for that MAC → a fixed LAN address (client record
+"switch-to-unifi gateway"); reserve before the bridge reports the address, because the
 controller rejects a fixed IP an adopted device already reports
 (`api.err.FixedIpAlreadyUsedByDevice`). The Podman host cannot reach its own
 macvlan containers; test from another LAN host.
 
 ## Verified
 
-- `ssh admin@192.0.2.250 "show version"` from a LAN host with a
+- `ssh admin@<gateway address> "show version"` from a LAN host with a
   controller-pushed key returns the Arista's real output (2026-09-19).
 - Unit tests: md5crypt vectors, password/key auth, session proxy.
 

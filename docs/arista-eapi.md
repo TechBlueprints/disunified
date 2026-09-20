@@ -105,7 +105,7 @@ media map, not every cycle.
 | `rx_dropped`, `tx_dropped` | `interfaceCounters.inDiscards`, `.outDiscards` | |
 | `stp_state` | `show spanning-tree` → `spanningTreeInstances.MST0.interfaces[name].state` | `forwarding` etc.; only ports participating in STP appear (3 of 62) — default the rest to `disabled` |
 | `port_poe`, `poe_*` | — | always false / absent, no PoE hardware |
-| `is_uplink` | LLDP neighbour that is a UniFi device on `Ethernet49/1` | or simply the port facing `the aggregation switch` |
+| `is_uplink` | LLDP neighbour that is a UniFi device on `Ethernet49/1` | or simply the port facing the upstream aggregation switch |
 
 ### Breakout ports need a rule
 

@@ -52,12 +52,12 @@ cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
 ./switch-to-unifi -config config.yaml
 ```
 
-`config.yaml` (gitignored) is the real config: controller 192.0.2.1, API URL
-`unifi.example.net`, switch `arista` via eAPI, every `control`
+`config.yaml` (gitignored) is the real config: controller and API URL as in
+`local-information/site.md` (gitignored), switch `arista` via eAPI, every `control`
 flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
 `state/arista/device.json`; replies: `inform-log/arista/`.
 
-`.env` → `<outside the repo>`
+`.env` → a file outside the repo (path in `local-information/site.md`)
 (`STU_EOS_URL/USER/PASS` — the `stu` user, privilege 15; `STU_UNIFI_URL` +
 `STU_UNIFI_API_KEY` for naming). `state/device.json` holds the adopted key:
 one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
@@ -109,7 +109,7 @@ docker-compose.yml with `build: ./src`, `config.yaml`, `env` (600), named
 volume `switch-to-unifi-state` holding `state/arista/device.json`; image
 `localhost/switch-to-unifi:latest`, uid 65532; `restart: always`). **The Mac
 instance is stopped and must stay stopped** (one bridge per adopted key). To
-update (from the repo root): `git archive --format=tar HEAD | ssh root@podman.example.net
+update (from the repo root): `git archive --format=tar HEAD | ssh root@<podman host>
 "rm -rf /opt/switch-to-unifi/src && mkdir -p /opt/switch-to-unifi/src && tar -xf - -C /opt/switch-to-unifi/src
 && cd /opt/switch-to-unifi && podman-compose build && podman-compose up -d --force-recreate"`
 (git archive ships only committed, non-ignored files; `--force-recreate` is
@@ -120,20 +120,19 @@ SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
 
 **SSH gateway parked on branch `ssh-gateway` (2026-09-19).** It was built,
-deployed (macvlan, DHCP reservation 192.0.2.250 for MAC 02:53:54:55:00:01;
-the reservation and client record were deleted 2026-09-19) and verified
+deployed (macvlan with its own DHCP reservation, since deleted) and verified
 (`ssh admin@<device IP> "show version"` with a controller-pushed key), then
 removed from main because the UniFi UI terminal is WebRTC, not SSH (below).
 `docs/ssh-gateway-status.md` on that branch says where it got to. Main
 deploys with `deploy/compose.yaml` (bridge network) and reports the Arista's
-own IP (192.0.2.3) as the device IP. `fw_caps` UTERM is deliberately not
+own in-band IP as the device IP. `fw_caps` UTERM is deliberately not
 claimed, so no Debug entry appears.
 
 STP facts (2026-09-19): the Arista runs `spanning-tree mode rstp`, priority
 32768. It was the LAN's STP root (every switch at 32768, lowest MAC) until
-Clint set the aggregation switch to 4096 the same evening; EOS now reports root
-02:00:00:00:00:3d with Ethernet49/1 as the root port. Only Ethernet49/1
-(the aggregation switch) and 53/1 are STP-active. `root_switch` is reported
+Clint set the upstream aggregation switch to 4096 the same evening; EOS now
+reports that switch as root with the uplink cage's lane 1 as the root port.
+Only the two cabled 100G cages are STP-active. `root_switch` is reported
 from `show spanning-tree root detail`.
 
 Anomaly/Experience (2026-09-19): per-port `anomalies` bits, `satisfaction`

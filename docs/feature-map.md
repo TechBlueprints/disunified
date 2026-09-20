@@ -190,7 +190,7 @@ copper-vs-SFP28 question is solved without changing model; only the default port
 ("SFP28 N") still come from the profile.
 
 Also seen on Clint's controller (10.6.106):
-the "internal" `USWF0xx` codes are real ECS products — his the aggregation switch is `USWF066`,
+the "internal" `USWF0xx` codes are real ECS products — his aggregation switch is a `USWF066`,
 display name `ECSAGG` (Enterprise Campus Switch Aggregation, 48x SFP28 + 6x QSFP28, firmware
 4.0.1.995). `USWF006`/`USWF007` (48 `standard` + 4 SFP28 + 2 QSFP28, PoE true/false) are
 therefore the ECS 48-port models. The EAV-XG-24-PoE is not offered by 10.6.106.
