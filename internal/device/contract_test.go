@@ -125,6 +125,23 @@ func uplinkPort(t *testing.T, m map[string]any) map[string]any {
 	return nil
 }
 
+// downPort returns the first down port; when optical is set, the first down
+// port with an optic slot (real switches send sfp_found only for those), so
+// an SFP-only real switch is compared with one of our cages, not a copper port.
+func downPort(t *testing.T, m map[string]any, optical bool) map[string]any {
+	t.Helper()
+	for _, e := range m["port_table"].([]any) {
+		p := e.(map[string]any)
+		up, _ := p["up"].(bool)
+		_, slot := p["sfp_found"]
+		if !up && (!optical || slot) {
+			return p
+		}
+	}
+	t.Fatal("no matching down port")
+	return nil
+}
+
 func compareKeys(t *testing.T, what string, real, ours map[string]any, omit map[string]string) {
 	t.Helper()
 	var missing, typed []string
@@ -164,6 +181,9 @@ func TestWireContractAgainstRealInforms(t *testing.T) {
 		real := loadReference(t, ref)
 		compareKeys(t, ref+" device", real, ours, contractOmissions)
 		compareKeys(t, ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
+		rd := downPort(t, real, false)
+		_, optical := rd["sfp_found"]
+		compareKeys(t, ref+" down port", rd, downPort(t, ours, optical), portOmissions)
 	}
 	// The one that hid for a day: uplink is the NAME of the if_table interface.
 	if u, ok := ours["uplink"].(string); !ok || u == "" {
