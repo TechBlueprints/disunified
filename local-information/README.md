@@ -12,7 +12,9 @@ lands in a tracked file:
 - deployment details: hosts, paths, container names, how to update
 - credential locations, key paths, user names
 
-Suggested layout: `site.md` for the notes, plus any local configs or
-scripts. Tracked docs and examples use documentation addresses instead
+Suggested layout: `site.md` for the notes, `denylist.txt` with one
+site-specific word per line (your domain, device names, hostnames) that
+`scripts/check-site-info.sh` must never find in a tracked file, plus any
+local configs or scripts. Tracked docs and examples use documentation addresses instead
 (`192.0.2.0/24`, `2001:db8::/32`, `02:00:00:xx:xx:xx` MACs, `example.net`),
 and fixtures are scrubbed with the scripts in `scripts/`.

@@ -13,8 +13,12 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
   loudly. If a command is missing on the target version, find the right one
   on that version; do not assume newer syntax (see `docs/arista-eapi.md`).
 - Speed capabilities per port come from the switch's own capability data.
-- No site-specific values in code, comments, tests or docs (addresses,
-  names, MACs, serials): documentation ranges only; the real ones live in
+- No secrets or site-specific values in code, comments, tests, fixtures or
+  docs — no real addresses, names, MACs or serials, not even as a sample
+  input in a unit test: documentation values only (`192.0.2.0/24`,
+  `02:00:00:xx:xx:xx`, `SSJ00000000`). Captures go through
+  `scripts/sanitize-*.py` first; `scripts/check-site-info.sh --staged`
+  must pass before every commit. The real values live in
   `local-information/` (gitignored).
 - Writes are diffs against the last snapshot and idempotent; the loop
   re-applies after every inform.

@@ -36,16 +36,25 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
   a real `authkey`** (tests use `0123456789abcdef0123456789abcdef`, fixtures
   `00000000000000000000000000000001`). Making it public is a separate,
   pending step.
-- **No site-specific information in tracked files.** Local network
-  addresses, subnets, DNS names and domains, MAC addresses, serials, device
-  and site names, LAN topology (which port goes where, what is live),
-  deployment hosts and paths, credential locations and key paths all live in
-  `local-information/` (gitignored except its README; `site.md` is Clint's).
-  Read `local-information/site.md` first if it exists before doing anything
-  against a real network. Tracked docs and examples use documentation
-  addresses only (`192.0.2.0/24`, `2001:db8::/32`, `02:00:00:xx:xx:xx`
-  MACs, `example.net`); fixtures go through the scrub scripts. Key material
-  (`id_*`, `*.pem`, `known_hosts`, `ssh/`) is gitignored and never committed.
+- **What an agent must never put in a tracked file, a test, a fixture, a
+  commit message or a PR** (this repo is public; history was rewritten twice
+  on 2026-09-20 to purge exactly these):
+  - a real `authkey`, API key, password, token, or any key file (`id_*`,
+    `*.pem`, `known_hosts`, `ssh/`); tests use
+    `0123456789abcdef0123456789abcdef`, fixtures `00000000000000000000000000000001`;
+  - a real IP address, subnet, DNS name or domain (use `192.0.2.0/24`,
+    `2001:db8::/32`, `example.net`);
+  - a real MAC address or serial number, even as a "sample" in a unit test
+    (use `02:00:00:xx:xx:xx` / `aa:bb:cc:dd:ee:ff`, `SSJ00000000`);
+  - device, site or host names, the LAN topology (which port goes where,
+    what is live), deployment hosts and paths, credential locations.
+  All of that lives in `local-information/` (gitignored except its README;
+  `site.md` is Clint's, `denylist.txt` feeds the checker). **Read
+  `local-information/site.md` first** if it exists before doing anything
+  against a real network. Every capture goes through the scrub scripts
+  before it is committed, and **`scripts/check-site-info.sh --staged` must
+  pass before every commit** (`scripts/check-site-info.sh` scans the whole
+  tree). If it flags something, fix the file; never add an exception.
 - He logs into the controller in Claude's Chrome tab so Claude can drive the
   UI for captures and round-trip tests; Claude never touches the 2FA code.
 - UI edits for testing go only on the test ports named in
