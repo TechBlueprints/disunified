@@ -30,9 +30,9 @@ func (c *Collector) DefaultDeviceNames(sys switchmodel.System) []string {
 
 // PortName names a guest port "VM-<vmid>" ("VM-119 net1" when the guest
 // has several NICs), a physical port after its NIC, an unused guest slot
-// "VM-Open-<port>" (Clint, 2026-09-20: a free slot should read as one,
-// not as the profile's "SFP28 26"), and an empty uplink cage "" (leave the
-// controller's default).
+// "VM-Open-<port>" and an unused uplink slot "NIC-Open-<port>" (Clint,
+// 2026-09-20: a free slot should read as one, not as the profile's
+// "SFP28 26" / "QSFP28 1").
 func (c *Collector) PortName(p switchmodel.Port) string {
 	if p.Description != "" {
 		return p.Description
@@ -40,10 +40,7 @@ func (c *Collector) PortName(p switchmodel.Port) string {
 	if p.IfName != "" {
 		return p.IfName
 	}
-	if c.isGuestSlot(p.Index) {
-		return openLabel(p.Index)
-	}
-	return ""
+	return c.openLabel(p.Index)
 }
 
 // isGuestSlot reports whether a port index is one of the guest slots
@@ -52,17 +49,19 @@ func (c *Collector) isGuestSlot(idx int) bool {
 	return idx >= 1 && idx <= c.Ports-c.UplinkPorts
 }
 
-// openLabel is the name of an unused guest slot.
-func openLabel(idx int) string { return fmt.Sprintf("VM-Open-%d", idx) }
+// openLabel is the name of an unused slot: a guest slot or a physical one.
+func (c *Collector) openLabel(idx int) string {
+	if c.isGuestSlot(idx) {
+		return fmt.Sprintf("VM-Open-%d", idx)
+	}
+	return fmt.Sprintf("NIC-Open-%d", idx)
+}
 
 // DefaultPortNames lists every name this driver could have given the port,
 // so a rename after a guest is renamed or moved still works while an
 // operator's own name is kept.
 func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
-	var out []string
-	if c.isGuestSlot(p.Index) {
-		out = append(out, openLabel(p.Index)) // the slot was free before this guest took it
-	}
+	out := []string{c.openLabel(p.Index)} // the slot was free before this port took it
 	if p.IfName != "" {
 		out = append(out, p.IfName)
 	}

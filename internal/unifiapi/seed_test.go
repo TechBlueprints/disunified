@@ -16,16 +16,16 @@ func TestSeedOverridesMirrorsTheSwitch(t *testing.T) {
 		{Index: 4, IfName: "vm101-net0", Present: true, Enabled: false, VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}},           // disabled
 		{Index: 5, IfName: "vm102-net0", Present: true, Enabled: true, VLAN: switchmodel.PortVLAN{Mode: "access", NativeVLAN: 3000}},                        // VLAN unknown to the controller
 		{Index: 6, IfName: "vm103-net0", Present: true, Enabled: true, VLAN: switchmodel.PortVLAN{Mode: "access", NativeVLAN: 8}},                           // already configured: untouched
-		{Index: 7, Present: false}, // empty slot
+		{Index: 7, Present: false}, // empty slot: seeded disabled
 		{Index: 54, IfName: "bond0", Present: true, Enabled: true, VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 5, AllowAll: true}}, // native 5, all tagged
 	}}
 	existing := []map[string]any{
 		{"port_idx": float64(2), "name": "VM-119 net0", "forward": "all", "native_networkconf_id": "d"}, // what the controller makes of a name-only override
 		{"port_idx": float64(6), "name": "VM-103", "forward": "native", "native_networkconf_id": "n10", "tagged_vlan_mgmt": "block_all"},
 	}
-	overrides, seeded, notes := seedOverrides(snap, nets, existing)
-	if seeded != 4 {
-		t.Errorf("seeded = %d, want 4 (ports 2, 3, 4, 54)", seeded)
+	overrides, seeded, notes := seedOverrides(snap, nets, existing, nil)
+	if seeded != 5 {
+		t.Errorf("seeded = %d, want 5 (ports 2, 3, 4, 7, 54)", seeded)
 	}
 	if len(notes) != 1 || notes[0] != "port 5 (vm102-net0): native VLAN 3000 is not a network in the controller; left at the default (create the network, then set the port)" {
 		t.Errorf("notes = %v", notes)
@@ -61,6 +61,9 @@ func TestSeedOverridesMirrorsTheSwitch(t *testing.T) {
 	if byIdx[4]["forward"] != "disabled" || byIdx[4]["port_security_enabled"] != true || byIdx[4]["tagged_vlan_mgmt"] != "block_all" {
 		t.Errorf("port 4 (disabled) = %v", byIdx[4])
 	}
+	if !isDisabledOverride(byIdx[7]) {
+		t.Errorf("free slot 7 = %v, want disabled", byIdx[7])
+	}
 	if byIdx[6]["native_networkconf_id"] != "n10" {
 		t.Errorf("an already configured port was overwritten: %v", byIdx[6])
 	}
@@ -68,7 +71,7 @@ func TestSeedOverridesMirrorsTheSwitch(t *testing.T) {
 		t.Errorf("port 54 = %v", byIdx[54])
 	}
 	// Idempotent: seeding again over its own output changes nothing.
-	_, again, _ := seedOverrides(snap, nets, overrides)
+	_, again, _ := seedOverrides(snap, nets, overrides, nil)
 	if again != 0 {
 		t.Errorf("second seed wrote %d ports", again)
 	}
@@ -88,5 +91,57 @@ func TestReleaseOverrideKeepsOnlyTheName(t *testing.T) {
 	bare := map[string]any{"port_idx": float64(26)}
 	if releaseOverride(bare) || len(bare) != 1 {
 		t.Errorf("bare override changed: %v", bare)
+	}
+	// The disabled combination (a free slot's own seed) survives a release,
+	// however the controller decoded it.
+	d := map[string]any{"port_idx": float64(27), "name": "VM-Open-27", "forward": "disabled", "port_security_enabled": true,
+		"port_security_mac_address": []any{}, "native_networkconf_id": "", "tagged_vlan_mgmt": "block_all", "stp_port_mode": true}
+	if !releaseOverride(d) || !isDisabledOverride(d) || len(d) != 7 {
+		t.Errorf("free-slot override after release: %v", d)
+	}
+}
+
+func TestSeedFreeSlotsDisabledAndReseedTheirNextGuest(t *testing.T) {
+	nets := []Network{{ID: "n1", VLAN: 1}, {ID: "n10", VLAN: 10}}
+	isDefault := func(idx int, name string) bool { return name == "VM-Open-25" || name == "VM-999" }
+	free := switchmodel.Port{Index: 25, Enabled: false}
+	// A free slot with a stale override from its last guest is seeded
+	// disabled and stripped of the old config.
+	got, seeded, _ := seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{free}}, nets,
+		[]map[string]any{{"port_idx": float64(25), "name": "VM-Open-25", "forward": "customize", "native_networkconf_id": "n10", "tagged_vlan_mgmt": "auto"}}, isDefault)
+	if seeded != 1 || len(got) != 1 || !isDisabledOverride(got[0]) || got[0]["name"] != "VM-Open-25" {
+		t.Fatalf("free slot: seeded=%d %v", seeded, got)
+	}
+	// Idempotent: the same slot again changes nothing.
+	if _, seeded, _ = seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{free}}, nets, got, isDefault); seeded != 0 {
+		t.Errorf("second pass seeded %d", seeded)
+	}
+	// A guest takes the slot (the naming pass already renamed it): its own
+	// state replaces the free-slot seed even though that looks configured.
+	guest := switchmodel.Port{Index: 25, IfName: "vm999-net0", Present: true, Enabled: true,
+		VLAN: switchmodel.PortVLAN{Mode: "access", NativeVLAN: 10}}
+	got[0]["name"] = "VM-999"
+	got, seeded, _ = seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{guest}}, nets, got, isDefault)
+	if seeded != 1 || got[0]["forward"] != "native" || got[0]["native_networkconf_id"] != "n10" || got[0]["port_security_enabled"] != nil {
+		t.Fatalf("guest on a free slot: seeded=%d %v", seeded, got)
+	}
+	// A guest at the defaults on a free slot: the disabled seed is dropped.
+	plain := switchmodel.Port{Index: 25, IfName: "vm999-net0", Present: true, Enabled: true,
+		VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}}
+	fresh := []map[string]any{{"port_idx": float64(25), "name": "VM-999"}}
+	for k, v := range disabledOverride() {
+		fresh[0][k] = v
+	}
+	got, seeded, _ = seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{plain}}, nets, fresh, isDefault)
+	if seeded != 1 || len(got[0]) != 2 {
+		t.Fatalf("plain guest on a free slot: seeded=%d %v", seeded, got)
+	}
+	// An operator's own name on a disabled port means it is theirs: kept.
+	theirs := []map[string]any{{"port_idx": float64(25), "name": "keep off"}}
+	for k, v := range disabledOverride() {
+		theirs[0][k] = v
+	}
+	if _, seeded, _ = seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{guest}}, nets, theirs, isDefault); seeded != 0 {
+		t.Errorf("operator-disabled port was reseeded")
 	}
 }

@@ -34,8 +34,8 @@ matters happens in the bond (100 ms), below the switch we present.
 
 | Ports | What | Media / speed reported |
 |---|---|---|
-| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); a free slot is named `VM-Open-<port>` | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54) | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
+| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); a free slot is named `VM-Open-<port>` and reported **disabled** (nothing can be cabled into it) | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
+| 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54); a free slot is `NIC-Open-<port>`, disabled | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
 
 ### 1b. Host network layouts
 
@@ -321,8 +321,12 @@ be readable by uid 65532. Keep `state/<name>/proxmox-ports.json` with
   profile's defaults or one this driver could have set earlier (`VM-Open-25`
   before a guest took the slot, `VM-999` after it left, the `pve-<node>`
   device name of an earlier build), so an operator's own name always
-  survives. When a guest leaves a slot its override is stripped to the
-  name, so the next guest there is seeded from its own state.
+  survives. A free slot is seeded disabled in the controller too (the
+  Port State the UI writes), with any config its last guest left stripped;
+  when a guest takes a slot whose override is that free-slot seed and whose
+  name is one the driver gave, the guest's own state replaces it, so a new
+  guest is never left switched off by the slot's previous life. A disabled
+  port with an operator's own name is left alone.
 - **Disabling a port through the REST API** needs the whole combination the
   UI writes, or the controller silently normalises `forward` back to
   `all`: `{"forward":"disabled","port_security_enabled":true,
