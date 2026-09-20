@@ -11,7 +11,9 @@
 package device
 
 import (
+	"crypto/sha1"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,6 +196,16 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		// Device-side state 4 = managed. Not the REST stat/device enum.
 		m["state"] = 4
 		m["bootrom_version"] = "unknown"
+		// Identity fields every UniFi switch reports (values are what this
+		// controller's own switches send; none of them is a capability).
+		m["manufacturer_id"] = 61
+		m["required_version"] = "0.1.7"
+		m["architecture"] = "x86_64"
+		m["kernel_version"] = "4.19.0-12-2-amd64"
+		m["board_rev"] = 6
+		m["min_inform_interval_seconds"] = 30
+		m["provisioning_timeout"] = 300
+		m["anon_id"] = anonID(s.desc.MAC)
 		m["sys_stats"] = sysStats(s.snap)
 		m["system-stats"] = systemStats(s.snap, uptime)
 		if mtc := macTableCapability(s.snap); mtc != nil {
@@ -442,4 +454,13 @@ func (s *Session) applySetstate(body []byte, cfgversion string) []inform.Effect 
 	// Reported as an "unknown cmd"-style effect so the loop logs it: every
 	// setstate is potential phase 1 input and must be visible.
 	return []inform.Effect{{Kind: inform.EffectUnknownCmd, Text: "setstate keys: " + strings.Join(keys, ",")}}
+}
+
+// anonID is the device's stable anonymous id, derived from its MAC (a real
+// device generates and keeps one; ours must not change between restarts).
+func anonID(mac string) string {
+	h := sha1.Sum([]byte("switch-to-unifi anon " + strings.ToLower(mac)))
+	h[6] = (h[6] & 0x0f) | 0x50 // version 5 shape
+	h[8] = (h[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
 }
