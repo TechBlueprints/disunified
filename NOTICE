@@ -1,0 +1,19 @@
+switch-to-unifi
+Copyright (c) 2026 Clint Goudie-Nice (TechBlueprints)
+Licensed under the MIT License (see LICENSE).
+
+Not affiliated with Ubiquiti
+----------------------------
+switch-to-unifi is an independent, unofficial project with no affiliation
+to Ubiquiti Inc. It is not endorsed by or supported by Ubiquiti Inc.
+"UniFi" and "Ubiquiti" are trademarks of Ubiquiti Inc., used here only to
+describe what the software talks to.
+
+Third-party credit
+------------------
+This project builds on github.com/jamesbraid/unifi-emu (MIT License,
+Copyright (c) James Braid): its `inform` package provides the UniFi inform
+wire format, crypto and packet handling as a dependency, its model catalogue
+and capability bitmaps are used at build time, and internal/device is a fork
+of its inform session and tables (see the package documentation there). Its
+docs/PROTOCOL.md was the starting point for docs/protocol-connection-points.md.
