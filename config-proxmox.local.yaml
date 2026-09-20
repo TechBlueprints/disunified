@@ -12,18 +12,18 @@ switches:
     ip: 192.0.2.101
     model: USWF07D
     control:
-      ports: off
+      ports: all
   - name: proxmox-2
     driver: proxmox
     ssh: root@proxmox-2
     ip: 192.0.2.102
     model: USWF07D
     control:
-      ports: "25"          # VM 999 stu-test, the throwaway test guest
+      ports: all
   - name: proxmox-3
     driver: proxmox
     ssh: root@proxmox-3
     ip: 192.0.2.103
     model: USWF07D
     control:
-      ports: off
+      ports: all
