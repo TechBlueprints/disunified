@@ -129,8 +129,9 @@ and must stay stopped** (one bridge per adopted key).
 
 `internal/drivers/proxmox` + `docs/proxmox.md`. Each node's `vmbr0` is a
 USW Leaf (`UDC48X6`, 54 ports) named after the node; guests are ports 1-48
-numbered cluster-wide (persisted in `state/<name>/proxmox-ports.json`, keep
-it with `device.json`) and named `VM-<id>` (`VM-Open-<port>` when free),
+numbered cluster-wide, the port recorded in the guest's own Proxmox tags
+(`unifi.p25.c`, `unifi.p27.c.net1`; docs/proxmox.md §1c; the driver keeps
+no file, only the owner node writes tags) and named `VM-<id>` (`VM-Open-<port>` when free),
 the physical NICs/bond slaves count down from 54 (`bond0-1`, `bond0-2`;
 `NIC-Open-<port>` when free). Free slots are reported and seeded disabled;
 a guest arriving on one is re-seeded from its own state. Read: one SSH exec of `collect.sh` per

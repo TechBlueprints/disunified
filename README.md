@@ -25,7 +25,11 @@ the topology, the nodes behind the UniFi aggregation switch via lldpd, and
 control of port state and VLANs written back as the guest's `tag`/`trunks`
 (`docs/proxmox.md`). The switch is the node's virtual switch, `vmbr0`
 and its guest NICs; the node's own networking underneath (NICs, bond,
-failover) is reported as one uplink and never configured.
+failover) is reported as one uplink and never configured. A guest's port
+number is kept in its Proxmox tags (`unifi.p25.c`), so the bridge holds
+no state beyond the adopted key. **Only cluster-wide numbering
+(`numbering: cluster`, the default) has been tested; per-node numbering
+exists but has not been run live.**
 
 ## Status: experimental, no warranty
 
