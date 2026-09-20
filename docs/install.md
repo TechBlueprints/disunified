@@ -14,6 +14,9 @@ in the UniFi UI.
   enabled (`management api http-commands` → `no shutdown`); for the
   Proxmox driver, root SSH to each node with a key and `apt-get install
   lldpd` on each node (the driver configures it); `docs/proxmox.md` §5.
+  Spanning tree on a node is optional (`mstpd`, `docs/proxmox.md` §4b);
+  without it the driver claims no STP and ignores the controller's STP
+  settings for that node.
 - Optional, for naming the device and ports after the switch: a UniFi API
   key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 

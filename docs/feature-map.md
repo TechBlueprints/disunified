@@ -36,8 +36,10 @@ per lane, FEC and `stp_pathcost` beyond the bridge's cost; controller→device:
 `switch.port.N.status` (`link_down`), the `switch.vlan.*.port.N.mode` set
 (`tag`/`trunks`), `switch.vlan.*.igmp_snooping` (bridge-wide, `control.igmp`),
 `ntpclient.N.server` (chrony, `control.ntp`), `port-cycle`; logged and
-ignored: STP, syslog, reboot (always emulated), SSH keys, everything the
-capabilities hide. Verified live on Network 10.6.106, 2026-09-19/20.
+ignored: syslog, reboot (always emulated), SSH keys, everything the
+capabilities hide; STP is claimed and honoured (version, per-port BPDU
+guard; priority pinned at 61440) only on a node whose bridge runs under
+mstpd (`docs/proxmox.md` §4b), otherwise ignored. Verified live on Network 10.6.106, 2026-09-19/20.
 
 ## 1. Device → controller: switch-level fields
 

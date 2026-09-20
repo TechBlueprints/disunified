@@ -14,6 +14,7 @@ import (
 type FixtureRunner struct {
 	Fixture  string
 	Commands []string
+	Stdins   []string // what each recorded command received on stdin
 }
 
 // NewFixtureRunner loads a capture file.
@@ -32,6 +33,7 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		return f.Fixture, nil
 	}
 	f.Commands = append(f.Commands, command)
+	f.Stdins = append(f.Stdins, stdin)
 	return "", nil
 }
 
