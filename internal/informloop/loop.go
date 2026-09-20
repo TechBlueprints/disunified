@@ -91,6 +91,9 @@ type Config struct {
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
 	OnLayoutChange func(snap *switchmodel.Snapshot)
+	// OnAdopted runs once when the adoption handshake completes, with the
+	// current snapshot (nil without a collector): first-provision naming.
+	OnAdopted func(snap *switchmodel.Snapshot)
 	// SwitchHost is the address the bridge reaches the switch at, for the
 	// out-of-band management warning ("" = unknown).
 	SwitchHost string
@@ -319,12 +322,17 @@ func (l *Loop) informOnce(ctx context.Context) {
 			}
 		}
 	}
+	adoptedNow := false
 	if wasAdopting && l.session.Adopted() && l.state == StateAdopting {
 		l.state = StateConnected
+		adoptedNow = true
 		lines = append(lines, "adoption handshake complete -> CONNECTED")
 	}
 	rec.StateAfter = l.state.String()
 	l.mu.Unlock()
+	if adoptedNow && l.cfg.OnAdopted != nil {
+		l.cfg.OnAdopted(l.session.Snapshot())
+	}
 
 	for _, s := range lines {
 		l.cfg.Logger.Printf("[%s] %s", l.desc.MAC, s)

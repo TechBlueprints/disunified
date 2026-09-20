@@ -1,0 +1,29 @@
+# Local run of the Proxmox bridges from Clint's Mac (state under ./state).
+controller:
+  host: 192.0.2.1
+  api_url: https://unifi.example.net
+  api_key_env: STU_UNIFI_API_KEY
+  site: default
+state_dir: .
+switches:
+  - name: proxmox-1
+    driver: proxmox
+    ssh: root@proxmox-1
+    ip: 192.0.2.101
+    model: USWF07D
+    control:
+      ports: off
+  - name: proxmox-2
+    driver: proxmox
+    ssh: root@proxmox-2
+    ip: 192.0.2.102
+    model: USWF07D
+    control:
+      ports: "25"          # VM 999 stu-test, the throwaway test guest
+  - name: proxmox-3
+    driver: proxmox
+    ssh: root@proxmox-3
+    ip: 192.0.2.103
+    model: USWF07D
+    control:
+      ports: off

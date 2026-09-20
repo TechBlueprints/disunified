@@ -380,7 +380,7 @@ func runOne(ctx context.Context, o options) error {
 					return
 				}
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
-				dev, nports, err := api.ProvisionNames(pctx, macStr, snap, namer, []string{profile.ModelDisplay, "USW Leaf", profile.Model}, isDefaultPortName)
+				dev, nports, err := api.ProvisionNames(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortName)
 				pcancel()
 				switch {
 				case err != nil:
@@ -403,6 +403,11 @@ func runOne(ctx context.Context, o options) error {
 		SwitchHost: hostOf(o.switchURL, o.switchSSH),
 		OnLayoutChange: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil {
+				provisionNames(snap)
+			}
+		},
+		OnAdopted: func(snap *switchmodel.Snapshot) {
+			if provisionNames != nil && snap != nil {
 				provisionNames(snap)
 			}
 		},

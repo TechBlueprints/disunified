@@ -3,7 +3,10 @@
 This is the checklist for a new driver. It is written for an AI agent or a
 person who has never seen this repo; every step names the file to touch and
 the proof that it worked. The Arista EOS driver (`internal/drivers/aristaeos`)
-is the reference implementation — copy its shape, not its commands.
+is the reference implementation — copy its shape, not its commands. The
+Proxmox driver (`internal/drivers/proxmox`, `docs/proxmox.md`) shows the
+shape for a virtual switch read over SSH with one script per poll, and
+for a driver whose "ports" are not fixed hardware.
 
 ## 0. What a driver is
 
@@ -53,6 +56,11 @@ Create `internal/drivers/<name>/` with:
   and every apply command sequence (including idempotence: applying the
   same desire twice must write nothing the second time).
 - A blank import in `cmd/switch-to-unifi/main.go` next to the Arista one.
+- Optionally `switchmodel.Capable`: the capability claims the controller
+  gates its UI on (STP, storm control, FEC, LACP, mirroring, isolation,
+  IGMP, jumbo…). Without it the Arista set is claimed; a driver that
+  honours fewer features must say so or the UI offers controls that do
+  nothing. `Snapshot.UplinkHint` names the uplink when LLDP is silent.
 
 Rules that came from live failures, all enforced by the reference driver:
 

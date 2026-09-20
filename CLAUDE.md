@@ -96,6 +96,20 @@ one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
 
+## 6b. Proxmox driver (branch claude/proxmox-unifi-bridge, 2026-09-19/20)
+
+`internal/drivers/proxmox` + `docs/proxmox.md`. Each node's `vmbr0` is a
+`USWF07D` ("ECS Core", 32x100G); guests are ports 1-30 numbered
+cluster-wide (persisted in `state/<name>/proxmox-ports.json`, keep it with
+`device.json`), NICs are 31-32. Read: one SSH exec of `collect.sh` per
+poll (root@proxmox-N, key auth). Write: `qm set`/`pct set` for
+`link_down`/`tag`/`trunks`. Nodes run lldpd with `-C ens1f0np0` so
+the aggregation switch sees them (ports 50-52). Controller quirks: the ECS
+Core record carries `oob_port_config` that must be sent back empty on every
+REST update; the model's controller name is "ECS Core". Throwaway test
+guest VM 999 `stu-test` on proxmox-2 (no disk) is the Proxmox "port 2".
+Local run: `config-proxmox.local.yaml` in the worktree, state under `./state`.
+
 ## 7. Done / open (2026-09-19 end of day)
 
 Done and verified live: everything in `docs/feature-map.md` marked done,
