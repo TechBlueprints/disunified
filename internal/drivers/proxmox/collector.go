@@ -615,9 +615,6 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 		FullDuplex: strings.EqualFold(et.Duplex, "Full"), SpeedMbps: et.Speed,
 		STPState: "disabled",
 	}
-	if u.Name != u.Active {
-		p.Description = u.Name + " via " + u.Active
-	}
 	p.Media, p.Present = mediaOf(et, mod)
 	if mod.Present {
 		p.Optic = &switchmodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
