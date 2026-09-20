@@ -255,6 +255,31 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		if len(p.MACs) > 0 {
 			e["mac_table"] = macEntries(p.MACs, false, snap.TakenAt)
 		}
+		// Counters and flags UniFi switches report per port.
+		e["mac_table_count"] = len(p.MACs)
+		e["link_down_count"] = p.Health.LinkChanges / 2 // EOS counts transitions; UniFi counts drops
+		e["stp_state_change_count"] = p.Health.STPChanges
+		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) {
+			e["sfp_rxfault"] = p.Health.OpticRxAlarm
+			e["sfp_txfault"] = p.Health.OpticTxAlarm
+		}
+		// Per-port settings a UniFi switch echoes from its own config; the
+		// bridge applies these from system_cfg, so report the applied state
+		// (or the only state the switch has, for knobs it cannot change).
+		setDefault := func(k string, v any) {
+			if _, ok := e[k]; !ok {
+				e[k] = v
+			}
+		}
+		setDefault("stp_port_mode", !p.STPEdge)
+		setDefault("stp_edge_port", p.STPEdge)
+		setDefault("lldpmed_enabled", true)
+		setDefault("port_keepalive_enabled", false)
+		setDefault("isolation", false)
+		setDefault("egress_rate_limit_kbps_enabled", false)
+		setDefault("port_security_enabled", false)
+		setDefault("port_security_mac_address", []string{})
+		setDefault("locating", false)
 		table = append(table, e)
 	}
 	return table
