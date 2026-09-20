@@ -7,33 +7,62 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
-// DeviceName names the switch "pve-<node>" ("pve-proxmox-2 vmbr1" for a
-// bridge other than vmbr0): distinct from the node's own DNS name, which
-// the controller stops publishing once the node's MAC is an adopted device
-// (docs/proxmox.md §6), so a static record for the host keeps its plain name.
+// DeviceName names the switch after the node ("proxmox-2"; "proxmox-2
+// vmbr1" for a bridge other than vmbr0): the node is the switch, same MAC,
+// address and hostname. An earlier build used "pve-<node>" while the host
+// was modelled as a separate client; that form still counts as a default.
 func (c *Collector) DeviceName(sys switchmodel.System) string {
-	name := "pve-" + sys.Hostname
+	name := sys.Hostname
 	if c.Bridge != "vmbr0" {
 		name += " " + c.Bridge
 	}
 	return name
 }
 
-// PortName names a guest port "<vmid> <name>" ("119 FusionHub net1" when
-// the guest has several NICs), a physical port after its NIC, and an empty
-// slot "" (leave the controller's default).
+// DefaultDeviceNames: the "pve-<node>" form of an earlier build.
+func (c *Collector) DefaultDeviceNames(sys switchmodel.System) []string {
+	name := "pve-" + sys.Hostname
+	if c.Bridge != "vmbr0" {
+		name += " " + c.Bridge
+	}
+	return []string{name}
+}
+
+// PortName names a guest port "VM-<vmid>" ("VM-119 net1" when the guest
+// has several NICs), a physical port after its NIC, an unused guest slot
+// "VM-Open-<port>" (Clint, 2026-09-20: a free slot should read as one,
+// not as the profile's "SFP28 26"), and an empty uplink cage "" (leave the
+// controller's default).
 func (c *Collector) PortName(p switchmodel.Port) string {
 	if p.Description != "" {
 		return p.Description
 	}
-	return p.IfName
+	if p.IfName != "" {
+		return p.IfName
+	}
+	if c.isGuestSlot(p.Index) {
+		return openLabel(p.Index)
+	}
+	return ""
 }
+
+// isGuestSlot reports whether a port index is one of the guest slots
+// (1..ports-uplink_ports) rather than a physical uplink.
+func (c *Collector) isGuestSlot(idx int) bool {
+	return idx >= 1 && idx <= c.Ports-c.UplinkPorts
+}
+
+// openLabel is the name of an unused guest slot.
+func openLabel(idx int) string { return fmt.Sprintf("VM-Open-%d", idx) }
 
 // DefaultPortNames lists every name this driver could have given the port,
 // so a rename after a guest is renamed or moved still works while an
 // operator's own name is kept.
 func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
 	var out []string
+	if c.isGuestSlot(p.Index) {
+		out = append(out, openLabel(p.Index)) // the slot was free before this guest took it
+	}
 	if p.IfName != "" {
 		out = append(out, p.IfName)
 	}

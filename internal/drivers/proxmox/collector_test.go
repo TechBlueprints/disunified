@@ -146,6 +146,18 @@ func TestCollectNode2(t *testing.T) {
 	if e := snap.Ports[48]; e.Present || e.Index != 49 {
 		t.Errorf("slot 49 should be empty: %+v", e)
 	}
+	// A free guest slot is named "VM-Open-<port>" so it reads as one in the
+	// UI, and that name counts as a default once a guest takes the slot;
+	// an empty uplink cage keeps the controller's own default.
+	if got := c.PortName(snap.Ports[47]); got != "VM-Open-48" {
+		t.Errorf("free guest slot name = %q", got)
+	}
+	if got := c.PortName(snap.Ports[48]); got != "" {
+		t.Errorf("empty uplink cage name = %q, want the controller's default", got)
+	}
+	if d := c.DefaultPortNames(snap.Ports[0]); len(d) == 0 || d[0] != "VM-Open-1" {
+		t.Errorf("guest slot 1 defaults = %v, want VM-Open-1 first", d)
+	}
 	// The bond's slaves are separate ports at the top, "bond0-1" (active,
 	// forwarding) and "bond0-2" (standby: linked, blocking), no LAG.
 	u := snap.Ports[53]
@@ -176,7 +188,7 @@ func TestCollectNode2(t *testing.T) {
 	if len(snap.VLANs) < 3 || snap.VLANs[0] != 1 {
 		t.Errorf("vlans = %v", snap.VLANs)
 	}
-	if got := c.DeviceName(snap.System); got != "pve-proxmox-2" {
+	if got := c.DeviceName(snap.System); got != "proxmox-2" {
 		t.Errorf("device name = %q", got)
 	}
 	if c.PortName(p1) != "VM-100" {

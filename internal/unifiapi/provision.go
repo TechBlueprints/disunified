@@ -33,8 +33,9 @@ type ProvisionResult struct {
 // override where the controller has none yet (see SeedPortConfig), in one
 // read-modify-write: two separate updates raced on a stale read and lost a
 // name (2026-09-20). Slots that are empty in the snapshot (a guest deleted)
-// lose their override, name included, so a later guest on that slot starts
-// from the defaults and is seeded from its own state.
+// lose their override except its name, so a later guest on that slot starts
+// from the defaults and is seeded from its own state; the name is left for
+// the naming pass, which turns a default into the driver's free-slot name.
 func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool, seed bool) (ProvisionResult, error) {
 	var res ProvisionResult
 	dev, err := c.DeviceByMAC(ctx, mac)
@@ -51,7 +52,7 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Sn
 
 	want := namer.DeviceName(snap.System)
 	isDefault := dev.Name == "" || dev.Name == dev.Model
-	for _, d := range defaultDeviceNames {
+	for _, d := range append(append([]string(nil), defaultDeviceNames...), namer.DefaultDeviceNames(snap.System)...) {
 		isDefault = isDefault || dev.Name == d
 	}
 	if isDefault && want != "" && dev.Name != want {
@@ -92,13 +93,15 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Sn
 		changed = true
 		res.RenamedPorts++
 	}
-	// Released slots: drop whatever the controller kept for them.
+	// Released slots: drop whatever config the controller kept for them.
 	for _, p := range snap.Ports {
 		if p.IfName == "" && !p.Present {
-			if _, ok := overrides[p.Index]; ok {
-				delete(overrides, p.Index)
+			if o, ok := overrides[p.Index]; ok && releaseOverride(o) {
 				changed = true
 				res.Cleared++
+				if len(o) == 1 { // nothing but port_idx
+					delete(overrides, p.Index)
+				}
 			}
 		}
 	}
@@ -137,6 +140,21 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Sn
 		return res, fmt.Errorf("provision: %w", err)
 	}
 	return res, nil
+}
+
+// releaseOverride strips a released slot's override down to its port_idx
+// and name, so a later guest on the slot is seeded from its own state and
+// the slot keeps (or gets) the driver's free-slot name. It reports whether
+// anything was removed.
+func releaseOverride(o map[string]any) bool {
+	removed := false
+	for k := range o {
+		if k != "port_idx" && k != "name" {
+			delete(o, k)
+			removed = true
+		}
+	}
+	return removed
 }
 
 // overrideIndex reads port_idx whether it came from JSON (float64) or us (int).

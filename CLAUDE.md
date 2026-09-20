@@ -128,9 +128,10 @@ and must stay stopped** (one bridge per adopted key).
 ## 6b. Proxmox driver (branch claude/proxmox-unifi-bridge, 2026-09-19/20)
 
 `internal/drivers/proxmox` + `docs/proxmox.md`. Each node's `vmbr0` is a
-`USWF07D` ("ECS Core", 32x100G); guests are ports 1-30 numbered
-cluster-wide (persisted in `state/<name>/proxmox-ports.json`, keep it with
-`device.json`), NICs are 31-32. Read: one SSH exec of `collect.sh` per
+USW Leaf (`UDC48X6`, 54 ports) named after the node; guests are ports 1-48
+numbered cluster-wide (persisted in `state/<name>/proxmox-ports.json`, keep
+it with `device.json`) and named `VM-<id>` (`VM-Open-<port>` when free),
+the physical NICs/bond slaves count down from 54 (`bond0-1`, `bond0-2`). Read: one SSH exec of `collect.sh` per
 poll (root on the node, key auth). Write: `qm set`/`pct set` for
 `link_down`/`tag`/`trunks`. Nodes run lldpd bound to the active uplink NIC
 so the upstream aggregation switch sees them. Controller quirks: the ECS
