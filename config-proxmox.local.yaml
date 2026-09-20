@@ -10,20 +10,29 @@ switches:
     driver: proxmox
     ssh: root@192.0.2.101
     ip: 192.0.2.101
-    model: USWF07D
+    model: UDC48X6
+    options:
+      ports: "54"
+      uplink_ports: "6"
     control:
-      ports: all
+      ports: off
   - name: proxmox-2
     driver: proxmox
     ssh: root@192.0.2.102
     ip: 192.0.2.102
-    model: USWF07D
+    model: UDC48X6
+    options:
+      ports: "54"
+      uplink_ports: "6"
     control:
-      ports: all
+      ports: off
   - name: proxmox-3
     driver: proxmox
     ssh: root@192.0.2.103
     ip: 192.0.2.103
-    model: USWF07D
+    model: UDC48X6
+    options:
+      ports: "54"
+      uplink_ports: "6"
     control:
-      ports: all
+      ports: off

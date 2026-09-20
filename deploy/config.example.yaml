@@ -41,10 +41,11 @@ switches:
     driver: proxmox
     ssh: root@proxmox-1              # key auth
     ip: 192.0.2.101                   # the node's own in-band address
-    model: USWF07D                   # 32x100G ("ECS Core"); auto picks it too
+    model: UDC48X6                   # USW Leaf (48 guest ports + host + NICs); auto picks it too
     options:
       bridge: vmbr0                  # default
-      # ports: "32"                  # total ports; uplink_ports: "2" are the physical NICs
+      # ports: "54"                  # total ports; uplink_ports: "6" = the host and its NICs at the top
+      # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
       # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container
       # known_hosts: /etc/switch-to-unifi/known_hosts
     control:

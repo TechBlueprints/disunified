@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,9 +25,14 @@ type Collector struct {
 
 	Bridge      string // vmbr0
 	Ports       int    // total ports presented
-	UplinkPorts int    // the last UplinkPorts ports are physical NICs
+	UplinkPorts int    // the last UplinkPorts ports: the primary NIC (last), the host (last-1), other NICs
 
 	cycleDelay time.Duration
+	// ManageLLDP: keep lldpd on the node announcing this switch's identity
+	// (chassis ID = the derived device MAC, port ID = the NIC's port number,
+	// on the primary uplink NIC only). Default on; the driver writes
+	// /etc/lldpd.d/switch-to-unifi.conf and restarts lldpd when it differs.
+	ManageLLDP bool
 
 	mu         sync.Mutex
 	ports      *portMap
@@ -43,9 +49,10 @@ type Collector struct {
 	warned     map[string]bool
 }
 
-// NewCollector wraps a runner with the defaults (vmbr0, 32 ports, 2 uplinks).
+// NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
+// 6 for the host and its NICs: the USW Leaf layout).
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 32, UplinkPorts: 2,
+	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, UplinkPorts: 6, ManageLLDP: true,
 		ports: &portMap{Slots: map[int]*slot{}}, knownNames: map[int][]string{}, warned: map[string]bool{}}
 }
 
@@ -240,11 +247,17 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		ports = append(ports, p)
 	}
 
-	// --- physical uplinks ---
+	// --- the host and its NICs: the top slots, filled from the last port down ---
+	//
+	// Last port = the primary NIC (the uplink); last-1 = the host itself
+	// (vmbr0's own address and traffic); further NICs below that. The
+	// host is an ordinary client behind its own switch, which needs the
+	// switch to identify itself with a *different* MAC (see deviceMAC).
 	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
-	if len(phys) > c.UplinkPorts {
-		c.warnOnce("too-many-nics", "bridge %s has %d physical NICs but uplink_ports=%d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, phys[c.UplinkPorts:])
-		phys = phys[:c.UplinkPorts]
+	nicSlots := c.UplinkPorts - 1 // one of the top slots is the host port
+	if len(phys) > nicSlots {
+		c.warnOnce("too-many-nics", "bridge %s has %d physical NICs but uplink_ports=%d leaves room for %d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, nicSlots, phys[nicSlots:])
+		phys = phys[:nicSlots]
 	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
@@ -255,12 +268,16 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		}
 	}
 	uplinkHint := 0
-	for i := 0; i < c.UplinkPorts; i++ {
-		idx := vmSlots + i + 1
-		if i >= len(phys) {
-			ports = append(ports, emptyPort(idx))
-			continue
+	hostMAC := strings.ToLower(bridge["address"])
+	slotFor := func(i int) int { // NIC i -> port index: 0 -> last, 1 -> last-2, 2 -> last-3, ...
+		if i == 0 {
+			return c.Ports
 		}
+		return c.Ports - 1 - i
+	}
+	nicPorts := map[int]switchmodel.Port{}
+	for i := 0; i < len(phys); i++ {
+		idx := slotFor(i)
 		name := phys[i]
 		l := linkBy[name]
 		et := parseEthtool(ethBodies[name])
@@ -277,6 +294,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		}
 		if member == name || name == activeIface || (activeIface == "" && i == 0) {
 			for _, e := range fdbBy[member] {
+				if strings.EqualFold(e.MAC, hostMAC) {
+					continue // the host is on its own port
+				}
 				m := macEntry(e, idx, now)
 				p.MACs = append(p.MACs, m)
 				macs = append(macs, m)
@@ -286,7 +306,24 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 				uplinkHint = idx
 			}
 		}
-		ports = append(ports, p)
+		nicPorts[idx] = p
+	}
+	if c.ManageLLDP {
+		c.ensureLLDP(hostname, sec["lldpdconf"], phys, bonds, slotFor, deviceMAC(hostMAC))
+	}
+	for idx := vmSlots + 1; idx <= c.Ports; idx++ {
+		switch {
+		case idx == c.Ports-1:
+			hp, hm := hostPort(idx, hostname, hostMAC, linkBy[c.Bridge], now)
+			ports = append(ports, hp)
+			macs = append(macs, hm)
+		default:
+			if p, ok := nicPorts[idx]; ok {
+				ports = append(ports, p)
+			} else {
+				ports = append(ports, emptyPort(idx))
+			}
+		}
 	}
 
 	// --- system ---
@@ -294,7 +331,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		Vendor:   "Proxmox",
 		Version:  pveVersion(sec["pveversion"]),
 		Hostname: hostname,
-		MAC:      strings.ToLower(bridge["address"]),
+		MAC:      deviceMAC(hostMAC),
 	}
 	sys.Model = "VE " + sys.Version
 	if pn := dmi["product_name"]; pn != "" {
@@ -776,4 +813,96 @@ func ntpServers(body string) []string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// deviceMAC is the identity the switch presents to the controller: the
+// bridge's MAC with the locally-administered bit flipped (98:f2:.. -> 9a:f2:..).
+// A MAC is either a device or a client to the controller, never both, so
+// using the host's own MAC would make the host itself vanish from the
+// client list and the topology; with a derived identity the host is an
+// ordinary client behind its own switch (port Ports-1), keeping its name,
+// IP and DNS record. lldpd on the node must advertise the same value
+// (docs/proxmox.md §4).
+func deviceMAC(hostMAC string) string {
+	hw, err := net.ParseMAC(hostMAC)
+	if err != nil || len(hw) != 6 {
+		return hostMAC
+	}
+	hw[0] ^= 0x02
+	return hw.String()
+}
+
+// hostPort is the port the node itself sits behind: vmbr0's own interface
+// (the host's traffic through the bridge) with the host's MAC learned on it.
+func hostPort(idx int, hostname, hostMAC string, br ipLink, now time.Time) (switchmodel.Port, switchmodel.MACEntry) {
+	p := switchmodel.Port{
+		Index: idx, IfName: "host", Description: hostname, Name: hostname,
+		Media: switchmodel.MediaQSFP28, Lanes: 1, Present: true, Enabled: true,
+		Up: br.hasFlag("UP"), SpeedMbps: 100000, FullDuplex: true, AutoNeg: true, SpeedCaps: []int{100000},
+		MTU: br.MTU, Counters: countersOf(br), STPState: "forwarding",
+		VLAN: switchmodel.PortVLAN{Mode: "access", NativeVLAN: 1},
+	}
+	if p.MTU == 0 {
+		p.MTU = 1500
+	}
+	// The bridge interface's RX is what the host received; from the switch's
+	// point of view the host port received what the host sent.
+	p.Counters.RxBytes, p.Counters.TxBytes = p.Counters.TxBytes, p.Counters.RxBytes
+	p.Counters.RxPackets, p.Counters.TxPackets = p.Counters.TxPackets, p.Counters.RxPackets
+	p.Counters.RxErrors, p.Counters.TxErrors = p.Counters.TxErrors, p.Counters.RxErrors
+	p.Counters.RxDropped, p.Counters.TxDropped = p.Counters.TxDropped, p.Counters.RxDropped
+	if !p.Up {
+		p.SpeedMbps = 0
+	}
+	m := switchmodel.MACEntry{MAC: hostMAC, VLAN: 1, PortIndex: idx, LastMove: now}
+	p.MACs = []switchmodel.MACEntry{m}
+	return p, m
+}
+
+// lldpdConfig is the lldpd configuration this switch needs on its node:
+// announce only on the uplink NIC (the bond's primary; with both slaves of
+// an active-backup bond announcing, the controller drew the nodes under
+// the backup link's switch), with the switch's device MAC as chassis ID
+// and the NIC's port number as port ID, the form the controller maps.
+func lldpdConfig(phys []string, bonds []bond, slotFor func(int) int, devMAC string) (config string, announce []string) {
+	if len(phys) == 0 {
+		return "", nil
+	}
+	announce = phys
+	for _, b := range bonds {
+		for i, n := range phys {
+			if n == b.Primary || (b.Primary == "" && n == b.ActiveSlave) {
+				announce = []string{phys[i]}
+			}
+		}
+	}
+	var b strings.Builder
+	b.WriteString("# managed by switch-to-unifi: this node's bridge as a UniFi switch\n")
+	fmt.Fprintf(&b, "configure system interface pattern %s\n", strings.Join(announce, ","))
+	fmt.Fprintf(&b, "configure system chassisid %s\n", devMAC)
+	b.WriteString("configure lldp portidsubtype ifname\n")
+	for i, n := range phys {
+		fmt.Fprintf(&b, "configure ports %s lldp portidsubtype local \"Port %d\"\n", n, slotFor(i))
+		fmt.Fprintf(&b, "configure ports %s lldp portdescription \"%s\"\n", n, n)
+	}
+	return b.String(), announce
+}
+
+// ensureLLDP writes the lldpd config and restarts lldpd when the node's
+// differs; a node without lldpd gets one warning naming the package.
+func (c *Collector) ensureLLDP(node, section string, phys []string, bonds []bond, slotFor func(int) int, devMAC string) {
+	present, current, _ := strings.Cut(section, "\n")
+	if strings.TrimSpace(present) != "present" {
+		c.warnOnce("lldpd-missing", "lldpd is not installed on %s: the controller cannot place this switch in the topology without it (apt-get install lldpd; the bridge configures it)", node)
+		return
+	}
+	want, announce := lldpdConfig(phys, bonds, slotFor, devMAC)
+	if want == "" || strings.TrimSpace(current) == strings.TrimSpace(want) {
+		return
+	}
+	c.Log.Printf("proxmox %s: configuring lldpd (chassis %s, announcing on %s as Port %d)", node, devMAC, strings.Join(announce, ","), slotFor(0))
+	cmd := "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd"
+	if _, err := c.r.Run(context.Background(), cmd, want); err != nil {
+		c.warnOnce("lldpd-write", "configuring lldpd failed: %v", err)
+	}
 }
