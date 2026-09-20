@@ -22,8 +22,8 @@ switch reports its uplink: as one link out. A bond is therefore one port
 whatever it is made of; an active-backup pair is not two ports with one
 "blocking", because from the virtual switch's side there is one path, and
 which physical NIC carries it is the node's business, not the controller's.
-The host itself is a client behind that switch (port 53), like a server
-behind a real one.
+The node's own address lives on the bridge, as a switch's management
+address lives behind its ports.
 
 This is why a UniFi-side change never touches `/etc/network/interfaces`,
 the bond, lldpd's package, or anything a node needs to stay in its cluster,
@@ -35,9 +35,8 @@ matters happens in the bond (100 ms), below the switch we present.
 | Ports | What | Media / speed reported |
 |---|---|---|
 | 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 54 (the last port) | the uplink: the bridge's physical path out — a bond folded into **one link** (UniFi has no active-standby notion), showing the active slave's speed, optic and LLDP neighbour with the bond's counters, so a failover just changes what the port reports | from `ethtool` on the active NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial |
-| 53 | **the host itself**: `vmbr0`'s own interface, with the host's MAC learned on it | 100G; counters are the host's own traffic through the bridge |
-| 52 downwards | further physical paths under the bridge (a second NIC or bond), if any | as the uplink; an 802.3ad bond is reported as a LAG |
+| 54 (the last port) | the uplink: the bridge's physical path out — a bond folded into **one link** (UniFi has no active-standby notion), showing the active slave's speed, optic and LLDP neighbour with the bond's counters, so a failover just changes what the port reports | from `ethtool` on the active NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state |
+| 53 downwards | further physical paths under the bridge (a second NIC or bond), if any | as the uplink; an 802.3ad bond is reported as a LAG |
 
 ### 1b. Host network layouts
 
@@ -51,32 +50,16 @@ matters happens in the bond (100 ms), below the switch we present.
 | several bridges (`vmbr1`…) | one `switches:` entry per bridge (`options.bridge`) | verified for `vmbr0` |
 | Open vSwitch bridges | not supported (no `bridge`/`ip` view of the ports) | — |
 
-**The switch is not the host.** The device identifies itself with the
-bridge MAC's locally-administered form (`02:00:00:00:00:96` →
-`02:00:00:00:00:97`), because the controller treats a MAC as either a
-device or a client: with the host's own MAC as the device, the host itself
-vanished from the client list, the topology and local DNS. With the derived
-identity the node is an ordinary client behind port 53 of its own switch,
-name, IP, DNS record and all, which is also the truthful picture of a
-hypervisor behind a virtual switch. lldpd announces the same derived MAC
-(§4).
-
-**Numbering is cluster-wide and stable.** Every node reads every guest's
-config from `/etc/pve/nodes/*/{qemu-server,lxc}/*.conf` (Proxmox
-replicates it), so VM 100 is port 1 on all three switches and lights up on
-the node it runs on; a migration moves it from one switch's port 1 to
-another's. The assignment is seeded in (vmid, net) order and persisted in
-`state/<name>/proxmox-ports.json` next to `device.json`; it only grows. A
-deleted guest releases its slot, but the slot is reused only when no
-never-used slot remains (oldest release first), so the controller's port
-config for a dead VM does not land on the next VM created. **Keep that
-file with `device.json`**: without it a re-seed could number a VM
-differently and, with `control.ports` on, apply another port's VLANs to it.
-
-Port names are provisioned as `VM-<id>` / `CT-<id>` (`VM-119 net1` for a
-multi-NIC guest; the guest's own name is what the controller shows as the
-client behind the port) and the NIC name for uplinks; the device is named
-`pve-<node>` so it never collides with the node's own DNS name (§6). A guest on another node still gets its name here.
+**The node is the switch.** The device identifies itself with the bridge's
+MAC, address and hostname: `vmbr0` is where the node's own stack sits,
+exactly as a switch's management interface sits behind its own ports.
+There is no separate "host" port: the node's own traffic is the switch's
+management traffic, its address is the switch's address, and its DNS name
+is the switch's. (A variant with a derived device MAC and the host as a
+client on its own port was tried on 2026-09-20 and dropped: the "switch"
+and the "host" were the same thing with the same address and name, split
+in two for no gain. Adopting the node does delete its former *client*
+record, hence the static DNS records, §6.)
 
 ## 2. What is read (every inform, one SSH exec)
 
@@ -147,8 +130,8 @@ driver keeps lldpd's configuration itself (`/etc/lldpd.d/switch-to-unifi.conf`,
 rewritten and lldpd restarted whenever it differs; `manage_lldpd: "false"`
 to opt out):
 
-- chassis ID = the switch's derived device MAC (`configure system chassisid`;
-  the "local" subtype, which is what UniFi switches themselves advertise);
+- chassis ID = the bridge MAC (`configure system chassisid`; lldpd would
+  otherwise pick some other NIC's MAC, such as an unused onboard port's);
 - announce only on the bond's active slave: with both slaves of an
   active-backup bond announcing, the controller drew the nodes under the
   backup link's switch (aggregation-secondary, 10G), not the one carrying

@@ -124,9 +124,10 @@ the aggregation switch sees them (ports 50-52). Controller quirks: the ECS
 Core record carries `oob_port_config` that must be sent back empty on every
 REST update; the model's controller name is "ECS Core". Throwaway test
 guest VM 999 `stu-test` on proxmox-2 (no disk) is the Proxmox "port 2".
-Devices identify with the bridge MAC's locally-administered form (9a:…,
-06:…); the host itself is a client on port 53; the bond is one uplink port
-(54); guest ports are `VM-<id>`; lldpd config is written by the driver.
+The node is the switch (device MAC = the bridge MAC, same IP and hostname;
+a derived-MAC/host-port variant was tried and dropped 2026-09-20); the
+bond is one uplink port (54); guest ports are `VM-<id>`; lldpd config is
+written by the driver.
 Uplink/Parent verified 2026-09-20 after merging main's `uplink: "eth0"` fix.
 Deployed with the Arista in the one container (config.yaml has four
 switches; the container mounts `/opt/switch-to-unifi/ssh/` with the

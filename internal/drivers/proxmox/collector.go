@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,7 +24,7 @@ type Collector struct {
 
 	Bridge      string // vmbr0
 	Ports       int    // total ports presented
-	UplinkPorts int    // the last UplinkPorts ports: the primary NIC (last), the host (last-1), other NICs
+	UplinkPorts int    // the last UplinkPorts ports are the physical uplinks, from the last port down
 
 	cycleDelay time.Duration
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
@@ -50,7 +49,7 @@ type Collector struct {
 }
 
 // NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
-// 6 for the host and its NICs: the USW Leaf layout).
+// 6 for the uplinks: the USW Leaf layout).
 func NewCollector(r Runner) *Collector {
 	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, UplinkPorts: 6, ManageLLDP: true,
 		ports: &portMap{Slots: map[int]*slot{}}, knownNames: map[int][]string{}, warned: map[string]bool{}}
@@ -255,29 +254,22 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		ports = append(ports, p)
 	}
 
-	// --- the host and its NICs: the top slots, filled from the last port down ---
+	// --- the uplinks: the top slots, filled from the last port down ---
 	//
-	// Last port = the primary NIC (the uplink); last-1 = the host itself
-	// (vmbr0's own address and traffic); further NICs below that. The
-	// host is an ordinary client behind its own switch, which needs the
-	// switch to identify itself with a *different* MAC (see deviceMAC).
+	// The node is the switch: same MAC, address and hostname (the bridge
+	// interface is where the node's own stack sits, like a switch's
+	// management interface). Its physical paths out are the last ports.
 	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
-	nicSlots := c.UplinkPorts - 1 // one of the top slots is the host port
-	if len(phys) > nicSlots {
-		c.warnOnce("too-many-nics", "bridge %s has %d uplinks but uplink_ports=%d leaves room for %d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, nicSlots, uplinkNames(phys[nicSlots:]))
-		phys = phys[:nicSlots]
+	if len(phys) > c.UplinkPorts {
+		c.warnOnce("too-many-nics", "bridge %s has %d uplinks but uplink_ports=%d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, uplinkNames(phys[c.UplinkPorts:]))
+		phys = phys[:c.UplinkPorts]
 	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
 	_, fecBodies := subsections(sec["ethtoolfec"])
 	uplinkHint := 0
 	hostMAC := strings.ToLower(bridge["address"])
-	slotFor := func(i int) int { // uplink i -> port index: 0 -> last, 1 -> last-2, 2 -> last-3, ...
-		if i == 0 {
-			return c.Ports
-		}
-		return c.Ports - 1 - i
-	}
+	slotFor := func(i int) int { return c.Ports - i } // uplink i -> port index, from the last port down
 	nicPorts := map[int]switchmodel.Port{}
 	for i, u := range phys {
 		idx := slotFor(i)
@@ -296,9 +288,6 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 			learned = fdbBy[u.Member]
 		}
 		for _, e := range learned {
-			if strings.EqualFold(e.MAC, hostMAC) {
-				continue // the host is on its own port
-			}
 			m := macEntry(e, idx, now)
 			p.MACs = append(p.MACs, m)
 			macs = append(macs, m)
@@ -310,20 +299,13 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		nicPorts[idx] = p
 	}
 	if c.ManageLLDP {
-		c.ensureLLDP(hostname, sec["lldpdconf"], phys, slotFor, deviceMAC(hostMAC))
+		c.ensureLLDP(hostname, sec["lldpdconf"], phys, slotFor, hostMAC)
 	}
 	for idx := vmSlots + 1; idx <= c.Ports; idx++ {
-		switch {
-		case idx == c.Ports-1:
-			hp, hm := hostPort(idx, hostname, hostMAC, linkBy[c.Bridge], now)
-			ports = append(ports, hp)
-			macs = append(macs, hm)
-		default:
-			if p, ok := nicPorts[idx]; ok {
-				ports = append(ports, p)
-			} else {
-				ports = append(ports, emptyPort(idx))
-			}
+		if p, ok := nicPorts[idx]; ok {
+			ports = append(ports, p)
+		} else {
+			ports = append(ports, emptyPort(idx))
 		}
 	}
 
@@ -332,7 +314,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		Vendor:   "Proxmox",
 		Version:  pveVersion(sec["pveversion"]),
 		Hostname: hostname,
-		MAC:      deviceMAC(hostMAC),
+		MAC:      hostMAC, // the node is the switch
 	}
 	sys.Model = "VE " + sys.Version
 	if pn := dmi["product_name"]; pn != "" {
@@ -866,56 +848,12 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// deviceMAC is the identity the switch presents to the controller: the
-// bridge's MAC with the locally-administered bit flipped (98:f2:.. -> 9a:f2:..).
-// A MAC is either a device or a client to the controller, never both, so
-// using the host's own MAC would make the host itself vanish from the
-// client list and the topology; with a derived identity the host is an
-// ordinary client behind its own switch (port Ports-1), keeping its name,
-// IP and DNS record. lldpd on the node must advertise the same value
-// (docs/proxmox.md §4).
-func deviceMAC(hostMAC string) string {
-	hw, err := net.ParseMAC(hostMAC)
-	if err != nil || len(hw) != 6 {
-		return hostMAC
-	}
-	hw[0] ^= 0x02
-	return hw.String()
-}
-
-// hostPort is the port the node itself sits behind: vmbr0's own interface
-// (the host's traffic through the bridge) with the host's MAC learned on it.
-func hostPort(idx int, hostname, hostMAC string, br ipLink, now time.Time) (switchmodel.Port, switchmodel.MACEntry) {
-	p := switchmodel.Port{
-		Index: idx, IfName: "host", Description: hostname, Name: hostname,
-		Media: switchmodel.MediaQSFP28, Lanes: 1, Present: true, Enabled: true,
-		Up: br.hasFlag("UP"), SpeedMbps: 100000, FullDuplex: true, AutoNeg: true, SpeedCaps: []int{100000},
-		MTU: br.MTU, Counters: countersOf(br), STPState: "forwarding",
-		VLAN: switchmodel.PortVLAN{Mode: "access", NativeVLAN: 1},
-	}
-	if p.MTU == 0 {
-		p.MTU = 1500
-	}
-	// The bridge interface's RX is what the host received; from the switch's
-	// point of view the host port received what the host sent.
-	p.Counters.RxBytes, p.Counters.TxBytes = p.Counters.TxBytes, p.Counters.RxBytes
-	p.Counters.RxPackets, p.Counters.TxPackets = p.Counters.TxPackets, p.Counters.RxPackets
-	p.Counters.RxErrors, p.Counters.TxErrors = p.Counters.TxErrors, p.Counters.RxErrors
-	p.Counters.RxDropped, p.Counters.TxDropped = p.Counters.TxDropped, p.Counters.RxDropped
-	if !p.Up {
-		p.SpeedMbps = 0
-	}
-	m := switchmodel.MACEntry{MAC: hostMAC, VLAN: 1, PortIndex: idx, LastMove: now}
-	p.MACs = []switchmodel.MACEntry{m}
-	return p, m
-}
-
 // lldpdConfig is the lldpd configuration this switch needs on its node:
 // announce only on each uplink's active NIC (with both slaves of an
 // active-backup bond announcing, the controller drew the nodes under the
-// backup link's switch), with the switch's device MAC as chassis ID and
-// the uplink's port number as port ID on every NIC behind it, so a
-// failover keeps the same port.
+// backup link's switch), with the bridge MAC as chassis ID (lldpd would
+// otherwise pick some other NIC's) and the uplink's port number as port
+// ID on every NIC behind it, so a failover keeps the same port.
 func lldpdConfig(phys []uplink, slotFor func(int) int, devMAC string) (config string, announce []string) {
 	if len(phys) == 0 {
 		return "", nil
