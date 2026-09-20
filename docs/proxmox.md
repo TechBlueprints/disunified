@@ -8,6 +8,28 @@ through are the last two. Written and verified against **Proxmox VE 9.1.6**
 Scrubbed captures of the collector's output are in
 `docs/fixtures/proxmox-9.1.6/`.
 
+## 0. What is and is not the switch
+
+The switch this driver presents is the **virtual switch inside the node**:
+the Linux bridge (`vmbr0`) and the guest NICs plugged into it. That is what
+the controller reads and configures: guest ports, their state and VLANs,
+the bridge's MAC table, IGMP snooping.
+
+The node's own networking underneath the bridge — its physical NICs, the
+bond that joins them, how it fails over, its address — is **not** the
+switch and is never configured by the bridge. It is reported the way a
+switch reports its uplink: as one link out. A bond is therefore one port
+whatever it is made of; an active-backup pair is not two ports with one
+"blocking", because from the virtual switch's side there is one path, and
+which physical NIC carries it is the node's business, not the controller's.
+The host itself is a client behind that switch (port 53), like a server
+behind a real one.
+
+This is why a UniFi-side change never touches `/etc/network/interfaces`,
+the bond, lldpd's package, or anything a node needs to stay in its cluster,
+and why "STP across both links" is not on the table: the failover that
+matters happens in the bond (100 ms), below the switch we present.
+
 ## 1. What the switch looks like
 
 | Ports | What | Media / speed reported |
