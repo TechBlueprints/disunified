@@ -150,4 +150,16 @@ session with the browser and pipe its shell over the data channel. unifi-emu
 does not implement the device side and does not document how a device
 answers that command, so Clint parked it (branch `ssh-gateway`).
 
-Nothing open on the controller side; the WebRTC terminal is parked.
+Open (2026-09-20): the devices list shows no Uplink / Parent Device for the
+Arista. Both LLDP views are stored by the controller (ours: the aggregation switch
+on port 49; the parent's: us on its port 49, and its `downlink_lldp_macs` has
+our MAC), the port is `is_uplink`, and the uplink object we send uses the
+real switches' shape (name eth0 + `if_table`, `uplink_source`, 1-based
+remote port), yet the controller keeps only counters in `uplink` and never
+sets `last_uplink`/`uplink_depth` or lists us in the parent's
+`downlink_table`. Real devices' uplinks are controller-derived
+(`uplink_source: lldp_uplink` / `lldp_downlink`), so the device report is
+not what decides it. Leading hypothesis: the USW Leaf model (UDC48X6) gets
+leaf/spine topology handling; testing it means claiming another model with
+the same layout (USWF066, ECS Aggregation) and re-adopting — Clint's call.
+The WebRTC terminal is parked.
