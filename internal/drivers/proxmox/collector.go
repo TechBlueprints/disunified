@@ -610,16 +610,24 @@ func physicalPort(idx int, name string, l ipLink, et ethtoolInfo, mod ethtoolMod
 			TempC: mod.TempC, VoltageV: mod.VoltageV, HasDOM: mod.HasDOM}
 	}
 	member := name
+	standby := false
 	for i, b := range bonds {
-		for _, s := range b.Slaves {
-			if s.Name == name {
-				member = b.Name
+		for _, sl := range b.Slaves {
+			if sl.Name != name {
+				continue
+			}
+			member = b.Name
+			if sl.SpeedMb > 0 {
+				p.SpeedMbps = sl.SpeedMb
+			}
+			p.Up = sl.Up
+			if strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast") {
+				// A real aggregate: every slave carries traffic.
 				p.LAG = b.Name
 				p.LAGID = i + 1
-				if s.SpeedMb > 0 {
-					p.SpeedMbps = s.SpeedMb
-				}
-				p.Up = s.Up
+			} else if b.ActiveSlave != "" && name != b.ActiveSlave {
+				// active-backup: the standby slave is linked but carries nothing.
+				standby = true
 			}
 		}
 	}
@@ -627,6 +635,9 @@ func physicalPort(idx int, name string, l ipLink, et ethtoolInfo, mod ethtoolMod
 		p.STPState = "forwarding"
 		if st := brBy[member].Linkinfo.InfoSlaveData.State; st != "" {
 			p.STPState = st
+		}
+		if standby {
+			p.STPState = "blocking" // link up, not forwarding: the bond's standby path
 		}
 	}
 	if b := brBy[member]; b.Ifname != "" {
@@ -860,10 +871,11 @@ func hostPort(idx int, hostname, hostMAC string, br ipLink, now time.Time) (swit
 }
 
 // lldpdConfig is the lldpd configuration this switch needs on its node:
-// announce only on the uplink NIC (the bond's primary; with both slaves of
-// an active-backup bond announcing, the controller drew the nodes under
-// the backup link's switch), with the switch's device MAC as chassis ID
-// and the NIC's port number as port ID, the form the controller maps.
+// announce only on the uplink NIC (the bond's active slave, so a failover
+// moves the announcement; with both slaves of an active-backup bond
+// announcing, the controller drew the nodes under the backup link's
+// switch), with the switch's device MAC as chassis ID and the NIC's port
+// number as port ID, the form the controller maps.
 func lldpdConfig(phys []string, bonds []bond, slotFor func(int) int, devMAC string) (config string, announce []string) {
 	if len(phys) == 0 {
 		return "", nil
@@ -871,7 +883,7 @@ func lldpdConfig(phys []string, bonds []bond, slotFor func(int) int, devMAC stri
 	announce = phys
 	for _, b := range bonds {
 		for i, n := range phys {
-			if n == b.Primary || (b.Primary == "" && n == b.ActiveSlave) {
+			if n == b.ActiveSlave || (b.ActiveSlave == "" && n == b.Primary) {
 				announce = []string{phys[i]}
 			}
 		}

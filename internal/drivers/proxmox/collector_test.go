@@ -144,8 +144,10 @@ func TestCollectNode2(t *testing.T) {
 	if e := snap.Ports[48]; e.Present || e.Index != 49 {
 		t.Errorf("slot 49 should be empty: %+v", e)
 	}
+	// An active-backup bond is not an aggregate: no LAG, the active slave
+	// forwards, the standby is linked but blocking.
 	u := snap.Ports[53]
-	if u.IfName != "ens1f0np0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "bond0" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" {
+	if u.IfName != "ens1f0np0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" {
 		t.Errorf("uplink = %+v", u)
 	}
 	if len(u.SpeedCaps) == 0 || u.SpeedCaps[len(u.SpeedCaps)-1] != 100000 || !u.FECCapable || len(u.MACs) < 50 {
@@ -157,8 +159,11 @@ func TestCollectNode2(t *testing.T) {
 	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	if u2 := snap.Ports[51]; u2.IfName != "ens1f1np1" || u2.Index != 52 || u2.Media != switchmodel.MediaSFP28 || u2.SpeedMbps != 10000 || len(u2.MACs) != 0 {
-		t.Errorf("second uplink = %+v", u2)
+	if u2 := snap.Ports[51]; u2.IfName != "ens1f1np1" || u2.Index != 52 || u2.Media != switchmodel.MediaSFP28 || u2.SpeedMbps != 10000 || !u2.Up || u2.STPState != "blocking" || u2.LAG != "" || len(u2.MACs) != 0 {
+		t.Errorf("standby uplink = %+v", u2)
+	}
+	if cfg, announce := lldpdConfig([]string{"ens1f0np0", "ens1f1np1"}, parseBonding(sections(loadFixture(t, "collect-node2.txt"))["bonding"]), func(i int) int { return []int{54, 52}[i] }, "00:00:00:00:00:01"); len(announce) != 1 || announce[0] != "ens1f0np0" || !strings.Contains(cfg, "chassisid 00:00:00:00:00:01") || !strings.Contains(cfg, `ens1f0np0 lldp portidsubtype local "Port 54"`) {
+		t.Errorf("lldpd config = %q announce %v", cfg, announce)
 	}
 	for _, m := range u.MACs {
 		if m.MAC == "02:00:00:00:00:01" {
