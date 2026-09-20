@@ -41,6 +41,9 @@ func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
 		out = append(out, p.Description)
 	}
 	out = append(out, p.Interfaces...)
+	if p.IfName == "host" {
+		out = append(out, "host")
+	}
 	if strings.HasPrefix(p.IfName, "vm") || strings.HasPrefix(p.IfName, "ct") {
 		// "vm100-net0" -> "100", "vm100"
 		id := strings.TrimLeft(strings.SplitN(p.IfName, "-", 2)[0], "vmct")

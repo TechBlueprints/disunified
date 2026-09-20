@@ -1,8 +1,8 @@
 # Proxmox VE driver (`proxmox`)
 
 A Proxmox VE node's Linux bridge (`vmbr0`) presented to a UniFi Network
-controller as a 32-port 100G switch (`USWF07D`, which Network 10.6 calls
-"ECS Core"). Guest NICs are the ports; the physical NICs the bridge uplinks
+controller as a USW Leaf (`UDC48X6`, 48 + 6 ports; the 32x100G `USWF07D`
+"ECS Core" was used first and works the same with `ports: "32"`). Guest NICs are the ports; the physical NICs the bridge uplinks
 through are the last two. Written and verified against **Proxmox VE 9.1.6**
 (Debian 13, kernel 6.17) on Clint's three-node cluster, 2026-09-19/20.
 Scrubbed captures of the collector's output are in
@@ -12,8 +12,20 @@ Scrubbed captures of the collector's output are in
 
 | Ports | What | Media / speed reported |
 |---|---|---|
-| 1-30 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 31-32 (`uplink_ports`) | the physical NICs under the bridge (bond slaves, primary first, then direct members) | from `ethtool`: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial |
+| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
+| 54 (the last port) | the primary NIC: the uplink | from `ethtool`: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial |
+| 53 | **the host itself**: `vmbr0`'s own interface, with the host's MAC learned on it | 100G; counters are the host's own traffic through the bridge |
+| 52 downwards | further NICs under the bridge (a bond's other slaves, in bond order) | as the uplink |
+
+**The switch is not the host.** The device identifies itself with the
+bridge MAC's locally-administered form (`02:00:00:00:00:96` →
+`02:00:00:00:00:97`), because the controller treats a MAC as either a
+device or a client: with the host's own MAC as the device, the host itself
+vanished from the client list, the topology and local DNS. With the derived
+identity the node is an ordinary client behind port 53 of its own switch,
+name, IP, DNS record and all, which is also the truthful picture of a
+hypervisor behind a virtual switch. lldpd announces the same derived MAC
+(§4).
 
 **Numbering is cluster-wide and stable.** Every node reads every guest's
 config from `/etc/pve/nodes/*/{qemu-server,lxc}/*.conf` (Proxmox
@@ -92,59 +104,69 @@ Capabilities claimed (`switch_caps`): IGMP snooping only, so the UI hides
 storm control, FEC, LAG, mirroring, STP options and isolation for these
 switches; speed pickers offer the one speed each port has.
 
-## 4. Topology: lldpd on the node
+## 4. Topology: lldpd on the node, configured by the driver
 
-The controller places a switch by LLDP: the upstream UniFi switch must see
-the node's chassis ID (= the bridge MAC) on the port it is cabled to. A
-stock node sends no LLDP, so install lldpd, pin its chassis ID to the
-bond's primary slave (lldpd otherwise picks the unused onboard NIC's MAC),
-and **announce only on the primary slave**: with both slaves of an
-active-backup bond announcing, the controller drew the nodes under the
-backup link's switch (aggregation-secondary, 10G) instead of the one
-carrying the traffic (seen 2026-09-20). The port ID "Port 31" is the port
-number the driver gives the primary NIC, so the parent's view names it.
+The controller places a switch by the LLDP frames the *upstream* switch
+receives on the port the node is cabled to, so the node has to emit them:
+that is the one thing installed on a node (`apt-get install lldpd`). The
+driver keeps lldpd's configuration itself (`/etc/lldpd.d/switch-to-unifi.conf`,
+rewritten and lldpd restarted whenever it differs; `manage_lldpd: "false"`
+to opt out):
 
-```bash
-apt-get install -y lldpd
-echo 'DAEMON_ARGS="-C ens1f0np0"' >> /etc/default/lldpd
-cat > /etc/lldpd.d/switch-to-unifi.conf <<'EOT'
-configure system interface pattern ens1f0np0
-configure lldp portidsubtype ifname
-configure ports ens1f0np0 lldp portidsubtype local "Port 31"
-configure ports ens1f0np0 lldp portdescription "ens1f0np0"
-EOT
-systemctl restart lldpd
-```
+- chassis ID = the switch's derived device MAC (`configure system chassisid`;
+  the "local" subtype, which is what UniFi switches themselves advertise);
+- announce only on the bond's primary slave: with both slaves of an
+  active-backup bond announcing, the controller drew the nodes under the
+  backup link's switch (aggregation-secondary, 10G), not the one carrying
+  the traffic (seen 2026-09-20);
+- port ID = the NIC's port number on this switch (`"Port 54"`), the form the
+  controller maps back to our port table.
 
 Verified 2026-09-20: the aggregation switch (`USWF066`) lists all three nodes
-in its `lldp_table` and `downlink_table` (ports 50-52, `port_id "Port 31"`);
-the nodes see the aggregation switch on the 100G slave and
-aggregation-secondary on the 10G slave. The driver picks the uplink port
-from the neighbour with the Router capability (the aggregation switch), and
-falls back to the bond's active slave when LLDP is silent
-(`Snapshot.UplinkHint`).
+in its `lldp_table` and `downlink_table` on ports 50-52; the nodes see
+the aggregation switch on the 100G slave. The driver picks the uplink port from
+the neighbour with the Router capability (the aggregation switch), falling
+back to the bond's active slave when LLDP is silent (`Snapshot.UplinkHint`).
 
 ## 5. Setup
+
+Per node, once:
+
+1. **Root SSH with a key.** Put the bridge's public key in
+   `/root/.ssh/authorized_keys` on the node. The driver reads over SSH and
+   writes with `qm set` / `pct set`; Proxmox API tokens cannot do the read
+   side (no MAC table, counters, VLAN state, sensors or LLDP through the API).
+2. **`apt-get install -y lldpd`.** Nothing to configure: the driver writes
+   its config on the first poll (§4).
+3. A VLAN-aware bridge (`bridge-vlan-aware yes` on `vmbr0`); the driver reads
+   a plain bridge too but tags then mean per-VLAN bridges, which it does not
+   model. `ethtool` and `chrony` are there by default.
+
+Then one `switches:` entry per node:
 
 ```yaml
 switches:
   - name: proxmox-2
     driver: proxmox
-    ssh: root@proxmox-2        # key auth; options.ssh_key / known_hosts for a container
-    ip: 192.0.2.102             # the node's in-band address (what the controller reaches)
-    model: USWF07D             # auto picks it too: 32 QSFP28
+    ssh: root@192.0.2.102        # key auth; the node's in-band address
+    ip: 192.0.2.102              # what the controller reaches the switch at
+    model: UDC48X6              # USW Leaf; auto picks it from the 48+6 layout
     options:
-      bridge: vmbr0            # default
-      ports: "32"              # default; uplink_ports: "2"
+      bridge: vmbr0             # default
+      # ports: "54"             # default; uplink_ports: "6" (host + NICs at the top)
+      # manage_lldpd: "false"   # leave lldpd alone
+      # ssh_key: /etc/switch-to-unifi/id_ed25519       # in a container
+      # known_hosts: /etc/switch-to-unifi/known_hosts
     control:
-      ports: all               # or a list; see §3 before "all"
+      ports: all                # port state and VLANs -> qm/pct set; see §3 before "all"
       igmp: false
 ```
 
-Requirements on the node: root SSH with a key, a VLAN-aware bridge
-(`bridge-vlan-aware yes`; the driver reads a plain bridge too but tags
-then mean per-VLAN bridges, which it does not model), `ethtool` (installed
-by default), optionally `lldpd` (§4) and `chrony` (default).
+In a container (`deploy/compose.yaml`), mount the private key and a
+`known_hosts` holding each node's host key read-only and name them in
+`options`; the container has no home directory or agent, and the key must
+be readable by uid 65532. Keep `state/<name>/proxmox-ports.json` with
+`device.json` (§1).
 
 ## 6. Controller quirks met on Network 10.6.106
 

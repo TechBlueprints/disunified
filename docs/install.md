@@ -12,8 +12,8 @@ in the UniFi UI.
   account on it. For control (not just monitoring) the account needs write
   access; for the Arista driver that is a `network-admin` user and eAPI
   enabled (`management api http-commands` → `no shutdown`); for the
-  Proxmox driver, root SSH to the node with a key (and `lldpd` on the node
-  for the topology, `docs/proxmox.md` §4).
+  Proxmox driver, root SSH to each node with a key and `apt-get install
+  lldpd` on each node (the driver configures it); `docs/proxmox.md` §5.
 - Optional, for naming the device and ports after the switch: a UniFi API
   key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 

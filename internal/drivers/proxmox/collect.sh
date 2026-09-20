@@ -65,6 +65,7 @@ for f in /etc/pve/nodes/*/lxc/*.conf; do
   sed -n '/^\[/q;p' "$f" | grep -E '^(hostname|net[0-9]+|template):'
 done
 s lldp;       lldpcli -f json0 show neighbors details 2>/dev/null
+s lldpdconf;  [ -x /usr/sbin/lldpcli ] && { echo "present"; cat /etc/lldpd.d/switch-to-unifi.conf 2>/dev/null; }
 s chrony;     grep -hE '^(server|pool) ' /etc/chrony/chrony.conf 2>/dev/null
 s ntpunifi;   cat /etc/chrony/sources.d/switch-to-unifi.sources 2>/dev/null
 s end

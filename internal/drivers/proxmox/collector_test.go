@@ -86,12 +86,21 @@ func TestCollectNode2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snap.Ports) != 32 {
-		t.Fatalf("ports = %d, want 32", len(snap.Ports))
+	if len(snap.Ports) != 54 {
+		t.Fatalf("ports = %d, want 54", len(snap.Ports))
 	}
 	sys := snap.System
 	if sys.Vendor != "Proxmox" || sys.Version != "9.1.6" || sys.Hostname != "proxmox-2" || sys.MAC == "" {
 		t.Errorf("system = %+v", sys)
+	}
+	// The switch identifies itself with the locally-administered form of the
+	// bridge MAC; the host's own MAC is a client on the host port.
+	if sys.MAC == "02:00:00:00:00:01" || sys.MAC != "00:00:00:00:00:01" || deviceMAC("02:00:00:00:00:96") != "02:00:00:00:00:97" {
+		t.Errorf("device MAC = %s, want the derived form of 02:00:00:00:00:01", sys.MAC)
+	}
+	host := snap.Ports[52]
+	if host.Index != 53 || host.IfName != "host" || host.Description != "proxmox-2" || !host.Up || len(host.MACs) != 1 || host.MACs[0].MAC != "02:00:00:00:00:01" || host.Counters.RxBytes == 0 {
+		t.Errorf("host port = %+v", host)
 	}
 	if !sys.HasTemperature || sys.TemperatureC < 40 || len(sys.Fans) != 4 || !sys.Fans[0].OK {
 		t.Errorf("sensors: temp %v fans %+v", sys.TemperatureC, sys.Fans)
@@ -127,12 +136,16 @@ func TestCollectNode2(t *testing.T) {
 	if !p.Up || len(p.MACs) != 1 || p.Interfaces[0] != "tap120i0" {
 		t.Errorf("vm120-net0 = %+v", p)
 	}
-	// Unassigned guest slots are empty cages; the last two are the NICs.
+	// Unassigned guest slots are empty cages; the primary NIC is the last
+	// port, the second NIC two below the host.
 	if e := snap.Ports[25]; e.Present || e.IfName != "" || e.Index != 26 {
 		t.Errorf("empty slot = %+v", e)
 	}
-	u := snap.Ports[30]
-	if u.IfName != "ens1f0np0" || u.Index != 31 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "bond0" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" {
+	if e := snap.Ports[48]; e.Present || e.Index != 49 {
+		t.Errorf("slot 49 should be empty: %+v", e)
+	}
+	u := snap.Ports[53]
+	if u.IfName != "ens1f0np0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "bond0" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" {
 		t.Errorf("uplink = %+v", u)
 	}
 	if len(u.SpeedCaps) == 0 || u.SpeedCaps[len(u.SpeedCaps)-1] != 100000 || !u.FECCapable || len(u.MACs) < 50 {
@@ -141,11 +154,16 @@ func TestCollectNode2(t *testing.T) {
 	if u.Health.LinkChanges == 0 {
 		t.Errorf("uplink carrier changes not read")
 	}
-	if snap.UplinkHint != 31 || snap.UplinkPort() != 31 {
+	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	if u2 := snap.Ports[31]; u2.IfName != "ens1f1np1" || u2.Media != switchmodel.MediaSFP28 || u2.SpeedMbps != 10000 || len(u2.MACs) != 0 {
+	if u2 := snap.Ports[51]; u2.IfName != "ens1f1np1" || u2.Index != 52 || u2.Media != switchmodel.MediaSFP28 || u2.SpeedMbps != 10000 || len(u2.MACs) != 0 {
 		t.Errorf("second uplink = %+v", u2)
+	}
+	for _, m := range u.MACs {
+		if m.MAC == "02:00:00:00:00:01" {
+			t.Errorf("host MAC learned on the uplink instead of the host port")
+		}
 	}
 	if len(snap.VLANs) < 3 || snap.VLANs[0] != 1 {
 		t.Errorf("vlans = %v", snap.VLANs)
