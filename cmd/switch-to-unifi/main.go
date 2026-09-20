@@ -350,14 +350,22 @@ func runOne(ctx context.Context, o options) error {
 		namer = switchmodel.NamerFor(sw)
 	}
 	defaults := defaultPortNames(desc.Ports, snap, namer)
-	isDefaultPortName := func(idx int, name string) bool {
-		for _, d := range defaults[idx] {
-			if name == d {
-				return true
+	// isDefaultPortNameIn answers against the snapshot in hand: the names a
+	// port could have been given depend on what is on it now (a guest that
+	// arrived after startup has its own labels), so the provisioner must
+	// not use the startup-time table (live, 2026-09-20: a guest taking a
+	// free slot was not re-seeded because its new name looked custom).
+	isDefaultPortNameIn := func(defs map[int][]string) func(idx int, name string) bool {
+		return func(idx int, name string) bool {
+			for _, d := range defs[idx] {
+				if name == d {
+					return true
+				}
 			}
+			return false
 		}
-		return false
 	}
+	isDefaultPortName := isDefaultPortNameIn(defaults)
 	// provision names the device and ports and, with control on, seeds the
 	// controller's port config from the switch — one read-modify-write —
 	// on the adoption handshake, on a layout change (a new guest) and while
@@ -378,7 +386,7 @@ func runOne(ctx context.Context, o options) error {
 				}
 				last = time.Now()
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
-				r, err := api.Provision(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortName, seed)
+				r, err := api.Provision(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortNameIn(defaultPortNames(desc.Ports, snap, namer)), seed)
 				pcancel()
 				for _, note := range r.Notes {
 					log.Printf("provision: seed: %s", note)
