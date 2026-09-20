@@ -13,9 +13,9 @@ Scrubbed captures of the collector's output are in
 | Ports | What | Media / speed reported |
 |---|---|---|
 | 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 54 (the last port) | the primary NIC: the uplink | from `ethtool`: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial |
+| 54 (the last port) | the uplink: the bridge's physical path out — a bond folded into **one link** (UniFi has no active-standby notion), showing the active slave's speed, optic and LLDP neighbour with the bond's counters, so a failover just changes what the port reports | from `ethtool` on the active NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial |
 | 53 | **the host itself**: `vmbr0`'s own interface, with the host's MAC learned on it | 100G; counters are the host's own traffic through the bridge |
-| 52 downwards | further NICs under the bridge (a bond's other slaves, in bond order) | as the uplink. An **active-backup** bond is not reported as a LAG: the active slave forwards, the standby shows link-up but `blocking`, and lldpd announces on whichever is active (a failover moves the uplink) |
+| 52 downwards | further physical paths under the bridge (a second NIC or bond), if any | as the uplink; an 802.3ad bond is reported as a LAG |
 
 **The switch is not the host.** The device identifies itself with the
 bridge MAC's locally-administered form (`02:00:00:00:00:96` →

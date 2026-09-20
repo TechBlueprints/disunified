@@ -256,60 +256,47 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
 	nicSlots := c.UplinkPorts - 1 // one of the top slots is the host port
 	if len(phys) > nicSlots {
-		c.warnOnce("too-many-nics", "bridge %s has %d physical NICs but uplink_ports=%d leaves room for %d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, nicSlots, phys[nicSlots:])
+		c.warnOnce("too-many-nics", "bridge %s has %d uplinks but uplink_ports=%d leaves room for %d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, nicSlots, uplinkNames(phys[nicSlots:]))
 		phys = phys[:nicSlots]
 	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
-	activeIface := ""
-	for _, b := range bonds {
-		if linkBy[b.Name].Master == c.Bridge {
-			activeIface = b.ActiveSlave
-		}
-	}
 	uplinkHint := 0
 	hostMAC := strings.ToLower(bridge["address"])
-	slotFor := func(i int) int { // NIC i -> port index: 0 -> last, 1 -> last-2, 2 -> last-3, ...
+	slotFor := func(i int) int { // uplink i -> port index: 0 -> last, 1 -> last-2, 2 -> last-3, ...
 		if i == 0 {
 			return c.Ports
 		}
 		return c.Ports - 1 - i
 	}
 	nicPorts := map[int]switchmodel.Port{}
-	for i := 0; i < len(phys); i++ {
+	for i, u := range phys {
 		idx := slotFor(i)
-		name := phys[i]
-		l := linkBy[name]
-		et := parseEthtool(ethBodies[name])
-		mod := parseEthtoolModule(modBodies[name])
-		p := physicalPort(idx, name, l, et, mod, bonds, brBy, vlanBy, c.Bridge)
-		p.Health.LinkChanges = carrierChanges(carrier, name)
-		if nb, ok := neighbors[name]; ok {
+		l := linkBy[u.Active]
+		et := parseEthtool(ethBodies[u.Active])
+		mod := parseEthtoolModule(modBodies[u.Active])
+		p := physicalPort(idx, u, linkBy[u.Name], l, et, mod, brBy, vlanBy)
+		p.Health.LinkChanges = carrierChanges(carrier, u.Active)
+		if nb, ok := neighbors[u.Active]; ok {
 			nbc := nb
 			p.Neighbor = &nbc
 		}
-		member := name
-		if l.Master != "" && l.Master != c.Bridge {
-			member = l.Master // the bond is the bridge member
+		for _, e := range fdbBy[u.Name] {
+			if strings.EqualFold(e.MAC, hostMAC) {
+				continue // the host is on its own port
+			}
+			m := macEntry(e, idx, now)
+			p.MACs = append(p.MACs, m)
+			macs = append(macs, m)
+			vlanSet[e.VLAN] = true
 		}
-		if member == name || name == activeIface || (activeIface == "" && i == 0) {
-			for _, e := range fdbBy[member] {
-				if strings.EqualFold(e.MAC, hostMAC) {
-					continue // the host is on its own port
-				}
-				m := macEntry(e, idx, now)
-				p.MACs = append(p.MACs, m)
-				macs = append(macs, m)
-				vlanSet[e.VLAN] = true
-			}
-			if uplinkHint == 0 && p.Up {
-				uplinkHint = idx
-			}
+		if uplinkHint == 0 && p.Up {
+			uplinkHint = idx
 		}
 		nicPorts[idx] = p
 	}
 	if c.ManageLLDP {
-		c.ensureLLDP(hostname, sec["lldpdconf"], phys, bonds, slotFor, deviceMAC(hostMAC))
+		c.ensureLLDP(hostname, sec["lldpdconf"], phys, slotFor, deviceMAC(hostMAC))
 	}
 	for idx := vmSlots + 1; idx <= c.Ports; idx++ {
 		switch {
@@ -531,22 +518,32 @@ func macEntry(e fdbEntry, idx int, now time.Time) switchmodel.MACEntry {
 	return switchmodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
 }
 
-// physicalMembers lists the physical NICs that carry the bridge, in port
-// order: for each bridge member in kernel order, a bond contributes its
-// slaves (primary first, then bond order), a NIC contributes itself.
-func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, bridge string) []string {
-	master := map[string]string{}
-	var physNames []string
+// uplink is one physical path out of the bridge: a NIC, or a bond folded
+// into one link (UniFi has no notion of an active-standby pair, and a bond
+// is one link to the network; Clint's call, 2026-09-20). Active is the NIC
+// whose speed, optic and LLDP neighbour the port reports.
+type uplink struct {
+	Name   string   // bridge member: the bond, or the NIC itself
+	Ifaces []string // the NICs behind it (bond slaves, or the NIC)
+	Active string   // the NIC carrying traffic now
+	LAG    bool     // a real aggregate (802.3ad/balance): every slave forwards
+}
+
+func uplinkNames(us []uplink) []string {
+	out := make([]string, 0, len(us))
+	for _, u := range us {
+		out = append(out, u.Name)
+	}
+	return out
+}
+
+// physicalMembers lists the bridge's physical uplinks in kernel order: a
+// bond member is one uplink with its slaves behind it, a NIC is its own.
+func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, bridge string) []uplink {
+	isPhys := map[string]bool{}
 	for _, line := range strings.Split(physBody, "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 {
-			continue
-		}
-		physNames = append(physNames, f[0])
-		for _, kv := range f[1:] {
-			if k, v, ok := strings.Cut(kv, "="); ok && k == "master" {
-				master[f[0]] = v
-			}
+		if f := strings.Fields(line); len(f) > 0 {
+			isPhys[f[0]] = true
 		}
 	}
 	bondBy := map[string]bond{}
@@ -560,90 +557,61 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 		}
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].Ifindex < members[j].Ifindex })
-	var out []string
-	seen := map[string]bool{}
-	add := func(n string) {
-		if !seen[n] {
-			seen[n] = true
-			out = append(out, n)
-		}
-	}
-	isPhys := map[string]bool{}
-	for _, n := range physNames {
-		isPhys[n] = true
-	}
+	var out []uplink
 	for _, m := range members {
 		if b, ok := bondBy[m.Ifname]; ok {
-			if b.Primary != "" {
-				add(b.Primary)
+			u := uplink{Name: b.Name, Active: b.ActiveSlave}
+			for _, sl := range b.Slaves {
+				u.Ifaces = append(u.Ifaces, sl.Name)
 			}
-			for _, s := range b.Slaves {
-				add(s.Name)
+			if u.Active == "" && len(u.Ifaces) > 0 {
+				u.Active = u.Ifaces[0]
+			}
+			u.LAG = strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast")
+			if len(u.Ifaces) > 0 {
+				out = append(out, u)
 			}
 			continue
 		}
 		if isPhys[m.Ifname] {
-			add(m.Ifname)
-		}
-	}
-	// NICs whose master is a bond in the bridge but which /proc/net/bonding
-	// did not list (should not happen) still count.
-	for _, n := range physNames {
-		if m := master[n]; m != "" && (m == bridge || linkBy[m].Master == bridge) {
-			add(n)
+			out = append(out, uplink{Name: m.Ifname, Ifaces: []string{m.Ifname}, Active: m.Ifname})
 		}
 	}
 	return out
 }
 
-func physicalPort(idx int, name string, l ipLink, et ethtoolInfo, mod ethtoolModule, bonds []bond, brBy map[string]ipLink, vlanBy map[string]brVLANs, bridge string) switchmodel.Port {
+// physicalPort renders one uplink: link state and counters from the bridge
+// member (the bond, or the NIC), speed/optic/capabilities from the active NIC.
+func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) switchmodel.Port {
 	p := switchmodel.Port{
-		Index: idx, IfName: name, Interfaces: []string{name}, Name: name, Lanes: 1,
-		Enabled: l.hasFlag("UP"), Up: l.hasFlag("LOWER_UP"), MTU: l.MTU,
-		Counters: countersOf(l), AutoNeg: et.Autoneg, SpeedCaps: et.Speeds, FECCapable: et.FEC,
+		Index: idx, IfName: u.Name, Interfaces: u.Ifaces, Name: u.Name, Lanes: 1,
+		Enabled: member.hasFlag("UP"), Up: member.hasFlag("LOWER_UP") && active.hasFlag("LOWER_UP"), MTU: member.MTU,
+		Counters: countersOf(member), AutoNeg: et.Autoneg, SpeedCaps: et.Speeds, FECCapable: et.FEC,
 		FullDuplex: strings.EqualFold(et.Duplex, "Full"), SpeedMbps: et.Speed,
 		STPState: "disabled",
+	}
+	if u.Name != u.Active {
+		p.Description = u.Name + " via " + u.Active
 	}
 	p.Media, p.Present = mediaOf(et, mod)
 	if mod.Present {
 		p.Optic = &switchmodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
 			TempC: mod.TempC, VoltageV: mod.VoltageV, HasDOM: mod.HasDOM}
 	}
-	member := name
-	standby := false
-	for i, b := range bonds {
-		for _, sl := range b.Slaves {
-			if sl.Name != name {
-				continue
-			}
-			member = b.Name
-			if sl.SpeedMb > 0 {
-				p.SpeedMbps = sl.SpeedMb
-			}
-			p.Up = sl.Up
-			if strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast") {
-				// A real aggregate: every slave carries traffic.
-				p.LAG = b.Name
-				p.LAGID = i + 1
-			} else if b.ActiveSlave != "" && name != b.ActiveSlave {
-				// active-backup: the standby slave is linked but carries nothing.
-				standby = true
-			}
-		}
+	if u.LAG {
+		p.LAG = u.Name
+		p.LAGID = 1
 	}
 	if p.Up {
 		p.STPState = "forwarding"
-		if st := brBy[member].Linkinfo.InfoSlaveData.State; st != "" {
+		if st := brBy[u.Name].Linkinfo.InfoSlaveData.State; st != "" {
 			p.STPState = st
 		}
-		if standby {
-			p.STPState = "blocking" // link up, not forwarding: the bond's standby path
-		}
 	}
-	if b := brBy[member]; b.Ifname != "" {
+	if b := brBy[u.Name]; b.Ifname != "" {
 		p.STPPathCost = b.Linkinfo.InfoSlaveData.Cost
 	}
-	if v, ok := vlanBy[member]; ok {
+	if v, ok := vlanBy[u.Name]; ok {
 		p.VLAN = portVLANOf(v)
 	} else {
 		p.VLAN = switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}
@@ -871,44 +839,41 @@ func hostPort(idx int, hostname, hostMAC string, br ipLink, now time.Time) (swit
 }
 
 // lldpdConfig is the lldpd configuration this switch needs on its node:
-// announce only on the uplink NIC (the bond's active slave, so a failover
-// moves the announcement; with both slaves of an active-backup bond
-// announcing, the controller drew the nodes under the backup link's
-// switch), with the switch's device MAC as chassis ID and the NIC's port
-// number as port ID, the form the controller maps.
-func lldpdConfig(phys []string, bonds []bond, slotFor func(int) int, devMAC string) (config string, announce []string) {
+// announce only on each uplink's active NIC (with both slaves of an
+// active-backup bond announcing, the controller drew the nodes under the
+// backup link's switch), with the switch's device MAC as chassis ID and
+// the uplink's port number as port ID on every NIC behind it, so a
+// failover keeps the same port.
+func lldpdConfig(phys []uplink, slotFor func(int) int, devMAC string) (config string, announce []string) {
 	if len(phys) == 0 {
 		return "", nil
 	}
-	announce = phys
-	for _, b := range bonds {
-		for i, n := range phys {
-			if n == b.ActiveSlave || (b.ActiveSlave == "" && n == b.Primary) {
-				announce = []string{phys[i]}
-			}
-		}
-	}
 	var b strings.Builder
 	b.WriteString("# managed by switch-to-unifi: this node's bridge as a UniFi switch\n")
+	for _, u := range phys {
+		announce = append(announce, u.Active)
+	}
 	fmt.Fprintf(&b, "configure system interface pattern %s\n", strings.Join(announce, ","))
 	fmt.Fprintf(&b, "configure system chassisid %s\n", devMAC)
 	b.WriteString("configure lldp portidsubtype ifname\n")
-	for i, n := range phys {
-		fmt.Fprintf(&b, "configure ports %s lldp portidsubtype local \"Port %d\"\n", n, slotFor(i))
-		fmt.Fprintf(&b, "configure ports %s lldp portdescription \"%s\"\n", n, n)
+	for i, u := range phys {
+		for _, n := range u.Ifaces {
+			fmt.Fprintf(&b, "configure ports %s lldp portidsubtype local \"Port %d\"\n", n, slotFor(i))
+			fmt.Fprintf(&b, "configure ports %s lldp portdescription \"%s\"\n", n, u.Name)
+		}
 	}
 	return b.String(), announce
 }
 
 // ensureLLDP writes the lldpd config and restarts lldpd when the node's
 // differs; a node without lldpd gets one warning naming the package.
-func (c *Collector) ensureLLDP(node, section string, phys []string, bonds []bond, slotFor func(int) int, devMAC string) {
+func (c *Collector) ensureLLDP(node, section string, phys []uplink, slotFor func(int) int, devMAC string) {
 	present, current, _ := strings.Cut(section, "\n")
 	if strings.TrimSpace(present) != "present" {
 		c.warnOnce("lldpd-missing", "lldpd is not installed on %s: the controller cannot place this switch in the topology without it (apt-get install lldpd; the bridge configures it)", node)
 		return
 	}
-	want, announce := lldpdConfig(phys, bonds, slotFor, devMAC)
+	want, announce := lldpdConfig(phys, slotFor, devMAC)
 	if want == "" || strings.TrimSpace(current) == strings.TrimSpace(want) {
 		return
 	}
