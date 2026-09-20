@@ -124,10 +124,7 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 	}
 	byIdx := map[int]map[string]any{}
 	for _, o := range existing {
-		switch idx := o["port_idx"].(type) {
-		case float64: // from the controller's JSON
-			byIdx[int(idx)] = o
-		case int: // from an earlier seed in this process
+		if idx := overrideIndex(o); idx > 0 {
 			byIdx[idx] = o
 		}
 	}
