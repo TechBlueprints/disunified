@@ -146,7 +146,11 @@ to opt out):
 
 Verified 2026-09-20: the aggregation switch (`USWF066`) lists all three nodes
 in its `lldp_table` and `downlink_table` on ports 50-52; the nodes see
-the aggregation switch on the 100G slave. The driver picks the uplink port from
+the aggregation switch on the 100G slave, and the controller composes each
+node's uplink (`uplink_source: lldp_uplink`, remote port 50/51/52, 100G
+QSFP28, depth 1) once the inform carries `uplink: "eth0"`, `if_table` with
+the netmask and `gateway_mac` (the peer's finding on the Arista; the driver
+fills `System.Addresses` and `System.ARP` from `ip addr` / `ip neigh`). The driver picks the uplink port from
 the neighbour with the Router capability (the aggregation switch), falling
 back to the bond's active slave when LLDP is silent (`Snapshot.UplinkHint`).
 
