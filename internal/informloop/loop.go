@@ -99,6 +99,9 @@ type Config struct {
 	// DefaultPortNames maps port_idx to the names that mean "unedited"; a
 	// UniFi port name in that set is written as "no description".
 	DefaultPortNames map[int][]string
+	// OnHeld runs each time a first push is held (see AllowInitialChanges),
+	// with the current snapshot: the bridge retries seeding the controller.
+	OnHeld func(snap *switchmodel.Snapshot)
 	// OnConnected runs once each time the adoption handshake completes
 	// (state -> CONNECTED), with the current snapshot: first-provision work
 	// such as naming the device and its ports through the REST API belongs
@@ -714,6 +717,9 @@ func (l *Loop) holdInitialPush(ver string, desired []switchmodel.PortDesired) bo
 	if l.heldVersion != ver {
 		l.heldVersion = ver
 		l.cfg.Logger.Printf("[%s] HOLDING the first push after adoption (system_cfg %s): it would change %d ports %v, and a new device's controller config is only the defaults. Not applied. Seed the controller from the switch (automatic with api_url), or set these ports in the UI; the push that changes nothing goes through. control.allow_initial_changes: true overrides.", l.desc.MAC, ver, len(changed), changed)
+	}
+	if l.cfg.OnHeld != nil {
+		l.cfg.OnHeld(l.session.Snapshot())
 	}
 	return true
 }

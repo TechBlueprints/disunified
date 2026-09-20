@@ -2,8 +2,11 @@ package unifiapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
@@ -22,12 +25,11 @@ type Network struct {
 func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 	var r struct {
 		Data []struct {
-			ID          string `json:"_id"`
-			Name        string `json:"name"`
-			VLAN        int    `json:"vlan"`
-			VLANEnabled bool   `json:"vlan_enabled"`
-			Purpose     string `json:"purpose"`
-			Enabled     *bool  `json:"enabled"`
+			ID      string          `json:"_id"`
+			Name    string          `json:"name"`
+			VLAN    json.RawMessage `json:"vlan"` // a number, or a string on some records
+			Purpose string          `json:"purpose"`
+			Enabled *bool           `json:"enabled"`
 		} `json:"data"`
 	}
 	if err := c.do(ctx, "GET", "/proxy/network/api/s/"+c.Site+"/rest/networkconf", nil, &r); err != nil {
@@ -40,7 +42,7 @@ func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 		default:
 			continue
 		}
-		vlan := n.VLAN
+		vlan, _ := strconv.Atoi(strings.Trim(string(n.VLAN), `"`))
 		if vlan == 0 {
 			vlan = 1
 		}
@@ -82,10 +84,29 @@ func (c *Client) SeedPortConfig(ctx context.Context, mac string, snap *switchmod
 	return seeded, notes, nil
 }
 
-// portConfigKeys are the override keys that carry port configuration (as
-// opposed to a name): a port that has any of them is already configured in
-// the controller and is never overwritten by the seed.
-var portConfigKeys = []string{"forward", "native_networkconf_id", "tagged_vlan_mgmt", "excluded_networkconf_ids", "portconf_id", "port_security_enabled"}
+// configured reports whether an override carries real port configuration.
+// The controller expands a name-only override into `forward: all` with the
+// default network, which is still "unconfigured": only a profile, a
+// non-default forwarding mode, a tagged-VLAN choice or port security means
+// somebody set the port.
+func configured(o map[string]any) bool {
+	if _, ok := o["portconf_id"]; ok {
+		return true
+	}
+	if f, _ := o["forward"].(string); f != "" && f != "all" {
+		return true
+	}
+	if t, _ := o["tagged_vlan_mgmt"].(string); t != "" && t != "auto" {
+		return true
+	}
+	if on, _ := o["port_security_enabled"].(bool); on {
+		return true
+	}
+	if ex, ok := o["excluded_networkconf_ids"].([]any); ok && len(ex) > 0 {
+		return true
+	}
+	return false
+}
 
 // seedOverrides is the pure part: the full override list to send (existing
 // entries kept, seeded ones added), how many ports were seeded, and notes
@@ -109,14 +130,6 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 		case int: // from an earlier seed in this process
 			byIdx[idx] = o
 		}
-	}
-	configured := func(o map[string]any) bool {
-		for _, k := range portConfigKeys {
-			if _, ok := o[k]; ok {
-				return true
-			}
-		}
-		return false
 	}
 	for _, p := range snap.Ports {
 		if p.IfName == "" || !p.Present {
