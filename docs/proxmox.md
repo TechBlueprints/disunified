@@ -39,6 +39,18 @@ matters happens in the bond (100 ms), below the switch we present.
 | 53 | **the host itself**: `vmbr0`'s own interface, with the host's MAC learned on it | 100G; counters are the host's own traffic through the bridge |
 | 52 downwards | further physical paths under the bridge (a second NIC or bond), if any | as the uplink; an 802.3ad bond is reported as a LAG |
 
+### 1b. Host network layouts
+
+| Host layout | Ports | Status |
+|---|---|---|
+| one NIC in the bridge | port 54 | verified |
+| active-backup bond | one port (54): the active slave's speed, optic and neighbour, the bond's counters; lldpd announces on the active slave | **verified** (Clint's cluster) |
+| LACP (802.3ad) or balance-* bond | one port per member, every member in the same LAG (UniFi's aggregate), each with its own counters, optic and LLDP; the first member carries the MAC table; lldpd announces on every member with its own port number | **modelled, not verified live** — no host here has one (the two NICs go to different switches). Unit-tested against the captured bonding text with the mode line changed. If you run LACP, check the first run: two aggregated ports at 54 and 52, each with its upstream neighbour |
+| several NICs in the bridge, no bond | one port each | modelled |
+| a VLAN device on the uplink (`bond0.10` as the bridge port) | the device underneath, looked through | **modelled, not verified live** |
+| several bridges (`vmbr1`…) | one `switches:` entry per bridge (`options.bridge`) | verified for `vmbr0` |
+| Open vSwitch bridges | not supported (no `bridge`/`ip` view of the ports) | — |
+
 **The switch is not the host.** The device identifies itself with the
 bridge MAC's locally-administered form (`02:00:00:00:00:96` →
 `02:00:00:00:00:97`), because the controller treats a MAC as either a

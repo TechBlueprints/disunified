@@ -344,3 +344,48 @@ func TestApplySwitch(t *testing.T) {
 		t.Errorf("ensure vlans created %d", got)
 	}
 }
+
+// TestLACPBondIsPerMemberLAG models an 802.3ad bond, which no host here has:
+// the fixture's active-backup bond is rewritten to LACP mode, so this is the
+// driver's best model, not a live capture (docs/proxmox.md §1b).
+func TestLACPBondIsPerMemberLAG(t *testing.T) {
+	fixture := strings.Replace(loadFixture(t, "collect-node2.txt"), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
+	r := &fixtureRunner{fixture: fixture}
+	c := NewCollector(r)
+	c.ports, _ = loadPortMap(t.TempDir())
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := snap.Ports[53], snap.Ports[51]
+	if a.IfName != "ens1f0np0" || a.LAG != "bond0" || !a.Up || a.SpeedMbps != 100000 || len(a.MACs) < 50 {
+		t.Errorf("first member = %+v", a)
+	}
+	if b.IfName != "ens1f1np1" || b.LAG != "bond0" || !b.Up || b.SpeedMbps != 10000 || len(b.MACs) != 0 {
+		t.Errorf("second member = %+v (MACs belong to the first member only)", b)
+	}
+	if snap.Ports[52].IfName != "host" {
+		t.Errorf("host port moved: %+v", snap.Ports[52])
+	}
+	ups := physicalMembers(sections(fixture)["phys"], map[string]ipLink{"bond0": {Ifname: "bond0", Master: "vmbr0", Ifindex: 5}}, parseBonding(sections(fixture)["bonding"]), "vmbr0")
+	cfg, announce := lldpdConfig(ups, func(i int) int { return []int{54, 52}[i] }, "00:00:00:00:00:01")
+	if len(announce) != 2 || !strings.Contains(cfg, `ens1f0np0 lldp portidsubtype local "Port 54"`) || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 52"`) {
+		t.Errorf("lldpd config = %q announce %v", cfg, announce)
+	}
+}
+
+// TestVLANDeviceOnTheUplink models bond0.10 as the bridge member (not a
+// layout any host here has): the port is the device underneath.
+func TestVLANDeviceOnTheUplink(t *testing.T) {
+	links := map[string]ipLink{
+		"bond0":    {Ifname: "bond0", Ifindex: 5},
+		"bond0.10": {Ifname: "bond0.10", Ifindex: 9, Master: "vmbr0", Link: "bond0"},
+	}
+	l := links["bond0.10"]
+	l.Linkinfo.InfoKind = "vlan"
+	links["bond0.10"] = l
+	ups := physicalMembers("ens1f0np0 master=bond0\nens1f1np1 master=bond0\n", links, parseBonding(sections(loadFixture(t, "collect-node2.txt"))["bonding"]), "vmbr0")
+	if len(ups) != 1 || ups[0].Name != "bond0.10" || ups[0].Member != "bond0.10" || ups[0].Active != "ens1f0np0" || len(ups[0].Ifaces) != 2 {
+		t.Errorf("uplinks = %+v", ups)
+	}
+}

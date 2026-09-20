@@ -84,6 +84,7 @@ type ipLink struct {
 	Master    string   `json:"master"`
 	Operstate string   `json:"operstate"`
 	Address   string   `json:"address"`
+	Link      string   `json:"link"` // a VLAN/macvlan device's parent
 	Linkinfo  struct {
 		InfoKind      string `json:"info_kind"`
 		InfoSlaveKind string `json:"info_slave_kind"`
