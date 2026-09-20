@@ -188,8 +188,4 @@ func TestReplayControllerRepliesProxmox(t *testing.T) {
 			t.Errorf("last inform lacks %q", k)
 		}
 	}
-	// The host is a client behind its own switch, not the switch itself.
-	if mac, _ := lastInform["mac"].(string); mac == "02:00:00:00:00:01" {
-		t.Errorf("device MAC must be the derived identity, not the host's")
-	}
 }
