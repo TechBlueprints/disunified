@@ -44,6 +44,7 @@ type eosInterface struct {
 	MTU                int          `json:"mtu"`
 	Hardware           string       `json:"hardware"`
 	Description        string       `json:"description"`
+	PhysicalAddress    string       `json:"physicalAddress"`
 	Counters           *eosCounters `json:"interfaceCounters"`
 }
 

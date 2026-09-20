@@ -494,12 +494,20 @@ func isCopper(m switchmodel.Media) bool {
 	return false
 }
 
-func ethernetTable(desc inform.Descriptor) []map[string]any {
-	return []map[string]any{{
-		"mac":      desc.MAC,
-		"name":     "eth0",
-		"num_port": len(desc.Ports),
+// ethernetTable lists the device's own interfaces as UniFi switches do:
+// eth0 (the switch, system MAC) and srv0, the service/management interface
+// with its own MAC, when the switch has one.
+func ethernetTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]any {
+	t := []map[string]any{{
+		"mac":        desc.MAC,
+		"name":       "eth0",
+		"num_port":   len(desc.Ports),
+		"other_macs": []string{},
 	}}
+	if snap != nil && snap.System.MgmtMAC != "" && snap.System.MgmtMAC != desc.MAC {
+		t = append(t, map[string]any{"mac": snap.System.MgmtMAC, "name": "srv0"})
+	}
+	return t
 }
 
 // lldpTable reports LLDP neighbours in the controller's shape.

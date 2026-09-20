@@ -150,6 +150,7 @@ type System struct {
 	Model    string
 	Serial   string
 	MAC      string // primary/system MAC, lower-case colon form
+	MgmtMAC  string // the out-of-band management interface's own MAC, "" if none/unknown (UniFi's "service" interface)
 	Version  string // vendor's own version string, e.g. "4.26.14M"
 	Hostname string
 	Uptime   time.Duration

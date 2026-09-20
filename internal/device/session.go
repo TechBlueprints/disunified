@@ -221,7 +221,10 @@ func (s *Session) buildPayload(now time.Time) []byte {
 					STPChanges: p.Health.STPChanges, FECUncorrected: p.Health.FECUncorrected, PCSErrBlocks: p.Health.PCSErrBlocks}
 			}
 		}
-		m["ethernet_table"] = ethernetTable(s.desc)
+		m["ethernet_table"] = ethernetTable(s.desc, s.snap)
+		if s.snap != nil && s.snap.System.MgmtMAC != "" && s.snap.System.MgmtMAC != s.desc.MAC {
+			m["service_mac"] = s.snap.System.MgmtMAC
+		}
 		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
 			m["lldp_table"] = lt
 		}

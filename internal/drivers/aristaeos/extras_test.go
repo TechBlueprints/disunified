@@ -99,4 +99,7 @@ func TestSecondWaveData(t *testing.T) {
 	if p53 := portByIndex(t, snap, 53); p53.Health.STPChanges != 3 || p53.Health.LinkChanges != 4 {
 		t.Errorf("port 53 health = %+v", p53.Health)
 	}
+	if snap.System.MgmtMAC != "02:00:00:00:00:3a" {
+		t.Errorf("management MAC = %q", snap.System.MgmtMAC)
+	}
 }

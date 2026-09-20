@@ -236,6 +236,9 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 		VLANs:    vlanIDs(vl),
 	}
 	snap.System.STPMode, snap.System.STPPriority = stpMode, stpPrio
+	if m, ok := ifs.Interfaces["Management1"]; ok && m.PhysicalAddress != "" {
+		snap.System.MgmtMAC = strings.ToLower(m.PhysicalAddress) // the OOB port has its own MAC (system MAC - 1 on the 7160)
+	}
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
 	applyRunningConfig(ports, &snap.System, rc)
