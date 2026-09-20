@@ -386,10 +386,12 @@ func runOne(ctx context.Context, o options) error {
 			if !o.noSeed && o.controlPorts != "" {
 				// On adoption the controller knows nothing about the ports;
 				// write the switch's own state so its first push matches.
-				var seedDone bool
+				// Seeds on the adoption handshake, while a first push is held
+				// (retry) and whenever the port layout changes (a new guest):
+				// only ports the controller has no config for are written.
 				var seedLast time.Time
 				seedPorts = func(snap *switchmodel.Snapshot) {
-					if seedDone || time.Since(seedLast) < 20*time.Second {
+					if time.Since(seedLast) < 20*time.Second {
 						return
 					}
 					seedLast = time.Now()
@@ -400,10 +402,9 @@ func runOne(ctx context.Context, o options) error {
 						log.Printf("seed port config: %s", note)
 					}
 					if err != nil {
-						log.Printf("seed port config: %v (will retry while the first push is held)", err)
+						log.Printf("seed port config: %v (retried while a push is held or the layout changes)", err)
 						return
 					}
-					seedDone = true
 					if n > 0 {
 						log.Printf("seed port config: %d ports written to the controller from the switch's own state", n)
 					}
@@ -422,6 +423,9 @@ func runOne(ctx context.Context, o options) error {
 		OnLayoutChange: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil {
 				provisionNames(snap)
+			}
+			if seedPorts != nil && snap != nil {
+				seedPorts(snap)
 			}
 		},
 		OnConnected: func(snap *switchmodel.Snapshot) {
