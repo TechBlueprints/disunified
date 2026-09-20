@@ -26,6 +26,22 @@ func init() { switchmodel.RegisterDriver(Driver{}) }
 
 func (Driver) Name() string { return "arista-eos" }
 
+// Capabilities is what EOS 4.26 on the 7160 honours: STP (priority, path
+// cost, BPDU guard), jumbo, FEC, LACP, storm control (percent), IGMP
+// snooping, LLDP-MED, DHCP snooping, SNMP. Not claimed: port isolation
+// (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror and
+// aggregate session counts mirror what real switches report (the ECS
+// reports them) so the UI offers both.
+func (c *Collector) Capabilities() switchmodel.Capabilities {
+	return switchmodel.Capabilities{
+		STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
+		StormControl: true, IGMPSnooping: true, LLDPMED: true, DHCPSnooping: true, SNMP: true,
+		MirrorSessions: 1, AggregateSessions: 8,
+	}
+}
+
+var _ switchmodel.Capable = (*Collector)(nil)
+
 func (Driver) Describe() string {
 	return "Arista EOS over eAPI (URL + username/password) or SSH (user@host, key auth); verified on 4.26.14M"
 }

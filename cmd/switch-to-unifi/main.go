@@ -62,7 +62,7 @@ func main() {
 		uplink   = flag.Int("uplink-port", envInt("STU_UPLINK_PORT", 0), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
 
 		// Switch side
-		driverName    = flag.String("driver", envOr("STU_DRIVER", "arista-eos"), "switch driver (see -list-drivers)")
+		driverName    = flag.String("driver", os.Getenv("STU_DRIVER"), "switch driver, required with -switch-url/-switch-ssh (see -list-drivers)")
 		switchURL     = flag.String("switch-url", envOr("STU_SWITCH_URL", envOr("STU_EOS_URL", "")), "switch API endpoint (driver-specific), with STU_SWITCH_USER/STU_SWITCH_PASS")
 		switchSSH     = flag.String("switch-ssh", envOr("STU_SWITCH_SSH", envOr("STU_EOS_SSH", "")), "switch SSH target user@host[:port] (key auth), used when -switch-url is empty")
 		controlPorts  = flag.String("control-ports", envOr("STU_CONTROL_PORTS", ""), "write controller port config to the switch: \"all\", or a list like \"2,5-8\"; empty = read-only")
@@ -196,6 +196,9 @@ func runOne(ctx context.Context, o options) error {
 		snap *switchmodel.Snapshot
 	)
 	if o.switchURL != "" || o.switchSSH != "" {
+		if o.driver == "" {
+			return errors.New("no driver named: set -driver / STU_DRIVER, or driver: in the config file (see -list-drivers)")
+		}
 		drv, err := switchmodel.LookupDriver(o.driver)
 		if err != nil {
 			return err
@@ -319,8 +322,8 @@ func runOne(ctx context.Context, o options) error {
 		return err
 	}
 	o.version = desc.Version
-	// Capability claims come from the driver when it declares them (a
-	// bridge honours fewer features than the Arista); they gate the UI.
+	// Capability claims come from the driver; they gate the UI, so a
+	// driver that declares none claims nothing.
 	caps := device.DefaultCapabilities
 	if c, ok := sw.(switchmodel.Capable); ok && sw != nil {
 		caps = c.Capabilities()

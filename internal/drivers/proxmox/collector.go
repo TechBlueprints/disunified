@@ -325,6 +325,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		et := parseEthtool(ethBodies[u.Active])
 		mod := parseEthtoolModule(modBodies[u.Active])
 		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
+		if u.Unattached {
+			p.Enabled = true // not under the switch: nothing has disabled it, it is just not linked
+		}
 		if sp, ok := stpPortBy[u.Member]; ok {
 			applyMSTPPort(&p, sp)
 			if u.Standby {
@@ -347,13 +350,13 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 			macs = append(macs, m)
 			vlanSet[e.VLAN] = true
 		}
-		if uplinkHint == 0 && p.Up && !u.Standby {
+		if uplinkHint == 0 && p.Up && !u.Standby && !u.Unattached {
 			uplinkHint = idx
 		}
 		nicPorts[idx] = p
 	}
 	if c.ManageLLDP {
-		c.ensureLLDP(hostname, sec["lldpdconf"], phys, slotFor, hostMAC)
+		c.ensureLLDP(hostname, sec["lldpdconf"], attachedUplinks(phys), slotFor, hostMAC)
 	}
 	for idx := vmSlots + 1; idx <= c.Ports; idx++ {
 		if p, ok := nicPorts[idx]; ok {
@@ -726,6 +729,21 @@ type uplink struct {
 	LAG     string   // aggregate name when the port is one member of a LAG
 	First   bool     // first port of its member: carries the member's MAC table
 	Standby bool     // a failover bond's inactive slave: linked, not forwarding
+	// Unattached: a physical NIC that is on the box but under neither the
+	// bridge nor a bond of the bridge's. Shown as a port with no link, not
+	// as disabled (Clint, 2026-09-20: "unifi could later enable those or
+	// add them to a lacp … that doesn't mean they're not on the box").
+	Unattached bool
+}
+
+// attachedUplinks is the prefix of phys that is under the bridge (the
+// unattached NICs come last, so their slots are unchanged).
+func attachedUplinks(phys []uplink) []uplink {
+	n := 0
+	for n < len(phys) && !phys[n].Unattached {
+		n++
+	}
+	return phys[:n]
 }
 
 func uplinkNames(us []uplink) []string {
@@ -756,6 +774,7 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].Ifindex < members[j].Ifindex })
 	var out []uplink
+	used := map[string]bool{}
 	for _, m := range members {
 		// A VLAN (or macvlan) device rides on its parent: look through it.
 		lower := m.Ifname
@@ -780,6 +799,7 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 				active = slaves[0]
 			}
 			for i, sl := range slaves {
+				used[sl] = true
 				u := uplink{Name: fmt.Sprintf("%s-%d", m.Ifname, i+1), Member: m.Ifname, Ifaces: []string{sl}, Active: sl, First: i == 0}
 				if lag {
 					u.LAG = b.Name
@@ -792,8 +812,21 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 			continue
 		}
 		if isPhys[lower] {
+			used[lower] = true
 			out = append(out, uplink{Name: m.Ifname, Member: m.Ifname, Ifaces: []string{lower}, Active: lower, First: true})
 		}
+	}
+	// Every other physical NIC on the box, after the attached ones so the
+	// attached keep their ports: shown with no link, never the uplink.
+	var spare []ipLink
+	for name := range isPhys {
+		if l, ok := linkBy[name]; ok && !used[name] {
+			spare = append(spare, l)
+		}
+	}
+	sort.Slice(spare, func(i, j int) bool { return spare[i].Ifindex < spare[j].Ifindex })
+	for _, l := range spare {
+		out = append(out, uplink{Name: l.Ifname, Member: l.Ifname, Ifaces: []string{l.Ifname}, Active: l.Ifname, Unattached: true})
 	}
 	return out
 }

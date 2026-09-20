@@ -38,13 +38,15 @@ creation, FEC, storm control, BPDU guard, STP mode/priority, IGMP snooping.
 
 The controller side is captured too, and the same scrub rule applies:
 
-- `internal/device/contract_test.go` compares the payload your driver
+- `internal/device/contract_<driver>_test.go` (one per driver, sharing the
+  harness in `contract_test.go`) compares the payload your driver
   produces (through the real device layer) with real UniFi switches' informs
   in `docs/fixtures/controller-<version>/inform-*.json`. Those come from the
   UniFi OS console support bundle (`unifi/devices/<type>/<mac>/last.inform`),
   scrubbed with `scripts/sanitize-controller.py`. Every key a real switch
   sends must be present with the same JSON type or listed with a reason.
-- `internal/informloop/replay_test.go` replays the controller's recorded
+- `internal/informloop/replay_<driver>_test.go` (one per driver, sharing
+  the harness in `replay_test.go`) replays the controller's recorded
   replies (`docs/fixtures/controller-<version>/replies.ndjson`, cut from the
   bridge's `inform-log/<mac>.ndjson`, scrubbed the same way) through the
   loop with your driver on its fixtures, and asserts the switch commands each

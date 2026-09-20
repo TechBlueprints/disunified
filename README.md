@@ -69,7 +69,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  switch-to-u
 
 - `internal/switchmodel` — the vendor-neutral model of a switch and the
   driver contract.
-- `internal/drivers/<vendor>` — one driver per vendor/OS (`arista-eos`, `proxmox`).
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`), each with its own `CLAUDE.md` of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - `internal/device` — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - `internal/unificfg` — parses the controller's `system_cfg` pushes.
