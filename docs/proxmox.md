@@ -95,19 +95,28 @@ switches; speed pickers offer the one speed each port has.
 
 The controller places a switch by LLDP: the upstream UniFi switch must see
 the node's chassis ID (= the bridge MAC) on the port it is cabled to. A
-stock node sends no LLDP, so install lldpd and pin its chassis ID to the
-bond's primary slave (lldpd otherwise picks the unused onboard NIC's MAC):
+stock node sends no LLDP, so install lldpd, pin its chassis ID to the
+bond's primary slave (lldpd otherwise picks the unused onboard NIC's MAC),
+and **announce only on the primary slave**: with both slaves of an
+active-backup bond announcing, the controller drew the nodes under the
+backup link's switch (aggregation-secondary, 10G) instead of the one
+carrying the traffic (seen 2026-09-20). The port ID "Port 31" is the port
+number the driver gives the primary NIC, so the parent's view names it.
 
 ```bash
 apt-get install -y lldpd
-# chassis ID from the primary slave; announce on the bond slaves only; port ID = ifname
 echo 'DAEMON_ARGS="-C ens1f0np0"' >> /etc/default/lldpd
-printf 'configure system interface pattern ens1f0np0,ens1f1np1\nconfigure lldp portidsubtype ifname\n' > /etc/lldpd.d/switch-to-unifi.conf
+cat > /etc/lldpd.d/switch-to-unifi.conf <<'EOT'
+configure system interface pattern ens1f0np0
+configure lldp portidsubtype ifname
+configure ports ens1f0np0 lldp portidsubtype local "Port 31"
+configure ports ens1f0np0 lldp portdescription "ens1f0np0"
+EOT
 systemctl restart lldpd
 ```
 
 Verified 2026-09-20: the aggregation switch (`USWF066`) lists all three nodes
-in its `lldp_table` and `downlink_table` (ports 50-52, `port_id ens1f0np0`);
+in its `lldp_table` and `downlink_table` (ports 50-52, `port_id "Port 31"`);
 the nodes see the aggregation switch on the 100G slave and
 aggregation-secondary on the 10G slave. The driver picks the uplink port
 from the neighbour with the Router capability (the aggregation switch), and
