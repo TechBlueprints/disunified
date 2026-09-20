@@ -99,6 +99,18 @@ func TestReleaseOverrideKeepsOnlyTheName(t *testing.T) {
 	if !releaseOverride(d) || !isDisabledOverride(d) || len(d) != 7 {
 		t.Errorf("free-slot override after release: %v", d)
 	}
+	// What the controller stores for that seed (it adds voice_networkconf_id: "")
+	// is left alone, or every provision would strip it and the controller
+	// re-add it (live, 2026-09-20: "26 released slots cleared" on each call).
+	stored := map[string]any{"forward": "disabled", "name": "VM-Open-48", "native_networkconf_id": "", "port_idx": float64(48),
+		"port_security_enabled": true, "port_security_mac_address": []any{}, "tagged_vlan_mgmt": "block_all", "voice_networkconf_id": ""}
+	if releaseOverride(stored) || len(stored) != 8 {
+		t.Errorf("controller-stored free-slot override was changed: %v", stored)
+	}
+	free := switchmodel.Port{Index: 48, Enabled: false}
+	if _, seeded, _ := seedOverrides(&switchmodel.Snapshot{Ports: []switchmodel.Port{free}}, nil, []map[string]any{stored}, nil); seeded != 0 {
+		t.Errorf("controller-stored free-slot override was reseeded")
+	}
 }
 
 func TestSeedFreeSlotsDisabledAndReseedTheirNextGuest(t *testing.T) {
