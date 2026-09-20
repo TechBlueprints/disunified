@@ -119,6 +119,15 @@ default:
   a push changes nothing or the operator has set the ports;
   `control.allow_initial_changes: true` overrides.
 
+**A guest created later is covered the same way.** Its port appears at the
+next poll; the bridge seeds that port's live state into the controller and,
+until the controller's config for it matches the switch, the port is
+withheld from every write (logged once). A guest that migrates between
+nodes needs nothing: every node's device was seeded with every guest's
+config, cluster-wide, at adoption. What is *not* covered: a tag changed by
+hand on a node after adoption — UniFi is the source of truth from then on
+and the reconcile puts the controller's value back (change it in UniFi).
+
 Switch-wide: IGMP snooping (`control.igmp`) toggles the bridge's
 `multicast_snooping` (bridge-wide: on when UniFi enables it on VLAN 1, else
 on any managed VLAN); NTP (`control.ntp`) writes
