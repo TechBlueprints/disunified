@@ -20,7 +20,7 @@ func TestSeedOverridesMirrorsTheSwitch(t *testing.T) {
 		{Index: 54, IfName: "bond0", Present: true, Enabled: true, VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 5, AllowAll: true}}, // native 5, all tagged
 	}}
 	existing := []map[string]any{
-		{"port_idx": float64(2), "name": "VM-119 net0"},
+		{"port_idx": float64(2), "name": "VM-119 net0", "forward": "all", "native_networkconf_id": "d"}, // what the controller makes of a name-only override
 		{"port_idx": float64(6), "name": "VM-103", "forward": "native", "native_networkconf_id": "n10", "tagged_vlan_mgmt": "block_all"},
 	}
 	overrides, seeded, notes := seedOverrides(snap, nets, existing)
