@@ -105,7 +105,7 @@ media map, not every cycle.
 | `rx_dropped`, `tx_dropped` | `interfaceCounters.inDiscards`, `.outDiscards` | |
 | `stp_state` | `show spanning-tree` → `spanningTreeInstances.MST0.interfaces[name].state` | `forwarding` etc.; only ports participating in STP appear (3 of 62) — default the rest to `disabled` |
 | `port_poe`, `poe_*` | — | always false / absent, no PoE hardware |
-| `is_uplink` | LLDP neighbour that is a UniFi device on `Ethernet49/1` | or simply the port facing `the aggregation switch` |
+| `is_uplink` | LLDP neighbour that is a UniFi device on `Ethernet49/1` | or simply the port facing the upstream aggregation switch |
 
 ### Breakout ports need a rule
 
@@ -162,7 +162,7 @@ The firmware string the controller sees must be `v<numeric>` — `4.26.14M` → 
 
 ## 7. In-band management (2026-09-20)
 
-The bridge reaches the switch at `Vlan1` (`ip address 192.0.2.4/16`, default
+The bridge reaches the switch at `Vlan1` (`ip address <in-band address>/<mask>`, default
 VRF, same VRF eAPI and SSH listen in) so the management address sits behind
 the 100G uplink like a UniFi switch's. `Management1` is addressless with
 `no lldp transmit` / `no lldp receive`. EOS refuses two interfaces in one

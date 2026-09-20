@@ -54,6 +54,11 @@ there.
   unused port and say which one in the issue.
 - Ask before pushing, deploying, or touching anything outside the repo and
   the test ports.
+- Never put site-specific information in a tracked file: addresses, DNS
+  names, MACs, serials, device names, topology, deployment hosts, key
+  paths. They go in `local-information/` (gitignored, see its README);
+  docs and examples use documentation addresses (`192.0.2.0/24`,
+  `02:00:00:xx:xx:xx`, `example.net`).
 - The maintainer verifies PRs on their own hardware; make that easy by
   keeping fixtures complete and the PR description a reproducible script.
 

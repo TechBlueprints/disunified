@@ -74,7 +74,7 @@ UniFi's per-network setting (UniFi defaults it off). Read
 - **Podman/Docker compose:** `deploy/compose.yaml` (config and env beside it).
   On Podman use `restart: always` and enable `podman-restart.service`;
   `unless-stopped` containers do not come back after a host reboot.
-  Reference install: `/opt/switch-to-unifi` on Clint's Podman host, built
+  Reference install: a directory on a Podman host, built
   from a copy of the source tree (`build: ./src`), state in the named
   volume `switch-to-unifi-state`, running as uid 65532.
 - **Quadlet/systemd:** `deploy/switch-to-unifi.container`.

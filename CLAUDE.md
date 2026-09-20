@@ -29,18 +29,28 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 
 ## 3. How Clint wants to work
 
-- Local, on his Mac (`~/techblueprints/switch-to-unifi`). Commit locally and
-  show him. **Ask before pushing, merging, opening a PR, or deploying.**
+- Local, on his Mac. Commit locally and show him. **Ask before pushing, merging, opening a PR, or deploying.**
   The repo was first pushed 2026-09-20 (history squashed to one commit) and
   its history rewritten with git filter-repo the same day to purge adoption
   authkeys that had been pasted into a test and a state backup: **never commit
   a real `authkey`** (tests use `0123456789abcdef0123456789abcdef`, fixtures
   `00000000000000000000000000000001`). Making it public is a separate,
   pending step.
+- **No site-specific information in tracked files.** Local network
+  addresses, subnets, DNS names and domains, MAC addresses, serials, device
+  and site names, LAN topology (which port goes where, what is live),
+  deployment hosts and paths, credential locations and key paths all live in
+  `local-information/` (gitignored except its README; `site.md` is Clint's).
+  Read `local-information/site.md` first if it exists before doing anything
+  against a real network. Tracked docs and examples use documentation
+  addresses only (`192.0.2.0/24`, `2001:db8::/32`, `02:00:00:xx:xx:xx`
+  MACs, `example.net`); fixtures go through the scrub scripts. Key material
+  (`id_*`, `*.pem`, `known_hosts`, `ssh/`) is gitignored and never committed.
 - He logs into the controller in Claude's Chrome tab so Claude can drive the
   UI for captures and round-trip tests; Claude never touches the 2FA code.
-- UI edits for testing go on **port 2** (copper, unused) and **port 54**
-  (QSFP cage, down). Never touch 49/51/53 (live 100G links).
+- UI edits for testing go only on the test ports named in
+  `local-information/site.md` (an unused copper port and a down QSFP cage).
+  Never touch a port that carries a live link.
 - UniFi is the source of truth for port config and VLANs (he OK'd replacing
   the Arista's VLAN config). IGMP snooping too (`-control-igmp`).
 - MIT license, same as unifi-emu; credit James Braid.
@@ -65,27 +75,16 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 - Bypass-permissions mode is on for this session; the bridge is restarted by
   Claude (`pkill -INT -f 'switch-to-unifi -controller'`, then re-run).
 
-## 4. Running instance (Clint's)
+## 4. Running instance
 
-```
-cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
-./switch-to-unifi -config config.yaml
-```
-
-`config.yaml` (gitignored) is the real config: controller 192.0.2.1, API URL
-`unifi.example.net`, switch `arista` via eAPI at **192.0.2.4**
-(in-band, `Vlan1`, since 2026-09-20; `Management1` is addressless, LLDP off —
-the OOB address broke the controller's topology, see docs/adding-a-switch.md
-§2c and docs/arista-eapi.md §7; `arista.example.net` is a
-controller static DNS A record → 192.0.2.4 since 2026-09-20, so `ssh admin@arista`
-follows), every `control`
-flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
-`state/arista/device.json`; replies: `inform-log/arista/`.
-
-`.env` → `<outside the repo>`
-(`STU_EOS_URL/USER/PASS` — the `stu` user, privilege 15; `STU_UNIFI_URL` +
-`STU_UNIFI_API_KEY` for naming). `state/device.json` holds the adopted key:
-one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
+Clint's addresses, names, deployment host and update command are in
+`local-information/site.md` (gitignored). Generic shape: `config.yaml`
+(gitignored) is the real config with secrets in the environment (`.env`,
+gitignored, symlinked from outside the repo); every `control` flag is on.
+`state/<name>/device.json` holds the adopted key: one instance per switch,
+keep the file. Logs: `run.log`, `inform-log/<name>/`. The deployed instance
+runs in a container on Clint's Podman host; **the Mac instance is stopped
+and must stay stopped** (one bridge per adopted key).
 
 ## 5. Protocol facts that cost time (all verified on 10.6.106)
 
@@ -123,21 +122,22 @@ one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
 `USWF07D` ("ECS Core", 32x100G); guests are ports 1-30 numbered
 cluster-wide (persisted in `state/<name>/proxmox-ports.json`, keep it with
 `device.json`), NICs are 31-32. Read: one SSH exec of `collect.sh` per
-poll (root@proxmox-N, key auth). Write: `qm set`/`pct set` for
-`link_down`/`tag`/`trunks`. Nodes run lldpd with `-C ens1f0np0` so
-the aggregation switch sees them (ports 50-52). Controller quirks: the ECS
+poll (root on the node, key auth). Write: `qm set`/`pct set` for
+`link_down`/`tag`/`trunks`. Nodes run lldpd bound to the active uplink NIC
+so the upstream aggregation switch sees them. Controller quirks: the ECS
 Core record carries `oob_port_config` that must be sent back empty on every
-REST update; the model's controller name is "ECS Core". Throwaway test
-guest VM 999 `stu-test` on proxmox-2 (no disk) is the Proxmox "port 2".
+REST update; the model's controller name is "ECS Core". A throwaway,
+diskless test guest (named in `local-information/site.md`) is the Proxmox
+"port 2".
 The node is the switch (device MAC = the bridge MAC, same IP and hostname;
 a derived-MAC/host-port variant was tried and dropped 2026-09-20); the
 bond is one uplink port (54); guest ports are `VM-<id>`; lldpd config is
 written by the driver.
 Uplink/Parent verified 2026-09-20 after merging main's `uplink: "eth0"` fix.
 Deployed with the Arista in the one container (config.yaml has four
-switches; the container mounts `/opt/switch-to-unifi/ssh/` with the
-bridge's own ed25519 key, installed on the nodes as `switch-to-unifi@podman`,
-and a known_hosts). The Mac instance is stopped and must stay stopped.
+switches; the container mounts a directory with the bridge's own ed25519
+key, installed on the nodes' root user, and a known_hosts — paths in
+`local-information/site.md`).
 
 ## 7. Done / open (2026-09-19 end of day)
 
@@ -151,36 +151,32 @@ multi-switch support, container packaging (image build untested), install
 guide, contributor process. Refused-with-a-log: isolation, 802.1X, egress
 rate limit, jumbo-off, LLDP-MED-off.
 
-**Deployed 2026-09-20 09:25 MDT (Arista + the three Proxmox nodes in one container)** on the Podman host (`/opt/switch-to-unifi`:
-docker-compose.yml with `build: ./src`, `config.yaml`, `env` (600), named
-volume `switch-to-unifi-state` holding `state/arista/device.json`; image
-`localhost/switch-to-unifi:latest`, uid 65532; `restart: always`). **The Mac
-instance is stopped and must stay stopped** (one bridge per adopted key). To
-update (from the repo root): `git archive --format=tar HEAD | ssh root@podman.example.net
-"rm -rf /opt/switch-to-unifi/src && mkdir -p /opt/switch-to-unifi/src && tar -xf - -C /opt/switch-to-unifi/src
-&& cd /opt/switch-to-unifi && podman-compose build && podman-compose up -d --force-recreate"`
-(git archive ships only committed, non-ignored files; `--force-recreate` is
-needed or the old container keeps running). Container logs are UTC. rsync is
-not installed on the Mac.
+**Deployed 2026-09-20 09:25 MDT (Arista + the three Proxmox nodes in one
+container)** on Clint's Podman host: podman-compose with `build: ./src`,
+`config.yaml`, `env` (mode 600), a named volume for `state/`; image built
+locally, uid 65532; `restart: always`. Host, path and the one-line update
+command are in `local-information/site.md`. Notes that bit: `git archive`
+ships only committed, non-ignored files; `--force-recreate` is needed or
+the old container keeps running; container logs are UTC; rsync is not
+installed on the Mac.
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
 
 **SSH gateway parked on branch `ssh-gateway` (2026-09-19).** It was built,
-deployed (macvlan, DHCP reservation 192.0.2.250 for MAC 02:53:54:55:00:01;
-the reservation and client record were deleted 2026-09-19) and verified
+deployed (macvlan with its own DHCP reservation, since deleted) and verified
 (`ssh admin@<device IP> "show version"` with a controller-pushed key), then
 removed from main because the UniFi UI terminal is WebRTC, not SSH (below).
 `docs/ssh-gateway-status.md` on that branch says where it got to. Main
 deploys with `deploy/compose.yaml` (bridge network) and reports the Arista's
-own in-band IP (192.0.2.4 on Vlan1) as the device IP. `fw_caps` UTERM is deliberately not
+own in-band IP (on Vlan1) as the device IP. `fw_caps` UTERM is deliberately not
 claimed, so no Debug entry appears.
 
 STP facts (2026-09-19): the Arista runs `spanning-tree mode rstp`, priority
 32768. It was the LAN's STP root (every switch at 32768, lowest MAC) until
-Clint set the aggregation switch to 4096 the same evening; EOS now reports root
-02:00:00:00:00:3d with Ethernet49/1 as the root port. Only Ethernet49/1
-(the aggregation switch) and 53/1 are STP-active. `root_switch` is reported
+Clint set the upstream aggregation switch to 4096 the same evening; EOS now
+reports that switch as root with the uplink cage's lane 1 as the root port.
+Only the two cabled 100G cages are STP-active (see `local-information/site.md`). `root_switch` is reported
 from `show spanning-tree root detail`.
 
 Anomaly/Experience (2026-09-19): per-port `anomalies` bits, `satisfaction`
@@ -198,7 +194,7 @@ does not implement the device side and does not document how a device
 answers that command, so Clint parked it (branch `ssh-gateway`).
 
 Uplink/Parent — SOLVED 2026-09-20 13:45 MDT. Three things were needed:
-(1) the management address in-band (Vlan1 192.0.2.4; Management1
+(1) the management address in-band (on Vlan1; Management1
 addressless, LLDP off), (2) reachability fields as real switches send them
 (connect_request_ip, netmask, gateway_mac, if_table), and (3) the one that
 mattered last: **`uplink` is a string** — the name of the management
@@ -214,7 +210,8 @@ identity fields, force-provision, the USW Leaf model (a re-adopt was never
 needed). The loop warns loudly if an OOB port carries an address or is
 cabled.
 
-First-party UI audit 2026-09-20 (Chrome, against the aggregation switch): device
+First-party UI audit 2026-09-20 (Chrome, against the real USW aggregation
+switch upstream of the Arista): device
 overview (PSUs, fans, memory, temperature, uptime, parent, connected devices
 per port), Insights (history, CPU/memory graphs), Settings (all sections
 except Etherlighting/LCM which are model features, and Generate Support
@@ -243,7 +240,7 @@ nothing; only a recorded cmd reply does. The port power cycle is
 port that is powering a device: `api.err.InvalidTargetPort` for our ports,
 for a free PoE port and for a non-PoE port on a real switch, and the UI's
 "Power Cycle" button exists only on such a port (checked on
-a PoE switch). The 7160 has no PoE, so it can never receive the
+a real PoE USW). The 7160 has no PoE, so it can never receive the
 command and there is no capture of the device-side name. Found and fixed: naming
 only ran at startup, so a later adoption left "USW Leaf" — `OnConnected`
 now provisions names; the mgmt_cfg log line masks the authkey.
