@@ -27,8 +27,9 @@ config for a dead VM does not land on the next VM created. **Keep that
 file with `device.json`**: without it a re-seed could number a VM
 differently and, with `control.ports` on, apply another port's VLANs to it.
 
-Port names are provisioned as `<vmid> <name>` (`119 FusionHub net1` for a
-multi-NIC guest) and the NIC name for uplinks; the device is named
+Port names are provisioned as `VM-<id>` / `CT-<id>` (`VM-119 net1` for a
+multi-NIC guest; the guest's own name is what the controller shows as the
+client behind the port) and the NIC name for uplinks; the device is named
 `pve-<node>` so it never collides with the node's own DNS name (§6). A guest on another node still gets its name here.
 
 ## 2. What is read (every inform, one SSH exec)

@@ -47,22 +47,41 @@ func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
 		out = append(out, id, "vm"+id, "ct"+id)
 	}
 	c.mu.Lock()
-	for _, n := range c.knownNames[p.Index] {
-		out = append(out, n)
+	out = append(out, c.knownNames[p.Index]...)
+	if key, ok := c.keyOf[p.Index]; ok {
+		if n, ok := c.nics[key]; ok {
+			out = append(out, legacyLabels(n, true)...)
+			out = append(out, legacyLabels(n, false)...)
+		}
 	}
 	c.mu.Unlock()
 	return out
 }
 
-// guestLabel is the port name for a guest NIC: "<vmid> <name>", plus the
-// NIC when the guest has more than one on the bridge.
+// guestLabel is the port name for a guest NIC: "VM-100" ("CT-200" for a
+// container), plus the NIC when the guest has more than one on the bridge
+// ("VM-119 net1"). The guest's name is not part of it: the controller shows
+// the guest itself as the client behind the port, and a VMID is what a
+// Proxmox user reaches for (Clint, 2026-09-20).
 func guestLabel(n guestNIC, multi bool) string {
-	label := fmt.Sprintf("%d %s", n.VMID, n.Name)
-	if n.Name == "" {
-		label = fmt.Sprintf("%d", n.VMID)
+	prefix := "VM"
+	if n.Kind == "lxc" {
+		prefix = "CT"
 	}
+	label := fmt.Sprintf("%s-%d", prefix, n.VMID)
 	if multi {
 		label += fmt.Sprintf(" net%d", n.Index)
 	}
 	return label
+}
+
+// legacyLabels are the forms an earlier build named a guest port with
+// ("100 proxy", "119 FusionHub net1"), so those still count as defaults.
+func legacyLabels(n guestNIC, multi bool) []string {
+	base := fmt.Sprintf("%d %s", n.VMID, n.Name)
+	out := []string{base, fmt.Sprintf("%d", n.VMID)}
+	if multi {
+		out = append(out, fmt.Sprintf("%s net%d", base, n.Index))
+	}
+	return out
 }
