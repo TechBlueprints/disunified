@@ -365,7 +365,6 @@ func runOne(ctx context.Context, o options) error {
 			return false
 		}
 	}
-	isDefaultPortName := isDefaultPortNameIn(defaults)
 	// provision names the device and ports and, with control on, seeds the
 	// controller's port config from the switch — one read-modify-write —
 	// on the adoption handshake, on a layout change (a new guest) and while
