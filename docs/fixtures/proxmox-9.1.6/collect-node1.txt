@@ -1,0 +1,528 @@
+@@@ hostname
+proxmox-1
+@@@ pveversion
+pve-manager/9.1.6/71482d1833ded40a (running kernel: 6.17.13-1-pve)
+@@@ dmi
+sys_vendor=Dell Inc.
+product_name=Precision 5820 Tower
+product_serial=SCRUBBED
+board_serial=SCRUBBED
+bios_version=2.38.0
+@@@ uptime
+5817303.70 114948287.63
+@@@ stat
+cpu  52809508 545 27926523 11494828764 895939 0 742174 0 46443883 0
+@@@ meminfo
+MemTotal:       131583916 kB
+MemFree:        124944516 kB
+MemAvailable:   124976080 kB
+Buffers:          554920 kB
+Cached:           571232 kB
+SwapCached:            0 kB
+Active:          4358696 kB
+Inactive:         872896 kB
+Active(anon):    4182932 kB
+Inactive(anon):        0 kB
+Active(file):     175764 kB
+Inactive(file):   872896 kB
+Unevictable:      180460 kB
+Mlocked:          175340 kB
+SwapTotal:       8388604 kB
+SwapFree:        8388604 kB
+Zswap:                 0 kB
+Zswapped:              0 kB
+Dirty:              5296 kB
+Writeback:             0 kB
+AnonPages:       4286556 kB
+Mapped:           145748 kB
+Shmem:             67152 kB
+KReclaimable:      74668 kB
+Slab:             348200 kB
+SReclaimable:      74668 kB
+SUnreclaim:       273532 kB
+KernelStack:        6896 kB
+PageTables:        19776 kB
+SecPageTables:      5584 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    74180560 kB
+Committed_AS:   39272840 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:      208708 kB
+VmallocChunk:          0 kB
+Percpu:            18720 kB
+HardwareCorrupted:     0 kB
+AnonHugePages:   3043328 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:     49152 kB
+FilePmdMapped:         0 kB
+CmaTotal:              0 kB
+CmaFree:               0 kB
+Unaccepted:            0 kB
+Balloon:               0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+DirectMap4k:      410196 kB
+DirectMap2M:     4509696 kB
+DirectMap1G:    128974848 kB
+@@@ links
+[{"ifindex":1,"ifname":"lo","flags":["LOOPBACK","UP","LOWER_UP"],"mtu":65536,"qdisc":"noqueue","operstate":"UNKNOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"loopback","address":"02:00:00:00:00:01","broadcast":"02:00:00:00:00:01","promiscuity":0,"allmulti":0,"min_mtu":0,"max_mtu":0,"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":524280,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":42680205,"packets":17518,"errors":0,"dropped":0,"over_errors":0,"multicast":0},"tx":{"bytes":42680205,"packets":17518,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}}},{"ifindex":2,"ifname":"eno1","flags":["BROADCAST","MULTICAST"],"mtu":1500,"qdisc":"noop","operstate":"DOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:02","broadcast":"02:00:00:00:00:03","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":9000,"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"parentbus":"pci","parentdev":"0000:00:1f.6","stats64":{"rx":{"bytes":0,"packets":0,"errors":0,"dropped":0,"over_errors":0,"multicast":0},"tx":{"bytes":0,"packets":0,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}},"altnames":["enp0s31f6","enxa4bb6dcb2e31"]},{"ifindex":3,"ifname":"ens1f0np0","flags":["BROADCAST","MULTICAST","SLAVE","UP","LOWER_UP"],"mtu":1500,"qdisc":"mq","master":"bond0","operstate":"UP","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:04","broadcast":"02:00:00:00:00:03","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":9978,"linkinfo":{"info_slave_kind":"bond","info_slave_data":{"state":"ACTIVE","mii_status":"UP","link_failure_count":5,"perm_hwaddr":"02:00:00:00:00:04","queue_id":0,"prio":0}},"inet6_addr_gen_mode":"eui64","num_tx_queues":160,"num_rx_queues":20,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":524280,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"phys_port_name":"p0","phys_switch_id":"2021dfffffb3f298","parentbus":"pci","parentdev":"0000:b3:00.0","stats64":{"rx":{"bytes":300766124956,"packets":1004830774,"errors":6,"dropped":0,"over_errors":0,"multicast":397777937},"tx":{"bytes":319428098271,"packets":1365121430,"errors":0,"dropped":8,"carrier_errors":0,"collisions":0}},"vfinfo_list":[],"altnames":["enp179s0f0np0","enx98f2b3df2120"]},{"ifindex":4,"ifname":"ens1f1np1","flags":["BROADCAST","MULTICAST","SLAVE","UP","LOWER_UP"],"mtu":1500,"qdisc":"mq","master":"bond0","operstate":"UP","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:04","broadcast":"02:00:00:00:00:03","permaddr":"02:00:00:00:00:05","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":9978,"linkinfo":{"info_slave_kind":"bond","info_slave_data":{"state":"BACKUP","mii_status":"UP","link_failure_count":3,"perm_hwaddr":"02:00:00:00:00:05","queue_id":0,"prio":0}},"inet6_addr_gen_mode":"eui64","num_tx_queues":160,"num_rx_queues":20,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":524280,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"phys_port_name":"p1","phys_switch_id":"2021dfffffb3f298","parentbus":"pci","parentdev":"0000:b3:00.1","stats64":{"rx":{"bytes":6792551467,"packets":101793227,"errors":2,"dropped":0,"over_errors":0,"multicast":101777020},"tx":{"bytes":5214445,"packets":12348,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}},"vfinfo_list":[],"altnames":["enp179s0f1np1","enx98f2b3df2121"]},{"ifindex":5,"ifname":"bond0","flags":["BROADCAST","MULTICAST","MASTER","UP","LOWER_UP"],"mtu":1500,"qdisc":"noqueue","master":"vmbr0","operstate":"UP","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:04","broadcast":"02:00:00:00:00:03","promiscuity":1,"allmulti":1,"min_mtu":68,"max_mtu":65535,"linkinfo":{"info_kind":"bond","info_data":{"mode":"active-backup","active_slave":"ens1f0np0","miimon":100,"updelay":0,"downdelay":0,"peer_notify_delay":0,"use_carrier":1,"arp_interval":0,"arp_missed_max":2,"arp_validate":null,"arp_all_targets":"any","primary":"ens1f0np0","primary_reselect":"always","fail_over_mac":"none","xmit_hash_policy":"layer2","resend_igmp":1,"num_peer_notif":1,"all_slaves_active":0,"min_links":0,"lp_interval":1,"packets_per_slave":1,"ad_lacp_active":"on","ad_lacp_rate":"slow","coupled_control":true,"ad_select":"stable","tlb_dynamic_lb":1},"info_slave_kind":"bridge","info_slave_data":{"state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8001","no":"0x1","designated_port":32769,"designated_cost":0,"bridge_id":"8000.02:00:00:00:00:04","root_id":"8000.02:00:00:00:00:04","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":16,"num_rx_queues":16,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":524280,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":307558676423,"packets":1106624001,"errors":8,"dropped":193924,"over_errors":0,"multicast":499554957},"tx":{"bytes":319433312716,"packets":1365133778,"errors":0,"dropped":8,"carrier_errors":0,"collisions":0}}},{"ifindex":6,"ifname":"vmbr0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"qdisc":"noqueue","operstate":"UP","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:04","broadcast":"02:00:00:00:00:03","promiscuity":0,"allmulti":0,"min_mtu":68,"max_mtu":65535,"linkinfo":{"info_kind":"bridge","info_data":{"forward_delay":0,"hello_time":200,"max_age":2000,"ageing_time":30000,"stp_state":0,"priority":32768,"vlan_filtering":1,"vlan_protocol":"802.1Q","bridge_id":"8000.02:00:00:00:00:04","root_id":"8000.02:00:00:00:00:04","root_port":0,"root_path_cost":0,"topology_change":0,"topology_change_detected":0,"hello_timer":0.00,"tcn_timer":0.00,"topology_change_timer":0.00,"gc_timer":2.38,"fdb_n_learned":141,"fdb_max_learned":0,"vlan_default_pvid":1,"vlan_stats_enabled":0,"vlan_stats_per_port":0,"group_fwd_mask":"0","group_addr":"02:00:00:00:00:06","mcast_snooping":1,"no_linklocal_learn":0,"mcast_vlan_snooping":0,"mst_enabled":0,"mcast_router":1,"mcast_query_use_ifaddr":0,"mcast_querier":0,"mcast_querier_state_ipv4":{"mcast_querier_ipv4_addr":"192.0.2.1","mcast_querier_ipv4_port":5,"mcast_querier_ipv4_other_timer":"23.4us"},"mcast_querier_state_ipv6":{},"mcast_hash_elasticity":16,"mcast_hash_max":4096,"mcast_last_member_cnt":2,"mcast_startup_query_cnt":2,"mcast_last_member_intvl":100,"mcast_membership_intvl":26000,"mcast_querier_intvl":25500,"mcast_query_intvl":12500,"mcast_query_response_intvl":1000,"mcast_startup_query_intvl":3125,"mcast_stats_enabled":0,"mcast_igmp_version":2,"mcast_mld_version":1,"nf_call_iptables":0,"nf_call_ip6tables":0,"nf_call_arptables":0}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":231497937778,"packets":741135470,"errors":0,"dropped":226867,"over_errors":0,"multicast":242243349},"tx":{"bytes":203580550905,"packets":431403864,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}}},{"ifindex":7,"ifname":"tap101i0","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","master":"vmbr0","operstate":"UNKNOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:07","broadcast":"02:00:00:00:00:03","promiscuity":2,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":false},"info_slave_kind":"bridge","info_slave_data":{"state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8002","no":"0x2","designated_port":32770,"designated_cost":0,"bridge_id":"8000.02:00:00:00:00:04","root_id":"8000.02:00:00:00:00:04","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":75573103233,"packets":729444733,"errors":0,"dropped":0,"over_errors":0,"multicast":0},"tx":{"bytes":72933806128,"packets":369490229,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}}},{"ifindex":8,"ifname":"tap119i0","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","master":"vmbr0","operstate":"UNKNOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:08","broadcast":"02:00:00:00:00:03","promiscuity":2,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":false},"info_slave_kind":"bridge","info_slave_data":{"state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8003","no":"0x3","designated_port":32771,"designated_cost":0,"bridge_id":"8000.02:00:00:00:00:04","root_id":"8000.02:00:00:00:00:04","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":16169692186,"packets":89438234,"errors":0,"dropped":0,"over_errors":0,"multicast":0},"tx":{"bytes":27566442526,"packets":96907167,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}}},{"ifindex":9,"ifname":"tap119i1","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","master":"vmbr0","operstate":"UNKNOWN","linkmode":"DEFAULT","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:09","broadcast":"02:00:00:00:00:03","promiscuity":2,"allmulti":1,"min_mtu":68,"max_mtu":65521,"linkinfo":{"info_kind":"tun","info_data":{"type":"tap","pi":false,"vnet_hdr":true,"multi_queue":false,"persist":false},"info_slave_kind":"bridge","info_slave_data":{"state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"id":"0x8004","no":"0x4","designated_port":32772,"designated_cost":0,"bridge_id":"8000.02:00:00:00:00:04","root_id":"8000.02:00:00:00:00:04","hold_timer":0.00,"message_age_timer":0.00,"forward_delay_timer":0.00,"topology_change_ack":0,"config_pending":0,"proxy_arp":false,"proxy_arp_wifi":false,"multicast_router":1,"mcast_flood":true,"bcast_flood":true,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"group_fwd_mask":"0","group_fwd_mask_str":"0x0","vlan_tunnel":false,"isolated":false,"locked":false,"mab":false}},"inet6_addr_gen_mode":"eui64","num_tx_queues":1,"num_rx_queues":1,"gso_max_size":65536,"gso_max_segs":65535,"tso_max_size":65536,"tso_max_segs":65535,"gro_max_size":65536,"gso_ipv4_max_size":65536,"gro_ipv4_max_size":65536,"stats64":{"rx":{"bytes":10519012595,"packets":22392744,"errors":0,"dropped":0,"over_errors":0,"multicast":0},"tx":{"bytes":2367958478,"packets":20789347,"errors":0,"dropped":0,"carrier_errors":0,"collisions":0}}}]
+@@@ brlink
+[{"ifindex":5,"ifname":"bond0","flags":["BROADCAST","MULTICAST","MASTER","UP","LOWER_UP"],"mtu":1500,"master":"vmbr0","state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"mcast_flood":true,"bcast_flood":true,"mcast_router":1,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"vlan_tunnel":false,"isolated":false,"locked":false,"mab":false,"mcast_n_groups":33,"mcast_max_groups":0},{"ifindex":7,"ifname":"tap101i0","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"master":"vmbr0","state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"mcast_flood":true,"bcast_flood":true,"mcast_router":1,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"vlan_tunnel":false,"isolated":false,"locked":false,"mab":false,"mcast_n_groups":2,"mcast_max_groups":0},{"ifindex":8,"ifname":"tap119i0","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"master":"vmbr0","state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"mcast_flood":true,"bcast_flood":true,"mcast_router":1,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"vlan_tunnel":false,"isolated":false,"locked":false,"mab":false,"mcast_n_groups":0,"mcast_max_groups":0},{"ifindex":9,"ifname":"tap119i1","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"master":"vmbr0","state":"forwarding","priority":32,"cost":2,"hairpin":false,"guard":false,"root_block":false,"fastleave":false,"learning":true,"flood":true,"mcast_flood":true,"bcast_flood":true,"mcast_router":1,"mcast_to_unicast":false,"neigh_suppress":false,"neigh_vlan_suppress":false,"vlan_tunnel":false,"isolated":false,"locked":false,"mab":false,"mcast_n_groups":0,"mcast_max_groups":0}]
+@@@ vlan
+[{"ifname":"bond0","vlans":[{"vlan":1,"flags":["PVID","Egress Untagged"]},{"vlan":2,"vlanEnd":4094,"flags":[]}]},{"ifname":"vmbr0","vlans":[{"vlan":1,"flags":["PVID","Egress Untagged"]}]},{"ifname":"tap101i0","vlans":[{"vlan":1,"flags":["PVID","Egress Untagged"]},{"vlan":2,"vlanEnd":4094,"flags":[]}]},{"ifname":"tap119i0","vlans":[{"vlan":8,"flags":["PVID","Egress Untagged"]}]},{"ifname":"tap119i1","vlans":[{"vlan":9,"flags":["PVID","Egress Untagged"]}]}]
+@@@ fdb
+[{"mac":"02:00:00:00:00:0a","ifname":"bond0","vlan":1,"used":72,"updated":7,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:0b","ifname":"bond0","vlan":1,"used":80,"updated":80,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:0c","ifname":"bond0","vlan":1,"used":93,"updated":93,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:0d","ifname":"bond0","vlan":1,"used":100,"updated":100,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:0e","ifname":"bond0","vlan":1,"used":118,"updated":118,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:0f","ifname":"bond0","vlan":1,"used":140,"updated":139,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:10","ifname":"bond0","vlan":1,"used":148,"updated":21,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:11","ifname":"bond0","vlan":1,"used":167,"updated":167,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:12","ifname":"bond0","vlan":1000,"used":178,"updated":174,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:13","ifname":"bond0","vlan":1,"used":182,"updated":16,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:14","ifname":"bond0","vlan":1,"used":194,"updated":194,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:15","ifname":"bond0","vlan":1,"used":215,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:16","ifname":"bond0","vlan":1,"used":215,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:17","ifname":"bond0","vlan":1,"used":215,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:18","ifname":"bond0","vlan":1,"used":215,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:19","ifname":"bond0","vlan":1,"used":215,"updated":214,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1a","ifname":"bond0","vlan":1,"used":215,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1b","ifname":"bond0","vlan":1,"used":215,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1c","ifname":"bond0","vlan":1,"used":215,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1d","ifname":"bond0","vlan":1,"used":215,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1e","ifname":"bond0","vlan":1,"used":215,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:1f","ifname":"bond0","vlan":2,"used":243,"updated":243,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:20","ifname":"bond0","vlan":1,"used":266,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:21","ifname":"bond0","vlan":1,"used":278,"updated":278,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:22","ifname":"bond0","vlan":1,"used":278,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:23","ifname":"bond0","vlan":1,"used":282,"updated":215,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:24","ifname":"bond0","vlan":1,"used":297,"updated":297,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:25","ifname":"bond0","vlan":1,"used":357,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:26","ifname":"bond0","vlan":1,"used":357,"updated":65,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:27","ifname":"bond0","vlan":1,"used":396,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:28","ifname":"bond0","vlan":1,"used":473,"updated":208,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:29","ifname":"bond0","vlan":1,"used":700,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2a","ifname":"bond0","vlan":2,"used":3960,"updated":17,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2b","ifname":"bond0","vlan":1,"used":5191,"updated":32,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2c","ifname":"bond0","vlan":2,"used":10115,"updated":26,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2d","ifname":"bond0","vlan":1,"used":18428,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2e","ifname":"bond0","vlan":2,"used":23075,"updated":16,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:2f","ifname":"bond0","vlan":1,"used":47888,"updated":178,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:30","ifname":"bond0","vlan":1,"used":47986,"updated":12,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:31","ifname":"bond0","vlan":1,"used":48179,"updated":182,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:32","ifname":"bond0","vlan":1,"used":48264,"updated":105,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:33","ifname":"bond0","vlan":1,"used":48271,"updated":173,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:34","ifname":"bond0","vlan":1,"used":48500,"updated":43,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:35","ifname":"bond0","vlan":3000,"used":48265,"updated":56,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:36","ifname":"bond0","vlan":1,"used":48551,"updated":100,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:37","ifname":"bond0","vlan":69,"used":48560,"updated":33,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:37","ifname":"bond0","vlan":2,"used":48560,"updated":33,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:38","ifname":"bond0","vlan":1,"used":48591,"updated":51,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:39","ifname":"bond0","vlan":1,"used":48263,"updated":6,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3a","ifname":"bond0","vlan":1,"used":48263,"updated":20,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3b","ifname":"bond0","vlan":1,"used":48622,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3c","ifname":"bond0","vlan":1,"used":48623,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3d","ifname":"bond0","vlan":1,"used":48623,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3e","ifname":"bond0","vlan":1,"used":48264,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:3f","ifname":"bond0","vlan":1,"used":48623,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:40","ifname":"bond0","vlan":1,"used":48259,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:41","ifname":"bond0","vlan":1,"used":48253,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:42","ifname":"bond0","vlan":1,"used":48625,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:43","ifname":"bond0","vlan":1,"used":48264,"updated":5,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:44","ifname":"bond0","vlan":1,"used":48267,"updated":96,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:45","ifname":"bond0","vlan":1,"used":48270,"updated":2,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:46","ifname":"bond0","vlan":1,"used":48264,"updated":4,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:47","ifname":"bond0","vlan":1,"used":48255,"updated":3,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:48","ifname":"bond0","vlan":1,"used":48260,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:49","ifname":"bond0","vlan":1,"used":48255,"updated":2,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4a","ifname":"bond0","vlan":1,"used":48264,"updated":3,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4b","ifname":"bond0","vlan":1,"used":48627,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4c","ifname":"bond0","vlan":1,"used":48274,"updated":11,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4d","ifname":"bond0","vlan":1,"used":48272,"updated":2,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4e","ifname":"bond0","vlan":1,"used":48628,"updated":34,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:4f","ifname":"bond0","vlan":1,"used":48628,"updated":8,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:50","ifname":"bond0","vlan":1,"used":48262,"updated":43,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:51","ifname":"bond0","vlan":1,"used":48264,"updated":3,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:52","ifname":"bond0","vlan":1,"used":48264,"updated":97,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:53","ifname":"bond0","vlan":1,"used":48270,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:54","ifname":"bond0","vlan":1,"used":48629,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:55","ifname":"bond0","vlan":1,"used":48262,"updated":3,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:56","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:57","ifname":"bond0","vlan":1,"used":48265,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:58","ifname":"bond0","vlan":1,"used":48629,"updated":4,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:59","ifname":"bond0","vlan":1,"used":48265,"updated":174,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5a","ifname":"bond0","vlan":1,"used":48629,"updated":56,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5b","ifname":"bond0","vlan":1,"used":48264,"updated":19,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5c","ifname":"bond0","vlan":1,"used":48264,"updated":14,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5d","ifname":"bond0","vlan":1,"used":48267,"updated":100,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5e","ifname":"bond0","vlan":1,"used":48273,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:5f","ifname":"bond0","vlan":1,"used":48267,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:60","ifname":"bond0","vlan":1,"used":48261,"updated":91,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:61","ifname":"bond0","vlan":1,"used":48630,"updated":99,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:62","ifname":"bond0","vlan":1,"used":48630,"updated":47,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:63","ifname":"bond0","vlan":1,"used":48630,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:64","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:65","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:66","ifname":"bond0","vlan":1,"used":48267,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:67","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:68","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:69","ifname":"bond0","vlan":1,"used":48265,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6a","ifname":"bond0","vlan":1,"used":48630,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6b","ifname":"bond0","vlan":1,"used":48272,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6c","ifname":"bond0","vlan":1,"used":48273,"updated":27,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6d","ifname":"bond0","vlan":1,"used":48265,"updated":20,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6e","ifname":"bond0","vlan":1,"used":48265,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:6f","ifname":"bond0","vlan":1,"used":48263,"updated":101,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:70","ifname":"bond0","vlan":1,"used":48631,"updated":8,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:71","ifname":"bond0","vlan":1,"used":48273,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:37","ifname":"bond0","vlan":1,"used":48262,"updated":161,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:72","ifname":"bond0","vlan":1,"used":48631,"updated":59,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:73","ifname":"bond0","vlan":2,"used":48267,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:74","ifname":"bond0","vlan":1,"used":48631,"updated":7,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:75","ifname":"bond0","vlan":1,"used":48631,"updated":42,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:76","ifname":"bond0","vlan":1,"used":48268,"updated":36,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:77","ifname":"bond0","vlan":2,"used":48266,"updated":76,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:78","ifname":"bond0","vlan":1,"used":48272,"updated":100,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:79","ifname":"bond0","vlan":2,"used":48267,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7a","ifname":"bond0","vlan":1,"used":48267,"updated":3,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7b","ifname":"bond0","vlan":1,"used":48265,"updated":14,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7c","ifname":"bond0","vlan":1,"used":48634,"updated":38,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7d","ifname":"bond0","vlan":1,"used":48265,"updated":21,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7e","ifname":"bond0","vlan":1,"used":48262,"updated":138,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:7f","ifname":"bond0","vlan":1,"used":49309,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:80","ifname":"bond0","vlan":1,"used":48695,"updated":63,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:81","ifname":"bond0","vlan":1,"used":48266,"updated":16,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:82","ifname":"bond0","vlan":1,"used":48695,"updated":4,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:83","ifname":"bond0","vlan":1,"used":48630,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:84","ifname":"bond0","vlan":1,"used":8,"updated":8,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:85","ifname":"bond0","vlan":1,"used":48695,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:86","ifname":"bond0","vlan":1,"used":0,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:87","ifname":"bond0","vlan":1,"used":5817180,"updated":73,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:88","ifname":"bond0","vlan":69,"used":5817183,"updated":2,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:88","ifname":"bond0","vlan":8,"used":2,"updated":9,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:88","ifname":"bond0","vlan":9,"used":16724,"updated":9,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:88","ifname":"bond0","vlan":2,"used":48966,"updated":2,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:89","ifname":"bond0","vlan":1,"used":48263,"updated":113,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:88","ifname":"bond0","vlan":1,"used":0,"updated":1,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8a","ifname":"bond0","vlan":1,"used":48267,"updated":33,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8b","ifname":"bond0","vlan":1,"used":591,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8c","ifname":"bond0","vlan":1,"used":48626,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8d","ifname":"bond0","vlan":1,"used":48267,"updated":20,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8e","ifname":"bond0","vlan":1,"used":48651,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:8f","ifname":"tap101i0","vlan":1,"used":0,"updated":0,"flags":[],"master":"vmbr0","state":""},{"mac":"02:00:00:00:00:90","ifname":"tap119i0","vlan":8,"used":25,"updated":2,"flags":[],"master":"vmbr0","state":""}]
+@@@ bridge
+stp_state=0
+multicast_snooping=1
+priority=32768
+root_id=8000.020000000004
+bridge_id=8000.020000000004
+vlan_filtering=1
+default_pvid=1
+address=02:00:00:00:00:04
+mtu=1500
+vids= 2-4094
+@@@ phys
+eno1 master= speed= duplex= carrier= permaddr=02:00:00:00:00:02
+ens1f0np0 master=bond0 speed=100000 duplex=full carrier=1 permaddr=02:00:00:00:00:04
+ens1f1np1 master=bond0 speed=10000 duplex=full carrier=1 permaddr=02:00:00:00:00:05
+@@@ bonding
+## bond0
+Ethernet Channel Bonding Driver: v6.17.13-1-pve
+
+Bonding Mode: fault-tolerance (active-backup)
+Primary Slave: ens1f0np0 (primary_reselect always)
+Currently Active Slave: ens1f0np0
+MII Status: up
+MII Polling Interval (ms): 100
+Up Delay (ms): 0
+Down Delay (ms): 0
+Peer Notification Delay (ms): 0
+
+Slave Interface: ens1f0np0
+MII Status: up
+Speed: 100000 Mbps
+Duplex: full
+Link Failure Count: 5
+Permanent HW addr: 02:00:00:00:00:04
+Slave queue ID: 0
+
+Slave Interface: ens1f1np1
+MII Status: up
+Speed: 10000 Mbps
+Duplex: full
+Link Failure Count: 3
+Permanent HW addr: 02:00:00:00:00:05
+Slave queue ID: 0
+@@@ ethtool
+## eno1
+Settings for eno1:
+	Supported ports: [ TP ]
+	Supported link modes:   10baseT/Half 10baseT/Full
+	                        100baseT/Half 100baseT/Full
+	                        1000baseT/Full
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  10baseT/Half 10baseT/Full
+	                        100baseT/Half 100baseT/Full
+	                        1000baseT/Full
+	Advertised pause frame use: Symmetric Receive-only
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Auto-negotiation: on
+	Port: Twisted Pair
+	PHYAD: 2
+	Transceiver: internal
+	MDI-X: Unknown
+	Supports Wake-on: pumbg
+	Wake-on: g
+        Current message level: 0x00000007 (7)
+                               drv probe link
+	Link detected: no
+## ens1f0np0
+Settings for ens1f0np0:
+	Supported ports: [ Backplane ]
+	Supported link modes:   1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        56000baseKR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	                        50000baseCR2/Full
+	                        50000baseKR2/Full
+	                        100000baseKR4/Full
+	                        100000baseSR4/Full
+	                        100000baseCR4/Full
+	                        100000baseLR4_ER4/Full
+	Supported pause frame use: Symmetric
+	Supports auto-negotiation: Yes
+	Supported FEC modes: None	 RS	 BASER
+	Advertised link modes:  1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        56000baseKR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	                        50000baseCR2/Full
+	                        50000baseKR2/Full
+	                        100000baseKR4/Full
+	                        100000baseSR4/Full
+	                        100000baseCR4/Full
+	                        100000baseLR4_ER4/Full
+	Advertised pause frame use: Symmetric
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: RS
+	Speed: 100000Mb/s
+	Lanes: 4
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Direct Attach Copper
+	PHYAD: 0
+	Transceiver: internal
+	Supports Wake-on: d
+	Wake-on: d
+	Link detected: yes
+## ens1f1np1
+Settings for ens1f1np1:
+	Supported ports: [ Backplane ]
+	Supported link modes:   1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        56000baseKR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	                        50000baseCR2/Full
+	                        50000baseKR2/Full
+	                        100000baseKR4/Full
+	                        100000baseSR4/Full
+	                        100000baseCR4/Full
+	                        100000baseLR4_ER4/Full
+	Supported pause frame use: Symmetric
+	Supports auto-negotiation: Yes
+	Supported FEC modes: None	 RS	 BASER
+	Advertised link modes:  1000baseKX/Full
+	                        10000baseKR/Full
+	                        40000baseKR4/Full
+	                        40000baseCR4/Full
+	                        40000baseSR4/Full
+	                        40000baseLR4/Full
+	                        56000baseKR4/Full
+	                        25000baseCR/Full
+	                        25000baseKR/Full
+	                        25000baseSR/Full
+	                        50000baseCR2/Full
+	                        50000baseKR2/Full
+	                        100000baseKR4/Full
+	                        100000baseSR4/Full
+	                        100000baseCR4/Full
+	                        100000baseLR4_ER4/Full
+	Advertised pause frame use: Symmetric
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: None
+	Speed: 10000Mb/s
+	Lanes: 1
+	Duplex: Full
+	Auto-negotiation: on
+	Port: Direct Attach Copper
+	PHYAD: 0
+	Transceiver: internal
+	Supports Wake-on: d
+	Wake-on: d
+	Link detected: yes
+@@@ ethtoolm
+## eno1
+## ens1f0np0
+	Identifier                                : 0x11 (QSFP28)
+	Extended identifier                       : 0x00
+	Extended identifier description           : 1.5W max. Power consumption
+	Extended identifier description           : No CDR in TX, No CDR in RX
+	Extended identifier description           :  High Power Class (> 3.5 W) not enabled
+	Power set                                 : Off
+	Power override                            : Off
+	Connector                                 : 0x23 (No separable connector)
+	Transceiver codes                         : 0x80 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+	Transceiver type                          : 100G Ethernet: 100G Base-CR4 or 25G Base-CR CA-L
+	Encoding                                  : 0x00 (unspecified)
+	BR Nominal                                : 25500Mbps
+	Rate identifier                           : 0x00
+	Length (SMF)                              : 0km
+	Length (OM3)                              : 0m
+	Length (OM2)                              : 0m
+	Length (OM1)                              : 0m
+	Length (Copper or Active cable)           : 2m
+	Transmitter technology                    : 0xa0 (Copper cable, unequalized)
+	Attenuation at 2.5GHz                     : 6db
+	Attenuation at 5.0GHz                     : 10db
+	Attenuation at 7.0GHz                     : 6db
+	Attenuation at 12.9GHz                    : 10db
+	Vendor name                               : Wiitek
+	Vendor OUI                                : 00:02:c9
+	Vendor PN                                 : QSFP-100G-CU2M
+	Vendor rev                                : A
+	Vendor SN                                 : SCRUBBED
+	Date code                                 : 250421
+	Revision Compliance                       : SFF-8636 Rev 1.5
+	Module temperature                        : 0.00 degrees C / 32.00 degrees F
+	Module voltage                            : 0.0000 V
+## ens1f1np1
+	Identifier                                : 0x03 (SFP)
+	Extended identifier                       : 0x04 (GBIC/SFP defined by 2-wire interface ID)
+	Connector                                 : 0x21 (Copper pigtail)
+	Transceiver codes                         : 0x00 0x00 0x00 0x00 0x00 0x04 0x00 0x00 0x0d
+	Transceiver type                          : Extended: 25G Base-CR CA-N
+	Encoding                                  : 0x00 (unspecified)
+	BR Nominal                                : 26000MBd
+	Rate identifier                           : 0x00 (unspecified)
+	Length (SMF)                              : 0km
+	Length (OM2)                              : 0m
+	Length (OM1)                              : 0m
+	Length (Copper or Active cable)           : 2m
+	Length (OM3)                              : 0m
+	Passive Cu cmplnce.                       : 0x00 (unspecified [SFF-8472 rev10.4 only])
+	Vendor name                               : OEM
+	Vendor OUI                                : a8:b0:ae
+	Vendor PN                                 : SFP-H25G-CU2M
+	Vendor rev                                : 00
+	Option values                             : 0x00 0x00
+	BR margin max                             : 0%
+	BR margin min                             : 0%
+	Vendor SN                                 : SCRUBBED
+	Date code                                 : 24050800
+@@@ hwmon
+## nvme
+temp1_input=31850
+temp2_input=32850
+temp3_input=37850
+temp1_label=Composite
+temp2_label=Sensor 1
+temp3_label=Sensor 2
+temp1_max=82850
+temp2_max=65261850
+temp3_max=65261850
+temp1_crit=83850
+## coretemp
+temp11_input=47000
+temp12_input=45000
+temp13_input=46000
+temp14_input=47000
+temp1_input=48000
+temp2_input=47000
+temp3_input=44000
+temp4_input=46000
+temp6_input=48000
+temp7_input=47000
+temp8_input=48000
+temp11_label=Core 9
+temp12_label=Core 10
+temp13_label=Core 11
+temp14_label=Core 12
+temp1_label=Package id 0
+temp2_label=Core 0
+temp3_label=Core 1
+temp4_label=Core 2
+temp6_label=Core 4
+temp7_label=Core 5
+temp8_label=Core 6
+temp11_max=88000
+temp12_max=88000
+temp13_max=88000
+temp14_max=88000
+temp1_max=88000
+temp2_max=88000
+temp3_max=88000
+temp4_max=88000
+temp6_max=88000
+temp7_max=88000
+temp8_max=88000
+temp11_crit=98000
+temp12_crit=98000
+temp13_crit=98000
+temp14_crit=98000
+temp1_crit=98000
+temp2_crit=98000
+temp3_crit=98000
+temp4_crit=98000
+temp6_crit=98000
+temp7_crit=98000
+temp8_crit=98000
+## dell_smm
+temp1_input=62000
+temp2_input=40000
+temp5_input=25000
+temp7_input=29000
+temp8_input=42000
+fan1_input=1008
+fan2_input=713
+fan3_input=775
+fan4_input=1252
+fan1_max=4050
+fan2_max=3000
+fan3_max=4100
+fan4_max=4100
+fan1_label=
+fan2_label=
+fan3_label=
+fan4_label=
+pwm1=255
+pwm2=255
+pwm3=255
+pwm4=255
+@@@ carrier
+bond0=2
+eno1=1
+ens1f0np0=13
+ens1f1np1=7
+lo=0
+tap101i0=0
+tap119i0=0
+tap119i1=0
+vmbr0=2
+@@@ vmlist
+{
+"version": 27,
+"ids": {
+"110": { "node": "proxmox-1", "type": "qemu", "version": 34 },
+"113": { "node": "proxmox-2", "type": "qemu", "version": 25 },
+"999": { "node": "proxmox-2", "type": "qemu", "version": 69 },
+"102": { "node": "proxmox-2", "type": "qemu", "version": 28 },
+"119": { "node": "proxmox-1", "type": "qemu", "version": 33 },
+"105": { "node": "proxmox-3", "type": "qemu", "version": 44 },
+"122": { "node": "proxmox-1", "type": "qemu", "version": 37 },
+"108": { "node": "proxmox-1", "type": "qemu", "version": 36 },
+"125": { "node": "proxmox-3", "type": "qemu", "version": 40 },
+"111": { "node": "proxmox-1", "type": "qemu", "version": 38 },
+"114": { "node": "proxmox-2", "type": "qemu", "version": 30 },
+"100": { "node": "proxmox-2", "type": "qemu", "version": 32 },
+"117": { "node": "proxmox-3", "type": "qemu", "version": 43 },
+"103": { "node": "proxmox-2", "type": "qemu", "version": 31 },
+"120": { "node": "proxmox-2", "type": "qemu", "version": 26 },
+"106": { "node": "proxmox-3", "type": "qemu", "version": 39 },
+"123": { "node": "proxmox-3", "type": "qemu", "version": 42 },
+"109": { "node": "proxmox-2", "type": "qemu", "version": 23 },
+"126": { "node": "proxmox-3", "type": "qemu", "version": 51 },
+"112": { "node": "proxmox-2", "type": "qemu", "version": 29 },
+"115": { "node": "proxmox-3", "type": "qemu", "version": 41 },
+"101": { "node": "proxmox-1", "type": "qemu", "version": 35 },
+"104": { "node": "proxmox-2", "type": "qemu", "version": 24 },
+"107": { "node": "proxmox-2", "type": "qemu", "version": 27 }}
+
+}
+@@@ qemu
+## /etc/pve/nodes/proxmox-1/qemu-server/101.conf
+hotplug: 1
+name: vm-1
+net0: virtio=02:00:00:00:00:8f,bridge=vmbr0
+## /etc/pve/nodes/proxmox-1/qemu-server/108.conf
+hotplug: 1
+name: vm-2
+net0: rtl8139=02:00:00:00:00:91,bridge=vmbr0
+## /etc/pve/nodes/proxmox-1/qemu-server/110.conf
+hotplug: 1
+name: vm-3
+net0: virtio=02:00:00:00:00:92,bridge=vmbr0
+## /etc/pve/nodes/proxmox-1/qemu-server/111.conf
+hotplug: 1
+name: vm-4
+net0: virtio=02:00:00:00:00:93,bridge=vmbr0
+## /etc/pve/nodes/proxmox-1/qemu-server/119.conf
+name: vm-5
+net0: virtio=02:00:00:00:00:90,bridge=vmbr0,tag=8
+net1: virtio=02:00:00:00:00:94,bridge=vmbr0,tag=9
+## /etc/pve/nodes/proxmox-1/qemu-server/122.conf
+hotplug: 1
+name: vm-6
+net0: rtl8139=02:00:00:00:00:95,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/100.conf
+hotplug: 1
+name: vm-7
+net0: virtio=02:00:00:00:00:84,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/102.conf
+hotplug: 1
+name: vm-8
+net0: virtio=02:00:00:00:00:82,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/103.conf
+hotplug: 1
+name: vm-9
+net0: virtio=02:00:00:00:00:1e,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/104.conf
+hotplug: 1
+name: vm-10
+net0: virtio=02:00:00:00:00:1b,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/107.conf
+hotplug: 1
+name: vm-11
+net0: virtio=02:00:00:00:00:1a,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/109.conf
+hotplug: 1
+name: vm-12
+net0: virtio=02:00:00:00:00:80,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/112.conf
+hotplug: 1
+name: vm-13
+net0: virtio=02:00:00:00:00:96,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/113.conf
+hotplug: 1
+name: vm-14
+net0: virtio=02:00:00:00:00:97,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/114.conf
+hotplug: 1
+name: vm-15
+net0: virtio=02:00:00:00:00:98,bridge=vmbr0
+## /etc/pve/nodes/proxmox-2/qemu-server/120.conf
+name: vm-16
+net0: virtio=02:00:00:00:00:83,bridge=vmbr0,firewall=1
+## /etc/pve/nodes/proxmox-2/qemu-server/999.conf
+name: vm-17
+net0: virtio=02:00:00:00:00:0A,bridge=vmbr0
+## /etc/pve/nodes/proxmox-3/qemu-server/105.conf
+hotplug: 1
+name: vm-18
+net0: virtio=02:00:00:00:00:99,bridge=vmbr0
+## /etc/pve/nodes/proxmox-3/qemu-server/106.conf
+name: vm-19
+net0: virtio=02:00:00:00:00:9A,bridge=vmbr0,firewall=1
+## /etc/pve/nodes/proxmox-3/qemu-server/115.conf
+name: vm-20
+net0: virtio=02:00:00:00:00:19,bridge=vmbr0
+## /etc/pve/nodes/proxmox-3/qemu-server/117.conf
+hotplug: 1
+name: vm-21
+net0: virtio=02:00:00:00:00:86,bridge=vmbr0
+## /etc/pve/nodes/proxmox-3/qemu-server/123.conf
+name: vm-22
+net0: virtio=02:00:00:00:00:1C,bridge=vmbr0,firewall=1
+## /etc/pve/nodes/proxmox-3/qemu-server/125.conf
+name: vm-23
+net0: virtio=02:00:00:00:00:9B,bridge=vmbr0,firewall=1
+## /etc/pve/nodes/proxmox-3/qemu-server/126.conf
+name: vm-24
+net0: virtio=02:00:00:00:00:1D,bridge=vmbr0,firewall=1
+@@@ lxc
+@@@ lldp
+@@@ chrony
+pool 2.debian.pool.ntp.org iburst
+@@@ ntpunifi
+@@@ end

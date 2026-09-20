@@ -79,22 +79,68 @@ const SysErrorCaps = sysErrOverheating | sysErrFanIssue | sysErrPSUIssue
 // session the bridge does not build (branch ssh-gateway has the notes).
 const FWCaps = fwCapSSH | fwCapSTAT | fwCapLAG | fwCapSNMP | fwCapSNMPv3 | fwCapLLDP
 
-// switchCaps renders switch_caps. Claimed: STP (priority, path cost, BPDU
-// guard), jumbo, FEC, LACP, storm control (percent), IGMP snooping, LLDP-MED.
+// DefaultCapabilities is what a driver without its own Capabilities claims:
+// the Arista EOS set. STP (priority, path cost, BPDU guard), jumbo, FEC,
+// LACP, storm control (percent), IGMP snooping, LLDP-MED, DHCP snooping.
 // Not claimed: port isolation (EOS 4.26 has no protected-port equivalent),
-// L3, dot1x, MC-LAG, PTP. max_mirror_sessions / max_aggregate_sessions
-// mirror what real switches report (the ECS reports them) so the UI offers
-// mirroring and aggregation.
-func switchCaps() map[string]any {
+// L3, dot1x, MC-LAG, PTP. Mirror/aggregate session counts mirror what real
+// switches report (the ECS reports them) so the UI offers both.
+var DefaultCapabilities = switchmodel.Capabilities{
+	STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
+	StormControl: true, IGMPSnooping: true, LLDPMED: true, DHCPSnooping: true, SNMP: true,
+	MirrorSessions: 1, AggregateSessions: 8,
+}
+
+// switchCaps renders switch_caps from a driver's capabilities.
+func switchCaps(c switchmodel.Capabilities) map[string]any {
+	feat := 0
+	set := func(on bool, bit int) {
+		if on {
+			feat |= bit
+		}
+	}
+	set(c.STP, swCapSTP)
+	set(c.Jumbo, swCapJumbo)
+	set(c.FEC, swCapFEC)
+	set(c.LACP, swCapLACP)
+	set(c.StormControl, swCapStormControl)
+	set(c.IGMPSnooping, swCapIGMPSnooping)
+	set(c.LLDPMED, swCapLLDPMED)
+	set(c.DHCPSnooping, swCapDHCPSnooping)
+	set(c.PortIsolation, swCapPortIsolation)
+	stp := 0
+	if c.BPDUGuard {
+		stp |= stpCapBPDUGuard
+	}
+	if c.STPPortCost {
+		stp |= stpCapPortCost
+	}
+	storm := 0
+	if c.StormControl {
+		storm = stormCapInPercentage
+	}
 	return map[string]any{
-		"feature_caps":           swCapSTP | swCapJumbo | swCapFEC | swCapLACP | swCapStormControl | swCapIGMPSnooping | swCapLLDPMED | swCapDHCPSnooping,
-		"max_mirror_sessions":    1,
-		"max_aggregate_sessions": 8,
+		"feature_caps":           feat,
+		"max_mirror_sessions":    c.MirrorSessions,
+		"max_aggregate_sessions": c.AggregateSessions,
 		"vlan_caps":              vlanCapAccess | vlanCapTagging | 1,
-		"stp_caps":               stpCapBPDUGuard | stpCapPortCost,
-		"storm_control_caps":     stormCapInPercentage,
+		"stp_caps":               stp,
+		"storm_control_caps":     storm,
 		"igmp_snoop_caps":        0,
 	}
+}
+
+// FWCapsFor renders fw_caps for a driver's capabilities: the base bits
+// (SSH, STA_STAT, LLDP) plus LAG and SNMP when honoured.
+func FWCapsFor(c switchmodel.Capabilities) int {
+	bits := fwCapSSH | fwCapSTAT | fwCapLLDP
+	if c.LACP {
+		bits |= fwCapLAG
+	}
+	if c.SNMP {
+		bits |= fwCapSNMP | fwCapSNMPv3
+	}
+	return bits
 }
 
 // speedCaps renders a port's speed_caps bitmap from its capabilities.

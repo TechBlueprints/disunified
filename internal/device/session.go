@@ -35,6 +35,14 @@ type Session struct {
 	locating  bool
 
 	prevHistory map[int]portHistory // per port, at the last inform (anomaly deltas)
+	caps        switchmodel.Capabilities
+}
+
+// SetCapabilities replaces the capability claims (default: DefaultCapabilities).
+func (s *Session) SetCapabilities(c switchmodel.Capabilities) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.caps = c
 }
 
 // NewSession starts a device from st (a fresh State means factory-default:
@@ -53,7 +61,7 @@ func NewSession(desc inform.Descriptor, informURL string, st State, store *Store
 	if st.Firmware != "" {
 		desc.Version = st.Firmware // a previous emulated upgrade wins over the profile default
 	}
-	s := &Session{desc: desc, st: st, store: store, bootTime: now}
+	s := &Session{desc: desc, st: st, store: store, bootTime: now, caps: DefaultCapabilities}
 	s.macHeader = macHeader(desc.MAC)
 	return s
 }
@@ -199,7 +207,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 			m["general_temperature"] = int(s.snap.System.TemperatureC + 0.5)
 			m["has_temperature"] = true
 		}
-		m["switch_caps"] = switchCaps()
+		m["switch_caps"] = switchCaps(s.caps)
 		pt := portTable(s.desc, s.snap, s.st.Provisioned["port_table"], s.prevHistory)
 		m["port_table"] = pt
 		// Device-level satisfaction (the Experience column): the mean of the

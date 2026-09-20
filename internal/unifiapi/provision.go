@@ -51,7 +51,7 @@ func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmod
 	for _, p := range snap.Ports {
 		wantName := namer.PortName(p)
 		cur := current[p.Index]
-		if cur == wantName || (cur != "" && !isDefaultPortName(p.Index, cur)) {
+		if wantName == "" || cur == wantName || (cur != "" && !isDefaultPortName(p.Index, cur)) {
 			continue
 		}
 		o := overrides[p.Index]
