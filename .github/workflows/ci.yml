@@ -1,0 +1,39 @@
+# Build, test and (unpushed) image build on every push and pull request.
+# The release workflow publishes the image; this one only proves it builds.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test ./...
+      - name: No secrets or site identifiers in tracked files
+        run: ./scripts/check-site-info.sh
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image and run its one-shots
+        run: |
+          set -eu
+          # buildx, not the classic builder: the Containerfile's build stage
+          # pins --platform=$BUILDPLATFORM, which needs BuildKit.
+          docker buildx build --load --file Containerfile \
+            --build-arg VERSION=ci --tag switch-to-unifi:ci .
+          docker run --rm switch-to-unifi:ci -build-version
+          docker run --rm switch-to-unifi:ci -list-drivers

@@ -1,0 +1,141 @@
+# Publishes the container image so that installing is "pull, configure, run".
+#
+#   push of a tag v*  -> ghcr.io/techblueprints/switch-to-unifi:v1.2.3, :1.2.3,
+#                        :1.2 and :latest (a prerelease, v1.2.3-rc1, gets only
+#                        its own tag), plus a GitHub release with the static
+#                        binaries and their checksums
+#   push to main      -> :edge and :edge-<sha>, for testing before a release
+#
+# Both platforms (linux/amd64, linux/arm64) come from one Go cross-compile per
+# arch, so no QEMU is involved. Nothing here needs a secret beyond the
+# automatic GITHUB_TOKEN. The GHCR package must be made public once, by hand,
+# after the first push (see docs/releasing.md) or pulls need a login.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the GitHub release
+  packages: write   # push to GHCR
+
+env:
+  # GHCR paths must be lowercase, whatever the owner's spelling is.
+  IMAGE: ghcr.io/techblueprints/switch-to-unifi
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version and the image tags
+        id: plan
+        run: |
+          set -eu
+          case "$GITHUB_REF" in
+          refs/tags/v*)
+            version=${GITHUB_REF#refs/tags/}          # v1.2.3
+            tags="--tag $IMAGE:$version"
+            case "$version" in
+            *-*) ;;                                   # prerelease: its tag only
+            *)
+              bare=${version#v}
+              tags="$tags --tag $IMAGE:$bare --tag $IMAGE:${bare%.*} --tag $IMAGE:latest" ;;
+            esac ;;
+          *)
+            version=edge-$(git rev-parse --short HEAD)
+            tags="--tag $IMAGE:$version --tag $IMAGE:edge" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "building $version with:$tags"
+
+      - name: Log in to GHCR
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push linux/amd64 + linux/arm64
+        run: |
+          set -eu
+          docker buildx create --use --name stu --driver docker-container
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --file Containerfile --build-arg "VERSION=$VERSION" \
+            $TAGS --push .
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAGS: ${{ steps.plan.outputs.tags }}
+
+      - name: Run the pushed image's one-shots
+        run: |
+          set -eu
+          docker run --rm "$IMAGE:$VERSION" -build-version
+          docker run --rm "$IMAGE:$VERSION" -list-drivers
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+
+  release:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the previous tag, for the compare link
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build the static binaries
+        run: |
+          set -eu
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.buildVersion=$VERSION" \
+              -o dist/switch-to-unifi ./cmd/switch-to-unifi
+            tar -C dist -czf "dist/switch-to-unifi-$VERSION-$os-$arch.tar.gz" switch-to-unifi
+            rm dist/switch-to-unifi
+          done
+          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
+        env:
+          VERSION: ${{ needs.image.outputs.version }}
+
+      - name: Create the GitHub release
+        run: |
+          set -eu
+          notes=$(mktemp)
+          prev=$(git describe --tags --abbrev=0 "$VERSION^" 2>/dev/null || true)
+          {
+            echo "## Container image"
+            echo
+            echo '```sh'
+            echo "docker pull $IMAGE:$VERSION   # linux/amd64, linux/arm64"
+            echo '```'
+            echo
+            echo "Install: [docs/install.md](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/install.md)."
+            echo "A compose file and the config/env examples are in"
+            echo "[deploy/](https://github.com/$GITHUB_REPOSITORY/tree/$VERSION/deploy)."
+            echo
+            echo "The binaries below are static; no runtime dependencies."
+            if [ -n "$prev" ]; then
+              echo
+              echo "Changes: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$VERSION"
+            fi
+            echo
+            echo "Experimental software, no warranty. Independent project; not"
+            echo "affiliated with or endorsed by Ubiquiti Inc."
+          } > "$notes"
+          case "$VERSION" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          gh release create "$VERSION" dist/* --title "$VERSION" --notes-file "$notes" $pre
+        env:
+          VERSION: ${{ needs.image.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

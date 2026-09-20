@@ -1,10 +1,26 @@
-# podman-compose / docker compose. Put secrets in ./env (see env.example),
-# the config in ./config.yaml (see config.example.yaml; set state_dir to
-# /var/lib/switch-to-unifi).
+# podman-compose / docker compose. With the published image this file plus
+# ./config.yaml and ./env is a complete install — no checkout, no Go:
+#
+#   mkdir switch-to-unifi && cd switch-to-unifi
+#   base=https://raw.githubusercontent.com/TechBlueprints/switch-to-unifi/main/deploy
+#   curl -fsSLO $base/compose.yaml
+#   curl -fsSL $base/config.example.yaml -o config.yaml
+#   curl -fsSL $base/env.example -o env && chmod 600 env
+#   # edit config.yaml and env, then:
+#   docker compose up -d          # or podman-compose up -d
+#
+# Update: docker compose pull && docker compose up -d --force-recreate
+# (--force-recreate matters: without it the old container keeps running).
 services:
   switch-to-unifi:
-    build: .                    # from a checkout; no prebuilt image is published yet
-    image: localhost/switch-to-unifi:latest
+    # Pin a release (:v1.2.3) for anything you care about; :latest follows
+    # releases, :edge follows main.
+    image: ghcr.io/techblueprints/switch-to-unifi:latest
+    # To build from a source checkout instead of pulling, run compose from the
+    # repo root with -f deploy/compose.yaml and uncomment:
+    # build:
+    #   context: ..
+    #   dockerfile: Containerfile
     container_name: switch-to-unifi
     restart: always            # Podman's podman-restart.service only restarts "always" containers after a host reboot
     env_file: ./env

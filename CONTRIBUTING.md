@@ -26,7 +26,9 @@ same loop, whether the contributor is a person or an AI agent.
    controller's stored values.
 6. **Update the docs in the same PR:** [`docs/feature-map.md`](docs/feature-map.md) status rows,
    the driver's `docs/<vendor>-<api>.md`, and [`CLAUDE.md`](CLAUDE.md) if a rule changed.
-7. **Keep `go vet ./... && go test ./...` green.**
+7. **Keep `go vet ./... && go test ./...` green.** CI (`.github/workflows/ci.yml`)
+   runs those, `scripts/check-site-info.sh`, and a container build on every
+   push and PR; releases are cut by tag ([`docs/releasing.md`](docs/releasing.md)).
 
 ## Fixtures are real captures
 
