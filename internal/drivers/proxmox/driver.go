@@ -30,6 +30,10 @@ import (
 //	uplink_ports  how many of the last ports are physical uplinks (default 6)
 //	ssh_key       private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts   known_hosts file (default ~/.ssh/known_hosts)
+//	numbering     "cluster" (default: every guest in the cluster has the same
+//	              port on every node; 48 guest NICs cluster-wide) or "node"
+//	              (only this node's guests; 48 per node; a migrated guest takes
+//	              a free slot on the destination)
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
 //	              /etc/lldpd.d/switch-to-unifi.conf current, docs/proxmox.md §4)
 //	state_dir     where the guest-to-port map persists (set by the bridge)
@@ -76,6 +80,13 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 	}
 	if cfg.Options["manage_lldpd"] == "false" {
 		c.ManageLLDP = false
+	}
+	switch cfg.Options["numbering"] {
+	case "", "cluster":
+	case "node":
+		c.NodeNumbering = true
+	default:
+		return nil, fmt.Errorf("proxmox: numbering must be \"cluster\" or \"node\", got %q", cfg.Options["numbering"])
 	}
 	pm, err := loadPortMap(cfg.Options["state_dir"])
 	if err != nil {
