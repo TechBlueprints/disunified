@@ -37,6 +37,7 @@ type Session struct {
 	locating  bool
 
 	prevHistory map[int]portHistory // per port, at the last inform (anomaly deltas)
+	gatewayIP   string              // reported as gateway_ip; "" = omit
 }
 
 // NewSession starts a device from st (a fresh State means factory-default:
@@ -203,9 +204,30 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		m["architecture"] = "x86_64"
 		m["kernel_version"] = "4.19.0-12-2-amd64"
 		m["board_rev"] = 6
-		m["min_inform_interval_seconds"] = 30
+		m["inform_min_interval"] = 30
+		m["stats_inform_interval"] = 24
 		m["provisioning_timeout"] = 300
+		m["reboot_duration"] = 240
+		m["upgrade_duration"] = 300
 		m["anon_id"] = anonID(s.desc.MAC)
+		m["guid"] = anonID("guid " + s.desc.MAC)
+		m["has_eth1"] = false
+		m["discovery_response"] = false
+		m["ssh_session_table"] = []any{}
+		m["network_table"] = []any{}
+		m["dhcp_server_table"] = []any{}
+		m["last_error_conns"] = []any{}
+		m["ever_crash"] = false
+		m["internet"] = true
+		m["tm_ready"] = true
+		m["default"] = false
+		m["time"] = now.Unix()
+		m["timestamp"] = now.UTC().Format("2006-01-02T15:04:05")
+		m["uptime_str"] = uptimeStr(uptime)
+		m["satisfaction_reason"] = 0
+		if s.gatewayIP != "" {
+			m["gateway_ip"] = s.gatewayIP
+		}
 		m["sys_stats"] = sysStats(s.snap)
 		m["system-stats"] = systemStats(s.snap, uptime)
 		if mtc := macTableCapability(s.snap); mtc != nil {
@@ -248,7 +270,6 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil && s.snap.System.GatewayMAC != "" {
 			m["gateway_mac"] = s.snap.System.GatewayMAC
 		}
-		m["ethernet_table"] = ethernetTable(s.desc, s.snap)
 		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
 			m["service_mac"] = mac
 		}
@@ -463,4 +484,19 @@ func anonID(mac string) string {
 	h[6] = (h[6] & 0x0f) | 0x50 // version 5 shape
 	h[8] = (h[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+// SetGatewayIP sets the gateway/controller address reported as gateway_ip.
+func (s *Session) SetGatewayIP(ip string) { s.mu.Lock(); s.gatewayIP = ip; s.mu.Unlock() }
+
+// uptimeStr renders seconds the way UniFi devices do ("21h25m23s").
+func uptimeStr(secs int64) string {
+	d := secs / 86400
+	h := (secs % 86400) / 3600
+	mi := (secs % 3600) / 60
+	sec := secs % 60
+	if d > 0 {
+		return fmt.Sprintf("%dd%dh%dm%ds", d, h, mi, sec)
+	}
+	return fmt.Sprintf("%dh%dm%ds", h, mi, sec)
 }

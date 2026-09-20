@@ -420,34 +420,11 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 			if p.Index != up {
 				continue
 			}
-			ifname := ""
-			for _, pp := range desc.Ports {
-				if pp.PortIdx == up {
-					ifname = pp.IfName
-				}
-			}
-			// UniFi switches name the uplink after their management interface
-			// (eth0 in ethernet_table/if_table), not the front port, which is
-			// port_idx; the controller drops an uplink whose name it does not know.
-			_ = ifname
-			u := map[string]any{
-				"name": "eth0", "port_idx": up, "mac": desc.MAC, "ip": desc.IP, "netmask": netmaskFor(snap, desc.IP),
-				"type": "wire", "up": p.Up, "speed": p.SpeedMbps, "max_speed": p.SpeedMbps,
-				"full_duplex": p.FullDuplex, "media": mediaLabel(desc, up),
-				"rx_bytes": p.Counters.RxBytes, "tx_bytes": p.Counters.TxBytes,
-				"rx_packets": p.Counters.RxPackets, "tx_packets": p.Counters.TxPackets,
-				"rx_errors": p.Counters.RxErrors, "tx_errors": p.Counters.TxErrors,
-				"rx_dropped": p.Counters.RxDropped, "tx_dropped": p.Counters.TxDropped,
-				"num_port": len(desc.Ports),
-			}
-			// The neighbour (uplink_mac, uplink_device_name, uplink_remote_port,
-			// uplink_source) is deliberately NOT reported: the controller
-			// derives it from lldp_table + where the device's IP lives, and an
-			// uplink object carrying those keys was stored with everything but
-			// its counters stripped (10.6.106, 2026-09-20).
-			m["uplink"] = u
-			// if_table: the management interface as UniFi switches report it,
-			// carrying the uplink port's link state and counters.
+			// A UniFi switch reports `uplink` as the NAME of its management
+			// interface in if_table (a string, "eth0"), never as an object;
+			// the controller composes the uplink record from that interface,
+			// port_table[].is_uplink and LLDP. (Seen in real informs, 2026-09-20.)
+			m["uplink"] = "eth0"
 			m["if_table"] = []map[string]any{{
 				"name": "eth0", "mac": desc.MAC, "ip": desc.IP, "netmask": netmaskFor(snap, desc.IP), "num_port": len(desc.Ports),
 				"up": p.Up, "speed": p.SpeedMbps, "full_duplex": p.FullDuplex,
@@ -459,6 +436,15 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 			}}
 		}
 	}
+	// STP topology changes across ports, as a switch-wide count.
+	stpChanges := 0
+	macsInUse := 0
+	for _, p := range snap.Ports {
+		stpChanges += p.Health.STPChanges
+		macsInUse += len(p.MACs)
+	}
+	m["stp_topology_change_count"] = stpChanges
+	m["total_mac_in_used"] = macsInUse
 	return m
 }
 

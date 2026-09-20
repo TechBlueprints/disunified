@@ -688,6 +688,7 @@ func (l *Loop) collect(ctx context.Context) {
 	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
 		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
 	}
+	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
 	l.warnOOB(snap)
 	var faults []string
