@@ -26,6 +26,18 @@ same loop, whether the contributor is a person or an AI agent.
    the driver's `docs/<vendor>-<api>.md`, and `CLAUDE.md` if a rule changed.
 7. **Keep `go vet ./... && go test ./...` green.**
 
+## Fixtures are real captures
+
+Every test fixture is real output from a real device or controller with
+identifiers, serial numbers and secrets replaced by the scrub scripts in
+`scripts/`. Hand-written protocol samples are not accepted: they encode what
+you believe the protocol is, and the one time that mattered (an `uplink`
+object where a real switch sends a string) a real capture would have caught
+it in a unit test instead of a day of live debugging. Capture first, scrub,
+commit the fixture, then write the code and the test against it. Both
+directions: the switch's command output, a real UniFi device's inform for
+the wire contract, and the controller's recorded replies for replay.
+
 ## Adding a driver
 
 Follow `docs/adding-a-switch.md` step by step; the rules for the vendor

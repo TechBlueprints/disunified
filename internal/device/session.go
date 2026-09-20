@@ -211,6 +211,12 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		m["upgrade_duration"] = 300
 		m["anon_id"] = anonID(s.desc.MAC)
 		m["guid"] = anonID("guid " + s.desc.MAC)
+		m["hash_id"] = anonID("hash " + s.desc.MAC)[:16]
+		m["boot"] = map[string]any{"id": anonID("boot " + s.desc.MAC + s.bootTime.String())}
+		m["bootid"] = -1
+		m["dualboot"] = false
+		m["fan_emergency"] = 0
+		m["time_ms"] = now.Nanosecond() / 1e6
 		m["has_eth1"] = false
 		m["discovery_response"] = false
 		m["ssh_session_table"] = []any{}
@@ -255,7 +261,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil {
 			s.prevHistory = make(map[int]portHistory, len(s.snap.Ports))
 			for _, p := range s.snap.Ports {
-				s.prevHistory[p.Index] = portHistory{Counters: p.Counters, LinkChanges: p.Health.LinkChanges,
+				s.prevHistory[p.Index] = portHistory{At: s.snap.TakenAt, Counters: p.Counters, LinkChanges: p.Health.LinkChanges,
 					STPChanges: p.Health.STPChanges, FECUncorrected: p.Health.FECUncorrected, PCSErrBlocks: p.Health.PCSErrBlocks}
 			}
 		}
@@ -267,8 +273,14 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if nm := netmaskFor(s.snap, s.desc.IP); nm != "" {
 			m["netmask"] = nm
 		}
-		if s.snap != nil && s.snap.System.GatewayMAC != "" {
-			m["gateway_mac"] = s.snap.System.GatewayMAC
+		if s.snap != nil {
+			gw := s.snap.System.GatewayMAC
+			if gw == "" && s.gatewayIP != "" {
+				gw = s.snap.System.ARP[s.gatewayIP]
+			}
+			if gw != "" {
+				m["gateway_mac"] = gw
+			}
 		}
 		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
 			m["service_mac"] = mac

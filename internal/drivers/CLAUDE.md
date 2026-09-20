@@ -19,8 +19,11 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
   for a lane-speed change; everything else to all lanes; set `LanesDiverge`
   when lanes differ; claim the cage's speeds.
 - Never set an optical port to auto speed; only write FEC when asked.
-- Tests use a fixture transport and cover parsing, every apply sequence, and
-  idempotence. `go test ./...` must pass before a live run.
+- Tests use a fixture transport (`aristaeos.FixtureTransport` is the
+  reference) over real captures — never hand-written samples — and cover
+  parsing, every apply sequence, and idempotence. `go test ./...` must pass
+  before a live run, including the wire-contract and replay tests, which
+  drive your driver end to end against real controller data.
 - The management address the bridge uses must be in-band (behind the
   uplink); report dedicated OOB management interfaces in
   `System.OOBInterfaces` so the loop can warn. See `docs/adding-a-switch.md` §2c.

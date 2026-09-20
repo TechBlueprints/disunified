@@ -39,6 +39,21 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 - UniFi is the source of truth for port config and VLANs (he OK'd replacing
   the Arista's VLAN config). IGMP snooping too (`-control-igmp`).
 - MIT license, same as unifi-emu; credit James Braid.
+- **Tests use real captures, never hand-written protocol samples.** Every
+  fixture is output captured from a real switch or a real controller, with
+  identifiers, serials and secrets replaced by the scrub scripts
+  (`scripts/sanitize-fixtures.py` for EOS JSON, `scripts/sanitize-captures.py`
+  for device informs and the reply log). Both directions are covered and
+  must stay covered: switch → bridge (`docs/fixtures/eos-*`), bridge →
+  controller (`internal/device/contract_test.go` against real switches'
+  informs in `docs/fixtures/controller-<ver>/inform-*.json`) and controller →
+  bridge (`internal/informloop/replay_test.go` against the recorded replies
+  in `docs/fixtures/controller-<ver>/replies.ndjson`). A new wire key or
+  behaviour gets its capture first, then the code. Where real informs come
+  from: the UniFi OS console support bundle (Settings → Control Plane →
+  Console → Support File) holds every device's decrypted `last.inform`
+  under `unifi/devices/<type>/<mac>/`; the bridge's own log is
+  `inform-log/<mac>.ndjson` and `payload-last.json`.
 - **No affiliation with Ubiquiti**: the README, LICENSE and any published
   page must say this is an independent fan/home-user project, not endorsed
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
