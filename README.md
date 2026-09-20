@@ -23,7 +23,7 @@ VE 9.1** cluster as a 32-port 100G switch ("ECS Core"), one port per guest
 NIC, numbered the same on every node, VM clients behind their ports in
 the topology, the nodes behind the UniFi aggregation switch via lldpd, and
 control of port state and VLANs written back as the guest's `tag`/`trunks`
-(`docs/proxmox.md`). The switch is the node's virtual switch, `vmbr0`
+(`docs/drivers/proxmox.md`). The switch is the node's virtual switch, `vmbr0`
 and its guest NICs; the node's own networking underneath (NICs, bond,
 failover) is reported as one uplink and never configured. A guest's port
 number is kept in its Proxmox tags (`unifi.p25.c`), so the bridge holds
@@ -69,7 +69,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  switch-to-u
 
 - `internal/switchmodel` — the vendor-neutral model of a switch and the
   driver contract.
-- `internal/drivers/<vendor>` — one driver per vendor/OS (`arista-eos`, `proxmox`).
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`), each with its own `CLAUDE.md` of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - `internal/device` — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - `internal/unificfg` — parses the controller's `system_cfg` pushes.

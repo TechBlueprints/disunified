@@ -20,8 +20,8 @@ in the UniFi UI.
   access; for the Arista driver that is a `network-admin` user and eAPI
   enabled (`management api http-commands` → `no shutdown`); for the
   Proxmox driver, root SSH to each node with a key and `apt-get install
-  lldpd` on each node (the driver configures it); `docs/proxmox.md` §5.
-  Spanning tree on a node is optional (`mstpd`, `docs/proxmox.md` §4b);
+  lldpd` on each node (the driver configures it); `docs/drivers/proxmox.md` §5.
+  Spanning tree on a node is optional (`mstpd`, `docs/drivers/proxmox.md` §4b);
   without it the driver claims no STP and ignores the controller's STP
   settings for that node.
 - Optional, for naming the device and ports after the switch: a UniFi API
@@ -43,8 +43,9 @@ export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
 ```
 **Check:** JSON with the switch's model, every port, and `suggested_model`.
 If it fails, the error names the command or credential at fault; fix that
-before going on. Pass `-driver <name>` for a non-Arista switch, e.g.
-`-driver proxmox -switch-ssh root@proxmox-2`.
+before going on. `-driver <name>` (or `STU_DRIVER`) names the driver, e.g.
+`-driver arista-eos -switch-url https://…/command-api` or
+`-driver proxmox -switch-ssh root@proxmox-2`; a config file names it per switch.
 
 ## 3. Write the config
 

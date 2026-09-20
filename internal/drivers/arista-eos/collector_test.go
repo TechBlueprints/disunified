@@ -12,7 +12,7 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
-// fixtureTransport serves docs/fixtures/eos-4.26.14M/<cmd>.json, where the
+// fixtureTransport serves docs/fixtures/arista-eos-4.26.14M/<cmd>.json, where the
 // file name is the command with spaces -> "-" and "/" -> "_" (the naming the
 // capture script used).
 type fixtureTransport struct {
@@ -72,7 +72,7 @@ func (f *fixtureTransport) Close() error { return nil }
 
 func newFixtureCollector(t *testing.T) (*Collector, *fixtureTransport) {
 	t.Helper()
-	ft := &fixtureTransport{dir: filepath.Join("..", "..", "..", "docs", "fixtures", "eos-4.26.14M")}
+	ft := &fixtureTransport{dir: filepath.Join("..", "..", "..", "docs", "fixtures", "arista-eos-4.26.14M")}
 	return NewCollector(ft), ft
 }
 

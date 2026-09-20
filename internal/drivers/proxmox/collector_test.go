@@ -184,20 +184,21 @@ func TestCollectNode2(t *testing.T) {
 	if e := snap.Ports[48]; e.Present || e.Index != 49 {
 		t.Errorf("slot 49 should be empty: %+v", e)
 	}
-	// A free guest slot is named "VM-Open-<port>" so it reads as one in the
-	// UI, and that name counts as a default once a guest takes the slot;
-	// an empty uplink cage keeps the controller's own default.
-	if got := c.PortName(snap.Ports[47]); got != "VM-Open-48" {
-		t.Errorf("free guest slot name = %q", got)
+	// A free slot is named "Open-<port>" so it reads as one in the UI, and
+	// that name counts as a default once a guest takes the slot. Nothing
+	// is reserved for NICs: the two bond slaves hold 54 and 53, so 1-52 are
+	// one pool for guests.
+	if got := c.PortName(snap.Ports[47]); got != "Open-48" {
+		t.Errorf("free slot name = %q", got)
 	}
-	if got := c.PortName(snap.Ports[48]); got != "NIC-Open-49" {
-		t.Errorf("free uplink slot name = %q", got)
+	if got := c.PortName(snap.Ports[50]); got != "Open-51" {
+		t.Errorf("free slot name = %q", got)
 	}
 	if e := snap.Ports[47]; e.Enabled || snap.Ports[48].Enabled {
 		t.Errorf("free slots must report disabled: %+v", e)
 	}
-	if d := c.DefaultPortNames(snap.Ports[0]); len(d) == 0 || d[0] != "VM-Open-1" {
-		t.Errorf("guest slot 1 defaults = %v, want VM-Open-1 first", d)
+	if d := c.DefaultPortNames(snap.Ports[0]); len(d) < 3 || d[0] != "Open-1" || d[1] != "VM-Open-1" {
+		t.Errorf("slot 1 defaults = %v, want Open-1 (and the earlier VM-Open-1) first", d)
 	}
 	// The bond's slaves are separate ports at the top, "bond0-1" (active,
 	// forwarding) and "bond0-2" (standby: linked, blocking), no LAG.
@@ -217,7 +218,15 @@ func TestCollectNode2(t *testing.T) {
 	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	for _, idx := range []int{49, 50, 51, 52} {
+	// eno1 is on the box but under neither the bridge nor the bond: a port
+	// with no link, enabled, below the bond's slaves; never the uplink.
+	if e := snap.Ports[51]; e.IfName != "eno1" || !e.Enabled || e.Up || e.Index != 52 || len(e.Interfaces) != 1 || e.Media != switchmodel.MediaCopper1G {
+		t.Errorf("unattached NIC = %+v", e)
+	}
+	if snap.UplinkHint == 52 {
+		t.Error("an unattached NIC became the uplink")
+	}
+	for _, idx := range []int{49, 50, 51} {
 		if e := snap.Ports[idx-1]; e.Present || e.Index != idx {
 			t.Errorf("slot %d should be empty: %+v", idx, e)
 		}
@@ -532,7 +541,7 @@ func TestApplySwitch(t *testing.T) {
 
 // TestLACPBondIsPerMemberLAG models an 802.3ad bond, which no host here has:
 // the fixture's active-backup bond is rewritten to LACP mode, so this is the
-// driver's best model, not a live capture (docs/proxmox.md §1b).
+// driver's best model, not a live capture (docs/drivers/proxmox.md §1b).
 func TestLACPBondIsPerMemberLAG(t *testing.T) {
 	fixture := strings.Replace(loadFixture(t, "collect-node2.txt"), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
 	r := &FixtureRunner{Fixture: fixture}

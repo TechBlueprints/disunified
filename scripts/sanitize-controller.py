@@ -16,7 +16,7 @@ UUIDs and object ids. system_cfg / mgmt_cfg text inside payloads is scrubbed
 line by line the same way. cfgversion values are kept (not secret; tests
 assert on them).
 
-Usage: scripts/sanitize-captures.py <file>...   (writes the file back)
+Usage: scripts/sanitize-controller.py <file>...   (writes the file back)
 """
 import json, re, sys, ipaddress
 

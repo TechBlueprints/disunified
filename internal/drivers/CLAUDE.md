@@ -11,7 +11,7 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
   driver's doc comment, and there is a scrubbed fixture for it under
   `docs/fixtures/<os>-<version>/`. `Start` runs all of them once and fails
   loudly. If a command is missing on the target version, find the right one
-  on that version; do not assume newer syntax (see `docs/arista-eapi.md`).
+  on that version; do not assume newer syntax (see `docs/drivers/arista-eos.md`).
 - Speed capabilities per port come from the switch's own capability data.
 - No secrets or site-specific values in code, comments, tests, fixtures or
   docs — no real addresses, names, MACs or serials, not even as a sample
