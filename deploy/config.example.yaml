@@ -41,7 +41,7 @@ switches:
     driver: proxmox
     ssh: root@proxmox-1              # key auth
     ip: 192.0.2.101                   # the node's own in-band address
-    model: UDC48X6                   # USW Leaf (48 guest ports + host + NICs); auto picks it too
+    model: UDC48X6                   # USW Leaf, 54 ports (guests from 1 up, the node's NICs from 54 down); auto picks it too
     options:
       bridge: vmbr0                  # default
       # ports: "54"                  # total ports; the node's NICs take the top ones, guests the rest

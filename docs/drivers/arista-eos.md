@@ -1,8 +1,8 @@
 # Arista side: EOS 4.26.14M on a DCS-7160-48TC6-F
 
-Captured and verified against Clint's switch over SSH on 2026-09-19. Unlike the other two
-docs, **everything here was run against the real device.** Raw command output lives in
-`fixtures/arista-eos-4.26.14M/`, scrubbed by `scripts/sanitize-arista-eos.py` (MACs, IPs, serials,
+Captured and verified against Clint's switch on 2026-09-19/20. **Everything here was run
+against the real device.** Raw command output lives in
+[`docs/fixtures/arista-eos-4.26.14M/`](../fixtures/arista-eos-4.26.14M), scrubbed by [`scripts/sanitize-arista-eos.py`](../../scripts/sanitize-arista-eos.py) (MACs, IPs, serials,
 hostnames and descriptions rewritten; structure and types untouched).
 
 ## 1. The version is pinned for good
@@ -18,45 +18,45 @@ hostnames and descriptions rewritten; structure and types untouched).
   `show environment cooling` are deprecated in favour of `show system environment temperature`
   / `show system environment cooling` (the old names error out).
 
-## 2. Transport options, as found on the box
+## 2. Transports
 
-`show management api http-commands` on 2026-09-19:
+The driver speaks two transports; both run the same command list and parse
+the same JSON, and every batch is prefixed with `enable` because eAPI and a
+fresh SSH session start at privilege 1 whatever the user's level (`show
+interfaces flow-control` refuses to run there). The account must therefore
+reach enable mode **without an enable password**; writes also need config
+mode and end with `write memory`.
 
-```
-Enabled:            No
-HTTPS server:       enabled, set to use port 443
-HTTP server:        shutdown, set to use port 80
-Local HTTP server:  shutdown, no authentication, set to use port 8080
-Unix Socket server: shutdown, no authentication
-```
+- **eAPI** (`url: https://<switch>/command-api`, `username_env` +
+  `password_env`): JSON-RPC 2.0, method `runCmds`, HTTP basic auth, TLS
+  1.2 with RSA key exchange (EOS 4.26 refuses ECDHE). This is the primary
+  transport and the only one that can run text-format commands, which is
+  where the FEC codeword and PCS error counters come from (`show interfaces
+  <lane> phy detail`): over SSH those anomaly signals stay unset. eAPI has
+  to be enabled on the switch first (one config block, in enable mode):
 
-So eAPI is **configured for HTTPS on 443 but the service itself is shut down** — which is why
-`curl https://192.0.2.3/command-api` gets no response. Enabling it is one config block, run in
-enable mode (the `admin` SSH user lands at privilege 1, so Claude cannot do this):
+  ```
+  configure
+  management api http-commands
+     no shutdown
+  end
+  write memory
+  ```
 
-```
-configure
-management api http-commands
-   no shutdown
-end
-write memory
-```
+  Once it is up, `https://<switch>/explorer.html` is the **Command API
+  Explorer**: the exact JSON schema of every show command *for the running
+  EOS version*, the authoritative reference for 4.26.14M.
+- **SSH** (`ssh: user@switch`): key authentication only (ssh-agent, then
+  `~/.ssh/id_ed25519` / `id_rsa`, or `options.ssh_key`), host key checked
+  against `known_hosts` (`options.known_hosts`; loading it is mandatory),
+  no password support. Commands are sent in one session with `| json`
+  appended; any `% ...` line fails the batch. Needs nothing enabled on the
+  switch. The fixtures were captured this way.
 
-Once it is up, `https://<switch>/explorer.html` is the **Command API Explorer**: it documents
-the exact JSON schema of every show command *for the running EOS version*, which is the
-authoritative reference for 4.26.14M — better than any external doc.
-
-**SSH is a working transport today, with no switch changes.** `ssh admin@arista` authenticates
-by key (privilege 1 is enough for every `show` command), and `show <cmd> | json` emits the
-same JSON the eAPI would return — the fixtures were captured this way. Multiple commands can
-be sent in one session separated by newlines. Go's `golang.org/x/crypto/ssh` covers it.
-Recommended: make the collector's transport an interface with an **SSH implementation first**
-(works now, needs nothing) and an **eAPI implementation second** (cleaner, needed for
-on-box unix-socket deployment later). Both speak the same command list and parse the same JSON.
-
-For the eventual on-switch deployment, eAPI over the unix socket
-(`protocol unix-socket`, `/var/run/command-api.sock`, no authentication) is the on-box path
-(<https://arista.my.site.com/AristaCommunity/s/article/arista-eapi-101>).
+For an eventual on-switch deployment, eAPI over the unix socket
+(`protocol unix-socket`, `/var/run/command-api.sock`, no authentication) is
+the on-box path (<https://arista.my.site.com/AristaCommunity/s/article/arista-eapi-101>);
+it has not been tried.
 
 ## 3. Prior art for the API
 
@@ -74,18 +74,28 @@ version-specific concerns are entirely in the per-command output, which is what 
 
 ## 4. Command → UniFi field mapping (from the fixtures)
 
-Per poll, **four commands** cover everything phase 0 reports:
+What the driver runs, all present in [`docs/fixtures/arista-eos-4.26.14M/`](../fixtures/arista-eos-4.26.14M):
 
-| Command | Fixture | Feeds |
-|---|---|---|
-| `show interfaces` | `show-interfaces.json` (131 KB) | the whole `port_table` |
-| `show lldp neighbors` | `show-lldp-neighbors.json` | `lldp_table` |
-| `show version` | `show-version.json` | identity, `uptime`, `mem_total`/`mem_free` |
-| `show processes top once` | `show-processes-top-once.json` | `sys_stats.cpu` (`cpuInfo.%Cpu(s).idle`), `memInfo.physicalMem` |
+- **At startup, and again every 30 polls** (the media map and hardware
+  table): `show version`, `show hostname`, `show interfaces status`,
+  `show inventory`, `show interfaces transceiver properties`,
+  `show interfaces hardware`.
+- **Every poll**: `show version`, `show interfaces`, `show lldp neighbors
+  detail`, `show spanning-tree`, `show processes top once`, `show system
+  environment temperature`, `show mac address-table`, `show interfaces
+  transceiver`, `show interfaces error-correction`, `show interfaces
+  flow-control`, `show port-channel summary`, `show system environment
+  cooling`, `show system environment power`, `show interfaces switchport`,
+  `show vlan`, `show storm-control`, `show ip igmp snooping`, `show
+  running-config`, `show interfaces status errdisabled`, `show spanning-tree
+  root detail`, `show interfaces transceiver dom thresholds`, `show
+  spanning-tree topology status detail`, `show ip arp`, `show hardware
+  capacity`.
+- **Every poll, text, eAPI only**: `show interfaces <lane> phy detail` for
+  each up lane (FEC and PCS counters).
 
-`show interfaces status` is a lighter alternative for link state only (`interfaceStatuses`),
-and is the one place `interfaceType` (media) is reported — poll it once at startup for the
-media map, not every cycle.
+`Start` runs the startup set and one full poll, so a missing command or a
+bad credential fails immediately. The core mappings:
 
 ### `port_table` from `show interfaces` → `interfaces["EthernetN"]`
 
@@ -154,11 +164,13 @@ From `show version`: `systemMacAddress` (the bridge should present the Arista's 
 the controller's client list and LLDP data line up), `serialNumber`, `modelName`, `version`.
 The firmware string the controller sees must be `v<numeric>` — `4.26.14M` → `v4.26.14`.
 
-## 6. Not on this switch / not needed
+## 6. Not on this switch / not used
 
-- gNMI is disabled (`show management api gnmi` → `enabled: false`). Not needed for phase 0.
+- gNMI is disabled (`show management api gnmi` → `enabled: false`); the driver polls eAPI instead.
 - No PoE. No `show poe`.
-- SNMP not checked; not needed.
+- No LED control, so locate only reports `locating`.
+- No per-port L2 MTU (`l2 mtu` unsupported): jumbo frames are always forwarded and UniFi's
+  "jumbo off" is logged, not applied. No per-port LLDP-MED toggle on 4.26 either.
 
 ## 7. In-band management (2026-09-20)
 

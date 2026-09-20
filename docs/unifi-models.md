@@ -23,7 +23,7 @@ storm control, STP options, FEC and the rest.
 
 `-model auto` and `-list-models` use unifi-emu's `model_profiles.json`
 (built by that project from Network 10.4.57 at the time of writing).
-`internal/unifimodel` ranks it against the switch's port layout:
+[`internal/unifimodel`](../internal/unifimodel) ranks it against the switch's port layout:
 port count first, QSFP28 cage count second, everything else cosmetic, and a
 penalty for internal model codes (display name == code; real products such
 as `USWF066` = ECS Aggregation, but a later controller may rename them).

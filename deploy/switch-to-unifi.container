@@ -8,7 +8,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
-Image=ghcr.io/techblueprints/switch-to-unifi:latest
+Image=localhost/switch-to-unifi:latest   # build it first: podman build -t localhost/switch-to-unifi:latest .  (no prebuilt image is published yet)
 EnvironmentFile=/etc/switch-to-unifi/env
 Volume=/etc/switch-to-unifi/config.yaml:/etc/switch-to-unifi/config.yaml:ro,Z
 Volume=switch-to-unifi-state:/var/lib/switch-to-unifi:Z

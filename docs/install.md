@@ -17,11 +17,13 @@ in the UniFi UI.
   reachable from where the bridge runs on TCP 8080 (inform) and 443 (API).
 - A switch with a supported driver (`switch-to-unifi -list-drivers`) and an
   account on it. For control (not just monitoring) the account needs write
-  access; for the Arista driver that is a `network-admin` user and eAPI
-  enabled (`management api http-commands` → `no shutdown`); for the
+  access; for the Arista driver that is a `network-admin` user that reaches
+  enable mode without an enable password, and eAPI enabled
+  (`management api http-commands` → `no shutdown`), or SSH with a key
+  (then the FEC/PCS anomaly counters are not collected); for the
   Proxmox driver, root SSH to each node with a key and `apt-get install
-  lldpd` on each node (the driver configures it); `docs/drivers/proxmox.md` §5.
-  Spanning tree on a node is optional (`mstpd`, `docs/drivers/proxmox.md` §4b);
+  lldpd` on each node (the driver configures it); [`docs/drivers/proxmox.md`](drivers/proxmox.md) §5.
+  Spanning tree on a node is optional (`mstpd`, [`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b);
   without it the driver claims no STP and ignores the controller's STP
   settings for that node.
 - Optional, for naming the device and ports after the switch: a UniFi API
@@ -31,9 +33,10 @@ in the UniFi UI.
 
 ```sh
 git clone https://github.com/TechBlueprints/switch-to-unifi && cd switch-to-unifi
-go build ./cmd/switch-to-unifi           # Go 1.25+
+go build ./cmd/switch-to-unifi           # Go 1.26+
 ```
-or build the container: `podman build -t switch-to-unifi .`
+or build the container image: `podman build -t localhost/switch-to-unifi:latest .`
+(no prebuilt image is published yet).
 
 ## 2. Check the switch connection
 
@@ -49,7 +52,7 @@ before going on. `-driver <name>` (or `STU_DRIVER`) names the driver, e.g.
 
 ## 3. Write the config
 
-Copy `deploy/config.example.yaml` to `config.yaml` and `deploy/env.example`
+Copy [`deploy/config.example.yaml`](../deploy/config.example.yaml) to `config.yaml` and [`deploy/env.example`](../deploy/env.example)
 to `env`; fill in the controller address, the switch address, and the
 environment variable names. Start with `control.ports: "off"` (read-only).
 
@@ -78,17 +81,18 @@ Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that switch; the switch's own VLAN list
 is extended with the site's VLANs; with `igmp: true` snooping follows
 UniFi's per-network setting (UniFi defaults it off). Read
-`docs/feature-map.md` for what each feature maps to on your driver.
+[`docs/feature-map.md`](feature-map.md) for what each feature maps to on your driver.
 
 ## 6. Run it for good
 
-- **Podman/Docker compose:** `deploy/compose.yaml` (config and env beside it).
+- **Podman/Docker compose:** [`deploy/compose.yaml`](../deploy/compose.yaml) (config and env beside it;
+  it builds the image from the source tree, since none is published).
   On Podman use `restart: always` and enable `podman-restart.service`;
   `unless-stopped` containers do not come back after a host reboot.
   Reference install: a directory on a Podman host, built
   from a copy of the source tree (`build: ./src`), state in the named
   volume `switch-to-unifi-state`, running as uid 65532.
-- **Quadlet/systemd:** `deploy/switch-to-unifi.container`.
+- **Quadlet/systemd:** [`deploy/switch-to-unifi.container`](../deploy/switch-to-unifi.container).
 - Mount a volume at `/var/lib/switch-to-unifi` (state and reply logs) and
   set `state_dir: /var/lib/switch-to-unifi` in the config.
 - An SSH driver (Proxmox, or Arista over SSH) in the container needs a key

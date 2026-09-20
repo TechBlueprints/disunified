@@ -10,10 +10,12 @@ same loop, whether the contributor is a person or an AI agent.
    feature, and paste the relevant scrubbed output (see fixtures below).
 2. **Branch and PR against that issue.** One feature or one driver per PR.
 3. **Capture before you code.** Save the switch's command output as
-   fixtures under `docs/fixtures/<os>-<version>/`, and the controller's
-   config push under `docs/fixtures/controller-<version>/`, both run
-   through `scripts/sanitize-arista-eos.py` (MACs, IPs, serials, hostnames,
-   keys). The repo is public; nothing identifying ships.
+   fixtures under `docs/fixtures/<driver>-<version>/`, and the controller's
+   config push under `docs/fixtures/controller-<version>/`, run through the
+   driver's `scripts/sanitize-<driver>.py` (modelled on
+   [`scripts/sanitize-arista-eos.py`](scripts/sanitize-arista-eos.py)) and
+   [`scripts/sanitize-controller.py`](scripts/sanitize-controller.py) (MACs, IPs, serials,
+   hostnames, keys). The repo is public; nothing identifying ships.
 4. **Write tests against the fixtures.** Parsing, every apply sequence, and
    idempotence (applying the same intent twice writes nothing).
 5. **Verify with real data, end to end.** Run the bridge against a real
@@ -22,15 +24,15 @@ same loop, whether the contributor is a person or an AI agent.
    the switch's running config and the controller's device record. Record
    what you saw in the PR: the pushed keys, the commands written, the
    controller's stored values.
-6. **Update the docs in the same PR:** `docs/feature-map.md` status rows,
-   the driver's `docs/<vendor>-<api>.md`, and `CLAUDE.md` if a rule changed.
+6. **Update the docs in the same PR:** [`docs/feature-map.md`](docs/feature-map.md) status rows,
+   the driver's `docs/<vendor>-<api>.md`, and [`CLAUDE.md`](CLAUDE.md) if a rule changed.
 7. **Keep `go vet ./... && go test ./...` green.**
 
 ## Fixtures are real captures
 
 Every test fixture is real output from a real device or controller with
 identifiers, serial numbers and secrets replaced by the scrub scripts in
-`scripts/`. Hand-written protocol samples are not accepted: they encode what
+[`scripts/`](scripts). Hand-written protocol samples are not accepted: they encode what
 you believe the protocol is, and the one time that mattered (an `uplink`
 object where a real switch sends a string) a real capture would have caught
 it in a unit test instead of a day of live debugging. Capture first, scrub,
@@ -40,15 +42,15 @@ the wire contract, and the controller's recorded replies for replay.
 
 ## Adding a driver
 
-Follow `docs/adding-a-switch.md` step by step; the rules for the vendor
-layer are in `internal/drivers/CLAUDE.md`. Open the issue with the OS
+Follow [`docs/adding-a-switch.md`](docs/adding-a-switch.md) step by step; the rules for the vendor
+layer are in [`internal/drivers/CLAUDE.md`](internal/drivers/CLAUDE.md). Open the issue with the OS
 version, the port layout, and the output of `-collect-once` once the read
-side works — the UniFi model choice (`docs/unifi-models.md`) is decided
+side works — the UniFi model choice ([`docs/unifi-models.md`](docs/unifi-models.md)) is decided
 there.
 
 ## For AI agents specifically
 
-- Read `CLAUDE.md` (repo map and rules), then `docs/adding-a-switch.md`.
+- Read [`CLAUDE.md`](CLAUDE.md) (repo map and rules), then [`docs/adding-a-switch.md`](docs/adding-a-switch.md).
 - Never assume a command exists on the target OS version; run it.
 - Never write to a port that carries live traffic while testing; use an
   unused port and say which one in the issue.
@@ -58,7 +60,7 @@ there.
   fixture, a commit message or a PR: authkeys, API keys, passwords, key
   files, real IP addresses, DNS names, MACs (not even as a "sample" in a
   unit test), serials, device or host names, topology, deployment hosts,
-  key paths. They go in `local-information/` (gitignored, see its README);
+  key paths. They go in [`local-information/`](local-information) (gitignored, see its README);
   docs, tests and examples use documentation values (`192.0.2.0/24`,
   `02:00:00:xx:xx:xx`, `SSJ00000000`, `example.net`). Run the scrub
   scripts on every capture and `scripts/check-site-info.sh --staged`

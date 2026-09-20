@@ -2,9 +2,9 @@
 
 This is the checklist for a new driver. It is written for an AI agent or a
 person who has never seen this repo; every step names the file to touch and
-the proof that it worked. The Arista EOS driver (`internal/drivers/arista-eos`)
+the proof that it worked. The Arista EOS driver ([`internal/drivers/arista-eos`](../internal/drivers/arista-eos))
 is the reference implementation — copy its shape, not its commands. The
-Proxmox driver (`internal/drivers/proxmox`, `docs/drivers/proxmox.md`) shows the
+Proxmox driver ([`internal/drivers/proxmox`](../internal/drivers/proxmox), [`docs/drivers/proxmox.md`](drivers/proxmox.md)) shows the
 shape for a virtual switch read over SSH with one script per poll, and
 for a driver whose "ports" are not fixed hardware.
 
@@ -14,7 +14,7 @@ A driver turns one vendor's switch into the neutral `switchmodel.Snapshot`
 (read side) and applies `switchmodel.PortDesired` / `SwitchDesired` to it
 (write side). Nothing UniFi-specific lives in a driver; nothing vendor-
 specific lives outside `internal/drivers/<name>`. The contract is in
-`internal/switchmodel/driver.go` and `model.go`.
+[`internal/switchmodel/driver.go`](../internal/switchmodel/driver.go) and `model.go`.
 
 Read side (mandatory): identity, per-port link state, counters, media, speed
 capabilities, LLDP neighbours, MAC table, STP state, optics, FEC, flow
@@ -27,12 +27,14 @@ creation, FEC, storm control, BPDU guard, STP mode/priority, IGMP snooping.
 1. Find the exact OS version and whether it is frozen (end-of-support
    hardware). Write it down; the driver targets that version.
 2. Capture the JSON (or parsed text) output of every command the driver will
-   use into `docs/fixtures/<os>-<version>/`, one file per command, named
-   `<command with spaces→- and /→_>.json`. Scrub identifiers with
-   `scripts/sanitize-arista-eos.py` (MACs, IPs, serials, hostnames,
-   descriptions, optic serials). The repo is public.
+   use into `docs/fixtures/<driver>-<version>/`, one file per command, named
+   `<command with spaces→- and /→_>.json`. Scrub identifiers with a
+   `scripts/sanitize-<driver>.py` modelled on
+   [`scripts/sanitize-arista-eos.py`](../scripts/sanitize-arista-eos.py) (MACs, IPs, serials, hostnames,
+   descriptions, optic serials), and run
+   [`scripts/check-site-info.sh`](../scripts/check-site-info.sh) before committing. The repo is public.
 3. Verify each command exists on that version by running it; note the ones
-   that do not (see `docs/drivers/arista-eos.md` §1 for how 4.26 differs).
+   that do not (see [`docs/drivers/arista-eos.md`](drivers/arista-eos.md) §1 for how 4.26 differs).
 
 ### Controller-side captures
 
@@ -43,7 +45,7 @@ The controller side is captured too, and the same scrub rule applies:
   produces (through the real device layer) with real UniFi switches' informs
   in `docs/fixtures/controller-<version>/inform-*.json`. Those come from the
   UniFi OS console support bundle (`unifi/devices/<type>/<mac>/last.inform`),
-  scrubbed with `scripts/sanitize-controller.py`. Every key a real switch
+  scrubbed with [`scripts/sanitize-controller.py`](../scripts/sanitize-controller.py). Every key a real switch
   sends must be present with the same JSON type or listed with a reason.
 - `internal/informloop/replay_<driver>_test.go` (one per driver, sharing
   the harness in `replay_test.go`) replays the controller's recorded
@@ -68,13 +70,13 @@ Create `internal/drivers/<name>/` with:
   `Collect` builds the Snapshot. Then, as you add writes,
   `switchmodel.Controller` (`ApplyPorts`), `SwitchController` (`ApplySwitch`),
   `VLANController` (`EnsureVLANs`). Add the compile-time interface checks
-  from `aristaeos/driver.go`.
+  from [`arista-eos/driver.go`](../internal/drivers/arista-eos/driver.go).
 - Tests against the fixtures (a `fixtureTransport` that serves the files by
   command name), covering: port count and indexes, an up port's counters,
   a down port, breakout folding if the platform has it, LLDP, capabilities,
   and every apply command sequence (including idempotence: applying the
   same desire twice must write nothing the second time).
-- A blank import in `cmd/switch-to-unifi/main.go` next to the Arista one.
+- A blank import in [`cmd/switch-to-unifi/main.go`](../cmd/switch-to-unifi/main.go) next to the Arista one.
 - Optionally `switchmodel.Planner` (`PlanPorts`: what ApplyPorts would
   change, without writing). With it the loop holds a freshly adopted
   device's first push while it would change ports, and the bridge seeds the
@@ -163,7 +165,7 @@ second UniFi switch. On EOS, two lines under the interface do that.
 
 Run `switch-to-unifi -collect-once -switch-url ...` (or `-switch-ssh`). It
 prints the port layout and the suggested model from the catalogue (see
-`docs/unifi-models.md` for how the catalogue is built, how to scan a newer
+[`docs/unifi-models.md`](unifi-models.md) for how the catalogue is built, how to scan a newer
 controller for new models, and what the choice affects). Pass `-model` to
 override. The port count must match; front-port media is cosmetic because
 the device's per-port media report replaces the profile's icons.
@@ -178,21 +180,21 @@ the device's per-port media report replaces the profile's icons.
    speed, set VLANs in the UI; verify on the switch after each. Then
    `-control-ports all` and confirm the reconcile makes zero changes.
 4. Record what the controller pushed for each feature as
-   `docs/fixtures/controller-<version>-*.txt` (scrubbed) and add a parser
-   test in `internal/unificfg` if a new key appeared.
-5. Update `docs/feature-map.md` status columns and the driver's doc file
-   (`docs/<vendor>-<api>.md`) with what was verified and on which version.
+   `docs/fixtures/controller-<version>/system_cfg-*.txt` (scrubbed) and add a parser
+   test in [`internal/unificfg`](../internal/unificfg) if a new key appeared.
+5. Update [`docs/feature-map.md`](feature-map.md) status columns and the driver's doc file
+   (`docs/drivers/<driver>.md`) with what was verified and on which version.
 
 ## 5. Where things live
 
 | Path | Owns |
 |---|---|
-| `internal/switchmodel` | neutral model, driver contract, registry |
+| [`internal/switchmodel`](../internal/switchmodel) | neutral model, driver contract, registry |
 | `internal/drivers/<name>` | one vendor; transport, parsing, apply |
-| `internal/unificfg` | parsing the controller's `system_cfg` |
-| `internal/device` | inform session, payload, capability claims, persistence |
-| `internal/informloop` | the loop: collect → inform → apply/reconcile |
-| `internal/unifimodel` | which UniFi model to claim |
-| `internal/unifiapi` | controller REST API (naming) |
-| `cmd/switch-to-unifi` | flags, wiring, no vendor code |
-| `docs/` | protocol notes, per-vendor notes, feature map, fixtures |
+| [`internal/unificfg`](../internal/unificfg) | parsing the controller's `system_cfg` |
+| [`internal/device`](../internal/device) | inform session, payload, capability claims, persistence |
+| [`internal/informloop`](../internal/informloop) | the loop: collect → inform → apply/reconcile |
+| [`internal/unifimodel`](../internal/unifimodel) | which UniFi model to claim |
+| [`internal/unifiapi`](../internal/unifiapi) | controller REST API (naming) |
+| [`cmd/switch-to-unifi`](../cmd/switch-to-unifi) | flags, wiring, no vendor code |
+| [`docs/`](.) | protocol notes, per-vendor notes, feature map, fixtures |
