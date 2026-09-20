@@ -358,57 +358,40 @@ func runOne(ctx context.Context, o options) error {
 		}
 		return false
 	}
-	var provisionNames func(snap *switchmodel.Snapshot)
-	var seedPorts func(snap *switchmodel.Snapshot)
+	// provision names the device and ports and, with control on, seeds the
+	// controller's port config from the switch — one read-modify-write —
+	// on the adoption handshake, on a layout change (a new guest) and while
+	// a first push is held (a retry). Only controller-default names and
+	// ports the controller has no config for are touched.
+	var provision func(snap *switchmodel.Snapshot)
 	if o.provision && o.unifiURL != "" {
 		key := o.unifiKey
 		if key == "" {
 			log.Printf("provision-names: STU_UNIFI_API_KEY not set, skipping")
 		} else {
 			api := unifiapi.New(o.unifiURL, key, o.unifiSite, true)
-			provisionNames = func(snap *switchmodel.Snapshot) {
-				if !sess.Adopted() {
+			seed := !o.noSeed && o.controlPorts != ""
+			var last time.Time
+			provision = func(snap *switchmodel.Snapshot) {
+				if !sess.Adopted() || snap == nil || time.Since(last) < 10*time.Second {
 					return
 				}
+				last = time.Now()
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
-				dev, nports, err := api.ProvisionNames(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortName)
+				r, err := api.Provision(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortName, seed)
 				pcancel()
+				for _, note := range r.Notes {
+					log.Printf("provision: seed: %s", note)
+				}
 				switch {
 				case err != nil:
-					log.Printf("provision-names: %v", err)
-				case dev || nports > 0:
-					log.Printf("provision-names: device renamed=%v, %d ports named after the switch", dev, nports)
+					log.Printf("provision: %v (retried on the next layout change or held push)", err)
+				case r.RenamedDevice || r.RenamedPorts > 0 || r.Seeded > 0 || r.Cleared > 0:
+					log.Printf("provision: device renamed=%v, %d ports named after the switch, %d ports seeded from the switch's own config, %d released slots cleared", r.RenamedDevice, r.RenamedPorts, r.Seeded, r.Cleared)
 				}
 			}
 			if snap != nil {
-				provisionNames(snap)
-			}
-			if !o.noSeed && o.controlPorts != "" {
-				// On adoption the controller knows nothing about the ports;
-				// write the switch's own state so its first push matches.
-				// Seeds on the adoption handshake, while a first push is held
-				// (retry) and whenever the port layout changes (a new guest):
-				// only ports the controller has no config for are written.
-				var seedLast time.Time
-				seedPorts = func(snap *switchmodel.Snapshot) {
-					if time.Since(seedLast) < 20*time.Second {
-						return
-					}
-					seedLast = time.Now()
-					sctx, scancel := context.WithTimeout(ctx, 30*time.Second)
-					n, notes, err := api.SeedPortConfig(sctx, macStr, snap)
-					scancel()
-					for _, note := range notes {
-						log.Printf("seed port config: %s", note)
-					}
-					if err != nil {
-						log.Printf("seed port config: %v (retried while a push is held or the layout changes)", err)
-						return
-					}
-					if n > 0 {
-						log.Printf("seed port config: %d ports written to the controller from the switch's own state", n)
-					}
-				}
+				provision(snap)
 			}
 		}
 	}
@@ -421,24 +404,18 @@ func runOne(ctx context.Context, o options) error {
 		SwitchHost: hostOf(o.switchURL, o.switchSSH),
 		GatewayIP:  o.controller,
 		OnLayoutChange: func(snap *switchmodel.Snapshot) {
-			if provisionNames != nil {
-				provisionNames(snap)
-			}
-			if seedPorts != nil && snap != nil {
-				seedPorts(snap)
+			if provision != nil {
+				provision(snap)
 			}
 		},
 		OnConnected: func(snap *switchmodel.Snapshot) {
-			if provisionNames != nil && snap != nil {
-				provisionNames(snap)
-			}
-			if seedPorts != nil && snap != nil {
-				seedPorts(snap)
+			if provision != nil {
+				provision(snap)
 			}
 		},
 		OnHeld: func(snap *switchmodel.Snapshot) {
-			if seedPorts != nil && snap != nil {
-				seedPorts(snap)
+			if provision != nil {
+				provision(snap)
 			}
 		},
 	}
