@@ -17,7 +17,7 @@ poll (root on the node, key auth). Write: `qm set`/`pct set` for
 `link_down`/`tag`/`trunks`. Nodes run lldpd bound to the active uplink NIC
 so the upstream aggregation switch sees them. Controller quirks: the ECS
 Core record carries `oob_port_config` that must be sent back empty on every
-REST update; the model's controller name is "ECS Core". A throwaway,
+REST update; the model's controller name is "ECS Core".
 For port-level tests make a throwaway, diskless guest (`qm create <id>
 --name stu-test --memory 128 --net0 virtio,bridge=vmbr0`) and destroy it
 afterwards (`qm stop <id>; qm destroy <id> --purge`); the last one, VM
