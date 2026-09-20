@@ -97,14 +97,9 @@ func TestCollectNode2(t *testing.T) {
 	if sys.Vendor != "Proxmox" || sys.Version != "9.1.6" || sys.Hostname != "proxmox-2" || sys.MAC == "" {
 		t.Errorf("system = %+v", sys)
 	}
-	// The switch identifies itself with the locally-administered form of the
-	// bridge MAC; the host's own MAC is a client on the host port.
-	if sys.MAC == "02:00:00:00:00:01" || sys.MAC != "00:00:00:00:00:01" || deviceMAC("02:00:00:00:00:96") != "02:00:00:00:00:97" {
-		t.Errorf("device MAC = %s, want the derived form of 02:00:00:00:00:01", sys.MAC)
-	}
-	host := snap.Ports[52]
-	if host.Index != 53 || host.IfName != "host" || host.Description != "proxmox-2" || !host.Up || len(host.MACs) != 1 || host.MACs[0].MAC != "02:00:00:00:00:01" || host.Counters.RxBytes == 0 {
-		t.Errorf("host port = %+v", host)
+	// The node is the switch: its bridge MAC is the device MAC.
+	if sys.MAC != "02:00:00:00:00:01" {
+		t.Errorf("device MAC = %s, want the bridge's 02:00:00:00:00:01", sys.MAC)
 	}
 	if !sys.HasTemperature || sys.TemperatureC < 40 || len(sys.Fans) != 4 || !sys.Fans[0].OK {
 		t.Errorf("sensors: temp %v fans %+v", sys.TemperatureC, sys.Fans)
@@ -166,16 +161,13 @@ func TestCollectNode2(t *testing.T) {
 	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	if e := snap.Ports[51]; e.Present || e.Index != 52 {
-		t.Errorf("slot 52 should be empty with a single bond: %+v", e)
-	}
-	for _, m := range u.MACs {
-		if m.MAC == "02:00:00:00:00:01" {
-			t.Errorf("host MAC learned on the uplink instead of the host port")
+	for _, idx := range []int{49, 50, 51, 52, 53} {
+		if e := snap.Ports[idx-1]; e.Present || e.Index != idx {
+			t.Errorf("slot %d should be empty with a single bond: %+v", idx, e)
 		}
 	}
 	ups := physicalMembers(sections(loadFixture(t, "collect-node2.txt"))["phys"], map[string]ipLink{"bond0": {Ifname: "bond0", Master: "vmbr0", Ifindex: 5}}, parseBonding(sections(loadFixture(t, "collect-node2.txt"))["bonding"]), "vmbr0")
-	if cfg, announce := lldpdConfig(ups, func(int) int { return 54 }, "00:00:00:00:00:01"); len(announce) != 1 || announce[0] != "ens1f0np0" || !strings.Contains(cfg, "chassisid 00:00:00:00:00:01") || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 54"`) {
+	if cfg, announce := lldpdConfig(ups, func(int) int { return 54 }, "02:00:00:00:00:01"); len(announce) != 1 || announce[0] != "ens1f0np0" || !strings.Contains(cfg, "chassisid 02:00:00:00:00:01") || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 54"`) {
 		t.Errorf("lldpd config = %q announce %v", cfg, announce)
 	}
 	if len(snap.VLANs) < 3 || snap.VLANs[0] != 1 {
@@ -361,19 +353,16 @@ func TestLACPBondIsPerMemberLAG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, b := snap.Ports[53], snap.Ports[51]
+	a, b := snap.Ports[53], snap.Ports[52]
 	if a.IfName != "ens1f0np0" || a.LAG != "bond0" || !a.Up || a.SpeedMbps != 100000 || len(a.MACs) < 50 {
 		t.Errorf("first member = %+v", a)
 	}
 	if b.IfName != "ens1f1np1" || b.LAG != "bond0" || !b.Up || b.SpeedMbps != 10000 || len(b.MACs) != 0 {
 		t.Errorf("second member = %+v (MACs belong to the first member only)", b)
 	}
-	if snap.Ports[52].IfName != "host" {
-		t.Errorf("host port moved: %+v", snap.Ports[52])
-	}
 	ups := physicalMembers(sections(fixture)["phys"], map[string]ipLink{"bond0": {Ifname: "bond0", Master: "vmbr0", Ifindex: 5}}, parseBonding(sections(fixture)["bonding"]), "vmbr0")
-	cfg, announce := lldpdConfig(ups, func(i int) int { return []int{54, 52}[i] }, "00:00:00:00:00:01")
-	if len(announce) != 2 || !strings.Contains(cfg, `ens1f0np0 lldp portidsubtype local "Port 54"`) || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 52"`) {
+	cfg, announce := lldpdConfig(ups, func(i int) int { return []int{54, 53}[i] }, "02:00:00:00:00:01")
+	if len(announce) != 2 || !strings.Contains(cfg, `ens1f0np0 lldp portidsubtype local "Port 54"`) || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 53"`) {
 		t.Errorf("lldpd config = %q announce %v", cfg, announce)
 	}
 }
