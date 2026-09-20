@@ -86,6 +86,16 @@ type Config struct {
 	ControlSNMP bool
 	// ControlSSHKeys: install the SSH keys the controller pushes on the switch.
 	ControlSSHKeys bool
+	// AllowInitialChanges lets the first push after adoption change ports.
+	// Off by default: a freshly adopted device has no port config in the
+	// controller, so its first push says "every port at its defaults" and
+	// would strip whatever the switch had. The loop holds such a push (the
+	// device keeps reporting the old cfgversion, the controller keeps
+	// re-sending) until a push arrives that changes nothing — which is what
+	// seeding the controller from the switch on adoption produces — or the
+	// operator sets the ports. Needs a driver that implements
+	// switchmodel.Planner; others apply as before.
+	AllowInitialChanges bool
 	// DefaultPortNames maps port_idx to the names that mean "unedited"; a
 	// UniFi port name in that set is written as "no description".
 	DefaultPortNames map[int][]string
@@ -128,6 +138,8 @@ type Loop struct {
 	warnedVersion   string
 	oobWarned       string // last out-of-band warning state, to log on change only
 	uplinkPort      int    // the port last marked as uplink from the snapshot
+	everApplied     bool   // a system_cfg has been applied to this device (this run or a previous one)
+	heldVersion     string // the first push being held, to log once
 	faultSig        string
 
 	mu         sync.Mutex
@@ -163,6 +175,9 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	}
 	if sess.Adopted() {
 		l.state = StateConnected
+	}
+	if _, _, ok := sess.Applied(); ok {
+		l.everApplied = true
 	}
 	if cfg.RecordDir != "" {
 		r, err := newRecorder(cfg.RecordDir, desc.MAC)
@@ -657,6 +672,9 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		}
 	}
 	desired := l.desiredPorts(text)
+	if held := l.holdInitialPush(ver, desired); held {
+		return true
+	}
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	l.ensureVLANs(cctx, text)
@@ -671,9 +689,31 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		return true
 	}
 	l.applyFailures = 0
+	l.everApplied = true
 	l.cfg.Logger.Printf("[%s] applied system_cfg %s to the switch: %d of %d ports changed", l.desc.MAC, ver, changed, len(desired))
 	if err := l.session.MarkApplied(ver); err != nil {
 		l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
+	}
+	return true
+}
+
+// holdInitialPush keeps the first push after adoption from changing ports
+// (see Config.AllowInitialChanges). It reports whether the push is held.
+func (l *Loop) holdInitialPush(ver string, desired []switchmodel.PortDesired) bool {
+	if l.everApplied || l.cfg.AllowInitialChanges {
+		return false
+	}
+	planner, ok := l.cfg.Controller.(switchmodel.Planner)
+	if !ok {
+		return false
+	}
+	changed := planner.PlanPorts(desired)
+	if len(changed) == 0 {
+		return false
+	}
+	if l.heldVersion != ver {
+		l.heldVersion = ver
+		l.cfg.Logger.Printf("[%s] HOLDING the first push after adoption (system_cfg %s): it would change %d ports %v, and a new device's controller config is only the defaults. Not applied. Seed the controller from the switch (automatic with api_url), or set these ports in the UI; the push that changes nothing goes through. control.allow_initial_changes: true overrides.", l.desc.MAC, ver, len(changed), changed)
 	}
 	return true
 }
