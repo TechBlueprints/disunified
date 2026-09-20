@@ -38,6 +38,20 @@ type Session struct {
 	caps        switchmodel.Capabilities
 }
 
+// SetUplinkPort marks idx as the uplink in the reported port table (0 = no
+// change): the loop re-evaluates the uplink from LLDP on every collect,
+// because the neighbour view at startup can be incomplete.
+func (s *Session) SetUplinkPort(idx int) {
+	if idx <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.desc.Ports {
+		s.desc.Ports[i].IsUplink = s.desc.Ports[i].PortIdx == idx
+	}
+}
+
 // SetCapabilities replaces the capability claims (default: DefaultCapabilities).
 func (s *Session) SetCapabilities(c switchmodel.Capabilities) {
 	s.mu.Lock()

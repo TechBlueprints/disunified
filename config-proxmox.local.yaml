@@ -15,7 +15,7 @@ switches:
       ports: "54"
       uplink_ports: "6"
     control:
-      ports: off
+      ports: all
   - name: proxmox-2
     driver: proxmox
     ssh: root@192.0.2.102
@@ -25,7 +25,7 @@ switches:
       ports: "54"
       uplink_ports: "6"
     control:
-      ports: off
+      ports: all
   - name: proxmox-3
     driver: proxmox
     ssh: root@192.0.2.103
@@ -35,4 +35,4 @@ switches:
       ports: "54"
       uplink_ports: "6"
     control:
-      ports: off
+      ports: all
