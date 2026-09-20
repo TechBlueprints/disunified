@@ -257,7 +257,9 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		}
 		if p.FEC != switchmodel.FECUnknown {
 			// Real informs carry `fec` in the 802.3 clause vocabulary; the
-			// controller derives fec_mode from it.
+			// controller stores fec_mode only when the device sends it too
+			// (verified 2026-09-20), so send both.
+			e["fec_mode"] = string(p.FEC)
 			switch p.FEC {
 			case switchmodel.FECRS:
 				e["fec"] = "cl-91"
