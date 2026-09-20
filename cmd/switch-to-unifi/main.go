@@ -377,6 +377,11 @@ func runOne(ctx context.Context, o options) error {
 				provisionNames(snap)
 			}
 		},
+		OnConnected: func(snap *switchmodel.Snapshot) {
+			if provisionNames != nil && snap != nil {
+				provisionNames(snap)
+			}
+		},
 	}
 	if sw != nil {
 		loopCfg.Collector = sw
