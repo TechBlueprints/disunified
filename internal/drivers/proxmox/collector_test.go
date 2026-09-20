@@ -51,6 +51,24 @@ func newTestCollector(t *testing.T, fixture string) (*Collector, *fixtureRunner)
 	return c, r
 }
 
+// vm100 returns VM 100's scrubbed MAC and name from the fixture (the
+// scrubber numbers MACs by first appearance, so they move when sections
+// are added).
+func vm100(t *testing.T, fixture string) (mac, name string) {
+	t.Helper()
+	sec := sections(loadFixture(t, fixture))
+	nics, _ := parseGuestConfigs(sec["qemu"], "qemu")
+	for _, n := range nics {
+		if n.VMID == 100 && n.Index == 0 {
+			// The MAC as written in the config line (case preserved by renderNICOptions).
+			raw := strings.SplitN(n.Raw, ",", 2)[0]
+			return strings.TrimPrefix(raw, "virtio="), n.Name
+		}
+	}
+	t.Fatal("VM 100 not in fixture")
+	return "", ""
+}
+
 func portByIf(t *testing.T, snap *switchmodel.Snapshot, ifname string) switchmodel.Port {
 	t.Helper()
 	for _, p := range snap.Ports {
@@ -72,7 +90,7 @@ func TestCollectNode2(t *testing.T) {
 		t.Fatalf("ports = %d, want 32", len(snap.Ports))
 	}
 	sys := snap.System
-	if sys.Vendor != "Proxmox" || sys.Version != "9.1.6" || sys.Hostname != "proxmox-2" || sys.MAC != "02:00:00:00:00:04" {
+	if sys.Vendor != "Proxmox" || sys.Version != "9.1.6" || sys.Hostname != "proxmox-2" || sys.MAC == "" {
 		t.Errorf("system = %+v", sys)
 	}
 	if !sys.HasTemperature || sys.TemperatureC < 40 || len(sys.Fans) != 4 || !sys.Fans[0].OK {
@@ -135,8 +153,8 @@ func TestCollectNode2(t *testing.T) {
 	if got := c.DeviceName(snap.System); got != "proxmox-2" {
 		t.Errorf("device name = %q", got)
 	}
-	if got := c.PortName(p1); got != "100 vm-7" {
-		t.Errorf("port name = %q", got)
+	if _, name := vm100(t, "collect-node2.txt"); c.PortName(p1) != "100 "+name {
+		t.Errorf("port name = %q", c.PortName(p1))
 	}
 }
 
@@ -208,7 +226,8 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 	if err != nil || n != 1 || len(r.cmds) != 1 {
 		t.Fatalf("apply: n=%d err=%v cmds=%v", n, err, r.cmds)
 	}
-	want := "qm set 100 --net0 'virtio=02:00:00:00:00:96,bridge=vmbr0,tag=10,trunks=20;30,link_down=1'"
+	mac, _ := vm100(t, "collect-node2.txt")
+	want := "qm set 100 --net0 'virtio=" + mac + ",bridge=vmbr0,tag=10,trunks=20;30,link_down=1'"
 	if r.cmds[0] != want {
 		t.Errorf("cmd = %q\nwant %q", r.cmds[0], want)
 	}
@@ -225,7 +244,7 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 	}
 	// Back to default: options removed.
 	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{all(1)})
-	if n != 1 || r.cmds[len(r.cmds)-1] != "qm set 100 --net0 'virtio=02:00:00:00:00:96,bridge=vmbr0'" {
+	if n != 1 || r.cmds[len(r.cmds)-1] != "qm set 100 --net0 'virtio="+mac+",bridge=vmbr0'" {
 		t.Errorf("restore = %v", r.cmds)
 	}
 	// Port cycle: down then back to the (restored) config.
