@@ -41,6 +41,7 @@ done
 s bonding;    for b in /proc/net/bonding/*; do [ -e "$b" ] || continue; echo "## $(basename $b)"; cat "$b"; done
 s ethtool;    for n in $PHYS; do echo "## $n"; ethtool "$n" 2>/dev/null; done
 s ethtoolm;   for n in $PHYS; do echo "## $n"; ethtool -m "$n" 2>/dev/null; done
+s ethtoolfec; for n in $PHYS; do echo "## $n"; ethtool --show-fec "$n" 2>/dev/null; done
 s hwmon
 for h in /sys/class/hwmon/hwmon*; do
   [ -e "$h/name" ] || continue

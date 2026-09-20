@@ -269,6 +269,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
+	_, fecBodies := subsections(sec["ethtoolfec"])
 	uplinkHint := 0
 	hostMAC := strings.ToLower(bridge["address"])
 	slotFor := func(i int) int { // uplink i -> port index: 0 -> last, 1 -> last-2, 2 -> last-3, ...
@@ -284,6 +285,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		et := parseEthtool(ethBodies[u.Active])
 		mod := parseEthtoolModule(modBodies[u.Active])
 		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
+		p.FEC = parseEthtoolFEC(fecBodies[u.Active])
 		p.Health.LinkChanges = carrierChanges(carrier, u.Active)
 		if nb, ok := neighbors[u.Active]; ok {
 			nbc := nb
@@ -399,6 +401,18 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	sort.Ints(vlanIDs)
 	sort.Slice(macs, func(i, j int) bool { return macs[i].MAC < macs[j].MAC })
 
+	for i := range ports {
+		switch {
+		case !stpOn:
+			ports[i].STPRole = "disabled" // no spanning tree on the bridge: what a switch reports for an STP-disabled port
+		case ports[i].STPState == "forwarding":
+			ports[i].STPRole = "designated"
+		case ports[i].STPState == "blocking":
+			ports[i].STPRole = "alternate"
+		default:
+			ports[i].STPRole = "disabled"
+		}
+	}
 	snap := &switchmodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, VLANs: vlanIDs, UplinkHint: uplinkHint}
 	c.mu.Lock()
 	c.node = hostname

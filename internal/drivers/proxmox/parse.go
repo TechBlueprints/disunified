@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
 // sections splits the collector script's output ("@@@ name" lines) into
@@ -634,4 +636,23 @@ func parseLoadAvg(body string) []float64 {
 		out = append(out, x)
 	}
 	return out
+}
+
+// parseEthtoolFEC reads `ethtool --show-fec`: the active encoding.
+func parseEthtoolFEC(body string) switchmodel.FEC {
+	for _, line := range strings.Split(body, "\n") {
+		k, v, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(k) != "Active FEC encoding" {
+			continue
+		}
+		switch strings.ToUpper(strings.TrimSpace(v)) {
+		case "RS":
+			return switchmodel.FECRS
+		case "BASER":
+			return switchmodel.FECFC
+		case "OFF", "NONE":
+			return switchmodel.FECDisabled
+		}
+	}
+	return switchmodel.FECUnknown
 }
