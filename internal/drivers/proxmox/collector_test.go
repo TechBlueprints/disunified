@@ -111,6 +111,9 @@ func TestCollectNode2(t *testing.T) {
 	if sys.MemTotalKB == 0 || sys.MemUsedKB == 0 || sys.Uptime < time.Hour {
 		t.Errorf("mem/uptime: %+v", sys)
 	}
+	if len(sys.Addresses) != 1 || sys.Addresses[0].Iface != "vmbr0" || sys.Addresses[0].PrefixLen != 16 || len(sys.ARP) < 5 || len(sys.LoadAvg) != 3 {
+		t.Errorf("reachability: addrs %+v arp %d load %v", sys.Addresses, len(sys.ARP), sys.LoadAvg)
+	}
 
 	// Guest ports are numbered cluster-wide in (vmid, net) order.
 	p1 := snap.Ports[0]

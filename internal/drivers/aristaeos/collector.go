@@ -43,6 +43,8 @@ var (
 		"show spanning-tree root detail",
 		"show interfaces transceiver dom thresholds",
 		"show spanning-tree topology status detail",
+		"show ip arp",
+		"show hardware capacity",
 	}
 )
 
@@ -179,8 +181,10 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 		root showSpanningTreeRoot
 		th   showTransceiverThresholds
 		ts   showSTPTopologyStatus
+		arp  showIPARP
+		hwc  showHardwareCapacity
 	)
-	for i, v := range []any{&ver, &ifs, &lldp, &stp, &top, &temp, &mt, &xcvr, &fec, &fc, &pc, &cool, &pwr, &sp, &vl, &sc, &igmp, &rc, &ed, &root, &th, &ts} {
+	for i, v := range []any{&ver, &ifs, &lldp, &stp, &top, &temp, &mt, &xcvr, &fec, &fc, &pc, &cool, &pwr, &sp, &vl, &sc, &igmp, &rc, &ed, &root, &th, &ts, &arp, &hwc} {
 		if err := decodeInto(out[i], pollCmds[i], v); err != nil {
 			return nil, err
 		}
@@ -241,6 +245,10 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 		snap.System.MgmtMAC = strings.ToLower(m.PhysicalAddress) // the OOB port has its own MAC (system MAC - 1 on the 7160)
 	}
 	snap.System.OOBInterfaces = oobInterfaces(ifs)
+	snap.System.Addresses = ifAddresses(ifs)
+	snap.System.ARP = arpTable(arp)
+	snap.System.LoadAvg = top.TimeInfo.LoadAvg
+	snap.System.MACTableCapacity, snap.System.MACTableUsed = fdbCapacity(hwc)
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
 	applyRunningConfig(ports, &snap.System, rc)
@@ -343,4 +351,70 @@ func oobInterfaces(ifs showInterfaces) []switchmodel.OOBInterface {
 		out = append(out, o)
 	}
 	return out
+}
+
+// ifAddresses lists every interface's primary IPv4 address.
+func ifAddresses(ifs showInterfaces) []switchmodel.IfAddress {
+	var out []switchmodel.IfAddress
+	for name, m := range ifs.Interfaces {
+		if len(m.InterfaceAddress) == 0 {
+			continue
+		}
+		p := m.InterfaceAddress[0].PrimaryIP
+		if p.Address == "" || p.Address == "0.0.0.0" {
+			continue
+		}
+		out = append(out, switchmodel.IfAddress{Iface: name, IP: p.Address, PrefixLen: p.MaskLen})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Iface < out[j].Iface })
+	return out
+}
+
+// showIPARP is `show ip arp`.
+type showIPARP struct {
+	IPv4Neighbors []struct {
+		Address   string `json:"address"`
+		HwAddress string `json:"hwAddress"` // aabb.ccdd.eeff on EOS
+	} `json:"ipV4Neighbors"`
+}
+
+func arpTable(a showIPARP) map[string]string {
+	out := make(map[string]string, len(a.IPv4Neighbors))
+	for _, n := range a.IPv4Neighbors {
+		out[n.Address] = colonMAC(n.HwAddress)
+	}
+	return out
+}
+
+// colonMAC turns EOS's aabb.ccdd.eeff (or any hex run) into aa:bb:cc:dd:ee:ff.
+func colonMAC(s string) string {
+	hex := strings.NewReplacer(".", "", ":", "", "-", "").Replace(strings.ToLower(s))
+	if len(hex) != 12 {
+		return strings.ToLower(s)
+	}
+	parts := make([]string, 6)
+	for i := range parts {
+		parts[i] = hex[2*i : 2*i+2]
+	}
+	return strings.Join(parts, ":")
+}
+
+// showHardwareCapacity is `show hardware capacity`; the L2 "FDB" table is
+// the MAC address table (131072 entries on the 7160).
+type showHardwareCapacity struct {
+	Tables []struct {
+		Feature  string `json:"feature"`
+		Table    string `json:"table"`
+		MaxLimit int    `json:"maxLimit"`
+		Used     int    `json:"used"`
+	} `json:"tables"`
+}
+
+func fdbCapacity(h showHardwareCapacity) (capacity, used int) {
+	for _, t := range h.Tables {
+		if t.Feature == "L2" && t.Table == "FDB" {
+			return t.MaxLimit, t.Used
+		}
+	}
+	return 0, 0
 }

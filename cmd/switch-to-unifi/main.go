@@ -309,33 +309,21 @@ func runOne(ctx context.Context, o options) error {
 		url = "http://" + ipLit + ":8080/inform"
 	}
 
-	ports := make([]inform.Port, len(profile.Ports))
-	copy(ports, profile.Ports)
-	if o.uplink > 0 {
-		for i := range ports {
-			ports[i].IsUplink = ports[i].PortIdx == o.uplink
-		}
+	desc, err := device.DescriptorFor(profile.Model, snap, device.Identity{
+		MAC: macStr, Serial: o.serial, IP: o.ip, Hostname: o.hostname, Version: o.version,
+		UDAPIVersion: o.udapiVersion, UplinkPort: o.uplink,
+	})
+	if err != nil {
+		return err
 	}
-	if o.version == "" {
-		o.version = profile.Version
-	}
+	o.version = desc.Version
+	// Capability claims come from the driver when it declares them (a
+	// bridge honours fewer features than the Arista); they gate the UI.
 	caps := device.DefaultCapabilities
 	if c, ok := sw.(switchmodel.Capable); ok && sw != nil {
 		caps = c.Capabilities()
 	}
-	desc := inform.Descriptor{
-		MAC:          macStr,
-		Serial:       o.serial,
-		Model:        profile.Model,
-		ModelDisplay: profile.ModelDisplay,
-		Version:      o.version,
-		IP:           o.ip,
-		Hostname:     o.hostname,
-		Type:         profile.Type,
-		FWCaps:       device.FWCapsFor(caps),
-		UDAPIVersion: o.udapiVersion,
-		Ports:        ports,
-	}
+	desc.FWCaps = device.FWCapsFor(caps)
 
 	// --- Session ---
 	store := &device.Store{Path: o.stateFile}
@@ -359,7 +347,7 @@ func runOne(ctx context.Context, o options) error {
 	if sw != nil {
 		namer = switchmodel.NamerFor(sw)
 	}
-	defaults := defaultPortNames(ports, snap, namer)
+	defaults := defaultPortNames(desc.Ports, snap, namer)
 	isDefaultPortName := func(idx int, name string) bool {
 		for _, d := range defaults[idx] {
 			if name == d {
@@ -401,12 +389,13 @@ func runOne(ctx context.Context, o options) error {
 		Interval:   o.interval,
 		RecordDir:  o.recordDir,
 		SwitchHost: hostOf(o.switchURL, o.switchSSH),
+		GatewayIP:  o.controller,
 		OnLayoutChange: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil {
 				provisionNames(snap)
 			}
 		},
-		OnAdopted: func(snap *switchmodel.Snapshot) {
+		OnConnected: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil && snap != nil {
 				provisionNames(snap)
 			}

@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,15 +89,22 @@ type Config struct {
 	// DefaultPortNames maps port_idx to the names that mean "unedited"; a
 	// UniFi port name in that set is written as "no description".
 	DefaultPortNames map[int][]string
+	// OnConnected runs once each time the adoption handshake completes
+	// (state -> CONNECTED), with the current snapshot: first-provision work
+	// such as naming the device and its ports through the REST API belongs
+	// here, because a device adopted after the bridge started has no other
+	// trigger (found 2026-09-20: a re-adopted switch stayed "USW Leaf").
+	OnConnected func(snap *switchmodel.Snapshot)
+
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
 	OnLayoutChange func(snap *switchmodel.Snapshot)
-	// OnAdopted runs once when the adoption handshake completes, with the
-	// current snapshot (nil without a collector): first-provision naming.
-	OnAdopted func(snap *switchmodel.Snapshot)
 	// SwitchHost is the address the bridge reaches the switch at, for the
 	// out-of-band management warning ("" = unknown).
 	SwitchHost string
+	// GatewayIP is the controller/gateway address; the switch's ARP entry
+	// for it is reported as gateway_mac ("" = skip).
+	GatewayIP string
 
 	// OnSystemCfg runs with every system_cfg the controller pushes (and the
 	// last applied one at startup): the SSH gateway takes its credentials
@@ -207,6 +215,10 @@ func (l *Loop) informOnce(ctx context.Context) {
 	l.collect(ctx)
 	now := time.Now()
 	enc, err := l.session.EncodeInform(now)
+	if l.cfg.RecordDir != "" {
+		// The last payload as sent, for diagnosis (overwritten every cycle).
+		_ = os.WriteFile(filepath.Join(l.cfg.RecordDir, "payload-last.json"), l.session.BuildPayload(now), 0o600)
+	}
 	url := l.session.InformURL()
 	key := l.session.AuthKey()
 	wasAdopted := l.session.Adopted()
@@ -303,7 +315,7 @@ func (l *Loop) informOnce(ctx context.Context) {
 		case inform.EffectMgmtCfg:
 			if e.Text != l.lastMgmt {
 				l.lastMgmt = e.Text
-				lines = append(lines, fmt.Sprintf("mgmt_cfg: %q", e.Text))
+				lines = append(lines, fmt.Sprintf("mgmt_cfg: %q", maskAuthKey(e.Text)))
 			}
 		case inform.EffectUnknownCmd:
 			lines = append(lines, fmt.Sprintf("UNHANDLED cmd %q", e.Text))
@@ -323,22 +335,22 @@ func (l *Loop) informOnce(ctx context.Context) {
 			}
 		}
 	}
-	adoptedNow := false
+	connectedNow := false
 	if wasAdopting && l.session.Adopted() && l.state == StateAdopting {
 		l.state = StateConnected
-		adoptedNow = true
+		connectedNow = true
 		lines = append(lines, "adoption handshake complete -> CONNECTED")
 	}
 	rec.StateAfter = l.state.String()
 	l.mu.Unlock()
-	if adoptedNow && l.cfg.OnAdopted != nil {
-		l.cfg.OnAdopted(l.session.Snapshot())
-	}
 
 	for _, s := range lines {
 		l.cfg.Logger.Printf("[%s] %s", l.desc.MAC, s)
 	}
 	l.record(rec)
+	if connectedNow && l.cfg.OnConnected != nil {
+		l.cfg.OnConnected(l.session.Snapshot())
+	}
 	l.cyclePorts(ctx)
 	if !l.applyPending(ctx) {
 		l.reconcile(ctx)
@@ -687,6 +699,10 @@ func (l *Loop) collect(ctx context.Context) {
 		l.cfg.Logger.Printf("[%s] collect from switch recovered after %d failures", l.desc.MAC, l.collectFailures)
 		l.collectFailures = 0
 	}
+	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
+		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
+	}
+	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
 	if up := snap.UplinkPort(); up > 0 && up != l.uplinkPort {
 		if l.uplinkPort != 0 {
@@ -881,3 +897,8 @@ func (l *Loop) warnOOB(snap *switchmodel.Snapshot) {
 		l.cfg.Logger.Printf("[%s] %s", l.desc.MAC, m)
 	}
 }
+
+var authKeyRe = regexp.MustCompile(`authkey=[0-9a-fA-F]{32}`)
+
+// maskAuthKey hides the device auth key in logged mgmt_cfg text.
+func maskAuthKey(s string) string { return authKeyRe.ReplaceAllString(s, "authkey=<key>") }

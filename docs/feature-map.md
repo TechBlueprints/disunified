@@ -17,7 +17,7 @@ Two channels exist:
   UI *shows*.
 - **Controller → device**: `setparam.system_cfg` (the UniFi device config file, observed) and
   `setstate` (`port_overrides`/`port_table`, per prior art, **not yet observed** on 10.6.106),
-  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `locate`, `set-adopt`…). What the UI
+  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `set-locate`, `set-adopt`…; `power-cycle` only for PoE ports). What the UI
   *controls*.
 
 The controller only sends a `system_cfg` key when the feature is non-default in the site,
@@ -56,8 +56,11 @@ capabilities hide. Verified live on Network 10.6.106, 2026-09-19/20.
 | `ethernet_table` | mgmt NICs | static | done |
 | `lldp_table` (`local_port_idx`, `local_port_name`, `chassis_id`, `port_id`, `is_wired`) | topology to other devices | `show lldp neighbors detail` | done |
 | `mac_table` (`mac`, `port_idx`, `vlan`, `age`, `uptime`) | which clients sit behind which port — **this is what places downstream devices under the switch in the topology and client list** | `show mac address-table` (`unicastTable.tableEntries`) | **done — verified: `stat/sta` shows euphrosyne with `sw_mac` = the Arista, `sw_port` 53** |
-| `uplink` (`name`, `port_idx`, `mac`, `ip`, `speed`, `up`, `type: wire`, `rx/tx`, `uplink_mac`, `uplink_remote_port`) | which port faces the controller | port 49 (LLDP to the aggregation switch) | the device report is not what decides it: the controller derives the uplink from LLDP plus where the device's IP/MAC lives (`uplink_source: lldp_uplink`). Requires the management address **in-band** (docs/adding-a-switch.md §2c): with it on the OOB port the Arista had no Uplink/Parent and floated in the topology; moved to `Vlan1` 2026-09-20. Sent in the real switches' shape (name `eth0`, `if_table`, `uplink_source`, 1-based remote port from UniFi LLDP names) |
+| `uplink` (**the string `"eth0"`**), `if_table` (that interface: ip, netmask, num_port, counters), `port_table[].is_uplink`, `lldp_table` | which port faces the controller; the list's Uplink/Parent columns, "Connected To", `uplink_depth`, child nodes in the topology map | port 49 (LLDP to the aggregation switch) | **done, verified 2026-09-20.** A real switch reports `uplink` as the *name* of its management interface in `if_table`, not an object; the controller composes the uplink record (`uplink_source: lldp_uplink`, remote port, media, speed) from that plus `is_uplink` and LLDP. Sending an object had it ignored for a day. Also needs the management address in-band (§2c) and no LLDP on the OOB port |
 | `stp_version` (`rstp`/`stp`/`disabled`), `stp_priority` | STP | `show spanning-tree` (`protocol`, `bridge.priority`) | sent (`rstp`, `"32768"`); the controller keeps the settings on the config side (`switch.stp.*`, §3) and stores these as null |
+| `system-stats` (`cpu`, `mem`, `uptime` as strings), `sys_stats.loadavg_*` | Memory Usage / System Statistics graphs in Insights | `show processes top once` (`timeInfo.loadAvg`) | done, verified in the UI 2026-09-20 |
+| `connect_request_ip`/`_port`, `gateway_mac`, `ethernet_table` (`eth0` + `srv0`), `service_mac` | reachability and interfaces, as real switches report | `show ip arp` (gateway MAC = ARP for the controller host), `show interfaces` (Management1 MAC = service MAC, reported only while that port is unplugged) | done; stored by the controller |
+| `mac_table_capability` | MAC Table Pressure card | `show hardware capacity` (L2/FDB 131072) | sent; **controller drops it** — only the ECS aggregation (USWF066) has it on this site, USW models do not; likely model/firmware gated. Low value |
 | `root_switch` | STP root bridge MAC (the topology's root marker; UniFi switches report it) | `show spanning-tree root detail` (`instances.*.rootBridge.macAddress`; the switch's own MAC when it is the root) | done |
 | `jumboframe_enabled`, `mtu` | switch-wide MTU | `show interfaces` mtu | sent true; controller stores false (config-side setting, like STP). Per-port `jumbo` is stored |
 | `flowctrl_enabled` | global flow control | `show interfaces flow-control` (full spelling; needs enable) | done |
@@ -84,6 +87,7 @@ capabilities hide. Verified live on Network 10.6.106, 2026-09-19/20.
 | `op_mode` (`switch`/`aggregate`) | `show port-channel summary` membership | done (mirror todo) |
 | `aggregated_by` | `show port-channel summary` | done (Po1-4 exist, no members) |
 | `stp_pathcost` | `show spanning-tree` `cost` | done |
+| `mac_table_count`, `link_down_count`, `stp_state_change_count`, `sfp_rxfault`/`sfp_txfault`, `ifname` (vendor name), setting echoes (`stp_port_mode`, `stp_edge_port`, `lldpmed_enabled`, `port_keepalive_enabled`, `isolation`, `egress_rate_limit_kbps_enabled`, `port_security_*`, `locating`) | what a real switch's port entry carries | `Port.Health`, `Port.MACs`, config state | done 2026-09-20; stored by the controller |
 | `anomalies` (bitmask), `satisfaction` (0-100), `satisfaction_reason` | per-port Anomaly / Experience columns | derived in `internal/device` (`portAnomalies`) from `Port.Health` + counters. Bit values as the Network 10.6 UI uses them: 1/2 optic rx/tx outside its alarm thresholds (`show interfaces transceiver dom thresholds`); 4 errdisable `xcvr-*`; 8 STP guard inconsistency (`show spanning-tree` `inconsistentFeatures`); 16/32 STP changes since last inform ≥3 / ≥1 (`show spanning-tree topology status detail`); 64 link changes ≥2 since last inform (`linkStatusChanges`) or errdisable `link-flap`; 512 errdisable loop-protect; 1024 uplink below its top speed; 2048 errdisable bpduguard; 4096 errors, FEC uncorrected codewords or PCS errored blocks grew, or PCS high-BER (`show interfaces X phy detail`, text, every up port — copper included); 8192 drops grew; 32768 errdisable portsec. Satisfaction follows this controller's own switches (30 sampled 2026-09-19): 100, −10 reason 1 if the port ever dropped packets, −15 reason 2 if it ever counted errors; −10 for a slow uplink (our rule). Not derivable on EOS 4.26: 128 MCLAG, 256 PoE budget | done, verified live |
 | `dot1x_mode`, `dot1x_status` | n/a | report `auto`/`disabled` |
 | `portconf_id`, `port_security_*`, `isolation` | echo from controller | merged from pushed config |
@@ -142,9 +146,9 @@ source of the same per-port intent.
 | `set-adopt`, `setdefault` | adoption lifecycle | session | done |
 | `reboot` | reboot the device | emulated by default; `-control-reboot` → `write memory` + `reload now` | done |
 | `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`); `firmware:` in config overrides the default | done |
-| `locate` / `unlocate` | blink LEDs | reports `locating`; no LED control on the 7160 | done |
+| `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) |
-| `port-cycle` (`port_idx`) | bounce a port | `shutdown`, 3 s, `no shutdown` on every lane | done (not yet exercised from the UI) |
+| `power-cycle` (`port_idx`) | PoE power cycle | `shutdown`, 3 s, `no shutdown` on every lane (for a PoE-capable driver) | n/a here: the controller only issues it for a PoE port powering a device (`api.err.InvalidTargetPort` otherwise, verified 2026-09-20), and the UI's "Power Cycle" appears only on such ports; the 7160 has no PoE, so no capture exists |
 | `cable-test` | TDR | EOS has no TDR on 7160 | n/a |
 | `clear-counters`? | reset stats | `clear counters` | verify |
 
@@ -171,8 +175,8 @@ portfast/edge; set storm control; set LLDP-MED; set link aggregation (with port 
 first); mirror to port 3 (ask first); FEC if the UI exposes it for the model.
 
 Switch level: STP priority; STP version; jumbo frames; IGMP snooping; DHCP snooping;
-SNMP; syslog host; NTP; management VLAN; locate LED; reboot request (the bridge emulates it);
-port-cycle on port 2.
+SNMP; syslog host; NTP; management VLAN; locate LED; reboot request (the bridge emulates it).
+No port power cycle: the controller offers it only for a PoE port powering a device.
 
 Each capture adds a fixture under `docs/fixtures/controller-10.6.106-*.txt` and turns a
 "verify" row into a mapping.

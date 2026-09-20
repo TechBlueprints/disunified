@@ -106,6 +106,8 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	var fdb []fdbEntry
 	var vml vmList
 	var lldp lldpJSON0
+	var addrs []ipAddr
+	var neigh []ipNeigh
 	if err := decodeJSON("links", sec["links"], &links); err != nil {
 		return nil, err
 	}
@@ -119,6 +121,12 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		return nil, err
 	}
 	if err := decodeJSON("vmlist", sec["vmlist"], &vml); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON("addr", sec["addr"], &addrs); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON("neigh", sec["neigh"], &neigh); err != nil {
 		return nil, err
 	}
 	if err := decodeJSON("lldp", sec["lldp"], &lldp); err != nil {
@@ -356,6 +364,23 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	}
 	snoop := bridge["multicast_snooping"] == "1"
 	sys.IGMPSnooping = map[int]bool{1: snoop}
+	// Reachability, for the controller to place the switch in a network:
+	// the bridge's own addresses (netmask) and the neighbours it has
+	// resolved (the gateway's MAC), plus the load averages for the graphs.
+	for _, a := range addrs {
+		for _, ai := range a.AddrInfo {
+			if ai.Family == "inet" && ai.Scope == "global" {
+				sys.Addresses = append(sys.Addresses, switchmodel.IfAddress{Iface: a.Ifname, IP: ai.Local, PrefixLen: ai.PrefixLen})
+			}
+		}
+	}
+	sys.ARP = map[string]string{}
+	for _, n := range neigh {
+		if n.LLAddr != "" && !strings.Contains(n.Dst, ":") {
+			sys.ARP[n.Dst] = strings.ToLower(n.LLAddr)
+		}
+	}
+	sys.LoadAvg = parseLoadAvg(sec["loadavg"])
 	sys.NTPServers = ntpServers(sec["chrony"])
 	if s := strings.TrimSpace(sec["ntpunifi"]); s != "" {
 		sys.NTPServers = append(sys.NTPServers, ntpServers(s)...)

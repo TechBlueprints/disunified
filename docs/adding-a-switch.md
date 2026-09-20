@@ -34,6 +34,23 @@ creation, FEC, storm control, BPDU guard, STP mode/priority, IGMP snooping.
 3. Verify each command exists on that version by running it; note the ones
    that do not (see `docs/arista-eapi.md` §1 for how 4.26 differs).
 
+### Controller-side captures
+
+The controller side is captured too, and the same scrub rule applies:
+
+- `internal/device/contract_test.go` compares the payload your driver
+  produces (through the real device layer) with real UniFi switches' informs
+  in `docs/fixtures/controller-<version>/inform-*.json`. Those come from the
+  UniFi OS console support bundle (`unifi/devices/<type>/<mac>/last.inform`),
+  scrubbed with `scripts/sanitize-captures.py`. Every key a real switch
+  sends must be present with the same JSON type or listed with a reason.
+- `internal/informloop/replay_test.go` replays the controller's recorded
+  replies (`docs/fixtures/controller-<version>/replies.ndjson`, cut from the
+  bridge's `inform-log/<mac>.ndjson`, scrubbed the same way) through the
+  loop with your driver on its fixtures, and asserts the switch commands each
+  push produces. When you verify a feature live (§4), the reply that carried
+  it is in the log: add it to the fixture with the expected commands.
+
 ## 2. Write the driver
 
 Create `internal/drivers/<name>/` with:
@@ -83,6 +100,26 @@ Rules that came from live failures, all enforced by the reference driver:
   leave the switch's setting alone.
 - **Lead config batches with the platform's privilege escalation** if the
   API starts unprivileged (eAPI starts at privilege 1).
+
+What a first-party-looking switch needs beyond ports and counters (all in
+`switchmodel.System` / `Port`, all shown in the UI once filled):
+
+- `Port.Health`: link-change and STP-change counts, STP guard state, optic
+  alarm flags, FEC codeword and PCS error counters — the Anomaly column and
+  the per-port anomaly breakdown come from these. Some of it may only exist
+  in text form on your platform (the Arista driver has a `TextRunner`
+  transport capability for that); leave a field unset rather than guess.
+- `System.Addresses`, `ARP`, `MgmtMAC`, `OOBInterfaces`: the controller
+  places a device by its address, netmask, gateway MAC and interfaces, and
+  needs the management address in-band (§2c). Report OOB ports so the loop
+  can warn.
+- `System.LoadAvg`, memory, CPU, temperature, fans, PSUs (with `Present`),
+  `MACTableCapacity`: Insights graphs and the overview cards.
+- `System.STPRoot`: the topology's root marker.
+- The uplink: mark the port `IsUplink` (the loop picks the LLDP neighbour
+  that is a bridge/router) and nothing else — the device layer reports
+  `uplink` as the management interface *name* plus `if_table`, which is
+  what a real switch sends; the controller derives the rest.
 
 ## 2b. Naming
 

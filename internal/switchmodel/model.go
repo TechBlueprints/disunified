@@ -165,9 +165,17 @@ type System struct {
 	// in the topology (see docs/adding-a-switch.md). Reported so the loop can
 	// warn loudly.
 	OOBInterfaces []OOBInterface
-	Version       string // vendor's own version string, e.g. "4.26.14M"
-	Hostname      string
-	Uptime        time.Duration
+
+	LoadAvg          []float64 // 1/5/15-minute load averages, nil if unknown
+	MACTableCapacity int       // hardware MAC (FDB) table size, 0 if unknown
+	MACTableUsed     int       // entries in use
+
+	Addresses  []IfAddress       // the switch's own IPv4 addresses (management, VLAN, loopback)
+	ARP        map[string]string // IPv4 -> MAC the switch has resolved, lower-case colon form
+	GatewayMAC string            // MAC of the switch's gateway/controller next hop, "" if unknown
+	Version    string            // vendor's own version string, e.g. "4.26.14M"
+	Hostname   string
+	Uptime     time.Duration
 
 	CPUPercent  float64 // 0-100, whole system
 	MemTotalKB  uint64
@@ -190,6 +198,13 @@ type System struct {
 	SyslogHosts     []string
 	DHCPSnooping    bool
 	SNMPCommunities []string // configured v1/v2c communities
+}
+
+// IfAddress is one of the switch's own IPv4 addresses.
+type IfAddress struct {
+	Iface     string
+	IP        string
+	PrefixLen int
 }
 
 // OOBInterface is one out-of-band management interface.
@@ -294,6 +309,7 @@ type Port struct {
 
 	Counters Counters
 	STPState string // "forwarding", "blocking", "learning", "listening", "disabled", ""
+	STPRole  string // "root", "designated", "alternate", "backup", "disabled", ""
 
 	Neighbor *Neighbor // LLDP neighbour, nil if none
 
