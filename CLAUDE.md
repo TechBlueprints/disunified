@@ -8,10 +8,13 @@ in `internal/drivers/CLAUDE.md`.
 
 A bridge that presents a non-UniFi switch to a UniFi Network controller as an
 adopted UniFi switch (read: ports, stats, topology; write: the controller's
-port and switch config applied to the vendor switch). First target: Clint's
-Arista DCS-7160-48TC6-F on EOS 4.26.14M, claimed as `UDC48X6` ("USW Leaf").
-**Phase 0 (read) and phase 1 (control) are done and verified live** on
-Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
+port and switch config applied to the vendor switch). The initial public
+release (2026-09-20) ships two drivers, both verified live on Network
+10.6.106: `arista-eos` (Clint's Arista DCS-7160-48TC6-F on EOS 4.26.14M,
+claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
+9.1 cluster as a `USWF07D` "ECS Core"). **Phase 0 (read) and phase 1
+(control) are done for both** — see `docs/feature-map.md` for the
+per-feature status.
 
 ## 2. Map
 

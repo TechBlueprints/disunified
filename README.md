@@ -2,8 +2,9 @@
 
 A bridge that makes a non-UniFi switch appear as a real, adopted UniFi
 switch inside the UniFi Network controller — ports, stats, topology, and
-control. Drivers today: Arista EOS, and a Proxmox VE node's virtual switch
-(`vmbr0`), whose guests become the ports.
+control. The initial release ships two drivers: **Arista EOS** (a physical
+switch) and **Proxmox VE** (a node's virtual switch, `vmbr0`, whose guests
+become the ports).
 
 The controller only speaks its own device protocol. This bridge speaks the
 device side of it (the inform protocol, adoption, capabilities) on behalf of
