@@ -35,15 +35,14 @@ matters happens in the bond (100 ms), below the switch we present.
 | Ports | What | Media / speed reported |
 |---|---|---|
 | 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 54 (the last port) | the uplink: the bridge's physical path out — a bond folded into **one link** (UniFi has no active-standby notion), showing the active slave's speed, optic and LLDP neighbour with the bond's counters, so a failover just changes what the port reports | from `ethtool` on the active NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state |
-| 53 downwards | further physical paths under the bridge (a second NIC or bond), if any | as the uplink; an 802.3ad bond is reported as a LAG |
+| 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54) | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
 
 ### 1b. Host network layouts
 
 | Host layout | Ports | Status |
 |---|---|---|
 | one NIC in the bridge | port 54 | verified |
-| active-backup bond | one port (54): the active slave's speed, optic and neighbour, the bond's counters; lldpd announces on the active slave | **verified** (Clint's cluster) |
+| active-backup bond | one port per slave (`bond0-1` at 54 active/forwarding, `bond0-2` at 53 standby/blocking), no LAG; lldpd announces on the active slave only; the bond stays a bond | **verified** (Clint's cluster) |
 | LACP (802.3ad) or balance-* bond | one port per member, every member in the same LAG (UniFi's aggregate), each with its own counters, optic and LLDP; the first member carries the MAC table; lldpd announces on every member with its own port number | **modelled, not verified live** — no host here has one (the two NICs go to different switches). Unit-tested against the captured bonding text with the mode line changed. If you run LACP, check the first run: two aggregated ports at 54 and 52, each with its upstream neighbour |
 | several NICs in the bridge, no bond | one port each | modelled |
 | a VLAN device on the uplink (`bond0.10` as the bridge port) | the device underneath, looked through | **modelled, not verified live** |
