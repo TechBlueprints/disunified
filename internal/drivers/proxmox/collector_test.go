@@ -191,7 +191,7 @@ func TestCollectNode2(t *testing.T) {
 	if got := c.PortName(snap.Ports[47]); got != "Open-48" {
 		t.Errorf("free slot name = %q", got)
 	}
-	if got := c.PortName(snap.Ports[51]); got != "Open-52" {
+	if got := c.PortName(snap.Ports[50]); got != "Open-51" {
 		t.Errorf("free slot name = %q", got)
 	}
 	if e := snap.Ports[47]; e.Enabled || snap.Ports[48].Enabled {
@@ -218,7 +218,15 @@ func TestCollectNode2(t *testing.T) {
 	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	for _, idx := range []int{49, 50, 51, 52} {
+	// eno1 is on the box but under neither the bridge nor the bond: a port
+	// with no link, enabled, below the bond's slaves; never the uplink.
+	if e := snap.Ports[51]; e.IfName != "eno1" || !e.Enabled || e.Up || e.Index != 52 || len(e.Interfaces) != 1 || e.Media != switchmodel.MediaCopper1G {
+		t.Errorf("unattached NIC = %+v", e)
+	}
+	if snap.UplinkHint == 52 {
+		t.Error("an unattached NIC became the uplink")
+	}
+	for _, idx := range []int{49, 50, 51} {
 		if e := snap.Ports[idx-1]; e.Present || e.Index != idx {
 			t.Errorf("slot %d should be empty: %+v", idx, e)
 		}

@@ -17,17 +17,17 @@ import (
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
 // Replay: real controller replies (docs/fixtures/controller-10.6.106/
-// replies.ndjson — the bridge's own reply log from Network 10.6.106 against
-// the Arista, identifiers and secrets replaced) are served to the loop by a
-// fake controller, encrypted with a test key the way the controller
-// encrypts them, and the loop drives the real Arista driver against the real
-// EOS captures. What must come out the other end is the exact switch
-// configuration each push produced live.
+// replies*.ndjson — the bridge's own reply logs from Network 10.6.106,
+// identifiers and secrets replaced) are served to the loop by a fake
+// controller, encrypted with a test key the way the controller encrypts
+// them, and the loop drives a real driver against its real captures. What
+// must come out the other end is the exact switch configuration each push
+// produced live. Each driver's case is in replay_<driver>_test.go: the
+// replies file, the collector, and per-reply expectations.
 // The device starts unadopted (default key); the adopt reply in the fixture
 // carries the (scrubbed) site key the rest of the replay is encrypted with.
 const defaultKey = "ba86f2bbe107c7c57eb5f2690775c712" // MD5("ubnt")
@@ -42,9 +42,9 @@ type replayRecord struct {
 	} `json:"effects"`
 }
 
-func loadReplies(t *testing.T) []replayRecord {
+func loadReplies(t *testing.T, name string) []replayRecord {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", "replies.ndjson"))
+	f, err := os.Open(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,23 +62,53 @@ func loadReplies(t *testing.T) []replayRecord {
 	return out
 }
 
-func TestReplayControllerReplies(t *testing.T) {
-	replies := loadReplies(t)
+// replayDriver is one driver under replay.
+type replayDriver struct {
+	Name      string
+	Replies   string // fixture file under controller-10.6.106/
+	Collector switchmodel.Switch
+	Control   switchmodel.Controller
+	Snapshot  *switchmodel.Snapshot
+	GatewayIP string
+	// Written returns the switch writes recorded since the last call, one
+	// per line, as the driver's own transport records them.
+	Written func() string
+	// Loop is applied to the loop config (control flags).
+	Loop func(*Config)
+	// Expect: what each reply must (not) have written to the switch.
+	Expect map[int]replayExpect
+	// Check runs after each reply with the loop state, for the driver's
+	// own assertions (adoption sequence, locate, log lines).
+	Check func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string)
+}
+
+type replayExpect struct{ must, mustNot []string }
+
+// runReplay drives the driver through every recorded reply and checks
+// the common contract: the reported cfgversion follows each applied
+// system_cfg, a system_cfg is never silently ignored when the driver's
+// expectations say it writes, every reply is served, and the last inform
+// the fake controller decoded looks like a real switch's.
+func runReplay(t *testing.T, d replayDriver) {
+	t.Helper()
+	replies := loadReplies(t, d.Replies)
 	if len(replies) < 5 {
 		t.Fatalf("only %d replies in the fixture", len(replies))
 	}
-
-	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
-	coll := aristaeos.NewCollector(ft)
-	coll.Log = log.New(os.Stderr, "", 0)
-	snap, err := coll.Start(context.Background())
+	snap := d.Snapshot
+	ip := "192.0.2.9"
+	if len(snap.System.Addresses) > 0 {
+		ip = snap.System.Addresses[0].IP
+	}
+	desc, err := device.DescriptorFor("UDC48X6", snap, device.Identity{MAC: snap.System.MAC, IP: ip, UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, err := device.DescriptorFor("UDC48X6", snap, device.Identity{MAC: snap.System.MAC, IP: "192.0.2.9", UDAPIVersion: "1.0.0"})
-	if err != nil {
-		t.Fatal(err)
+	caps := device.DefaultCapabilities
+	if c, ok := d.Collector.(switchmodel.Capable); ok {
+		caps = c.Capabilities()
 	}
+	desc.FWCaps = device.FWCapsFor(caps)
 
 	// The fake controller: decodes what the device sends with the key the
 	// real controller would hold at that point (default until it hands out
@@ -134,110 +164,55 @@ func TestReplayControllerReplies(t *testing.T) {
 
 	// Fresh device: not adopted, default key, as the bridge starts.
 	sess := device.NewSession(desc, srv.URL, device.State{InformURL: srv.URL}, nil, time.Now())
+	sess.SetCapabilities(caps)
 	sess.SetSnapshot(snap)
-	logger := log.New(os.Stderr, "", 0)
-	l, err := New(desc, sess, Config{
-		Logger: logger, Interval: time.Minute, CollectTimeout: 10 * time.Second,
-		Collector: coll, Controller: coll,
-		ControlIGMP: true, ControlNTP: true, ControlSyslog: true, ControlSNMP: true,
-	})
+	var logBuf strings.Builder
+	cfg := Config{
+		Logger: log.New(&logBuf, "", 0), Interval: time.Minute, CollectTimeout: 10 * time.Second,
+		Collector: d.Collector, Controller: d.Control,
+	}
+	if d.Loop != nil {
+		d.Loop(&cfg)
+	}
+	l, err := New(desc, sess, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	l.client = srv.Client()
+	l.cfg.GatewayIP = d.GatewayIP
 	ctx := context.Background()
-
-	var logBuf strings.Builder
-	l.cfg.Logger = log.New(&logBuf, "", 0)
-	l.cfg.GatewayIP = "192.0.2.1" // the gateway in the scrubbed EOS ARP fixture
-
-	// What each recorded push must do to the switch, as a diff against the
-	// captured switch state (the fixture transport is stateless, so a push
-	// that matches the captured state produces no port-2 lines — which is
-	// itself the assertion for the "back to normal" pushes).
-	type expect struct{ must, mustNot []string }
-	expectations := map[int]expect{
-		// 0-1: HTTP 400 (the controller's cooldown after a forget), 2: 404 pending,
-		// 3: adopt via mgmt_cfg, 4: first system_cfg after adoption
-		5:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push of the day: port 2 disabled
-		8:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
-		9:  {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
-		10: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
-		11: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
-		// 12: set-locate, 13: unset-locate
-	}
-	var connected int
-	l.cfg.OnConnected = func(*switchmodel.Snapshot) { connected++ }
 	for i, rec := range replies {
-		before := len(ft.Configured)
 		l.informOnce(ctx)
+		got := d.Written()
 		var p map[string]any
 		_ = json.Unmarshal(rec.Payload, &p)
-		typ, _ := p["_type"].(string)
-		cmd, _ := p["cmd"].(string)
-		var batches []string
-		for _, b := range ft.Configured[before:] {
-			batches = append(batches, strings.Join(b, " | "))
-		}
-		got := strings.Join(batches, "\n")
-		if typ == "setparam" && p["system_cfg"] != nil {
+		if typ, _ := p["_type"].(string); typ == "setparam" && p["system_cfg"] != nil {
 			ver, _ := p["cfgversion"].(string)
 			if applied, _, _ := sess.Applied(); applied != ver {
-				t.Errorf("reply %d: after system_cfg %s the device reports cfgversion %q", i, ver, applied)
-			}
-			if len(batches) == 0 {
-				t.Errorf("reply %d: system_cfg %s produced no switch configuration", i, ver)
+				t.Errorf("%s reply %d: after system_cfg %s the device reports cfgversion %q", d.Name, i, ver, applied)
 			}
 		}
-		locating := func() bool {
-			var m map[string]any
-			_ = json.Unmarshal(sess.BuildPayload(time.Now()), &m)
-			v, _ := m["locating"].(bool)
-			return v
+		if d.Check != nil {
+			d.Check(t, i, rec, sess, l, logBuf.String())
 		}
-		switch i {
-		case 0, 1, 2:
-			if sess.Adopted() || l.state != StatePending {
-				t.Errorf("reply %d: the device must still be pending (adopted=%v state=%v)", i, sess.Adopted(), l.state)
-			}
-		case 3:
-			if !sess.Adopted() || sess.AuthKey() != key || l.state != StateAdopting {
-				t.Errorf("after the adopt reply: adopted=%v key=%s state=%v", sess.Adopted(), sess.AuthKey(), l.state)
-			}
-		case 4:
-			if l.state != StateConnected || connected != 1 {
-				t.Errorf("after the first system_cfg: state=%v, OnConnected calls=%d", l.state, connected)
-			}
-		case 12:
-			if !locating() {
-				t.Errorf("set-locate must turn locating on in the next inform")
-			}
-		case 13:
-			if locating() {
-				t.Errorf("unset-locate must turn locating off")
-			}
-		}
-		if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logBuf.String(), `UNHANDLED cmd "build-ssh-session"`) {
-			t.Errorf("reply %d: build-ssh-session must be logged as unhandled", i)
-		}
-		for _, m := range expectations[i].must {
+		for _, m := range d.Expect[i].must {
 			if !strings.Contains(got, m) {
-				t.Errorf("reply %d: expected switch configuration %q; got:\n%s", i, m, got)
+				t.Errorf("%s reply %d: expected switch write %q; got:\n%s", d.Name, i, m, got)
 			}
 		}
-		for _, m := range expectations[i].mustNot {
+		for _, m := range d.Expect[i].mustNot {
 			if strings.Contains(got, m) {
-				t.Errorf("reply %d: switch configuration must not contain %q; got:\n%s", i, m, got)
+				t.Errorf("%s reply %d: switch writes must not contain %q; got:\n%s", d.Name, i, m, got)
 			}
 		}
 	}
 	if next != len(replies) {
-		t.Fatalf("served %d of %d replies", next, len(replies))
+		t.Fatalf("%s: served %d of %d replies", d.Name, next, len(replies))
 	}
 	// And the payload the fake controller last decoded is a real-looking inform.
 	for _, k := range []string{"uplink", "if_table", "lldp_table", "port_table", "connect_request_ip", "gateway_mac"} {
 		if _, ok := lastInform[k]; !ok {
-			t.Errorf("last inform lacks %q", k)
+			t.Errorf("%s: last inform lacks %q", d.Name, k)
 		}
 	}
 }

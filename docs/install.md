@@ -43,8 +43,9 @@ export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
 ```
 **Check:** JSON with the switch's model, every port, and `suggested_model`.
 If it fails, the error names the command or credential at fault; fix that
-before going on. Pass `-driver <name>` for a non-Arista switch, e.g.
-`-driver proxmox -switch-ssh root@proxmox-2`.
+before going on. `-driver <name>` (or `STU_DRIVER`) names the driver, e.g.
+`-driver arista-eos -switch-url https://…/command-api` or
+`-driver proxmox -switch-ssh root@proxmox-2`; a config file names it per switch.
 
 ## 3. Write the config
 
