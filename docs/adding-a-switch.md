@@ -73,6 +73,11 @@ Create `internal/drivers/<name>/` with:
   and every apply command sequence (including idempotence: applying the
   same desire twice must write nothing the second time).
 - A blank import in `cmd/switch-to-unifi/main.go` next to the Arista one.
+- Optionally `switchmodel.Planner` (`PlanPorts`: what ApplyPorts would
+  change, without writing). With it the loop holds a freshly adopted
+  device's first push while it would change ports, and the bridge seeds the
+  controller's port overrides from the switch on adoption; without it the
+  first push applies as pushed.
 - Optionally `switchmodel.Capable`: the capability claims the controller
   gates its UI on (STP, storm control, FEC, LACP, mirroring, isolation,
   IGMP, jumbo…). Without it the Arista set is claimed; a driver that
