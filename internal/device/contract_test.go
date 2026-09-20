@@ -253,8 +253,8 @@ func TestWireContractProxmox(t *testing.T) {
 	if u, ok := ours["uplink"].(string); !ok || u == "" {
 		t.Errorf("uplink must be the management interface name (a string), got %v", ours["uplink"])
 	}
-	// The host is a client on its own switch, never the switch's MAC.
-	if mac, _ := ours["mac"].(string); mac == "02:00:00:00:00:01" {
-		t.Errorf("the device MAC must not be the host's bridge MAC")
+	// The node is the switch: the device MAC is the bridge's.
+	if mac, _ := ours["mac"].(string); mac != "02:00:00:00:00:01" {
+		t.Errorf("the device MAC must be the node's bridge MAC, got %s", mac)
 	}
 }

@@ -27,8 +27,7 @@ import (
 //
 //	bridge        the bridge to present (default vmbr0)
 //	ports         total ports to present (default 54, the USW Leaf's)
-//	uplink_ports  the top ports: primary NIC last, the host itself at last-1,
-//	              further NICs below (default 6)
+//	uplink_ports  how many of the last ports are physical uplinks (default 6)
 //	ssh_key       private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts   known_hosts file (default ~/.ssh/known_hosts)
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
@@ -70,8 +69,8 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 	}
 	if v := cfg.Options["uplink_ports"]; v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 2 || n >= c.Ports {
-			return nil, fmt.Errorf("proxmox: uplink_ports must be between 2 (host + one NIC) and ports-1, got %q", v)
+		if err != nil || n < 1 || n >= c.Ports {
+			return nil, fmt.Errorf("proxmox: uplink_ports must be between 1 and ports-1, got %q", v)
 		}
 		c.UplinkPorts = n
 	}
