@@ -21,4 +21,10 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
 - Never set an optical port to auto speed; only write FEC when asked.
 - Tests use a fixture transport and cover parsing, every apply sequence, and
   idempotence. `go test ./...` must pass before a live run.
+- The management address the bridge uses must be in-band (behind the
+  uplink); report dedicated OOB management interfaces in
+  `System.OOBInterfaces` so the loop can warn. See `docs/adding-a-switch.md` §2c.
+- Fill `Port.Health` and the `System` reachability/health fields listed in
+  `docs/adding-a-switch.md` §2; counters that exist only as text go through
+  a `TextRunner`-style capability, never through guessing.
 - Live verification order and what to record is in `docs/adding-a-switch.md` §4.

@@ -76,6 +76,22 @@ Rules that came from live failures, all enforced by the reference driver:
 - **Lead config batches with the platform's privilege escalation** if the
   API starts unprivileged (eAPI starts at privilege 1).
 
+What a first-party-looking switch needs beyond ports and counters (all in
+`switchmodel.System` / `Port`, all shown in the UI once filled):
+
+- `Port.Health`: link-change and STP-change counts, STP guard state, optic
+  alarm flags, FEC codeword and PCS error counters — the Anomaly column and
+  the per-port anomaly breakdown come from these. Some of it may only exist
+  in text form on your platform (the Arista driver has a `TextRunner`
+  transport capability for that); leave a field unset rather than guess.
+- `System.Addresses`, `ARP`, `MgmtMAC`, `OOBInterfaces`: the controller
+  places a device by its address, netmask, gateway MAC and interfaces, and
+  needs the management address in-band (§2c). Report OOB ports so the loop
+  can warn.
+- `System.LoadAvg`, memory, CPU, temperature, fans, PSUs (with `Present`),
+  `MACTableCapacity`: Insights graphs and the overview cards.
+- `System.STPRoot`: the topology's root marker.
+
 ## 2b. Naming
 
 The bridge names the device and its ports in the controller through the
