@@ -11,24 +11,6 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
-// fixtureRunner serves a captured collector run and records every other
-// command (the writes).
-type fixtureRunner struct {
-	fixture string
-	cmds    []string
-	fail    bool
-}
-
-func (f *fixtureRunner) Run(_ context.Context, command, stdin string) (string, error) {
-	if strings.HasPrefix(command, "bash -s") {
-		return f.fixture, nil
-	}
-	f.cmds = append(f.cmds, command)
-	return "", nil
-}
-
-func (f *fixtureRunner) Close() error { return nil }
-
 func loadFixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "fixtures", "proxmox-9.1.6", name))
@@ -38,9 +20,9 @@ func loadFixture(t *testing.T, name string) string {
 	return string(b)
 }
 
-func newTestCollector(t *testing.T, fixture string) (*Collector, *fixtureRunner) {
+func newTestCollector(t *testing.T, fixture string) (*Collector, *FixtureRunner) {
 	t.Helper()
-	r := &fixtureRunner{fixture: loadFixture(t, fixture)}
+	r := &FixtureRunner{Fixture: loadFixture(t, fixture)}
 	c := NewCollector(r)
 	pm, err := loadPortMap(t.TempDir())
 	if err != nil {
@@ -48,7 +30,29 @@ func newTestCollector(t *testing.T, fixture string) (*Collector, *fixtureRunner)
 	}
 	c.ports = pm
 	c.cycleDelay = time.Millisecond
+	c.ManageLLDP = false // the fixture's lldpd config is scrubbed; covered by TestEnsureLLDPWritesConfig
 	return c, r
+}
+
+func TestEnsureLLDPWritesConfig(t *testing.T) {
+	c, r := newTestCollector(t, "collect-node2.txt")
+	c.ManageLLDP = true
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Commands) != 1 || !strings.HasPrefix(r.Commands[0], "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd") {
+		t.Fatalf("lldpd config not written: %v", r.Commands)
+	}
+	// A node without lldpd gets a warning, not a write.
+	r2 := &FixtureRunner{Fixture: strings.Replace(loadFixture(t, "collect-node2.txt"), "@@@ lldpdconf\npresent\n", "@@@ lldpdconf\n", 1)}
+	c2 := NewCollector(r2)
+	c2.ports, _ = loadPortMap(t.TempDir())
+	if _, err := c2.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r2.Commands) != 0 {
+		t.Errorf("wrote lldpd config on a node without lldpd: %v", r2.Commands)
+	}
 }
 
 // vm100 returns VM 100's scrubbed MAC and name from the fixture (the
@@ -244,41 +248,41 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 		}
 	}
 	n, err := c.ApplyPorts(context.Background(), desired)
-	if err != nil || n != 0 || len(r.cmds) != 0 {
-		t.Fatalf("converged apply: n=%d err=%v cmds=%v", n, err, r.cmds)
+	if err != nil || n != 0 || len(r.Commands) != 0 {
+		t.Fatalf("converged apply: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	// Disable port 1 (VM 100 on this node) and put it on native 10 + tagged 20,30.
 	d := switchmodel.PortDesired{Index: 1, Enabled: false, VLANSet: true, NativeVLAN: 10, TaggedVLANs: []int{20, 30, 10}}
 	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{d})
-	if err != nil || n != 1 || len(r.cmds) != 1 {
-		t.Fatalf("apply: n=%d err=%v cmds=%v", n, err, r.cmds)
+	if err != nil || n != 1 || len(r.Commands) != 1 {
+		t.Fatalf("apply: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	mac, _ := vm100(t, "collect-node2.txt")
 	want := "qm set 100 --net0 'virtio=" + mac + ",bridge=vmbr0,tag=10,trunks=20;30,link_down=1'"
-	if r.cmds[0] != want {
-		t.Errorf("cmd = %q\nwant %q", r.cmds[0], want)
+	if r.Commands[0] != want {
+		t.Errorf("cmd = %q\nwant %q", r.Commands[0], want)
 	}
 	// Idempotent: the same intent again writes nothing.
 	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{d})
-	if n != 0 || len(r.cmds) != 1 {
-		t.Errorf("second apply wrote %v", r.cmds[1:])
+	if n != 0 || len(r.Commands) != 1 {
+		t.Errorf("second apply wrote %v", r.Commands[1:])
 	}
 	// A guest on another node is never written from here.
 	p := portByIf(t, snap, "vm119-net0")
 	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{all(p.Index)})
-	if n != 0 || len(r.cmds) != 1 {
-		t.Errorf("wrote a foreign guest: %v", r.cmds)
+	if n != 0 || len(r.Commands) != 1 {
+		t.Errorf("wrote a foreign guest: %v", r.Commands)
 	}
 	// Back to default: options removed.
 	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{all(1)})
-	if n != 1 || r.cmds[len(r.cmds)-1] != "qm set 100 --net0 'virtio="+mac+",bridge=vmbr0'" {
-		t.Errorf("restore = %v", r.cmds)
+	if n != 1 || r.Commands[len(r.Commands)-1] != "qm set 100 --net0 'virtio="+mac+",bridge=vmbr0'" {
+		t.Errorf("restore = %v", r.Commands)
 	}
 	// Port cycle: down then back to the (restored) config.
 	if err := c.CyclePort(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.cmds[len(r.cmds)-2:]; !strings.HasSuffix(got[0], "link_down=1'") || strings.Contains(got[1], "link_down") {
+	if got := r.Commands[len(r.Commands)-2:]; !strings.HasSuffix(got[0], "link_down=1'") || strings.Contains(got[1], "link_down") {
 		t.Errorf("cycle = %v", got)
 	}
 }
@@ -319,8 +323,8 @@ func TestApplySwitch(t *testing.T) {
 	}
 	// Snooping is on; UniFi wants it off on VLAN 1.
 	n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{IGMPSnooping: map[int]bool{1: false, 10: true}})
-	if err != nil || n != 1 || r.cmds[0] != "echo 0 > /sys/class/net/vmbr0/bridge/multicast_snooping" {
-		t.Fatalf("igmp: n=%d err=%v cmds=%v", n, err, r.cmds)
+	if err != nil || n != 1 || r.Commands[0] != "echo 0 > /sys/class/net/vmbr0/bridge/multicast_snooping" {
+		t.Fatalf("igmp: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{IGMPSnooping: map[int]bool{1: false}})
 	if n != 0 {
@@ -328,8 +332,8 @@ func TestApplySwitch(t *testing.T) {
 	}
 	// NTP under UniFi's control.
 	n, err = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
-	if err != nil || n != 1 || !strings.HasPrefix(r.cmds[len(r.cmds)-1], "install -m 644 /dev/stdin /etc/chrony/sources.d/") {
-		t.Fatalf("ntp: n=%d err=%v cmds=%v", n, err, r.cmds)
+	if err != nil || n != 1 || !strings.HasPrefix(r.Commands[len(r.Commands)-1], "install -m 644 /dev/stdin /etc/chrony/sources.d/") {
+		t.Fatalf("ntp: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
 	if n != 0 {
@@ -350,7 +354,7 @@ func TestApplySwitch(t *testing.T) {
 // driver's best model, not a live capture (docs/proxmox.md §1b).
 func TestLACPBondIsPerMemberLAG(t *testing.T) {
 	fixture := strings.Replace(loadFixture(t, "collect-node2.txt"), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
-	r := &fixtureRunner{fixture: fixture}
+	r := &FixtureRunner{Fixture: fixture}
 	c := NewCollector(r)
 	c.ports, _ = loadPortMap(t.TempDir())
 	snap, err := c.Start(context.Background())

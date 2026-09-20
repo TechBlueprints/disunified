@@ -270,6 +270,12 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		}
 		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) {
 			e["sfp_found"] = p.Present
+			// Real switches send the optic identity keys on every optical
+			// port, empty when no module answers (captured on the ECS
+			// Aggregation: an empty cage has sfp_vendor "").
+			for _, k := range []string{"sfp_vendor", "sfp_part", "sfp_serial", "sfp_compliance"} {
+				e[k] = ""
+			}
 			if o := p.Optic; o != nil {
 				e["sfp_vendor"] = o.Vendor
 				e["sfp_part"] = o.Part
