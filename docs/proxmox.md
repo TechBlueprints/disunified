@@ -123,8 +123,12 @@ default:
 next poll; the bridge seeds that port's live state into the controller and,
 until the controller's config for it matches the switch, the port is
 withheld from every write (logged once). A guest that migrates between
-nodes needs nothing: every node's device was seeded with every guest's
-config, cluster-wide, at adoption. What is *not* covered: a tag changed by
+nodes keeps its port number and name (the map is cluster-wide) and its
+destination was seeded with its config along with every other node; the
+arrived port is still treated as fresh there, because port overrides are
+per device in UniFi — if the destination's override for that port was
+edited to something else, the guest keeps its own config and the log says
+so until the two agree. What is *not* covered: a tag changed by
 hand on a node after adoption — UniFi is the source of truth from then on
 and the reconcile puts the controller's value back (change it in UniFi).
 
