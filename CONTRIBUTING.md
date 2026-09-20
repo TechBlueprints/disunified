@@ -54,11 +54,15 @@ there.
   unused port and say which one in the issue.
 - Ask before pushing, deploying, or touching anything outside the repo and
   the test ports.
-- Never put site-specific information in a tracked file: addresses, DNS
-  names, MACs, serials, device names, topology, deployment hosts, key
-  paths. They go in `local-information/` (gitignored, see its README);
-  docs and examples use documentation addresses (`192.0.2.0/24`,
-  `02:00:00:xx:xx:xx`, `example.net`).
+- Never put a secret or a site identifier in a tracked file, a test, a
+  fixture, a commit message or a PR: authkeys, API keys, passwords, key
+  files, real IP addresses, DNS names, MACs (not even as a "sample" in a
+  unit test), serials, device or host names, topology, deployment hosts,
+  key paths. They go in `local-information/` (gitignored, see its README);
+  docs, tests and examples use documentation values (`192.0.2.0/24`,
+  `02:00:00:xx:xx:xx`, `SSJ00000000`, `example.net`). Run the scrub
+  scripts on every capture and `scripts/check-site-info.sh --staged`
+  before every commit; a flagged file is fixed, never excepted.
 - The maintainer verifies PRs on their own hardware; make that easy by
   keeping fixtures complete and the PR description a reproducible script.
 

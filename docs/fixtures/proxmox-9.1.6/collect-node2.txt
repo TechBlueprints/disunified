@@ -565,12 +565,12 @@ net0: virtio=02:00:00:00:00:C8,bridge=vmbr0,firewall=1
               ],
               "name": [
                 {
-                  "value": "the aggregation switch"
+                  "value": "aggregation-switch"
                 }
               ],
               "descr": [
                 {
-                  "value": "the aggregation switch, 4.0.1.995, Rev.6"
+                  "value": "aggregation-switch, 4.0.1.995, Rev.6"
                 }
               ],
               "mgmt-ip": [
