@@ -173,7 +173,13 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 			}
 		}
 		if _, hasName := e["name"]; !hasName {
+			// A UniFi switch reports its physical port label here — the same
+			// string it advertises as its LLDP port ID ("Port 13"). Ours is the
+			// vendor interface name, which is also our LLDP port ID.
 			e["name"] = pp.Name
+			if p, ok := live[pp.PortIdx]; ok && p.IfName != "" {
+				e["name"] = p.IfName
+			}
 		}
 
 		p, ok := live[pp.PortIdx]
