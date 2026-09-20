@@ -408,7 +408,13 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 	case "unlocate", "unset-locate":
 		s.locating = false
 		return []inform.Effect{{Kind: EffectLocate, Text: "off"}}
-	case "port-cycle", "port_cycle":
+	case "power-cycle", "port-cycle", "port_cycle":
+		// The controller's port power cycle. Network 10.6 only issues it for a
+		// PoE port that is powering a device (cmd/devmgr power-cycle answers
+		// api.err.InvalidTargetPort for any other port, and the UI offers
+		// "Power Cycle" only there), so a switch without PoE never receives it
+		// and the device-side name has not been captured; "power-cycle" is the
+		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
 	case "upgrade", "upgrade2":
 		if r.Version != "" {

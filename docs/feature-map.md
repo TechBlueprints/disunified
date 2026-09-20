@@ -17,7 +17,7 @@ Two channels exist:
   UI *shows*.
 - **Controller → device**: `setparam.system_cfg` (the UniFi device config file, observed) and
   `setstate` (`port_overrides`/`port_table`, per prior art, **not yet observed** on 10.6.106),
-  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `set-locate`, `port-cycle`, `set-adopt`…). What the UI
+  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `set-locate`, `set-adopt`…; `power-cycle` only for PoE ports). What the UI
   *controls*.
 
 The controller only sends a `system_cfg` key when the feature is non-default in the site,
@@ -134,7 +134,7 @@ source of the same per-port intent.
 | `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`); `firmware:` in config overrides the default | done |
 | `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) |
-| `port-cycle` (`port_idx`) | bounce a port | `shutdown`, 3 s, `no shutdown` on every lane | done (not yet exercised from the UI) |
+| `power-cycle` (`port_idx`) | PoE power cycle | `shutdown`, 3 s, `no shutdown` on every lane (for a PoE-capable driver) | n/a here: the controller only issues it for a PoE port powering a device (`api.err.InvalidTargetPort` otherwise, verified 2026-09-20), and the UI's "Power Cycle" appears only on such ports; the 7160 has no PoE, so no capture exists |
 | `cable-test` | TDR | EOS has no TDR on 7160 | n/a |
 | `clear-counters`? | reset stats | `clear counters` | verify |
 
@@ -161,8 +161,8 @@ portfast/edge; set storm control; set LLDP-MED; set link aggregation (with port 
 first); mirror to port 3 (ask first); FEC if the UI exposes it for the model.
 
 Switch level: STP priority; STP version; jumbo frames; IGMP snooping; DHCP snooping;
-SNMP; syslog host; NTP; management VLAN; locate LED; reboot request (the bridge emulates it);
-port-cycle on port 2.
+SNMP; syslog host; NTP; management VLAN; locate LED; reboot request (the bridge emulates it).
+No port power cycle: the controller offers it only for a PoE port powering a device.
 
 Each capture adds a fixture under `docs/fixtures/controller-10.6.106-*.txt` and turns a
 "verify" row into a mapping.
