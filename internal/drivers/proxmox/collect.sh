@@ -12,6 +12,9 @@ s pveversion; pveversion 2>/dev/null
 s dmi;        for f in sys_vendor product_name product_serial board_serial bios_version; do echo "$f=$(cat /sys/class/dmi/id/$f 2>/dev/null)"; done
 s uptime;     cat /proc/uptime
 s stat;       head -n 1 /proc/stat
+s loadavg;    cat /proc/loadavg
+s addr;       ip -j addr show dev "$BR"
+s neigh;      ip -j neigh show dev "$BR"
 s meminfo;    cat /proc/meminfo
 s links;      ip -j -s -d link show
 s brlink;     bridge -j -d link show
