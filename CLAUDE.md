@@ -128,7 +128,10 @@ Devices identify with the bridge MAC's locally-administered form (9a:…,
 06:…); the host itself is a client on port 53; the bond is one uplink port
 (54); guest ports are `VM-<id>`; lldpd config is written by the driver.
 Uplink/Parent verified 2026-09-20 after merging main's `uplink: "eth0"` fix.
-Local run: `config-proxmox.local.yaml` in the worktree, state under `./state`.
+Deployed with the Arista in the one container (config.yaml has four
+switches; the container mounts `/opt/switch-to-unifi/ssh/` with the
+bridge's own ed25519 key, installed on the nodes as `switch-to-unifi@podman`,
+and a known_hosts). The Mac instance is stopped and must stay stopped.
 
 ## 7. Done / open (2026-09-19 end of day)
 
@@ -142,7 +145,7 @@ multi-switch support, container packaging (image build untested), install
 guide, contributor process. Refused-with-a-log: isolation, 802.1X, egress
 rate limit, jumbo-off, LLDP-MED-off.
 
-**Deployed 2026-09-19 16:39 MDT** on the Podman host (`/opt/switch-to-unifi`:
+**Deployed 2026-09-20 09:25 MDT (Arista + the three Proxmox nodes in one container)** on the Podman host (`/opt/switch-to-unifi`:
 docker-compose.yml with `build: ./src`, `config.yaml`, `env` (600), named
 volume `switch-to-unifi-state` holding `state/arista/device.json`; image
 `localhost/switch-to-unifi:latest`, uid 65532; `restart: always`). **The Mac
