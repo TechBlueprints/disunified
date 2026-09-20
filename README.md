@@ -86,11 +86,20 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  switch-to-u
 
 ## Install
 
-[`docs/install.md`](docs/install.md) — about 20 minutes: build, `-collect-once` to check the
+[`docs/install.md`](docs/install.md) — about 20 minutes: get it, `-collect-once` to check the
 switch, one small YAML config ([`deploy/config.example.yaml`](deploy/config.example.yaml)) with secrets in
-the environment, adopt in the UI, then turn on control. Run it as a
-container with [`deploy/compose.yaml`](deploy/compose.yaml) or the Podman Quadlet unit in
-[`deploy/`](deploy).
+the environment, adopt in the UI, then turn on control.
+
+Every release publishes a multi-arch image (linux/amd64, linux/arm64), so the
+install is a directory with [`deploy/compose.yaml`](deploy/compose.yaml), your `config.yaml` and your
+`env` — nothing to build:
+
+```sh
+docker pull ghcr.io/techblueprints/switch-to-unifi:latest   # :v1.2.3 to pin, :edge to follow main
+docker compose up -d                                       # deploy/compose.yaml; or the Quadlet unit in deploy/
+```
+
+From a checkout instead (also how you add a driver; Go 1.26+):
 
 ```sh
 go build ./cmd/switch-to-unifi

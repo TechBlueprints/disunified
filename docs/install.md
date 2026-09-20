@@ -29,20 +29,44 @@ in the UniFi UI.
 - Optional, for naming the device and ports after the switch: a UniFi API
   key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 
-## 1. Get the binary
+## 1. Get it
+
+The release image is multi-arch (linux/amd64, linux/arm64) and needs nothing
+else installed:
+
+```sh
+docker pull ghcr.io/techblueprints/switch-to-unifi:latest   # or podman pull
+```
+`:latest` follows releases, `:v1.2.3` pins one, `:edge` follows `main`.
+`docker run --rm ghcr.io/techblueprints/switch-to-unifi:latest -build-version`
+says which build you have.
+
+Or build from source (Go 1.26+), which is also how you add a driver:
 
 ```sh
 git clone https://github.com/TechBlueprints/switch-to-unifi && cd switch-to-unifi
-go build ./cmd/switch-to-unifi           # Go 1.26+
+go build ./cmd/switch-to-unifi
 ```
-or build the container image: `podman build -t localhost/switch-to-unifi:latest .`
-(no prebuilt image is published yet).
+The binaries from each release are attached to it on GitHub as well; they are
+static, so `tar xzf` and run.
+
+Steps 2 and 4 below are written as `./switch-to-unifi …`. With the image, that
+is `docker run --rm …  ghcr.io/techblueprints/switch-to-unifi:latest …`
+(everything after the image name is the bridge's own flags); step 6 is the
+container install proper.
 
 ## 2. Check the switch connection
 
 ```sh
 export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
 ./switch-to-unifi -collect-once -switch-url https://192.0.2.3/command-api
+```
+or, with the image:
+
+```sh
+docker run --rm -e STU_SWITCH_USER -e STU_SWITCH_PASS \
+  ghcr.io/techblueprints/switch-to-unifi:latest \
+  -collect-once -switch-url https://192.0.2.3/command-api
 ```
 **Check:** JSON with the switch's model, every port, and `suggested_model`.
 If it fails, the error names the command or credential at fault; fix that
@@ -85,14 +109,18 @@ UniFi's per-network setting (UniFi defaults it off). Read
 
 ## 6. Run it for good
 
-- **Podman/Docker compose:** [`deploy/compose.yaml`](../deploy/compose.yaml) (config and env beside it;
-  it builds the image from the source tree, since none is published).
-  On Podman use `restart: always` and enable `podman-restart.service`;
-  `unless-stopped` containers do not come back after a host reboot.
-  Reference install: a directory on a Podman host, built
-  from a copy of the source tree (`build: ./src`), state in the named
-  volume `switch-to-unifi-state`, running as uid 65532.
-- **Quadlet/systemd:** [`deploy/switch-to-unifi.container`](../deploy/switch-to-unifi.container).
+- **Podman/Docker compose:** [`deploy/compose.yaml`](../deploy/compose.yaml) pulls the published
+  image, so a directory holding that file, `config.yaml` and `env` (mode 600)
+  is the whole install — its header has the three `curl` commands that fetch
+  those files. `docker compose up -d`, or `podman-compose up -d`. Update with
+  `docker compose pull && docker compose up -d --force-recreate`
+  (without `--force-recreate` the old container keeps running). On Podman use
+  `restart: always` and enable `podman-restart.service`; `unless-stopped`
+  containers do not come back after a host reboot. The container runs as uid
+  65532 and keeps state in the named volume.
+- **Quadlet/systemd:** [`deploy/switch-to-unifi.container`](../deploy/switch-to-unifi.container); it sets
+  `AutoUpdate=registry`, so `podman auto-update` (or its timer) picks up a new
+  `:latest`. Pin `:v1.2.3` if you would rather update deliberately.
 - Mount a volume at `/var/lib/switch-to-unifi` (state and reply logs) and
   set `state_dir: /var/lib/switch-to-unifi` in the config.
 - An SSH driver (Proxmox, or Arista over SSH) in the container needs a key

@@ -40,6 +40,11 @@ import (
 	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
 )
 
+// buildVersion is this bridge's own version, stamped by the release build
+// (-ldflags "-X main.buildVersion=v1.2.3"); a plain `go build` leaves "dev".
+// It is not the firmware version reported to the controller (-version).
+var buildVersion = "dev"
+
 func main() {
 	var (
 		configPath = flag.String("config", envOr("STU_CONFIG", ""), "YAML config file (deploy/config.example.yaml): one controller, any number of switches; the flags below then apply only as one-shots")
@@ -81,11 +86,16 @@ func main() {
 		// One-shots
 		listModels  = flag.Bool("list-models", false, "print the switch models the bundled catalogue knows and exit")
 		listDrivers = flag.Bool("list-drivers", false, "print the registered switch drivers and exit")
+		showBuild   = flag.Bool("build-version", false, "print this bridge's own build version and exit (-version is the firmware version reported to the controller)")
 		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the switch, print it as JSON with the suggested model, and exit")
 	)
 	flag.Parse()
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
+	if *showBuild {
+		fmt.Println(buildVersion)
+		return
+	}
 	if *listDrivers {
 		for _, d := range switchmodel.Drivers() {
 			fmt.Printf("%-12s %s\n", d.Name(), d.Describe())
@@ -100,6 +110,8 @@ func main() {
 		}
 		return
 	}
+
+	log.Printf("switch-to-unifi %s starting", buildVersion)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

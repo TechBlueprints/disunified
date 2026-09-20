@@ -132,7 +132,7 @@ disable, NTP/syslog ownership, locate, real reboot on request,
 controller SSH keys on the switch user, emulated firmware upgrades
 (persisted), fault reporting (fan/PSU/overheating claims, errdisabled logged),
 first-provision naming with lane-range names on split, config file with
-multi-switch support, container packaging (image build untested), install
+multi-switch support, container packaging, install
 guide, contributor process. Refused-with-a-log: isolation, 802.1X, egress
 rate limit, jumbo-off, LLDP-MED-off.
 
@@ -229,5 +229,20 @@ a real PoE USW). The 7160 has no PoE, so it can never receive the
 command and there is no capture of the device-side name. Found and fixed: naming
 only ran at startup, so a later adoption left "USW Leaf" — `OnConnected`
 now provisions names; the mgmt_cfg log line masks the authkey.
+
+Release pipeline (2026-09-20, added but never run — there is no tag yet):
+`.github/workflows/ci.yml` (vet, test, `scripts/check-site-info.sh`, a
+container build plus its one-shots) and `.github/workflows/release.yml`
+(tag `v*` -> multi-arch image `ghcr.io/techblueprints/switch-to-unifi`
+`:vX.Y.Z`/`:X.Y.Z`/`:X.Y`/`:latest` and a GitHub release with static binaries;
+push to main -> `:edge`). Only `GITHUB_TOKEN` is needed, but the **GHCR package
+must be made public by hand after the first push** or pulls need a login;
+`docs/releasing.md` is the procedure. The image cross-compiles in the build
+stage (`--platform=$BUILDPLATFORM`, `GOOS/GOARCH` from `TARGETOS/TARGETARCH`),
+so no QEMU. `main.buildVersion` is stamped by `-ldflags -X`, logged on every
+start and printed by `-build-version` (not `-version`, which is the reported
+firmware). `deploy/compose.yaml` and the Quadlet unit now pull the published
+image; compose's `build:` needs `dockerfile: Containerfile` because the file is
+not named `Dockerfile`.
 
 The WebRTC terminal is parked.
