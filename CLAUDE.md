@@ -134,6 +134,13 @@ a derived-MAC/host-port variant was tried and dropped 2026-09-20); the
 bond is one uplink port (54); guest ports are `VM-<id>`; lldpd config is
 written by the driver.
 Uplink/Parent verified 2026-09-20 after merging main's `uplink: "eth0"` fix.
+**Adoption is safe by construction (2026-09-20):** the first push after
+adoption is held while the driver's plan says it would change ports
+(`switchmodel.Planner`), and the bridge seeds the controller's port
+overrides from the switch's live VLAN state on the handshake (retrying
+while held); verified by re-adopting proxmox-1 with FusionHub's tagged
+NICs watched: held → seeded 2 ports → new push applied with 0 changes.
+Before this, a re-adoption with control on stripped VM 119's tags for 13 s.
 Deployed with the Arista in the one container (config.yaml has four
 switches; the container mounts a directory with the bridge's own ed25519
 key, installed on the nodes' root user, and a known_hosts — paths in
