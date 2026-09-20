@@ -154,8 +154,32 @@ session with the browser and pipe its shell over the data channel. unifi-emu
 does not implement the device side and does not document how a device
 answers that command, so Clint parked it (branch `ssh-gateway`).
 
-Uplink/Parent (2026-09-20): blank until the management address moved
-in-band (Vlan1 192.0.2.4) and LLDP was silenced on Management1; then
-the aggregation switch's `downlink_table` listed the Arista on port 49. The
-loop warns loudly if an OOB port carries an address or is cabled.
+Uplink/Parent (2026-09-20, overnight): the management address moved in-band
+(Vlan1 192.0.2.4; Management1 addressless, LLDP off) and the bridge now
+reports reachability like a real switch (connect_request_ip, netmask,
+gateway_mac from ARP, eth0/srv0, if_table). Result: the parent lists us in
+`downlink_table`, the device panel shows "Parent Device: the aggregation switch
+Port 49", the topology map is right, clients behind us attribute correctly.
+Still blank: the list's Uplink/Parent columns and "Connected To" — the
+controller never fills our own `uplink` object (it ignores the device's).
+Tried and ruled out: neighbour keys in `uplink`, `uplink_source`,
+`if_table`, "Port N" port IDs in `lldp_table`, vendor `ifname`, force-provision,
+claiming USWF066 (the controller ignores a model change on an adopted
+device — reverted; it left "reverted to 3.0.8 / updated to 7.3.109" lines in
+the Insights history). Remaining hypotheses: the controller parses the
+parent's LLDP `port_id` for our port ("Ethernet49/1" → 1, a down port), or
+USW Leaf gets leaf/spine handling. The decisive test is a forget + re-adopt
+as USWF066 (loses controller-side port config): Clint's call. The loop
+warns loudly if an OOB port carries an address or is cabled.
+
+First-party UI audit 2026-09-20 (Chrome, against the aggregation switch): device
+overview (PSUs, fans, memory, temperature, uptime, parent, connected devices
+per port), Insights (history, CPU/memory graphs), Settings (all sections
+except Etherlighting/LCM which are model features, and Generate Support
+File/Debug which are deliberately unclaimed), Port Manager list, port
+settings drawer (every control), port stats (anomaly breakdown, MAC table,
+activity log), SFP tab (optic details), clients page attribution, topology
+map. Control round-trip re-verified: port 2 disable/enable from the UI
+reaches the switch in ~15 s. Note: `rest/device` PUT of `port_overrides`
+with `forward: disabled` does NOT provision; the UI's Port State toggle does.
 The WebRTC terminal is parked.
