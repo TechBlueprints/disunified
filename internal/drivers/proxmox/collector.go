@@ -283,13 +283,17 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		l := linkBy[u.Active]
 		et := parseEthtool(ethBodies[u.Active])
 		mod := parseEthtoolModule(modBodies[u.Active])
-		p := physicalPort(idx, u, linkBy[u.Name], l, et, mod, brBy, vlanBy)
+		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
 		p.Health.LinkChanges = carrierChanges(carrier, u.Active)
 		if nb, ok := neighbors[u.Active]; ok {
 			nbc := nb
 			p.Neighbor = &nbc
 		}
-		for _, e := range fdbBy[u.Name] {
+		var learned []fdbEntry
+		if u.First {
+			learned = fdbBy[u.Member]
+		}
+		for _, e := range learned {
 			if strings.EqualFold(e.MAC, hostMAC) {
 				continue // the host is on its own port
 			}
@@ -543,15 +547,28 @@ func macEntry(e fdbEntry, idx int, now time.Time) switchmodel.MACEntry {
 	return switchmodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
 }
 
-// uplink is one physical path out of the bridge: a NIC, or a bond folded
-// into one link (UniFi has no notion of an active-standby pair, and a bond
-// is one link to the network; Clint's call, 2026-09-20). Active is the NIC
-// whose speed, optic and LLDP neighbour the port reports.
+// uplink is one physical path out of the bridge, as one switch port:
+//
+//   - a NIC in the bridge: itself;
+//   - an active-backup (or other failover-only) bond: one link, showing
+//     the active slave's speed, optic and LLDP neighbour with the bond's
+//     counters (UniFi has no notion of an active-standby pair, and a bond
+//     is one link to the network; Clint's call, 2026-09-20);
+//   - an LACP (802.3ad) or balance-* bond: one port per member, all in
+//     the same LAG, the way UniFi shows an aggregate;
+//   - a VLAN device on any of those (bond0.10 as the bridge port): the
+//     device underneath.
+//
+// Member is the bridge port (what `bridge vlan`/fdb key on); Active is the
+// NIC whose speed, optic and LLDP neighbour the port reports; Ifaces are
+// the NICs lldpd names with this port's number.
 type uplink struct {
-	Name   string   // bridge member: the bond, or the NIC itself
-	Ifaces []string // the NICs behind it (bond slaves, or the NIC)
+	Name   string   // the port's name
+	Member string   // the bridge member this belongs to (bond, NIC or VLAN device)
+	Ifaces []string // the NICs behind it
 	Active string   // the NIC carrying traffic now
-	LAG    bool     // a real aggregate (802.3ad/balance): every slave forwards
+	LAG    string   // aggregate name when the port is one member of a LAG
+	First  bool     // first port of its member: carries the member's MAC table
 }
 
 func uplinkNames(us []uplink) []string {
@@ -562,8 +579,7 @@ func uplinkNames(us []uplink) []string {
 	return out
 }
 
-// physicalMembers lists the bridge's physical uplinks in kernel order: a
-// bond member is one uplink with its slaves behind it, a NIC is its own.
+// physicalMembers lists the bridge's uplink ports in kernel order.
 func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, bridge string) []uplink {
 	isPhys := map[string]bool{}
 	for _, line := range strings.Split(physBody, "\n") {
@@ -584,22 +600,38 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 	sort.Slice(members, func(i, j int) bool { return members[i].Ifindex < members[j].Ifindex })
 	var out []uplink
 	for _, m := range members {
-		if b, ok := bondBy[m.Ifname]; ok {
-			u := uplink{Name: b.Name, Active: b.ActiveSlave}
+		// A VLAN (or macvlan) device rides on its parent: look through it.
+		lower := m.Ifname
+		for hops := 0; hops < 4; hops++ {
+			l, ok := linkBy[lower]
+			if !ok || l.Link == "" || (l.Linkinfo.InfoKind != "vlan" && l.Linkinfo.InfoKind != "macvlan") {
+				break
+			}
+			lower = l.Link
+		}
+		if b, ok := bondBy[lower]; ok {
+			var slaves []string
 			for _, sl := range b.Slaves {
-				u.Ifaces = append(u.Ifaces, sl.Name)
+				slaves = append(slaves, sl.Name)
 			}
-			if u.Active == "" && len(u.Ifaces) > 0 {
-				u.Active = u.Ifaces[0]
+			if len(slaves) == 0 {
+				continue
 			}
-			u.LAG = strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast")
-			if len(u.Ifaces) > 0 {
-				out = append(out, u)
+			if strings.Contains(b.Mode, "802.3ad") || strings.Contains(b.Mode, "balance") || strings.Contains(b.Mode, "broadcast") {
+				for i, sl := range slaves {
+					out = append(out, uplink{Name: sl, Member: m.Ifname, Ifaces: []string{sl}, Active: sl, LAG: b.Name, First: i == 0})
+				}
+				continue
 			}
+			active := b.ActiveSlave
+			if active == "" {
+				active = slaves[0]
+			}
+			out = append(out, uplink{Name: m.Ifname, Member: m.Ifname, Ifaces: slaves, Active: active, First: true})
 			continue
 		}
-		if isPhys[m.Ifname] {
-			out = append(out, uplink{Name: m.Ifname, Ifaces: []string{m.Ifname}, Active: m.Ifname})
+		if isPhys[lower] {
+			out = append(out, uplink{Name: m.Ifname, Member: m.Ifname, Ifaces: []string{lower}, Active: lower, First: true})
 		}
 	}
 	return out
@@ -608,10 +640,14 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 // physicalPort renders one uplink: link state and counters from the bridge
 // member (the bond, or the NIC), speed/optic/capabilities from the active NIC.
 func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) switchmodel.Port {
+	stats := member
+	if u.LAG != "" {
+		stats = active // a LAG member reports its own link and counters
+	}
 	p := switchmodel.Port{
 		Index: idx, IfName: u.Name, Interfaces: u.Ifaces, Name: u.Name, Lanes: 1,
-		Enabled: member.hasFlag("UP"), Up: member.hasFlag("LOWER_UP") && active.hasFlag("LOWER_UP"), MTU: member.MTU,
-		Counters: countersOf(member), AutoNeg: et.Autoneg, SpeedCaps: et.Speeds, FECCapable: et.FEC,
+		Enabled: stats.hasFlag("UP"), Up: stats.hasFlag("LOWER_UP") && active.hasFlag("LOWER_UP"), MTU: member.MTU,
+		Counters: countersOf(stats), AutoNeg: et.Autoneg, SpeedCaps: et.Speeds, FECCapable: et.FEC,
 		FullDuplex: strings.EqualFold(et.Duplex, "Full"), SpeedMbps: et.Speed,
 		STPState: "disabled",
 	}
@@ -620,20 +656,20 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 		p.Optic = &switchmodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
 			TempC: mod.TempC, VoltageV: mod.VoltageV, HasDOM: mod.HasDOM}
 	}
-	if u.LAG {
-		p.LAG = u.Name
+	if u.LAG != "" {
+		p.LAG = u.LAG
 		p.LAGID = 1
 	}
 	if p.Up {
 		p.STPState = "forwarding"
-		if st := brBy[u.Name].Linkinfo.InfoSlaveData.State; st != "" {
+		if st := brBy[u.Member].Linkinfo.InfoSlaveData.State; st != "" {
 			p.STPState = st
 		}
 	}
-	if b := brBy[u.Name]; b.Ifname != "" {
+	if b := brBy[u.Member]; b.Ifname != "" {
 		p.STPPathCost = b.Linkinfo.InfoSlaveData.Cost
 	}
-	if v, ok := vlanBy[u.Name]; ok {
+	if v, ok := vlanBy[u.Member]; ok {
 		p.VLAN = portVLANOf(v)
 	} else {
 		p.VLAN = switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}
@@ -884,6 +920,8 @@ func lldpdConfig(phys []uplink, slotFor func(int) int, devMAC string) (config st
 			fmt.Fprintf(&b, "configure ports %s lldp portdescription \"%s\"\n", n, u.Name)
 		}
 	}
+	// LACP members each announce their own port; an active-backup bond
+	// announces on its active slave only (see above).
 	return b.String(), announce
 }
 
