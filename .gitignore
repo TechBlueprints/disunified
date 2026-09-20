@@ -26,3 +26,4 @@ config.local.*
 /switch-to-unifi
 /config.yaml
 /state-backup/
+/config-proxmox.local.yaml
