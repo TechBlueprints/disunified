@@ -8,21 +8,21 @@ state_dir: .
 switches:
   - name: proxmox-1
     driver: proxmox
-    ssh: root@proxmox-1
+    ssh: root@192.0.2.101
     ip: 192.0.2.101
     model: USWF07D
     control:
       ports: all
   - name: proxmox-2
     driver: proxmox
-    ssh: root@proxmox-2
+    ssh: root@192.0.2.102
     ip: 192.0.2.102
     model: USWF07D
     control:
       ports: all
   - name: proxmox-3
     driver: proxmox
-    ssh: root@proxmox-3
+    ssh: root@192.0.2.103
     ip: 192.0.2.103
     model: USWF07D
     control:

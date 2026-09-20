@@ -147,6 +147,14 @@ by default), optionally `lldpd` (§4) and `chrony` (default).
 
 ## 6. Controller quirks met on Network 10.6.106
 
+- **Adopting a node removes its DNS name.** The controller publishes
+  `<hostname>.local.<domain>` for *clients*; once the node's MAC is an
+  adopted device it is no longer a client and the record disappears
+  (`<node>.local.<domain>` went NXDOMAIN on 2026-09-20 while
+  every VM name kept resolving). Give each node a static DNS record in the
+  controller (Settings → Routing → DNS) or point the bridge's `ssh:` at the
+  node's IP.
+
 - **`api.err.OobPortNotSupported`** on every REST update of the device:
   the controller stores `oob_port_config: [{"enabled": true}]` for the ECS
   Core (real hardware has an OOB port) and then rejects the record because
