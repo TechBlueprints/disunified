@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -143,7 +144,14 @@ type Loop struct {
 	uplinkPort      int    // the port last marked as uplink from the snapshot
 	everApplied     bool   // a system_cfg has been applied to this device (this run or a previous one)
 	heldVersion     string // the first push being held, to log once
-	faultSig        string
+	// freshPorts are ports that appeared (a new guest, a new interface) since
+	// the last applied config: the controller knows nothing about them yet,
+	// so its config for them is the defaults. They are not written until a
+	// push matches their live state (see withholdFreshPorts).
+	freshPorts   map[int]string // port -> interface name, for the log
+	freshWarned  map[int]bool
+	layoutByPort map[int]string
+	faultSig     string
 
 	mu         sync.Mutex
 	state      State
@@ -437,7 +445,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.ensureVLANs(cctx, text)
 	l.applySwitchSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
-	desired := l.desiredPorts(text)
+	desired := l.withholdFreshPorts(l.desiredPorts(text))
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
 		l.cfg.Logger.Printf("[%s] reconcile system_cfg %s: %v", l.desc.MAC, ver, err)
@@ -678,6 +686,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	if held := l.holdInitialPush(ver, desired); held {
 		return true
 	}
+	desired = l.withholdFreshPorts(desired)
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	l.ensureVLANs(cctx, text)
@@ -722,6 +731,48 @@ func (l *Loop) holdInitialPush(ver string, desired []switchmodel.PortDesired) bo
 		l.cfg.OnHeld(l.session.Snapshot())
 	}
 	return true
+}
+
+// withholdFreshPorts drops from desired the fresh ports (see Loop.freshPorts)
+// that the plan says would change: the controller has not been told about
+// them yet (the bridge seeds it on layout change) and its defaults would
+// overwrite what they have. A fresh port whose desired state matches its
+// live state stops being fresh. Needs a Planner; drivers without one write
+// as before. AllowInitialChanges disables the withholding too.
+func (l *Loop) withholdFreshPorts(desired []switchmodel.PortDesired) []switchmodel.PortDesired {
+	if len(l.freshPorts) == 0 || l.cfg.AllowInitialChanges {
+		return desired
+	}
+	planner, ok := l.cfg.Controller.(switchmodel.Planner)
+	if !ok {
+		return desired
+	}
+	wouldChange := map[int]bool{}
+	for _, idx := range planner.PlanPorts(desired) {
+		wouldChange[idx] = true
+	}
+	out := desired[:0:0]
+	for _, d := range desired {
+		name, fresh := l.freshPorts[d.Index]
+		if !fresh {
+			out = append(out, d)
+			continue
+		}
+		if !wouldChange[d.Index] {
+			delete(l.freshPorts, d.Index) // controller and switch agree: an ordinary port from now on
+			delete(l.freshWarned, d.Index)
+			out = append(out, d)
+			continue
+		}
+		if !l.freshWarned[d.Index] {
+			if l.freshWarned == nil {
+				l.freshWarned = map[int]bool{}
+			}
+			l.freshWarned[d.Index] = true
+			l.cfg.Logger.Printf("[%s] port %d (%s) is new since the controller's config and would be changed by it; not written until the controller's config for it matches the switch (seeded automatically with api_url, or set it in the UI). control.allow_initial_changes: true overrides.", l.desc.MAC, d.Index, name)
+		}
+	}
+	return out
 }
 
 // collect refreshes the session's snapshot from the switch. A failure keeps
@@ -775,10 +826,28 @@ func (l *Loop) collect(ctx context.Context) {
 	if sig := layoutSignature(snap); sig != l.layoutSig {
 		changed := l.layoutSig != ""
 		l.layoutSig = sig
-		if changed && l.cfg.OnLayoutChange != nil {
-			l.cfg.Logger.Printf("[%s] port layout changed (a cage split or joined)", l.desc.MAC)
-			l.cfg.OnLayoutChange(snap)
+		byPort := map[int]string{}
+		for _, p := range snap.Ports {
+			byPort[p.Index] = p.IfName
 		}
+		if changed {
+			var fresh []string
+			for idx, name := range byPort {
+				if name != "" && l.layoutByPort[idx] != name {
+					if l.freshPorts == nil {
+						l.freshPorts = map[int]string{}
+					}
+					l.freshPorts[idx] = name
+					fresh = append(fresh, fmt.Sprintf("%d(%s)", idx, name))
+				}
+			}
+			sort.Strings(fresh)
+			l.cfg.Logger.Printf("[%s] port layout changed: new or changed ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
+			if l.cfg.OnLayoutChange != nil {
+				l.cfg.OnLayoutChange(snap)
+			}
+		}
+		l.layoutByPort = byPort
 	}
 }
 

@@ -65,3 +65,50 @@ func TestFirstPushThatWouldChangePortsIsHeld(t *testing.T) {
 		t.Errorf("allow_initial_changes did not apply the push")
 	}
 }
+
+// freshController changes only port 30 (a guest that just appeared).
+type freshController struct{ applied []switchmodel.PortDesired }
+
+func (f *freshController) ApplyPorts(_ context.Context, d []switchmodel.PortDesired) (int, error) {
+	f.applied = append(f.applied, d...)
+	return len(d), nil
+}
+func (f *freshController) PlanPorts(d []switchmodel.PortDesired) []int {
+	for _, p := range d {
+		if p.Index == 30 {
+			return []int{30}
+		}
+	}
+	return nil
+}
+
+func TestFreshPortIsWithheldUntilTheControllerAgrees(t *testing.T) {
+	ctl := &freshController{}
+	l, _, buf := newPendingLoop(t, ctl, false, true) // an established device: later pushes apply
+	l.freshPorts = map[int]string{30: "vm998-net0"}
+	desired := []switchmodel.PortDesired{{Index: 1, Enabled: true}, {Index: 30, Enabled: true}}
+	got := l.withholdFreshPorts(desired)
+	if len(got) != 1 || got[0].Index != 1 {
+		t.Errorf("fresh port not withheld: %+v", got)
+	}
+	if !strings.Contains(buf.String(), "port 30 (vm998-net0) is new") {
+		t.Errorf("log = %q", buf.String())
+	}
+	// A push that matches the port's live state releases it.
+	ctl2 := &freshController{}
+	l2, _, _ := newPendingLoop(t, ctl2, false, true)
+	l2.freshPorts = map[int]string{30: "vm998-net0"}
+	agree := &planningNothing{}
+	l2.cfg.Controller = agree
+	got = l2.withholdFreshPorts(desired)
+	if len(got) != 2 || len(l2.freshPorts) != 0 {
+		t.Errorf("agreeing port still withheld: %+v fresh=%v", got, l2.freshPorts)
+	}
+}
+
+type planningNothing struct{}
+
+func (planningNothing) ApplyPorts(context.Context, []switchmodel.PortDesired) (int, error) {
+	return 0, nil
+}
+func (planningNothing) PlanPorts([]switchmodel.PortDesired) []int { return nil }
