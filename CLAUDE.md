@@ -31,7 +31,12 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 
 - Local, on his Mac (`~/techblueprints/switch-to-unifi`). Commit locally and
   show him. **Ask before pushing, merging, opening a PR, or deploying.**
-  The repo was first pushed 2026-09-20 (history squashed to one commit).
+  The repo was first pushed 2026-09-20 (history squashed to one commit) and
+  its history rewritten with git filter-repo the same day to purge adoption
+  authkeys that had been pasted into a test and a state backup: **never commit
+  a real `authkey`** (tests use `0123456789abcdef0123456789abcdef`, fixtures
+  `00000000000000000000000000000001`). Making it public is a separate,
+  pending step.
 - He logs into the controller in Claude's Chrome tab so Claude can drive the
   UI for captures and round-trip tests; Claude never touches the 2FA code.
 - UI edits for testing go on **port 2** (copper, unused) and **port 54**
