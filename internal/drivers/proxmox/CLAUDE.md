@@ -18,8 +18,10 @@ poll (root on the node, key auth). Write: `qm set`/`pct set` for
 so the upstream aggregation switch sees them. Controller quirks: the ECS
 Core record carries `oob_port_config` that must be sent back empty on every
 REST update; the model's controller name is "ECS Core". A throwaway,
-diskless test guest (named in `local-information/site.md`) is the Proxmox
-"port 2".
+For port-level tests make a throwaway, diskless guest (`qm create <id>
+--name stu-test --memory 128 --net0 virtio,bridge=vmbr0`) and destroy it
+afterwards (`qm stop <id>; qm destroy <id> --purge`); the last one, VM
+999, was destroyed 2026-09-20 once its checks were done.
 The node is the switch (device MAC = the bridge MAC, same IP and hostname;
 a derived-MAC/host-port variant was tried and dropped 2026-09-20); the
 bond is one uplink port (54); guest ports are `VM-<id>`; lldpd config is
