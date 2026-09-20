@@ -153,7 +153,7 @@ func TestCollectNode2(t *testing.T) {
 	if got := c.DeviceName(snap.System); got != "pve-proxmox-2" {
 		t.Errorf("device name = %q", got)
 	}
-	if _, name := vm100(t, "collect-node2.txt"); c.PortName(p1) != "100 "+name {
+	if c.PortName(p1) != "VM-100" {
 		t.Errorf("port name = %q", c.PortName(p1))
 	}
 }
