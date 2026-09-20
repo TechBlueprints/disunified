@@ -44,6 +44,7 @@ var (
 		"show interfaces transceiver dom thresholds",
 		"show spanning-tree topology status detail",
 		"show ip arp",
+		"show hardware capacity",
 	}
 )
 
@@ -181,8 +182,9 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 		th   showTransceiverThresholds
 		ts   showSTPTopologyStatus
 		arp  showIPARP
+		hwc  showHardwareCapacity
 	)
-	for i, v := range []any{&ver, &ifs, &lldp, &stp, &top, &temp, &mt, &xcvr, &fec, &fc, &pc, &cool, &pwr, &sp, &vl, &sc, &igmp, &rc, &ed, &root, &th, &ts, &arp} {
+	for i, v := range []any{&ver, &ifs, &lldp, &stp, &top, &temp, &mt, &xcvr, &fec, &fc, &pc, &cool, &pwr, &sp, &vl, &sc, &igmp, &rc, &ed, &root, &th, &ts, &arp, &hwc} {
 		if err := decodeInto(out[i], pollCmds[i], v); err != nil {
 			return nil, err
 		}
@@ -245,6 +247,8 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 	snap.System.OOBInterfaces = oobInterfaces(ifs)
 	snap.System.Addresses = ifAddresses(ifs)
 	snap.System.ARP = arpTable(arp)
+	snap.System.LoadAvg = top.TimeInfo.LoadAvg
+	snap.System.MACTableCapacity, snap.System.MACTableUsed = fdbCapacity(hwc)
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
 	applyRunningConfig(ports, &snap.System, rc)
@@ -393,4 +397,24 @@ func colonMAC(s string) string {
 		parts[i] = hex[2*i : 2*i+2]
 	}
 	return strings.Join(parts, ":")
+}
+
+// showHardwareCapacity is `show hardware capacity`; the L2 "FDB" table is
+// the MAC address table (131072 entries on the 7160).
+type showHardwareCapacity struct {
+	Tables []struct {
+		Feature  string `json:"feature"`
+		Table    string `json:"table"`
+		MaxLimit int    `json:"maxLimit"`
+		Used     int    `json:"used"`
+	} `json:"tables"`
+}
+
+func fdbCapacity(h showHardwareCapacity) (capacity, used int) {
+	for _, t := range h.Tables {
+		if t.Feature == "L2" && t.Table == "FDB" {
+			return t.MaxLimit, t.Used
+		}
+	}
+	return 0, 0
 }

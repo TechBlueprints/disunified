@@ -114,4 +114,10 @@ func TestSecondWaveData(t *testing.T) {
 	if colonMAC("0200.0000.003c") != "02:00:00:00:00:3c" {
 		t.Errorf("colonMAC")
 	}
+	if len(snap.System.LoadAvg) != 3 || snap.System.LoadAvg[0] != 1.63 {
+		t.Errorf("loadavg = %v", snap.System.LoadAvg)
+	}
+	if snap.System.MACTableCapacity != 131072 || snap.System.MACTableUsed == 0 {
+		t.Errorf("fdb capacity = %d used %d", snap.System.MACTableCapacity, snap.System.MACTableUsed)
+	}
 }

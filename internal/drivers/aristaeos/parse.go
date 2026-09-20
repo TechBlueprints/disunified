@@ -94,6 +94,9 @@ type showLLDPNeighborsDetail struct {
 }
 
 type showProcessesTop struct {
+	TimeInfo struct {
+		LoadAvg []float64 `json:"loadAvg"`
+	} `json:"timeInfo"`
 	CPUInfo struct {
 		CPUs struct {
 			Idle float64 `json:"idle"`

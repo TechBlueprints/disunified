@@ -2,6 +2,7 @@ package device
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
@@ -576,10 +577,44 @@ func sysStats(snap *switchmodel.Snapshot) map[string]any {
 		return map[string]any{"cpu": 1.5, "mem_total": 134217728, "mem_used": 67108864, "mem_buffer": 16777216}
 	}
 	s := snap.System
-	return map[string]any{
+	m := map[string]any{
 		"cpu":        s.CPUPercent,
 		"mem_total":  s.MemTotalKB * 1024,
 		"mem_used":   s.MemUsedKB * 1024,
 		"mem_buffer": s.MemBufferKB * 1024,
+	}
+	if len(s.LoadAvg) == 3 {
+		m["loadavg_1"] = fmt.Sprintf("%.2f", s.LoadAvg[0])
+		m["loadavg_5"] = fmt.Sprintf("%.2f", s.LoadAvg[1])
+		m["loadavg_15"] = fmt.Sprintf("%.2f", s.LoadAvg[2])
+	}
+	return m
+}
+
+// systemStats is the `system-stats` object UniFi switches send alongside
+// sys_stats: percentages as strings. The UI's "Memory Usage" reads mem here.
+func systemStats(snap *switchmodel.Snapshot, uptime int64) map[string]any {
+	if snap == nil || snap.System.MemTotalKB == 0 {
+		return map[string]any{}
+	}
+	s := snap.System
+	return map[string]any{
+		"cpu":    fmt.Sprintf("%.1f", s.CPUPercent),
+		"mem":    fmt.Sprintf("%.1f", 100*float64(s.MemUsedKB)/float64(s.MemTotalKB)),
+		"uptime": strconv.FormatInt(uptime, 10),
+	}
+}
+
+// macTableCapability mirrors what UniFi switches report for the MAC table
+// pressure card; thresholds follow the ratios seen on a real switch
+// (warning at 66%, critical at 79% of capacity).
+func macTableCapability(snap *switchmodel.Snapshot) map[string]any {
+	if snap == nil || snap.System.MACTableCapacity == 0 {
+		return nil
+	}
+	c := snap.System.MACTableCapacity
+	return map[string]any{
+		"capacity": c, "count": snap.System.MACTableUsed,
+		"threshold_warning": c * 66 / 100, "threshold_critical": c * 79 / 100,
 	}
 }

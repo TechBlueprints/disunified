@@ -195,6 +195,10 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		m["state"] = 4
 		m["bootrom_version"] = "unknown"
 		m["sys_stats"] = sysStats(s.snap)
+		m["system-stats"] = systemStats(s.snap, uptime)
+		if mtc := macTableCapability(s.snap); mtc != nil {
+			m["mac_table_capability"] = mtc
+		}
 		if s.snap != nil && s.snap.System.HasTemperature {
 			m["general_temperature"] = int(s.snap.System.TemperatureC + 0.5)
 			m["has_temperature"] = true
