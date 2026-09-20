@@ -4,6 +4,13 @@ Written for someone (or some agent) who has never seen this project. Every
 step has a check. Total time for one switch: about 20 minutes plus one click
 in the UniFi UI.
 
+> **Experimental software, no warranty of any kind.** With `control` on,
+> the bridge rewrites your switch's configuration (VLANs, port state,
+> speeds, STP, LACP, reboots) to match the controller. Back up the
+> switch's config, keep out-of-band access to it, and enable control for
+> one unused port before all of them. Verified only on the hardware and
+> versions listed in the README; see its "Status" section before step 1.
+
 ## 0. What you need
 
 - A UniFi Network controller (tested: Network 10.6 on a UniFi OS gateway),
