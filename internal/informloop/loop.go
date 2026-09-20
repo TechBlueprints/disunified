@@ -826,9 +826,17 @@ func (l *Loop) collect(ctx context.Context) {
 	if sig := layoutSignature(snap); sig != l.layoutSig {
 		changed := l.layoutSig != ""
 		l.layoutSig = sig
+		// A port's identity for freshness is its interface name plus the
+		// interfaces behind it: a guest that migrates onto this node keeps
+		// its port number and name but gains its tap here, and must be
+		// treated as fresh — this device's controller config for the port
+		// may differ from the guest's own.
 		byPort := map[int]string{}
 		for _, p := range snap.Ports {
-			byPort[p.Index] = p.IfName
+			if p.IfName == "" {
+				continue
+			}
+			byPort[p.Index] = p.IfName + "/" + strings.Join(p.Interfaces, ",")
 		}
 		if changed {
 			var fresh []string
@@ -842,7 +850,7 @@ func (l *Loop) collect(ctx context.Context) {
 				}
 			}
 			sort.Strings(fresh)
-			l.cfg.Logger.Printf("[%s] port layout changed: new or changed ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
+			l.cfg.Logger.Printf("[%s] port layout changed: new, changed or arrived ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
 			if l.cfg.OnLayoutChange != nil {
 				l.cfg.OnLayoutChange(snap)
 			}
@@ -854,7 +862,7 @@ func (l *Loop) collect(ctx context.Context) {
 func layoutSignature(snap *switchmodel.Snapshot) string {
 	var b strings.Builder
 	for _, p := range snap.Ports {
-		fmt.Fprintf(&b, "%d:%s:%d;", p.Index, p.IfName, p.Lanes)
+		fmt.Fprintf(&b, "%d:%s:%d:%s;", p.Index, p.IfName, p.Lanes, strings.Join(p.Interfaces, ","))
 	}
 	return b.String()
 }
