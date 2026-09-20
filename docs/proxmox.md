@@ -28,8 +28,8 @@ file with `device.json`**: without it a re-seed could number a VM
 differently and, with `control.ports` on, apply another port's VLANs to it.
 
 Port names are provisioned as `<vmid> <name>` (`119 FusionHub net1` for a
-multi-NIC guest) and the NIC name for uplinks; the device is named after
-the node. A guest on another node still gets its name here.
+multi-NIC guest) and the NIC name for uplinks; the device is named
+`pve-<node>` so it never collides with the node's own DNS name (§6). A guest on another node still gets its name here.
 
 ## 2. What is read (every inform, one SSH exec)
 
