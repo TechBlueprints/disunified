@@ -25,7 +25,7 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 | `internal/informloop` | collect → inform → apply pending → reconcile | apply is a diff; reconcile runs every cycle |
 | `internal/unifimodel` | choose the UniFi model from the port layout | `docs/unifi-models.md` |
 | `internal/unifiapi` | controller REST API (naming only) | touches only controller-default names |
-| `docs/` | protocol notes, vendor notes, feature map, fixtures | scrub fixtures with `scripts/sanitize-fixtures.py` |
+| `docs/` | protocol notes, vendor notes, feature map, fixtures | scrub fixtures with `scripts/sanitize-arista-eos.py` |
 
 ## 3. How Clint wants to work
 
@@ -66,7 +66,7 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 - **Tests use real captures, never hand-written protocol samples.** Every
   fixture is output captured from a real switch or a real controller, with
   identifiers, serials and secrets replaced by the scrub scripts
-  (`scripts/sanitize-fixtures.py` for EOS JSON, `scripts/sanitize-captures.py`
+  (`scripts/sanitize-arista-eos.py` for EOS JSON, `scripts/sanitize-controller.py`
   for device informs and the reply log). Both directions are covered and
   must stay covered: switch → bridge (`docs/fixtures/eos-*`), bridge →
   controller (`internal/device/contract_test.go` against real switches'
@@ -113,10 +113,10 @@ and must stay stopped** (one bridge per adopted key).
   default port names come from the profile.
 - The controller sets the inform interval (65-80 s here).
 
-## 6. Switch facts (Arista, see `docs/arista-eapi.md`)
+## 6. Switch facts (Arista, see `docs/drivers/arista-eos.md`)
 
 - EOS 4.26.14M is the **last train for the 7160**: verify every command
-  against that version (fixtures in `docs/fixtures/eos-4.26.14M/`); eAPI
+  against that version (fixtures in `docs/fixtures/arista-eos-4.26.14M/`); eAPI
   batches start with `enable`; eAPI does not expand abbreviations; TLS 1.2
   RSA-kex only.
 - 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
@@ -127,13 +127,13 @@ and must stay stopped** (one bridge per adopted key).
 
 ## 6b. Proxmox driver (branch claude/proxmox-unifi-bridge, 2026-09-19/20)
 
-`internal/drivers/proxmox` + `docs/proxmox.md`. Each node's `vmbr0` is a
+`internal/drivers/proxmox` + `docs/drivers/proxmox.md`. Each node's `vmbr0` is a
 USW Leaf (`UDC48X6`, 54 ports) named after the node; guests are ports 1-48
 numbered cluster-wide, the port recorded in the guest's own Proxmox tags
-(`unifi.p25.c`, `unifi.p27.c.net1`; docs/proxmox.md §1c; the driver keeps
-no file, only the owner node writes tags) and named `VM-<id>` (`VM-Open-<port>` when free),
-the physical NICs/bond slaves count down from 54 (`bond0-1`, `bond0-2`;
-`NIC-Open-<port>` when free). Free slots are reported and seeded disabled;
+(`unifi.p25.c`, `unifi.p27.c.net1`; docs/drivers/proxmox.md §1c; the driver keeps
+no file, only the owner node writes tags) and named `VM-<id>` (`Open-<port>` when free),
+the physical NICs/bond slaves count down from 54 (`bond0-1`, `bond0-2`);
+every slot below them is open to guests. Free slots are reported and seeded disabled;
 a guest arriving on one is re-seeded from its own state. Read: one SSH exec of `collect.sh` per
 poll (root on the node, key auth). Write: `qm set`/`pct set` for
 `link_down`/`tag`/`trunks`. Nodes run lldpd bound to the active uplink NIC

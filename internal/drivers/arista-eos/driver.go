@@ -19,7 +19,7 @@ import (
 // (default: the bridge's own user).
 //
 // Written against EOS 4.26.14M on a DCS-7160-48TC6-F; see
-// docs/arista-eapi.md for what that version does and does not have.
+// docs/drivers/arista-eos.md for what that version does and does not have.
 type Driver struct{}
 
 func init() { switchmodel.RegisterDriver(Driver{}) }

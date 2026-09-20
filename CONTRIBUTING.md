@@ -12,7 +12,7 @@ same loop, whether the contributor is a person or an AI agent.
 3. **Capture before you code.** Save the switch's command output as
    fixtures under `docs/fixtures/<os>-<version>/`, and the controller's
    config push as `docs/fixtures/controller-<version>-*.txt`, both run
-   through `scripts/sanitize-fixtures.py` (MACs, IPs, serials, hostnames,
+   through `scripts/sanitize-arista-eos.py` (MACs, IPs, serials, hostnames,
    keys). The repo is public; nothing identifying ships.
 4. **Write tests against the fixtures.** Parsing, every apply sequence, and
    idempotence (applying the same intent twice writes nothing).

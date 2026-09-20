@@ -14,7 +14,7 @@ import (
 
 // The structs below are the subset of each command's JSON that the collector
 // reads, with field names exactly as EOS 4.26.14M emits them (see
-// docs/fixtures/eos-4.26.14M). Unknown fields are ignored by encoding/json.
+// docs/fixtures/arista-eos-4.26.14M). Unknown fields are ignored by encoding/json.
 
 type showVersion struct {
 	ModelName        string  `json:"modelName"`

@@ -247,7 +247,7 @@ func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired
 	changed := 0
 	switch {
 	case d.STPSet && !stpManaged && d.STPEnabled:
-		c.warnOnce("stp", "the controller wants STP %s (priority %d); this node's bridge is not under mstpd (docs/proxmox.md §4b) so STP is neither claimed nor changed", d.STPMode, d.STPPriority)
+		c.warnOnce("stp", "the controller wants STP %s (priority %d); this node's bridge is not under mstpd (docs/drivers/proxmox.md §4b) so STP is neither claimed nor changed", d.STPMode, d.STPPriority)
 	case d.STPSet && stpManaged:
 		// Version follows the controller; priority never does (enforceSTP
 		// pins the maximum so the node cannot become root).

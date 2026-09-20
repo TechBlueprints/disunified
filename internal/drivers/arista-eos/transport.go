@@ -2,7 +2,7 @@
 //
 // Everything here was written against EOS 4.26.14M on a DCS-7160-48TC6-F —
 // the last EOS train that platform can run — using the captured output in
-// docs/fixtures/eos-4.26.14M. Two transports produce identical JSON: eAPI
+// docs/fixtures/arista-eos-4.26.14M. Two transports produce identical JSON: eAPI
 // (JSON-RPC over HTTPS, needs credentials and `management api http-commands`
 // enabled) and SSH (`show ... | json` over a key-authenticated CLI session,
 // needs nothing). The collector does not care which.

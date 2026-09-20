@@ -21,13 +21,13 @@ Two channels exist:
   *controls*.
 
 The controller only sends a `system_cfg` key when the feature is non-default in the site,
-so the captured file (`fixtures/controller-10.6.106-system_cfg.txt`) shows defaults only.
+so the captured file (`fixtures/controller-10.6.106/system_cfg.txt`) shows defaults only.
 **Every "verify" row needs a capture: Clint sets the feature in the UI (port 2 for port-level
 settings), the bridge records the delta.** That is the capture campaign in §4.
 
 ## 0. Proxmox VE driver
 
-The tables below are the Arista's. The Proxmox driver (`docs/proxmox.md`)
+The tables below are the Arista's. The Proxmox driver (`docs/drivers/proxmox.md`)
 covers a subset by design: a Linux bridge has no per-port speed, FEC, storm
 control, LAG or mirror, so those capabilities are not claimed and the UI
 hides them. What it does: every device→controller field in §1 except PSUs,
@@ -37,11 +37,11 @@ per lane, FEC and `stp_pathcost` beyond the bridge's cost; controller→device:
 (`tag`/`trunks`), `switch.vlan.*.igmp_snooping` (bridge-wide, `control.igmp`),
 `ntpclient.N.server` (chrony, `control.ntp`), `port-cycle`,
 `switch.port.N.opmode=aggregate`/`lag` on the node's physical ports (bond
-to/from 802.3ad via the Proxmox API — **untested live**, `docs/proxmox.md` §3b); logged and
+to/from 802.3ad via the Proxmox API — **untested live**, `docs/drivers/proxmox.md` §3b); logged and
 ignored: syslog, reboot (always emulated), SSH keys, everything the
 capabilities hide; STP is claimed and honoured (version, per-port BPDU
 guard; priority pinned at 61440) only on a node whose bridge runs under
-mstpd (`docs/proxmox.md` §4b), otherwise ignored. Verified live on Network 10.6.106, 2026-09-19/20.
+mstpd (`docs/drivers/proxmox.md` §4b), otherwise ignored. Verified live on Network 10.6.106, 2026-09-19/20.
 
 ## 1. Device → controller: switch-level fields
 

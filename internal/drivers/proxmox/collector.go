@@ -29,7 +29,6 @@ type Collector struct {
 	// guest in the cluster (48 cluster-wide, the same port number on every
 	// node). Default: cluster-wide.
 	NodeNumbering bool
-	UplinkPorts   int // the last UplinkPorts ports are the physical uplinks, from the last port down
 
 	cycleDelay time.Duration
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
@@ -51,7 +50,7 @@ type Collector struct {
 	snooping    bool                // bridge multicast_snooping
 	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
-	// (docs/proxmox.md §4b). Without it STP is neither claimed nor touched.
+	// (docs/drivers/proxmox.md §4b). Without it STP is neither claimed nor touched.
 	uplinks     map[int]uplink    // port index -> physical uplink, at the last collect
 	bondModes   map[string]string // bond -> mode string from /proc/net/bonding
 	mstpd       bool              // mstpctl is installed
@@ -65,7 +64,7 @@ type Collector struct {
 // NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
 // 6 for the uplinks: the USW Leaf layout).
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, UplinkPorts: 6, ManageLLDP: true,
+	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, ManageLLDP: true,
 		knownNames: map[int][]string{}, warned: map[string]bool{}}
 }
 
@@ -91,7 +90,7 @@ func (c *Collector) Capabilities() switchmodel.Capabilities {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// LACP: an aggregate on the node's physical ports converts their bond
-	// to 802.3ad through the Proxmox API (docs/proxmox.md §3b, untested live).
+	// to 802.3ad through the Proxmox API (docs/drivers/proxmox.md §3b, untested live).
 	caps := switchmodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
 	if c.stpManaged {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
@@ -233,7 +232,14 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		keys = append(keys, n.Key())
 		nicBy[n.Key()] = n
 	}
-	vmSlots := c.Ports - c.UplinkPorts
+	// The node's physical ports take the top slots; everything below them
+	// is one pool for guests (nothing is reserved for NICs: an open slot is
+	// an open slot, Clint 2026-09-20).
+	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
+	if len(phys) >= c.Ports {
+		return nil, fmt.Errorf("proxmox: bridge %s has %d physical ports but ports=%d", c.Bridge, len(phys), c.Ports)
+	}
+	vmSlots := c.Ports - len(phys)
 	slotOf, retags := c.assignPorts(nics, hostname, vmSlots)
 	keyOf := map[int]string{}
 	for k, idx := range slotOf {
@@ -304,11 +310,6 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	// The node is the switch: same MAC, address and hostname (the bridge
 	// interface is where the node's own stack sits, like a switch's
 	// management interface). Its physical paths out are the last ports.
-	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
-	if len(phys) > c.UplinkPorts {
-		c.warnOnce("too-many-nics", "bridge %s has %d uplinks but uplink_ports=%d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, uplinkNames(phys[c.UplinkPorts:]))
-		phys = phys[:c.UplinkPorts]
-	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
 	_, fecBodies := subsections(sec["ethtoolfec"])
