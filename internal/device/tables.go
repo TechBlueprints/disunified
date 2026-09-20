@@ -516,10 +516,27 @@ func ethernetTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[str
 		"num_port":   len(desc.Ports),
 		"other_macs": []string{},
 	}}
-	if snap != nil && snap.System.MgmtMAC != "" && snap.System.MgmtMAC != desc.MAC {
-		t = append(t, map[string]any{"mac": snap.System.MgmtMAC, "name": "srv0"})
+	if mac := serviceMAC(snap, desc.MAC); mac != "" {
+		t = append(t, map[string]any{"mac": mac, "name": "srv0"})
 	}
 	return t
+}
+
+// serviceMAC is the management interface's MAC to report as the service
+// interface — but only while that port is unplugged. A UniFi switch's
+// service interface is never seen on the wire; if ours is cabled, another
+// UniFi switch has that MAC as a client on one of its ports, and naming it
+// the service MAC gives the controller a second location for the device.
+func serviceMAC(snap *switchmodel.Snapshot, deviceMAC string) string {
+	if snap == nil || snap.System.MgmtMAC == "" || snap.System.MgmtMAC == deviceMAC {
+		return ""
+	}
+	for _, o := range snap.System.OOBInterfaces {
+		if o.Up {
+			return ""
+		}
+	}
+	return snap.System.MgmtMAC
 }
 
 // lldpTable reports LLDP neighbours in the controller's shape.

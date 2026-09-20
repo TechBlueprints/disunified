@@ -233,8 +233,8 @@ func (s *Session) buildPayload(now time.Time) []byte {
 			m["gateway_mac"] = s.snap.System.GatewayMAC
 		}
 		m["ethernet_table"] = ethernetTable(s.desc, s.snap)
-		if s.snap != nil && s.snap.System.MgmtMAC != "" && s.snap.System.MgmtMAC != s.desc.MAC {
-			m["service_mac"] = s.snap.System.MgmtMAC
+		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
+			m["service_mac"] = mac
 		}
 		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
 			m["lldp_table"] = lt
