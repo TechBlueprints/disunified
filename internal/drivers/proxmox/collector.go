@@ -22,9 +22,14 @@ type Collector struct {
 	r   Runner
 	Log *log.Logger
 
-	Bridge      string // vmbr0
-	Ports       int    // total ports presented
-	UplinkPorts int    // the last UplinkPorts ports are the physical uplinks, from the last port down
+	Bridge string // vmbr0
+	Ports  int    // total ports presented
+	// NodeNumbering: number only the guests on this node (48 per node, a
+	// migrated guest gets a free slot on the destination) instead of every
+	// guest in the cluster (48 cluster-wide, the same port number on every
+	// node). Default: cluster-wide.
+	NodeNumbering bool
+	UplinkPorts   int // the last UplinkPorts ports are the physical uplinks, from the last port down
 
 	cycleDelay time.Duration
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
@@ -160,9 +165,13 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	// --- guest ports ---
 	var nics []guestNIC
 	for _, n := range append(qemu, lxc...) {
-		if n.Bridge == c.Bridge && !n.Template {
-			nics = append(nics, n)
+		if n.Bridge != c.Bridge || n.Template {
+			continue
 		}
+		if c.NodeNumbering && n.Node != hostname {
+			continue
+		}
+		nics = append(nics, n)
 	}
 	sort.Slice(nics, func(i, j int) bool {
 		if nics[i].VMID != nics[j].VMID {
