@@ -146,11 +146,14 @@ func TestCollectNode2(t *testing.T) {
 	if e := snap.Ports[48]; e.Present || e.Index != 49 {
 		t.Errorf("slot 49 should be empty: %+v", e)
 	}
-	// The bond is one link at the last port: the active slave's speed, optic
-	// and neighbour, the bond's counters, no LAG for active-backup.
+	// The bond's slaves are separate ports at the top, "bond0-1" (active,
+	// forwarding) and "bond0-2" (standby: linked, blocking), no LAG.
 	u := snap.Ports[53]
-	if u.IfName != "bond0" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" || len(u.Interfaces) != 2 {
+	if u.IfName != "bond0-1" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" || len(u.Interfaces) != 1 || u.Interfaces[0] != "ens1f0np0" {
 		t.Errorf("uplink = %+v", u)
+	}
+	if s := snap.Ports[52]; s.IfName != "bond0-2" || s.Index != 53 || !s.Up || s.SpeedMbps != 10000 || s.STPState != "blocking" || s.LAG != "" || len(s.MACs) != 0 || s.Media != switchmodel.MediaSFP28 {
+		t.Errorf("standby = %+v", s)
 	}
 	if len(u.SpeedCaps) == 0 || u.SpeedCaps[len(u.SpeedCaps)-1] != 100000 || !u.FECCapable || len(u.MACs) < 50 {
 		t.Errorf("uplink caps/macs = %v %v %d", u.SpeedCaps, u.FECCapable, len(u.MACs))
@@ -161,13 +164,13 @@ func TestCollectNode2(t *testing.T) {
 	if snap.UplinkHint != 54 || snap.UplinkPort() != 54 {
 		t.Errorf("uplink hint = %d", snap.UplinkHint)
 	}
-	for _, idx := range []int{49, 50, 51, 52, 53} {
+	for _, idx := range []int{49, 50, 51, 52} {
 		if e := snap.Ports[idx-1]; e.Present || e.Index != idx {
-			t.Errorf("slot %d should be empty with a single bond: %+v", idx, e)
+			t.Errorf("slot %d should be empty: %+v", idx, e)
 		}
 	}
 	ups := physicalMembers(sections(loadFixture(t, "collect-node2.txt"))["phys"], map[string]ipLink{"bond0": {Ifname: "bond0", Master: "vmbr0", Ifindex: 5}}, parseBonding(sections(loadFixture(t, "collect-node2.txt"))["bonding"]), "vmbr0")
-	if cfg, announce := lldpdConfig(ups, func(int) int { return 54 }, "02:00:00:00:00:01"); len(announce) != 1 || announce[0] != "ens1f0np0" || !strings.Contains(cfg, "chassisid 02:00:00:00:00:01") || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 54"`) {
+	if cfg, announce := lldpdConfig(ups, func(i int) int { return 54 - i }, "02:00:00:00:00:01"); len(announce) != 1 || announce[0] != "ens1f0np0" || !strings.Contains(cfg, "chassisid 02:00:00:00:00:01") || !strings.Contains(cfg, `ens1f1np1 lldp portidsubtype local "Port 53"`) {
 		t.Errorf("lldpd config = %q announce %v", cfg, announce)
 	}
 	if len(snap.VLANs) < 3 || snap.VLANs[0] != 1 {
@@ -357,10 +360,10 @@ func TestLACPBondIsPerMemberLAG(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, b := snap.Ports[53], snap.Ports[52]
-	if a.IfName != "ens1f0np0" || a.LAG != "bond0" || !a.Up || a.SpeedMbps != 100000 || len(a.MACs) < 50 {
+	if a.IfName != "bond0-1" || a.LAG != "bond0" || !a.Up || a.SpeedMbps != 100000 || len(a.MACs) < 50 {
 		t.Errorf("first member = %+v", a)
 	}
-	if b.IfName != "ens1f1np1" || b.LAG != "bond0" || !b.Up || b.SpeedMbps != 10000 || len(b.MACs) != 0 {
+	if b.IfName != "bond0-2" || b.LAG != "bond0" || !b.Up || b.SpeedMbps != 10000 || len(b.MACs) != 0 {
 		t.Errorf("second member = %+v (MACs belong to the first member only)", b)
 	}
 	ups := physicalMembers(sections(fixture)["phys"], map[string]ipLink{"bond0": {Ifname: "bond0", Master: "vmbr0", Ifindex: 5}}, parseBonding(sections(fixture)["bonding"]), "vmbr0")
@@ -381,7 +384,7 @@ func TestVLANDeviceOnTheUplink(t *testing.T) {
 	l.Linkinfo.InfoKind = "vlan"
 	links["bond0.10"] = l
 	ups := physicalMembers("ens1f0np0 master=bond0\nens1f1np1 master=bond0\n", links, parseBonding(sections(loadFixture(t, "collect-node2.txt"))["bonding"]), "vmbr0")
-	if len(ups) != 1 || ups[0].Name != "bond0.10" || ups[0].Member != "bond0.10" || ups[0].Active != "ens1f0np0" || len(ups[0].Ifaces) != 2 {
+	if len(ups) != 2 || ups[0].Name != "bond0.10-1" || ups[0].Member != "bond0.10" || ups[0].Active != "ens1f0np0" || ups[1].Name != "bond0.10-2" || !ups[1].Standby {
 		t.Errorf("uplinks = %+v", ups)
 	}
 }
