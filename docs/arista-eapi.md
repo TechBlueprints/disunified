@@ -113,7 +113,8 @@ media map, not every cycle.
 while every other QSFP slot is a single `EthernetNN/1`. `Ethernet52/1` reports
 `interfaceType: "Not Present"` (no optic). The controller-side profile (UDC48X6) has one
 QSFP28 port per slot, so the collector must **fold lanes into their parent slot**: port 50 is
-"up" if any lane is up, counters summed. Also present and to be ignored: `Management1`,
+"up" if any lane is up, counters summed. Also present: `Management1`, the OOB port, reported
+as `System.OOBInterfaces` (link state, address) for the loop's in-band warning; and
 `Port-Channel1..4` (defined, no members), `Vlan*`.
 
 ### `lldp_table` from `show lldp neighbors` → `lldpNeighbors[]`
@@ -158,3 +159,20 @@ The firmware string the controller sees must be `v<numeric>` — `4.26.14M` → 
 - gNMI is disabled (`show management api gnmi` → `enabled: false`). Not needed for phase 0.
 - No PoE. No `show poe`.
 - SNMP not checked; not needed.
+
+## 7. In-band management (2026-09-20)
+
+The bridge reaches the switch at `Vlan1` (`ip address 192.0.2.4/16`, default
+VRF, same VRF eAPI and SSH listen in) so the management address sits behind
+the 100G uplink like a UniFi switch's. `Management1` is addressless with
+`no lldp transmit` / `no lldp receive`. EOS refuses two interfaces in one
+subnet in the same VRF, so the address had to *move*, not be added.
+
+Moving a management address remotely: use a configuration session with a
+timed commit — `configure session X`, the changes, `commit timer 00:03:00`;
+verify over the new address; confirm from exec mode with
+`configure session X commit` (entering the session again fails with
+"pendingCommitTimer"); then `write memory`. A stale pending session blocks
+every other commit ("another session … is pending commit timer") — abort it
+with `configure session X` + `abort`. eAPI over the old address times out
+once the address moves; that is expected.

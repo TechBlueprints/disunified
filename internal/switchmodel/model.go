@@ -146,14 +146,21 @@ func (s *Snapshot) UplinkPort() int {
 
 // System is the switch's identity and health.
 type System struct {
-	Vendor   string
-	Model    string
-	Serial   string
-	MAC      string // primary/system MAC, lower-case colon form
-	MgmtMAC  string // the out-of-band management interface's own MAC, "" if none/unknown (UniFi's "service" interface)
-	Version  string // vendor's own version string, e.g. "4.26.14M"
-	Hostname string
-	Uptime   time.Duration
+	Vendor  string
+	Model   string
+	Serial  string
+	MAC     string // primary/system MAC, lower-case colon form
+	MgmtMAC string // the out-of-band management interface's own MAC, "" if none/unknown (UniFi's "service" interface)
+
+	// OOBInterfaces lists dedicated out-of-band management interfaces. A
+	// UniFi controller expects a switch's management address in-band, behind
+	// its uplink; an address on an OOB port leaves the switch without a place
+	// in the topology (see docs/adding-a-switch.md). Reported so the loop can
+	// warn loudly.
+	OOBInterfaces []OOBInterface
+	Version       string // vendor's own version string, e.g. "4.26.14M"
+	Hostname      string
+	Uptime        time.Duration
 
 	CPUPercent  float64 // 0-100, whole system
 	MemTotalKB  uint64
@@ -176,6 +183,13 @@ type System struct {
 	SyslogHosts     []string
 	DHCPSnooping    bool
 	SNMPCommunities []string // configured v1/v2c communities
+}
+
+// OOBInterface is one out-of-band management interface.
+type OOBInterface struct {
+	Name string
+	Up   bool   // link up (cabled and active)
+	IP   string // configured IPv4 address, "" if none
 }
 
 // PortVLAN is a port's configured 802.1Q state.

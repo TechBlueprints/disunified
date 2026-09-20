@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -239,6 +240,7 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 	if m, ok := ifs.Interfaces["Management1"]; ok && m.PhysicalAddress != "" {
 		snap.System.MgmtMAC = strings.ToLower(m.PhysicalAddress) // the OOB port has its own MAC (system MAC - 1 on the 7160)
 	}
+	snap.System.OOBInterfaces = oobInterfaces(ifs)
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
 	applyRunningConfig(ports, &snap.System, rc)
@@ -320,4 +322,25 @@ func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []s
 			h.PCSHighBER = h.PCSHighBER || d.PCSHighBER
 		}
 	}
+}
+
+// oobInterfaces reports the ManagementN ports: link state and address.
+func oobInterfaces(ifs showInterfaces) []switchmodel.OOBInterface {
+	names := make([]string, 0, 2)
+	for name := range ifs.Interfaces {
+		if strings.HasPrefix(name, "Management") {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	out := make([]switchmodel.OOBInterface, 0, len(names))
+	for _, name := range names {
+		m := ifs.Interfaces[name]
+		o := switchmodel.OOBInterface{Name: name, Up: m.InterfaceStatus == "connected" || m.LineProtocolStatus == "up"}
+		if len(m.InterfaceAddress) > 0 && m.InterfaceAddress[0].PrimaryIP.Address != "0.0.0.0" {
+			o.IP = m.InterfaceAddress[0].PrimaryIP.Address
+		}
+		out = append(out, o)
+	}
+	return out
 }

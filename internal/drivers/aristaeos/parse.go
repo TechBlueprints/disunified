@@ -36,16 +36,22 @@ type showInterfaces struct {
 }
 
 type eosInterface struct {
-	Name               string       `json:"name"`
-	InterfaceStatus    string       `json:"interfaceStatus"`    // connected | notconnect | disabled | errdisabled | ...
-	LineProtocolStatus string       `json:"lineProtocolStatus"` // up | down | notPresent
-	Bandwidth          int64        `json:"bandwidth"`          // bits/s
-	Duplex             string       `json:"duplex"`             // duplexFull | duplexHalf | duplexUnknown
-	MTU                int          `json:"mtu"`
-	Hardware           string       `json:"hardware"`
-	Description        string       `json:"description"`
-	PhysicalAddress    string       `json:"physicalAddress"`
-	Counters           *eosCounters `json:"interfaceCounters"`
+	Name               string `json:"name"`
+	InterfaceStatus    string `json:"interfaceStatus"`    // connected | notconnect | disabled | errdisabled | ...
+	LineProtocolStatus string `json:"lineProtocolStatus"` // up | down | notPresent
+	Bandwidth          int64  `json:"bandwidth"`          // bits/s
+	Duplex             string `json:"duplex"`             // duplexFull | duplexHalf | duplexUnknown
+	MTU                int    `json:"mtu"`
+	Hardware           string `json:"hardware"`
+	Description        string `json:"description"`
+	PhysicalAddress    string `json:"physicalAddress"`
+	InterfaceAddress   []struct {
+		PrimaryIP struct {
+			Address string `json:"address"`
+			MaskLen int    `json:"maskLen"`
+		} `json:"primaryIp"`
+	} `json:"interfaceAddress"`
+	Counters *eosCounters `json:"interfaceCounters"`
 }
 
 type eosCounters struct {

@@ -88,6 +88,25 @@ a layout, and `DefaultPortNames` must list every form `PortName` could have
 produced for that port so renames on split/join keep working while an
 operator's own name is never touched.
 
+## 2c. The management address must be in-band
+
+A UniFi switch's management IP lives behind its uplink, on the switch's own
+MAC. The controller leans on that: it locates a device by where its IP and
+MAC appear in the network and expects that to agree with the LLDP view.
+A switch managed through a dedicated out-of-band port (Arista `Management1`,
+a "MGMT" RJ45 on many vendors) breaks the assumption — the controller finds
+the IP behind one UniFi switch and the LLDP identity behind another, and
+leaves the device with no Uplink, no Parent Device and no place in the
+topology map (verified on Network 10.6.106, 2026-09-20).
+
+So: put the management address on a VLAN interface that rides the uplink,
+point the bridge at that address, and leave the OOB port addressless. The
+driver reports OOB interfaces in `System.OOBInterfaces`; the loop warns
+loudly (every state change) when the bridge's own switch address is on one,
+when an OOB port carries any address, or when one is merely cabled. Keep
+LLDP off on a cabled OOB port: it would announce the same chassis ID to a
+second UniFi switch. On EOS, two lines under the interface do that.
+
 ## 3. Choose the UniFi model
 
 Run `switch-to-unifi -collect-once -switch-url ...` (or `-switch-ssh`). It

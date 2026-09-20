@@ -91,6 +91,10 @@ type Config struct {
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
 	OnLayoutChange func(snap *switchmodel.Snapshot)
+	// SwitchHost is the address the bridge reaches the switch at, for the
+	// out-of-band management warning ("" = unknown).
+	SwitchHost string
+
 	// OnSystemCfg runs with every system_cfg the controller pushes (and the
 	// last applied one at startup): the SSH gateway takes its credentials
 	// from it.
@@ -111,6 +115,7 @@ type Loop struct {
 	pendingCycles   []int
 	pendingReboot   bool
 	warnedVersion   string
+	oobWarned       string // last out-of-band warning state, to log on change only
 	faultSig        string
 
 	mu         sync.Mutex
@@ -674,6 +679,7 @@ func (l *Loop) collect(ctx context.Context) {
 		l.collectFailures = 0
 	}
 	l.session.SetSnapshot(snap)
+	l.warnOOB(snap)
 	var faults []string
 	for _, p := range snap.Ports {
 		if p.Fault != "" {
@@ -829,4 +835,33 @@ func (r *recorder) Close() {
 		_ = r.enc.Encode(map[string]any{"at": time.Now(), "collapsed_404s": r.quiet404 - 1})
 	}
 	_ = r.f.Close()
+}
+
+// warnOOB logs, loudly and on every change of state, when the switch's
+// dedicated out-of-band management port is in use. A UniFi controller
+// expects the management address in-band, behind the uplink: with the
+// address on an OOB port it finds the switch's IP behind one UniFi switch and
+// its LLDP identity behind another, and never places it in the topology
+// (no Uplink, no Parent Device). An OOB port that is merely cabled is a
+// milder risk (a second LLDP identity) and gets a note.
+func (l *Loop) warnOOB(snap *switchmodel.Snapshot) {
+	var msgs []string
+	for _, o := range snap.System.OOBInterfaces {
+		switch {
+		case o.IP != "" && o.IP == l.cfg.SwitchHost:
+			msgs = append(msgs, fmt.Sprintf("!!! the bridge reaches this switch through its out-of-band management port %s (%s). UniFi expects the management address in-band, behind the uplink; the controller will show no Uplink/Parent and will not place the switch in the topology. Move the address to a VLAN interface and point the bridge at it (docs/adding-a-switch.md)", o.Name, o.IP))
+		case o.IP != "":
+			msgs = append(msgs, fmt.Sprintf("!!! out-of-band management port %s carries address %s; the controller may locate the switch behind that port instead of its uplink. Prefer an in-band management address (docs/adding-a-switch.md)", o.Name, o.IP))
+		case o.Up:
+			msgs = append(msgs, fmt.Sprintf("NOTE: out-of-band management port %s is connected but addressless; keep LLDP off on it so the controller sees one identity for this switch", o.Name))
+		}
+	}
+	state := strings.Join(msgs, "\n")
+	if state == l.oobWarned {
+		return
+	}
+	l.oobWarned = state
+	for _, m := range msgs {
+		l.cfg.Logger.Printf("[%s] %s", l.desc.MAC, m)
+	}
 }

@@ -382,9 +382,10 @@ func runOne(ctx context.Context, o options) error {
 
 	// --- Loop ---
 	loopCfg := informloop.Config{
-		Logger:    log,
-		Interval:  o.interval,
-		RecordDir: o.recordDir,
+		Logger:     log,
+		Interval:   o.interval,
+		RecordDir:  o.recordDir,
+		SwitchHost: hostOf(o.switchURL, o.switchSSH),
 		OnLayoutChange: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil {
 				provisionNames(snap)

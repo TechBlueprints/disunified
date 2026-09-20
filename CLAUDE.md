@@ -53,7 +53,11 @@ cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
 ```
 
 `config.yaml` (gitignored) is the real config: controller 192.0.2.1, API URL
-`unifi.example.net`, switch `arista` via eAPI, every `control`
+`unifi.example.net`, switch `arista` via eAPI at **192.0.2.4**
+(in-band, `Vlan1`, since 2026-09-20; `Management1` is addressless, LLDP off —
+the OOB address broke the controller's topology, see docs/adding-a-switch.md
+§2c and docs/arista-eapi.md §7; Clint's `ssh arista` alias may still point
+at 192.0.2.3), every `control`
 flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
 `state/arista/device.json`; replies: `inform-log/arista/`.
 
@@ -126,7 +130,7 @@ the reservation and client record were deleted 2026-09-19) and verified
 removed from main because the UniFi UI terminal is WebRTC, not SSH (below).
 `docs/ssh-gateway-status.md` on that branch says where it got to. Main
 deploys with `deploy/compose.yaml` (bridge network) and reports the Arista's
-own IP (192.0.2.3) as the device IP. `fw_caps` UTERM is deliberately not
+own in-band IP (192.0.2.4 on Vlan1) as the device IP. `fw_caps` UTERM is deliberately not
 claimed, so no Debug entry appears.
 
 STP facts (2026-09-19): the Arista runs `spanning-tree mode rstp`, priority
@@ -150,16 +154,8 @@ session with the browser and pipe its shell over the data channel. unifi-emu
 does not implement the device side and does not document how a device
 answers that command, so Clint parked it (branch `ssh-gateway`).
 
-Open (2026-09-20): the devices list shows no Uplink / Parent Device for the
-Arista. Both LLDP views are stored by the controller (ours: the aggregation switch
-on port 49; the parent's: us on its port 49, and its `downlink_lldp_macs` has
-our MAC), the port is `is_uplink`, and the uplink object we send uses the
-real switches' shape (name eth0 + `if_table`, `uplink_source`, 1-based
-remote port), yet the controller keeps only counters in `uplink` and never
-sets `last_uplink`/`uplink_depth` or lists us in the parent's
-`downlink_table`. Real devices' uplinks are controller-derived
-(`uplink_source: lldp_uplink` / `lldp_downlink`), so the device report is
-not what decides it. Leading hypothesis: the USW Leaf model (UDC48X6) gets
-leaf/spine topology handling; testing it means claiming another model with
-the same layout (USWF066, ECS Aggregation) and re-adopting — Clint's call.
+Uplink/Parent (2026-09-20): blank until the management address moved
+in-band (Vlan1 192.0.2.4) and LLDP was silenced on Management1; then
+the aggregation switch's `downlink_table` listed the Arista on port 49. The
+loop warns loudly if an OOB port carries an address or is cabled.
 The WebRTC terminal is parked.

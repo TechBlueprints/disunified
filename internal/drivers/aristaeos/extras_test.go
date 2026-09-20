@@ -102,4 +102,7 @@ func TestSecondWaveData(t *testing.T) {
 	if snap.System.MgmtMAC != "02:00:00:00:00:3a" {
 		t.Errorf("management MAC = %q", snap.System.MgmtMAC)
 	}
+	if oob := snap.System.OOBInterfaces; len(oob) != 1 || oob[0].Name != "Management1" || !oob[0].Up || oob[0].IP == "" {
+		t.Errorf("oob interfaces = %+v (fixture: Management1 up with an address)", oob)
+	}
 }
