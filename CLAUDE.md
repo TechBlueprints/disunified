@@ -39,6 +39,21 @@ Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
 - UniFi is the source of truth for port config and VLANs (he OK'd replacing
   the Arista's VLAN config). IGMP snooping too (`-control-igmp`).
 - MIT license, same as unifi-emu; credit James Braid.
+- **Tests use real captures, never hand-written protocol samples.** Every
+  fixture is output captured from a real switch or a real controller, with
+  identifiers, serials and secrets replaced by the scrub scripts
+  (`scripts/sanitize-fixtures.py` for EOS JSON, `scripts/sanitize-captures.py`
+  for device informs and the reply log). Both directions are covered and
+  must stay covered: switch → bridge (`docs/fixtures/eos-*`), bridge →
+  controller (`internal/device/contract_test.go` against real switches'
+  informs in `docs/fixtures/controller-<ver>/inform-*.json`) and controller →
+  bridge (`internal/informloop/replay_test.go` against the recorded replies
+  in `docs/fixtures/controller-<ver>/replies.ndjson`). A new wire key or
+  behaviour gets its capture first, then the code. Where real informs come
+  from: the UniFi OS console support bundle (Settings → Control Plane →
+  Console → Support File) holds every device's decrypted `last.inform`
+  under `unifi/devices/<type>/<mac>/`; the bridge's own log is
+  `inform-log/<mac>.ndjson` and `payload-last.json`.
 - **No affiliation with Ubiquiti**: the README, LICENSE and any published
   page must say this is an independent fan/home-user project, not endorsed
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
@@ -56,8 +71,9 @@ cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
 `unifi.example.net`, switch `arista` via eAPI at **192.0.2.4**
 (in-band, `Vlan1`, since 2026-09-20; `Management1` is addressless, LLDP off —
 the OOB address broke the controller's topology, see docs/adding-a-switch.md
-§2c and docs/arista-eapi.md §7; Clint's `ssh arista` alias may still point
-at 192.0.2.3), every `control`
+§2c and docs/arista-eapi.md §7; `arista.example.net` is a
+controller static DNS A record → 192.0.2.4 since 2026-09-20, so `ssh admin@arista`
+follows), every `control`
 flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
 `state/arista/device.json`; replies: `inform-log/arista/`.
 
@@ -114,7 +130,7 @@ Local run: `config-proxmox.local.yaml` in the worktree, state under `./state`.
 
 Done and verified live: everything in `docs/feature-map.md` marked done,
 including aggregation (every lane of a cage joins), mirroring, per-port STP
-disable, NTP/syslog ownership, port-cycle, locate, real reboot on request,
+disable, NTP/syslog ownership, locate, real reboot on request,
 controller SSH keys on the switch user, emulated firmware upgrades
 (persisted), fault reporting (fan/PSU/overheating claims, errdisabled logged),
 first-provision naming with lane-range names on split, config file with
@@ -168,8 +184,55 @@ session with the browser and pipe its shell over the data channel. unifi-emu
 does not implement the device side and does not document how a device
 answers that command, so Clint parked it (branch `ssh-gateway`).
 
-Uplink/Parent (2026-09-20): blank until the management address moved
-in-band (Vlan1 192.0.2.4) and LLDP was silenced on Management1; then
-the aggregation switch's `downlink_table` listed the Arista on port 49. The
-loop warns loudly if an OOB port carries an address or is cabled.
+Uplink/Parent — SOLVED 2026-09-20 13:45 MDT. Three things were needed:
+(1) the management address in-band (Vlan1 192.0.2.4; Management1
+addressless, LLDP off), (2) reachability fields as real switches send them
+(connect_request_ip, netmask, gateway_mac, if_table), and (3) the one that
+mattered last: **`uplink` is a string** — the name of the management
+interface in `if_table` ("eth0") — not an object. With an object the
+controller silently ignored it (only its own counters were stored). The
+proof came from the UniFi OS console support bundle (Settings → Control
+Plane → Console → Support File → Download), which contains every device's
+decrypted `last.inform` under `unifi/devices/<type>/<mac>/` — the definitive
+reference for what a real switch sends; `unifi/topology.json` has the edge
+list. `payload-last.json` in the record dir is what we send. Ruled out along
+the way: neighbour keys in `uplink`, "Port N" LLDP port IDs, vendor ifname,
+identity fields, force-provision, the USW Leaf model (a re-adopt was never
+needed). The loop warns loudly if an OOB port carries an address or is
+cabled.
+
+First-party UI audit 2026-09-20 (Chrome, against the aggregation switch): device
+overview (PSUs, fans, memory, temperature, uptime, parent, connected devices
+per port), Insights (history, CPU/memory graphs), Settings (all sections
+except Etherlighting/LCM which are model features, and Generate Support
+File/Debug which are deliberately unclaimed), Port Manager list, port
+settings drawer (every control), port stats (anomaly breakdown, MAC table,
+activity log), SFP tab (optic details), clients page attribution, topology
+map. Control round-trip re-verified: port 2 disable/enable from the UI
+reaches the switch in ~15 s. Note: `rest/device` PUT of `port_overrides`
+with `forward: disabled` does NOT provision; the UI's Port State toggle does.
+Other keys real informs carry that we now send: inform_min_interval,
+stats_inform_interval, has_eth1, gateway_ip, uptime_str, total_mac_in_used,
+stp_topology_change_count, satisfaction_reason, guid, ssh_session_table.
+Re-adoption (2026-09-20): forget via `cmd/sitemgr delete-device`, clear
+`state/arista/device.json` (backup first) and the reply log, restart; the
+controller answers HTTP 400 (empty body) for about a minute after a forget,
+then the normal 404, then the device is pending; `cmd/devmgr adopt` completes
+the handshake in ~25 s (mgmt_cfg with authkey → ADOPTING → first system_cfg →
+CONNECTED) and the uplink resolves on the first cycle. That handshake (the two
+400s included) is now the head of `docs/fixtures/controller-10.6.106/replies.ndjson`,
+`set-locate`/`unset-locate` its tail, and the replay test starts unadopted
+with the default key. The controller's command names are `set-locate`
+and `unset-locate` (`locate` is not one). **`cmd/devmgr` answers `rc:ok` to
+any unknown command name** (even `no-such-command`), so an ok there proves
+nothing; only a recorded cmd reply does. The port power cycle is
+`power-cycle` with `port_idx`, and the controller issues it only for a PoE
+port that is powering a device: `api.err.InvalidTargetPort` for our ports,
+for a free PoE port and for a non-PoE port on a real switch, and the UI's
+"Power Cycle" button exists only on such a port (checked on
+a PoE switch). The 7160 has no PoE, so it can never receive the
+command and there is no capture of the device-side name. Found and fixed: naming
+only ran at startup, so a later adoption left "USW Leaf" — `OnConnected`
+now provisions names; the mgmt_cfg log line masks the authkey.
+
 The WebRTC terminal is parked.

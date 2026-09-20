@@ -598,3 +598,39 @@ func uniqueSorted(ids []int) []int {
 	}
 	return out
 }
+
+// --- ip -j addr show dev X ---
+
+type ipAddr struct {
+	Ifname   string `json:"ifname"`
+	AddrInfo []struct {
+		Family    string `json:"family"`
+		Local     string `json:"local"`
+		PrefixLen int    `json:"prefixlen"`
+		Scope     string `json:"scope"`
+	} `json:"addr_info"`
+}
+
+// --- ip -j neigh show dev X ---
+
+type ipNeigh struct {
+	Dst    string   `json:"dst"`
+	LLAddr string   `json:"lladdr"`
+	State  []string `json:"state"`
+}
+
+func parseLoadAvg(body string) []float64 {
+	f := strings.Fields(body)
+	if len(f) < 3 {
+		return nil
+	}
+	out := make([]float64, 0, 3)
+	for _, v := range f[:3] {
+		x, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil
+		}
+		out = append(out, x)
+	}
+	return out
+}

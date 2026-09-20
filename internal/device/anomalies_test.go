@@ -12,7 +12,7 @@ func TestPortAnomalies(t *testing.T) {
 		t.Errorf("healthy port = %d/%d/%d, want 0/100/0", bits, sat, reason)
 	}
 	down := switchmodel.Port{Up: false, Fault: "errdisabled: bpduguard"}
-	if bits, sat, _ := portAnomalies(down, false, nil); bits != anomBPDUGuard || sat != -1 {
+	if bits, sat, _ := portAnomalies(down, false, nil); bits != anomBPDUGuard || sat != 100 { // down ports stay at 100 like real switches
 		t.Errorf("bpduguard port = %d/%d", bits, sat)
 	}
 	slow := switchmodel.Port{Up: true, SpeedMbps: 1000, SpeedCaps: []int{1000, 10000}}

@@ -11,7 +11,9 @@
 package device
 
 import (
+	"crypto/sha1"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +38,7 @@ type Session struct {
 
 	prevHistory map[int]portHistory // per port, at the last inform (anomaly deltas)
 	caps        switchmodel.Capabilities
+	gatewayIP   string // reported as gateway_ip; "" = omit
 }
 
 // SetUplinkPort marks idx as the uplink in the reported port table (0 = no
@@ -216,7 +219,48 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		// Device-side state 4 = managed. Not the REST stat/device enum.
 		m["state"] = 4
 		m["bootrom_version"] = "unknown"
+		// Identity fields every UniFi switch reports (values are what this
+		// controller's own switches send; none of them is a capability).
+		m["manufacturer_id"] = 61
+		m["required_version"] = "0.1.7"
+		m["architecture"] = "x86_64"
+		m["kernel_version"] = "4.19.0-12-2-amd64"
+		m["board_rev"] = 6
+		m["inform_min_interval"] = 30
+		m["stats_inform_interval"] = 24
+		m["provisioning_timeout"] = 300
+		m["reboot_duration"] = 240
+		m["upgrade_duration"] = 300
+		m["anon_id"] = anonID(s.desc.MAC)
+		m["guid"] = anonID("guid " + s.desc.MAC)
+		m["hash_id"] = anonID("hash " + s.desc.MAC)[:16]
+		m["boot"] = map[string]any{"id": anonID("boot " + s.desc.MAC + s.bootTime.String())}
+		m["bootid"] = -1
+		m["dualboot"] = false
+		m["fan_emergency"] = 0
+		m["time_ms"] = now.Nanosecond() / 1e6
+		m["has_eth1"] = false
+		m["discovery_response"] = false
+		m["ssh_session_table"] = []any{}
+		m["network_table"] = []any{}
+		m["dhcp_server_table"] = []any{}
+		m["last_error_conns"] = []any{}
+		m["ever_crash"] = false
+		m["internet"] = true
+		m["tm_ready"] = true
+		m["default"] = false
+		m["time"] = now.Unix()
+		m["timestamp"] = now.UTC().Format("2006-01-02T15:04:05")
+		m["uptime_str"] = uptimeStr(uptime)
+		m["satisfaction_reason"] = 0
+		if s.gatewayIP != "" {
+			m["gateway_ip"] = s.gatewayIP
+		}
 		m["sys_stats"] = sysStats(s.snap)
+		m["system-stats"] = systemStats(s.snap, uptime)
+		if mtc := macTableCapability(s.snap); mtc != nil {
+			m["mac_table_capability"] = mtc
+		}
 		if s.snap != nil && s.snap.System.HasTemperature {
 			m["general_temperature"] = int(s.snap.System.TemperatureC + 0.5)
 			m["has_temperature"] = true
@@ -239,13 +283,29 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil {
 			s.prevHistory = make(map[int]portHistory, len(s.snap.Ports))
 			for _, p := range s.snap.Ports {
-				s.prevHistory[p.Index] = portHistory{Counters: p.Counters, LinkChanges: p.Health.LinkChanges,
+				s.prevHistory[p.Index] = portHistory{At: s.snap.TakenAt, Counters: p.Counters, LinkChanges: p.Health.LinkChanges,
 					STPChanges: p.Health.STPChanges, FECUncorrected: p.Health.FECUncorrected, PCSErrBlocks: p.Health.PCSErrBlocks}
 			}
 		}
-		m["ethernet_table"] = ethernetTable(s.desc, s.snap)
-		if s.snap != nil && s.snap.System.MgmtMAC != "" && s.snap.System.MgmtMAC != s.desc.MAC {
-			m["service_mac"] = s.snap.System.MgmtMAC
+		// Reachability, as UniFi switches report it: where the controller can
+		// connect back to the device, its netmask and its gateway's MAC. The
+		// controller uses these to place the device in a network.
+		m["connect_request_ip"] = s.desc.IP
+		m["connect_request_port"] = "22"
+		if nm := netmaskFor(s.snap, s.desc.IP); nm != "" {
+			m["netmask"] = nm
+		}
+		if s.snap != nil {
+			gw := s.snap.System.GatewayMAC
+			if gw == "" && s.gatewayIP != "" {
+				gw = s.snap.System.ARP[s.gatewayIP]
+			}
+			if gw != "" {
+				m["gateway_mac"] = gw
+			}
+		}
+		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
+			m["service_mac"] = mac
 		}
 		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
 			m["lldp_table"] = lt
@@ -364,13 +424,19 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 	case "reboot":
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectRebooted}}
-	case "locate":
+	case "locate", "set-locate": // "set-locate" is what Network 10.6 sends (captured 2026-09-20)
 		s.locating = true
 		return []inform.Effect{{Kind: EffectLocate, Text: "on"}}
-	case "unlocate":
+	case "unlocate", "unset-locate":
 		s.locating = false
 		return []inform.Effect{{Kind: EffectLocate, Text: "off"}}
-	case "port-cycle", "port_cycle":
+	case "power-cycle", "port-cycle", "port_cycle":
+		// The controller's port power cycle. Network 10.6 only issues it for a
+		// PoE port that is powering a device (cmd/devmgr power-cycle answers
+		// api.err.InvalidTargetPort for any other port, and the UI offers
+		// "Power Cycle" only there), so a switch without PoE never receives it
+		// and the device-side name has not been captured; "power-cycle" is the
+		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
 	case "upgrade", "upgrade2":
 		if r.Version != "" {
@@ -449,4 +515,28 @@ func (s *Session) applySetstate(body []byte, cfgversion string) []inform.Effect 
 	// Reported as an "unknown cmd"-style effect so the loop logs it: every
 	// setstate is potential phase 1 input and must be visible.
 	return []inform.Effect{{Kind: inform.EffectUnknownCmd, Text: "setstate keys: " + strings.Join(keys, ",")}}
+}
+
+// anonID is the device's stable anonymous id, derived from its MAC (a real
+// device generates and keeps one; ours must not change between restarts).
+func anonID(mac string) string {
+	h := sha1.Sum([]byte("switch-to-unifi anon " + strings.ToLower(mac)))
+	h[6] = (h[6] & 0x0f) | 0x50 // version 5 shape
+	h[8] = (h[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+// SetGatewayIP sets the gateway/controller address reported as gateway_ip.
+func (s *Session) SetGatewayIP(ip string) { s.mu.Lock(); s.gatewayIP = ip; s.mu.Unlock() }
+
+// uptimeStr renders seconds the way UniFi devices do ("21h25m23s").
+func uptimeStr(secs int64) string {
+	d := secs / 86400
+	h := (secs % 86400) / 3600
+	mi := (secs % 3600) / 60
+	sec := secs % 60
+	if d > 0 {
+		return fmt.Sprintf("%dd%dh%dm%ds", d, h, mi, sec)
+	}
+	return fmt.Sprintf("%dh%dm%ds", h, mi, sec)
 }

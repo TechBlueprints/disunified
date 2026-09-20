@@ -96,6 +96,7 @@ type showSpanningTreeFull struct {
 		} `json:"bridge"`
 		Interfaces map[string]struct {
 			State        string          `json:"state"`
+			Role         string          `json:"role"` // root | designated | alternate | backup | disabled
 			Cost         int             `json:"cost"`
 			Inconsistent map[string]bool `json:"inconsistentFeatures"` // loopGuard, rootGuard, bridgeAssurance, mstPvstBorder
 		} `json:"interfaces"`
@@ -194,6 +195,9 @@ func applySTPInconsistent(ports []switchmodel.Port, st showSpanningTreeFull) {
 				if v {
 					byIndex[slot].Health.STPInconsistent = true
 				}
+			}
+			if e.Role != "" && byIndex[slot].STPRole == "" {
+				byIndex[slot].STPRole = e.Role
 			}
 		}
 	}

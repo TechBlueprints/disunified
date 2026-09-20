@@ -100,7 +100,7 @@ func TestAdoptedPayloadUsesSnapshot(t *testing.T) {
 		t.Errorf("copper port 1 must not report sfp_found: %v", p1)
 	}
 	lt := m["lldp_table"].([]any)
-	if len(lt) != 1 || lt[0].(map[string]any)["chassis_id"] != "aa:bb:cc:dd:ee:ff" || lt[0].(map[string]any)["local_port_name"] != "eth48" {
+	if len(lt) != 1 || lt[0].(map[string]any)["chassis_id"] != "aa:bb:cc:dd:ee:ff" || lt[0].(map[string]any)["local_port_name"] != "Ethernet49" { // the vendor name, matching our LLDP port ID
 		t.Errorf("lldp_table = %v", lt)
 	}
 }
