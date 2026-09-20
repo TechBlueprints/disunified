@@ -173,6 +173,61 @@ fills `System.Addresses` and `System.ARP` from `ip addr` / `ip neigh`). The driv
 the neighbour with the Router capability (the aggregation switch), falling
 back to the bond's active slave when LLDP is silent (`Snapshot.UplinkHint`).
 
+## 4b. Spanning tree: optional, through mstpd
+
+By default a Proxmox bridge runs with `bridge-stp off` and the driver
+claims no STP capability, so the controller never pushes its STP settings
+at the node and the UI shows no STP controls for it. With a bond as the
+only uplink nothing needs spanning tree.
+
+If the node runs **mstpd** and the bridge is under it (`stp_state` 2), the
+driver claims STP and does the following, detected per node at startup:
+
+- reports the version (`rstp`/`stp`), the bridge priority, the root bridge,
+  and per port the role, state, path cost, edge and BPDU-guard state,
+  transitions and guard errors (`mstpctl -f json showbridge/showportdetail`);
+- **pins the bridge priority at 61440** (the maximum: the node is never
+  elected root) and **keeps every guest port an edge port** (a starting
+  guest forwards at once instead of waiting out the forward delay; Proxmox
+  creates taps without it), both re-asserted at runtime every poll with
+  `mstpctl`, because the interfaces-file `mstpctl-treeprio` is known not to
+  apply on Proxmox (mstpd issue #155);
+- honours the controller's STP **version** (`switch.stp.version`) and
+  per-guest-port **BPDU guard**; the controller's priority and "STP off"
+  are logged and not applied.
+
+Installing it (mstpd is not in Debian trixie; it entered Debian in 2026-05
+and is in forky/sid only; the kernel has no RSTP, so nothing else provides
+it; the pool package installs cleanly on trixie):
+
+```bash
+curl -O http://deb.debian.org/debian/pool/main/m/mstpd/mstpd_0.2.0-2_amd64.deb
+apt-get install ./mstpd_0.2.0-2_amd64.deb
+```
+
+then in `/etc/network/interfaces` under the bridge, replacing
+`bridge-stp off` / `bridge-fd 0` (Proxmox's own config writer preserves
+these lines; verified on PVE 9.1):
+
+```
+	bridge-stp on
+	mstpctl-forcevers rstp
+	mstpctl-treeprio 61440
+	mstpctl-hello 2
+	mstpctl-maxage 6
+	mstpctl-fdelay 4
+```
+
+and `ifreload -a`. The kernel's `/sbin/bridge-stp` hook (shipped by the
+package) starts mstpd and hands it the bridge; no service unit is needed.
+mstpd requires the 2 s hello for RSTP; 6/4 are the shortest max-age and
+forward-delay it accepts. **Before turning it on, make sure the upstream
+switch ports accept BPDUs** (no BPDU guard; loop protection left as is): a
+UniFi port that blocks a node's BPDUs disconnects the node, and a Proxmox
+node that loses its uplinks fences itself. Turning STP on live costs the
+guests about a second (the taps become edge ports on the driver's next
+poll; set them by hand right after the reload to avoid the forward delay).
+
 ## 5. Setup
 
 Per node, once:

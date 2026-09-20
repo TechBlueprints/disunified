@@ -50,7 +50,14 @@ type Collector struct {
 	ntpManaged string              // contents of the managed chrony sources file
 	snooping   bool                // bridge multicast_snooping
 	stpOn      bool
-	warned     map[string]bool
+	// STP through mstpd, when the node has it and the bridge runs under it
+	// (docs/proxmox.md §4b). Without it STP is neither claimed nor touched.
+	mstpd       bool   // mstpctl is installed
+	stpManaged  bool   // the bridge's STP is user-space (mstpd): stp_state 2
+	stpVersion  string // force-protocol-version: "rstp", "stp", "mstp"
+	stpPriority int
+	stpPorts    map[string]mstpPort // by bridge member
+	warned      map[string]bool
 }
 
 // NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
@@ -74,9 +81,18 @@ func (c *Collector) Start(ctx context.Context) (*switchmodel.Snapshot, error) {
 func (c *Collector) Close() error { return c.r.Close() }
 
 // Capabilities: the bridge honours port state and VLANs; IGMP snooping is
-// bridge-wide. No STP (bridge-stp off), no LAG/mirror/storm/FEC control.
+// bridge-wide. STP (version, per-port BPDU guard, path cost reported) is
+// claimed only when the bridge runs under mstpd; a bridge with the kernel's
+// STP off claims nothing, so the controller's STP settings are never pushed
+// at it. No LAG/mirror/storm/FEC control.
 func (c *Collector) Capabilities() switchmodel.Capabilities {
-	return switchmodel.Capabilities{IGMPSnooping: true}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	caps := switchmodel.Capabilities{IGMPSnooping: true}
+	if c.stpManaged {
+		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
+	}
+	return caps
 }
 
 // Collect runs the script and assembles the snapshot.
@@ -135,6 +151,18 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	}
 	if err := decodeJSON("lldp", sec["lldp"], &lldp); err != nil {
 		c.warnOnce("lldp-parse", "lldpcli output not understood: %v", err)
+	}
+	var mstpBr []mstpBridge
+	var mstpPorts []mstpPort
+	if err := decodeJSON("mstpbridge", sec["mstpbridge"], &mstpBr); err != nil {
+		c.warnOnce("mstp-parse", "mstpctl showbridge output not understood: %v", err)
+	}
+	if err := decodeJSON("mstpports", sec["mstpports"], &mstpPorts); err != nil {
+		c.warnOnce("mstp-parse-ports", "mstpctl showportdetail output not understood: %v", err)
+	}
+	stpPortBy := map[string]mstpPort{}
+	for _, p := range mstpPorts {
+		stpPortBy[p.Port] = p
 	}
 	qemu, _ := parseGuestConfigs(sec["qemu"], "qemu")
 	lxc, _ := parseGuestConfigs(sec["lxc"], "lxc")
@@ -242,6 +270,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 				if st := brBy[n.BridgeMember()]; st.Ifname != "" {
 					p.STPPathCost = st.Linkinfo.InfoSlaveData.Cost
 				}
+				if sp, ok := stpPortBy[n.BridgeMember()]; ok {
+					applyMSTPPort(&p, sp)
+				}
 				p.Health.LinkChanges = carrierChanges(carrier, n.HostIface())
 				if v, ok := vlanBy[n.BridgeMember()]; ok {
 					p.VLAN = portVLANOf(v)
@@ -286,6 +317,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		et := parseEthtool(ethBodies[u.Active])
 		mod := parseEthtoolModule(modBodies[u.Active])
 		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
+		if sp, ok := stpPortBy[u.Member]; ok {
+			applyMSTPPort(&p, sp)
+		}
 		p.FEC = parseEthtoolFEC(fecBodies[u.Active])
 		p.Health.LinkChanges = carrierChanges(carrier, u.Active)
 		if nb, ok := neighbors[u.Active]; ok {
@@ -352,12 +386,25 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	sys.MemBufferKB = kb(mem["Buffers"]) + kb(mem["Cached"])
 	applyHwmon(&sys, hwmon)
 	stpOn := bridge["stp_state"] != "" && bridge["stp_state"] != "0"
+	stpManaged := bridge["stp_state"] == "2" && len(mstpBr) > 0
 	sys.STPMode = "disabled"
 	if stpOn {
 		sys.STPMode = "stp"
 	}
 	if n, err := strconv.Atoi(bridge["priority"]); err == nil {
 		sys.STPPriority = n
+	}
+	stpVersion := ""
+	if stpManaged {
+		b := mstpBr[0]
+		stpVersion = strings.ToLower(b.ForceProtocol)
+		sys.STPMode = stpVersion
+		if prio, _ := mstpID(b.BridgeID); prio > 0 {
+			sys.STPPriority = prio
+		}
+		if _, root := mstpID(b.DesignatedRoot); root != "" && root != hostMAC {
+			sys.STPRoot = root
+		}
 	}
 	snoop := bridge["multicast_snooping"] == "1"
 	sys.IGMPSnooping = map[int]bool{1: snoop}
@@ -393,6 +440,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	sort.Slice(macs, func(i, j int) bool { return macs[i].MAC < macs[j].MAC })
 
 	for i := range ports {
+		if ports[i].STPRole != "" {
+			continue // from mstpd
+		}
 		switch {
 		case !stpOn:
 			ports[i].STPRole = "disabled" // no spanning tree on the bridge: what a switch reports for an STP-disabled port
@@ -404,6 +454,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 			ports[i].STPRole = "disabled"
 		}
 	}
+	if stpManaged {
+		c.enforceSTP(hostname, ports, stpPortBy, sys.STPPriority)
+	}
 	snap := &switchmodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, VLANs: vlanIDs, UplinkHint: uplinkHint}
 	c.mu.Lock()
 	c.node = hostname
@@ -414,8 +467,86 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	c.ntpManaged = strings.TrimSpace(sec["ntpunifi"])
 	c.snooping = snoop
 	c.stpOn = stpOn
+	c.mstpd = strings.TrimSpace(sec["mstpctl"]) == "present"
+	c.stpManaged = stpManaged
+	c.stpVersion = stpVersion
+	c.stpPriority = sys.STPPriority
+	c.stpPorts = stpPortBy
 	c.mu.Unlock()
 	return snap, nil
+}
+
+// applyMSTPPort fills a port's STP fields from mstpd's view of its member.
+func applyMSTPPort(p *switchmodel.Port, sp mstpPort) {
+	switch strings.ToLower(sp.State) {
+	case "forwarding", "learning", "listening", "discarding", "disabled":
+		p.STPState = strings.ToLower(sp.State)
+		if p.STPState == "discarding" {
+			p.STPState = "blocking" // the controller's vocabulary
+		}
+	}
+	switch strings.ToLower(sp.Role) {
+	case "root", "designated", "alternate", "backup", "disabled":
+		p.STPRole = strings.ToLower(sp.Role)
+	}
+	if cost := atoiDefault(sp.ExternalPortCost); cost > 0 {
+		p.STPPathCost = cost
+	}
+	p.BPDUGuard = sp.BPDUGuardPort == "yes"
+	p.STPEdge = sp.OperEdgePort == "yes"
+	p.Health.STPChanges = atoiDefault(sp.NumTransitionFwd) + atoiDefault(sp.NumTransitionBlk)
+	p.Health.STPInconsistent = sp.Disputed == "yes" || sp.BAInconsistent == "yes" || sp.BPDUGuardError == "yes"
+	if sp.BPDUGuardError == "yes" {
+		p.Fault = "errdisabled: bpduguard"
+	}
+}
+
+// enforceSTP keeps the two invariants a node under mstpd must hold whatever
+// the controller says, written at runtime every poll (the interfaces-file
+// attributes are the reboot baseline; mstpctl_treeprio there is known not
+// to apply on Proxmox): the bridge priority stays at the maximum, 61440,
+// so the node is never elected root, and every guest port is an edge
+// port, so a starting guest forwards at once instead of waiting out the
+// forward delay. Proxmox creates taps without either.
+const nodeSTPPriority = 61440
+
+func (c *Collector) enforceSTP(hostname string, ports []switchmodel.Port, stpPorts map[string]mstpPort, priority int) {
+	var cmds []string
+	if priority != nodeSTPPriority {
+		cmds = append(cmds, fmt.Sprintf("settreeprio %s 0 %d", c.Bridge, mstpPriority(nodeSTPPriority)))
+	}
+	for _, p := range ports {
+		if !strings.HasPrefix(p.IfName, "vm") && !strings.HasPrefix(p.IfName, "ct") {
+			continue
+		}
+		for _, member := range guestMembers(p) {
+			if sp, ok := stpPorts[member]; ok && sp.AdminEdgePort != "yes" {
+				cmds = append(cmds, fmt.Sprintf("setportadminedge %s %s yes", c.Bridge, member))
+			}
+		}
+	}
+	if len(cmds) == 0 {
+		return
+	}
+	c.Log.Printf("proxmox %s: mstpd: %s", hostname, strings.Join(cmds, "; "))
+	if _, err := c.r.Run(context.Background(), "mstpctl -s", strings.Join(cmds, "\n")+"\n"); err != nil {
+		c.warnOnce("mstp-enforce", "mstpctl: %v", err)
+	}
+}
+
+// guestMembers is the bridge member behind a guest port: the fwpr side
+// when the guest has the firewall, else its tap/veth.
+func guestMembers(p switchmodel.Port) []string {
+	var out []string
+	for _, iface := range p.Interfaces {
+		if strings.HasPrefix(iface, "tap") || strings.HasPrefix(iface, "veth") {
+			id := strings.TrimLeft(iface, "tapveth")
+			if i := strings.Index(id, "i"); i > 0 {
+				out = append(out, iface, "fwpr"+id[:i]+"p"+id[i+1:])
+			}
+		}
+	}
+	return out
 }
 
 func (c *Collector) remember(idx int, label string) {
