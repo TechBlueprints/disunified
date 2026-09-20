@@ -162,7 +162,7 @@ func (c *Collector) assignPorts(nics []guestNIC, host string, n int) (map[string
 		taken[p] = nic.Key()
 	}
 	if len(unshown) > 0 {
-		c.warnOnce("too-many-guests", "more guest NICs on %s than guest ports (ports=%d, uplink_ports=%d): %v not shown", c.Bridge, c.Ports, c.UplinkPorts, unshown)
+		c.warnOnce("too-many-guests", "more guest NICs on %s than free ports (ports=%d, %d used by the node's NICs): %v not shown", c.Bridge, c.Ports, c.Ports-n, unshown)
 	}
 
 	// The tags each guest on this node should carry for this bridge.

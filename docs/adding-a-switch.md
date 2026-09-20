@@ -2,9 +2,9 @@
 
 This is the checklist for a new driver. It is written for an AI agent or a
 person who has never seen this repo; every step names the file to touch and
-the proof that it worked. The Arista EOS driver (`internal/drivers/aristaeos`)
+the proof that it worked. The Arista EOS driver (`internal/drivers/arista-eos`)
 is the reference implementation — copy its shape, not its commands. The
-Proxmox driver (`internal/drivers/proxmox`, `docs/proxmox.md`) shows the
+Proxmox driver (`internal/drivers/proxmox`, `docs/drivers/proxmox.md`) shows the
 shape for a virtual switch read over SSH with one script per poll, and
 for a driver whose "ports" are not fixed hardware.
 
@@ -29,22 +29,24 @@ creation, FEC, storm control, BPDU guard, STP mode/priority, IGMP snooping.
 2. Capture the JSON (or parsed text) output of every command the driver will
    use into `docs/fixtures/<os>-<version>/`, one file per command, named
    `<command with spaces→- and /→_>.json`. Scrub identifiers with
-   `scripts/sanitize-fixtures.py` (MACs, IPs, serials, hostnames,
+   `scripts/sanitize-arista-eos.py` (MACs, IPs, serials, hostnames,
    descriptions, optic serials). The repo is public.
 3. Verify each command exists on that version by running it; note the ones
-   that do not (see `docs/arista-eapi.md` §1 for how 4.26 differs).
+   that do not (see `docs/drivers/arista-eos.md` §1 for how 4.26 differs).
 
 ### Controller-side captures
 
 The controller side is captured too, and the same scrub rule applies:
 
-- `internal/device/contract_test.go` compares the payload your driver
+- `internal/device/contract_<driver>_test.go` (one per driver, sharing the
+  harness in `contract_test.go`) compares the payload your driver
   produces (through the real device layer) with real UniFi switches' informs
   in `docs/fixtures/controller-<version>/inform-*.json`. Those come from the
   UniFi OS console support bundle (`unifi/devices/<type>/<mac>/last.inform`),
-  scrubbed with `scripts/sanitize-captures.py`. Every key a real switch
+  scrubbed with `scripts/sanitize-controller.py`. Every key a real switch
   sends must be present with the same JSON type or listed with a reason.
-- `internal/informloop/replay_test.go` replays the controller's recorded
+- `internal/informloop/replay_<driver>_test.go` (one per driver, sharing
+  the harness in `replay_test.go`) replays the controller's recorded
   replies (`docs/fixtures/controller-<version>/replies.ndjson`, cut from the
   bridge's `inform-log/<mac>.ndjson`, scrubbed the same way) through the
   loop with your driver on its fixtures, and asserts the switch commands each

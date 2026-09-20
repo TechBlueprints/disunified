@@ -11,7 +11,7 @@ import (
 )
 
 // Shapes of the second wave of commands, all verified on EOS 4.26.14M
-// (docs/fixtures/eos-4.26.14M, captured 2026-09-19).
+// (docs/fixtures/arista-eos-4.26.14M, captured 2026-09-19).
 
 type showMACAddressTable struct {
 	UnicastTable struct {

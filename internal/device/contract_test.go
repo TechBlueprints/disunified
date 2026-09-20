@@ -1,24 +1,20 @@
 package device
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
-	"time"
-
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
 )
 
 // The wire contract: what we send must have the shape of what a real UniFi
 // switch sends. The references are real informs captured from this
 // controller (docs/fixtures/controller-10.6.106/inform-*.json, identifiers
-// and secrets replaced by scripts/sanitize-captures.py); our payload is
-// built by the real driver from the real EOS captures. Every key a real
+// and secrets replaced by scripts/sanitize-controller.py); each driver's
+// payload is built by the real driver from its real captures, in
+// contract_<driver>_test.go, and checked by runContract. Every key a real
 // switch reports must be present with the same JSON type, at the device
 // level and on the uplink port entry, unless it is listed below with the
 // reason it is deliberately absent. A key missing from this list fails the
@@ -72,33 +68,6 @@ func jsonType(v any) string {
 		return "object"
 	}
 	return fmt.Sprintf("%T", v)
-}
-
-func buildContractPayload(t *testing.T) map[string]any {
-	t.Helper()
-	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "eos-4.26.14M"))
-	c := aristaeos.NewCollector(ft)
-	snap, err := c.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ip := "192.0.2.9"
-	if len(snap.System.Addresses) > 0 {
-		ip = snap.System.Addresses[0].IP // the switch's own address, so netmask resolves
-	}
-	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: "arista", UDAPIVersion: "1.0.0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "abc"}
-	sess := NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
-	sess.SetSnapshot(snap)
-	sess.SetGatewayIP("192.0.2.1")
-	var m map[string]any
-	if err := json.Unmarshal(sess.BuildPayload(time.Now()), &m); err != nil {
-		t.Fatal(err)
-	}
-	return m
 }
 
 func loadReference(t *testing.T, name string) map[string]any {
@@ -176,85 +145,28 @@ func compareKeys(t *testing.T, what string, real, ours map[string]any, omit map[
 	}
 }
 
-func TestWireContractAgainstRealInforms(t *testing.T) {
-	ours := buildContractPayload(t)
-	for _, ref := range []string{"inform-ecs-aggregation-uswf066.json", "inform-usw-xg16-usxg.json"} {
-		real := loadReference(t, ref)
-		compareKeys(t, ref+" device", real, ours, contractOmissions)
-		compareKeys(t, ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
-		rd := downPort(t, real, false)
-		_, optical := rd["sfp_found"]
-		compareKeys(t, ref+" down port", rd, downPort(t, ours, optical), portOmissions)
-	}
-	// The one that hid for a day: uplink is the NAME of the if_table interface.
-	if u, ok := ours["uplink"].(string); !ok || u == "" {
-		t.Errorf("uplink must be the management interface name (a string), got %v", ours["uplink"])
-	}
-}
-
-// The Proxmox driver's payload (built by the real driver from a real node
-// capture, docs/fixtures/proxmox-9.1.6/collect-node2.txt) must meet the same
-// contract. A Linux bridge lacks some of what a switch ASIC reports; each
-// gap is listed with its reason.
-var proxmoxContractOmissions = map[string]string{
-	"psu_table":            "a workstation-class node has no PSU sensors (no BMC)",
-	"total_max_power":      "no PSU capacity known",
-	"root_switch":          "STP is off on a Proxmox bridge; no root bridge to name",
-	"mac_table_capability": "a Linux bridge's FDB is a hash table with no fixed capacity to report",
-}
-
-func buildProxmoxContractPayload(t *testing.T) map[string]any {
+// runContract checks one driver's payload against every reference inform:
+// the device level, the uplink port and a down port, plus the keys that
+// hid for a day. extraOmissions are the driver's own gaps, with reasons.
+func runContract(t *testing.T, driver string, ours map[string]any, extraOmissions map[string]string) {
 	t.Helper()
-	fr, err := proxmox.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "proxmox-9.1.6", "collect-node2.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := proxmox.NewCollector(fr)
-	c.ManageLLDP = false
-	snap, err := c.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ip := snap.System.Addresses[0].IP
-	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	desc.FWCaps = FWCapsFor(c.Capabilities())
-	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "abc"}
-	sess := NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
-	sess.SetCapabilities(c.Capabilities())
-	sess.SetSnapshot(snap)
-	sess.SetGatewayIP("192.0.2.2")
-	var m map[string]any
-	if err := json.Unmarshal(sess.BuildPayload(time.Now()), &m); err != nil {
-		t.Fatal(err)
-	}
-	return m
-}
-
-func TestWireContractProxmox(t *testing.T) {
-	ours := buildProxmoxContractPayload(t)
 	omit := map[string]string{}
 	for k, v := range contractOmissions {
 		omit[k] = v
 	}
-	for k, v := range proxmoxContractOmissions {
+	for k, v := range extraOmissions {
 		omit[k] = v
 	}
 	for _, ref := range []string{"inform-ecs-aggregation-uswf066.json", "inform-usw-xg16-usxg.json"} {
 		real := loadReference(t, ref)
-		compareKeys(t, "proxmox "+ref+" device", real, ours, omit)
-		compareKeys(t, "proxmox "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
+		compareKeys(t, driver+" "+ref+" device", real, ours, omit)
+		compareKeys(t, driver+" "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
 		rd := downPort(t, real, false)
 		_, optical := rd["sfp_found"]
-		compareKeys(t, "proxmox "+ref+" down port", rd, downPort(t, ours, optical), portOmissions)
+		compareKeys(t, driver+" "+ref+" down port", rd, downPort(t, ours, optical), portOmissions)
 	}
+	// The one that hid for a day: uplink is the NAME of the if_table interface.
 	if u, ok := ours["uplink"].(string); !ok || u == "" {
-		t.Errorf("uplink must be the management interface name (a string), got %v", ours["uplink"])
-	}
-	// The node is the switch: the device MAC is the bridge's.
-	if mac, _ := ours["mac"].(string); mac != "02:00:00:00:00:01" {
-		t.Errorf("the device MAC must be the node's bridge MAC, got %s", mac)
+		t.Errorf("%s: uplink must be the management interface name (a string), got %v", driver, ours["uplink"])
 	}
 }

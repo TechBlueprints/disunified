@@ -7,7 +7,7 @@
 // bridge (`bridge-vlan-aware yes`); fixtures in docs/fixtures/proxmox-9.1.6.
 // Everything is read over one SSH exec per poll (collect.sh) and written
 // with `qm set` / `pct set`, so the node's own tooling keeps its config
-// consistent and persistent. See docs/proxmox.md.
+// consistent and persistent. See docs/drivers/proxmox.md.
 package proxmox
 
 import (
@@ -26,8 +26,8 @@ import (
 // Config: SSH = root@<node> (key auth; the ssh-agent, or ssh_key). Options:
 //
 //	bridge        the bridge to present (default vmbr0)
-//	ports         total ports to present (default 54, the USW Leaf's)
-//	uplink_ports  how many of the last ports are physical uplinks (default 6)
+//	ports         total ports to present (default 54, the USW Leaf's); the
+//	              node's physical NICs take the top ones, guests the rest
 //	ssh_key       private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts   known_hosts file (default ~/.ssh/known_hosts)
 //	numbering     "cluster" (default: every guest in the cluster has the same
@@ -37,7 +37,7 @@ import (
 //	              run live. A NIC's port is recorded in the guest's own
 //	              Proxmox tags (tags.go); the bridge keeps no file.
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
-//	              /etc/lldpd.d/switch-to-unifi.conf current, docs/proxmox.md §4)
+//	              /etc/lldpd.d/switch-to-unifi.conf current, docs/drivers/proxmox.md §4)
 type Driver struct{}
 
 func init() { switchmodel.RegisterDriver(Driver{}) }
@@ -71,13 +71,6 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 			return nil, fmt.Errorf("proxmox: ports must be a number >= 2, got %q", v)
 		}
 		c.Ports = n
-	}
-	if v := cfg.Options["uplink_ports"]; v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n >= c.Ports {
-			return nil, fmt.Errorf("proxmox: uplink_ports must be between 1 and ports-1, got %q", v)
-		}
-		c.UplinkPorts = n
 	}
 	if cfg.Options["manage_lldpd"] == "false" {
 		c.ManageLLDP = false

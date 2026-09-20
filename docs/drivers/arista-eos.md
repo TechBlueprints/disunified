@@ -2,7 +2,7 @@
 
 Captured and verified against Clint's switch over SSH on 2026-09-19. Unlike the other two
 docs, **everything here was run against the real device.** Raw command output lives in
-`fixtures/eos-4.26.14M/`, scrubbed by `scripts/sanitize-fixtures.py` (MACs, IPs, serials,
+`fixtures/arista-eos-4.26.14M/`, scrubbed by `scripts/sanitize-arista-eos.py` (MACs, IPs, serials,
 hostnames and descriptions rewritten; structure and types untouched).
 
 ## 1. The version is pinned for good

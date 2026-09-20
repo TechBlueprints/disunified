@@ -8,7 +8,7 @@ import (
 )
 
 // FixtureRunner serves a captured collector run (docs/fixtures/proxmox-*/
-// collect-*.txt, the script's output scrubbed by scripts/sanitize-text-fixture.py)
+// collect-*.txt, the script's output scrubbed by scripts/sanitize-proxmox.py)
 // instead of a node, and records every other command (the writes) in
 // Commands without running it. Exported so the wire-contract and replay
 // tests in other packages can drive the real driver against real captures.

@@ -6,7 +6,7 @@ but rewrites: MAC addresses (consistent per-MAC mapping into 02:00:00:xx:xx:xx),
 the chassis serial, IPv4 addresses (into 192.0.2.0/24 and 198.51.100.0/24 test
 nets, consistent per-address), and LLDP neighbor hostnames.
 
-Usage: scripts/sanitize-fixtures.py docs/fixtures/<eos-version>/*.json
+Usage: scripts/sanitize-arista-eos.py docs/fixtures/<eos-version>/*.json
 """
 import json, re, sys, ipaddress
 

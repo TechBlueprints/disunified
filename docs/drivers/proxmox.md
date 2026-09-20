@@ -34,8 +34,8 @@ matters happens in the bond (100 ms), below the switch we present.
 
 | Ports | What | Media / speed reported |
 |---|---|---|
-| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); the port number is recorded in the guest's own Proxmox tags (§1c); a free slot is named `VM-Open-<port>` and reported **disabled** (nothing can be cabled into it) | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
-| 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54); a free slot is `NIC-Open-<port>`, disabled | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
+| 1 up to the first physical port | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); the port number is recorded in the guest's own Proxmox tags (§1c); a free slot is named `Open-<port>` and reported **disabled** (nothing can be cabled into it). Nothing is reserved: every slot below the node's NICs is open to guests | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
+| `ports` downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54); then every other physical NIC on the box (`eno1`), enabled with no link, so UniFi can see it and later bond it | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
 
 ### 1b. Host network layouts
 
@@ -319,7 +319,7 @@ switches:
     model: UDC48X6              # USW Leaf; auto picks it from the 48+6 layout
     options:
       bridge: vmbr0             # default
-      # ports: "54"             # default; uplink_ports: "6" (host + NICs at the top)
+      # ports: "54"             # default; the node's NICs take the top ports, guests the rest
       # manage_lldpd: "false"   # leave lldpd alone
       # ssh_key: /etc/switch-to-unifi/id_ed25519       # in a container
       # known_hosts: /etc/switch-to-unifi/known_hosts
@@ -357,7 +357,7 @@ the adopted key.
   stopped guest's port draws as a cabled, down port.
 - **Names the driver gave count as defaults.** The provisioner renames a
   port or the device only while its controller-side name is one of the
-  profile's defaults or one this driver could have set earlier (`VM-Open-25`
+  profile's defaults or one this driver could have set earlier (`Open-25`
   before a guest took the slot, `VM-999` after it left, the `pve-<node>`
   device name of an earlier build), so an operator's own name always
   survives. A free slot is seeded disabled in the controller too (the

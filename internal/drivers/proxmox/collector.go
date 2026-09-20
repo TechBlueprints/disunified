@@ -29,7 +29,6 @@ type Collector struct {
 	// guest in the cluster (48 cluster-wide, the same port number on every
 	// node). Default: cluster-wide.
 	NodeNumbering bool
-	UplinkPorts   int // the last UplinkPorts ports are the physical uplinks, from the last port down
 
 	cycleDelay time.Duration
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
@@ -51,7 +50,7 @@ type Collector struct {
 	snooping    bool                // bridge multicast_snooping
 	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
-	// (docs/proxmox.md §4b). Without it STP is neither claimed nor touched.
+	// (docs/drivers/proxmox.md §4b). Without it STP is neither claimed nor touched.
 	uplinks     map[int]uplink    // port index -> physical uplink, at the last collect
 	bondModes   map[string]string // bond -> mode string from /proc/net/bonding
 	mstpd       bool              // mstpctl is installed
@@ -65,7 +64,7 @@ type Collector struct {
 // NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
 // 6 for the uplinks: the USW Leaf layout).
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, UplinkPorts: 6, ManageLLDP: true,
+	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, ManageLLDP: true,
 		knownNames: map[int][]string{}, warned: map[string]bool{}}
 }
 
@@ -91,7 +90,7 @@ func (c *Collector) Capabilities() switchmodel.Capabilities {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// LACP: an aggregate on the node's physical ports converts their bond
-	// to 802.3ad through the Proxmox API (docs/proxmox.md §3b, untested live).
+	// to 802.3ad through the Proxmox API (docs/drivers/proxmox.md §3b, untested live).
 	caps := switchmodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
 	if c.stpManaged {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
@@ -233,7 +232,14 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		keys = append(keys, n.Key())
 		nicBy[n.Key()] = n
 	}
-	vmSlots := c.Ports - c.UplinkPorts
+	// The node's physical ports take the top slots; everything below them
+	// is one pool for guests (nothing is reserved for NICs: an open slot is
+	// an open slot, Clint 2026-09-20).
+	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
+	if len(phys) >= c.Ports {
+		return nil, fmt.Errorf("proxmox: bridge %s has %d physical ports but ports=%d", c.Bridge, len(phys), c.Ports)
+	}
+	vmSlots := c.Ports - len(phys)
 	slotOf, retags := c.assignPorts(nics, hostname, vmSlots)
 	keyOf := map[int]string{}
 	for k, idx := range slotOf {
@@ -304,11 +310,6 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	// The node is the switch: same MAC, address and hostname (the bridge
 	// interface is where the node's own stack sits, like a switch's
 	// management interface). Its physical paths out are the last ports.
-	phys := physicalMembers(sec["phys"], linkBy, bonds, c.Bridge)
-	if len(phys) > c.UplinkPorts {
-		c.warnOnce("too-many-nics", "bridge %s has %d uplinks but uplink_ports=%d: %v not shown", c.Bridge, len(phys), c.UplinkPorts, uplinkNames(phys[c.UplinkPorts:]))
-		phys = phys[:c.UplinkPorts]
-	}
 	_, ethBodies := subsections(sec["ethtool"])
 	_, modBodies := subsections(sec["ethtoolm"])
 	_, fecBodies := subsections(sec["ethtoolfec"])
@@ -324,6 +325,9 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		et := parseEthtool(ethBodies[u.Active])
 		mod := parseEthtoolModule(modBodies[u.Active])
 		p := physicalPort(idx, u, linkBy[u.Member], l, et, mod, brBy, vlanBy)
+		if u.Unattached {
+			p.Enabled = true // not under the switch: nothing has disabled it, it is just not linked
+		}
 		if sp, ok := stpPortBy[u.Member]; ok {
 			applyMSTPPort(&p, sp)
 			if u.Standby {
@@ -346,13 +350,13 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 			macs = append(macs, m)
 			vlanSet[e.VLAN] = true
 		}
-		if uplinkHint == 0 && p.Up && !u.Standby {
+		if uplinkHint == 0 && p.Up && !u.Standby && !u.Unattached {
 			uplinkHint = idx
 		}
 		nicPorts[idx] = p
 	}
 	if c.ManageLLDP {
-		c.ensureLLDP(hostname, sec["lldpdconf"], phys, slotFor, hostMAC)
+		c.ensureLLDP(hostname, sec["lldpdconf"], attachedUplinks(phys), slotFor, hostMAC)
 	}
 	for idx := vmSlots + 1; idx <= c.Ports; idx++ {
 		if p, ok := nicPorts[idx]; ok {
@@ -725,6 +729,21 @@ type uplink struct {
 	LAG     string   // aggregate name when the port is one member of a LAG
 	First   bool     // first port of its member: carries the member's MAC table
 	Standby bool     // a failover bond's inactive slave: linked, not forwarding
+	// Unattached: a physical NIC that is on the box but under neither the
+	// bridge nor a bond of the bridge's. Shown as a port with no link, not
+	// as disabled (Clint, 2026-09-20: "unifi could later enable those or
+	// add them to a lacp … that doesn't mean they're not on the box").
+	Unattached bool
+}
+
+// attachedUplinks is the prefix of phys that is under the bridge (the
+// unattached NICs come last, so their slots are unchanged).
+func attachedUplinks(phys []uplink) []uplink {
+	n := 0
+	for n < len(phys) && !phys[n].Unattached {
+		n++
+	}
+	return phys[:n]
 }
 
 func uplinkNames(us []uplink) []string {
@@ -755,6 +774,7 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].Ifindex < members[j].Ifindex })
 	var out []uplink
+	used := map[string]bool{}
 	for _, m := range members {
 		// A VLAN (or macvlan) device rides on its parent: look through it.
 		lower := m.Ifname
@@ -779,6 +799,7 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 				active = slaves[0]
 			}
 			for i, sl := range slaves {
+				used[sl] = true
 				u := uplink{Name: fmt.Sprintf("%s-%d", m.Ifname, i+1), Member: m.Ifname, Ifaces: []string{sl}, Active: sl, First: i == 0}
 				if lag {
 					u.LAG = b.Name
@@ -791,8 +812,21 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 			continue
 		}
 		if isPhys[lower] {
+			used[lower] = true
 			out = append(out, uplink{Name: m.Ifname, Member: m.Ifname, Ifaces: []string{lower}, Active: lower, First: true})
 		}
+	}
+	// Every other physical NIC on the box, after the attached ones so the
+	// attached keep their ports: shown with no link, never the uplink.
+	var spare []ipLink
+	for name := range isPhys {
+		if l, ok := linkBy[name]; ok && !used[name] {
+			spare = append(spare, l)
+		}
+	}
+	sort.Slice(spare, func(i, j int) bool { return spare[i].Ifindex < spare[j].Ifindex })
+	for _, l := range spare {
+		out = append(out, uplink{Name: l.Ifname, Member: l.Ifname, Ifaces: []string{l.Ifname}, Active: l.Ifname, Unattached: true})
 	}
 	return out
 }

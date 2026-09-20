@@ -79,17 +79,11 @@ const SysErrorCaps = sysErrOverheating | sysErrFanIssue | sysErrPSUIssue
 // session the bridge does not build (branch ssh-gateway has the notes).
 const FWCaps = fwCapSSH | fwCapSTAT | fwCapLAG | fwCapSNMP | fwCapSNMPv3 | fwCapLLDP
 
-// DefaultCapabilities is what a driver without its own Capabilities claims:
-// the Arista EOS set. STP (priority, path cost, BPDU guard), jumbo, FEC,
-// LACP, storm control (percent), IGMP snooping, LLDP-MED, DHCP snooping.
-// Not claimed: port isolation (EOS 4.26 has no protected-port equivalent),
-// L3, dot1x, MC-LAG, PTP. Mirror/aggregate session counts mirror what real
-// switches report (the ECS reports them) so the UI offers both.
-var DefaultCapabilities = switchmodel.Capabilities{
-	STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
-	StormControl: true, IGMPSnooping: true, LLDPMED: true, DHCPSnooping: true, SNMP: true,
-	MirrorSessions: 1, AggregateSessions: 8,
-}
+// DefaultCapabilities is what a driver that declares no Capabilities
+// claims: nothing. The UI then offers only what every switch has (port
+// state, names, VLANs, speed from the port table). Each driver states
+// what its switch honours (switchmodel.Capable); claims must be true.
+var DefaultCapabilities = switchmodel.Capabilities{}
 
 // switchCaps renders switch_caps from a driver's capabilities.
 func switchCaps(c switchmodel.Capabilities) map[string]any {

@@ -3,7 +3,7 @@
 // controller pushes in a setparam reply whenever the device's reported
 // cfgversion differs from the site's. On a real UniFi switch this is
 // /tmp/system.cfg. Observed from Network 10.6.106; a scrubbed capture is in
-// docs/fixtures/controller-10.6.106-system_cfg.txt.
+// docs/fixtures/controller-10.6.106/system_cfg.txt.
 package unificfg
 
 import (

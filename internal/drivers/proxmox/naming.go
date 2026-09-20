@@ -29,10 +29,9 @@ func (c *Collector) DefaultDeviceNames(sys switchmodel.System) []string {
 }
 
 // PortName names a guest port "VM-<vmid>" ("VM-119 net1" when the guest
-// has several NICs), a physical port after its NIC, an unused guest slot
-// "VM-Open-<port>" and an unused uplink slot "NIC-Open-<port>" (Clint,
-// 2026-09-20: a free slot should read as one, not as the profile's
-// "SFP28 26" / "QSFP28 1").
+// has several NICs), a physical port after its NIC, and an unused slot
+// "Open-<port>" (Clint, 2026-09-20: a free slot should read as one, not
+// as the profile's "SFP28 26", and nothing is reserved for NICs).
 func (c *Collector) PortName(p switchmodel.Port) string {
 	if p.Description != "" {
 		return p.Description
@@ -40,28 +39,19 @@ func (c *Collector) PortName(p switchmodel.Port) string {
 	if p.IfName != "" {
 		return p.IfName
 	}
-	return c.openLabel(p.Index)
+	return openLabel(p.Index)
 }
 
-// isGuestSlot reports whether a port index is one of the guest slots
-// (1..ports-uplink_ports) rather than a physical uplink.
-func (c *Collector) isGuestSlot(idx int) bool {
-	return idx >= 1 && idx <= c.Ports-c.UplinkPorts
-}
-
-// openLabel is the name of an unused slot: a guest slot or a physical one.
-func (c *Collector) openLabel(idx int) string {
-	if c.isGuestSlot(idx) {
-		return fmt.Sprintf("VM-Open-%d", idx)
-	}
-	return fmt.Sprintf("NIC-Open-%d", idx)
-}
+// openLabel is the name of an unused slot.
+func openLabel(idx int) string { return fmt.Sprintf("Open-%d", idx) }
 
 // DefaultPortNames lists every name this driver could have given the port,
 // so a rename after a guest is renamed or moved still works while an
 // operator's own name is kept.
 func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
-	out := []string{c.openLabel(p.Index)} // the slot was free before this port took it
+	// The slot was free before this port took it (two earlier builds split
+	// free slots into VM-Open/NIC-Open).
+	out := []string{openLabel(p.Index), fmt.Sprintf("VM-Open-%d", p.Index), fmt.Sprintf("NIC-Open-%d", p.Index)}
 	if p.IfName != "" {
 		out = append(out, p.IfName)
 	}
