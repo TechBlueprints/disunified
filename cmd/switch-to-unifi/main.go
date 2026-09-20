@@ -29,8 +29,10 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/config"
 	"github.com/TechBlueprints/switch-to-unifi/internal/device"
 	"github.com/TechBlueprints/switch-to-unifi/internal/informloop"
+	"github.com/TechBlueprints/switch-to-unifi/internal/sshgw"
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 	"github.com/TechBlueprints/switch-to-unifi/internal/unifiapi"
+	"github.com/TechBlueprints/switch-to-unifi/internal/unificfg"
 	"github.com/TechBlueprints/switch-to-unifi/internal/unifimodel"
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
@@ -146,6 +148,7 @@ type options struct {
 	provision                                  bool
 	collectOnce                                bool
 	logger                                     *log.Logger
+	gateway                                    *config.SSHGateway
 	stateDir                                   string
 }
 
@@ -167,7 +170,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			controlPorts:  sw.Control.Ports, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP,
 			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
-			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
+			logger: logger, gateway: sw.SSHGateway, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
 		}
 		if strings.EqualFold(o.controlPorts, "off") {
 			o.controlPorts = ""
@@ -225,6 +228,46 @@ func runOne(ctx context.Context, o options) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
+	}
+
+	// --- SSH gateway (terminal proxy) ---
+	var gw *sshgw.Server
+	if o.gateway != nil && o.gateway.Listen != "" {
+		host, _, _ := net.SplitHostPort(o.gateway.Listen)
+		switch o.gateway.AdvertiseIP {
+		case "", "auto":
+			// The address the controller can reach us on: the local side of
+			// a route to the controller. Works with a DHCP-assigned macvlan
+			// address, which is not known when the config is written.
+			if ip := net.ParseIP(host); ip != nil && !ip.IsUnspecified() {
+				o.gateway.AdvertiseIP = host
+			} else if lip, err := localIPToward(o.controller, o.informURL); err == nil {
+				o.gateway.AdvertiseIP = lip
+			} else {
+				log.Printf("ssh gateway: cannot determine the advertised IP: %v; set ssh_gateway.advertise_ip", err)
+			}
+		}
+		upUser, upHost := o.username, hostOf(o.switchURL, o.switchSSH)
+		if o.gateway.SwitchSSH != "" {
+			upUser, upHost, _ = strings.Cut(o.gateway.SwitchSSH, "@")
+		}
+		if !strings.Contains(upHost, ":") {
+			upHost += ":22"
+		}
+		gw = &sshgw.Server{
+			Listen:      o.gateway.Listen,
+			HostKeyPath: filepath.Join(o.stateDir, "ssh_host_key"),
+			Upstream:    sshgw.Upstream{Addr: upHost, User: upUser, Password: o.password},
+			Logger:      log,
+		}
+		go func() {
+			if err := gw.Serve(ctx); err != nil {
+				log.Printf("ssh gateway: %v", err)
+			}
+		}()
+		if o.ip == "" {
+			o.ip = o.gateway.AdvertiseIP
+		}
 	}
 
 	// --- Identity ---
@@ -394,6 +437,21 @@ func runOne(ctx context.Context, o options) error {
 	if sw != nil {
 		loopCfg.Collector = sw
 	}
+	if gw != nil {
+		loopCfg.OnSystemCfg = func(cfg *unificfg.Config) {
+			c := sshgw.Credentials{Users: map[string]string{}}
+			for _, u := range cfg.Users {
+				c.Users[u.Name] = u.PasswordHash
+			}
+			for _, k := range cfg.SSHKeys {
+				if pk, err := sshgw.ParseAuthorizedKey(k.Type + " " + k.Value); err == nil {
+					c.Keys = append(c.Keys, pk)
+				}
+			}
+			gw.SetCredentials(c)
+			log.Printf("ssh gateway: credentials updated (%d users, %d keys)", len(c.Users), len(c.Keys))
+		}
+	}
 	if o.controlPorts != "" {
 		ctl, ok := sw.(switchmodel.Controller)
 		if sw == nil || !ok {
@@ -450,6 +508,26 @@ func defaultPortNames(ports []inform.Port, snap *switchmodel.Snapshot, namer swi
 		}
 	}
 	return out
+}
+
+// localIPToward returns the local IPv4 address used to reach the controller.
+func localIPToward(controller, informURL string) (string, error) {
+	target := controller
+	if target == "" && informURL != "" {
+		if u, err := url.Parse(informURL); err == nil {
+			target = u.Hostname()
+		}
+	}
+	ip, err := resolveIPv4(target)
+	if err != nil {
+		return "", err
+	}
+	c, err := net.Dial("udp4", net.JoinHostPort(ip, "8080"))
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+	return c.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }
 
 // hostOf extracts an IP literal from a switch URL or user@host target; ""

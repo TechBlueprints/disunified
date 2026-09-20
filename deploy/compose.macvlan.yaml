@@ -1,0 +1,29 @@
+# Variant of compose.yaml for the SSH gateway: the container gets its own
+# address on the LAN from DHCP (macvlan), so it can own port 22 there and
+# the UniFi device terminal can reach it. One-time host setup (Podman 5 with
+# netavark):
+#   systemctl enable --now netavark-dhcp-proxy.socket
+#   podman network create -d macvlan -o parent=<lan interface> --ipam-driver dhcp lan
+# Give the container a fixed MAC so the DHCP lease (and any reservation you
+# make in UniFi) stays stable. A macvlan container cannot talk to its own
+# host; that is fine, the bridge only talks to the controller and the switch.
+services:
+  switch-to-unifi:
+    image: localhost/switch-to-unifi:latest
+    container_name: switch-to-unifi
+    restart: always
+    env_file: ./env
+    volumes:
+      - ./config.yaml:/etc/switch-to-unifi/config.yaml:ro
+      - switch-to-unifi-state:/var/lib/switch-to-unifi
+    networks:
+      lan:
+        mac_address: "02:53:54:55:00:01"
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0   # the bridge runs unprivileged and must bind port 22
+networks:
+  lan:
+    external: true
+volumes:
+  switch-to-unifi-state:
+    external: true

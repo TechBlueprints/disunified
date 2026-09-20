@@ -54,6 +54,20 @@ type Switch struct {
 	Firmware string `yaml:"firmware"`
 
 	Control Control `yaml:"control"`
+
+	// SSHGateway, when set, runs an SSH server the UniFi device terminal can
+	// use: it accepts the site's device credentials (pushed by the
+	// controller) and proxies the session to the switch as the bridge user.
+	// The bridge then reports AdvertiseIP as its device IP. The listener
+	// must own port 22 on that IP (a dedicated IP, e.g. a macvlan address).
+	SSHGateway *SSHGateway `yaml:"ssh_gateway"`
+}
+
+// SSHGateway configures the terminal proxy.
+type SSHGateway struct {
+	Listen      string `yaml:"listen"`       // e.g. ":22" (all addresses) or "192.0.2.20:22"
+	AdvertiseIP string `yaml:"advertise_ip"` // reported as the device IP; "auto" (default) = the local address that routes to the controller (works with DHCP)
+	SwitchSSH   string `yaml:"switch_ssh"`   // user@host[:port] on the switch; default: <username>@<switch host>:22 with the same password
 }
 
 // Control says what UniFi owns on this switch. Ports "" or "off" = read-only.

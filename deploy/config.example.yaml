@@ -33,3 +33,11 @@ switches:
       ssh_keys: true                 # the controller's SSH keys are installed on the switch user
       snmp: true                     # UniFi's SNMP v1/v2c community is configured on the switch (read-only)
 
+    # Optional: UniFi device terminal support. The bridge runs an SSH server
+    # that accepts the site's device credentials (the controller pushes them)
+    # and proxies the session to the switch as the bridge user. It must own
+    # port 22 on a dedicated IP (e.g. a macvlan address for the container),
+    # which the bridge then reports as its device IP.
+    # ssh_gateway:
+    #   listen: ":22"
+    #   advertise_ip: auto             # the container's own LAN address (macvlan + DHCP), see deploy/compose.macvlan.yaml
