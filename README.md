@@ -78,6 +78,17 @@ what the software talks to. The device protocol it speaks comes from the
 open-source unifi-emu library (see `docs/prior-art.md`); use it on
 controllers you own, at your own risk.
 
+This work exists strictly for integration: it lets a switch you already
+own be managed from a UniFi Network controller that you are authorized to
+use and that runs on genuine Ubiquiti hardware. It does not replace, clone
+or bypass any Ubiquiti product, licence or service, and it is not intended
+to be run against a controller you do not administer.
+
+If Ubiquiti sees this repository and has any concerns, they are welcome to
+contact me: open an issue on this repository, message
+[@cgoudie](https://github.com/cgoudie) on GitHub, or reach me on Discord
+(user ID `360473903417786371`; I am on the official Ubiquiti Discord server).
+
 ## License and credit
 
 MIT — see `LICENSE` (attribution and trademark notes in `NOTICE`). The inform wire format, crypto and model catalogue come
