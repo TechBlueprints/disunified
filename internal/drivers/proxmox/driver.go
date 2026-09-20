@@ -33,10 +33,11 @@ import (
 //	numbering     "cluster" (default: every guest in the cluster has the same
 //	              port on every node; 48 guest NICs cluster-wide) or "node"
 //	              (only this node's guests; 48 per node; a migrated guest takes
-//	              a free slot on the destination)
+//	              a free slot on the destination). Only "cluster" has been
+//	              run live. A NIC's port is recorded in the guest's own
+//	              Proxmox tags (tags.go); the bridge keeps no file.
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
 //	              /etc/lldpd.d/switch-to-unifi.conf current, docs/proxmox.md §4)
-//	state_dir     where the guest-to-port map persists (set by the bridge)
 type Driver struct{}
 
 func init() { switchmodel.RegisterDriver(Driver{}) }
@@ -88,11 +89,6 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 	default:
 		return nil, fmt.Errorf("proxmox: numbering must be \"cluster\" or \"node\", got %q", cfg.Options["numbering"])
 	}
-	pm, err := loadPortMap(cfg.Options["state_dir"])
-	if err != nil {
-		return nil, fmt.Errorf("proxmox: port map: %w", err)
-	}
-	c.ports = pm
 	c.cycleDelay = 3 * time.Second
 	return c, nil
 }

@@ -45,7 +45,7 @@ switches:
     options:
       bridge: vmbr0                  # default
       # ports: "54"                  # total ports; uplink_ports: "6" are the physical uplinks at the top
-      # numbering: node              # per-node guest ports (48 per node) instead of cluster-wide (48 total)
+      # numbering: node              # per-node guest ports (48 per node) instead of cluster-wide (48 total); UNTESTED live, PRs welcome
       # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
       # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container
       # known_hosts: /etc/switch-to-unifi/known_hosts

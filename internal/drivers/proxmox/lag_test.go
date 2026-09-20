@@ -64,7 +64,6 @@ func TestLAGConvertsTheBondToLACP(t *testing.T) {
 	r := &FixtureRunner{Fixture: sameSwitchFixture(t, loadFixture(t, "collect-node2.txt"))}
 	c := NewCollector(r)
 	c.ManageLLDP = false
-	c.ports, _ = loadPortMap(t.TempDir())
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +94,6 @@ func TestLAGOnLACPBondIsAlreadyDone(t *testing.T) {
 	r := &FixtureRunner{Fixture: fixture}
 	c := NewCollector(r)
 	c.ManageLLDP = false
-	c.ports, _ = loadPortMap(t.TempDir())
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +111,6 @@ func TestLAGGuardsGuestAndPartial(t *testing.T) {
 	r := &FixtureRunner{Fixture: sameSwitchFixture(t, loadFixture(t, "collect-node2.txt"))}
 	c := NewCollector(r)
 	c.ManageLLDP = false
-	c.ports, _ = loadPortMap(t.TempDir())
 	var buf strings.Builder
 	c.Log.SetOutput(&buf)
 	if _, err := c.Start(context.Background()); err != nil {

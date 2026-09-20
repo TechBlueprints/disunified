@@ -38,18 +38,18 @@ type Collector struct {
 	// /etc/lldpd.d/switch-to-unifi.conf and restarts lldpd when it differs.
 	ManageLLDP bool
 
-	mu         sync.Mutex
-	ports      *portMap
-	node       string // this node's hostname
-	last       *switchmodel.Snapshot
-	prevCPU    cpuTimes
-	nics       map[string]guestNIC // key -> guest NIC, cluster-wide, at the last collect
-	keyOf      map[int]string      // port index -> guest key
-	knownNames map[int][]string    // labels a slot has carried (for renames)
-	bridgeVIDs []int               // bridge-vids from /etc/network/interfaces
-	ntpManaged string              // contents of the managed chrony sources file
-	snooping   bool                // bridge multicast_snooping
-	stpOn      bool
+	mu          sync.Mutex
+	pendingTags []retag // guests on this node whose tags the last build asked to rewrite
+	node        string  // this node's hostname
+	last        *switchmodel.Snapshot
+	prevCPU     cpuTimes
+	nics        map[string]guestNIC // key -> guest NIC, cluster-wide, at the last collect
+	keyOf       map[int]string      // port index -> guest key
+	knownNames  map[int][]string    // labels a slot has carried (for renames)
+	bridgeVIDs  []int               // bridge-vids from /etc/network/interfaces
+	ntpManaged  string              // contents of the managed chrony sources file
+	snooping    bool                // bridge multicast_snooping
+	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
 	// (docs/proxmox.md §4b). Without it STP is neither claimed nor touched.
 	uplinks     map[int]uplink    // port index -> physical uplink, at the last collect
@@ -66,7 +66,7 @@ type Collector struct {
 // 6 for the uplinks: the USW Leaf layout).
 func NewCollector(r Runner) *Collector {
 	return &Collector{r: r, Log: log.Default(), Bridge: "vmbr0", Ports: 54, UplinkPorts: 6, ManageLLDP: true,
-		ports: &portMap{Slots: map[int]*slot{}}, knownNames: map[int][]string{}, warned: map[string]bool{}}
+		knownNames: map[int][]string{}, warned: map[string]bool{}}
 }
 
 // Start runs the collector once so a missing tool, a bad key or a bridge
@@ -105,7 +105,16 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 	if err != nil {
 		return nil, err
 	}
-	return c.build(out, time.Now())
+	snap, err := c.build(out, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	retags := c.pendingTags
+	c.pendingTags = nil
+	c.mu.Unlock()
+	c.writeTags(ctx, retags)
+	return snap, nil
 }
 
 // build is Collect without the transport (tests feed it fixture output).
@@ -225,22 +234,14 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 		nicBy[n.Key()] = n
 	}
 	vmSlots := c.Ports - c.UplinkPorts
-	c.mu.Lock()
-	slotOf, changed := c.ports.assign(keys, vmSlots, now)
-	if changed {
-		if err := c.ports.save(); err != nil {
-			c.mu.Unlock()
-			return nil, fmt.Errorf("proxmox: saving port map: %w", err)
-		}
-	}
+	slotOf, retags := c.assignPorts(nics, hostname, vmSlots)
 	keyOf := map[int]string{}
 	for k, idx := range slotOf {
 		keyOf[idx] = k
 	}
+	c.mu.Lock()
+	c.pendingTags = retags
 	c.mu.Unlock()
-	if len(keys) > vmSlots {
-		c.warnOnce("too-many-guests", "%d guest NICs on %s but only %d guest ports (ports=%d, uplink_ports=%d): the newest are not shown", len(keys), c.Bridge, vmSlots, c.Ports, c.UplinkPorts)
-	}
 
 	ports := make([]switchmodel.Port, 0, c.Ports)
 	var macs []switchmodel.MACEntry
