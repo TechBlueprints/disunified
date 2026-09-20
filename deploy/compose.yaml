@@ -3,7 +3,8 @@
 # /var/lib/switch-to-unifi).
 services:
   switch-to-unifi:
-    image: ghcr.io/techblueprints/switch-to-unifi:latest   # or: build: .
+    build: .                    # from a checkout; no prebuilt image is published yet
+    image: localhost/switch-to-unifi:latest
     container_name: switch-to-unifi
     restart: always            # Podman's podman-restart.service only restarts "always" containers after a host reboot
     env_file: ./env

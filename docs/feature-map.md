@@ -21,19 +21,19 @@ Two channels exist:
   *controls*.
 
 The controller only sends a `system_cfg` key when the feature is non-default in the site,
-so the captured file (`fixtures/controller-10.6.106/system_cfg.txt`) shows defaults only.
+so the captured file ([`fixtures/controller-10.6.106/system_cfg.txt`](fixtures/controller-10.6.106/system_cfg.txt)) shows defaults only.
 **Every "verify" row needs a capture: Clint sets the feature in the UI (port 2 for port-level
 settings), the bridge records the delta.** That is the capture campaign in §4.
 
 ## 0. Two drivers, one map
 
 Each table carries a status column per driver. **Arista** is the DCS-7160
-on EOS 4.26.14M (`docs/drivers/arista-eos.md`); **Proxmox** is a VE 9.1
-node's `vmbr0` (`docs/drivers/proxmox.md`), which covers a subset by design:
+on EOS 4.26.14M ([`docs/drivers/arista-eos.md`](drivers/arista-eos.md)); **Proxmox** is a VE 9.1
+node's `vmbr0` ([`docs/drivers/proxmox.md`](drivers/proxmox.md)), which covers a subset by design:
 a Linux bridge has no per-port speed, FEC control, storm control, mirror or
 flow control, so those capabilities are not claimed and the UI hides them.
 STP on Proxmox is claimed and honoured only on a node whose bridge runs
-under mstpd (`docs/drivers/proxmox.md` §4b). Both verified live on Network
+under mstpd ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b). Both verified live on Network
 10.6.106, 2026-09-19/20.
 
 ## 1. Device → controller: switch-level fields
@@ -52,7 +52,7 @@ under mstpd (`docs/drivers/proxmox.md` §4b). Both verified live on Network
 | `port_table` | per port, see §2 | `show interfaces` + status + STP + LLDP | done | done |
 | `ethernet_table` | mgmt NICs | static | done | done |
 | `lldp_table` (`local_port_idx`, `local_port_name`, `chassis_id`, `port_id`, `is_wired`) | topology to other devices | `show lldp neighbors detail` | done | done (lldpcli on the NICs) |
-| `mac_table` (`mac`, `port_idx`, `vlan`, `age`, `uptime`) | which clients sit behind which port — **this is what places downstream devices under the switch in the topology and client list** | `show mac address-table` (`unicastTable.tableEntries`) | **done — verified: `stat/sta` shows euphrosyne with `sw_mac` = the Arista, `sw_port` 53** | done (bridge FDB, dynamic entries) |
+| `mac_table` (`mac`, `port_idx`, `vlan`, `age`, `uptime`) | which clients sit behind which port — **this is what places downstream devices under the switch in the topology and client list** | `show mac address-table` (`unicastTable.tableEntries`) | **done — verified: `stat/sta` shows a wired client with `sw_mac` = the Arista and the right `sw_port`** | done (bridge FDB, dynamic entries) |
 | `uplink` (**the string `"eth0"`**), `if_table` (that interface: ip, netmask, num_port, counters), `port_table[].is_uplink`, `lldp_table` | which port faces the controller; the list's Uplink/Parent columns, "Connected To", `uplink_depth`, child nodes in the topology map | port 49 (LLDP to the aggregation switch) | **done, verified 2026-09-20.** A real switch reports `uplink` as the *name* of its management interface in `if_table`, not an object; the controller composes the uplink record (`uplink_source: lldp_uplink`, remote port, media, speed) from that plus `is_uplink` and LLDP. Sending an object had it ignored for a day. Also needs the management address in-band (§2c) and no LLDP on the OOB port | done, verified 2026-09-20 (the active bond slave; the node runs lldpd on it) |
 | `stp_version` (`rstp`/`stp`/`disabled`), `stp_priority` | STP | `show spanning-tree` (`protocol`, `bridge.priority`) | sent (`rstp`, `"32768"`); the controller keeps the settings on the config side (`switch.stp.*`, §3) and stores these as null | sent `disabled` unless the bridge is under mstpd, then its version and priority |
 | `system-stats` (`cpu`, `mem`, `uptime` as strings), `sys_stats.loadavg_*` | Memory Usage / System Statistics graphs in Insights | `show processes top once` (`timeInfo.loadAvg`) | done, verified in the UI 2026-09-20 | done |
@@ -85,7 +85,7 @@ under mstpd (`docs/drivers/proxmox.md` §4b). Both verified live on Network
 | `aggregated_by` | `show port-channel summary` | done (Po1-4 exist, no members) | done (the bond) |
 | `stp_pathcost` | `show spanning-tree` `cost` | done | the bridge port's cost (kernel or mstpd) |
 | `mac_table_count`, `link_down_count`, `stp_state_change_count`, `sfp_rxfault`/`sfp_txfault`, `ifname` (vendor name), setting echoes (`stp_port_mode`, `stp_edge_port`, `lldpmed_enabled`, `port_keepalive_enabled`, `isolation`, `egress_rate_limit_kbps_enabled`, `port_security_*`, `locating`) | what a real switch's port entry carries | `Port.Health`, `Port.MACs`, config state | done 2026-09-20; stored by the controller | done (carrier changes, FDB count, config echoes) |
-| `anomalies` (bitmask), `satisfaction` (0-100), `satisfaction_reason` | per-port Anomaly / Experience columns | derived in `internal/device` (`portAnomalies`) from `Port.Health` + counters. Bit values as the Network 10.6 UI uses them: 1/2 optic rx/tx outside its alarm thresholds (`show interfaces transceiver dom thresholds`); 4 errdisable `xcvr-*`; 8 STP guard inconsistency (`show spanning-tree` `inconsistentFeatures`); 16/32 STP changes since last inform ≥3 / ≥1 (`show spanning-tree topology status detail`); 64 link changes ≥2 since last inform (`linkStatusChanges`) or errdisable `link-flap`; 512 errdisable loop-protect; 1024 uplink below its top speed; 2048 errdisable bpduguard; 4096 errors, FEC uncorrected codewords or PCS errored blocks grew, or PCS high-BER (`show interfaces X phy detail`, text, every up port — copper included); 8192 drops grew; 32768 errdisable portsec. Satisfaction follows this controller's own switches (30 sampled 2026-09-19): 100, −10 reason 1 if the port ever dropped packets, −15 reason 2 if it ever counted errors; −10 for a slow uplink (our rule). Not derivable on EOS 4.26: 128 MCLAG, 256 PoE budget | done, verified live | done: link changes (64), errors (4096) and drops (8192) from the kernel counters; no optic, FEC or STP bits |
+| `anomalies` (bitmask), `satisfaction` (0-100), `satisfaction_reason` | per-port Anomaly / Experience columns | derived in [`internal/device`](../internal/device) (`portAnomalies`) from `Port.Health` + counters. Bit values as the Network 10.6 UI uses them: 1/2 optic rx/tx outside its alarm thresholds (`show interfaces transceiver dom thresholds`); 4 errdisable `xcvr-*`; 8 STP guard inconsistency (`show spanning-tree` `inconsistentFeatures`); 16/32 STP changes since last inform ≥3 / ≥1 (`show spanning-tree topology status detail`); 64 link changes ≥2 since last inform (`linkStatusChanges`) or errdisable `link-flap`; 512 errdisable loop-protect; 1024 uplink below its top speed; 2048 errdisable bpduguard; 4096 errors, FEC uncorrected codewords or PCS errored blocks grew, or PCS high-BER (`show interfaces X phy detail`, text, every up port — copper included); 8192 drops grew; 32768 errdisable portsec. Satisfaction follows this controller's own switches (30 sampled 2026-09-19): 100, −10 reason 1 if the port ever dropped packets, −15 reason 2 if it ever counted errors; −10 for a slow uplink (our rule). Not derivable on EOS 4.26: 128 MCLAG, 256 PoE budget | done, verified live | done: link changes (64), errors (4096) and drops (8192) from the kernel counters; no optic, FEC or STP bits |
 | `dot1x_mode`, `dot1x_status` | n/a | report `auto`/`disabled` | n/a |
 | `portconf_id`, `port_security_*`, `isolation` | echo from controller | merged from pushed config | merged from pushed config |
 | `mac_table` per port | `show mac address-table` | done | done (FDB per bridge port) |
@@ -103,7 +103,7 @@ by capture before implementing.
 | `switch.port.N.status=enabled/disabled` **obs** | admin state | `[no] shutdown` | done | done (`link_down` on the guest NIC), verified live |
 | `switch.port.N.name` **obs** | port name | `description` (controller default names `SFP28 N`/`QSFP28 N` and profile `Port N` → `no description`) | done, verified live | report only: names come from the guest (`VM-<id>`), UniFi renames are not written back |
 | `switch.port.N.ld_mode=disabled` **obs** (loop detection?) | | ignore for now | verify | ignore |
-| `switch.port.N.opmode=aggregate` + `switch.port.N.lag=<id>` **obs** | link aggregation | `channel-group <id> mode active` on every lane; the Port-Channel carries the VLAN config | **done, verified live** (ports 2+3) | bond to/from 802.3ad through the Proxmox API on the node's physical ports, **untested live** (`docs/drivers/proxmox.md` §3b) |
+| `switch.port.N.opmode=aggregate` + `switch.port.N.lag=<id>` **obs** | link aggregation | `channel-group <id> mode active` on every lane; the Port-Channel carries the VLAN config | **done, verified live** (ports 2+3) | bond to/from 802.3ad through the Proxmox API on the node's physical ports, **untested live** ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §3b) |
 | `switch.port.N.opmode=mirror` + `switch.port.N.mirror_port=<src>` **obs** | port mirroring (N is the destination) | `monitor session <N> source Ethernet<src> both` / `destination Ethernet<N>` | **done, verified live** | n/a (not claimed) |
 | `switch.vlan.<slot>.port.N.mode=untagged\|tagged\|exclude` **obs** (slot → `switch.vlan.<slot>.id`; no lines = "Allow All": every VLAN tagged, VLAN 1 untagged) | per-port VLAN membership | trunk + `switchport trunk native vlan` + `switchport trunk allowed vlan <list>\|all`; "Block All" (native only) = access port | **done, verified live** (port 2: native 1, tagged 2+10 → `allowed vlan 1-2,10`) | done (`tag`/`trunks` on the guest NIC), verified live |
 | `switch.vlan.N.id/mode/status` **obs** | site VLAN list | `vlan <ids>` created before ports reference them; extra VLANs on the switch are left alone | **done, verified live** (69, 4000 created) | checked against `bridge-vids` when the bridge limits them; a VLAN-aware bridge carries all |
@@ -119,7 +119,7 @@ by capture before implementing.
 | `switch.port.N.dot1x.*`, `switch.dot1x.*` **verify** | 802.1X | out of scope unless asked | n/a | n/a |
 | `switch.port.N.poe.*` | PoE | n/a | n/a | n/a |
 | `switch.vlan.<slot>.igmp_*` **obs** | IGMP snooping per VLAN | `[no] ip igmp snooping vlan N` (`-control-igmp`) | **done, verified live** | done, bridge-wide (`multicast_snooping`, `control.igmp`) |
-| `switch.dhcp_snoop.status` **obs** | DHCP snooping | `ip dhcp snooping` + `ip dhcp snooping vlan <all switch VLANs>` | done (apply written; capture of enabled state pending) | n/a |
+| `switch.dhcp_snoop.status` **obs** | DHCP snooping | `ip dhcp snooping` + `ip dhcp snooping vlan <all switch VLANs>` | apply written in the driver and the capability is claimed, but the loop still lists the key as unsupported and logs it, so the UI setting has no effect yet (`informloop` `unsupportedFeatures`); not verified live | n/a |
 
 | `ntpclient.N.server` **obs** | NTP | `[no] ntp server X` (`-control-ntp`) | **done, verified live** | done (a chrony sources file, `control.ntp`) |
 | `syslog.status/ip/port` **obs** | remote syslog | `[no] logging host X [port]` (`-control-syslog`) | done (no host set in UniFi yet) | logged and ignored |
@@ -149,34 +149,20 @@ source of the same per-port intent.
 | `cable-test` | TDR | EOS has no TDR on 7160 | n/a | n/a |
 | `clear-counters`? | reset stats | `clear counters` | verify | verify |
 
-## 4. Capture campaign (needed before the "verify" rows can be built)
+## 4. Capturing a new key
 
-**Finding (2026-09-19):** with `fw_caps=3` and no `switch_caps`, the port settings panel on
-Network 10.6.106 shows only name, state, port profile, native VLAN, tagged VLANs and link
-speed; the **Advanced → Manual** section is empty. Storm control, isolation, mirroring,
-aggregation, STP portfast, LLDP-MED, flow control, FEC are hidden until the device claims
-the matching capability bits. Next step before more captures: claim `switch_caps` /
-`fw_caps` bits the Arista can honour (unifi-emu's `capability_bits.json` names them) and
-watch which UI controls appear.
-
-Captured so far via the UI (Claude drove it, Clint logged in): port disable/enable, rename,
-custom tagged VLANs + native, fixed speed.
-
-Clint changes one thing at a time in the UniFi UI; the bridge records the `system_cfg` /
-`setstate` delta (every reply is in `inform-log/`, and `State.SystemCfg` keeps the last
-applied file). Port-level items on **port 2 only**.
-
-Port 2: rename; disable/enable; set a port profile with a native VLAN and tagged VLANs;
-set speed (10G fixed vs auto); toggle flow control; toggle port isolation; set STP
-portfast/edge; set storm control; set LLDP-MED; set link aggregation (with port 3 — ask
-first); mirror to port 3 (ask first); FEC if the UI exposes it for the model.
-
-Switch level: STP priority; STP version; jumbo frames; IGMP snooping; DHCP snooping;
-SNMP; syslog host; NTP; management VLAN; locate LED; reboot request (the bridge emulates it).
-No port power cycle: the controller offers it only for a PoE port powering a device.
-
-Each capture adds a fixture under `docs/fixtures/controller-10.6.106-*.txt` and turns a
-"verify" row into a mapping.
+Capabilities are claimed (`switch_caps`, `fw_caps`, `speed_caps` per driver),
+so the port settings drawer and the switch settings show every control the
+driver can honour. To turn a **verify** row into a mapping: change one
+thing at a time in the UniFi UI on the driver's test port, read the delta
+in the reply log (`inform-log/<name>/<mac>.ndjson`; `State.SystemCfg` keeps
+the last applied file), scrub it and add it under
+[`docs/fixtures/controller-10.6.106/`](fixtures/controller-10.6.106) as
+`system_cfg-<what>.txt`, then add the key to
+[`internal/unificfg`](../internal/unificfg) and its parser test, and the
+expected switch commands to the driver's replay test. No port power cycle
+can be captured here: the controller offers it only for a PoE port that is
+powering a device.
 
 ## 5. Model choice (the SFP28-vs-copper question)
 

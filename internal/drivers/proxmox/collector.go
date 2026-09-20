@@ -32,7 +32,7 @@ type Collector struct {
 
 	cycleDelay time.Duration
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
-	// (chassis ID = the derived device MAC, port ID = the NIC's port number,
+	// (chassis ID = the bridge's MAC, port ID = the NIC's port number,
 	// on the primary uplink NIC only). Default on; the driver writes
 	// /etc/lldpd.d/switch-to-unifi.conf and restarts lldpd when it differs.
 	ManageLLDP bool

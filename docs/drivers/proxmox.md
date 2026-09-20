@@ -1,12 +1,14 @@
 # Proxmox VE driver (`proxmox`)
 
 A Proxmox VE node's Linux bridge (`vmbr0`) presented to a UniFi Network
-controller as a USW Leaf (`UDC48X6`, 48 + 6 ports; the 32x100G `USWF07D`
-"ECS Core" was used first and works the same with `ports: "32"`). Guest NICs are the ports; the physical NICs the bridge uplinks
-through are the last two. Written and verified against **Proxmox VE 9.1.6**
-(Debian 13, kernel 6.17) on Clint's three-node cluster, 2026-09-19/20.
+controller as a USW Leaf (`UDC48X6`, 54 ports; `model: auto` picks it for
+the 54-port layout, and the 32x100G `USWF07D` "ECS Core" works the same
+with `ports: "32"`). Guest NICs are the ports, numbered from 1; the node's
+own physical NICs and bond members take the top ports, counting down from
+54. Written and verified against **Proxmox VE 9.1.6** (Debian 13, kernel
+6.17) on Clint's three-node cluster, 2026-09-19/20.
 Scrubbed captures of the collector's output are in
-`docs/fixtures/proxmox-9.1.6/`.
+[`docs/fixtures/proxmox-9.1.6/`](../fixtures/proxmox-9.1.6).
 
 ## 0. What is and is not the switch
 
@@ -16,19 +18,21 @@ the controller reads and configures: guest ports, their state and VLANs,
 the bridge's MAC table, IGMP snooping.
 
 The node's own networking underneath the bridge — its physical NICs, the
-bond that joins them, how it fails over, its address — is **not** the
-switch and is never configured by the bridge. It is reported the way a
-switch reports its uplink: as one link out. A bond is therefore one port
-whatever it is made of; an active-backup pair is not two ports with one
-"blocking", because from the virtual switch's side there is one path, and
-which physical NIC carries it is the node's business, not the controller's.
-The node's own address lives on the bridge, as a switch's management
-address lives behind its ports.
+bond that joins them, how it fails over, its address — is **reported but
+not managed**. Each NIC and each bond member is shown as one of the top
+ports with its own link, optic and LLDP neighbour, so the controller can
+see what the node is cabled to; an active-backup bond's standby member is
+shown link-up but blocking, and only an 802.3ad/balance bond is shown as a
+LAG (§1b). The active member is the uplink. The node's own address lives
+on the bridge, as a switch's management address lives behind its ports.
 
-This is why a UniFi-side change never touches `/etc/network/interfaces`,
-the bond, lldpd's package, or anything a node needs to stay in its cluster,
-and why "STP across both links" is not on the table: the failover that
-matters happens in the bond (100 ms), below the switch we present.
+A UniFi-side change never touches `/etc/network/interfaces`, the bond's
+membership, lldpd's package, or anything a node needs to stay in its
+cluster. The one exception is deliberate and guarded: a UniFi link
+aggregation over a bond's members converts the bond's mode through
+Proxmox's own API (§3b, modelled but not verified live). Failover stays the
+bond's business (100 ms), below the switch we present, and the driver
+never runs spanning tree across the two links for it.
 
 ## 1. What the switch looks like
 
@@ -101,7 +105,7 @@ contain one).
 
 ## 2. What is read (every inform, one SSH exec)
 
-`internal/drivers/proxmox/collect.sh` runs on the node and prints tagged
+[`internal/drivers/proxmox/collect.sh`](../../internal/drivers/proxmox/collect.sh) runs on the node and prints tagged
 sections; nothing on the node is installed for the read side. Per section:
 
 | Section | Command | Feeds |
@@ -207,9 +211,11 @@ design), syslog is logged (journald has no remote target), reboot is never
 real (`Rebooter` is not implemented: the controller's Restart is emulated
 whatever `control.reboot` says), SSH keys are not installed.
 
-Capabilities claimed (`switch_caps`): IGMP snooping only, so the UI hides
-storm control, FEC, LAG, mirroring, STP options and isolation for these
-switches; speed pickers offer the one speed each port has.
+Capabilities claimed (`switch_caps`): IGMP snooping and link aggregation
+(one aggregate session, for §3b), plus STP, BPDU guard and port cost only
+on a node whose bridge runs under mstpd (§4b). The UI therefore hides storm
+control, FEC, mirroring and isolation for these switches, and STP options
+unless mstpd is present; speed pickers offer the one speed each port has.
 
 ## 4. Topology: lldpd on the node, configured by the driver
 
@@ -224,7 +230,7 @@ to opt out):
   otherwise pick some other NIC's MAC, such as an unused onboard port's);
 - announce only on the bond's active slave: with both slaves of an
   active-backup bond announcing, the controller drew the nodes under the
-  backup link's switch (aggregation-secondary, 10G), not the one carrying
+  backup link's upstream switch (a 10G one), not the one carrying
   the traffic (seen 2026-09-20);
 - port ID = the NIC's port number on this switch (`"Port 54"`), the form the
   controller maps back to our port table.
@@ -320,6 +326,7 @@ switches:
     options:
       bridge: vmbr0             # default
       # ports: "54"             # default; the node's NICs take the top ports, guests the rest
+      # numbering: node         # per-node guest ports instead of cluster-wide; untested live
       # manage_lldpd: "false"   # leave lldpd alone
       # ssh_key: /etc/switch-to-unifi/id_ed25519       # in a container
       # known_hosts: /etc/switch-to-unifi/known_hosts
@@ -328,7 +335,7 @@ switches:
       igmp: false
 ```
 
-In a container (`deploy/compose.yaml`), mount the private key and a
+In a container ([`deploy/compose.yaml`](../../deploy/compose.yaml)), mount the private key and a
 `known_hosts` holding each node's host key read-only and name them in
 `options`; the container has no home directory or agent, and the key must
 be readable by uid 65532. The driver keeps no file of its own: a guest's
@@ -350,9 +357,10 @@ the adopted key.
   Core (real hardware has an OOB port) and then rejects the record because
   the device claims no such port. The naming provisioner sends
   `oob_port_config: []` with its update, which the controller accepts.
-- The controller names a new `USWF07D` "ECS Core" (its own display name,
-  absent from the catalogue); `unifimodel.ControllerDisplayNames` lists
-  such names so the first provision can rename the device after the node.
+- The controller gives a new device its own display name for the model
+  ("USW Leaf" for `UDC48X6`, "ECS Core" for `USWF07D`), absent from the
+  catalogue; `unifimodel.ControllerDisplayNames` lists such names so the
+  first provision can rename the device after the node.
 - Ports with `sfp_found: false` (unassigned slots) draw as empty cages; a
   stopped guest's port draws as a cabled, down port.
 - **Names the driver gave count as defaults.** The provisioner renames a
