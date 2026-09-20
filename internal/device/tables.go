@@ -145,6 +145,11 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 			e[k] = v
 		}
 		e["ifname"] = pp.IfName
+		if p, ok := live[pp.PortIdx]; ok && p.IfName != "" {
+			// The vendor interface name, which is also what the switch puts in
+			// its LLDP port ID; a parent's LLDP view of us names this port.
+			e["ifname"] = p.IfName
+		}
 		e["port_idx"] = pp.PortIdx
 		e["media"] = pp.Media
 		if p, ok := live[pp.PortIdx]; ok {
@@ -579,9 +584,13 @@ func lldpTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]
 		if p.Neighbor == nil {
 			continue
 		}
+		name := ifname[p.Index]
+		if p.IfName != "" {
+			name = p.IfName
+		}
 		e := map[string]any{
 			"local_port_idx":  p.Index,
-			"local_port_name": ifname[p.Index],
+			"local_port_name": name,
 			"chassis_id":      p.Neighbor.ChassisID,
 			"port_id":         p.Neighbor.PortID,
 			"is_wired":        true,
