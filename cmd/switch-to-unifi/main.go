@@ -143,6 +143,7 @@ type options struct {
 	controlPorts                               string
 	controlIGMP, controlNTP, controlSyslog     bool
 	controlReboot, controlSSH, controlSNMP     bool
+	allowInitialChanges, noSeed                bool
 	unifiURL, unifiSite, unifiKey              string
 	provision                                  bool
 	collectOnce                                bool
@@ -167,6 +168,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			driverOptions: sw.Options,
 			controlPorts:  sw.Control.Ports, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP,
+			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
 		}
@@ -357,6 +359,7 @@ func runOne(ctx context.Context, o options) error {
 		return false
 	}
 	var provisionNames func(snap *switchmodel.Snapshot)
+	var seedPorts func(snap *switchmodel.Snapshot)
 	if o.provision && o.unifiURL != "" {
 		key := o.unifiKey
 		if key == "" {
@@ -380,6 +383,23 @@ func runOne(ctx context.Context, o options) error {
 			if snap != nil {
 				provisionNames(snap)
 			}
+			if !o.noSeed && o.controlPorts != "" {
+				// On adoption the controller knows nothing about the ports;
+				// write the switch's own state so its first push matches.
+				seedPorts = func(snap *switchmodel.Snapshot) {
+					sctx, scancel := context.WithTimeout(ctx, 30*time.Second)
+					n, notes, err := api.SeedPortConfig(sctx, macStr, snap)
+					scancel()
+					for _, note := range notes {
+						log.Printf("seed port config: %s", note)
+					}
+					if err != nil {
+						log.Printf("seed port config: %v", err)
+					} else if n > 0 {
+						log.Printf("seed port config: %d ports written to the controller from the switch's own state", n)
+					}
+				}
+			}
 		}
 	}
 
@@ -398,6 +418,9 @@ func runOne(ctx context.Context, o options) error {
 		OnConnected: func(snap *switchmodel.Snapshot) {
 			if provisionNames != nil && snap != nil {
 				provisionNames(snap)
+			}
+			if seedPorts != nil && snap != nil {
+				seedPorts(snap)
 			}
 		},
 	}
@@ -421,6 +444,7 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.ControlReboot = o.controlReboot
 		loopCfg.ControlSSHKeys = o.controlSSH
 		loopCfg.ControlSNMP = o.controlSNMP
+		loopCfg.AllowInitialChanges = o.allowInitialChanges
 		loopCfg.JumboAlwaysOn = true // every driver so far: EOS 7160 forwards jumbo at L2 unconditionally
 		loopCfg.DefaultPortNames = defaults
 		if allow == nil {

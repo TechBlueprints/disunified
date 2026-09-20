@@ -245,6 +245,9 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 	}
 	// Disable port 1 (VM 100 on this node) and put it on native 10 + tagged 20,30.
 	d := switchmodel.PortDesired{Index: 1, Enabled: false, VLANSet: true, NativeVLAN: 10, TaggedVLANs: []int{20, 30, 10}}
+	if plan := c.PlanPorts(append(desired, d)); len(plan) != 1 || plan[0] != 1 || len(r.Commands) != 0 {
+		t.Errorf("plan = %v (commands %v)", plan, r.Commands)
+	}
 	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{d})
 	if err != nil || n != 1 || len(r.Commands) != 1 {
 		t.Fatalf("apply: n=%d err=%v cmds=%v", n, err, r.Commands)

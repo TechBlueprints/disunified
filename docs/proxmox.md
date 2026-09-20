@@ -102,11 +102,22 @@ mtu, rate…) is preserved. Writes are diffs against the config as last read;
 a guest on another node is left to that node's bridge. Port cycle =
 `link_down=1`, 3 s, restore.
 
-**Before turning `control.ports` on for a guest that already has a tag**
-(here VM 119's `tag=8`/`tag=9`), set that port's native VLAN in UniFi
-first: the controller's default port profile is "All", and the reconcile
-would strip the tag. `control.ports` accepts a list, so start with the
-ports you have aligned.
+**Adoption seeds the controller from the switch.** A freshly adopted
+device has no port config in the controller, so its first push says
+"every port at its defaults" — which, applied, would strip every guest's
+VLAN tag (it did, for 13 seconds, on 2026-09-20). Two guards, both on by
+default:
+
+- when the handshake completes the bridge writes each configured port's
+  live state into the controller as its port override (native VLAN,
+  tagged set, disabled), through the REST API (`api_url`), so the first
+  push already matches; ports on VLANs the site does not have are logged
+  and left at the default (`control.no_seed: true` to skip);
+- the first push after adoption is **held** while it would change any
+  port (the driver plans the diff without writing; the device keeps
+  reporting the old cfgversion and the controller keeps re-sending) until
+  a push changes nothing or the operator has set the ports;
+  `control.allow_initial_changes: true` overrides.
 
 Switch-wide: IGMP snooping (`control.igmp`) toggles the bridge's
 `multicast_snooping` (bridge-wide: on when UniFi enables it on VLAN 1, else

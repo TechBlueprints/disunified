@@ -426,3 +426,12 @@ type Capabilities struct {
 type Capable interface {
 	Capabilities() Capabilities
 }
+
+// Planner is an optional Controller capability: PlanPorts reports which
+// ports ApplyPorts would change for desired, without writing anything. The
+// loop uses it to hold a freshly adopted device's first push when it would
+// alter ports — the controller's default config for a new device is "every
+// port at its defaults", which would strip whatever the switch had.
+type Planner interface {
+	PlanPorts(desired []PortDesired) (changed []int)
+}

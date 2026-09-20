@@ -90,6 +90,7 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 var (
 	_ switchmodel.Switch           = (*Collector)(nil)
 	_ switchmodel.Controller       = (*Collector)(nil)
+	_ switchmodel.Planner          = (*Collector)(nil)
 	_ switchmodel.SwitchController = (*Collector)(nil)
 	_ switchmodel.VLANController   = (*Collector)(nil)
 	_ switchmodel.PortCycler       = (*Collector)(nil)
