@@ -385,3 +385,34 @@ func TestVLANDeviceOnTheUplink(t *testing.T) {
 		t.Errorf("uplinks = %+v", ups)
 	}
 }
+
+func TestNodeNumberingKeepsOnlyLocalGuests(t *testing.T) {
+	c, _ := newTestCollector(t, "collect-node2.txt")
+	c.NodeNumbering = true
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assigned, local int
+	for _, p := range snap.Ports[:48] {
+		if p.IfName == "" {
+			continue
+		}
+		assigned++
+		if len(p.Interfaces) > 0 || !p.Up {
+			local++
+		}
+	}
+	if assigned == 0 || assigned >= 24 {
+		t.Errorf("node numbering assigned %d guest ports; want only this node's (fewer than the cluster's 24)", assigned)
+	}
+	for _, p := range snap.Ports[:48] {
+		if p.IfName == "vm119-net0" {
+			t.Errorf("a guest on another node got a port under node numbering: %+v", p)
+		}
+	}
+	// VM 100 (on this node) keeps port 1 either way.
+	if snap.Ports[0].IfName != "vm100-net0" {
+		t.Errorf("port 1 = %+v", snap.Ports[0])
+	}
+}
