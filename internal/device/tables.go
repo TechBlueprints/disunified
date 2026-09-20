@@ -595,6 +595,13 @@ func lldpTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]
 			"port_id":         p.Neighbor.PortID,
 			"is_wired":        true,
 		}
+		// UniFi devices advertise zero-based interface names ("twenty5GigE41"
+		// is port 42; "one00GigE48" is port 49). The controller maps the
+		// SFP28 form for its own switches; report the 1-based "Port N" form
+		// it always understands, so a neighbour on a QSFP28 port resolves.
+		if n := remotePortIndex(p.Neighbor.PortID); n > 0 && strings.HasSuffix(strings.ToLower(p.Neighbor.PortID), "gige"+strconv.Itoa(n-1)) {
+			e["port_id"] = "Port " + strconv.Itoa(n)
+		}
 		if p.Neighbor.ManagementIP != "" {
 			e["mgmt_ips"] = []string{p.Neighbor.ManagementIP} // as UniFi switches report their neighbours
 		}
