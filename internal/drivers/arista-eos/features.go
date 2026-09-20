@@ -309,18 +309,12 @@ func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired
 			cmds = append(cmds, "no ip igmp snooping vlan "+strconv.Itoa(id))
 		}
 	}
-	if d.DHCPSnooping != nil && *d.DHCPSnooping != snap.System.DHCPSnooping {
-		if *d.DHCPSnooping {
-			// Global enable plus every VLAN the switch has; EOS enforces
-			// snooping only on listed VLANs.
-			cmds = append(cmds, "ip dhcp snooping")
-			if len(snap.VLANs) > 0 {
-				cmds = append(cmds, "ip dhcp snooping vlan "+formatVLANList(snap.VLANs))
-			}
-		} else {
-			cmds = append(cmds, "no ip dhcp snooping")
-		}
-	}
+	// d.DHCPSnooping is deliberately ignored: UniFi's rogue DHCP server
+	// detection cannot be honoured on EOS 4.26 (Option-82 insertion only,
+	// no trusted-port model: `ip dhcp snooping trust` is invalid), so
+	// `ip dhcp snooping` would sit "not operational" and block nothing
+	// (verified live 2026-09-20). The capability is not claimed and the
+	// loop logs the key as unsupported if a controller pushes it anyway.
 	if d.SNMPSet {
 		// UniFi manages one read-only community; other communities on the
 		// switch are left alone, the previously managed one is replaced.
@@ -369,9 +363,6 @@ func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired
 		}
 		for k, v := range d.IGMPSnooping {
 			updated.System.IGMPSnooping[k] = v
-		}
-		if d.DHCPSnooping != nil {
-			updated.System.DHCPSnooping = *d.DHCPSnooping
 		}
 		if d.SNMPSet {
 			c.managedSNMP = d.SNMPCommunity
