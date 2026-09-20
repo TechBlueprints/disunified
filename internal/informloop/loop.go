@@ -94,6 +94,9 @@ type Config struct {
 	// SwitchHost is the address the bridge reaches the switch at, for the
 	// out-of-band management warning ("" = unknown).
 	SwitchHost string
+	// GatewayIP is the controller/gateway address; the switch's ARP entry
+	// for it is reported as gateway_mac ("" = skip).
+	GatewayIP string
 
 	// OnSystemCfg runs with every system_cfg the controller pushes (and the
 	// last applied one at startup): the SSH gateway takes its credentials
@@ -677,6 +680,9 @@ func (l *Loop) collect(ctx context.Context) {
 	if l.collectFailures > 0 {
 		l.cfg.Logger.Printf("[%s] collect from switch recovered after %d failures", l.desc.MAC, l.collectFailures)
 		l.collectFailures = 0
+	}
+	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
+		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
 	}
 	l.session.SetSnapshot(snap)
 	l.warnOOB(snap)

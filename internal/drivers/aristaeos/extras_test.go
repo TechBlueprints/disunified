@@ -105,4 +105,13 @@ func TestSecondWaveData(t *testing.T) {
 	if oob := snap.System.OOBInterfaces; len(oob) != 1 || oob[0].Name != "Management1" || !oob[0].Up || oob[0].IP == "" {
 		t.Errorf("oob interfaces = %+v (fixture: Management1 up with an address)", oob)
 	}
+	if a := snap.System.Addresses; len(a) == 0 || a[0].Iface != "Management1" || a[0].PrefixLen != 16 {
+		t.Errorf("addresses = %+v", a)
+	}
+	if len(snap.System.ARP) != 4 || snap.System.ARP["192.0.2.1"] != "02:00:00:00:00:01" {
+		t.Errorf("arp = %v", snap.System.ARP)
+	}
+	if colonMAC("0200.0000.003c") != "02:00:00:00:00:3c" {
+		t.Errorf("colonMAC")
+	}
 }

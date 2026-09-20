@@ -221,6 +221,17 @@ func (s *Session) buildPayload(now time.Time) []byte {
 					STPChanges: p.Health.STPChanges, FECUncorrected: p.Health.FECUncorrected, PCSErrBlocks: p.Health.PCSErrBlocks}
 			}
 		}
+		// Reachability, as UniFi switches report it: where the controller can
+		// connect back to the device, its netmask and its gateway's MAC. The
+		// controller uses these to place the device in a network.
+		m["connect_request_ip"] = s.desc.IP
+		m["connect_request_port"] = "22"
+		if nm := netmaskFor(s.snap, s.desc.IP); nm != "" {
+			m["netmask"] = nm
+		}
+		if s.snap != nil && s.snap.System.GatewayMAC != "" {
+			m["gateway_mac"] = s.snap.System.GatewayMAC
+		}
 		m["ethernet_table"] = ethernetTable(s.desc, s.snap)
 		if s.snap != nil && s.snap.System.MgmtMAC != "" && s.snap.System.MgmtMAC != s.desc.MAC {
 			m["service_mac"] = s.snap.System.MgmtMAC

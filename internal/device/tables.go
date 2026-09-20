@@ -394,7 +394,7 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 			// port_idx; the controller drops an uplink whose name it does not know.
 			_ = ifname
 			u := map[string]any{
-				"name": "eth0", "port_idx": up, "mac": desc.MAC, "ip": desc.IP,
+				"name": "eth0", "port_idx": up, "mac": desc.MAC, "ip": desc.IP, "netmask": netmaskFor(snap, desc.IP),
 				"type": "wire", "up": p.Up, "speed": p.SpeedMbps, "max_speed": p.SpeedMbps,
 				"full_duplex": p.FullDuplex, "media": mediaLabel(desc, up),
 				"rx_bytes": p.Counters.RxBytes, "tx_bytes": p.Counters.TxBytes,
@@ -412,7 +412,7 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 			// if_table: the management interface as UniFi switches report it,
 			// carrying the uplink port's link state and counters.
 			m["if_table"] = []map[string]any{{
-				"name": "eth0", "mac": desc.MAC, "ip": desc.IP, "num_port": len(desc.Ports),
+				"name": "eth0", "mac": desc.MAC, "ip": desc.IP, "netmask": netmaskFor(snap, desc.IP), "num_port": len(desc.Ports),
 				"up": p.Up, "speed": p.SpeedMbps, "full_duplex": p.FullDuplex,
 				"rx_bytes": p.Counters.RxBytes, "tx_bytes": p.Counters.TxBytes,
 				"rx_packets": p.Counters.RxPackets, "tx_packets": p.Counters.TxPackets,
@@ -489,6 +489,21 @@ func isCopper(m switchmodel.Media) bool {
 		return true
 	}
 	return false
+}
+
+// netmaskFor returns the dotted netmask of the switch address ip, from the
+// snapshot's own interface addresses; "" if unknown.
+func netmaskFor(snap *switchmodel.Snapshot, ip string) string {
+	if snap == nil {
+		return ""
+	}
+	for _, a := range snap.System.Addresses {
+		if a.IP == ip && a.PrefixLen > 0 && a.PrefixLen <= 32 {
+			m := net.CIDRMask(a.PrefixLen, 32)
+			return net.IP(m).String()
+		}
+	}
+	return ""
 }
 
 // ethernetTable lists the device's own interfaces as UniFi switches do:
