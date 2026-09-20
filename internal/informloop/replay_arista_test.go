@@ -65,6 +65,11 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			10: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
 			11: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
 			// 12: set-locate, 13: unset-locate
+			// 14-15: Global Switch Settings -> Rogue DHCP Server Detection on, then off
+			// (site-wide; pushed only because the device claimed DHCP snooping at the
+			// time). EOS 4.26 cannot honour it, so neither push writes snooping.
+			14: {mustNot: []string{"ip dhcp snooping"}},
+			15: {mustNot: []string{"ip dhcp snooping"}},
 		},
 		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
 			var p map[string]any
@@ -94,6 +99,10 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			case 13:
 				if locating(sess) {
 					t.Errorf("unset-locate must turn locating off")
+				}
+			case 14:
+				if !strings.Contains(logText, "UNSUPPORTED by this switch: DHCP snooping") {
+					t.Errorf("reply %d: enabling rogue DHCP detection must be logged as unsupported", i)
 				}
 			}
 			if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logText, `UNHANDLED cmd "build-ssh-session"`) {

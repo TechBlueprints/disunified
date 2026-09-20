@@ -171,6 +171,17 @@ The firmware string the controller sees must be `v<numeric>` — `4.26.14M` → 
 - No LED control, so locate only reports `locating`.
 - No per-port L2 MTU (`l2 mtu` unsupported): jumbo frames are always forwarded and UniFi's
   "jumbo off" is logged, not applied. No per-port LLDP-MED toggle on 4.26 either.
+- **No rogue-DHCP-server protection.** UniFi's "Rogue DHCP Server Detection" (Global Switch
+  Settings, site-wide; `switch.dhcp_snoop.status`) drops DHCP server packets on non-uplink
+  ports. EOS 4.26's `ip dhcp snooping` is a different feature: it intercepts DHCP on the listed
+  VLANs to insert Option 82 (`ip dhcp snooping information option`) or to bridge them
+  (`ip dhcp snooping bridging`); there is no trusted-port model (`ip dhcp snooping trust` is
+  `invalid command`, probed 2026-09-20 in an aborted config session). Enabled without the
+  information option it reports "not operational" on every VLAN and does nothing. The driver
+  therefore does not claim the capability, and the controller then never sends the key
+  (verified 2026-09-20: it sent `enabled`/`disabled` only while the claim was in place). The
+  controller also sends one site-wide flag with no per-VLAN keys, so an all-VLAN application
+  would have reached the L2-only DMZ VLANs too.
 
 ## 7. In-band management (2026-09-20)
 

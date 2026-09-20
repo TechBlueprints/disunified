@@ -162,3 +162,16 @@ func TestLAGMembershipFromSummary(t *testing.T) {
 		t.Errorf("port 4 lag = %d", p.LAGID)
 	}
 }
+
+func TestApplyDHCPSnoopingIsIgnored(t *testing.T) {
+	// EOS 4.26 cannot block rogue DHCP servers (no trusted-port snooping),
+	// so the controller's key must write nothing, in either direction.
+	c, ft := startedCollector(t)
+	off, on := false, true
+	for _, v := range []*bool{&on, &off, &on} {
+		n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{DHCPSnooping: v})
+		if err != nil || n != 0 || len(ft.configured) != 0 {
+			t.Fatalf("dhcp snooping %v: n=%d err=%v cmds=%v", *v, n, err, ft.configured)
+		}
+	}
+}

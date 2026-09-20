@@ -13,3 +13,7 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
+- No rogue-DHCP protection on EOS 4.26: `ip dhcp snooping` is Option-82
+  insertion only (no `trust`), so `DHCPSnooping` is not claimed and the
+  controller's `switch.dhcp_snoop` key is never pushed (verified
+  2026-09-20; see `docs/drivers/arista-eos.md` §6).

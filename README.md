@@ -20,7 +20,9 @@ STP mode/priority, IGMP snooping, and QSFP breakout split/join — all
 end-to-end from the UniFi UI.
 
 Also verified on the same controller: each node of a three-node **Proxmox
-VE 9.1** cluster as a 54-port USW Leaf (`UDC48X6`). The switch is the
+VE 9.1** cluster as a 54-port USW Leaf (`UDC48X6`; the 32-port ECS Core
+profile, `USWF07D`, was verified first and still works with `ports: "32"`).
+The switch is the
 node's virtual switch, `vmbr0`: one port per guest NIC, numbered from 1
 and the same on every node (the number lives in the guest's own Proxmox
 tags, `unifi.p25.c`), free slots drawn as empty, disabled cages, and the

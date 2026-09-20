@@ -35,7 +35,12 @@ func (Driver) Name() string { return "arista-eos" }
 func (c *Collector) Capabilities() switchmodel.Capabilities {
 	return switchmodel.Capabilities{
 		STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
-		StormControl: true, IGMPSnooping: true, LLDPMED: true, DHCPSnooping: true, SNMP: true,
+		StormControl: true, IGMPSnooping: true, LLDPMED: true, SNMP: true,
+		// Not DHCPSnooping: UniFi's "Rogue DHCP Server Detection" blocks DHCP
+		// servers on non-uplink ports, and EOS 4.26 has no trusted-port model
+		// (`ip dhcp snooping trust` is invalid); its snooping is Option-82
+		// insertion only. Unclaimed, the controller never pushes the key
+		// (verified 2026-09-20); if it does, ApplySwitch logs and ignores it.
 		MirrorSessions: 1, AggregateSessions: 8,
 	}
 }

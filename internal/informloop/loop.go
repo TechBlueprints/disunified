@@ -534,7 +534,7 @@ var unsupportedFeatures = map[string]string{
 	".voice_vlan":       "voice VLAN",
 	".lldpmed.opmode=":  "", // handled below (informational)
 	"switch.dot1x":      "802.1X",
-	"switch.dhcp_snoop": "DHCP snooping",
+	"switch.dhcp_snoop": "DHCP snooping (rogue DHCP server detection)",
 }
 
 func (l *Loop) warnUnsupported(ver, text string) {
@@ -623,7 +623,7 @@ func (l *Loop) applySwitchSettings(ctx context.Context, text string) {
 		return
 	}
 	if n > 0 {
-		l.cfg.Logger.Printf("[%s] applied %d switch-level settings (STP/IGMP)", l.desc.MAC, n)
+		l.cfg.Logger.Printf("[%s] applied %d switch-level settings (STP/IGMP/NTP/syslog/SNMP)", l.desc.MAC, n)
 	}
 }
 
