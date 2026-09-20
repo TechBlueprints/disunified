@@ -84,7 +84,7 @@ func portAnomalies(p switchmodel.Port, isUplink bool, prev *portHistory) (bits i
 		}
 	}
 	if !p.Up {
-		return bits, -1, 0
+		return bits, 100, 0 // real switches report a down port as fully satisfied
 	}
 	satisfaction = 100
 	if isUplink && len(p.SpeedCaps) > 0 && p.SpeedMbps > 0 && p.SpeedMbps < p.SpeedCaps[len(p.SpeedCaps)-1] {
@@ -243,9 +243,7 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		e["flowctrl_rx"] = p.FlowCtrlRx
 		e["flowctrl_tx"] = p.FlowCtrlTx
 		e["jumbo"] = p.MTU > 1518
-		if p.STPPathCost > 0 {
-			e["stp_pathcost"] = p.STPPathCost
-		}
+		e["stp_pathcost"] = p.STPPathCost // 0 on a down port, as real switches send
 		if p.LAG != "" {
 			e["op_mode"] = "aggregate"
 			e["aggregated_by"] = true
@@ -286,9 +284,7 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 				}
 			}
 		}
-		if len(p.MACs) > 0 {
-			e["mac_table"] = macEntries(p.MACs, false, snap.TakenAt)
-		}
+		e["mac_table"] = macEntries(p.MACs, false, snap.TakenAt) // [] when empty, as real switches send
 		// Counters and flags UniFi switches report per port.
 		e["mac_table_count"] = len(p.MACs)
 		e["link_down_count"] = p.Health.LinkChanges / 2 // EOS counts transitions; UniFi counts drops
@@ -300,8 +296,8 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		}
 		e["dot1x_mode"] = "unknown" // no 802.1X: what a real switch reports with it off
 		e["dot1x_status"] = "disabled"
-		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) {
-			e["sfp_rxfault"] = p.Health.OpticRxAlarm
+		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) && p.Present {
+			e["sfp_rxfault"] = p.Health.OpticRxAlarm // real switches send the fault bits only with an optic seated
 			e["sfp_txfault"] = p.Health.OpticTxAlarm
 		}
 		// Per-port settings a UniFi switch echoes from its own config; the

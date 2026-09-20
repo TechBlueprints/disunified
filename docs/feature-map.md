@@ -17,7 +17,7 @@ Two channels exist:
   UI *shows*.
 - **Controller → device**: `setparam.system_cfg` (the UniFi device config file, observed) and
   `setstate` (`port_overrides`/`port_table`, per prior art, **not yet observed** on 10.6.106),
-  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `locate`, `set-adopt`…). What the UI
+  plus `cmd` (`reboot`, `upgrade`, `setdefault`, `set-locate`, `port-cycle`, `set-adopt`…). What the UI
   *controls*.
 
 The controller only sends a `system_cfg` key when the feature is non-default in the site,
@@ -132,7 +132,7 @@ source of the same per-port intent.
 | `set-adopt`, `setdefault` | adoption lifecycle | session | done |
 | `reboot` | reboot the device | emulated by default; `-control-reboot` → `write memory` + `reload now` | done |
 | `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`); `firmware:` in config overrides the default | done |
-| `locate` / `unlocate` | blink LEDs | reports `locating`; no LED control on the 7160 | done |
+| `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) |
 | `port-cycle` (`port_idx`) | bounce a port | `shutdown`, 3 s, `no shutdown` on every lane | done (not yet exercised from the UI) |
 | `cable-test` | TDR | EOS has no TDR on 7160 | n/a |

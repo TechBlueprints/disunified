@@ -157,12 +157,14 @@ func TestReplayControllerReplies(t *testing.T) {
 	// itself the assertion for the "back to normal" pushes).
 	type expect struct{ must, mustNot []string }
 	expectations := map[int]expect{
-		// 0: 404 (pending), 1: adopt via mgmt_cfg, 2: first system_cfg after adoption
-		3: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push of the day: port 2 disabled
-		6: {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
-		7: {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
-		8: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
-		9: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
+		// 0-1: HTTP 400 (the controller's cooldown after a forget), 2: 404 pending,
+		// 3: adopt via mgmt_cfg, 4: first system_cfg after adoption
+		5:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push of the day: port 2 disabled
+		8:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
+		9:  {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
+		10: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
+		11: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
+		// 12: set-locate, 13: unset-locate
 	}
 	var connected int
 	l.cfg.OnConnected = func(*switchmodel.Snapshot) { connected++ }
@@ -187,18 +189,32 @@ func TestReplayControllerReplies(t *testing.T) {
 				t.Errorf("reply %d: system_cfg %s produced no switch configuration", i, ver)
 			}
 		}
+		locating := func() bool {
+			var m map[string]any
+			_ = json.Unmarshal(sess.BuildPayload(time.Now()), &m)
+			v, _ := m["locating"].(bool)
+			return v
+		}
 		switch i {
-		case 0:
+		case 0, 1, 2:
 			if sess.Adopted() || l.state != StatePending {
-				t.Errorf("after the 404 the device must still be pending (adopted=%v state=%v)", sess.Adopted(), l.state)
+				t.Errorf("reply %d: the device must still be pending (adopted=%v state=%v)", i, sess.Adopted(), l.state)
 			}
-		case 1:
+		case 3:
 			if !sess.Adopted() || sess.AuthKey() != key || l.state != StateAdopting {
 				t.Errorf("after the adopt reply: adopted=%v key=%s state=%v", sess.Adopted(), sess.AuthKey(), l.state)
 			}
-		case 2:
+		case 4:
 			if l.state != StateConnected || connected != 1 {
 				t.Errorf("after the first system_cfg: state=%v, OnConnected calls=%d", l.state, connected)
+			}
+		case 12:
+			if !locating() {
+				t.Errorf("set-locate must turn locating on in the next inform")
+			}
+		case 13:
+			if locating() {
+				t.Errorf("unset-locate must turn locating off")
 			}
 		}
 		if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logBuf.String(), `UNHANDLED cmd "build-ssh-session"`) {

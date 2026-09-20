@@ -402,10 +402,10 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 	case "reboot":
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectRebooted}}
-	case "locate":
+	case "locate", "set-locate": // "set-locate" is what Network 10.6 sends (captured 2026-09-20)
 		s.locating = true
 		return []inform.Effect{{Kind: EffectLocate, Text: "on"}}
-	case "unlocate":
+	case "unlocate", "unset-locate":
 		s.locating = false
 		return []inform.Effect{{Kind: EffectLocate, Text: "off"}}
 	case "port-cycle", "port_cycle":

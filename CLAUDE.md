@@ -205,9 +205,13 @@ Re-adoption (2026-09-20): forget via `cmd/sitemgr delete-device`, clear
 controller answers HTTP 400 (empty body) for about a minute after a forget,
 then the normal 404, then the device is pending; `cmd/devmgr adopt` completes
 the handshake in ~25 s (mgmt_cfg with authkey → ADOPTING → first system_cfg →
-CONNECTED) and the uplink resolves on the first cycle. That handshake is now
-the head of `docs/fixtures/controller-10.6.106/replies.ndjson` and the
-replay test starts unadopted with the default key. Found and fixed: naming
+CONNECTED) and the uplink resolves on the first cycle. That handshake (the two
+400s included) is now the head of `docs/fixtures/controller-10.6.106/replies.ndjson`,
+`set-locate`/`unset-locate` its tail, and the replay test starts unadopted
+with the default key. The controller's command names are `set-locate`,
+`unset-locate` and `port-cycle` (`locate`/`power-cycle` are rejected with
+400 by `cmd/devmgr`); port-cycle answers `rc:ok` but never reached the
+device as a cmd reply in two tries, so it is not in the fixture. Found and fixed: naming
 only ran at startup, so a later adoption left "USW Leaf" — `OnConnected`
 now provisions names; the mgmt_cfg log line masks the authkey.
 
