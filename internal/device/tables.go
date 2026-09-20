@@ -403,14 +403,11 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 				"rx_dropped": p.Counters.RxDropped, "tx_dropped": p.Counters.TxDropped,
 				"num_port": len(desc.Ports),
 			}
-			if n := p.Neighbor; n != nil {
-				u["uplink_mac"] = n.ChassisID
-				u["uplink_device_name"] = n.SystemName
-				u["uplink_source"] = "lldp_uplink" // what UniFi switches report for an LLDP-chosen uplink
-				if rp := remotePortIndex(n.PortID); rp > 0 {
-					u["uplink_remote_port"] = rp
-				}
-			}
+			// The neighbour (uplink_mac, uplink_device_name, uplink_remote_port,
+			// uplink_source) is deliberately NOT reported: the controller
+			// derives it from lldp_table + where the device's IP lives, and an
+			// uplink object carrying those keys was stored with everything but
+			// its counters stripped (10.6.106, 2026-09-20).
 			m["uplink"] = u
 			// if_table: the management interface as UniFi switches report it,
 			// carrying the uplink port's link state and counters.
