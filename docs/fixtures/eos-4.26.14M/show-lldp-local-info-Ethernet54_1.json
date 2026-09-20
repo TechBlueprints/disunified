@@ -11,7 +11,7 @@
             "oidString": "",
             "interfaceNumType": "ifIndex",
             "interfaceNum": 999001,
-            "address": "192.0.2.3",
+            "address": "192.0.2.1",
             "addressType": "ipv4"
         }
     ],
