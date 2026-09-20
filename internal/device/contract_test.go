@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
+	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
 	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
 )
 
 // The wire contract: what we send must have the shape of what a real UniFi
 // switch sends. The references are real informs captured from this
 // controller (docs/fixtures/controller-10.6.106/inform-*.json, identifiers
-// and secrets replaced by scripts/sanitize-captures.py); our payload is
+// and secrets replaced by scripts/sanitize-controller.py); our payload is
 // built by the real driver from the real EOS captures. Every key a real
 // switch reports must be present with the same JSON type, at the device
 // level and on the uplink port entry, unless it is listed below with the
@@ -76,7 +76,7 @@ func jsonType(v any) string {
 
 func buildContractPayload(t *testing.T) map[string]any {
 	t.Helper()
-	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "eos-4.26.14M"))
+	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
 	c := aristaeos.NewCollector(ft)
 	snap, err := c.Start(context.Background())
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseCapturedSystemCfg(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106-system_cfg.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106/system_cfg.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestParseDefaults(t *testing.T) {
 }
 
 func TestParsePort2Capture(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106-system_cfg-port2-name-speed-vlans.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106/system_cfg-port2-name-speed-vlans.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestParsePort2Capture(t *testing.T) {
 }
 
 func TestParsePort54FeatureCapture(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106-system_cfg-port54-fec-storm-bpdu-caps.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106/system_cfg-port54-fec-storm-bpdu-caps.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}

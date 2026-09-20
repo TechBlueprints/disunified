@@ -6,7 +6,7 @@ locally administered range), IPv4 addresses (into 192.0.2.0/24), DMI and
 optic serial numbers, and VM/container names (name: <n> -> name: vm-<n>),
 keeping every other byte so parsers see real output.
 
-Usage: scripts/sanitize-text-fixture.py <in> <out>
+Usage: scripts/sanitize-proxmox.py <in> <out>
 """
 import re, sys, ipaddress
 

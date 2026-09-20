@@ -20,8 +20,8 @@ in the UniFi UI.
   access; for the Arista driver that is a `network-admin` user and eAPI
   enabled (`management api http-commands` → `no shutdown`); for the
   Proxmox driver, root SSH to each node with a key and `apt-get install
-  lldpd` on each node (the driver configures it); `docs/proxmox.md` §5.
-  Spanning tree on a node is optional (`mstpd`, `docs/proxmox.md` §4b);
+  lldpd` on each node (the driver configures it); `docs/drivers/proxmox.md` §5.
+  Spanning tree on a node is optional (`mstpd`, `docs/drivers/proxmox.md` §4b);
   without it the driver claims no STP and ignores the controller's STP
   settings for that node.
 - Optional, for naming the device and ports after the switch: a UniFi API

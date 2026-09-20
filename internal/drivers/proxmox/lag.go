@@ -20,7 +20,7 @@ import (
 // UNTESTED LIVE: Clint's switches have no spare LACP-capable ports (his
 // nodes bond to two different switches, which no LACP can span). The
 // commands are what Proxmox's API documents; the tests cover the plan.
-// PRs from a site that can exercise it are welcome (docs/proxmox.md §3b).
+// PRs from a site that can exercise it are welcome (docs/drivers/proxmox.md §3b).
 //
 // Guards, each refused with a log line and no write: members that are not
 // all slaves of one bond (or all plain NICs); a bond only partly covered;

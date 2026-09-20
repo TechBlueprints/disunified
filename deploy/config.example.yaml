@@ -35,7 +35,7 @@ switches:
 
 
   # A Proxmox VE node: its bridge is the switch, its guests are the ports
-  # (docs/proxmox.md). One entry per node; guests are numbered the same on
+  # (docs/drivers/proxmox.md). One entry per node; guests are numbered the same on
   # every node, so a migrated VM keeps its port number.
   - name: proxmox-1
     driver: proxmox
@@ -44,7 +44,7 @@ switches:
     model: UDC48X6                   # USW Leaf (48 guest ports + host + NICs); auto picks it too
     options:
       bridge: vmbr0                  # default
-      # ports: "54"                  # total ports; uplink_ports: "6" are the physical uplinks at the top
+      # ports: "54"                  # total ports; the node's NICs take the top ones, guests the rest
       # numbering: node              # per-node guest ports (48 per node) instead of cluster-wide (48 total); UNTESTED live, PRs welcome
       # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
       # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container

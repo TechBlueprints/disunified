@@ -17,7 +17,7 @@ import (
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
+	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
@@ -68,7 +68,7 @@ func TestReplayControllerReplies(t *testing.T) {
 		t.Fatalf("only %d replies in the fixture", len(replies))
 	}
 
-	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "eos-4.26.14M"))
+	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
 	coll := aristaeos.NewCollector(ft)
 	coll.Log = log.New(os.Stderr, "", 0)
 	snap, err := coll.Start(context.Background())

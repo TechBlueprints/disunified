@@ -36,7 +36,7 @@ import (
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	// Drivers register themselves; add a blank import per driver.
-	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/aristaeos"
+	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
 	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
 )
 
