@@ -402,9 +402,8 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 			if n := p.Neighbor; n != nil {
 				u["uplink_mac"] = n.ChassisID
 				u["uplink_device_name"] = n.SystemName
-				if rp, err := strconv.Atoi(strings.TrimLeft(n.PortID, "Port ")); err == nil {
-					u["uplink_remote_port"] = rp
-				} else if rp := trailingInt(n.PortID); rp > 0 {
+				u["uplink_source"] = "lldp_uplink" // what UniFi switches report for an LLDP-chosen uplink
+				if rp := remotePortIndex(n.PortID); rp > 0 {
 					u["uplink_remote_port"] = rp
 				}
 			}
@@ -424,6 +423,20 @@ func mediaLabel(desc inform.Descriptor, idx int) string {
 }
 
 // trailingInt returns the number at the end of s ("one00GigE48" -> 48), 0 if none.
+// remotePortIndex turns an LLDP port ID into the neighbour's 1-based port
+// index. UniFi devices advertise "Port N" (already 1-based) or an interface
+// name with a zero-based number ("twenty5GigE41" is port 42, "one00GigE48"
+// is port 49); anything else keeps its trailing number.
+func remotePortIndex(portID string) int {
+	if n, err := strconv.Atoi(strings.TrimPrefix(portID, "Port ")); err == nil {
+		return n
+	}
+	if strings.HasSuffix(strings.ToLower(portID), "gige"+strconv.Itoa(trailingInt(portID))) {
+		return trailingInt(portID) + 1
+	}
+	return trailingInt(portID)
+}
+
 func trailingInt(s string) int {
 	i := len(s)
 	for i > 0 && s[i-1] >= '0' && s[i-1] <= '9' {
@@ -488,13 +501,17 @@ func lldpTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]
 		if p.Neighbor == nil {
 			continue
 		}
-		table = append(table, map[string]any{
+		e := map[string]any{
 			"local_port_idx":  p.Index,
 			"local_port_name": ifname[p.Index],
 			"chassis_id":      p.Neighbor.ChassisID,
 			"port_id":         p.Neighbor.PortID,
 			"is_wired":        true,
-		})
+		}
+		if p.Neighbor.ManagementIP != "" {
+			e["mgmt_ips"] = []string{p.Neighbor.ManagementIP} // as UniFi switches report their neighbours
+		}
+		table = append(table, e)
 	}
 	sort.Slice(table, func(i, j int) bool { return table[i]["local_port_idx"].(int) < table[j]["local_port_idx"].(int) })
 	return table
