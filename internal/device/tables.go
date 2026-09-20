@@ -32,6 +32,7 @@ func macHeader(mac string) [6]byte {
 // portHistory is what the session remembers per port from the previous
 // inform, so growth-based anomaly bits mean "since the last report".
 type portHistory struct {
+	At             time.Time
 	Counters       switchmodel.Counters
 	LinkChanges    uint64
 	STPChanges     int
@@ -167,10 +168,23 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 			}
 			bits, sat, reason := portAnomalies(p, pp.IsUplink, ph)
 			e["anomalies"] = bits
+			e["custom_anomalies"] = 0
 			if sat >= 0 {
 				e["satisfaction"] = sat
 				e["satisfaction_reason"] = reason
 			}
+			// Byte rates since the previous inform (bytes/s), as real switches send.
+			rx, tx := 0.0, 0.0
+			if ph != nil && !ph.At.IsZero() {
+				if secs := snap.TakenAt.Sub(ph.At).Seconds(); secs > 0 {
+					rx = float64(p.Counters.RxBytes-ph.Counters.RxBytes) / secs
+					tx = float64(p.Counters.TxBytes-ph.Counters.TxBytes) / secs
+					if p.Counters.RxBytes < ph.Counters.RxBytes || p.Counters.TxBytes < ph.Counters.TxBytes {
+						rx, tx = 0, 0 // counters reset
+					}
+				}
+			}
+			e["rx_bytes-r"], e["tx_bytes-r"], e["bytes-r"] = rx, tx, rx+tx
 		}
 		if _, hasName := e["name"]; !hasName {
 			// A UniFi switch reports its physical port label here — the same
@@ -242,7 +256,14 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 			e["aggregated_by"] = false
 		}
 		if p.FEC != switchmodel.FECUnknown {
-			e["fec_mode"] = string(p.FEC)
+			// Real informs carry `fec` in the 802.3 clause vocabulary; the
+			// controller derives fec_mode from it.
+			switch p.FEC {
+			case switchmodel.FECRS:
+				e["fec"] = "cl-91"
+			case switchmodel.FECFC:
+				e["fec"] = "cl-74"
+			}
 		}
 		if sc := speedCaps(p); sc != 0 {
 			e["speed_caps"] = sc
@@ -269,7 +290,14 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		// Counters and flags UniFi switches report per port.
 		e["mac_table_count"] = len(p.MACs)
 		e["link_down_count"] = p.Health.LinkChanges / 2 // EOS counts transitions; UniFi counts drops
-		e["stp_state_change_count"] = p.Health.STPChanges
+		e["stp_state_change_count"] = []map[string]any{{"change_count": p.Health.STPChanges, "mst": 0}}
+		if p.STPRole != "" {
+			e["stp_role"] = p.STPRole
+		} else if !p.Up {
+			e["stp_role"] = "disabled"
+		}
+		e["dot1x_mode"] = "unknown" // no 802.1X: what a real switch reports with it off
+		e["dot1x_status"] = "disabled"
 		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) {
 			e["sfp_rxfault"] = p.Health.OpticRxAlarm
 			e["sfp_txfault"] = p.Health.OpticTxAlarm
@@ -332,7 +360,7 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 		m["stp_version"] = sys.STPMode
 	}
 	if sys.STPPriority > 0 {
-		m["stp_priority"] = strconv.Itoa(sys.STPPriority)
+		m["stp_priority"] = sys.STPPriority // a number, as real switches send it
 	}
 	if sys.STPRoot != "" {
 		m["root_switch"] = sys.STPRoot // what UniFi switches report; the topology's STP root marker

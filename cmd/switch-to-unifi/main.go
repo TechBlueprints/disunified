@@ -299,29 +299,14 @@ func runOne(ctx context.Context, o options) error {
 		url = "http://" + ipLit + ":8080/inform"
 	}
 
-	ports := make([]inform.Port, len(profile.Ports))
-	copy(ports, profile.Ports)
-	if o.uplink > 0 {
-		for i := range ports {
-			ports[i].IsUplink = ports[i].PortIdx == o.uplink
-		}
+	desc, err := device.DescriptorFor(profile.Model, snap, device.Identity{
+		MAC: macStr, Serial: o.serial, IP: o.ip, Hostname: o.hostname, Version: o.version,
+		UDAPIVersion: o.udapiVersion, UplinkPort: o.uplink,
+	})
+	if err != nil {
+		return err
 	}
-	if o.version == "" {
-		o.version = profile.Version
-	}
-	desc := inform.Descriptor{
-		MAC:          macStr,
-		Serial:       o.serial,
-		Model:        profile.Model,
-		ModelDisplay: profile.ModelDisplay,
-		Version:      o.version,
-		IP:           o.ip,
-		Hostname:     o.hostname,
-		Type:         profile.Type,
-		FWCaps:       device.FWCaps,
-		UDAPIVersion: o.udapiVersion,
-		Ports:        ports,
-	}
+	o.version = desc.Version
 
 	// --- Session ---
 	store := &device.Store{Path: o.stateFile}
@@ -344,7 +329,7 @@ func runOne(ctx context.Context, o options) error {
 	if sw != nil {
 		namer = switchmodel.NamerFor(sw)
 	}
-	defaults := defaultPortNames(ports, snap, namer)
+	defaults := defaultPortNames(desc.Ports, snap, namer)
 	isDefaultPortName := func(idx int, name string) bool {
 		for _, d := range defaults[idx] {
 			if name == d {

@@ -302,6 +302,7 @@ type Port struct {
 
 	Counters Counters
 	STPState string // "forwarding", "blocking", "learning", "listening", "disabled", ""
+	STPRole  string // "root", "designated", "alternate", "backup", "disabled", ""
 
 	Neighbor *Neighbor // LLDP neighbour, nil if none
 
