@@ -157,3 +157,9 @@ by default), optionally `lldpd` (§4) and `chrony` (default).
   such names so the first provision can rename the device after the node.
 - Ports with `sfp_found: false` (unassigned slots) draw as empty cages; a
   stopped guest's port draws as a cabled, down port.
+- **Disabling a port through the REST API** needs the whole combination the
+  UI writes, or the controller silently normalises `forward` back to
+  `all`: `{"forward":"disabled","port_security_enabled":true,
+  "port_security_mac_address":[],"native_networkconf_id":"",
+  "tagged_vlan_mgmt":"block_all"}`. The UI's Port State → Disabled radio
+  does exactly that and the push then carries `switch.port.N.status=disabled`.
