@@ -34,7 +34,7 @@ matters happens in the bond (100 ms), below the switch we present.
 
 | Ports | What | Media / speed reported |
 |---|---|---|
-| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide** | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
+| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); a free slot is named `VM-Open-<port>` | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
 | 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54) | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
 
 ### 1b. Host network layouts
@@ -50,7 +50,8 @@ matters happens in the bond (100 ms), below the switch we present.
 | Open vSwitch bridges | not supported (no `bridge`/`ip` view of the ports) | — |
 
 **The node is the switch.** The device identifies itself with the bridge's
-MAC, address and hostname: `vmbr0` is where the node's own stack sits,
+MAC, address and hostname, and is named after the node (`proxmox-2`;
+`proxmox-2 vmbr1` for a second bridge): `vmbr0` is where the node's own stack sits,
 exactly as a switch's management interface sits behind its own ports.
 There is no separate "host" port: the node's own traffic is the switch's
 management traffic, its address is the switch's address, and its DNS name
@@ -315,6 +316,13 @@ be readable by uid 65532. Keep `state/<name>/proxmox-ports.json` with
   such names so the first provision can rename the device after the node.
 - Ports with `sfp_found: false` (unassigned slots) draw as empty cages; a
   stopped guest's port draws as a cabled, down port.
+- **Names the driver gave count as defaults.** The provisioner renames a
+  port or the device only while its controller-side name is one of the
+  profile's defaults or one this driver could have set earlier (`VM-Open-25`
+  before a guest took the slot, `VM-999` after it left, the `pve-<node>`
+  device name of an earlier build), so an operator's own name always
+  survives. When a guest leaves a slot its override is stripped to the
+  name, so the next guest there is seeded from its own state.
 - **Disabling a port through the REST API** needs the whole combination the
   UI writes, or the controller silently normalises `forward` back to
   `all`: `{"forward":"disabled","port_security_enabled":true,

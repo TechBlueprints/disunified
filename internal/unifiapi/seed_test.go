@@ -73,3 +73,20 @@ func TestSeedOverridesMirrorsTheSwitch(t *testing.T) {
 		t.Errorf("second seed wrote %d ports", again)
 	}
 }
+
+func TestReleaseOverrideKeepsOnlyTheName(t *testing.T) {
+	o := map[string]any{"port_idx": float64(25), "name": "VM-Open-25", "forward": "customize", "native_networkconf_id": "n2", "excluded_networkconf_ids": []any{"n3"}}
+	if !releaseOverride(o) {
+		t.Fatal("config should have been removed")
+	}
+	if want := (map[string]any{"port_idx": float64(25), "name": "VM-Open-25"}); !reflect.DeepEqual(o, want) {
+		t.Errorf("after release: %v, want %v", o, want)
+	}
+	if releaseOverride(o) {
+		t.Error("a second release must be a no-op (idempotent provisioning)")
+	}
+	bare := map[string]any{"port_idx": float64(26)}
+	if releaseOverride(bare) || len(bare) != 1 {
+		t.Errorf("bare override changed: %v", bare)
+	}
+}
