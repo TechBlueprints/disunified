@@ -65,6 +65,9 @@ for f in /etc/pve/nodes/*/lxc/*.conf; do
   echo "## $f"
   sed -n '/^\[/q;p' "$f" | grep -E '^(hostname|net[0-9]+|template):'
 done
+s mstpctl;    [ -x /usr/sbin/mstpctl ] && echo present
+s mstpbridge; [ -x /usr/sbin/mstpctl ] && [ "$(cat /sys/class/net/$BR/bridge/stp_state 2>/dev/null)" = "2" ] && mstpctl -f json showbridge "$BR" 2>/dev/null
+s mstpports;  [ -x /usr/sbin/mstpctl ] && [ "$(cat /sys/class/net/$BR/bridge/stp_state 2>/dev/null)" = "2" ] && mstpctl -f json showportdetail "$BR" 2>/dev/null
 s lldp;       lldpcli -f json0 show neighbors details 2>/dev/null
 s lldpdconf;  [ -x /usr/sbin/lldpcli ] && { echo "present"; cat /etc/lldpd.d/switch-to-unifi.conf 2>/dev/null; }
 s chrony;     grep -hE '^(server|pool) ' /etc/chrony/chrony.conf 2>/dev/null

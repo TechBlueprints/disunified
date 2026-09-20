@@ -656,3 +656,64 @@ func parseEthtoolFEC(body string) switchmodel.FEC {
 	}
 	return switchmodel.FECUnknown
 }
+
+// --- mstpctl -f json showbridge / showportdetail (mstpd 0.2.0) ---
+//
+// Captured from mstpd 0.2.0-2 on Proxmox VE 9.1 (docs/fixtures/proxmox-9.1.6/
+// mstpctl-*.json). Every value is a string; bridge and port ids are
+// "<prio nibble>.<sys-id ext>.<MAC>" ("F.000.02:00:00:00:00:01": priority
+// 15 x 4096 = 61440) and "<prio>.<port number>".
+
+type mstpBridge struct {
+	Bridge              string `json:"bridge"`
+	Enabled             string `json:"enabled"`
+	BridgeID            string `json:"bridge-id"`
+	DesignatedRoot      string `json:"designated-root"`
+	RootPort            string `json:"root-port"`
+	PathCost            string `json:"path-cost"`
+	MaxAge              string `json:"max-age"`
+	ForwardDelay        string `json:"forward-delay"`
+	HelloTime           string `json:"hello-time"`
+	ForceProtocol       string `json:"force-protocol-version"`
+	TopologyChangeCount string `json:"topology-change-count"`
+	TopologyChange      string `json:"topology-change"`
+}
+
+type mstpPort struct {
+	Port             string `json:"port"`
+	Enabled          string `json:"enabled"`
+	Role             string `json:"role"`
+	State            string `json:"state"`
+	ExternalPortCost string `json:"external-port-cost"`
+	AdminEdgePort    string `json:"admin-edge-port"`
+	OperEdgePort     string `json:"oper-edge-port"`
+	BPDUGuardPort    string `json:"bpdu-guard-port"`
+	BPDUGuardError   string `json:"bpdu-guard-error"`
+	NumTransitionFwd string `json:"num-transition-fwd"`
+	NumTransitionBlk string `json:"num-transition-blk"`
+	NumRxTCN         string `json:"num-rx-tcn"`
+	Disputed         string `json:"disputed"`
+	BAInconsistent   string `json:"ba-inconsistent"`
+}
+
+// mstpID splits "F.000.02:00:00:00:00:01" into the priority (61440) and the
+// MAC (lower-case).
+func mstpID(id string) (priority int, mac string) {
+	parts := strings.Split(id, ".")
+	if len(parts) != 3 {
+		return 0, ""
+	}
+	n, err := strconv.ParseInt(parts[0], 16, 32)
+	if err != nil {
+		return 0, ""
+	}
+	return int(n) * 4096, strings.ToLower(parts[2])
+}
+
+// mstpPriority is the priority nibble mstpctl settreeprio takes (0-15).
+func mstpPriority(priority int) int { return priority / 4096 }
+
+func atoiDefault(s string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(s))
+	return n
+}

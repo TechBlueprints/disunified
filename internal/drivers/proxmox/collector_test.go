@@ -416,3 +416,91 @@ func TestNodeNumberingKeepsOnlyLocalGuests(t *testing.T) {
 		t.Errorf("port 1 = %+v", snap.Ports[0])
 	}
 }
+
+// withMSTP composes the node capture with the mstpctl captures (real output
+// of mstpd 0.2.0-2 on the same node, from a scratch bridge, port renamed to
+// the guest's tap): the bridge under user-space STP.
+func withMSTP(t *testing.T, bridgeJSON, portsJSON string) string {
+	t.Helper()
+	s := loadFixture(t, "collect-node2.txt")
+	s = strings.Replace(s, "stp_state=0\n", "stp_state=2\n", 1)
+	if bridgeJSON == "" {
+		bridgeJSON = loadFixture(t, "mstpctl-showbridge.json")
+	}
+	if portsJSON == "" {
+		portsJSON = loadFixture(t, "mstpctl-showportdetail.json")
+	}
+	return strings.Replace(s, "@@@ lldp\n", "@@@ mstpctl\npresent\n@@@ mstpbridge\n"+bridgeJSON+"\n@@@ mstpports\n"+portsJSON+"\n@@@ lldp\n", 1)
+}
+
+func TestSTPUnderMSTPD(t *testing.T) {
+	r := &FixtureRunner{Fixture: withMSTP(t, "", "")}
+	c := NewCollector(r)
+	c.ManageLLDP = false
+	c.ports, _ = loadPortMap(t.TempDir())
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caps := c.Capabilities(); !caps.STP || !caps.BPDUGuard || !caps.STPPortCost {
+		t.Errorf("capabilities under mstpd = %+v", caps)
+	}
+	if snap.System.STPMode != "rstp" || snap.System.STPPriority != 61440 {
+		t.Errorf("system STP = %s/%d", snap.System.STPMode, snap.System.STPPriority)
+	}
+	p := snap.Ports[0] // VM 100, tap100i0: the captured port
+	if p.STPState != "forwarding" || p.STPRole != "designated" || !p.STPEdge || p.STPPathCost != 2000 || p.BPDUGuard {
+		t.Errorf("port 1 STP = state %s role %s edge %v cost %d guard %v", p.STPState, p.STPRole, p.STPEdge, p.STPPathCost, p.BPDUGuard)
+	}
+	if len(r.Commands) != 0 {
+		t.Errorf("a converged bridge was written to: %v", r.Commands)
+	}
+	// Version follows the controller; priority and STP-off requests do not.
+	n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "stp", STPPriority: 32768})
+	if err != nil || n != 1 || r.Commands[len(r.Commands)-1] != "mstpctl setforcevers vmbr0 stp" {
+		t.Errorf("apply stp version: n=%d err=%v cmds=%v", n, err, r.Commands)
+	}
+	// BPDU guard on the guest port.
+	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
+	if err != nil || n != 1 || r.Commands[len(r.Commands)-1] != "mstpctl -s" || !strings.Contains(r.Stdins[len(r.Stdins)-1], "setportbpduguard vmbr0 tap100i0 yes") {
+		t.Errorf("bpdu guard: n=%d err=%v cmds=%v stdin=%q", n, err, r.Commands, r.Stdins[len(r.Stdins)-1])
+	}
+	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
+	if n != 0 {
+		t.Errorf("bpdu guard not idempotent")
+	}
+}
+
+func TestSTPEnforcesPriorityAndEdge(t *testing.T) {
+	// A bridge that came up at the default priority with a non-edge tap.
+	bridge := strings.Replace(loadFixture(t, "mstpctl-showbridge.json"), "F.000.", "8.000.", -1)
+	ports := strings.Replace(loadFixture(t, "mstpctl-showportdetail.json"), `"admin-edge-port":"yes"`, `"admin-edge-port":"no"`, 1)
+	r := &FixtureRunner{Fixture: withMSTP(t, bridge, ports)}
+	c := NewCollector(r)
+	c.ManageLLDP = false
+	c.ports, _ = loadPortMap(t.TempDir())
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.System.STPPriority != 32768 {
+		t.Errorf("priority read = %d", snap.System.STPPriority)
+	}
+	if len(r.Commands) != 1 || r.Commands[0] != "mstpctl -s" || !strings.Contains(r.Stdins[0], "settreeprio vmbr0 0 15") || !strings.Contains(r.Stdins[0], "setportadminedge vmbr0 tap100i0 yes") {
+		t.Errorf("enforcement = %v %q", r.Commands, r.Stdins)
+	}
+}
+
+func TestNoSTPWithoutMSTPD(t *testing.T) {
+	c, r := newTestCollector(t, "collect-node2.txt")
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if caps := c.Capabilities(); caps.STP || caps.BPDUGuard {
+		t.Errorf("STP claimed without mstpd: %+v", caps)
+	}
+	n, _ := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
+	if n != 0 || len(r.Commands) != 0 {
+		t.Errorf("STP applied without mstpd: %d %v", n, r.Commands)
+	}
+}
