@@ -1,0 +1,526 @@
+{
+  "interfaceErrorCounters": {
+    "Ethernet1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet10": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet11": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet12": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet13": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet14": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet15": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet16": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet17": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet18": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet19": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet2": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet20": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet21": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet22": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet23": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet24": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet25": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet26": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet27": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet28": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet29": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet3": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet30": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet31": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet32": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet33": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet34": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet35": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet36": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet37": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet38": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet39": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet4": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet40": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet41": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet42": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet43": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet44": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet45": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet46": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet47": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet48": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet49/1": {
+      "alignmentErrors": 6,
+      "fcsErrors": 4,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 10,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet5": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet50/1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet50/2": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet50/3": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet50/4": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet51/1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet52/1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet53/1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet54/1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet6": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet7": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet8": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Ethernet9": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    },
+    "Management1": {
+      "alignmentErrors": 0,
+      "fcsErrors": 0,
+      "frameTooLongs": 0,
+      "frameTooShorts": 0,
+      "inErrors": 0,
+      "outErrors": 0,
+      "symbolErrors": 0
+    }
+  }
+}

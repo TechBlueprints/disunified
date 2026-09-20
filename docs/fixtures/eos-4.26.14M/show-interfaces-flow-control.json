@@ -1,0 +1,468 @@
+{
+  "interfaceFlowControls": {
+    "Ethernet1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet10": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet11": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet12": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet13": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet14": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet15": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet16": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet17": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet18": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet19": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet2": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet20": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet21": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet22": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet23": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet24": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet25": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet26": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet27": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet28": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet29": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet3": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet30": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet31": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet32": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet33": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet34": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet35": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet36": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet37": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet38": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet39": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet4": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet40": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet41": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet42": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet43": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet44": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet45": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet46": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet47": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet48": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet49/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet5": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet50/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet50/2": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet50/3": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet50/4": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet51/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet52/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet53/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet54/1": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet6": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet7": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet8": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Ethernet9": {
+      "rxAdminState": "off",
+      "rxOperState": "off",
+      "rxPause": 0,
+      "txAdminState": "off",
+      "txOperState": "off",
+      "txPause": 0
+    },
+    "Management1": {
+      "rxAdminState": "desired",
+      "rxOperState": "on",
+      "rxPause": 0,
+      "txAdminState": "desired",
+      "txOperState": "on",
+      "txPause": 0
+    }
+  }
+}

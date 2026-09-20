@@ -1,0 +1,16 @@
+# podman-compose / docker compose. Put secrets in ./env (see env.example),
+# the config in ./config.yaml (see config.example.yaml; set state_dir to
+# /var/lib/switch-to-unifi).
+services:
+  switch-to-unifi:
+    image: ghcr.io/techblueprints/switch-to-unifi:latest   # or: build: .
+    container_name: switch-to-unifi
+    restart: always            # Podman's podman-restart.service only restarts "always" containers after a host reboot
+    env_file: ./env
+    volumes:
+      - ./config.yaml:/etc/switch-to-unifi/config.yaml:ro
+      - state:/var/lib/switch-to-unifi
+    # The bridge only makes outbound connections (to the controller's inform
+    # port 8080 and the switch's API); no ports need publishing.
+volumes:
+  state:

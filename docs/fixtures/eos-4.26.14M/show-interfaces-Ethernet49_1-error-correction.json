@@ -1,0 +1,14 @@
+{
+    "interfaceErrCorrStatuses": {
+        "Ethernet49/1": {
+            "fecEncodingReedSolomonAvailable": true,
+            "fecEncodingConfigDisabled": false,
+            "errCorrEncodingStatus": "reedSolomon",
+            "fecEncodingConfigFireCodeEnabled": false,
+            "fecEncodingConfigReedSolomonEnabled": true,
+            "fecEncodingConfigReedSolomon544Enabled": true,
+            "fecEncodingFireCodeAvailable": false,
+            "fecEncodingReedSolomon544Available": false
+        }
+    }
+}

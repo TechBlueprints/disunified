@@ -1,0 +1,254 @@
+{
+  "inDiscardsTotal": 0,
+  "interfaces": {
+    "Ethernet1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet10": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet11": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet12": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet13": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet14": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet15": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet16": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet17": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet18": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet19": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet2": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet20": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet21": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet22": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet23": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet24": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet25": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet26": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet27": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet28": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet29": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet3": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet30": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet31": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet32": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet33": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet34": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet35": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet36": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet37": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet38": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet39": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet4": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet40": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet41": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet42": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet43": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet44": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet45": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet46": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet47": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet48": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet49/1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet5": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet50/1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet50/2": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet50/3": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet50/4": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet51/1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet52/1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet53/1": {
+      "inDiscards": 0,
+      "outDiscards": 14
+    },
+    "Ethernet54/1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet6": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet7": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet8": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Ethernet9": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Management1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Port-Channel1": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Port-Channel2": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Port-Channel3": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    },
+    "Port-Channel4": {
+      "inDiscards": 0,
+      "outDiscards": 0
+    }
+  },
+  "outDiscardsTotal": 14
+}

@@ -1,0 +1,18 @@
+{
+  "clockSource": {
+    "local": true
+  },
+  "localTime": {
+    "dayOfMonth": 19,
+    "dayOfWeek": 5,
+    "dayOfYear": 262,
+    "daylightSavingsAdjust": 1,
+    "hour": 13,
+    "min": 46,
+    "month": 9,
+    "sec": 37,
+    "year": 2026
+  },
+  "timezone": "US/Mountain",
+  "utcTime": 1789847197.32612
+}

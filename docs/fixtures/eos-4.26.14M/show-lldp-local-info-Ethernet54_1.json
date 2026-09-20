@@ -1,0 +1,35 @@
+{
+    "chassisId": "02:00:00:00:00:3c",
+    "systemCapabilities": {
+        "bridge": true,
+        "router": false
+    },
+    "systemName": "localhost",
+    "systemDescription": "Arista Networks EOS version 4.26.14M running on an Arista Networks DCS-7160-48TC6",
+    "managementAddresses": [
+        {
+            "oidString": "",
+            "interfaceNumType": "ifIndex",
+            "interfaceNum": 999001,
+            "address": "192.0.2.3",
+            "addressType": "ipv4"
+        }
+    ],
+    "localInterfaceInfo": {
+        "Ethernet54/1": {
+            "interfaceId": "\"Ethernet54/1\"",
+            "interfaceId_v2": "Ethernet54/1",
+            "interfaceIdType": "interfaceName",
+            "linkAggregationStatus": "capableAndDisabled",
+            "interfaceDescription": "",
+            "portVlanId": 1,
+            "maxFrameSize": 9236,
+            "vlanNamesIncomplete": false,
+            "vlanNames": {},
+            "vlanNamesChanged": false,
+            "linkAggregationInterfaceId": 0,
+            "unknownOrgDefinedTlvs": []
+        }
+    },
+    "chassisIdType": "macAddress"
+}

@@ -1,0 +1,311 @@
+{
+  "lldpNeighbors": {
+    "Ethernet1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet10": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet11": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet12": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet13": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet14": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet15": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet16": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet17": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet18": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet19": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet20": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet21": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet22": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet23": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet24": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet25": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet26": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet27": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet28": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet29": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet30": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet31": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet32": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet33": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet34": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet35": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet36": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet37": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet38": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet39": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet40": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet41": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet42": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet43": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet44": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet45": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet46": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet47": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet48": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/1": {
+      "lldpNeighborInfo": [
+        {
+          "chassisId": "\"02:00:00:00:00:3d\"",
+          "chassisIdType": "local",
+          "lastChangeTime": 1789834329.2512987,
+          "lastContactTime": 1789842281.6850824,
+          "managementAddresses": [
+            {
+              "address": "192.0.2.2",
+              "addressType": "ipv4",
+              "interfaceNum": 0,
+              "interfaceNumType": "unknown",
+              "oidString": ""
+            }
+          ],
+          "neighborDiscoveryTime": 1789834328.5610983,
+          "neighborInterfaceInfo": {
+            "autoNegAdvertisedCapabilities": [],
+            "autoNegCapability": "notCapable",
+            "interfaceDescription": "QSFP28 1",
+            "interfaceId": "\"one00GigE48\"",
+            "interfaceIdType": "local",
+            "interfaceId_v2": "one00GigE48",
+            "medInfo": {
+              "capabilities": {
+                "capabilities": true,
+                "deviceType": "networkConnectivity",
+                "extendedPd": false,
+                "extendedPse": false,
+                "inventory": false,
+                "location": false,
+                "networkPolicy": false
+              },
+              "networkPolicies": []
+            },
+            "operMauType": "Unknown",
+            "portAndProtocolVlanEnabled": {},
+            "portAndProtocolVlanSupported": {},
+            "portVlanId": 1,
+            "protocolIdentityInfo": [],
+            "unknownOrgDefinedTlvs": [],
+            "unknownTlvs": [],
+            "vlanNames": {}
+          },
+          "systemCapabilities": {
+            "bridge": true,
+            "router": true
+          },
+          "systemDescription": "scrubbed",
+          "systemName": "neighbor-1",
+          "ttl": 120
+        }
+      ]
+    },
+    "Ethernet49/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet5": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet6": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet7": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet8": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet9": {
+      "lldpNeighborInfo": []
+    },
+    "Management1": {
+      "lldpNeighborInfo": [
+        {
+          "chassisId": "02:00:00:00:00:3e",
+          "chassisIdType": "macAddress",
+          "lastChangeTime": 1789833603.478171,
+          "lastContactTime": 1789842275.7870226,
+          "managementAddresses": [
+            {
+              "address": "192.0.2.3",
+              "addressType": "ipv4",
+              "interfaceNum": 25,
+              "interfaceNumType": "ifIndex",
+              "oidString": ""
+            }
+          ],
+          "neighborDiscoveryTime": 1789833573.687524,
+          "neighborInterfaceInfo": {
+            "autoNegAdvertisedCapabilities": [],
+            "interfaceDescription": "Port 13",
+            "interfaceId": "\"Port 13\"",
+            "interfaceIdType": "local",
+            "interfaceId_v2": "Port 13",
+            "portAndProtocolVlanEnabled": {},
+            "portAndProtocolVlanSupported": {},
+            "protocolIdentityInfo": [],
+            "unknownOrgDefinedTlvs": [],
+            "unknownTlvs": [],
+            "vlanNames": {}
+          },
+          "systemCapabilities": {
+            "bridge": true
+          },
+          "systemDescription": "scrubbed",
+          "systemName": "neighbor-2",
+          "ttl": 120
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "sourceDetail": "",
+  "vlans": {
+    "1": {
+      "dynamic": false,
+      "interfaces": {
+        "Cpu": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "default",
+      "status": "active"
+    },
+    "10": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "airstream-lan",
+      "status": "active"
+    },
+    "1000": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "DMZ",
+      "status": "active"
+    },
+    "2": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "kids",
+      "status": "active"
+    },
+    "2000": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "DMZ-Backup",
+      "status": "active"
+    },
+    "3": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "VLAN0003",
+      "status": "active"
+    },
+    "3000": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "VLAN3000",
+      "status": "active"
+    },
+    "8": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "peplink-wan",
+      "status": "active"
+    },
+    "9": {
+      "dynamic": false,
+      "interfaces": {
+        "Ethernet49/1": {
+          "blocked": null,
+          "privatePromoted": false
+        },
+        "Ethernet53/1": {
+          "blocked": null,
+          "privatePromoted": false
+        }
+      },
+      "name": "peplink-lan",
+      "status": "active"
+    }
+  }
+}

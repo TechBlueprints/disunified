@@ -1,0 +1,21 @@
+{
+  "lldpNeighbors": [
+    {
+      "neighborDevice": "neighbor-1",
+      "neighborPort": "one00GigE48",
+      "port": "Ethernet49/1",
+      "ttl": 120
+    },
+    {
+      "neighborDevice": "neighbor-2",
+      "neighborPort": "Port 13",
+      "port": "Management1",
+      "ttl": 120
+    }
+  ],
+  "tablesAgeOuts": 0,
+  "tablesDeletes": 9,
+  "tablesDrops": 0,
+  "tablesInserts": 11,
+  "tablesLastChangeTime": 1789834329.251299
+}

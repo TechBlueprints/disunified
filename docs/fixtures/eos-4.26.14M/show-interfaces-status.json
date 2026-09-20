@@ -1,0 +1,875 @@
+{
+  "interfaceStatuses": {
+    "Ethernet1": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet10": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet11": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet12": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet13": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet14": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet15": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet16": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet17": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet18": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet19": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet2": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet20": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet21": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet22": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet23": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet24": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet25": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet26": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet27": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet28": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet29": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet3": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet30": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet31": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet32": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet33": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet34": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet35": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet36": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet37": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet38": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet39": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet4": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet40": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet41": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet42": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet43": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet44": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet45": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet46": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet47": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet48": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet49/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 100000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CWDM4",
+      "lineProtocolStatus": "up",
+      "linkStatus": "connected",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet5": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet50/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 25000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CR4",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet50/2": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 25000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CR4",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet50/3": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 25000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CR4",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "bridged",
+        "vlanId": 1
+      }
+    },
+    "Ethernet50/4": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 25000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CR4",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "bridged",
+        "vlanId": 1
+      }
+    },
+    "Ethernet51/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 100000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "Not Present",
+      "lineProtocolStatus": "notPresent",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet52/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 100000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "Not Present",
+      "lineProtocolStatus": "notPresent",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet53/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 100000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "100GBASE-CR4",
+      "lineProtocolStatus": "up",
+      "linkStatus": "connected",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet54/1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 100000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "Not Present",
+      "lineProtocolStatus": "notPresent",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet6": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet7": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet8": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Ethernet9": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexUnknown",
+      "interfaceType": "10GBASE-T",
+      "lineProtocolStatus": "down",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Management1": {
+      "autoNegotiateActive": true,
+      "autoNegotigateActive": true,
+      "bandwidth": 1000000000,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "10/100/1000",
+      "lineProtocolStatus": "up",
+      "linkStatus": "connected",
+      "vlanInformation": {
+        "interfaceForwardingModel": "routed",
+        "interfaceMode": "routed"
+      }
+    },
+    "Port-Channel1": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "N/A",
+      "lineProtocolStatus": "lowerLayerDown",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Port-Channel2": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "N/A",
+      "lineProtocolStatus": "lowerLayerDown",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Port-Channel3": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "N/A",
+      "lineProtocolStatus": "lowerLayerDown",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "trunk"
+      }
+    },
+    "Port-Channel4": {
+      "autoNegotiateActive": false,
+      "autoNegotigateActive": false,
+      "bandwidth": 0,
+      "description": "",
+      "duplex": "duplexFull",
+      "interfaceType": "N/A",
+      "lineProtocolStatus": "lowerLayerDown",
+      "linkStatus": "notconnect",
+      "vlanInformation": {
+        "interfaceForwardingModel": "bridged",
+        "interfaceMode": "bridged",
+        "vlanId": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+Ethernet49/1
+                              Current State     Changes            Last Change
+                              -------------     -------            -----------
+Current System Time: Sat Sep 19 20:47:43 2026
+  PHY state                   linkUp                 20           10:32:10 ago
+  Interface state             up                     18           10:32:09 ago
+  HW resets                                           0                  never
+  Transceiver                 100GBASE-CWDM4          2   67 days, 4:51:43 ago
+  Transceiver SN              34417D10463     
+  Oper speed                  100Gbps                                         
+  Interrupt Count                                    23                       
+  Transceiver Reset Count                             0                  never
+  Transceiver Interrupt Count                        18           10:32:11 ago
+  Transceiver Smbus Failures                          0                  never
+  Diags mode                  normalOperation
+  Model                       xp80 (A2)
+  Loopback                    none
+  Xcvr EEPROM read timeout                            0                  never
+  Spurious xcvr detection                             0                  never
+  DOM control/status fail                             0                       
+  Presence indication         xcvrPresent             2   67 days, 4:51:51 ago
+  Bad EEPROM checksums                                0                  never
+  RX_LOS since system boot    False                   6           10:32:10 ago
+  RX_LOS since insertion                              6                       
+  TX_FAULT since system boot  False                   0                  never
+  TX_FAULT since insertion                            0                       
+  PCS RX link status          up                     23           10:32:11 ago
+  PCS high BER                ok                      0                  never
+  PCS err blocks              309                                 10:32:09 ago
+  PCS BER                     72                     11           10:32:09 ago
+  Forward Error Correction    Reed-Solomon
+  Reed-Solomon codeword size  528
+  FEC alignment lock          ok                     15           10:33:19 ago
+  FEC corrected codewords     1                     577            2:39:43 ago
+  FEC uncorrected codewords   5                       9           10:32:09 ago
+  FEC lane corrected symbols  
+    Lane 0                    31056                   2   67 days, 4:50:37 ago
+    Lane 1                    4                       6    5 days, 3:45:24 ago
+    Lane 2                    1                     573            2:39:43 ago
+    Lane 3                    61828                   2   67 days, 4:50:37 ago
+  FEC lane mapping            
+    FEC lane                  00 01 02 03
+    PMA lane                  00 01 02 03
+  Signal Lock                 locked                 17           10:32:04 ago
+  Electrical Idle             signal                  4           10:33:24 ago
+INTF   PCSLK RF LF BLKLK AMLK  LNKST LNKCH LNINT LKOVR
+Et49/1 Y     N  N  -     -     0xf01 0x0   0x11  0x0  
+LANE   REV  RATE SIGOK EI ATT POST PRE DC  LF HF BW GAIN STATE STATUS EYE TAPS
+0      2364 25   1     0  0   11   4   126 15 0  0  10   0xf   0x80   227 8.2 0 0 0 0 0 0 0 0 0 0 0 0 
+1      2364 25   1     0  0   12   4   126 15 0  0  10   0xf   0x80   235 8.2 0 0 0 0 0 0 0 0 0 0 0 0 
+2      2364 25   1     0  0   11   4   124 15 0  0  10   0xf   0x80   254 8.0 0 0 0 0 0 0 0 0 0 0 0 0 
+3      2364 25   1     0  0   11   4   122 15 0  0  10   0xf   0x80   203 10.5 0 0 0 0 0 0 0 0 0 0 0 0 

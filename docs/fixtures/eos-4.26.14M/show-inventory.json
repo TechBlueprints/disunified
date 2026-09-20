@@ -1,0 +1,390 @@
+{
+  "cardSlots": {},
+  "dataLinkPortCount": 0,
+  "emmcFlashDevices": {
+    "Toshiba 303038473730": {
+      "firmwareRev": "0.0",
+      "model": "Toshiba 303038473730",
+      "mount": "/mnt/flash",
+      "serialNum": "ea7c1412",
+      "storageSize": 4
+    }
+  },
+  "fanTraySlots": {
+    "1": {
+      "name": "FAN-7000-F",
+      "numFans": 1,
+      "serialNum": "N/A"
+    },
+    "2": {
+      "name": "FAN-7000-F",
+      "numFans": 1,
+      "serialNum": "N/A"
+    },
+    "3": {
+      "name": "FAN-7000-F",
+      "numFans": 1,
+      "serialNum": "N/A"
+    },
+    "4": {
+      "name": "FAN-7000-F",
+      "numFans": 1,
+      "serialNum": "N/A"
+    }
+  },
+  "fpgas": {},
+  "internalPortCount": 0,
+  "managementPortCount": 1,
+  "mgmtXcvrSlots": {},
+  "portCount": 73,
+  "powerSupplySlots": {
+    "1": {
+      "name": "PWR-500AC-F",
+      "serialNum": "GWCD75B348A"
+    },
+    "2": {
+      "name": "PWR-500AC-F",
+      "serialNum": "DDQT8580CX9"
+    }
+  },
+  "storageDevices": {},
+  "subcompSerNums": {},
+  "switchedBootstrapPortCount": 4,
+  "switchedFortyGOnlyPortCount": 0,
+  "switchedPortCount": 68,
+  "systemInformation": {
+    "description": "scrubbed",
+    "hardwareRev": "11.00",
+    "hwEpoch": "01.00",
+    "mfgDate": "2017-05-31",
+    "name": "DCS-7160-48TC6",
+    "serialNum": "SSJ00000000"
+  },
+  "unconnectedPortCount": 0,
+  "xcvrSlots": {
+    "1": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "10": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "11": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "12": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "13": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "14": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "15": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "16": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "17": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "18": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "19": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "2": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "20": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "21": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "22": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "23": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "24": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "25": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "26": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "27": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "28": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "29": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "3": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "30": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "31": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "32": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "33": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "34": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "35": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "36": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "37": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "38": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "39": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "4": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "40": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "41": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "42": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "43": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "44": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "45": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "46": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "47": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "48": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "49": {
+      "hardwareRev": "1",
+      "mfgName": "AOI",
+      "modelName": "AQPLACQ4EDOA1294",
+      "serialNum": "34417D10463"
+    },
+    "5": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "50": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "CAB-ZQP-4ZSP-P2M",
+      "serialNum": "ARZ21N50076"
+    },
+    "51": {
+      "hardwareRev": "",
+      "mfgName": "Not Present",
+      "modelName": "",
+      "serialNum": ""
+    },
+    "52": {
+      "hardwareRev": "",
+      "mfgName": "Not Present",
+      "modelName": "",
+      "serialNum": ""
+    },
+    "53": {
+      "hardwareRev": "A",
+      "mfgName": "BROCADE",
+      "modelName": "58-0000044-01",
+      "serialNum": "QAMJ2220R01038F"
+    },
+    "54": {
+      "hardwareRev": "",
+      "mfgName": "Not Present",
+      "modelName": "",
+      "serialNum": ""
+    },
+    "6": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "7": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "8": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    },
+    "9": {
+      "hardwareRev": "",
+      "mfgName": "Arista Networks",
+      "modelName": "DCS-7160-48TC6",
+      "serialNum": ""
+    }
+  }
+}

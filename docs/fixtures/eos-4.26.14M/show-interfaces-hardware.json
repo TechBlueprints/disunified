@@ -1,0 +1,3583 @@
+{
+  "interfaces": {
+    "Ethernet1": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet10": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet11": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet12": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet13": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet14": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet15": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet16": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet17": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet18": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet19": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet2": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet20": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet21": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet22": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet23": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet24": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet25": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet26": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet27": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet28": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet29": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet3": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet30": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet31": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet32": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet33": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet34": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet35": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet36": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet37": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet38": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet39": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet4": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet40": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet41": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet42": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet43": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet44": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet45": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet46": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet47": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet48": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet49/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": false,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CWDM4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet5": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet50/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "autoNegotiationClause73": {
+        "consortium": [],
+        "ieee": [
+          {
+            "duplex": "full",
+            "speed": "100Gbps"
+          },
+          {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          {
+            "duplex": "full",
+            "speed": "40Gbps"
+          }
+        ]
+      },
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "FireCode",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CR4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet50/2": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "autoNegotiationClause73": {
+        "consortium": [],
+        "ieee": [
+          {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        ]
+      },
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "FireCode",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CR4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet50/3": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "autoNegotiationClause73": {
+        "consortium": [],
+        "ieee": [
+          {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        ]
+      },
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "FireCode",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CR4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet50/4": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "autoNegotiationClause73": {
+        "consortium": [],
+        "ieee": [
+          {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        ]
+      },
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "FireCode",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CR4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet51/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": false,
+      "modes": [
+        {
+          "errorCorrections": []
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "Not Present",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet52/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": false,
+      "modes": [
+        {
+          "errorCorrections": []
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "Not Present",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet53/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "autoNegotiationClause73": {
+        "consortium": [],
+        "ieee": [
+          {
+            "duplex": "full",
+            "speed": "100Gbps"
+          },
+          {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          {
+            "duplex": "full",
+            "speed": "40Gbps"
+          }
+        ]
+      },
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon",
+            "FireCode"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "ReedSolomon",
+          "defaultLinkMode": true,
+          "errorCorrections": [
+            "Disabled",
+            "ReedSolomon"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "100GBASE-CR4",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet54/1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": false,
+      "modes": [
+        {
+          "errorCorrections": []
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "Not Present",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet6": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet7": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet8": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Ethernet9": {
+      "autoNegotiationClause28": [
+        {
+          "duplex": "full",
+          "speed": "1Gbps"
+        },
+        {
+          "duplex": "full",
+          "speed": "10Gbps"
+        }
+      ],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultErrorCorrection": "Disabled",
+          "defaultLinkMode": false,
+          "errorCorrections": [
+            "Disabled"
+          ],
+          "link": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": true,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10GBASE-T",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    },
+    "Management1": {
+      "autoNegotiationClause28": [],
+      "autoNegotiationClause37": [],
+      "coherentModes": [],
+      "coherentTributaries": [],
+      "hasAutoneg": true,
+      "modes": [
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "half",
+            "speed": "10Mbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "full",
+            "speed": "10Mbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "half",
+            "speed": "100Mbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "full",
+            "speed": "100Mbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "half",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": false,
+          "errorCorrections": [],
+          "link": {
+            "duplex": "full",
+            "speed": "1Gbps"
+          },
+          "pllIncompatible": false
+        },
+        {
+          "defaultLinkMode": true,
+          "errorCorrections": [],
+          "link": {
+            "auto": true,
+            "duplex": "full"
+          },
+          "pllIncompatible": false
+        }
+      ],
+      "rxFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      },
+      "switchModelName": "DCS-7160-48TC6",
+      "transceiverType": "10/100/1000",
+      "txFlowControl": {
+        "autoNegotiationPause": false,
+        "flowControl": "Capable"
+      }
+    }
+  }
+}

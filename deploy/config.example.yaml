@@ -1,0 +1,35 @@
+# switch-to-unifi configuration. Secrets never go in this file: name the
+# environment variables that hold them (see deploy/env.example).
+#
+# One controller, any number of switches. Everything not listed here is
+# discovered: identity (MAC, serial, hostname), the uplink port, the port
+# layout, the UniFi model to claim, and the switch's own port capabilities.
+
+controller:
+  host: 192.0.2.1                     # where informs go (IP, or a name resolved to IPv4)
+  api_url: https://unifi.example.net # optional: REST API, used only to name the device and its ports
+  api_key_env: STU_UNIFI_API_KEY     # env var holding a UniFi API key (Settings → Control Plane → Integrations)
+  site: default
+
+state_dir: /var/lib/switch-to-unifi  # state/<name>/device.json (the adopted key) and inform-log/<name>/
+
+switches:
+  - name: arista                     # unique; used for state and log paths
+    driver: arista-eos               # `switch-to-unifi -list-drivers`
+    url: https://192.0.2.3/command-api
+    username_env: STU_SWITCH_USER    # a switch user with write access if control.ports is set
+    password_env: STU_SWITCH_PASS
+    # ssh: admin@192.0.2.3            # alternative transport: key auth, no password
+    model: auto                      # or a model code from `-list-models` (docs/unifi-models.md)
+    # firmware: 7.3.109.16640        # version to report; default = the model's catalogue version.
+    #                                # UniFi cannot upgrade a bridged switch: an upgrade it requests
+    #                                # is emulated and the requested version reported from then on.
+    control:                         # what the UniFi controller owns on this switch
+      ports: all                     # "off" (read-only), "all", or a list like "2,5-8"
+      igmp: true                     # per-network IGMP snooping follows UniFi
+      ntp: true                      # NTP servers follow UniFi
+      syslog: true                   # remote syslog host follows UniFi
+      reboot: true                   # the controller's Restart really reloads the switch
+      ssh_keys: true                 # the controller's SSH keys are installed on the switch user
+      snmp: true                     # UniFi's SNMP v1/v2c community is configured on the switch (read-only)
+

@@ -1,0 +1,27 @@
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+vendor/
+
+# Local config and secrets
+.env
+.env.*
+*.local
+config.local.*
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# runtime output
+/inform-log/
+/state/
+/run.log
+/switch-to-unifi
+/config.yaml

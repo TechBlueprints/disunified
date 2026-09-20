@@ -1,0 +1,36 @@
+{
+  "numberOfAggregators": 0,
+  "numberOfChannelsInUse": 0,
+  "portChannels": {
+    "Port-Channel1": {
+      "inactive": false,
+      "lacpMode": "active",
+      "linkState": "down",
+      "ports": {
+        "Ethernet2": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet2",
+          "lacpMisconfig": {
+            "status": "idle"
+          },
+          "lagMember": false,
+          "linkDown": true,
+          "staticLag": false,
+          "suspended": false
+        },
+        "Ethernet3": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet3",
+          "lacpMisconfig": {
+            "status": "idle"
+          },
+          "lagMember": false,
+          "linkDown": true,
+          "staticLag": false,
+          "suspended": false
+        }
+      },
+      "protocol": "lacp"
+    }
+  }
+}

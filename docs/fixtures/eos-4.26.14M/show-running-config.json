@@ -1,0 +1,503 @@
+{
+  "cmds": {
+    "! boot system flash:/EOS-4.26.14M.swi": null,
+    "clock timezone US/Mountain": null,
+    "interface Ethernet1": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet10": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet11": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet12": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet13": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet14": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet15": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet16": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet17": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet18": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet19": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet2": {
+      "cmds": {
+        "speed auto": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet20": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet21": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet22": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet23": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet24": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet25": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet26": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet27": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet28": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet29": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet3": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet30": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet31": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet32": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet33": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet34": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet35": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet36": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet37": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet38": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet39": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet4": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet40": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet41": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet42": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet43": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet44": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet45": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet46": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet47": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet48": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet49/1": {
+      "cmds": {
+        "error-correction encoding reed-solomon": null,
+        "mtu 1500": null,
+        "speed forced 100gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet5": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet50/1": {
+      "cmds": {
+        "mtu 1500": null,
+        "speed forced 25gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet50/2": {
+      "cmds": {
+        "speed forced 25gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet50/3": {
+      "cmds": {
+        "speed forced 25gfull": null
+      },
+      "comments": []
+    },
+    "interface Ethernet50/4": {
+      "cmds": {
+        "speed forced 25gfull": null
+      },
+      "comments": []
+    },
+    "interface Ethernet51/1": {
+      "cmds": {
+        "error-correction encoding reed-solomon": null,
+        "mtu 1500": null,
+        "speed forced 100gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet52/1": {
+      "cmds": {
+        "mtu 1500": null,
+        "speed forced 100gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet52/2": {
+      "cmds": {
+        "speed forced 25gfull": null
+      },
+      "comments": []
+    },
+    "interface Ethernet52/3": {
+      "cmds": {
+        "speed forced 25gfull": null
+      },
+      "comments": []
+    },
+    "interface Ethernet52/4": {
+      "cmds": {
+        "speed forced 25gfull": null
+      },
+      "comments": []
+    },
+    "interface Ethernet53/1": {
+      "cmds": {
+        "error-correction encoding reed-solomon": null,
+        "mtu 1500": null,
+        "speed forced 100gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet54/1": {
+      "cmds": {
+        "error-correction encoding reed-solomon": null,
+        "mtu 1500": null,
+        "spanning-tree bpduguard enable": null,
+        "speed forced 100gfull": null,
+        "storm-control broadcast level 5": null,
+        "storm-control multicast level 1": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet6": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet7": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet8": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Ethernet9": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Management1": {
+      "cmds": {
+        "ip address 192.0.2.1/16": null
+      },
+      "comments": []
+    },
+    "interface Port-Channel1": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Port-Channel2": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Port-Channel3": {
+      "cmds": {
+        "switchport mode trunk": null
+      },
+      "comments": []
+    },
+    "interface Port-Channel4": {
+      "cmds": {},
+      "comments": []
+    },
+    "interface Vlan1": {
+      "cmds": {},
+      "comments": []
+    },
+    "ip access-list mDNS-block": {
+      "cmds": {
+        "10 deny udp any host 224.0.0.251 eq 5353": null,
+        "20 permit ip any any": null
+      },
+      "comments": []
+    },
+    "ip name-server vrf default 192.0.2.2": null,
+    "ip route 0.0.0.0/0 192.0.2.2": null,
+    "ipv6 access-list mDNS-block": {
+      "cmds": {
+        "10 deny udp any host ff02::fb eq 5353": null,
+        "20 permit ipv6 any any": null
+      },
+      "comments": []
+    },
+    "ipv6 access-list mDNS-block-v6": {
+      "cmds": {
+        "10 permit ipv6 any any": null
+      },
+      "comments": []
+    },
+    "management api http-commands": {
+      "cmds": {
+        "no shutdown": null
+      },
+      "comments": []
+    },
+    "no aaa root": null,
+    "no ip routing": null,
+    "no snmp-server enable traps": null,
+    "no spanning-tree vlan-id 1000,2000": null,
+    "ntp server 192.0.2.2": null,
+    "service routing protocols model ribd": null,
+    "service unsupported-transceiver wiprolabs f5047577": null,
+    "spanning-tree mode rstp": null,
+    "transceiver qsfp default-mode 4x10G": null,
+    "username admin role network-admin secret sha512 <hash>": null,
+    "username admin ssh-key ssh-rsa <pubkey>": null,
+    "username stu privilege 15 role network-admin secret sha512 <hash>": null,
+    "vlan 10": {
+      "cmds": {
+        "name airstream-lan": null
+      },
+      "comments": []
+    },
+    "vlan 1000": {
+      "cmds": {
+        "name DMZ": null
+      },
+      "comments": []
+    },
+    "vlan 2": {
+      "cmds": {
+        "name kids": null
+      },
+      "comments": []
+    },
+    "vlan 2000": {
+      "cmds": {
+        "name DMZ-Backup": null
+      },
+      "comments": []
+    },
+    "vlan 69,3000,4000": {
+      "cmds": {},
+      "comments": []
+    },
+    "vlan 8": {
+      "cmds": {
+        "name peplink-wan": null
+      },
+      "comments": []
+    },
+    "vlan 9": {
+      "cmds": {
+        "name peplink-lan": null
+      },
+      "comments": []
+    }
+  },
+  "comments": [],
+  "header": [
+    "! device: localhost (DCS-7160-48TC6, EOS-4.26.14M)\n!\n"
+  ]
+}

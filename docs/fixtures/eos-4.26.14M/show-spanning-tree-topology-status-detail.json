@@ -1,0 +1,52 @@
+{
+  "topologies": {
+    "Cist": {
+      "interfaces": {
+        "Cpu": {
+          "lastChange": 1784066229.5719829,
+          "numChanges": 1,
+          "state": "forwarding"
+        },
+        "Ethernet49/1": {
+          "lastChange": 1789834534.5826664,
+          "numChanges": 3,
+          "state": "forwarding"
+        },
+        "Ethernet53/1": {
+          "lastChange": 1789704477.6180007,
+          "numChanges": 3,
+          "state": "forwarding"
+        }
+      },
+      "vlans": [
+        4000,
+        1,
+        2,
+        69,
+        8,
+        9,
+        10,
+        3000
+      ]
+    },
+    "NoStp": {
+      "interfaces": {
+        "Ethernet49/1": {
+          "lastChange": 1789834534.2576811,
+          "numChanges": 1,
+          "state": "forwarding"
+        },
+        "Ethernet53/1": {
+          "lastChange": 1789704457.37615,
+          "numChanges": 1,
+          "state": "forwarding"
+        }
+      },
+      "vlans": [
+        2000,
+        1000
+      ]
+    }
+  },
+  "unmappedVlans": []
+}

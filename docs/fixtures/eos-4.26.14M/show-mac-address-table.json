@@ -1,0 +1,1160 @@
+{
+  "disabledMacLearningVlans": [],
+  "multicastTable": {
+    "tableEntries": []
+  },
+  "unicastTable": {
+    "tableEntries": [
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.115503,
+        "macAddress": "02:00:00:00:00:01",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.115175,
+        "macAddress": "02:00:00:00:00:02",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.116535,
+        "macAddress": "02:00:00:00:00:03",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834339.12057,
+        "macAddress": "02:00:00:00:00:04",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834340.544533,
+        "macAddress": "02:00:00:00:00:05",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.643399,
+        "macAddress": "02:00:00:00:00:06",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834339.485709,
+        "macAddress": "02:00:00:00:00:07",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834337.651338,
+        "macAddress": "02:00:00:00:00:08",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789847126.91636,
+        "macAddress": "02:00:00:00:00:09",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.197429,
+        "macAddress": "02:00:00:00:00:0a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.113414,
+        "macAddress": "02:00:00:00:00:0b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.651711,
+        "macAddress": "02:00:00:00:00:0c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846603.936899,
+        "macAddress": "02:00:00:00:00:0d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846603.93599,
+        "macAddress": "02:00:00:00:00:0e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789841956.561257,
+        "macAddress": "02:00:00:00:00:0f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.111319,
+        "macAddress": "02:00:00:00:00:10",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.113053,
+        "macAddress": "02:00:00:00:00:11",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.119769,
+        "macAddress": "02:00:00:00:00:12",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.113366,
+        "macAddress": "02:00:00:00:00:13",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789847117.575707,
+        "macAddress": "02:00:00:00:00:14",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846959.545644,
+        "macAddress": "02:00:00:00:00:15",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789847023.991848,
+        "macAddress": "02:00:00:00:00:16",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846802.486193,
+        "macAddress": "02:00:00:00:00:17",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834338.341115,
+        "macAddress": "02:00:00:00:00:18",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.053782,
+        "macAddress": "02:00:00:00:00:19",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.106878,
+        "macAddress": "02:00:00:00:00:1a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.075998,
+        "macAddress": "02:00:00:00:00:1b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.074889,
+        "macAddress": "02:00:00:00:00:1c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.121701,
+        "macAddress": "02:00:00:00:00:1d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.032726,
+        "macAddress": "02:00:00:00:00:1e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.562112,
+        "macAddress": "02:00:00:00:00:1f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834783.802847,
+        "macAddress": "02:00:00:00:00:20",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834337.484639,
+        "macAddress": "02:00:00:00:00:21",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.589854,
+        "macAddress": "02:00:00:00:00:22",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.957487,
+        "macAddress": "02:00:00:00:00:23",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.253799,
+        "macAddress": "02:00:00:00:00:24",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.237523,
+        "macAddress": "02:00:00:00:00:25",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.263664,
+        "macAddress": "02:00:00:00:00:26",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet53/1",
+        "lastMove": 1789704326.730911,
+        "macAddress": "02:00:00:00:00:27",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "static",
+        "interface": "Cpu",
+        "macAddress": "02:00:00:00:00:28",
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.08843,
+        "macAddress": "02:00:00:00:00:29",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.013329,
+        "macAddress": "02:00:00:00:00:2a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.985389,
+        "macAddress": "02:00:00:00:00:2b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.982841,
+        "macAddress": "02:00:00:00:00:2c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.123213,
+        "macAddress": "02:00:00:00:00:2d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789843410.190867,
+        "macAddress": "02:00:00:00:00:2e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846804.271208,
+        "macAddress": "02:00:00:00:00:2f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.670119,
+        "macAddress": "02:00:00:00:00:30",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.855224,
+        "macAddress": "02:00:00:00:00:31",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.116823,
+        "macAddress": "02:00:00:00:00:32",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.714899,
+        "macAddress": "02:00:00:00:00:33",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834339.381254,
+        "macAddress": "02:00:00:00:00:34",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834334.417179,
+        "macAddress": "02:00:00:00:00:35",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789843370.314134,
+        "macAddress": "02:00:00:00:00:36",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.439911,
+        "macAddress": "02:00:00:00:00:37",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.710377,
+        "macAddress": "02:00:00:00:00:38",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.974942,
+        "macAddress": "02:00:00:00:00:39",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.933156,
+        "macAddress": "02:00:00:00:00:3a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.364565,
+        "macAddress": "02:00:00:00:00:3b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834462.885479,
+        "macAddress": "02:00:00:00:00:3c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789835072.620797,
+        "macAddress": "02:00:00:00:00:3d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.273448,
+        "macAddress": "02:00:00:00:00:3e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.956115,
+        "macAddress": "02:00:00:00:00:3f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.177363,
+        "macAddress": "02:00:00:00:00:40",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.836847,
+        "macAddress": "02:00:00:00:00:41",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.363439,
+        "macAddress": "02:00:00:00:00:42",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.177643,
+        "macAddress": "02:00:00:00:00:43",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.805382,
+        "macAddress": "02:00:00:00:00:44",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.248246,
+        "macAddress": "02:00:00:00:00:45",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.786164,
+        "macAddress": "02:00:00:00:00:46",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834411.874233,
+        "macAddress": "02:00:00:00:00:47",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.773053,
+        "macAddress": "02:00:00:00:00:48",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834347.243877,
+        "macAddress": "02:00:00:00:00:49",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.825814,
+        "macAddress": "02:00:00:00:00:4a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.709937,
+        "macAddress": "02:00:00:00:00:4b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834332.717575,
+        "macAddress": "02:00:00:00:00:4c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834691.130509,
+        "macAddress": "02:00:00:00:00:4d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834362.400396,
+        "macAddress": "02:00:00:00:00:4e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834337.847964,
+        "macAddress": "02:00:00:00:00:4f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.714651,
+        "macAddress": "02:00:00:00:00:50",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.111737,
+        "macAddress": "02:00:00:00:00:51",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.111788,
+        "macAddress": "02:00:00:00:00:52",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846984.174506,
+        "macAddress": "02:00:00:00:00:53",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.519787,
+        "macAddress": "02:00:00:00:00:54",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.008984,
+        "macAddress": "02:00:00:00:00:55",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834355.634404,
+        "macAddress": "02:00:00:00:00:56",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.916178,
+        "macAddress": "02:00:00:00:00:57",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834371.433678,
+        "macAddress": "02:00:00:00:00:58",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846822.528118,
+        "macAddress": "02:00:00:00:00:59",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846809.479236,
+        "macAddress": "02:00:00:00:00:5a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846906.116591,
+        "macAddress": "02:00:00:00:00:5b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.73333,
+        "macAddress": "02:00:00:00:00:5c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.760787,
+        "macAddress": "02:00:00:00:00:5d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.158432,
+        "macAddress": "02:00:00:00:00:5e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.261842,
+        "macAddress": "02:00:00:00:00:5f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834334.692116,
+        "macAddress": "02:00:00:00:00:60",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.370152,
+        "macAddress": "02:00:00:00:00:61",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834338.389941,
+        "macAddress": "02:00:00:00:00:62",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834336.595972,
+        "macAddress": "02:00:00:00:00:63",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.615461,
+        "macAddress": "02:00:00:00:00:64",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834336.622721,
+        "macAddress": "02:00:00:00:00:65",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.869482,
+        "macAddress": "02:00:00:00:00:66",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.937056,
+        "macAddress": "02:00:00:00:00:67",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.106112,
+        "macAddress": "02:00:00:00:00:68",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846664.065282,
+        "macAddress": "02:00:00:00:00:69",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.737072,
+        "macAddress": "02:00:00:00:00:6a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845795.051845,
+        "macAddress": "02:00:00:00:00:6b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789839616.807674,
+        "macAddress": "02:00:00:00:00:6c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789842120.970448,
+        "macAddress": "02:00:00:00:00:6d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.738304,
+        "macAddress": "02:00:00:00:00:6e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845841.99445,
+        "macAddress": "02:00:00:00:00:6f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.935921,
+        "macAddress": "02:00:00:00:00:70",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789845908.729266,
+        "macAddress": "02:00:00:00:00:71",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789841199.375737,
+        "macAddress": "02:00:00:00:00:72",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.872176,
+        "macAddress": "02:00:00:00:00:73",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834337.384727,
+        "macAddress": "02:00:00:00:00:74",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.619411,
+        "macAddress": "02:00:00:00:00:75",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.956474,
+        "macAddress": "02:00:00:00:00:76",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.840348,
+        "macAddress": "02:00:00:00:00:77",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.499013,
+        "macAddress": "02:00:00:00:00:78",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.618214,
+        "macAddress": "02:00:00:00:00:79",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.122274,
+        "macAddress": "02:00:00:00:00:7a",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.215788,
+        "macAddress": "02:00:00:00:00:7b",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.836155,
+        "macAddress": "02:00:00:00:00:7c",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834331.387238,
+        "macAddress": "02:00:00:00:00:7d",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.325824,
+        "macAddress": "02:00:00:00:00:7e",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.026584,
+        "macAddress": "02:00:00:00:00:7f",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834335.89365,
+        "macAddress": "02:00:00:00:00:80",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834333.955223,
+        "macAddress": "02:00:00:00:00:81",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834339.276656,
+        "macAddress": "02:00:00:00:00:82",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.037132,
+        "macAddress": "02:00:00:00:00:83",
+        "moves": 1,
+        "vlanId": 1
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.046479,
+        "macAddress": "02:00:00:00:00:84",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.701761,
+        "macAddress": "02:00:00:00:00:85",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.290798,
+        "macAddress": "02:00:00:00:00:86",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834402.417797,
+        "macAddress": "02:00:00:00:00:3f",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.834037,
+        "macAddress": "02:00:00:00:00:87",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.833874,
+        "macAddress": "02:00:00:00:00:4a",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834329.305918,
+        "macAddress": "02:00:00:00:00:88",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846949.47184,
+        "macAddress": "02:00:00:00:00:89",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789835391.920523,
+        "macAddress": "02:00:00:00:00:8a",
+        "moves": 1,
+        "vlanId": 2
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.920466,
+        "macAddress": "02:00:00:00:00:4a",
+        "moves": 1,
+        "vlanId": 8
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834330.920622,
+        "macAddress": "02:00:00:00:00:4a",
+        "moves": 1,
+        "vlanId": 9
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789846797.976684,
+        "macAddress": "02:00:00:00:00:8b",
+        "moves": 1,
+        "vlanId": 1000
+      },
+      {
+        "entryType": "dynamic",
+        "interface": "Ethernet49/1",
+        "lastMove": 1789834442.992031,
+        "macAddress": "02:00:00:00:00:8c",
+        "moves": 1,
+        "vlanId": 3000
+      }
+    ]
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -0.9996076451267513,
+      "temperature": 28.76171875,
+      "txBias": 39.028,
+      "txPower": 0.4300840987995187,
+      "updateTime": 1789847185.1241505,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3136
+    },
+    "Ethernet49/2": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -3.822659646359824,
+      "temperature": 28.76171875,
+      "txBias": 42.89,
+      "txPower": -0.146184397680031,
+      "updateTime": 1789847185.1241515,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3136
+    },
+    "Ethernet49/3": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.5979053957396054,
+      "temperature": 28.76171875,
+      "txBias": 41.134,
+      "txPower": 1.4360803483759597,
+      "updateTime": 1789847185.1241517,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3136
+    },
+    "Ethernet49/4": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.5449814663667674,
+      "temperature": 28.76171875,
+      "txBias": 38.994,
+      "txPower": 0.42536136722143425,
+      "updateTime": 1789847185.124152,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3136
+    },
+    "Ethernet50/1": {},
+    "Ethernet50/2": {},
+    "Ethernet50/3": {},
+    "Ethernet50/4": {},
+    "Ethernet51/1": {},
+    "Ethernet51/2": {},
+    "Ethernet51/3": {},
+    "Ethernet51/4": {},
+    "Ethernet52/1": {},
+    "Ethernet52/2": {},
+    "Ethernet52/3": {},
+    "Ethernet52/4": {},
+    "Ethernet53/1": {},
+    "Ethernet53/2": {},
+    "Ethernet53/3": {},
+    "Ethernet53/4": {},
+    "Ethernet54/1": {},
+    "Ethernet54/2": {},
+    "Ethernet54/3": {},
+    "Ethernet54/4": {}
+  }
+}

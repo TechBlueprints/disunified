@@ -1,0 +1,59 @@
+{
+  "lldpNeighbors": {
+    "Ethernet49/1": {
+      "lldpNeighborInfo": [
+        {
+          "chassisId": "\"02:00:00:00:00:48\"",
+          "chassisIdType": "local",
+          "lastChangeTime": 1789834329.2512996,
+          "lastContactTime": 1789847171.8416593,
+          "managementAddresses": [
+            {
+              "address": "192.0.2.1",
+              "addressType": "ipv4",
+              "interfaceNum": 0,
+              "interfaceNumType": "unknown",
+              "oidString": ""
+            }
+          ],
+          "neighborDiscoveryTime": 1789834328.5610993,
+          "neighborInterfaceInfo": {
+            "autoNegAdvertisedCapabilities": [],
+            "autoNegCapability": "notCapable",
+            "interfaceDescription": "QSFP28 1",
+            "interfaceId": "\"one00GigE48\"",
+            "interfaceIdType": "local",
+            "interfaceId_v2": "one00GigE48",
+            "medInfo": {
+              "capabilities": {
+                "capabilities": true,
+                "deviceType": "networkConnectivity",
+                "extendedPd": false,
+                "extendedPse": false,
+                "inventory": false,
+                "location": false,
+                "networkPolicy": false
+              },
+              "networkPolicies": []
+            },
+            "operMauType": "Unknown",
+            "portAndProtocolVlanEnabled": {},
+            "portAndProtocolVlanSupported": {},
+            "portVlanId": 1,
+            "protocolIdentityInfo": [],
+            "unknownOrgDefinedTlvs": [],
+            "unknownTlvs": [],
+            "vlanNames": {}
+          },
+          "systemCapabilities": {
+            "bridge": true,
+            "router": true
+          },
+          "systemDescription": "scrubbed",
+          "systemName": "neighbor-1",
+          "ttl": 120
+        }
+      ]
+    }
+  }
+}

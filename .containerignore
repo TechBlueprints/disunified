@@ -1,0 +1,14 @@
+# Build context exclusions for the Containerfile (Podman reads .containerignore,
+# Docker reads .dockerignore). Keep secrets, runtime state and local builds out.
+.git
+.env
+.env.*
+config.yaml
+config.local.*
+state/
+inform-log/
+run.log
+/switch-to-unifi
+bin/
+dist/
+.DS_Store

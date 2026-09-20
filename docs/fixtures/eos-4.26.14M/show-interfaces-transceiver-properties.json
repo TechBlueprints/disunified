@@ -1,0 +1,907 @@
+{
+  "interfaces": {
+    "Ethernet1": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet10": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet11": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet12": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet13": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet14": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet15": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet16": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet17": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet18": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet19": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet2": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet20": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet21": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet22": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet23": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet24": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet25": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet26": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet27": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet28": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet29": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet3": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet30": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet31": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet32": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet33": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet34": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet35": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet36": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet37": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet38": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet39": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet4": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet40": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet41": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet42": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet43": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet44": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet45": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet46": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet47": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet48": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet49/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "operSpeed": {
+        "autonegSuffix": "forced",
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet5": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet50/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "mediaType": "100GBASE-CR4",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet50/2": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "mediaType": "100GBASE-CR4",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet50/3": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "mediaType": "100GBASE-CR4",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet50/4": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "mediaType": "100GBASE-CR4",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "25Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "fireCode"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet51/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "mediaType": "Not Present",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet52/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "mediaType": "Not Present",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet53/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "mediaType": "100GBASE-CR4",
+      "operSpeed": {
+        "autonegSuffix": "forced",
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "xcvrCapabilities": [
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "10Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "25Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "unsupported"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "40Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "50Gbps"
+          }
+        },
+        {
+          "fecCapabilities": {
+            "hostErrorCorrection": "reedSolomon"
+          },
+          "speedCapabilities": {
+            "duplex": "full",
+            "speed": "100Gbps"
+          }
+        }
+      ]
+    },
+    "Ethernet54/1": {
+      "adminSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "mediaType": "Not Present",
+      "operSpeed": {
+        "duplex": "full",
+        "speed": "100Gbps"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet6": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet7": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet8": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Ethernet9": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    },
+    "Management1": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10/100/1000",
+      "operSpeed": {
+        "autonegSuffix": "autoNegotiated",
+        "duplex": "full",
+        "speed": "1Gbps"
+      },
+      "xcvrCapabilities": []
+    }
+  }
+}

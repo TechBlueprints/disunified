@@ -1,0 +1,68 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -1.0100072911021094,
+      "temperature": 32.27734375,
+      "txBias": 39.508,
+      "txPower": 0.34628456625320325,
+      "updateTime": 1789842292.8027442,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/2": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -3.8163806889012193,
+      "temperature": 32.27734375,
+      "txBias": 43.082,
+      "txPower": -0.20588217365564532,
+      "updateTime": 1789842292.802744,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/3": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.6084887303880748,
+      "temperature": 32.27734375,
+      "txBias": 41.402,
+      "txPower": 1.3864999485164518,
+      "updateTime": 1789842292.8027444,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/4": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.56256735850139,
+      "temperature": 32.27734375,
+      "txBias": 39.53,
+      "txPower": 0.39017321997412324,
+      "updateTime": 1789842292.8027442,
+      "vendorSn": "scrubbed",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet50/1": {},
+    "Ethernet50/2": {},
+    "Ethernet50/3": {},
+    "Ethernet50/4": {},
+    "Ethernet51/1": {},
+    "Ethernet51/2": {},
+    "Ethernet51/3": {},
+    "Ethernet51/4": {},
+    "Ethernet52/1": {},
+    "Ethernet52/2": {},
+    "Ethernet52/3": {},
+    "Ethernet52/4": {},
+    "Ethernet53/1": {},
+    "Ethernet53/2": {},
+    "Ethernet53/3": {},
+    "Ethernet53/4": {},
+    "Ethernet54/1": {},
+    "Ethernet54/2": {},
+    "Ethernet54/3": {},
+    "Ethernet54/4": {}
+  }
+}

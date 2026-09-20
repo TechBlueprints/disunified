@@ -1,0 +1,14 @@
+{
+  "instances": {
+    "MST0": {
+      "rootBridge": {
+        "forwardDelay": 15,
+        "helloTime": 2.0,
+        "macAddress": "02:00:00:00:00:28",
+        "maxAge": 20,
+        "priority": 32768,
+        "systemIdExtension": 0
+      }
+    }
+  }
+}

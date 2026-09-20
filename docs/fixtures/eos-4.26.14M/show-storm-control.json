@@ -1,0 +1,25 @@
+{
+    "interfaces": {
+        "Ethernet54/1": {
+            "active": true,
+            "reason": "",
+            "trafficTypes": {
+                "broadcast": {
+                    "dormant": false,
+                    "rate": 5000,
+                    "thresholdType": "percentage",
+                    "level": 500,
+                    "drop": 0
+                },
+                "multicast": {
+                    "dormant": false,
+                    "rate": 1000,
+                    "thresholdType": "percentage",
+                    "level": 100,
+                    "drop": 0
+                }
+            }
+        }
+    },
+    "aggregateTrafficClasses": {}
+}

@@ -1,0 +1,153 @@
+# switch-to-unifi — working notes and rules for Claude Code
+
+Read this first. It is the map of the repo and the rules that came from live
+failures. Deeper material is in `docs/`; the rules for the vendor layer are
+in `internal/drivers/CLAUDE.md`.
+
+## 1. What this is
+
+A bridge that presents a non-UniFi switch to a UniFi Network controller as an
+adopted UniFi switch (read: ports, stats, topology; write: the controller's
+port and switch config applied to the vendor switch). First target: Clint's
+Arista DCS-7160-48TC6-F on EOS 4.26.14M, claimed as `UDC48X6` ("USW Leaf").
+**Phase 0 (read) and phase 1 (control) are done and verified live** on
+Network 10.6.106 — see `docs/feature-map.md` for the per-feature status.
+
+## 2. Map
+
+| Path | Owns | Rules |
+|---|---|---|
+| `cmd/switch-to-unifi` | flags/env, wiring | no vendor code; identity/model default from the switch |
+| `internal/switchmodel` | neutral model, `Driver` contract, registry | nothing vendor- or UniFi-specific |
+| `internal/drivers/<name>` | one vendor/OS | `internal/drivers/CLAUDE.md`, `docs/adding-a-switch.md` |
+| `internal/device` | inform session (fork of unifi-emu), payload tables, capability claims, `State` persistence | wire keys live here and nowhere else |
+| `internal/unificfg` | parse `system_cfg` pushes | every key observed has a fixture under `docs/fixtures/controller-*` |
+| `internal/informloop` | collect → inform → apply pending → reconcile | apply is a diff; reconcile runs every cycle |
+| `internal/unifimodel` | choose the UniFi model from the port layout | `docs/unifi-models.md` |
+| `internal/unifiapi` | controller REST API (naming only) | touches only controller-default names |
+| `docs/` | protocol notes, vendor notes, feature map, fixtures | scrub fixtures with `scripts/sanitize-fixtures.py` |
+
+## 3. How Clint wants to work
+
+- Local, on his Mac (`~/techblueprints/switch-to-unifi`). Commit locally and
+  show him. **Ask before pushing, merging, opening a PR, or deploying.**
+  The repo was first pushed 2026-09-20 (history squashed to one commit).
+- He logs into the controller in Claude's Chrome tab so Claude can drive the
+  UI for captures and round-trip tests; Claude never touches the 2FA code.
+- UI edits for testing go on **port 2** (copper, unused) and **port 54**
+  (QSFP cage, down). Never touch 49/51/53 (live 100G links).
+- UniFi is the source of truth for port config and VLANs (he OK'd replacing
+  the Arista's VLAN config). IGMP snooping too (`-control-igmp`).
+- MIT license, same as unifi-emu; credit James Braid.
+- **No affiliation with Ubiquiti**: the README, LICENSE and any published
+  page must say this is an independent fan/home-user project, not endorsed
+  by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
+- Bypass-permissions mode is on for this session; the bridge is restarted by
+  Claude (`pkill -INT -f 'switch-to-unifi -controller'`, then re-run).
+
+## 4. Running instance (Clint's)
+
+```
+cd ~/techblueprints/switch-to-unifi && set -a && . ./.env && set +a
+./switch-to-unifi -config config.yaml
+```
+
+`config.yaml` (gitignored) is the real config: controller 192.0.2.1, API URL
+`unifi.example.net`, switch `arista` via eAPI, every `control`
+flag on (ports all, igmp, ntp, syslog, reboot, ssh_keys). State:
+`state/arista/device.json`; replies: `inform-log/arista/`.
+
+`.env` → `<outside the repo>`
+(`STU_EOS_URL/USER/PASS` — the `stu` user, privilege 15; `STU_UNIFI_URL` +
+`STU_UNIFI_API_KEY` for naming). `state/device.json` holds the adopted key:
+one instance per switch, keep the file. Logs: `run.log`, `inform-log/`.
+
+## 5. Protocol facts that cost time (all verified on 10.6.106)
+
+- Inform header 40 bytes, version 1; AES-GCM with a **16-byte nonce** and
+  the whole header as AAD; both CBC and GCM required; default key
+  `MD5("ubnt")`; HTTP 404 is the normal pending reply; `inform_url` must be
+  an IP literal; accept `mgmt_cfg.authkey` only while on the default key.
+- **Control channel is `setparam.system_cfg`** (the UniFi device config
+  file), not `setstate`. Keys per feature are in `docs/feature-map.md` §3.
+  Report the pushed `cfgversion` only after applying.
+- **Capability claims are stored only when the inform carries
+  `udapi_version`** (default `1.0.0`). Then `switch_caps`/`speed_caps`
+  gate what the UI offers, and the UI validates requests against
+  `speed_caps` — so claims must be true (from the switch's hardware table).
+- The device's per-port `media` and `speed_caps` **do** replace the
+  profile's icons and speed pickers; port count, display name, PoE and
+  default port names come from the profile.
+- The controller sets the inform interval (65-80 s here).
+
+## 6. Switch facts (Arista, see `docs/arista-eapi.md`)
+
+- EOS 4.26.14M is the **last train for the 7160**: verify every command
+  against that version (fixtures in `docs/fixtures/eos-4.26.14M/`); eAPI
+  batches start with `enable`; eAPI does not expand abbreviations; TLS 1.2
+  RSA-kex only.
+- 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
+  RS-FEC on 100G, fire-code only on 25G lanes.
+- Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
+  every lane or the others errdisable ("speed-misconfigured").
+- `write memory` after every config batch.
+
+## 7. Done / open (2026-09-19 end of day)
+
+Done and verified live: everything in `docs/feature-map.md` marked done,
+including aggregation (every lane of a cage joins), mirroring, per-port STP
+disable, NTP/syslog ownership, port-cycle, locate, real reboot on request,
+controller SSH keys on the switch user, emulated firmware upgrades
+(persisted), fault reporting (fan/PSU/overheating claims, errdisabled logged),
+first-provision naming with lane-range names on split, config file with
+multi-switch support, container packaging (image build untested), install
+guide, contributor process. Refused-with-a-log: isolation, 802.1X, egress
+rate limit, jumbo-off, LLDP-MED-off.
+
+**Deployed 2026-09-19 16:39 MDT** on the Podman host (`/opt/switch-to-unifi`:
+docker-compose.yml with `build: ./src`, `config.yaml`, `env` (600), named
+volume `switch-to-unifi-state` holding `state/arista/device.json`; image
+`localhost/switch-to-unifi:latest`, uid 65532; `restart: always`). **The Mac
+instance is stopped and must stay stopped** (one bridge per adopted key). To
+update (from the repo root): `git archive --format=tar HEAD | ssh root@podman.example.net
+"rm -rf /opt/switch-to-unifi/src && mkdir -p /opt/switch-to-unifi/src && tar -xf - -C /opt/switch-to-unifi/src
+&& cd /opt/switch-to-unifi && podman-compose build && podman-compose up -d --force-recreate"`
+(git archive ships only committed, non-ignored files; `--force-recreate` is
+needed or the old container keeps running). Container logs are UTC. rsync is
+not installed on the Mac.
+
+SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
+`switch.snmp.*`; `control.snmp: true` in the deployed config).
+
+**SSH gateway parked on branch `ssh-gateway` (2026-09-19).** It was built,
+deployed (macvlan, DHCP reservation 192.0.2.250 for MAC 02:53:54:55:00:01;
+the reservation and client record were deleted 2026-09-19) and verified
+(`ssh admin@<device IP> "show version"` with a controller-pushed key), then
+removed from main because the UniFi UI terminal is WebRTC, not SSH (below).
+`docs/ssh-gateway-status.md` on that branch says where it got to. Main
+deploys with `deploy/compose.yaml` (bridge network) and reports the Arista's
+own IP (192.0.2.3) as the device IP. `fw_caps` UTERM is deliberately not
+claimed, so no Debug entry appears.
+
+STP facts (2026-09-19): the Arista runs `spanning-tree mode rstp`, priority
+32768. It was the LAN's STP root (every switch at 32768, lowest MAC) until
+Clint set the aggregation switch to 4096 the same evening; EOS now reports root
+02:00:00:00:00:3d with Ethernet49/1 as the root port. Only Ethernet49/1
+(the aggregation switch) and 53/1 are STP-active. `root_switch` is reported
+from `show spanning-tree root detail`.
+
+Anomaly/Experience (2026-09-19): per-port `anomalies` bits, `satisfaction`
+and `satisfaction_reason` are derived in `internal/device/tables.go`
+(`portAnomalies`) from `Port.Health` — see `docs/feature-map.md` for the
+bit table and the empirical satisfaction rule. FEC codeword counters come
+from text output (`TextRunner`), eAPI only.
+
+**The UI terminal is WebRTC, not SSH (2026-09-19).** When the Debug
+terminal is opened the controller sends the device an inform-reply cmd
+`build-ssh-session` (session id, STUN/TURN servers, TURN username), which
+this bridge logs as UNHANDLED. The device is expected to establish a WebRTC
+session with the browser and pipe its shell over the data channel. unifi-emu
+does not implement the device side and does not document how a device
+answers that command, so Clint parked it (branch `ssh-gateway`).
+
+Nothing open on the controller side; the WebRTC terminal is parked.

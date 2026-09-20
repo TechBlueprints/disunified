@@ -1,0 +1,319 @@
+{
+  "interfaceDescriptions": {
+    "Ethernet1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet10": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet11": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet12": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet13": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet14": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet15": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet16": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet17": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet18": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet19": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet2": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet20": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet21": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet22": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet23": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet24": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet25": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet26": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet27": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet28": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet29": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet3": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet30": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet31": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet32": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet33": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet34": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet35": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet36": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet37": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet38": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet39": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet4": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet40": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet41": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet42": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet43": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet44": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet45": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet46": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet47": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet48": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet49/1": {
+      "description": "",
+      "interfaceStatus": "up",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet5": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet50/1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet50/2": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet50/3": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet50/4": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet51/1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "notPresent"
+    },
+    "Ethernet52/1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "notPresent"
+    },
+    "Ethernet53/1": {
+      "description": "",
+      "interfaceStatus": "up",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet54/1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "notPresent"
+    },
+    "Ethernet6": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet7": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet8": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Ethernet9": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "down"
+    },
+    "Management1": {
+      "description": "",
+      "interfaceStatus": "up",
+      "lineProtocolStatus": "up"
+    },
+    "Port-Channel1": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "lowerLayerDown"
+    },
+    "Port-Channel2": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "lowerLayerDown"
+    },
+    "Port-Channel3": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "lowerLayerDown"
+    },
+    "Port-Channel4": {
+      "description": "",
+      "interfaceStatus": "down",
+      "lineProtocolStatus": "lowerLayerDown"
+    },
+    "Vlan1": {
+      "description": "",
+      "interfaceStatus": "up",
+      "lineProtocolStatus": "up"
+    }
+  }
+}
