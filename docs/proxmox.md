@@ -34,7 +34,7 @@ matters happens in the bond (100 ms), below the switch we present.
 
 | Ports | What | Media / speed reported |
 |---|---|---|
-| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); a free slot is named `VM-Open-<port>` and reported **disabled** (nothing can be cabled into it) | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
+| 1-48 (`ports` − `uplink_ports`) | one per guest NIC on the bridge, **cluster-wide**, named `VM-<vmid>` / `CT-<vmid>` (`VM-119 net1` when a guest has several NICs on the bridge); the port number is recorded in the guest's own Proxmox tags (§1c); a free slot is named `VM-Open-<port>` and reported **disabled** (nothing can be cabled into it) | QSFP28; 100G when the guest runs on this node (virtio/vmxnet3 are memory-bound: Clint's call, "the throughput a VM can get across the virtual switch"), 1G for e1000, 100M for rtl8139; down when the guest is stopped or on another node; an empty cage when no guest is assigned |
 | 54 downwards | the node's physical ports: each NIC under the bridge, a bond's slaves as separate ports named `bond0-1`, `bond0-2`… (the first slave at 54); a free slot is `NIC-Open-<port>`, disabled | from `ethtool` per NIC: media from the transceiver EEPROM (`ethtool -m`) or port type, speed caps from the supported link modes, optic vendor/part/serial, FEC state, LLDP neighbour. An active-backup bond's active slave forwards and is the uplink; the standby shows link-up but **blocking** and carries no MAC table; neither is a LAG. An 802.3ad/balance bond's slaves form a LAG |
 
 ### 1b. Host network layouts
@@ -60,6 +60,44 @@ client on its own port was tried on 2026-09-20 and dropped: the "switch"
 and the "host" were the same thing with the same address and name, split
 in two for no gain. Adopting the node does delete its former *client*
 record, hence the static DNS records, §6.)
+
+## 1c. Port numbers live in the guest's tags
+
+A NIC's port is recorded in the guest's own Proxmox tags, so the bridge
+keeps no state of its own (the container is stateless; nothing else in
+Proxmox can carry per-NIC metadata: the NIC option string is a closed
+schema and unknown config keys are dropped on the next write). The grammar
+is `unifi.p<port>.<c|h.host>[.<bridge>][.net<N>]`; Proxmox tags allow only
+`[a-z0-9_][a-z0-9_-+.]*`, so `.` is the separator (node names never
+contain one).
+
+| Tag | Meaning |
+|---|---|
+| `unifi.p25.c` | `net0` is port 25 on every node (`numbering: cluster`) |
+| `unifi.p25.h.proxmox-2` | `net0` is port 25 on proxmox-2's switch (`numbering: node`) |
+| `unifi.p27.c.net1` | `net1` is port 27 |
+| `unifi.p3.c.vmbr1` | `net0` is port 3 on the vmbr1 switch |
+
+- **The owner writes, the others read.** Only the bridge on the node a
+  guest lives on writes tags (`qm set`/`pct set --tags`, a write that
+  happens even with control off: it is the bridge's bookkeeping). Every
+  bridge computes the same port for an untagged NIC from the same tags
+  (lowest free port, guests in VMID and NIC order), so an untagged guest
+  is shown at the port its owner is about to write, and once the tag
+  exists it alone decides.
+- **The tag is authoritative.** Edit it by hand to move a guest to another
+  port; the next poll follows it and the fresh-port seeding (§3) fills the
+  new port's controller config from the guest's own NIC settings.
+- **Duplicates.** Clones and restored backups copy tags, so two guests can
+  claim one port: the lower VMID keeps it and the other is retagged by its
+  owner. Malformed, out-of-range or wrong-scope `unifi.` tags for this
+  bridge are replaced; the operator's own tags and another bridge's tags
+  are left in place, in order.
+- **Moves.** Under cluster numbering a migrated guest keeps its port.
+  Under node numbering a guest carrying another node's name has migrated:
+  the destination gives it a port, seeds it from the guest's config and
+  rewrites the tag; the source's port goes free. A custom port name given
+  in UniFi does not follow. **Only cluster numbering has been run live.**
 
 ## 2. What is read (every inform, one SSH exec)
 
@@ -151,7 +189,7 @@ default:
 next poll; the bridge seeds that port's live state into the controller and,
 until the controller's config for it matches the switch, the port is
 withheld from every write (logged once). A guest that migrates between
-nodes keeps its port number and name (the map is cluster-wide) and its
+nodes keeps its port number and name (the port is in the guest's tag) and its
 destination was seeded with its config along with every other node; the
 arrived port is still treated as fresh there, because port overrides are
 per device in UniFi — if the destination's override for that port was
@@ -293,8 +331,9 @@ switches:
 In a container (`deploy/compose.yaml`), mount the private key and a
 `known_hosts` holding each node's host key read-only and name them in
 `options`; the container has no home directory or agent, and the key must
-be readable by uid 65532. Keep `state/<name>/proxmox-ports.json` with
-`device.json` (§1).
+be readable by uid 65532. The driver keeps no file of its own: a guest's
+port lives in its tags (§1c), and `state/<name>/device.json` holds only
+the adopted key.
 
 ## 6. Controller quirks met on Network 10.6.106
 

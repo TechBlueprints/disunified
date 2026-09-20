@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,9 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
-func loadFixture(t *testing.T, name string) string {
+// loadFixtureRaw is the capture as taken: only the test guest carries a
+// port tag, as the cluster looked before the bridge first ran.
+func loadFixtureRaw(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "fixtures", "proxmox-9.1.6", name))
 	if err != nil {
@@ -20,38 +23,73 @@ func loadFixture(t *testing.T, name string) string {
 	return string(b)
 }
 
+// loadFixture is the capture after the bridge's first poll on that node:
+// its guests carry the tags the driver writes (applied to the capture the
+// way the cluster would apply them, see FixtureRunner), so tests of the
+// steady state see no tag writes.
+func loadFixture(t *testing.T, name string) string {
+	t.Helper()
+	if !strings.HasPrefix(name, "collect-") {
+		return loadFixtureRaw(t, name)
+	}
+	r := &FixtureRunner{Fixture: loadFixtureRaw(t, name)}
+	if _, err := NewCollector(r).Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return r.Fixture
+}
+
 func newTestCollector(t *testing.T, fixture string) (*Collector, *FixtureRunner) {
 	t.Helper()
 	r := &FixtureRunner{Fixture: loadFixture(t, fixture)}
 	c := NewCollector(r)
-	pm, err := loadPortMap(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.ports = pm
 	c.cycleDelay = time.Millisecond
 	c.ManageLLDP = false // the fixture's lldpd config is scrubbed; covered by TestEnsureLLDPWritesConfig
 	return c, r
 }
 
+// commandsWith returns the recorded commands containing s.
+func commandsWith(r *FixtureRunner, s string) []string {
+	var out []string
+	for _, c := range r.Commands {
+		if strings.Contains(c, s) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func TestEnsureLLDPWritesConfig(t *testing.T) {
-	c, r := newTestCollector(t, "collect-node2.txt")
-	c.ManageLLDP = true
+	// The capture already carries the config this driver writes (the node
+	// is managed); a node whose lldpd has no config of ours gets a write.
+	fx := loadFixture(t, "collect-node2.txt")
+	i := strings.Index(fx, "@@@ lldpdconf\npresent\n")
+	j := strings.Index(fx[i:], "\n@@@ ")
+	unmanaged := fx[:i] + "@@@ lldpdconf\npresent" + fx[i+j:]
+	r := &FixtureRunner{Fixture: unmanaged}
+	c := NewCollector(r)
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Commands) != 1 || !strings.HasPrefix(r.Commands[0], "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd") {
+	if w := commandsWith(r, "lldpd"); len(w) != 1 || !strings.HasPrefix(w[0], "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd") {
 		t.Fatalf("lldpd config not written: %v", r.Commands)
 	}
+	// The managed node as captured: nothing to write.
+	c1, r1 := newTestCollector(t, "collect-node2.txt")
+	if _, err := c1.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if w := commandsWith(r1, "lldpd"); len(w) != 0 {
+		t.Errorf("rewrote an up-to-date lldpd config: %v", w)
+	}
 	// A node without lldpd gets a warning, not a write.
-	r2 := &FixtureRunner{Fixture: strings.Replace(loadFixture(t, "collect-node2.txt"), "@@@ lldpdconf\npresent\n", "@@@ lldpdconf\n", 1)}
+	r2 := &FixtureRunner{Fixture: strings.Replace(fx, "@@@ lldpdconf\npresent\n", "@@@ lldpdconf\n", 1)}
 	c2 := NewCollector(r2)
-	c2.ports, _ = loadPortMap(t.TempDir())
 	if _, err := c2.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(r2.Commands) != 0 {
-		t.Errorf("wrote lldpd config on a node without lldpd: %v", r2.Commands)
+	if w := commandsWith(r2, "lldpd"); len(w) != 0 {
+		t.Errorf("wrote lldpd config on a node without lldpd: %v", w)
 	}
 }
 
@@ -217,27 +255,157 @@ func TestCollectNode1TaggedGuest(t *testing.T) {
 	}
 }
 
-func TestPortMapIsStable(t *testing.T) {
-	dir := t.TempDir()
-	pm, _ := loadPortMap(dir)
-	now := time.Now()
-	got, _ := pm.assign([]string{"qemu/100/net0", "qemu/101/net0", "qemu/102/net0"}, 5, now)
-	if got["qemu/100/net0"] != 1 || got["qemu/102/net0"] != 3 {
-		t.Fatalf("seed = %v", got)
+func TestPortTagGrammar(t *testing.T) {
+	cases := map[string]portClaim{
+		"unifi.p25.c":                 {Port: 25, Scope: "c", Bridge: "vmbr0"},
+		"unifi.p25.h.proxmox-2":       {Port: 25, Scope: "h", Host: "proxmox-2", Bridge: "vmbr0"},
+		"unifi.p27.c.net1":            {Port: 27, Scope: "c", Bridge: "vmbr0", NIC: 1},
+		"unifi.p3.c.vmbr1":            {Port: 3, Scope: "c", Bridge: "vmbr1"},
+		"unifi.p3.h.pve-1.vmbr1.net2": {Port: 3, Scope: "h", Host: "pve-1", Bridge: "vmbr1", NIC: 2},
 	}
-	if err := pm.save(); err != nil {
+	for tag, want := range cases {
+		got, ok := parseClaim(tag)
+		if !ok || got != want {
+			t.Errorf("parse %q = %+v %v, want %+v", tag, got, ok, want)
+		}
+		if got.String() != tag {
+			t.Errorf("format %+v = %q, want %q", want, got.String(), tag)
+		}
+	}
+	for _, bad := range []string{"immich", "unifi", "unifi.p25", "unifi.25.c", "unifi.p0.c", "unifi.px.c", "unifi.p25.x", "unifi.p25.h", "unifi.p25.c.net", "unifi.p25.c.net1.vmbr1", "unifi.p25.c.extra"} {
+		if _, ok := parseClaim(bad); ok {
+			t.Errorf("%q parsed as a claim", bad)
+		}
+	}
+	if _, ok := parseClaim("UNIFI.P25.C"); !ok {
+		t.Error("tags are case-insensitive in Proxmox")
+	}
+}
+
+// TestPortsComeFromTags: the fixture's VM 999 carries unifi.p25.c; every
+// other guest is untagged. Node 2's bridge keeps 999 at 25, numbers its
+// own untagged guests from the lowest free port, tags them (and nothing
+// on other nodes), and leaves 999's tag alone.
+func TestPortsComeFromTags(t *testing.T) {
+	r := &FixtureRunner{Fixture: loadFixtureRaw(t, "collect-node2.txt")}
+	c := NewCollector(r)
+	snap, err := c.Start(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	// 101 deleted, 99 created: 99 gets a never-used slot, not 101's.
-	pm2, _ := loadPortMap(dir)
-	got, changed := pm2.assign([]string{"qemu/99/net0", "qemu/100/net0", "qemu/102/net0"}, 5, now.Add(time.Minute))
-	if !changed || got["qemu/99/net0"] != 4 || got["qemu/100/net0"] != 1 {
-		t.Fatalf("after delete/create = %v", got)
+	if p := snap.Ports[24]; p.IfName != "vm999-net0" {
+		t.Fatalf("port 25 = %q, want the tagged VM 999", p.IfName)
 	}
-	// With every slot used, the longest-released one is reused.
-	got, _ = pm2.assign([]string{"qemu/99/net0", "qemu/100/net0", "qemu/102/net0", "qemu/103/net0", "qemu/104/net0"}, 5, now.Add(2*time.Minute))
-	if got["qemu/104/net0"] != 2 {
-		t.Fatalf("reuse = %v", got)
+	if p := snap.Ports[0]; p.IfName != "vm100-net0" {
+		t.Errorf("port 1 = %q, want VM 100 (lowest VMID, lowest free port)", p.IfName)
+	}
+	tagged := commandsWith(r, " --tags ")
+	if len(tagged) == 0 {
+		t.Fatal("this node's untagged guests were not tagged")
+	}
+	for _, cmd := range tagged {
+		if strings.Contains(cmd, "qm set 999 ") {
+			t.Errorf("VM 999's correct tag was rewritten: %s", cmd)
+		}
+		if strings.Contains(cmd, "qm set 101 ") || strings.Contains(cmd, "qm set 119 ") {
+			t.Errorf("a guest on another node was tagged from here: %s", cmd)
+		}
+	}
+	if !strings.Contains(strings.Join(tagged, "\n"), "qm set 100 --tags 'unifi.p1.c'") {
+		t.Errorf("VM 100 not tagged unifi.p1.c: %v", tagged)
+	}
+	// An untagged guest on another node is shown at the port its owner
+	// will write (the same computation from the same tags).
+	if p := snap.Ports[1]; p.IfName != "vm101-net0" || p.Up {
+		t.Errorf("port 2 = %q up=%v, want VM 101 (node 1) down", p.IfName, p.Up)
+	}
+	// Converged: the tags it wrote (applied to the capture as the cluster
+	// would) satisfy the next poll.
+	r.Commands = nil
+	if _, err := c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if w := commandsWith(r, "--tags"); len(w) != 0 {
+		t.Errorf("second poll rewrote tags: %v", w)
+	}
+}
+
+// TestTagEditsAndDuplicates: a hand-edited tag moves the guest; two guests
+// claiming one port leave it with the lower VMID and retag the other.
+func TestTagEditsAndDuplicates(t *testing.T) {
+	fx := loadFixtureRaw(t, "collect-node2.txt")
+	moved := &FixtureRunner{Fixture: strings.Replace(fx, "tags: unifi.p25.c\n", "tags: unifi.p30.c\n", 1)}
+	c := NewCollector(moved)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Ports[29].IfName != "vm999-net0" || snap.Ports[24].IfName == "vm999-net0" {
+		t.Errorf("edited tag did not move VM 999 to port 30: 30=%q 25=%q", snap.Ports[29].IfName, snap.Ports[24].IfName)
+	}
+	if w := commandsWith(moved, "qm set 999"); len(w) != 0 {
+		t.Errorf("a hand-edited tag was rewritten: %v", w)
+	}
+	// VM 100 (lower VMID, this node) also claims port 25.
+	dup := &FixtureRunner{Fixture: strings.Replace(fx, "## /etc/pve/nodes/proxmox-2/qemu-server/100.conf\n", "## /etc/pve/nodes/proxmox-2/qemu-server/100.conf\ntags: unifi.p25.c\n", 1)}
+	c2 := NewCollector(dup)
+	snap, err = c2.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Ports[24].IfName != "vm100-net0" {
+		t.Errorf("port 25 = %q, want the lower VMID", snap.Ports[24].IfName)
+	}
+	var p999 int
+	for _, p := range snap.Ports {
+		if p.IfName == "vm999-net0" {
+			p999 = p.Index
+		}
+	}
+	if p999 == 0 || p999 == 25 {
+		t.Fatalf("VM 999 port = %d", p999)
+	}
+	if w := commandsWith(dup, "qm set 999 --tags"); len(w) != 1 || !strings.Contains(w[0], fmt.Sprintf("'unifi.p%d.c'", p999)) {
+		t.Errorf("VM 999 not retagged with its new port %d: %v", p999, w)
+	}
+}
+
+// TestAssignPortsKeepsForeignTags: the operator's tags and another
+// bridge's tags survive a rewrite; malformed and stale "unifi." tags go.
+func TestAssignPortsKeepsForeignTags(t *testing.T) {
+	c := NewCollector(&FixtureRunner{})
+	nics := []guestNIC{
+		{Kind: "qemu", VMID: 100, Node: "n1", Index: 0, Bridge: "vmbr0", Tags: []string{"immich", "unifi.p9.c.vmbr1", "unifi.bogus", "unifi.p40.h.n1"}},
+		{Kind: "qemu", VMID: 100, Node: "n1", Index: 1, Bridge: "vmbr0", Tags: []string{"immich", "unifi.p9.c.vmbr1", "unifi.bogus", "unifi.p40.h.n1"}},
+		{Kind: "lxc", VMID: 200, Node: "n2", Index: 0, Bridge: "vmbr0"},
+	}
+	slots, retags := c.assignPorts(nics, "n1", 48)
+	if slots["qemu/100/net0"] != 1 || slots["qemu/100/net1"] != 2 {
+		t.Errorf("slots = %v", slots)
+	}
+	if slots["lxc/200/net0"] != 3 {
+		t.Errorf("an untagged guest on another node should be shown at the port its owner will pick: %v", slots)
+	}
+	if len(retags) != 1 || retags[0].VMID != 100 || strings.Join(retags[0].Tags, ";") != "immich;unifi.p9.c.vmbr1;unifi.p1.c;unifi.p2.c.net1" {
+		t.Errorf("retags = %+v", retags)
+	}
+	// Node numbering: a tag for another node's switch means the guest
+	// migrated here; it gets a port here and the tag names this node.
+	c.NodeNumbering = true
+	nics = []guestNIC{{Kind: "qemu", VMID: 100, Node: "n1", Index: 0, Bridge: "vmbr0", Tags: []string{"unifi.p7.h.n2"}}}
+	slots, retags = c.assignPorts(nics, "n1", 48)
+	if slots["qemu/100/net0"] != 1 || len(retags) != 1 || strings.Join(retags[0].Tags, ";") != "unifi.p1.h.n1" {
+		t.Errorf("migration: slots=%v retags=%+v", slots, retags)
+	}
+	// Full: the 49th NIC is not shown.
+	nics = nil
+	for i := 1; i <= 49; i++ {
+		nics = append(nics, guestNIC{Kind: "qemu", VMID: 100 + i, Node: "n1", Index: 0, Bridge: "vmbr0"})
+	}
+	c.NodeNumbering = false
+	slots, _ = c.assignPorts(nics, "n1", 48)
+	if len(slots) != 48 {
+		t.Errorf("%d NICs got ports, want 48", len(slots))
 	}
 }
 
@@ -369,7 +537,6 @@ func TestLACPBondIsPerMemberLAG(t *testing.T) {
 	fixture := strings.Replace(loadFixture(t, "collect-node2.txt"), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
 	r := &FixtureRunner{Fixture: fixture}
 	c := NewCollector(r)
-	c.ports, _ = loadPortMap(t.TempDir())
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -455,7 +622,6 @@ func TestSTPUnderMSTPD(t *testing.T) {
 	r := &FixtureRunner{Fixture: withMSTP(t, "", "")}
 	c := NewCollector(r)
 	c.ManageLLDP = false
-	c.ports, _ = loadPortMap(t.TempDir())
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -496,7 +662,6 @@ func TestSTPEnforcesPriorityAndEdge(t *testing.T) {
 	r := &FixtureRunner{Fixture: withMSTP(t, bridge, ports)}
 	c := NewCollector(r)
 	c.ManageLLDP = false
-	c.ports, _ = loadPortMap(t.TempDir())
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)

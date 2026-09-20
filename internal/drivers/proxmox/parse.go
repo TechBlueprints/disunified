@@ -217,7 +217,8 @@ type guestNIC struct {
 	Firewall bool
 	MTU      int
 	Template bool
-	Raw      string // the option string as found in the config
+	Raw      string   // the option string as found in the config
+	Tags     []string // the guest's tags, as listed in its config (tags.go)
 }
 
 // Key is the stable identity of a guest NIC across the cluster.
@@ -257,6 +258,7 @@ func parseGuestConfigs(body, kind string) ([]guestNIC, error) {
 			continue
 		}
 		name, template := "", false
+		var tags []string
 		var nics []guestNIC
 		for _, line := range strings.Split(bodies[path], "\n") {
 			k, v, ok := strings.Cut(line, ":")
@@ -269,6 +271,8 @@ func parseGuestConfigs(body, kind string) ([]guestNIC, error) {
 				name = v
 			case k == "template":
 				template = v == "1"
+			case k == "tags":
+				tags = strings.FieldsFunc(v, func(r rune) bool { return r == ';' || r == ',' || r == ' ' })
 			case strings.HasPrefix(k, "net"):
 				idx, err := strconv.Atoi(strings.TrimPrefix(k, "net"))
 				if err != nil {
@@ -280,7 +284,7 @@ func parseGuestConfigs(body, kind string) ([]guestNIC, error) {
 			}
 		}
 		for i := range nics {
-			nics[i].Name, nics[i].Template = name, template
+			nics[i].Name, nics[i].Template, nics[i].Tags = name, template, tags
 			out = append(out, nics[i])
 		}
 	}
