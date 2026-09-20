@@ -585,9 +585,12 @@ func (c *Collector) warnOnce(key, format string, args ...any) {
 	}
 }
 
-// emptyPort is a slot with nothing assigned: an empty cage.
+// emptyPort is a slot with nothing assigned: an empty cage, reported
+// disabled — nothing can be cabled into it; a guest or a NIC takes it
+// through Proxmox, and then the port is seeded from its own state (Clint,
+// 2026-09-20: "when there's no VM attached shouldn't they be disabled?").
 func emptyPort(idx int) switchmodel.Port {
-	return switchmodel.Port{Index: idx, Media: switchmodel.MediaQSFP28, Lanes: 1, Enabled: true, AutoNeg: true,
+	return switchmodel.Port{Index: idx, Media: switchmodel.MediaQSFP28, Lanes: 1, Enabled: false, AutoNeg: true,
 		VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}}
 }
 
