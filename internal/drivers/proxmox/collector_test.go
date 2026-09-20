@@ -150,7 +150,7 @@ func TestCollectNode2(t *testing.T) {
 	if len(snap.VLANs) < 3 || snap.VLANs[0] != 1 {
 		t.Errorf("vlans = %v", snap.VLANs)
 	}
-	if got := c.DeviceName(snap.System); got != "proxmox-2" {
+	if got := c.DeviceName(snap.System); got != "pve-proxmox-2" {
 		t.Errorf("device name = %q", got)
 	}
 	if _, name := vm100(t, "collect-node2.txt"); c.PortName(p1) != "100 "+name {

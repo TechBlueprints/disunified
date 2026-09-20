@@ -7,13 +7,16 @@ import (
 	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
 )
 
-// DeviceName names the switch after the node: the controller shows
-// "proxmox-2", or "proxmox-2 vmbr1" for a bridge other than vmbr0.
+// DeviceName names the switch "pve-<node>" ("pve-proxmox-2 vmbr1" for a
+// bridge other than vmbr0): distinct from the node's own DNS name, which
+// the controller stops publishing once the node's MAC is an adopted device
+// (docs/proxmox.md §6), so a static record for the host keeps its plain name.
 func (c *Collector) DeviceName(sys switchmodel.System) string {
+	name := "pve-" + sys.Hostname
 	if c.Bridge != "vmbr0" {
-		return sys.Hostname + " " + c.Bridge
+		name += " " + c.Bridge
 	}
-	return sys.Hostname
+	return name
 }
 
 // PortName names a guest port "<vmid> <name>" ("119 FusionHub net1" when
