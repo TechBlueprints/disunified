@@ -1,4 +1,4 @@
-# Installing switch-to-unifi
+# Installing disunified
 
 Written for someone (or some agent) who has never seen this project. Every
 step has a check. Total time for one switch: about 20 minutes plus one click
@@ -15,7 +15,7 @@ in the UniFi UI.
 
 - A UniFi Network controller (tested: Network 10.6 on a UniFi OS gateway),
   reachable from where the bridge runs on TCP 8080 (inform) and 443 (API).
-- A switch with a supported driver (`switch-to-unifi -list-drivers`) and an
+- A switch with a supported driver (`disunified -list-drivers`) and an
   account on it. For control (not just monitoring) the account needs write
   access; for the Arista driver that is a `network-admin` user that reaches
   enable mode without an enable password, and eAPI enabled
@@ -35,23 +35,23 @@ The release image is multi-arch (linux/amd64, linux/arm64) and needs nothing
 else installed:
 
 ```sh
-docker pull ghcr.io/techblueprints/switch-to-unifi:latest   # or podman pull
+docker pull ghcr.io/techblueprints/disunified:latest   # or podman pull
 ```
 `:latest` follows releases, `:v1.2.3` pins one, `:edge` follows `main`.
-`docker run --rm ghcr.io/techblueprints/switch-to-unifi:latest -build-version`
+`docker run --rm ghcr.io/techblueprints/disunified:latest -build-version`
 says which build you have.
 
 Or build from source (Go 1.26+), which is also how you add a driver:
 
 ```sh
-git clone https://github.com/TechBlueprints/switch-to-unifi && cd switch-to-unifi
-go build ./cmd/switch-to-unifi
+git clone https://github.com/TechBlueprints/disunified && cd disunified
+go build ./cmd/disunified
 ```
 The binaries from each release are attached to it on GitHub as well; they are
 static, so `tar xzf` and run.
 
-Steps 2 and 4 below are written as `./switch-to-unifi …`. With the image, that
-is `docker run --rm …  ghcr.io/techblueprints/switch-to-unifi:latest …`
+Steps 2 and 4 below are written as `./disunified …`. With the image, that
+is `docker run --rm …  ghcr.io/techblueprints/disunified:latest …`
 (everything after the image name is the bridge's own flags); step 6 is the
 container install proper.
 
@@ -59,13 +59,13 @@ container install proper.
 
 ```sh
 export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
-./switch-to-unifi -collect-once -switch-url https://192.0.2.3/command-api
+./disunified -collect-once -switch-url https://192.0.2.3/command-api
 ```
 or, with the image:
 
 ```sh
 docker run --rm -e STU_SWITCH_USER -e STU_SWITCH_PASS \
-  ghcr.io/techblueprints/switch-to-unifi:latest \
+  ghcr.io/techblueprints/disunified:latest \
   -collect-once -switch-url https://192.0.2.3/command-api
 ```
 **Check:** JSON with the switch's model, every port, and `suggested_model`.
@@ -84,7 +84,7 @@ environment variable names. Start with `control.ports: "off"` (read-only).
 
 ```sh
 set -a; . ./env; set +a
-./switch-to-unifi -config config.yaml
+./disunified -config config.yaml
 ```
 **Check:** the log shows `switch: <vendor> <model> ... N ports`, then
 `inform: HTTP 404 (pending, nothing queued)`. In the UniFi UI the switch
@@ -118,15 +118,15 @@ UniFi's per-network setting (UniFi defaults it off). Read
   `restart: always` and enable `podman-restart.service`; `unless-stopped`
   containers do not come back after a host reboot. The container runs as uid
   65532 and keeps state in the named volume.
-- **Quadlet/systemd:** [`deploy/switch-to-unifi.container`](../deploy/switch-to-unifi.container); it sets
+- **Quadlet/systemd:** [`deploy/disunified.container`](../deploy/disunified.container); it sets
   `AutoUpdate=registry`, so `podman auto-update` (or its timer) picks up a new
   `:latest`. Pin `:v1.2.3` if you would rather update deliberately.
-- Mount a volume at `/var/lib/switch-to-unifi` (state and reply logs) and
-  set `state_dir: /var/lib/switch-to-unifi` in the config.
+- Mount a volume at `/var/lib/disunified` (state and reply logs) and
+  set `state_dir: /var/lib/disunified` in the config.
 - An SSH driver (Proxmox, or Arista over SSH) in the container needs a key
   and a known_hosts file: mount them read-only and name them in the
-  switch's `options` (`ssh_key: /etc/switch-to-unifi/id_ed25519`,
-  `known_hosts: /etc/switch-to-unifi/known_hosts`); the container has no
+  switch's `options` (`ssh_key: /etc/disunified/id_ed25519`,
+  `known_hosts: /etc/disunified/known_hosts`); the container has no
   home directory or agent. The key file must be readable by uid 65532.
 
 **Check:** after a container restart the log says `resuming adopted state`

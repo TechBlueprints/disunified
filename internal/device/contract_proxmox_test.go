@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
+	"github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
 
 // The Proxmox driver's payload (built by the real driver from a real node

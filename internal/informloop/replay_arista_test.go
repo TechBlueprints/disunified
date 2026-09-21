@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // The Arista replay: the controller's replies to the DCS-7160

@@ -1,4 +1,4 @@
-# switch-to-unifi — working notes and rules for Claude Code
+# disunified — working notes and rules for Claude Code
 
 Read this first. It is the map of the repo and the rules that came from live
 failures. Deeper material is in `docs/`; the rules for the vendor layer are
@@ -20,7 +20,7 @@ per-feature status.
 
 | Path | Owns | Rules |
 |---|---|---|
-| `cmd/switch-to-unifi` | flags/env, wiring | no vendor code; identity/model default from the switch |
+| `cmd/disunified` | flags/env, wiring | no vendor code; identity/model default from the switch |
 | `internal/switchmodel` | neutral model, `Driver` contract, registry | nothing vendor- or UniFi-specific |
 | `internal/drivers/<name>` | one vendor/OS; its own `CLAUDE.md` holds the facts that cost time | `internal/drivers/CLAUDE.md`, `docs/adding-a-switch.md`, `docs/drivers/<name>.md` |
 | `internal/device` | inform session (fork of unifi-emu), payload tables, capability claims, `State` persistence | wire keys live here and nowhere else |
@@ -85,7 +85,7 @@ per-feature status.
   page must say this is an independent fan/home-user project, not endorsed
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
 - Bypass-permissions mode is on for this session; the bridge is restarted by
-  Claude (`pkill -INT -f 'switch-to-unifi -controller'`, then re-run).
+  Claude (`pkill -INT -f 'disunified -controller'`, then re-run).
 
 ## 4. Running instance
 
@@ -233,7 +233,7 @@ now provisions names; the mgmt_cfg log line masks the authkey.
 Release pipeline (2026-09-20, added but never run — there is no tag yet):
 `.github/workflows/ci.yml` (vet, test, `scripts/check-site-info.sh`, a
 container build plus its one-shots) and `.github/workflows/release.yml`
-(tag `v*` -> multi-arch image `ghcr.io/techblueprints/switch-to-unifi`
+(tag `v*` -> multi-arch image `ghcr.io/techblueprints/disunified`
 `:vX.Y.Z`/`:X.Y.Z`/`:X.Y`/`:latest` and a GitHub release with static binaries;
 push to main -> `:edge`). Only `GITHUB_TOKEN` is needed, but the **GHCR package
 must be made public by hand after the first push** or pulls need a login;

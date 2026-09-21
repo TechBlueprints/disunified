@@ -34,6 +34,6 @@ jobs:
           # buildx, not the classic builder: the Containerfile's build stage
           # pins --platform=$BUILDPLATFORM, which needs BuildKit.
           docker buildx build --load --file Containerfile \
-            --build-arg VERSION=ci --tag switch-to-unifi:ci .
-          docker run --rm switch-to-unifi:ci -build-version
-          docker run --rm switch-to-unifi:ci -list-drivers
+            --build-arg VERSION=ci --tag disunified:ci .
+          docker run --rm disunified:ci -build-version
+          docker run --rm disunified:ci -list-drivers

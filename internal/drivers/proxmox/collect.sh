@@ -1,5 +1,5 @@
 #!/bin/bash
-# switch-to-unifi Proxmox collector. Runs on the node over SSH, once per
+# disunified Proxmox collector. Runs on the node over SSH, once per
 # poll, and prints tagged sections ("@@@ <name>" lines) the Go side parses.
 # Everything is read-only. $1 = the bridge to present (default vmbr0).
 # Every command below exists on Proxmox VE 9 (Debian 13); a missing optional
@@ -69,7 +69,7 @@ s mstpctl;    [ -x /usr/sbin/mstpctl ] && echo present
 s mstpbridge; [ -x /usr/sbin/mstpctl ] && [ "$(cat /sys/class/net/$BR/bridge/stp_state 2>/dev/null)" = "2" ] && mstpctl -f json showbridge "$BR" 2>/dev/null
 s mstpports;  [ -x /usr/sbin/mstpctl ] && [ "$(cat /sys/class/net/$BR/bridge/stp_state 2>/dev/null)" = "2" ] && mstpctl -f json showportdetail "$BR" 2>/dev/null
 s lldp;       lldpcli -f json0 show neighbors details 2>/dev/null
-s lldpdconf;  [ -x /usr/sbin/lldpcli ] && { echo "present"; cat /etc/lldpd.d/switch-to-unifi.conf 2>/dev/null; }
+s lldpdconf;  [ -x /usr/sbin/lldpcli ] && { echo "present"; cat /etc/lldpd.d/disunified.conf 2>/dev/null; }
 s chrony;     grep -hE '^(server|pool) ' /etc/chrony/chrony.conf 2>/dev/null
-s ntpunifi;   cat /etc/chrony/sources.d/switch-to-unifi.sources 2>/dev/null
+s ntpunifi;   cat /etc/chrony/sources.d/disunified.sources 2>/dev/null
 s end

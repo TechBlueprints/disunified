@@ -1,4 +1,4 @@
-# Adding a switch (vendor/OS) to switch-to-unifi
+# Adding a switch (vendor/OS) to disunified
 
 This is the checklist for a new driver. It is written for an AI agent or a
 person who has never seen this repo; every step names the file to touch and
@@ -76,7 +76,7 @@ Create `internal/drivers/<name>/` with:
   a down port, breakout folding if the platform has it, LLDP, capabilities,
   and every apply command sequence (including idempotence: applying the
   same desire twice must write nothing the second time).
-- A blank import in [`cmd/switch-to-unifi/main.go`](../cmd/switch-to-unifi/main.go) next to the Arista one.
+- A blank import in [`cmd/disunified/main.go`](../cmd/disunified/main.go) next to the Arista one.
 - Optionally `switchmodel.Planner` (`PlanPorts`: what ApplyPorts would
   change, without writing). With it the loop holds a freshly adopted
   device's first push while it would change ports, and the bridge seeds the
@@ -163,7 +163,7 @@ second UniFi switch. On EOS, two lines under the interface do that.
 
 ## 3. Choose the UniFi model
 
-Run `switch-to-unifi -collect-once -switch-url ...` (or `-switch-ssh`). It
+Run `disunified -collect-once -switch-url ...` (or `-switch-ssh`). It
 prints the port layout and the suggested model from the catalogue (see
 [`docs/unifi-models.md`](unifi-models.md) for how the catalogue is built, how to scan a newer
 controller for new models, and what the choice affects). Pass `-model` to
@@ -196,5 +196,5 @@ the device's per-port media report replaces the profile's icons.
 | [`internal/informloop`](../internal/informloop) | the loop: collect → inform → apply/reconcile |
 | [`internal/unifimodel`](../internal/unifimodel) | which UniFi model to claim |
 | [`internal/unifiapi`](../internal/unifiapi) | controller REST API (naming) |
-| [`cmd/switch-to-unifi`](../cmd/switch-to-unifi) | flags, wiring, no vendor code |
+| [`cmd/disunified`](../cmd/disunified) | flags, wiring, no vendor code |
 | [`docs/`](.) | protocol notes, per-vendor notes, feature map, fixtures |

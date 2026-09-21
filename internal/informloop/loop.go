@@ -26,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
-	"github.com/TechBlueprints/switch-to-unifi/internal/unificfg"
+	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 

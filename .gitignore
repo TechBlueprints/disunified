@@ -23,7 +23,7 @@ config.local.*
 /inform-log/
 /state/
 /run.log
-/switch-to-unifi
+/disunified
 /config.yaml
 /state-backup/
 /config-proxmox.local.yaml

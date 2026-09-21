@@ -6,7 +6,7 @@ import (
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Identity is what the operator (or the switch) supplies for the device the

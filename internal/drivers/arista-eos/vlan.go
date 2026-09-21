@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Shapes for the VLAN/speed state commands (EOS 4.26.14M, fixtures captured

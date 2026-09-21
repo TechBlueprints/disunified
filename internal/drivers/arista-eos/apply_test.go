@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 func startedCollector(t *testing.T) (*Collector, *fixtureTransport) {

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // The command sets. Every one of these exists on EOS 4.26.14M (verified live

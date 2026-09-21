@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Driver is the Arista EOS driver: eAPI (JSON-RPC over HTTPS) or SSH.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // loadFixtureRaw is the capture as taken: only the test guest carries a
@@ -71,7 +71,7 @@ func TestEnsureLLDPWritesConfig(t *testing.T) {
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if w := commandsWith(r, "lldpd"); len(w) != 1 || !strings.HasPrefix(w[0], "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd") {
+	if w := commandsWith(r, "lldpd"); len(w) != 1 || !strings.HasPrefix(w[0], "install -m 644 /dev/stdin /etc/lldpd.d/disunified.conf && systemctl restart lldpd") {
 		t.Fatalf("lldpd config not written: %v", r.Commands)
 	}
 	// The managed node as captured: nothing to write.

@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -560,6 +560,10 @@ func (s *Session) applySetstate(body []byte, cfgversion string) []inform.Effect 
 
 // anonID is the device's stable anonymous id, derived from its MAC (a real
 // device generates and keeps one; ours must not change between restarts).
+//
+// The salt still carries the project's old name. It is not a label: it is the
+// input to an id already reported to the controller for every adopted device,
+// and changing the string changes that id. It stays as it is.
 func anonID(mac string) string {
 	h := sha1.Sum([]byte("switch-to-unifi anon " + strings.ToLower(mac)))
 	h[6] = (h[6] & 0x0f) | 0x50 // version 5 shape

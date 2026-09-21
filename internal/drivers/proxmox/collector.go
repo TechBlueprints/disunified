@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 //go:embed collect.sh
@@ -34,7 +34,7 @@ type Collector struct {
 	// ManageLLDP: keep lldpd on the node announcing this switch's identity
 	// (chassis ID = the bridge's MAC, port ID = the NIC's port number,
 	// on the primary uplink NIC only). Default on; the driver writes
-	// /etc/lldpd.d/switch-to-unifi.conf and restarts lldpd when it differs.
+	// /etc/lldpd.d/disunified.conf and restarts lldpd when it differs.
 	ManageLLDP bool
 
 	mu          sync.Mutex
@@ -1060,7 +1060,7 @@ func lldpdConfig(phys []uplink, slotFor func(int) int, devMAC string) (config st
 		return "", nil
 	}
 	var b strings.Builder
-	b.WriteString("# managed by switch-to-unifi: this node's bridge as a UniFi switch\n")
+	b.WriteString("# managed by disunified: this node's bridge as a UniFi switch\n")
 	for _, u := range phys {
 		if !u.Standby {
 			announce = append(announce, u.Active)
@@ -1093,7 +1093,7 @@ func (c *Collector) ensureLLDP(node, section string, phys []uplink, slotFor func
 		return
 	}
 	c.Log.Printf("proxmox %s: configuring lldpd (chassis %s, announcing on %s as Port %d)", node, devMAC, strings.Join(announce, ","), slotFor(0))
-	cmd := "install -m 644 /dev/stdin /etc/lldpd.d/switch-to-unifi.conf && systemctl restart lldpd"
+	cmd := "install -m 644 /dev/stdin /etc/lldpd.d/disunified.conf && systemctl restart lldpd"
 	if _, err := c.r.Run(context.Background(), cmd, want); err != nil {
 		c.warnOnce("lldpd-write", "configuring lldpd failed: %v", err)
 	}

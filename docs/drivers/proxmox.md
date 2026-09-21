@@ -205,7 +205,7 @@ and the reconcile puts the controller's value back (change it in UniFi).
 Switch-wide: IGMP snooping (`control.igmp`) toggles the bridge's
 `multicast_snooping` (bridge-wide: on when UniFi enables it on VLAN 1, else
 on any managed VLAN); NTP (`control.ntp`) writes
-`/etc/chrony/sources.d/switch-to-unifi.sources` and `chronyc reload sources`.
+`/etc/chrony/sources.d/disunified.sources` and `chronyc reload sources`.
 STP requests are logged once (a Proxmox bridge runs `bridge-stp off` by
 design), syslog is logged (journald has no remote target), reboot is never
 real (`Rebooter` is not implemented: the controller's Restart is emulated
@@ -222,7 +222,7 @@ unless mstpd is present; speed pickers offer the one speed each port has.
 The controller places a switch by the LLDP frames the *upstream* switch
 receives on the port the node is cabled to, so the node has to emit them:
 that is the one thing installed on a node (`apt-get install lldpd`). The
-driver keeps lldpd's configuration itself (`/etc/lldpd.d/switch-to-unifi.conf`,
+driver keeps lldpd's configuration itself (`/etc/lldpd.d/disunified.conf`,
 rewritten and lldpd restarted whenever it differs; `manage_lldpd: "false"`
 to opt out):
 
@@ -328,8 +328,8 @@ switches:
       # ports: "54"             # default; the node's NICs take the top ports, guests the rest
       # numbering: node         # per-node guest ports instead of cluster-wide; untested live
       # manage_lldpd: "false"   # leave lldpd alone
-      # ssh_key: /etc/switch-to-unifi/id_ed25519       # in a container
-      # known_hosts: /etc/switch-to-unifi/known_hosts
+      # ssh_key: /etc/disunified/id_ed25519       # in a container
+      # known_hosts: /etc/disunified/known_hosts
     control:
       ports: all                # port state and VLANs -> qm/pct set; see §3 before "all"
       igmp: false

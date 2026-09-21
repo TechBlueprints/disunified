@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
+	"github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
 )
 
 // The Arista EOS driver's payload, built from the real EOS 4.26.14M

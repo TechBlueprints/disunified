@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // ApplyPorts implements switchmodel.Controller for guest ports. The only
@@ -294,7 +294,7 @@ func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired
 	}
 	if d.ManageNTP && d.NTPServers != nil {
 		var b strings.Builder
-		b.WriteString("# managed by switch-to-unifi: the UniFi controller's NTP servers\n")
+		b.WriteString("# managed by disunified: the UniFi controller's NTP servers\n")
 		for _, s := range d.NTPServers {
 			if safeOptions.MatchString(s) {
 				fmt.Fprintf(&b, "server %s iburst\n", s)
@@ -305,9 +305,9 @@ func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired
 			want = ""
 		}
 		if want != ntpManaged {
-			cmd := "install -m 644 /dev/stdin /etc/chrony/sources.d/switch-to-unifi.sources && chronyc reload sources"
+			cmd := "install -m 644 /dev/stdin /etc/chrony/sources.d/disunified.sources && chronyc reload sources"
 			if want == "" {
-				cmd = "rm -f /etc/chrony/sources.d/switch-to-unifi.sources && chronyc reload sources"
+				cmd = "rm -f /etc/chrony/sources.d/disunified.sources && chronyc reload sources"
 			}
 			c.Log.Printf("proxmox %s: NTP servers -> %v", c.node, d.NTPServers)
 			if _, err := c.r.Run(ctx, cmd, want+"\n"); err != nil {

@@ -1,0 +1,25 @@
+# Podman Quadlet unit: copy to /etc/containers/systemd/disunified.container
+# (rootful) or ~/.config/containers/systemd/ (rootless), then
+#   systemctl daemon-reload && systemctl start disunified
+# Config: /etc/disunified/config.yaml; secrets: /etc/disunified/env.
+[Unit]
+Description=disunified bridge
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+# Pin a release (:v1.2.3) for anything you care about. With AutoUpdate=registry
+# below, `podman auto-update` (or podman-auto-update.timer) pulls a newer
+# :latest and restarts the unit.
+Image=ghcr.io/techblueprints/disunified:latest
+EnvironmentFile=/etc/disunified/env
+Volume=/etc/disunified/config.yaml:/etc/disunified/config.yaml:ro,Z
+Volume=disunified-state:/var/lib/disunified:Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target default.target
