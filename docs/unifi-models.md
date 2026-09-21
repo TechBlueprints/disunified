@@ -51,7 +51,14 @@ unifi-emu dependency or vendor the generated file. Until then, pass
    firmware update. For any other model the controller will push
    `upgrade` commands with real version strings; the bridge emulates those
    (accepts, "reboots", reports the new version, persists it in
-   `State.Firmware`) but it is noise you can avoid. Ports beyond 54 are not
+   `State.Firmware`) but it is noise you can avoid.
+   **This is what makes reporting the switch's own firmware version safe**
+   (`4.26.14M`, `9.1.6`; see `docs/feature-map.md` §1): on the Leaf the
+   controller has nothing to compare it with and records
+   `upgradable: false`, so the vendor's version just shows in the Version
+   column. The same nodes as `USWF07D` ("ECS Core") did prompt to upgrade
+   (Clint, 2026-09-20), so a model with real firmware in the controller's
+   database would turn every honest version into an update prompt. Ports beyond 54 are not
    drawn; fewer are shown as empty.
 3. Avoid PoE models unless the switch has PoE: the profile adds PoE columns
    and controls that will never work.
