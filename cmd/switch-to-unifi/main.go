@@ -58,7 +58,7 @@ func main() {
 		serial   = flag.String("serial", envOr("STU_SERIAL", ""), "device serial (default: the switch's serial)")
 		ip       = flag.String("ip", envOr("STU_IP", ""), "device IP to report (default: the switch address from -switch-url/-switch-ssh when it is an IP literal)")
 		hostname = flag.String("hostname", envOr("STU_HOSTNAME", ""), "device hostname to report (default: the switch's hostname)")
-		version  = flag.String("version", envOr("STU_VERSION", ""), "firmware version to report (default: the model profile's)")
+		version  = flag.String("version", envOr("STU_VERSION", ""), "firmware version to report (default: the switch's own, e.g. EOS 4.26.14M or PVE 9.1.6)")
 		uplink   = flag.Int("uplink-port", envInt("STU_UPLINK_PORT", 0), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
 
 		// Switch side
@@ -321,6 +321,7 @@ func runOne(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
+	versionPinned := o.version != "" // the operator named one; else the switch's own
 	o.version = desc.Version
 	// Capability claims come from the driver; they gate the UI, so a
 	// driver that declares none claims nothing.
@@ -341,6 +342,9 @@ func runOne(ctx context.Context, o options) error {
 	}
 	sess := device.NewSession(desc, url, st, store, time.Now())
 	sess.SetCapabilities(caps)
+	if versionPinned {
+		sess.PinVersion()
+	}
 	if snap != nil {
 		sess.SetSnapshot(snap)
 	} else {

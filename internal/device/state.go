@@ -32,7 +32,11 @@ type State struct {
 	// The controller cannot manage firmware on a bridged switch, so an
 	// upgrade is accepted, the reboot emulated, and this version reported
 	// from then on (persisted, so a restart does not look like a downgrade).
-	Firmware string `json:"firmware,omitempty"`
+	// FirmwareBase is the switch's own version at that moment: when the
+	// switch is really upgraded afterwards, the emulated version is dropped
+	// and the truth is reported again.
+	Firmware     string `json:"firmware,omitempty"`
+	FirmwareBase string `json:"firmware_base,omitempty"`
 }
 
 func (st State) clone() State {
@@ -50,7 +54,7 @@ func (st State) equal(o State) bool {
 	if st.Key != o.Key || st.CfgVersion != o.CfgVersion || st.Adopted != o.Adopted ||
 		st.UseAESGCM != o.UseAESGCM || st.InformURL != o.InformURL || len(st.Provisioned) != len(o.Provisioned) ||
 		st.SystemCfg != o.SystemCfg || st.PendingCfgVersion != o.PendingCfgVersion || st.PendingSystemCfg != o.PendingSystemCfg ||
-		st.Firmware != o.Firmware {
+		st.Firmware != o.Firmware || st.FirmwareBase != o.FirmwareBase {
 		return false
 	}
 	for k, v := range st.Provisioned {

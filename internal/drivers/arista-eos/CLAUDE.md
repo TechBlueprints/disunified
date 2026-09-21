@@ -13,3 +13,6 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
+- The firmware version reported to the controller is EOS's own
+  (`4.26.14M`), not the UniFi model profile's; `-version` overrides it, and
+  an emulated upgrade from the controller masks it until EOS itself moves.
