@@ -64,7 +64,7 @@ jobs:
       - name: Build and push linux/amd64 + linux/arm64
         run: |
           set -eu
-          docker buildx create --use --name stu --driver docker-container
+          docker buildx create --use --name disunified --driver docker-container
           docker buildx build --platform linux/amd64,linux/arm64 \
             --file Containerfile --build-arg "VERSION=$VERSION" \
             $TAGS --push .
