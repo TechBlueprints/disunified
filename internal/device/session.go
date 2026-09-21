@@ -38,8 +38,8 @@ type Session struct {
 
 	versionPinned bool                // the operator named a version: never follow the switch's
 	prevHistory   map[int]portHistory // per port, at the last inform (anomaly deltas)
-	caps        switchmodel.Capabilities
-	gatewayIP   string // reported as gateway_ip; "" = omit
+	caps          switchmodel.Capabilities
+	gatewayIP     string // reported as gateway_ip; "" = omit
 }
 
 // SetUplinkPort marks idx as the uplink in the reported port table (0 = no
