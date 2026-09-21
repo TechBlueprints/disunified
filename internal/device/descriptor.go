@@ -13,7 +13,7 @@ import (
 // bridge presents.
 type Identity struct {
 	MAC, Serial, IP, Hostname string
-	Version                   string // "" = the model profile's
+	Version                   string // "" = the switch's own version, else the model profile's
 	UDAPIVersion              string
 	UplinkPort                int // 0 = the snapshot's LLDP-chosen uplink
 }
@@ -40,7 +40,14 @@ func DescriptorFor(model string, snap *switchmodel.Snapshot, id Identity) (infor
 			ports[i].IsUplink = ports[i].PortIdx == uplink
 		}
 	}
+	// The firmware version is the switch's own ("4.26.14M", "9.1.6"): the
+	// UI's Version column should say what is really running (Clint,
+	// 2026-09-20). The model profile's UniFi version is the fallback for a
+	// driver that reports none, and -version overrides both.
 	version := id.Version
+	if version == "" && snap != nil {
+		version = snap.System.Version
+	}
 	if version == "" {
 		version = profile.Version
 	}
