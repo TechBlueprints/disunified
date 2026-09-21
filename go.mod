@@ -1,4 +1,4 @@
-module github.com/TechBlueprints/switch-to-unifi
+module github.com/TechBlueprints/disunified
 
 go 1.26.0
 

@@ -4,7 +4,7 @@ You are in the vendor layer. Read `docs/adding-a-switch.md` first; the
 contract is `internal/switchmodel/driver.go` + `model.go`.
 
 - One directory per vendor/OS, package named after it, registered in `init()`
-  with `switchmodel.RegisterDriver`, blank-imported from `cmd/switch-to-unifi`.
+  with `switchmodel.RegisterDriver`, blank-imported from `cmd/disunified`.
 - Nothing UniFi-specific in here: no `port_table` keys, no `system_cfg` keys,
   no capability bits. Translate to and from `switchmodel` types only.
 - Every command the driver uses exists on the OS version named in the

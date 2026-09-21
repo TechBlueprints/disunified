@@ -1,8 +1,8 @@
 # podman-compose / docker compose. With the published image this file plus
 # ./config.yaml and ./env is a complete install — no checkout, no Go:
 #
-#   mkdir switch-to-unifi && cd switch-to-unifi
-#   base=https://raw.githubusercontent.com/TechBlueprints/switch-to-unifi/main/deploy
+#   mkdir disunified && cd disunified
+#   base=https://raw.githubusercontent.com/TechBlueprints/disunified/main/deploy
 #   curl -fsSLO $base/compose.yaml
 #   curl -fsSL $base/config.example.yaml -o config.yaml
 #   curl -fsSL $base/env.example -o env && chmod 600 env
@@ -12,21 +12,21 @@
 # Update: docker compose pull && docker compose up -d --force-recreate
 # (--force-recreate matters: without it the old container keeps running).
 services:
-  switch-to-unifi:
+  disunified:
     # Pin a release (:v1.2.3) for anything you care about; :latest follows
     # releases, :edge follows main.
-    image: ghcr.io/techblueprints/switch-to-unifi:latest
+    image: ghcr.io/techblueprints/disunified:latest
     # To build from a source checkout instead of pulling, run compose from the
     # repo root with -f deploy/compose.yaml and uncomment:
     # build:
     #   context: ..
     #   dockerfile: Containerfile
-    container_name: switch-to-unifi
+    container_name: disunified
     restart: always            # Podman's podman-restart.service only restarts "always" containers after a host reboot
     env_file: ./env
     volumes:
-      - ./config.yaml:/etc/switch-to-unifi/config.yaml:ro
-      - state:/var/lib/switch-to-unifi
+      - ./config.yaml:/etc/disunified/config.yaml:ro
+      - state:/var/lib/disunified
     # The bridge only makes outbound connections (to the controller's inform
     # port 8080 and the switch's API); no ports need publishing.
 volumes:

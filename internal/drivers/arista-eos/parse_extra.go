@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Shapes of the second wave of commands, all verified on EOS 4.26.14M

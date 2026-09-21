@@ -647,7 +647,7 @@ net0: virtio=02:00:00:00:00:71,bridge=vmbr0,firewall=1
 
 @@@ lldpdconf
 present
-# managed by switch-to-unifi: this node's bridge as a UniFi switch
+# managed by disunified: this node's bridge as a UniFi switch
 configure system interface pattern ens1f0np0
 configure system chassisid 02:00:00:00:00:01
 configure lldp portidsubtype ifname

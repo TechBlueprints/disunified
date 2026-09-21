@@ -1,4 +1,4 @@
-# switch-to-unifi configuration. Secrets never go in this file: name the
+# disunified configuration. Secrets never go in this file: name the
 # environment variables that hold them (see deploy/env.example).
 #
 # One controller, any number of switches. Everything not listed here is
@@ -11,11 +11,11 @@ controller:
   api_key_env: STU_UNIFI_API_KEY     # env var holding a UniFi API key (Settings → Control Plane → Integrations)
   site: default
 
-state_dir: /var/lib/switch-to-unifi  # state/<name>/device.json (the adopted key) and inform-log/<name>/
+state_dir: /var/lib/disunified  # state/<name>/device.json (the adopted key) and inform-log/<name>/
 
 switches:
   - name: arista                     # unique; used for state and log paths
-    driver: arista-eos               # `switch-to-unifi -list-drivers`
+    driver: arista-eos               # `disunified -list-drivers`
     url: https://192.0.2.3/command-api
     username_env: STU_SWITCH_USER    # a switch user with write access if control.ports is set
     password_env: STU_SWITCH_PASS
@@ -47,8 +47,8 @@ switches:
       # ports: "54"                  # total ports; the node's NICs take the top ones, guests the rest
       # numbering: node              # per-node guest ports (48 per node) instead of cluster-wide (48 total); UNTESTED live, PRs welcome
       # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
-      # ssh_key: /etc/switch-to-unifi/id_ed25519      # in a container
-      # known_hosts: /etc/switch-to-unifi/known_hosts
+      # ssh_key: /etc/disunified/id_ed25519      # in a container
+      # known_hosts: /etc/disunified/known_hosts
     control:
       ports: all                     # port state and VLANs -> qm/pct set; on adoption the controller is seeded from the guests' VLANs
       # allow_initial_changes: true  # let the first push after adoption change ports (default: held until it matches)

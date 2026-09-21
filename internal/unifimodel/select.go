@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 	emu "github.com/jamesbraid/unifi-emu"
 )
 

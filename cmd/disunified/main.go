@@ -1,4 +1,4 @@
-// Command switch-to-unifi presents a non-UniFi switch to a UniFi Network
+// Command disunified presents a non-UniFi switch to a UniFi Network
 // controller as if it were a UniFi switch.
 //
 // A driver (-driver) reads the switch and, when writes are enabled, applies
@@ -26,18 +26,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/config"
-	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/informloop"
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
-	"github.com/TechBlueprints/switch-to-unifi/internal/unifiapi"
-	"github.com/TechBlueprints/switch-to-unifi/internal/unifimodel"
+	"github.com/TechBlueprints/disunified/internal/config"
+	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/informloop"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/unifiapi"
+	"github.com/TechBlueprints/disunified/internal/unifimodel"
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	// Drivers register themselves; add a blank import per driver.
-	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/arista-eos"
-	_ "github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
 
 // buildVersion is this bridge's own version, stamped by the release build
@@ -111,7 +111,7 @@ func main() {
 		return
 	}
 
-	log.Printf("switch-to-unifi %s starting", buildVersion)
+	log.Printf("disunified %s starting", buildVersion)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

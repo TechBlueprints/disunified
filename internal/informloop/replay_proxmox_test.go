@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/drivers/proxmox"
+	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
 
 // The Proxmox replay: the controller's recorded replies to a node

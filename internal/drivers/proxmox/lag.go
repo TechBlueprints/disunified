@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Link aggregation on the node's physical ports, from the controller's

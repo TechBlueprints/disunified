@@ -21,7 +21,7 @@ build stage, so there is no QEMU and the build takes about as long as two
    `packages: write`, which the automatic `GITHUB_TOKEN` grants — no secret to
    create. If the org restricts Actions token permissions, allow write there.
 2. **Make the package public after the first push**, or `docker pull` asks for
-   a login: the repo's **Packages** → `switch-to-unifi` → **Package settings** →
+   a login: the repo's **Packages** → `disunified` → **Package settings** →
    *Danger Zone* → **Change visibility** → Public. Also set **Inherit access
    from repository** so anyone who can push the repo can manage the package.
    The `org.opencontainers.image.source` label in the `Containerfile` is what
@@ -32,15 +32,15 @@ build stage, so there is no QEMU and the build takes about as long as two
 ```sh
 go test ./... && go vet ./...
 scripts/check-site-info.sh                 # no secrets or site identifiers anywhere
-git tag -a v1.2.3 -m 'switch-to-unifi v1.2.3'
+git tag -a v1.2.3 -m 'disunified v1.2.3'
 git push origin v1.2.3                     # the workflow does the rest
 ```
 
 Then check what was published:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/techblueprints/switch-to-unifi:v1.2.3   # both platforms listed
-docker run --rm ghcr.io/techblueprints/switch-to-unifi:v1.2.3 -build-version     # prints v1.2.3
+docker buildx imagetools inspect ghcr.io/techblueprints/disunified:v1.2.3   # both platforms listed
+docker run --rm ghcr.io/techblueprints/disunified:v1.2.3 -build-version     # prints v1.2.3
 ```
 
 `-build-version` is the bridge's own build (stamped with

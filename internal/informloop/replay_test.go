@@ -16,8 +16,8 @@ import (
 
 	"github.com/jamesbraid/unifi-emu/inform"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/device"
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Replay: real controller replies (docs/fixtures/controller-10.6.106/

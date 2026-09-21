@@ -1,4 +1,4 @@
-# switch-to-unifi
+# disunified
 
 A bridge that makes a non-UniFi switch appear as a real, adopted UniFi
 switch inside the UniFi Network controller — ports, stats, topology, and
@@ -69,7 +69,7 @@ running it against anything you care about.
 ## How it works
 
 ```
-UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  switch-to-unifi  <── eAPI/SSH ──  the switch
+UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified  <── eAPI/SSH ──  the switch
                   ── system_cfg pushes / adoption ──>                         ── config diffs ──>
 ```
 
@@ -95,17 +95,17 @@ install is a directory with [`deploy/compose.yaml`](deploy/compose.yaml), your `
 `env` — nothing to build:
 
 ```sh
-docker pull ghcr.io/techblueprints/switch-to-unifi:latest   # :v1.2.3 to pin, :edge to follow main
+docker pull ghcr.io/techblueprints/disunified:latest   # :v1.2.3 to pin, :edge to follow main
 docker compose up -d                                       # deploy/compose.yaml; or the Quadlet unit in deploy/
 ```
 
 From a checkout instead (also how you add a driver; Go 1.26+):
 
 ```sh
-go build ./cmd/switch-to-unifi
+go build ./cmd/disunified
 export STU_SWITCH_USER=stu STU_SWITCH_PASS=...
-./switch-to-unifi -collect-once -switch-url https://192.0.2.3/command-api   # prints the snapshot + suggested model
-./switch-to-unifi -config config.yaml                                       # bridges every switch in the file
+./disunified -collect-once -switch-url https://192.0.2.3/command-api   # prints the snapshot + suggested model
+./disunified -config config.yaml                                       # bridges every switch in the file
 ```
 
 Identity (MAC, serial, hostname, uplink), the port layout, the port speed
@@ -118,7 +118,7 @@ controller reply is recorded under `inform-log/`.
 The repo is written to be driven by a coding agent (Claude Code was used
 for all of it). Prompts that work, to paste as they are and fill in:
 
-1. *"Install switch-to-unifi on the Podman (or Docker) host I have running
+1. *"Install disunified on the Podman (or Docker) host I have running
    at `<host>`, bridging my `<vendor>` switch at `<address>` to the UniFi
    controller at `<controller>`. Use [`docs/install.md`](docs/install.md); start read-only,
    and stop before turning on `control` so I can check the device in the
@@ -128,12 +128,12 @@ for all of it). Prompts that work, to paste as they are and fill in:
    fixtures from my switch at `<address>` first, write the tests against
    them, then integrate it with my UniFi controller at `<controller>` and
    verify it end to end. Test only on port `<N>`, which is unused."*
-3. *"My `<vendor>` switch is adopted through switch-to-unifi but the UniFi
+3. *"My `<vendor>` switch is adopted through disunified but the UniFi
    UI's `<setting>` has no effect on it. Read the reply log under
    `inform-log/` and [`docs/feature-map.md`](docs/feature-map.md), find out whether the
    controller pushed it and what the driver did with it, and fix or
    document it."*
-4. *"Open a pull request against `TechBlueprints/switch-to-unifi` adding
+4. *"Open a pull request against `TechBlueprints/disunified` adding
    my `<vendor>` driver. Follow [`CONTRIBUTING.md`](CONTRIBUTING.md): file the issue first,
    include the scrubbed fixtures and the tests, run
    `scripts/check-site-info.sh`, and write the PR description as the

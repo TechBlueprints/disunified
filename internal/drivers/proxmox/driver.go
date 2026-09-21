@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // Driver is the Proxmox VE driver.
@@ -37,7 +37,7 @@ import (
 //	              run live. A NIC's port is recorded in the guest's own
 //	              Proxmox tags (tags.go); the bridge keeps no file.
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
-//	              /etc/lldpd.d/switch-to-unifi.conf current, docs/drivers/proxmox.md §4)
+//	              /etc/lldpd.d/disunified.conf current, docs/drivers/proxmox.md §4)
 type Driver struct{}
 
 func init() { switchmodel.RegisterDriver(Driver{}) }

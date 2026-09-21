@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // ProvisionNames names the device and its ports after the switch using

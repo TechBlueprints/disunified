@@ -3,7 +3,7 @@ package device
 import (
 	"testing"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 func TestPortAnomalies(t *testing.T) {

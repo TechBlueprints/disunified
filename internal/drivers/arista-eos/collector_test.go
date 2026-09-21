@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // fixtureTransport serves docs/fixtures/arista-eos-4.26.14M/<cmd>.json, where the

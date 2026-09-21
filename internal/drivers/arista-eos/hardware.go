@@ -3,7 +3,7 @@ package aristaeos
 import (
 	"strings"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // showInterfacesHardware is `show interfaces hardware`: per port, every link

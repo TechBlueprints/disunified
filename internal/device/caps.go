@@ -1,6 +1,6 @@
 package device
 
-import "github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+import "github.com/TechBlueprints/disunified/internal/switchmodel"
 
 // Capability bitmaps the controller gates UI features on. Values from
 // unifi-emu's capability_bits.json. The rule:

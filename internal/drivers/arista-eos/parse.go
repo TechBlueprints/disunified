@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/switch-to-unifi/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // The structs below are the subset of each command's JSON that the collector
