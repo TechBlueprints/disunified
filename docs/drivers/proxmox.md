@@ -115,12 +115,11 @@ sections; nothing on the node is installed for the read side. Per section:
 | `vlan` | `bridge -j -compressvlans vlan show` | live 802.1Q state of each member (`-compressvlans` matters: 4093 VLANs × 15 ports is 450 KB otherwise) |
 | `fdb` | `bridge -j -s fdb show br vmbr0 dynamic` | MAC table with ages (`dynamic` drops the per-VLAN permanent entries, 4.6 MB otherwise) |
 | `bridge` | `/sys/class/net/vmbr0/bridge/*`, `bridge-vids` | STP off/on, priority, IGMP snooping, VLAN range |
-| `pveversion` | `pveversion` | the firmware version the controller shows (`9.1.6`, from `pve-manager/9.1.6/…`) and the model string (`VE 9.1.6`) |
 | `phys`, `bonding`, `ethtool`, `ethtoolm`, `carrier` | sysfs, `/proc/net/bonding`, `ethtool`, `ethtool -m`, `carrier_changes` | uplinks: bond membership and active slave, speed caps, FEC support, optic EEPROM/DOM, link flaps |
 | `hwmon` | `/sys/class/hwmon` | temperature (coretemp/k10temp package sensor; overheating at `temp1_max`), fans (`fanN_input` as % of `fanN_max`; Dell's `dell_smm`) |
 | `qemu`, `lxc`, `vmlist` | cluster config files | guests, NIC model/MAC/tag/trunks/link_down/firewall |
 | `lldp` | `lldpcli -f json0 show neighbors details` | uplink neighbours (needs lldpd, §4) |
-| `stat`, `meminfo`, `uptime`, `dmi`, `pveversion`, `chrony` | `/proc`, DMI, `pveversion` | CPU % (delta between polls), memory, uptime, serial (Dell service tag), version, NTP servers |
+| `stat`, `meminfo`, `uptime`, `dmi`, `pveversion`, `chrony` | `/proc`, DMI, `pveversion` | CPU % (delta between polls), memory, uptime, serial (service tag), NTP servers, and the node's PVE version (`9.1.6`, from `pve-manager/9.1.6/…`) — which is the firmware version the controller shows, and the model string `VE 9.1.6` |
 
 Firewall-enabled guests (`firewall=1`) hang off `fwbr<id>i<n>`; their
 member of `vmbr0` is `fwpr<id>p<n>`, which is where VLANs and learned MACs
