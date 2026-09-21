@@ -25,6 +25,8 @@ For port-level tests make a throwaway, diskless guest (`qm create <id>
 --name stu-test --memory 128 --net0 virtio,bridge=vmbr0`) and destroy it
 afterwards (`qm stop <id>; qm destroy <id> --purge`); the last one, VM
 999, was destroyed 2026-09-20 once its checks were done.
+The firmware version reported to the controller is the node's own PVE
+version (`9.1.6`), not the UniFi model profile's.
 The node is the switch (device MAC = the bridge MAC, same IP and hostname;
 a derived-MAC/host-port variant was tried and dropped 2026-09-20); bond
 members are separate top ports (`bond0-1` at 54 is the uplink, the standby
