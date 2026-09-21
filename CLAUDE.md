@@ -145,6 +145,17 @@ ships only committed, non-ignored files; `--force-recreate` is needed or
 the old container keeps running; container logs are UTC; rsync is not
 installed on the Mac.
 
+**Renamed 2026-09-21: switch-to-unifi → disunified.** The GitHub repo, the
+module path, the command, the image, the container paths (`/etc/disunified`,
+`/var/lib/disunified`) and the files the Proxmox driver keeps on a node all
+moved; GitHub redirects the old repo name. Two things deliberately did not:
+the `STU_` environment prefix (it still reads true for a switch, and renaming
+it would invalidate every deployed env file — new work uses `DUI_`), and the
+salt in `anonID`, which is the input to an id already reported for every
+adopted device. The deployed state volume was copied, not recreated, so no
+device needed re-adopting; the old `switch-to-unifi-state` volume is still on
+the Podman host as a backup and can be removed once the rename has settled.
+
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
 
