@@ -111,6 +111,7 @@ sections; nothing on the node is installed for the read side. Per section:
 | `vlan` | `bridge -j -compressvlans vlan show` | live 802.1Q state of each member (`-compressvlans` matters: 4093 VLANs × 15 ports is 450 KB otherwise) |
 | `fdb` | `bridge -j -s fdb show br vmbr0 dynamic` | MAC table with ages (`dynamic` drops the per-VLAN permanent entries, 4.6 MB otherwise) |
 | `bridge` | `/sys/class/net/vmbr0/bridge/*`, `bridge-vids` | STP off/on, priority, IGMP snooping, VLAN range |
+| `pveversion` | `pveversion` | the firmware version the controller shows (`9.1.6`, from `pve-manager/9.1.6/…`) and the model string (`VE 9.1.6`) |
 | `phys`, `bonding`, `ethtool`, `ethtoolm`, `carrier` | sysfs, `/proc/net/bonding`, `ethtool`, `ethtool -m`, `carrier_changes` | uplinks: bond membership and active slave, speed caps, FEC support, optic EEPROM/DOM, link flaps |
 | `hwmon` | `/sys/class/hwmon` | temperature (coretemp/k10temp package sensor; overheating at `temp1_max`), fans (`fanN_input` as % of `fanN_max`; Dell's `dell_smm`) |
 | `qemu`, `lxc`, `vmlist` | cluster config files | guests, NIC model/MAC/tag/trunks/link_down/firewall |

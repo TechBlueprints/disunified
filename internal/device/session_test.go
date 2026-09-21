@@ -206,3 +206,56 @@ func TestSystemCfgStaysPendingUntilApplied(t *testing.T) {
 		t.Errorf("persisted after apply: %+v", loaded)
 	}
 }
+
+// The Version column in the UI must say what is really running on the
+// switch (EOS 4.26.14M, PVE 9.1.6), not the model profile's UniFi
+// firmware. An operator's -version wins; an emulated upgrade holds until
+// the switch itself is upgraded.
+func TestFirmwareVersionIsTheSwitchsOwn(t *testing.T) {
+	snap := testSnapshot()
+	snap.System.Version = "4.26.14M"
+	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc.Version != "4.26.14M" {
+		t.Errorf("reported version = %q, want the switch's own", desc.Version)
+	}
+	if d, _ := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Version: "9.9.9"}); d.Version != "9.9.9" {
+		t.Errorf("-version = %q, want the operator's", d.Version)
+	}
+	if d, _ := DescriptorFor("UDC48X6", nil, Identity{MAC: snap.System.MAC}); d.Version == "" || d.Version == "4.26.14M" {
+		t.Errorf("without a switch the model profile's version must be reported, got %q", d.Version)
+	}
+
+	// An emulated upgrade (the controller cannot flash this switch) is
+	// reported until the switch's own version moves.
+	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, Firmware: "7.3.109.16640", FirmwareBase: "4.26.14M"}
+	s := NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	s.SetSnapshot(snap)
+	if got := s.Version(); got != "7.3.109.16640" {
+		t.Errorf("after an emulated upgrade: %q", got)
+	}
+	upgraded := testSnapshot()
+	upgraded.System.Version = "4.27.0F"
+	s.SetSnapshot(upgraded)
+	if got := s.Version(); got != "4.27.0F" {
+		t.Errorf("after a real upgrade the truth must win, got %q", got)
+	}
+	// And it stays won across a restart from the persisted state.
+	if got := NewSession(desc, "http://192.0.2.1:8080/inform", State{Firmware: "7.3.109.16640", FirmwareBase: "4.26.14M"}, nil, time.Now()); got.Version() != "7.3.109.16640" {
+		t.Errorf("a restart with the same switch version = %q", got.Version())
+	}
+	d2, _ := DescriptorFor("UDC48X6", upgraded, Identity{MAC: snap.System.MAC})
+	if got := NewSession(d2, "http://192.0.2.1:8080/inform", State{Firmware: "7.3.109.16640", FirmwareBase: "4.26.14M"}, nil, time.Now()); got.Version() != "4.27.0F" {
+		t.Errorf("a restart after a real upgrade = %q", got.Version())
+	}
+	// A pinned version follows neither.
+	pinned, _ := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Version: "9.9.9"})
+	p := NewSession(pinned, "http://192.0.2.1:8080/inform", State{}, nil, time.Now())
+	p.PinVersion()
+	p.SetSnapshot(upgraded)
+	if got := p.Version(); got != "9.9.9" {
+		t.Errorf("pinned version = %q", got)
+	}
+}

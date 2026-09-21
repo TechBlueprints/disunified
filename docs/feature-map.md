@@ -40,7 +40,7 @@ under mstpd (`docs/drivers/proxmox.md` §4b). Both verified live on Network
 
 | Field | Meaning | Arista source (EOS 4.26.14M) | Arista | Proxmox |
 |---|---|---|---|---|
-| `mac`, `serial`, `model`, `model_display`, `version`, `ip`, `hostname`, `inform_url` | identity | `show version`, `show hostname`; model string claimed (UDC48X6) | done | done (bridge MAC, DMI serial, node hostname) |
+| `mac`, `serial`, `model`, `model_display`, `version`, `ip`, `hostname`, `inform_url` | identity | `show version`, `show hostname`; model string claimed (UDC48X6); **`version` is the switch's own firmware** (`4.26.14M`), not the model profile's UniFi version — the UI's Version column should say what is really running (Clint, 2026-09-20); `-version` overrides it | done | done (bridge MAC, DMI serial, node hostname) |
 | `uptime`, `time` | clocks | `show version` uptime | done | done |
 | `cfgversion`, `x_authkey`, `default`, `_default_key`, `state`, `fw_caps` | protocol state | session | done | done |
 | `sys_stats` (`cpu`, `mem_total`, `mem_used`, `mem_buffer`) | health | `show processes top once` | done | done (`/proc/stat`, `/proc/meminfo`) |
@@ -142,7 +142,7 @@ source of the same per-port intent.
 |---|---|---|---|---|
 | `set-adopt`, `setdefault` | adoption lifecycle | session | done | done |
 | `reboot` | reboot the device | emulated by default; `-control-reboot` → `write memory` + `reload now` | done | emulated only |
-| `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`); `firmware:` in config overrides the default | done | emulated |
+| `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`, with the switch's version at that moment in `FirmwareBase`; when the switch is really upgraded afterwards the emulated version is dropped and the truth reported again). Reporting a vendor version may make the controller offer an upgrade; accepting one hides the real version until the switch moves | done | emulated |
 | `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed | reports `locating` |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) | todo |
 | `power-cycle` (`port_idx`) | PoE power cycle | `shutdown`, 3 s, `no shutdown` on every lane (for a PoE-capable driver) | n/a here: the controller only issues it for a PoE port powering a device (`api.err.InvalidTargetPort` otherwise, verified 2026-09-20), and the UI's "Power Cycle" appears only on such ports; the 7160 has no PoE, so no capture exists | implemented as a `link_down` bounce; the controller never issues it for a non-PoE port |

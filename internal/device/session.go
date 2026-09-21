@@ -36,7 +36,8 @@ type Session struct {
 	bootTime  time.Time // fallback uptime clock when no snapshot
 	locating  bool
 
-	prevHistory map[int]portHistory // per port, at the last inform (anomaly deltas)
+	versionPinned bool                // the operator named a version: never follow the switch's
+	prevHistory   map[int]portHistory // per port, at the last inform (anomaly deltas)
 	caps        switchmodel.Capabilities
 	gatewayIP   string // reported as gateway_ip; "" = omit
 }
@@ -76,7 +77,13 @@ func NewSession(desc inform.Descriptor, informURL string, st State, store *Store
 		st.InformURL = informURL
 	}
 	if st.Firmware != "" {
-		desc.Version = st.Firmware // a previous emulated upgrade wins over the profile default
+		// A previous emulated upgrade is still reported — unless the switch
+		// itself has been upgraded since, in which case the truth wins.
+		if st.FirmwareBase == "" || st.FirmwareBase == desc.Version {
+			desc.Version = st.Firmware
+		} else {
+			st.Firmware, st.FirmwareBase = "", ""
+		}
 	}
 	s := &Session{desc: desc, st: st, store: store, bootTime: now, caps: DefaultCapabilities}
 	s.macHeader = macHeader(desc.MAC)
@@ -157,8 +164,42 @@ func (s *Session) Snapshot() *switchmodel.Snapshot {
 // SetSnapshot replaces the switch state the next payload reports.
 func (s *Session) SetSnapshot(snap *switchmodel.Snapshot) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.snap = snap
-	s.mu.Unlock()
+	// Report the switch's own firmware version, and follow it when the
+	// switch is upgraded under a running bridge. An operator's -version
+	// wins; so does an emulated upgrade, until the switch's version moves.
+	v := ""
+	if snap != nil {
+		v = snap.System.Version
+	}
+	if v == "" || s.versionPinned {
+		return
+	}
+	if s.st.Firmware != "" {
+		if s.st.FirmwareBase == "" || s.st.FirmwareBase == v {
+			return // the emulated upgrade still stands
+		}
+		s.st.Firmware, s.st.FirmwareBase = "", "" // really upgraded: drop the fiction
+	}
+	s.desc.Version = v
+}
+
+// PinVersion freezes the reported firmware version: the operator named one
+// (-version / version:), so neither the switch nor an emulated upgrade
+// changes it.
+func (s *Session) PinVersion() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.versionPinned = true
+}
+
+// switchVersion is the switch's own version at the last collect.
+func (s *Session) switchVersion() string {
+	if s.snap == nil {
+		return ""
+	}
+	return s.snap.System.Version
 }
 
 // EncodeInform builds the current payload and encrypts it in the negotiated
@@ -384,7 +425,7 @@ func (s *Session) Apply(now time.Time, body []byte) []inform.Effect {
 		// offering the upgrade. Persisted via State.Firmware.
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware = r.Version
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
 		}
 		s.bootTime = now
 		effects = []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
@@ -441,7 +482,7 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 	case "upgrade", "upgrade2":
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware = r.Version
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
 		}
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
