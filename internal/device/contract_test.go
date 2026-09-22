@@ -31,7 +31,6 @@ var contractOmissions = map[string]string{
 	"bomrev":      "UniFi board revision string",
 	"bomrev_id":   "UniFi board revision id",
 	"sysid":       "UniFi hardware system id",
-	"hw_caps":     "unknown bit vocabulary; claiming bits we cannot honour is worse than omitting",
 	"fw2_caps":    "unknown bit vocabulary",
 	"fw3_caps":    "unknown bit vocabulary",
 	"routing_mac": "no L3 routing MAC (switch-only)",
@@ -44,6 +43,16 @@ var contractOmissions = map[string]string{
 	"pathmon":                            "USW-only path monitor",
 	"stats_inform_interval_avg":          "USW-only",
 	"stp_last_topology_change_timestamp": "EOS 4.26 gives per-port change times, not a bridge-wide one",
+}
+
+// switchOmissions are gaps only a bridged switch has. hw_caps names hardware
+// the device physically has -- screen, LED bar, LCM, RPS, speaker, outlets
+// (unifi-emu's capability_bits.json; every real USP-PDU-Pro sends 136 = outlets
+// + LCM). A power device claims its outlet bit, because without it the
+// controller discards the outlet table; neither bridged switch has any of
+// those parts, so they send nothing rather than a claim they cannot honour.
+var switchOmissions = map[string]string{
+	"hw_caps": "the switch has none of the hardware the bits name (screen, LED bar, LCM, RPS, speaker, outlets)",
 }
 
 var portOmissions = map[string]string{
@@ -152,6 +161,9 @@ func runContract(t *testing.T, driver string, ours map[string]any, extraOmission
 	t.Helper()
 	omit := map[string]string{}
 	for k, v := range contractOmissions {
+		omit[k] = v
+	}
+	for k, v := range switchOmissions {
 		omit[k] = v
 	}
 	for k, v := range extraOmissions {

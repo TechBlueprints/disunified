@@ -485,6 +485,20 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 		m["outlet_table"] = outletTable(desc, snap)
 		m["outlet_enabled"] = true
 		m["hw_caps"] = HWCapsOutlet
+		// Keys every real USP-PDU-Pro sends as literal values (eleven of them
+		// captured on Network 10.6.106, all identical): no fan, no temperature
+		// sensor, no PSU capacity, and power_source "0" -- which the one fed
+		// from a UPS sends too, so it is a class constant, not mains-vs-battery.
+		if _, has := m["has_fan"]; !has {
+			m["has_fan"] = false
+		}
+		if !sys.HasTemperature {
+			m["has_temperature"] = false
+		}
+		if _, has := m["total_max_power"]; !has {
+			m["total_max_power"] = 0
+		}
+		m["power_source"] = "0"
 		// What a real USP-PDU-Pro reports for the overview's Power Usage and
 		// "x W of y W": the device's whole measured draw and its capacity.
 		// Only sent when the device actually measures -- a fabricated 0 W
@@ -526,10 +540,16 @@ func outletTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[strin
 	// rather than silently disagreeing with the hardware forever.
 	for i := 1; i < base; i++ {
 		table = append(table, map[string]any{
-			"index":                      i,
-			"relay_state":                false,
-			"outlet_caps":                0,
-			"outlet_type":                outletTypeUSB,
+			"index":       i,
+			"relay_state": false,
+			"outlet_caps": 0,
+			"outlet_type": outletTypeUSB,
+			// A real USP-PDU-Pro sends relay_group on its USB rows and only
+			// those (every AC row lacks it), and the value is the outlet's
+			// own index -- 1, 2, 3, 4 across all eleven captured devices, not
+			// one shared group as the upstream comment supposed. Mirrored so
+			// the placeholder has the shape of the thing it stands in for.
+			"relay_group":                i,
 			"power_fault":                false,
 			"power_warning":              false,
 			"relay_activation_countdown": 0,
