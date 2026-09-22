@@ -157,6 +157,23 @@ adopted device. The deployed state volume was copied, not recreated, so no
 device needed re-adopting; the old `switch-to-unifi-state` volume is still on
 the Podman host as a backup and can be removed once the rename has settled.
 
+**APC rack PDU bridged and adopted 2026-09-21 (branch `apc-pdu`).** The first
+bridged device that is not a switch: `internal/drivers/apc-pdu` presents an
+AP7931's 16 switched outlets as a `USPPDUP`. Outlets are the power-device
+shape beside Ports in `devicemodel`; the payload renders `outlet_table`,
+`outlet_enabled` and `hw_caps`. Facts that cost time: SNMP writes need the
+community's access type to be **Write+**, not Write (with Write the card drops
+SETs silently, no error, no log); `12.3.3` is the outlet CONTROL table (col 4
+switches) and `12.3.5` the CONFIG table (col 4 is a power-on delay); `hw_caps`
+bit 128 is what makes the controller store an outlet table at all; outlet
+names must never be reported back or the whole table is dropped; and the
+controller merges its names by index, so the AC outlets are reported at the
+USP-PDU-Pro's AC positions **5..20** or they come back named "USB Outlet 1-4".
+The controller pushes `relay_state` at the reported indices but **no names**.
+Deployed as its own container at `/opt/disunified-pdu` so a PDU rebuild cannot
+disturb the switch bridge. Not yet verified: physically toggling a relay --
+nothing on the rack has been powered off.
+
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
 

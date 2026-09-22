@@ -115,7 +115,36 @@ devices:
 `control.outlets` is the power-device equivalent of `control.ports`. It is off
 by default: an outlet carries real load.
 
-## 6. Model claimed
+## 6. Outlet indices, and what the controller actually pushes
+
+Two things were only learnable by adopting the device live (Network 10.6.106,
+2026-09-21).
+
+**The controller merges its own outlet names onto the rows it is sent, by
+index.** The USP-PDU-Pro's own layout is four USB outlets at 1-4 and sixteen
+AC outlets at 5-20, so a 16-outlet rack PDU reporting its outlets at 1..16 is
+adopted and then labelled "USB Outlet 1" through "USB Outlet 4". The bridge
+therefore reports the AC outlets at the model's AC positions, **5..20**
+(`device.OutletIndexBase`), and the loop translates the controller's index
+back to the device's own numbering on the way in. The driver only ever speaks
+its device's numbering.
+
+**The controller then pushes `outlet.<n>.relay_state` at the same indices the
+device reported** — 5..20 here — so every outlet is controllable. (A config
+captured before the realignment carries the old indices and looks like only 12
+of 16 outlets are managed; it is stale, and the next push corrects it.)
+
+**The controller does NOT push outlet names.** The system_cfg it sends carries
+`outlet.status` and one `relay_state` line per outlet, and nothing else: names
+live only in the controller's own `outlet_overrides`. So naming is one-way in
+the sense that matters -- the device must never report names back, or its
+whole outlet table is dropped -- but the bridge has no name to push *down*
+from the inform protocol either. The FTP config write exists and is tested;
+its source would have to be the controller's REST API, not the inform. In
+practice the name that matters is the one in UniFi, which is what the operator
+sees; pushing it onto the card is cosmetic.
+
+## 7. Model claimed
 
 `USPPDUP` — the USP-PDU-Pro. Its profile is a `usw` with one network port,
 which is the shape a bridged rack PDU presents, and its 16 AC outlets line up
@@ -123,7 +152,7 @@ one-for-one with the AP7931's 16. `unifimodel.SuggestFor` picks it for any
 snapshot that has outlets, rather than ranking the card's single network port
 against every one-port switch in the catalogue.
 
-## 7. Things that will bite
+## 8. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the
   inform, stores no outlet table and logs nothing: the device adopts and shows
