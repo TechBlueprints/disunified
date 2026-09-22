@@ -66,6 +66,33 @@ func TestPowerDeviceReportsItsOutlets(t *testing.T) {
 	}
 }
 
+// The controller merges its own outlet names onto the rows it is sent, by
+// index, and the USP-PDU-Pro's first four outlets are USB. A 16-outlet rack
+// PDU reporting 1..16 is therefore labelled "USB Outlet 1" through 4; its AC
+// outlets have to be reported at the model's AC positions, 5..20.
+func TestOutletsAreReportedAtTheModelsACPositions(t *testing.T) {
+	rows := outletRows(t, deviceTables(pduDesc(), pduSnapshot()))
+	if got := rows[0]["index"]; got != 5 {
+		t.Errorf("first outlet reported at index %v, want 5 (the model's first AC outlet)", got)
+	}
+	if got := rows[15]["index"]; got != 20 {
+		t.Errorf("last outlet reported at index %v, want 20", got)
+	}
+}
+
+// A model whose outlets start at 1 must not be shifted.
+func TestOutletIndexBaseDefaultsToOne(t *testing.T) {
+	if got := OutletIndexBase("SOME-OTHER-MODEL"); got != 1 {
+		t.Errorf("OutletIndexBase = %d, want 1 for an unknown model", got)
+	}
+	desc := pduDesc()
+	desc.Model = "SOME-OTHER-MODEL"
+	rows := outletRows(t, deviceTables(desc, pduSnapshot()))
+	if got := rows[0]["index"]; got != 1 {
+		t.Errorf("first outlet reported at index %v, want 1", got)
+	}
+}
+
 // The controller owns an outlet's name and merges its own onto the row it
 // stores. That merge is also its change test, so a device that reports the
 // name back reports nothing new and has its whole table dropped -- silently.

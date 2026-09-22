@@ -88,6 +88,22 @@ const (
 	hwCapOutlet = 128
 )
 
+// OutletIndexBase is the index of a claimed model's first AC outlet.
+//
+// The controller merges its own stored outlet names onto the rows a device
+// reports, BY INDEX. The USP-PDU-Pro's own layout puts four USB outlets at
+// 1-4 and its sixteen AC outlets at 5-20, so a 16-outlet rack PDU that
+// reports its outlets at 1..16 is adopted and then labelled "USB Outlet 1"
+// through "USB Outlet 4" (seen on Network 10.6.106, 2026-09-21). Reporting
+// the AC outlets at the model's AC positions lines them up.
+func OutletIndexBase(model string) int {
+	switch model {
+	case "USPPDUP":
+		return 5
+	}
+	return 1
+}
+
 // outlet_table[].outlet_caps bits, and the outlet_type a rack PDU sends
 // alongside them. A value at or above the AC class bit (65536) would select
 // the newer encoding; this bridge sends the rack-PDU form, so the values stay
