@@ -171,8 +171,10 @@ controller merges its names by index, so the AC outlets are reported at the
 USP-PDU-Pro's AC positions **5..20** or they come back named "USB Outlet 1-4".
 The controller pushes `relay_state` at the reported indices but **no names**.
 Deployed as its own container at `/opt/disunified-pdu` so a PDU rebuild cannot
-disturb the switch bridge. Not yet verified: physically toggling a relay --
-nothing on the rack has been powered off.
+disturb the switch bridge. **Round trip verified live**: switching an outlet
+off from the controller opened the relay ~25 s later (`1 of 16 outlets
+changed`), switching it back on closed it, and a cycle with no change writes
+nothing (`0 of 16`). Clint confirmed every outlet is safe to toggle.
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
