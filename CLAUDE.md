@@ -182,7 +182,11 @@ the phase only; `0.0 A` means under ~1 A (firmware floors it), and the log's
 `IMax 1.4` proves the sensor. Reports `gateway_mac`/`lldp_table: []` like a
 real USP-PDU-Pro. The controller pushes **no outlet names**. Clint confirmed
 every outlet is safe to toggle; the editor is reached by clicking the outlet
-**row**, not its label or icon.
+**row**, not its label or icon. **Adopting a device deletes its UniFi client
+record and any fixed-IP reservation on it** -- the PDU lost its reserved address the next
+morning; it is now manual on the card (config.ini `[NetworkTCP/IP]` needs the
+`Override=<MAC>` line or it is ignored). `main.go` retries a device's Start
+with capped backoff instead of dropping it.
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
