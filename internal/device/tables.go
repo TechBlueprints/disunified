@@ -506,7 +506,27 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 // dropped. Silently.
 func outletTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[string]any {
 	base := OutletIndexBase(desc.Model)
-	table := make([]map[string]any, 0, len(snap.Outlets))
+	table := make([]map[string]any, 0, len(snap.Outlets)+base-1)
+	// The claimed model may have outlets the real device does not: the
+	// USP-PDU-Pro's 1-4 are USB, and a rack PDU has none. Reporting nothing
+	// for them leaves the controller showing its own default -- four outlets
+	// that look enabled and switchable but are not there at all. They are
+	// reported instead as present-but-off with no relay, on every inform, so
+	// a controller that tries to switch one is corrected on the next cycle
+	// rather than silently disagreeing with the hardware forever.
+	for i := 1; i < base; i++ {
+		table = append(table, map[string]any{
+			"index":                      i,
+			"relay_state":                false,
+			"outlet_caps":                0,
+			"outlet_type":                outletTypeUSB,
+			"power_fault":                false,
+			"power_warning":              false,
+			"relay_activation_countdown": 0,
+			"relay_activation_time":      0,
+			"modem_power_cycle_count":    0,
+		})
+	}
 	for _, o := range snap.Outlets {
 		caps := 0
 		if o.Switchable {
