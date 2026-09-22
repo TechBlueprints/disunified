@@ -261,3 +261,52 @@ func TestNoLoadReadingMeansNoPowerClaim(t *testing.T) {
 		t.Error("claimed a power measurement with no load reading")
 	}
 }
+
+// The controller's per-outlet Power Cycle (relayctl) is the card's own
+// immediate-reboot command: an off/on with the configured reboot duration
+// between, done by the card, so the bridge issues exactly one SET.
+func TestCycleOutletIssuesTheRebootCommand(t *testing.T) {
+	c, r := newTestCollector(t)
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := c.CycleOutlet(context.Background(), 9); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	want := "1.3.6.1.4.1.318.1.1.12.3.3.1.1.4.9=3" // control table, outlet 9, immediateReboot
+	if len(r.Sets) != 1 || r.Sets[0] != want {
+		t.Errorf("sets = %v, want exactly [%s]", r.Sets, want)
+	}
+	if len(r.Configs) != 0 {
+		t.Errorf("a power cycle uploaded a config: %v", r.Configs)
+	}
+}
+
+// The reachability fields a real device reports come from the card's IP-MIB
+// tables, which index their rows by address. The gateway's MAC is the ARP
+// entry for the default route's next hop.
+func TestReachabilityFromTheIPMIB(t *testing.T) {
+	c, _ := newTestCollector(t)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	sys := snap.System
+	if len(sys.Addresses) != 1 {
+		t.Fatalf("addresses = %+v, want the card's one (loopback excluded)", sys.Addresses)
+	}
+	if sys.Addresses[0].PrefixLen != 16 {
+		t.Errorf("prefix = %d, want 16 (255.255.0.0)", sys.Addresses[0].PrefixLen)
+	}
+	if len(sys.ARP) == 0 {
+		t.Fatal("ARP cache empty")
+	}
+	if sys.GatewayMAC == "" {
+		t.Error("gateway MAC not resolved from the default route's ARP entry")
+	}
+	for _, mac := range sys.ARP {
+		if len(mac) != 17 {
+			t.Errorf("ARP MAC %q not normalised to aa:bb:cc:dd:ee:ff", mac)
+		}
+	}
+}
