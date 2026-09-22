@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // DeviceName names the switch after the node ("proxmox-2"; "proxmox-2
 // vmbr1" for a bridge other than vmbr0): the node is the switch, same MAC,
 // address and hostname. An earlier build used "pve-<node>" while the host
 // was modelled as a separate client; that form still counts as a default.
-func (c *Collector) DeviceName(sys switchmodel.System) string {
+func (c *Collector) DeviceName(sys devicemodel.System) string {
 	name := sys.Hostname
 	if c.Bridge != "vmbr0" {
 		name += " " + c.Bridge
@@ -20,7 +20,7 @@ func (c *Collector) DeviceName(sys switchmodel.System) string {
 }
 
 // DefaultDeviceNames: the "pve-<node>" form of an earlier build.
-func (c *Collector) DefaultDeviceNames(sys switchmodel.System) []string {
+func (c *Collector) DefaultDeviceNames(sys devicemodel.System) []string {
 	name := "pve-" + sys.Hostname
 	if c.Bridge != "vmbr0" {
 		name += " " + c.Bridge
@@ -32,7 +32,7 @@ func (c *Collector) DefaultDeviceNames(sys switchmodel.System) []string {
 // has several NICs), a physical port after its NIC, and an unused slot
 // "Open-<port>" (Clint, 2026-09-20: a free slot should read as one, not
 // as the profile's "SFP28 26", and nothing is reserved for NICs).
-func (c *Collector) PortName(p switchmodel.Port) string {
+func (c *Collector) PortName(p devicemodel.Port) string {
 	if p.Description != "" {
 		return p.Description
 	}
@@ -48,7 +48,7 @@ func openLabel(idx int) string { return fmt.Sprintf("Open-%d", idx) }
 // DefaultPortNames lists every name this driver could have given the port,
 // so a rename after a guest is renamed or moved still works while an
 // operator's own name is kept.
-func (c *Collector) DefaultPortNames(p switchmodel.Port) []string {
+func (c *Collector) DefaultPortNames(p devicemodel.Port) []string {
 	// The slot was free before this port took it (two earlier builds split
 	// free slots into VM-Open/NIC-Open).
 	out := []string{openLabel(p.Index), fmt.Sprintf("VM-Open-%d", p.Index), fmt.Sprintf("NIC-Open-%d", p.Index)}

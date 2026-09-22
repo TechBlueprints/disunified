@@ -1,8 +1,9 @@
-// Command disunified presents a non-UniFi switch to a UniFi Network
-// controller as if it were a UniFi switch.
+// Command disunified presents a non-UniFi device to a UniFi Network
+// controller as if it were UniFi hardware. Today every driver presents a
+// switch, but the bridge itself is device-type neutral.
 //
-// A driver (-driver) reads the switch and, when writes are enabled, applies
-// the controller's port and switch settings to it. The bridge claims a
+// A driver (-driver) reads the device and, when writes are enabled, applies
+// the controller's port and device-wide settings to it. The bridge claims a
 // shipping UniFi model (-model, or "auto" to pick by port layout), informs
 // the controller at the interval it asks for, persists the adoption state
 // to -state, and records every controller reply to -record-dir as NDJSON.
@@ -28,14 +29,15 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/config"
 	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/informloop"
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
 	"github.com/TechBlueprints/disunified/internal/unifiapi"
 	"github.com/TechBlueprints/disunified/internal/unifimodel"
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	// Drivers register themselves; add a blank import per driver.
+	_ "github.com/TechBlueprints/disunified/internal/drivers/apc-pdu"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
@@ -47,49 +49,69 @@ var buildVersion = "dev"
 
 func main() {
 	var (
-		configPath = flag.String("config", envOr("STU_CONFIG", ""), "YAML config file (deploy/config.example.yaml): one controller, any number of switches; the flags below then apply only as one-shots")
+		configPath = flag.String("config", envChain("", "DUI_CONFIG", "STU_CONFIG"), "YAML config file (deploy/config.example.yaml): one controller, any number of devices; the flags below then apply only as one-shots")
 
 		// Controller side
-		controller = flag.String("controller", envOr("STU_CONTROLLER", ""), "controller host or IP; the inform URL becomes http://<ip>:8080/inform")
-		informURL  = flag.String("inform", envOr("STU_INFORM_URL", ""), "full inform URL (overrides -controller); must contain an IP literal")
-		model      = flag.String("model", envOr("STU_MODEL", "auto"), "UniFi model string to claim, or \"auto\" to pick the best catalogue match for the switch's port layout")
-		udapiVer   = flag.String("udapi-version", envOr("STU_UDAPI_VERSION", "1.0.0"), "UDAPI schema version to report; the controller only stores capability claims when this is set (\"\" = omit)")
-		interval   = flag.Duration("interval", envDuration("STU_INTERVAL", 10*time.Second), "initial inform interval; the controller then sets its own")
-		recordDir  = flag.String("record-dir", envOr("STU_RECORD_DIR", "inform-log"), "directory for the NDJSON reply log (\"\" disables)")
-		stateFile  = flag.String("state", envOr("STU_STATE", "state/device.json"), "file holding the adopted key and provisioned config across restarts")
+		controller = flag.String("controller", envChain("", "DUI_CONTROLLER", "STU_CONTROLLER"), "controller host or IP; the inform URL becomes http://<ip>:8080/inform")
+		informURL  = flag.String("inform", envChain("", "DUI_INFORM_URL", "STU_INFORM_URL"), "full inform URL (overrides -controller); must contain an IP literal")
+		model      = flag.String("model", envChain("auto", "DUI_MODEL", "STU_MODEL"), "UniFi model string to claim, or \"auto\" to pick the best catalogue match for the device's port layout")
+		udapiVer   = flag.String("udapi-version", envChain("1.0.0", "DUI_UDAPI_VERSION", "STU_UDAPI_VERSION"), "UDAPI schema version to report; the controller only stores capability claims when this is set (\"\" = omit)")
+		interval   = flag.Duration("interval", envDuration(10*time.Second, "DUI_INTERVAL", "STU_INTERVAL"), "initial inform interval; the controller then sets its own")
+		recordDir  = flag.String("record-dir", envChain("inform-log", "DUI_RECORD_DIR", "STU_RECORD_DIR"), "directory for the NDJSON reply log (\"\" disables)")
+		stateFile  = flag.String("state", envChain("state/device.json", "DUI_STATE", "STU_STATE"), "file holding the adopted key and provisioned config across restarts")
 
-		// Identity (defaults come from the switch when a driver is configured)
-		mac      = flag.String("mac", envOr("STU_MAC", ""), "device MAC to present (default: the switch's system MAC)")
-		serial   = flag.String("serial", envOr("STU_SERIAL", ""), "device serial (default: the switch's serial)")
-		ip       = flag.String("ip", envOr("STU_IP", ""), "device IP to report (default: the switch address from -switch-url/-switch-ssh when it is an IP literal)")
-		hostname = flag.String("hostname", envOr("STU_HOSTNAME", ""), "device hostname to report (default: the switch's hostname)")
-		version  = flag.String("version", envOr("STU_VERSION", ""), "firmware version to report (default: the switch's own, e.g. EOS 4.26.14M or PVE 9.1.6)")
-		uplink   = flag.Int("uplink-port", envInt("STU_UPLINK_PORT", 0), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
+		// Identity (defaults come from the device when a driver is configured)
+		mac      = flag.String("mac", envChain("", "DUI_MAC", "STU_MAC"), "device MAC to present (default: the device's system MAC)")
+		serial   = flag.String("serial", envChain("", "DUI_SERIAL", "STU_SERIAL"), "device serial (default: the device's serial)")
+		ip       = flag.String("ip", envChain("", "DUI_IP", "STU_IP"), "device IP to report (default: the device address from -device-url/-device-ssh when it is an IP literal)")
+		hostname = flag.String("hostname", envChain("", "DUI_HOSTNAME", "STU_HOSTNAME"), "device hostname to report (default: the device's hostname)")
+		version  = flag.String("version", envChain("", "DUI_VERSION", "STU_VERSION"), "firmware version to report (default: the device's own, e.g. EOS 4.26.14M or PVE 9.1.6)")
+		uplink   = flag.Int("uplink-port", envInt(0, "DUI_UPLINK_PORT", "STU_UPLINK_PORT"), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
 
-		// Switch side
-		driverName    = flag.String("driver", os.Getenv("STU_DRIVER"), "switch driver, required with -switch-url/-switch-ssh (see -list-drivers)")
-		switchURL     = flag.String("switch-url", envOr("STU_SWITCH_URL", envOr("STU_EOS_URL", "")), "switch API endpoint (driver-specific), with STU_SWITCH_USER/STU_SWITCH_PASS")
-		switchSSH     = flag.String("switch-ssh", envOr("STU_SWITCH_SSH", envOr("STU_EOS_SSH", "")), "switch SSH target user@host[:port] (key auth), used when -switch-url is empty")
-		controlPorts  = flag.String("control-ports", envOr("STU_CONTROL_PORTS", ""), "write controller port config to the switch: \"all\", or a list like \"2,5-8\"; empty = read-only")
-		controlIGMP   = flag.Bool("control-igmp", envOr("STU_CONTROL_IGMP", "") == "1", "let the controller's per-network IGMP snooping setting drive the switch (off by default)")
-		controlNTP    = flag.Bool("control-ntp", envOr("STU_CONTROL_NTP", "") == "1", "let the controller's NTP servers replace the switch's (off by default)")
-		controlSyslog = flag.Bool("control-syslog", envOr("STU_CONTROL_SYSLOG", "") == "1", "let the controller's remote syslog host replace the switch's (off by default)")
-		controlReboot = flag.Bool("control-reboot", envOr("STU_CONTROL_REBOOT", "") == "1", "the controller's Restart really reloads the switch (off by default: emulated)")
-		controlSSH    = flag.Bool("control-ssh-keys", envOr("STU_CONTROL_SSH_KEYS", "") == "1", "install the SSH keys the controller pushes on the switch's bridge user (off by default)")
-		controlSNMP   = flag.Bool("control-snmp", envOr("STU_CONTROL_SNMP", "") == "1", "the controller's SNMP v1/v2c community is configured on the switch (off by default)")
+		// Device side. -device-url/-device-ssh are the current names;
+		// -switch-url/-switch-ssh are the pre-rename aliases, reconciled after
+		// Parse (see below). The env default feeds the -device-* flags.
+		driverName     = flag.String("driver", envChain(os.Getenv("STU_DRIVER"), "DUI_DRIVER"), "device driver, required with -device-url/-device-ssh (see -list-drivers)")
+		deviceURLFlag  = flag.String("device-url", envChain("", "DUI_DEVICE_URL", "STU_SWITCH_URL", "STU_EOS_URL"), "device API endpoint (driver-specific), with DUI_DEVICE_USER/DUI_DEVICE_PASS")
+		deviceSSHFlag  = flag.String("device-ssh", envChain("", "DUI_DEVICE_SSH", "STU_SWITCH_SSH", "STU_EOS_SSH"), "device SSH target user@host[:port] (key auth), used when -device-url is empty")
+		switchURLFlag  = flag.String("switch-url", "", "pre-rename alias for -device-url")
+		switchSSHFlag  = flag.String("switch-ssh", "", "pre-rename alias for -device-ssh")
+		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\", or a list like \"2,5-8\"; empty = read-only")
+		controlOutlets = flag.String("control-outlets", envChain("", "DUI_CONTROL_OUTLETS", "STU_CONTROL_OUTLETS"), "switch and name a power device's outlets from the controller: \"all\", or a list like \"2,5-8\"; empty = read-only")
+		controlIGMP    = flag.Bool("control-igmp", envChain("", "DUI_CONTROL_IGMP", "STU_CONTROL_IGMP") == "1", "let the controller's per-network IGMP snooping setting drive the device (off by default)")
+		controlNTP     = flag.Bool("control-ntp", envChain("", "DUI_CONTROL_NTP", "STU_CONTROL_NTP") == "1", "let the controller's NTP servers replace the device's (off by default)")
+		controlSyslog  = flag.Bool("control-syslog", envChain("", "DUI_CONTROL_SYSLOG", "STU_CONTROL_SYSLOG") == "1", "let the controller's remote syslog host replace the device's (off by default)")
+		controlReboot  = flag.Bool("control-reboot", envChain("", "DUI_CONTROL_REBOOT", "STU_CONTROL_REBOOT") == "1", "the controller's Restart really reloads the device (off by default: emulated)")
+		controlSSH     = flag.Bool("control-ssh-keys", envChain("", "DUI_CONTROL_SSH_KEYS", "STU_CONTROL_SSH_KEYS") == "1", "install the SSH keys the controller pushes on the device's bridge user (off by default)")
+		controlSNMP    = flag.Bool("control-snmp", envChain("", "DUI_CONTROL_SNMP", "STU_CONTROL_SNMP") == "1", "the controller's SNMP v1/v2c community is configured on the device (off by default)")
 
 		// Controller REST API (names)
-		unifiURL  = flag.String("unifi-url", envOr("STU_UNIFI_URL", ""), "controller URL for the REST API, e.g. https://unifi.example.net (needs STU_UNIFI_API_KEY)")
-		unifiSite = flag.String("unifi-site", envOr("STU_UNIFI_SITE", "default"), "controller site")
-		provision = flag.Bool("provision-names", envOr("STU_PROVISION_NAMES", "1") != "0", "name the device \"<vendor> <model>\" and ports after the switch's interfaces via the REST API, touching only controller-default names (needs -unifi-url)")
+		unifiURL  = flag.String("unifi-url", envChain("", "DUI_UNIFI_URL", "STU_UNIFI_URL"), "controller URL for the REST API, e.g. https://unifi.example.net (needs STU_UNIFI_API_KEY)")
+		unifiSite = flag.String("unifi-site", envChain("default", "DUI_UNIFI_SITE", "STU_UNIFI_SITE"), "controller site")
+		provision = flag.Bool("provision-names", envChain("1", "DUI_PROVISION_NAMES", "STU_PROVISION_NAMES") != "0", "name the device \"<vendor> <model>\" and ports after the device's interfaces via the REST API, touching only controller-default names (needs -unifi-url)")
 
 		// One-shots
 		listModels  = flag.Bool("list-models", false, "print the switch models the bundled catalogue knows and exit")
-		listDrivers = flag.Bool("list-drivers", false, "print the registered switch drivers and exit")
+		listDrivers = flag.Bool("list-drivers", false, "print the registered device drivers and exit")
 		showBuild   = flag.Bool("build-version", false, "print this bridge's own build version and exit (-version is the firmware version reported to the controller)")
-		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the switch, print it as JSON with the suggested model, and exit")
+		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the device, print it as JSON with the suggested model, and exit")
 	)
 	flag.Parse()
+
+	// Reconcile the pre-rename -switch-url/-switch-ssh aliases with the
+	// current -device-url/-device-ssh. The -device-* form (and its env
+	// default) wins; the alias is used only when -device-* is empty.
+	deviceURL, deviceSSH := *deviceURLFlag, *deviceSSHFlag
+	if deviceURL == "" {
+		deviceURL = *switchURLFlag
+	} else if *switchURLFlag != "" && *switchURLFlag != deviceURL {
+		log.Printf("both -device-url and -switch-url set; using -device-url %q", deviceURL)
+	}
+	if deviceSSH == "" {
+		deviceSSH = *switchSSHFlag
+	} else if *switchSSHFlag != "" && *switchSSHFlag != deviceSSH {
+		log.Printf("both -device-ssh and -switch-ssh set; using -device-ssh %q", deviceSSH)
+	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
 	if *showBuild {
@@ -97,7 +119,7 @@ func main() {
 		return
 	}
 	if *listDrivers {
-		for _, d := range switchmodel.Drivers() {
+		for _, d := range devicemodel.Drivers() {
 			fmt.Printf("%-12s %s\n", d.Name(), d.Describe())
 		}
 		return
@@ -129,12 +151,12 @@ func main() {
 		controller: *controller, informURL: *informURL, model: *model, udapiVersion: *udapiVer,
 		interval: *interval, recordDir: *recordDir, stateFile: *stateFile,
 		mac: *mac, serial: *serial, ip: *ip, hostname: *hostname, version: *version, uplink: *uplink,
-		driver: *driverName, switchURL: *switchURL, switchSSH: *switchSSH,
-		username:     envOr("STU_SWITCH_USER", os.Getenv("STU_EOS_USER")),
-		password:     envOr("STU_SWITCH_PASS", os.Getenv("STU_EOS_PASS")),
-		controlPorts: *controlPorts, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
+		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
+		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
+		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
+		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
 		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP,
-		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: os.Getenv("STU_UNIFI_API_KEY"), provision: *provision,
+		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
 	}
 	if err := runOne(ctx, o); err != nil {
@@ -142,17 +164,18 @@ func main() {
 	}
 }
 
-// options is everything one bridged switch needs, from flags or a config entry.
+// options is everything one bridged device needs, from flags or a config entry.
 type options struct {
 	controller, informURL, model, udapiVersion string
 	interval                                   time.Duration
 	recordDir, stateFile                       string
 	mac, serial, ip, hostname, version         string
 	uplink                                     int
-	driver, switchURL, switchSSH               string
+	driver, deviceURL, deviceSSH               string
 	username, password                         string
 	driverOptions                              map[string]string
 	controlPorts                               string
+	controlOutlets                             string
 	controlIGMP, controlNTP, controlSyslog     bool
 	controlReboot, controlSSH, controlSNMP     bool
 	allowInitialChanges, noSeed                bool
@@ -167,7 +190,7 @@ type options struct {
 // to start is logged and the others keep running.
 func runConfig(ctx context.Context, f *config.File) {
 	var wg sync.WaitGroup
-	for _, sw := range f.Switches {
+	for _, sw := range f.Devices {
 		sw := sw
 		logger := log.New(os.Stderr, "["+sw.Name+"] ", log.LstdFlags|log.Lmicroseconds)
 		o := options{
@@ -176,9 +199,9 @@ func runConfig(ctx context.Context, f *config.File) {
 			recordDir: filepath.Join(f.StateDir, "inform-log", sw.Name),
 			stateFile: filepath.Join(f.StateDir, "state", sw.Name, "device.json"),
 			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
-			driver: sw.Driver, switchURL: sw.URL, switchSSH: sw.SSH, username: sw.Username, password: sw.Password,
+			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
+			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
@@ -186,6 +209,9 @@ func runConfig(ctx context.Context, f *config.File) {
 		}
 		if strings.EqualFold(o.controlPorts, "off") {
 			o.controlPorts = ""
+		}
+		if strings.EqualFold(o.controlOutlets, "off") {
+			o.controlOutlets = ""
 		}
 		wg.Add(1)
 		go func() {
@@ -202,16 +228,16 @@ func runConfig(ctx context.Context, f *config.File) {
 func runOne(ctx context.Context, o options) error {
 	log := o.logger
 
-	// --- Switch ---
+	// --- Device ---
 	var (
-		sw   switchmodel.Switch
-		snap *switchmodel.Snapshot
+		sw   devicemodel.Device
+		snap *devicemodel.Snapshot
 	)
-	if o.switchURL != "" || o.switchSSH != "" {
+	if o.deviceURL != "" || o.deviceSSH != "" {
 		if o.driver == "" {
-			return errors.New("no driver named: set -driver / STU_DRIVER, or driver: in the config file (see -list-drivers)")
+			return errors.New("no driver named: set -driver / DUI_DRIVER, or driver: in the config file (see -list-drivers)")
 		}
-		drv, err := switchmodel.LookupDriver(o.driver)
+		drv, err := devicemodel.LookupDriver(o.driver)
 		if err != nil {
 			return err
 		}
@@ -224,7 +250,7 @@ func runOne(ctx context.Context, o options) error {
 		} else if o.stateFile != "" && !o.collectOnce {
 			opts["state_dir"] = filepath.Dir(o.stateFile)
 		}
-		cfg := switchmodel.DriverConfig{URL: o.switchURL, SSH: o.switchSSH, Username: o.username, Password: o.password, Options: opts}
+		cfg := devicemodel.DriverConfig{URL: o.deviceURL, SSH: o.deviceSSH, Username: o.username, Password: o.password, Options: opts}
 		sw, err = drv.Open(ctx, cfg)
 		if err != nil {
 			return err
@@ -240,10 +266,10 @@ func runOne(ctx context.Context, o options) error {
 
 	if o.collectOnce {
 		if snap == nil {
-			return errors.New("-collect-once needs -switch-url or -switch-ssh")
+			return errors.New("-collect-once needs -device-url or -device-ssh")
 		}
 		out := map[string]any{"snapshot": snap, "layout": unifimodel.LayoutOf(snap)}
-		if c, err := unifimodel.Suggest(unifimodel.LayoutOf(snap)); err == nil {
+		if c, err := unifimodel.SuggestFor(snap); err == nil {
 			out["suggested_model"] = c
 		} else {
 			out["suggested_model_error"] = err.Error()
@@ -266,7 +292,7 @@ func runOne(ctx context.Context, o options) error {
 			o.hostname = snap.System.Hostname
 		}
 		if o.ip == "" {
-			o.ip = hostOf(o.switchURL, o.switchSSH)
+			o.ip = hostOf(o.deviceURL, o.deviceSSH)
 		}
 		if o.uplink == 0 {
 			o.uplink = snap.UplinkPort()
@@ -292,12 +318,16 @@ func runOne(ctx context.Context, o options) error {
 		if snap == nil {
 			return errors.New("-model auto needs a switch connection; pass -model explicitly otherwise")
 		}
-		c, err := unifimodel.Suggest(unifimodel.LayoutOf(snap))
+		c, err := unifimodel.SuggestFor(snap)
 		if err != nil {
 			return err
 		}
 		o.model = c.Model
-		log.Printf("model: auto-selected %s (%s) for switch layout %+v", c.Model, c.Display, unifimodel.LayoutOf(snap))
+		if len(snap.Outlets) > 0 {
+			log.Printf("model: auto-selected %s (%s) for a power device with %d outlets", c.Model, c.Display, len(snap.Outlets))
+		} else {
+			log.Printf("model: auto-selected %s (%s) for switch layout %+v", c.Model, c.Display, unifimodel.LayoutOf(snap))
+		}
 		if c.Note != "" {
 			log.Printf("model: %s", c.Note)
 		}
@@ -338,7 +368,7 @@ func runOne(ctx context.Context, o options) error {
 	// Capability claims come from the driver; they gate the UI, so a
 	// driver that declares none claims nothing.
 	caps := device.DefaultCapabilities
-	if c, ok := sw.(switchmodel.Capable); ok && sw != nil {
+	if c, ok := sw.(devicemodel.Capable); ok && sw != nil {
 		caps = c.Capabilities()
 	}
 	desc.FWCaps = device.FWCapsFor(caps)
@@ -360,13 +390,13 @@ func runOne(ctx context.Context, o options) error {
 	if snap != nil {
 		sess.SetSnapshot(snap)
 	} else {
-		log.Printf("no -switch-url/-switch-ssh: reporting the model's synthetic port table")
+		log.Printf("no -device-url/-device-ssh: reporting the model's synthetic port table")
 	}
 
 	// --- Names: defaults, and provisioning through the REST API ---
-	namer := switchmodel.Namer(switchmodel.DefaultNamer{})
+	namer := devicemodel.Namer(devicemodel.DefaultNamer{})
 	if sw != nil {
-		namer = switchmodel.NamerFor(sw)
+		namer = devicemodel.NamerFor(sw)
 	}
 	defaults := defaultPortNames(desc.Ports, snap, namer)
 	// isDefaultPortNameIn answers against the snapshot in hand: the names a
@@ -389,16 +419,16 @@ func runOne(ctx context.Context, o options) error {
 	// on the adoption handshake, on a layout change (a new guest) and while
 	// a first push is held (a retry). Only controller-default names and
 	// ports the controller has no config for are touched.
-	var provision func(snap *switchmodel.Snapshot)
+	var provision func(snap *devicemodel.Snapshot)
 	if o.provision && o.unifiURL != "" {
 		key := o.unifiKey
 		if key == "" {
-			log.Printf("provision-names: STU_UNIFI_API_KEY not set, skipping")
+			log.Printf("provision-names: no UNIFI API key set (DUI_UNIFI_API_KEY), skipping")
 		} else {
 			api := unifiapi.New(o.unifiURL, key, o.unifiSite, true)
 			seed := !o.noSeed && o.controlPorts != ""
 			var last time.Time
-			provision = func(snap *switchmodel.Snapshot) {
+			provision = func(snap *devicemodel.Snapshot) {
 				if !sess.Adopted() || snap == nil || time.Since(last) < 10*time.Second {
 					return
 				}
@@ -427,19 +457,19 @@ func runOne(ctx context.Context, o options) error {
 		Logger:     log,
 		Interval:   o.interval,
 		RecordDir:  o.recordDir,
-		SwitchHost: hostOf(o.switchURL, o.switchSSH),
+		DeviceHost: hostOf(o.deviceURL, o.deviceSSH),
 		GatewayIP:  o.controller,
-		OnLayoutChange: func(snap *switchmodel.Snapshot) {
+		OnLayoutChange: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)
 			}
 		},
-		OnConnected: func(snap *switchmodel.Snapshot) {
+		OnConnected: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)
 			}
 		},
-		OnHeld: func(snap *switchmodel.Snapshot) {
+		OnHeld: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)
 			}
@@ -448,8 +478,25 @@ func runOne(ctx context.Context, o options) error {
 	if sw != nil {
 		loopCfg.Collector = sw
 	}
+	if o.controlOutlets != "" {
+		oc, ok := sw.(devicemodel.OutletController)
+		if sw == nil || !ok {
+			return errors.New("-control-outlets needs a device connection whose driver controls outlets")
+		}
+		allow, err := parsePortList(o.controlOutlets)
+		if err != nil {
+			return fmt.Errorf("-control-outlets: %v", err)
+		}
+		loopCfg.OutletController = oc
+		loopCfg.ControlOutlets = allow
+		if allow == nil {
+			log.Printf("control: switching and naming ALL outlets from the controller")
+		} else {
+			log.Printf("control: switching and naming outlets %s from the controller", o.controlOutlets)
+		}
+	}
 	if o.controlPorts != "" {
-		ctl, ok := sw.(switchmodel.Controller)
+		ctl, ok := sw.(devicemodel.Controller)
 		if sw == nil || !ok {
 			return errors.New("-control-ports needs a switch connection whose driver supports writes")
 		}
@@ -473,7 +520,7 @@ func runOne(ctx context.Context, o options) error {
 		} else {
 			log.Printf("control: writing controller config to ports %s (igmp=%v)", o.controlPorts, o.controlIGMP)
 		}
-	} else {
+	} else if o.controlOutlets == "" {
 		log.Printf("control: read-only (no -control-ports); controller pushes are accepted but not written")
 	}
 	loop, err := informloop.New(desc, sess, loopCfg)
@@ -492,7 +539,7 @@ func runOne(ctx context.Context, o options) error {
 // ("Ethernet54", "Ethernet54/1", "Ethernet54/1-4", each lane). A UniFi
 // port name in this set is never written to the switch as a description,
 // and the naming provisioner may replace it.
-func defaultPortNames(ports []inform.Port, snap *switchmodel.Snapshot, namer switchmodel.Namer) map[int][]string {
+func defaultPortNames(ports []inform.Port, snap *devicemodel.Snapshot, namer devicemodel.Namer) map[int][]string {
 	out := map[int][]string{}
 	perMedia := map[string]int{}
 	for _, p := range ports {
@@ -509,14 +556,26 @@ func defaultPortNames(ports []inform.Port, snap *switchmodel.Snapshot, namer swi
 
 // hostOf extracts an IP literal from a switch URL or user@host target; ""
 // when the host is a name (the operator then passes -ip).
-func hostOf(switchURL, switchSSH string) string {
+func hostOf(deviceURL, deviceSSH string) string {
 	host := ""
-	if switchURL != "" {
-		if u, err := url.Parse(switchURL); err == nil {
+	if deviceURL != "" {
+		if u, err := url.Parse(deviceURL); err == nil && u.Hostname() != "" {
 			host = u.Hostname()
+		} else {
+			// A driver whose endpoint is a bare address rather than a URL (a
+			// PDU is reached at an address, not an API path) parses as a
+			// path with no host, so the address has to be read directly.
+			h := deviceURL
+			if i := strings.IndexAny(h, "/"); i >= 0 {
+				h = h[:i]
+			}
+			if hh, _, ok := strings.Cut(h, ":"); ok {
+				h = hh
+			}
+			host = h
 		}
-	} else if switchSSH != "" {
-		_, h, _ := strings.Cut(switchSSH, "@")
+	} else if deviceSSH != "" {
+		_, h, _ := strings.Cut(deviceSSH, "@")
 		host, _, _ = strings.Cut(h, ":")
 	}
 	if net.ParseIP(host) != nil {
@@ -586,8 +645,21 @@ func envOr(key, def string) string {
 	return def
 }
 
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
+// envChain returns the first non-empty environment variable among keys, in
+// order, else def. Used to prefer the current DUI_ names while still reading
+// the pre-rename STU_ (and older STU_EOS_) names, so existing env files keep
+// working.
+func envChain(def string, keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return def
+}
+
+func envInt(def int, keys ...string) int {
+	if v := envChain("", keys...); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
@@ -595,8 +667,8 @@ func envInt(key string, def int) int {
 	return def
 }
 
-func envDuration(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
+func envDuration(def time.Duration, keys ...string) time.Duration {
+	if v := envChain("", keys...); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
 		}

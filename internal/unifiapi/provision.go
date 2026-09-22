@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // ProvisionNames names the device and its ports after the switch using
@@ -14,7 +14,7 @@ import (
 // survive. isDefaultPortName reports whether a controller-side port name is
 // a default for that port index (the caller combines the namer's defaults
 // with the profile's and the controller's generic names).
-func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool) (renamedDevice bool, renamedPorts int, err error) {
+func (c *Client) ProvisionNames(ctx context.Context, mac string, snap *devicemodel.Snapshot, namer devicemodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool) (renamedDevice bool, renamedPorts int, err error) {
 	r, err := c.Provision(ctx, mac, snap, namer, defaultDeviceNames, isDefaultPortName, false)
 	return r.RenamedDevice, r.RenamedPorts, err
 }
@@ -36,7 +36,7 @@ type ProvisionResult struct {
 // lose their override except its name and, when seeding, are written
 // disabled as the switch reports them; a later guest on that slot is
 // seeded from its own state (see seedOverrides).
-func (c *Client) Provision(ctx context.Context, mac string, snap *switchmodel.Snapshot, namer switchmodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool, seed bool) (ProvisionResult, error) {
+func (c *Client) Provision(ctx context.Context, mac string, snap *devicemodel.Snapshot, namer devicemodel.Namer, defaultDeviceNames []string, isDefaultPortName func(idx int, name string) bool, seed bool) (ProvisionResult, error) {
 	var res ProvisionResult
 	dev, err := c.DeviceByMAC(ctx, mac)
 	if err != nil {

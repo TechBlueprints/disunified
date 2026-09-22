@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/device"
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
@@ -57,15 +57,23 @@ func (s State) String() string {
 type Config struct {
 	Interval       time.Duration         // initial inform cadence; the controller may change it
 	RecordDir      string                // "" disables reply recording
-	Collector      switchmodel.Collector // nil = report the model's synthetic table
+	Collector      devicemodel.Collector // nil = report the model's synthetic table
 	CollectTimeout time.Duration
 	Logger         *log.Logger
 
 	// Controller applies controller-pushed port config to the switch. nil =
 	// read-only: pushes are accepted (cfgversion echoed) but never written.
-	Controller switchmodel.Controller
+	Controller devicemodel.Controller
 	// ControlPorts restricts writes to these port indexes; nil = every port.
 	ControlPorts map[int]bool
+	// OutletController applies controller-pushed outlet state to a power
+	// device (a rack PDU). nil = read-only, like Controller. A device has
+	// one or the other: outlets are what ports are to a switch.
+	OutletController devicemodel.OutletController
+	// ControlOutlets restricts writes to these outlet indexes; nil = every
+	// outlet. An outlet carries real load, so an operator who wants to try
+	// one outlet first can say so.
+	ControlOutlets map[int]bool
 	// ControlIGMP lets the controller's per-network IGMP snooping setting
 	// drive the switch. Off by default: UniFi defaults snooping off per
 	// network while EOS defaults it on, so the first apply would turn
@@ -95,27 +103,27 @@ type Config struct {
 	// re-sending) until a push arrives that changes nothing — which is what
 	// seeding the controller from the switch on adoption produces — or the
 	// operator sets the ports. Needs a driver that implements
-	// switchmodel.Planner; others apply as before.
+	// devicemodel.Planner; others apply as before.
 	AllowInitialChanges bool
 	// DefaultPortNames maps port_idx to the names that mean "unedited"; a
 	// UniFi port name in that set is written as "no description".
 	DefaultPortNames map[int][]string
 	// OnHeld runs each time a first push is held (see AllowInitialChanges),
 	// with the current snapshot: the bridge retries seeding the controller.
-	OnHeld func(snap *switchmodel.Snapshot)
+	OnHeld func(snap *devicemodel.Snapshot)
 	// OnConnected runs once each time the adoption handshake completes
 	// (state -> CONNECTED), with the current snapshot: first-provision work
 	// such as naming the device and its ports through the REST API belongs
 	// here, because a device adopted after the bridge started has no other
 	// trigger (found 2026-09-20: a re-adopted switch stayed "USW Leaf").
-	OnConnected func(snap *switchmodel.Snapshot)
+	OnConnected func(snap *devicemodel.Snapshot)
 
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
-	OnLayoutChange func(snap *switchmodel.Snapshot)
-	// SwitchHost is the address the bridge reaches the switch at, for the
+	OnLayoutChange func(snap *devicemodel.Snapshot)
+	// DeviceHost is the address the bridge reaches the switch at, for the
 	// out-of-band management warning ("" = unknown).
-	SwitchHost string
+	DeviceHost string
 	// GatewayIP is the controller/gateway address; the switch's ARP entry
 	// for it is reported as gateway_mac ("" = skip).
 	GatewayIP string
@@ -138,12 +146,15 @@ type Loop struct {
 	reconciledOnce  bool
 	layoutSig       string
 	pendingCycles   []int
-	pendingReboot   bool
-	warnedVersion   string
-	oobWarned       string // last out-of-band warning state, to log on change only
-	uplinkPort      int    // the port last marked as uplink from the snapshot
-	everApplied     bool   // a system_cfg has been applied to this device (this run or a previous one)
-	heldVersion     string // the first push being held, to log once
+	// pendingOutletCycles holds relayctl outlet indexes, in the controller's
+	// numbering, until the driver runs them after the inform.
+	pendingOutletCycles []int
+	pendingReboot       bool
+	warnedVersion       string
+	oobWarned           string // last out-of-band warning state, to log on change only
+	uplinkPort          int    // the port last marked as uplink from the snapshot
+	everApplied         bool   // a system_cfg has been applied to this device (this run or a previous one)
+	heldVersion         string // the first push being held, to log once
 	// freshPorts are ports that appeared (a new guest, a new interface) since
 	// the last applied config: the controller knows nothing about them yet,
 	// so its config for them is the defaults. They are not written until a
@@ -359,6 +370,13 @@ func (l *Loop) informOnce(ctx context.Context) {
 				pending := l.pendingCycles
 				l.pendingCycles = append(pending, idx)
 			}
+		case device.EffectOutletCycle:
+			lines = append(lines, fmt.Sprintf("relayctl: power-cycle requested for outlet(s) %s", e.Text))
+			for _, s := range strings.Split(e.Text, ",") {
+				if idx, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+					l.pendingOutletCycles = append(l.pendingOutletCycles, idx)
+				}
+			}
 		}
 	}
 	connectedNow := false
@@ -383,16 +401,20 @@ func (l *Loop) informOnce(ctx context.Context) {
 	}
 }
 
-// cyclePorts runs queued port-cycle (and reboot) commands through the driver.
+// cyclePorts runs queued port-cycle, outlet-cycle and reboot commands
+// through the driver.
 func (l *Loop) cyclePorts(ctx context.Context) {
 	l.mu.Lock()
 	queue := l.pendingCycles
 	l.pendingCycles = nil
+	outlets := l.pendingOutletCycles
+	l.pendingOutletCycles = nil
 	reboot := l.pendingReboot
 	l.pendingReboot = false
 	l.mu.Unlock()
+	l.cycleOutlets(ctx, outlets)
 	if reboot {
-		if rb, ok := l.cfg.Controller.(switchmodel.Rebooter); ok {
+		if rb, ok := l.cfg.Controller.(devicemodel.Rebooter); ok {
 			cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 			err := rb.Reboot(cctx)
 			cancel()
@@ -406,7 +428,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	if len(queue) == 0 {
 		return
 	}
-	pc, ok := l.cfg.Controller.(switchmodel.PortCycler)
+	pc, ok := l.cfg.Controller.(devicemodel.PortCycler)
 	if !ok {
 		l.cfg.Logger.Printf("[%s] port-cycle: driver cannot bounce ports; ignored", l.desc.MAC)
 		return
@@ -430,7 +452,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 // need the cage's VLAN/FEC/storm config. ApplyPorts is a diff, so a
 // converged switch costs nothing and logs nothing.
 func (l *Loop) reconcile(ctx context.Context) {
-	if l.cfg.Controller == nil {
+	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
 		return
 	}
 	ver, text, ok := l.session.Applied()
@@ -442,8 +464,21 @@ func (l *Loop) reconcile(ctx context.Context) {
 	}
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
+	if l.cfg.Controller == nil {
+		outlets := l.desiredOutlets(text)
+		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
+		if err != nil {
+			l.cfg.Logger.Printf("[%s] reconcile system_cfg %s: %v", l.desc.MAC, ver, err)
+			return
+		}
+		if changed > 0 || !l.reconciledOnce {
+			l.cfg.Logger.Printf("[%s] reconciled system_cfg %s: %d of %d outlets changed", l.desc.MAC, ver, changed, len(outlets))
+		}
+		l.reconciledOnce = true
+		return
+	}
 	l.ensureVLANs(cctx, text)
-	l.applySwitchSettings(cctx, text)
+	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
 	desired := l.withholdFreshPorts(l.desiredPorts(text))
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
@@ -457,17 +492,82 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.reconciledOnce = true
 }
 
+// cycleOutlets runs relayctl through the driver. The controller names outlets
+// in the claimed model's numbering; the driver knows only its device's own,
+// so the index is translated here, the same way desiredOutlets does it, and
+// an outlet the model has but the device does not (the USP-PDU-Pro's USB
+// four) is declined rather than mapped onto a real relay.
+func (l *Loop) cycleOutlets(ctx context.Context, queue []int) {
+	if len(queue) == 0 {
+		return
+	}
+	oc, ok := l.cfg.OutletController.(devicemodel.OutletCycler)
+	if !ok {
+		l.cfg.Logger.Printf("[%s] relayctl: driver cannot cycle outlets; ignored", l.desc.MAC)
+		return
+	}
+	base := device.OutletIndexBase(l.desc.Model)
+	for _, idx := range queue {
+		own := idx - base + 1
+		if own < 1 {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: the device has no such outlet; ignored", l.desc.MAC, idx)
+			continue
+		}
+		if l.cfg.ControlOutlets != nil && !l.cfg.ControlOutlets[own] {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: not under control; ignored", l.desc.MAC, idx)
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		err := oc.CycleOutlet(cctx, own)
+		cancel()
+		if err != nil {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: %v", l.desc.MAC, idx, err)
+		} else {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: power cycle issued (device outlet %d)", l.desc.MAC, idx, own)
+		}
+	}
+}
+
+// desiredOutlets translates a system_cfg into per-outlet intent for the
+// outlets this bridge is allowed to write.
+//
+// The name travels one way only. A power device must not report outlet names
+// back on its inform -- the controller merges its own onto the row and drops
+// the whole table when that merge changes nothing -- so the controller is the
+// only source of a name, and the driver pushes it down to the device.
+func (l *Loop) desiredOutlets(text string) []devicemodel.OutletDesired {
+	cfg := unificfg.Parse(text)
+	// The controller addresses outlets in the claimed model's index space,
+	// where the first AC outlet may not be 1; the driver knows only its own
+	// device's numbering. Translate here, at the boundary, so neither side
+	// has to carry the other's offset.
+	base := device.OutletIndexBase(l.desc.Model)
+	var desired []devicemodel.OutletDesired
+	for _, idx := range cfg.OutletIndexes() {
+		own := idx - base + 1
+		if own < 1 {
+			continue // an outlet the model has (a USB one) that this device does not
+		}
+		if l.cfg.ControlOutlets != nil && !l.cfg.ControlOutlets[own] {
+			continue
+		}
+		o := cfg.Outlets[idx]
+		desired = append(desired, devicemodel.OutletDesired{Index: own, On: o.RelayOn, Name: o.Name})
+	}
+	return desired
+}
+
 // desiredPorts translates a system_cfg into per-port intent for the ports
 // this bridge is allowed to write.
-func (l *Loop) desiredPorts(text string) []switchmodel.PortDesired {
+func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 	cfg := unificfg.Parse(text)
-	var desired []switchmodel.PortDesired
+	var desired []devicemodel.PortDesired
 	for _, idx := range cfg.PortIndexes() {
 		if l.cfg.ControlPorts != nil && !l.cfg.ControlPorts[idx] {
 			continue
 		}
 		p := cfg.Ports[idx]
-		d := switchmodel.PortDesired{Index: idx, Enabled: p.Enabled}
+		d := devicemodel.PortDesired{Index: idx, Enabled: p.Enabled}
 		if !l.isDefaultName(idx, p.Name) {
 			d.Description = p.Name
 		}
@@ -484,17 +584,17 @@ func (l *Loop) desiredPorts(text string) []switchmodel.PortDesired {
 		}
 		switch p.FEC {
 		case "cl-91", "rs-fec":
-			f := switchmodel.FECRS
+			f := devicemodel.FECRS
 			d.FEC = &f
 		case "cl-74", "fc-fec":
-			f := switchmodel.FECFC
+			f := devicemodel.FECFC
 			d.FEC = &f
 		case "disabled", "none", "off":
-			f := switchmodel.FECDisabled
+			f := devicemodel.FECDisabled
 			d.FEC = &f
 		}
 		if p.StormCtrl.Enabled && p.StormCtrl.Type != "rate" {
-			spec := &switchmodel.StormControlSpec{}
+			spec := &devicemodel.StormControlSpec{}
 			if p.StormCtrl.Bcast >= 0 {
 				v := float64(p.StormCtrl.Bcast)
 				spec.BroadcastPct = &v
@@ -559,10 +659,10 @@ func (l *Loop) warnUnsupported(ver, text string) {
 	}
 }
 
-// desiredSwitch translates the switch-wide keys.
-func (l *Loop) desiredSwitch(text string) switchmodel.SwitchDesired {
+// desiredDevice translates the switch-wide keys.
+func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 	cfg := unificfg.Parse(text)
-	d := switchmodel.SwitchDesired{
+	d := devicemodel.DeviceDesired{
 		STPSet: cfg.STP.Set, STPEnabled: cfg.STP.Enabled, STPMode: cfg.STP.Version, STPPriority: cfg.STP.Priority,
 		ManageNTP: l.cfg.ControlNTP, NTPServers: cfg.NTPServers,
 		ManageSyslog: l.cfg.ControlSyslog, SyslogHosts: cfg.SyslogHosts,
@@ -591,14 +691,14 @@ func (l *Loop) installSSHKeys(ctx context.Context, text string) {
 	if !l.cfg.ControlSSHKeys {
 		return
 	}
-	inst, ok := l.cfg.Controller.(switchmodel.SSHKeyInstaller)
+	inst, ok := l.cfg.Controller.(devicemodel.SSHKeyInstaller)
 	if !ok {
 		return
 	}
 	cfg := unificfg.Parse(text)
-	keys := make([]switchmodel.SSHKey, 0, len(cfg.SSHKeys))
+	keys := make([]devicemodel.SSHKey, 0, len(cfg.SSHKeys))
 	for _, k := range cfg.SSHKeys {
-		keys = append(keys, switchmodel.SSHKey{Type: k.Type, Value: k.Value, Comment: k.Comment})
+		keys = append(keys, devicemodel.SSHKey{Type: k.Type, Value: k.Value, Comment: k.Comment})
 	}
 	n, err := inst.InstallSSHKeys(ctx, keys)
 	if err != nil {
@@ -610,14 +710,14 @@ func (l *Loop) installSSHKeys(ctx context.Context, text string) {
 	}
 }
 
-// applySwitchSettings writes STP/IGMP settings; errors are logged, and the
+// applyDeviceSettings writes STP/IGMP settings; errors are logged, and the
 // port apply still proceeds (they are independent).
-func (l *Loop) applySwitchSettings(ctx context.Context, text string) {
-	sc, ok := l.cfg.Controller.(switchmodel.SwitchController)
+func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
+	sc, ok := l.cfg.Controller.(devicemodel.DeviceController)
 	if !ok {
 		return
 	}
-	n, err := sc.ApplySwitch(ctx, l.desiredSwitch(text))
+	n, err := sc.ApplyDevice(ctx, l.desiredDevice(text))
 	if err != nil {
 		l.cfg.Logger.Printf("[%s] apply switch settings: %v", l.desc.MAC, err)
 		return
@@ -630,7 +730,7 @@ func (l *Loop) applySwitchSettings(ctx context.Context, text string) {
 // ensureVLANs creates the site's VLANs on the switch before ports reference
 // them. Errors are reported, not fatal: ports whose VLANs exist still apply.
 func (l *Loop) ensureVLANs(ctx context.Context, text string) {
-	vc, ok := l.cfg.Controller.(switchmodel.VLANController)
+	vc, ok := l.cfg.Controller.(devicemodel.VLANController)
 	if !ok {
 		return
 	}
@@ -668,7 +768,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	if !ok {
 		return false
 	}
-	if l.cfg.Controller == nil {
+	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
 		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
 			l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
@@ -682,6 +782,30 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 			l.cfg.OnSystemCfg(unificfg.Parse(text))
 		}
 	}
+	// A power device has outlets where a switch has ports: apply them and
+	// stop, rather than running the port, VLAN and STP machinery against a
+	// device that has none of it.
+	if l.cfg.Controller == nil {
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		defer cancel()
+		outlets := l.desiredOutlets(text)
+		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
+		if err != nil {
+			l.applyFailures++
+			if l.applyFailures == 1 || l.applyFailures%10 == 0 {
+				l.cfg.Logger.Printf("[%s] apply system_cfg %s (%d attempts): %v", l.desc.MAC, ver, l.applyFailures, err)
+			}
+			return true
+		}
+		l.applyFailures = 0
+		l.everApplied = true
+		l.cfg.Logger.Printf("[%s] applied system_cfg %s to the device: %d of %d outlets changed", l.desc.MAC, ver, changed, len(outlets))
+		if err := l.session.MarkApplied(ver); err != nil {
+			l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
+		}
+		return true
+	}
+
 	desired := l.desiredPorts(text)
 	if held := l.holdInitialPush(ver, desired); held {
 		return true
@@ -690,7 +814,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	l.ensureVLANs(cctx, text)
-	l.applySwitchSettings(cctx, text)
+	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
@@ -711,11 +835,11 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 
 // holdInitialPush keeps the first push after adoption from changing ports
 // (see Config.AllowInitialChanges). It reports whether the push is held.
-func (l *Loop) holdInitialPush(ver string, desired []switchmodel.PortDesired) bool {
+func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bool {
 	if l.everApplied || l.cfg.AllowInitialChanges {
 		return false
 	}
-	planner, ok := l.cfg.Controller.(switchmodel.Planner)
+	planner, ok := l.cfg.Controller.(devicemodel.Planner)
 	if !ok {
 		return false
 	}
@@ -739,11 +863,11 @@ func (l *Loop) holdInitialPush(ver string, desired []switchmodel.PortDesired) bo
 // overwrite what they have. A fresh port whose desired state matches its
 // live state stops being fresh. Needs a Planner; drivers without one write
 // as before. AllowInitialChanges disables the withholding too.
-func (l *Loop) withholdFreshPorts(desired []switchmodel.PortDesired) []switchmodel.PortDesired {
+func (l *Loop) withholdFreshPorts(desired []devicemodel.PortDesired) []devicemodel.PortDesired {
 	if len(l.freshPorts) == 0 || l.cfg.AllowInitialChanges {
 		return desired
 	}
-	planner, ok := l.cfg.Controller.(switchmodel.Planner)
+	planner, ok := l.cfg.Controller.(devicemodel.Planner)
 	if !ok {
 		return desired
 	}
@@ -859,7 +983,7 @@ func (l *Loop) collect(ctx context.Context) {
 	}
 }
 
-func layoutSignature(snap *switchmodel.Snapshot) string {
+func layoutSignature(snap *devicemodel.Snapshot) string {
 	var b strings.Builder
 	for _, p := range snap.Ports {
 		fmt.Fprintf(&b, "%d:%s:%d:%s;", p.Index, p.IfName, p.Lanes, strings.Join(p.Interfaces, ","))
@@ -999,14 +1123,14 @@ func (r *recorder) Close() {
 // its LLDP identity behind another, and never places it in the topology
 // (no Uplink, no Parent Device). An OOB port that is merely cabled is a
 // milder risk (a second LLDP identity) and gets a note.
-func (l *Loop) warnOOB(snap *switchmodel.Snapshot) {
+func (l *Loop) warnOOB(snap *devicemodel.Snapshot) {
 	var msgs []string
 	for _, o := range snap.System.OOBInterfaces {
 		switch {
-		case o.IP != "" && o.IP == l.cfg.SwitchHost:
-			msgs = append(msgs, fmt.Sprintf("!!! the bridge reaches this switch through its out-of-band management port %s (%s). UniFi expects the management address in-band, behind the uplink; the controller will show no Uplink/Parent and will not place the switch in the topology. Move the address to a VLAN interface and point the bridge at it (docs/adding-a-switch.md)", o.Name, o.IP))
+		case o.IP != "" && o.IP == l.cfg.DeviceHost:
+			msgs = append(msgs, fmt.Sprintf("!!! the bridge reaches this switch through its out-of-band management port %s (%s). UniFi expects the management address in-band, behind the uplink; the controller will show no Uplink/Parent and will not place the switch in the topology. Move the address to a VLAN interface and point the bridge at it (docs/adding-a-device.md)", o.Name, o.IP))
 		case o.IP != "":
-			msgs = append(msgs, fmt.Sprintf("!!! out-of-band management port %s carries address %s; the controller may locate the switch behind that port instead of its uplink. Prefer an in-band management address (docs/adding-a-switch.md)", o.Name, o.IP))
+			msgs = append(msgs, fmt.Sprintf("!!! out-of-band management port %s carries address %s; the controller may locate the switch behind that port instead of its uplink. Prefer an in-band management address (docs/adding-a-device.md)", o.Name, o.IP))
 		case o.Up:
 			msgs = append(msgs, fmt.Sprintf("NOTE: out-of-band management port %s is connected but addressless; keep LLDP off on it so the controller sees one identity for this switch", o.Name))
 		}

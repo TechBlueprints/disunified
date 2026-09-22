@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Driver is the Arista EOS driver: eAPI (JSON-RPC over HTTPS) or SSH.
@@ -22,7 +22,7 @@ import (
 // docs/drivers/arista-eos.md for what that version does and does not have.
 type Driver struct{}
 
-func init() { switchmodel.RegisterDriver(Driver{}) }
+func init() { devicemodel.RegisterDriver(Driver{}) }
 
 func (Driver) Name() string { return "arista-eos" }
 
@@ -32,20 +32,20 @@ func (Driver) Name() string { return "arista-eos" }
 // (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror and
 // aggregate session counts mirror what real switches report (the ECS
 // reports them) so the UI offers both.
-func (c *Collector) Capabilities() switchmodel.Capabilities {
-	return switchmodel.Capabilities{
+func (c *Collector) Capabilities() devicemodel.Capabilities {
+	return devicemodel.Capabilities{
 		STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
 		StormControl: true, IGMPSnooping: true, LLDPMED: true, SNMP: true,
 		// Not DHCPSnooping: UniFi's "Rogue DHCP Server Detection" blocks DHCP
 		// servers on non-uplink ports, and EOS 4.26 has no trusted-port model
 		// (`ip dhcp snooping trust` is invalid); its snooping is Option-82
 		// insertion only. Unclaimed, the controller never pushes the key
-		// (verified 2026-09-20); if it does, ApplySwitch logs and ignores it.
+		// (verified 2026-09-20); if it does, ApplyDevice logs and ignores it.
 		MirrorSessions: 1, AggregateSessions: 8,
 	}
 }
 
-var _ switchmodel.Capable = (*Collector)(nil)
+var _ devicemodel.Capable = (*Collector)(nil)
 
 func (Driver) Describe() string {
 	return "Arista EOS over eAPI (URL + username/password) or SSH (user@host, key auth); verified on 4.26.14M"
@@ -53,7 +53,7 @@ func (Driver) Describe() string {
 
 // Open builds the transport, then runs every command once via Start so a
 // command this EOS version lacks — or a bad credential — fails here.
-func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmodel.Switch, error) {
+func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemodel.Device, error) {
 	var t Transport
 	switch {
 	case cfg.URL != "":
@@ -83,13 +83,13 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 	return c, nil
 }
 
-// Compile-time checks: the collector is a full read/write Switch.
+// Compile-time checks: the collector is a full read/write Device.
 var (
-	_ switchmodel.Switch           = (*Collector)(nil)
-	_ switchmodel.Controller       = (*Collector)(nil)
-	_ switchmodel.SwitchController = (*Collector)(nil)
-	_ switchmodel.VLANController   = (*Collector)(nil)
-	_ switchmodel.PortCycler       = (*Collector)(nil)
-	_ switchmodel.Rebooter         = (*Collector)(nil)
-	_ switchmodel.SSHKeyInstaller  = (*Collector)(nil)
+	_ devicemodel.Device           = (*Collector)(nil)
+	_ devicemodel.Controller       = (*Collector)(nil)
+	_ devicemodel.DeviceController = (*Collector)(nil)
+	_ devicemodel.VLANController   = (*Collector)(nil)
+	_ devicemodel.PortCycler       = (*Collector)(nil)
+	_ devicemodel.Rebooter         = (*Collector)(nil)
+	_ devicemodel.SSHKeyInstaller  = (*Collector)(nil)
 )

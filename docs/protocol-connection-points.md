@@ -38,7 +38,7 @@ Flags: `0x01` encrypted, `0x02` zlib, `0x04` snappy, `0x08` AES-GCM.
   `mgmt_cfg.use_aes_gcm=true` and there is no way back, so both are
   implemented. zlib (RFC 1950) is applied to the JSON before encryption.
 
-## 2. The switch payload
+## 2. The device payload
 
 A flat JSON object, sent on every inform, pending or adopted. What this
 bridge sends is what real switches send, checked key by key against their
@@ -58,7 +58,7 @@ the last payload sent is `inform-log/<name>/payload-last.json`.
   interface: ip, netmask, counters), `has_eth1`, `service_mac`. The
   management address must be **in-band**, behind the uplink, or the
   controller finds the IP and the LLDP identity in two places and leaves
-  the device without a parent ([`adding-a-switch.md`](adding-a-switch.md) §2c).
+  the device without a parent ([`adding-a-device.md`](adding-a-device.md) §2c).
 - **`uplink` is a string**: the name of the management interface in
   `if_table` (`"eth0"`), not an object. With an object the controller
   silently ignored it for a day. It composes the uplink record itself from

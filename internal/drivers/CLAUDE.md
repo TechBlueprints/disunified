@@ -1,12 +1,12 @@
 # Rules for `internal/drivers/*`
 
-You are in the vendor layer. Read `docs/adding-a-switch.md` first; the
-contract is `internal/switchmodel/driver.go` + `model.go`.
+You are in the vendor layer. Read `docs/adding-a-device.md` first; the
+contract is `internal/devicemodel/driver.go` + `model.go`.
 
 - One directory per vendor/OS, package named after it, registered in `init()`
-  with `switchmodel.RegisterDriver`, blank-imported from `cmd/disunified`.
+  with `devicemodel.RegisterDriver`, blank-imported from `cmd/disunified`.
 - Nothing UniFi-specific in here: no `port_table` keys, no `system_cfg` keys,
-  no capability bits. Translate to and from `switchmodel` types only.
+  no capability bits. Translate to and from `devicemodel` types only.
 - Every command the driver uses exists on the OS version named in the
   driver's doc comment, and there is a scrubbed fixture for it under
   `docs/fixtures/<os>-<version>/`. `Start` runs all of them once and fails
@@ -33,8 +33,8 @@ contract is `internal/switchmodel/driver.go` + `model.go`.
   drive your driver end to end against real controller data.
 - The management address the bridge uses must be in-band (behind the
   uplink); report dedicated OOB management interfaces in
-  `System.OOBInterfaces` so the loop can warn. See `docs/adding-a-switch.md` §2c.
+  `System.OOBInterfaces` so the loop can warn. See `docs/adding-a-device.md` §2c.
 - Fill `Port.Health` and the `System` reachability/health fields listed in
-  `docs/adding-a-switch.md` §2; counters that exist only as text go through
+  `docs/adding-a-device.md` §2; counters that exist only as text go through
   a `TextRunner`-style capability, never through guessing.
-- Live verification order and what to record is in `docs/adding-a-switch.md` §4.
+- Live verification order and what to record is in `docs/adding-a-device.md` §4.

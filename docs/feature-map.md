@@ -13,7 +13,7 @@ keywords (`show interface …` fails with "Incomplete token").
 
 Two channels exist:
 
-- **Device → controller**: the inform payload (`port_table`, switch-level fields). What the
+- **Device → controller**: the inform payload (`port_table`, device-level fields). What the
   UI *shows*.
 - **Controller → device**: `setparam.system_cfg` (the UniFi device config file, observed) and
   `setstate` (`port_overrides`/`port_table`, per prior art, **not yet observed** on 10.6.106),
@@ -36,7 +36,7 @@ STP on Proxmox is claimed and honoured only on a node whose bridge runs
 under mstpd ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b). Both verified live on Network
 10.6.106, 2026-09-19/20.
 
-## 1. Device → controller: switch-level fields
+## 1. Device → controller: device-level fields
 
 | Field | Meaning | Arista source (EOS 4.26.14M) | Arista | Proxmox |
 |---|---|---|---|---|
@@ -203,3 +203,20 @@ the bridge currently omits `sfp_found` on the copper ports, so watch what the UI
 It does **not** affect adoption, stats, VLANs, STP, or enable/disable. Recommendation:
 stay on `UDC48X6`; if the UI shows a module warning on ports 1-48, report `sfp_found: true`
 there (harmless) rather than change model.
+
+## Power devices — `apc-pdu` (APC AP7931, AOS 3.9.2, Network 10.6.106)
+
+Outlets are the power-device shape beside ports. Status as verified live on
+2026-09-21, through the UniFi UI where the row says so.
+
+| Feature | Wire | Status |
+|---|---|---|
+| Outlet table, state, names from the controller | `outlet_table`, `hw_caps` bit 128, `outlet_enabled` | done; reported at the USP-PDU-Pro's AC positions 5..20 |
+| Outlet on/off from the controller | `outlet.<n>.relay_state` in system_cfg → SNMP SET on the control column | done, UI-verified (editor Active/Disabled) |
+| Outlet power cycle | `relayctl` with `outlet_table:[{index}]` → the card's immediate-reboot | done, UI-verified (Power Cycle button) |
+| Aggregate power / capacity | `outlet_ac_power_consumption`, `outlet_ac_power_budget` | done; the card meters the phase, budget = rating x line voltage (1440 W) |
+| Per-outlet metering | `outlet_voltage/current/power` | **not on this hardware** (AP84xx/AP86xx only); keys omitted rather than zeroed |
+| Outlets the model has, the device does not (USB 1-4) | reported off, `outlet_caps` 0, every inform; override also set off | done; a push enabling one is declined |
+| Outlet names device-side | partial `config.ini` over FTP | built and tested, **no source**: the controller pushes no names |
+| Reachability | `gateway_mac`, `netmask`, `lldp_table: []` from the IP-MIB | done |
+| Fans / PSUs / temperature | — | none on an AP7931 |

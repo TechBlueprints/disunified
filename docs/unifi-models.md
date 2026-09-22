@@ -2,7 +2,7 @@
 
 The controller renders a device from **its own** hardware profile for the
 model string the device claims. The claim therefore has to exist in the
-controller's database, and its port count has to match the switch: the
+controller's database, and its port count has to match the device: the
 controller draws exactly the profile's ports.
 
 ## What the profile does and does not decide (Network 10.6.106, observed)
@@ -10,7 +10,7 @@ controller draws exactly the profile's ports.
 | Decided by the profile | Decided by the device's reports |
 |---|---|
 | number of ports and their numbering | per-port media icon (`port_table[].media`, e.g. `10GbE` turns an SFP28 slot into an RJ45 icon) |
-| display name ("USW Leaf"), PoE controls if the profile has PoE | speed picker contents (`speed_caps`, from the switch's hardware table) |
+| display name ("USW Leaf"), PoE controls if the profile has PoE | speed picker contents (`speed_caps`, from the device's hardware table) |
 | which advanced settings are hidden as "known unsupported" | FEC control and options (`speed_caps` FEC bit + `fec_mode`) |
 | default port names ("SFP28 1") until renamed | everything live: link, speed, counters, LLDP, MAC table, optics |
 
@@ -23,7 +23,7 @@ storm control, STP options, FEC and the rest.
 
 `-model auto` and `-list-models` use unifi-emu's `model_profiles.json`
 (built by that project from Network 10.4.57 at the time of writing).
-[`internal/unifimodel`](../internal/unifimodel) ranks it against the switch's port layout:
+[`internal/unifimodel`](../internal/unifimodel) ranks it against the device's port layout:
 port count first, QSFP28 cage count second, everything else cosmetic, and a
 penalty for internal model codes (display name == code; real products such
 as `USWF066` = ECS Aggregation, but a later controller may rename them).
@@ -38,7 +38,7 @@ unifi-emu dependency or vendor the generated file. Until then, pass
 
 ## Choosing: match the port count, else take the Leaf
 
-1. **Find a model whose port count matches the switch** (`-model auto` does
+1. **Find a model whose port count matches the device** (`-model auto` does
    this; `-collect-once` prints the ranking). The count is what the
    controller draws; the media of the front ports is cosmetic because the
    device's own media report replaces it, and the speed pickers come from the
@@ -52,7 +52,7 @@ unifi-emu dependency or vendor the generated file. Until then, pass
    `upgrade` commands with real version strings; the bridge emulates those
    (accepts, "reboots", reports the new version, persists it in
    `State.Firmware`) but it is noise you can avoid.
-   **This is what makes reporting the switch's own firmware version safe**
+   **This is what makes reporting the device's own firmware version safe**
    (`4.26.14M`, `9.1.6`; see `docs/feature-map.md` §1): on the Leaf the
    controller has nothing to compare it with and records
    `upgradable: false`, so the vendor's version just shows in the Version
@@ -60,7 +60,7 @@ unifi-emu dependency or vendor the generated file. Until then, pass
    (Clint, 2026-09-20), so a model with real firmware in the controller's
    database would turn every honest version into an update prompt. Ports beyond 54 are not
    drawn; fewer are shown as empty.
-3. Avoid PoE models unless the switch has PoE: the profile adds PoE columns
+3. Avoid PoE models unless the device has PoE: the profile adds PoE columns
    and controls that will never work.
 
 ## Catalogue: every switch model Network 10.6.106 lists (2026-09-19)

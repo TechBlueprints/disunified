@@ -1,7 +1,7 @@
 // Package config is the bridge's configuration file: one controller, any
-// number of switches, secrets by environment-variable name. Kept small on
+// number of devices, secrets by environment-variable name. Kept small on
 // purpose — the file names what to bridge; everything else is discovered
-// from the switch or the controller.
+// from the device or the controller.
 package config
 
 import (
@@ -13,9 +13,15 @@ import (
 )
 
 // File is the whole YAML document.
+//
+// Devices is the list of things to bridge. The key is "devices:"; "switches:"
+// is the pre-rename spelling and is still accepted (a file may use either,
+// not both). After Load, read Devices — legacy is folded into it.
 type File struct {
 	Controller Controller `yaml:"controller"`
-	Switches   []Switch   `yaml:"switches"`
+	Devices    []Device   `yaml:"devices"`
+	// Switches is the legacy spelling of Devices, folded into it by Load.
+	Switches []Device `yaml:"switches"`
 	// StateDir holds state/<name>/device.json and inform-log/<name>/.
 	StateDir string `yaml:"state_dir"`
 }
@@ -25,12 +31,12 @@ type Controller struct {
 	Host      string `yaml:"host"`        // inform target: IP or hostname (resolved to an IPv4 literal)
 	InformURL string `yaml:"inform_url"`  // overrides host: full inform URL
 	APIURL    string `yaml:"api_url"`     // optional: https://<controller> for the REST API (naming)
-	APIKeyEnv string `yaml:"api_key_env"` // env var holding the API key (default STU_UNIFI_API_KEY)
+	APIKeyEnv string `yaml:"api_key_env"` // env var holding the API key (default DUI_UNIFI_API_KEY, then STU_UNIFI_API_KEY)
 	Site      string `yaml:"site"`        // default "default"
 }
 
-// Switch is one bridged switch.
-type Switch struct {
+// Device is one bridged device (a switch, today).
+type Device struct {
 	Name   string `yaml:"name"`   // required, unique: used for state and log paths
 	Driver string `yaml:"driver"` // e.g. arista-eos (see -list-drivers)
 
@@ -58,7 +64,11 @@ type Switch struct {
 
 // Control says what UniFi owns on this switch. Ports "" or "off" = read-only.
 type Control struct {
-	Ports   string `yaml:"ports"` // "all", or "2,5-8"
+	Ports string `yaml:"ports"` // "all", or "2,5-8"
+	// Outlets is the power-device equivalent of Ports: "all", or "2,5-8".
+	// An outlet carries real load, so it is off by default like everything
+	// else that writes.
+	Outlets string `yaml:"outlets"`
 	IGMP    bool   `yaml:"igmp"`
 	NTP     bool   `yaml:"ntp"`
 	Syslog  bool   `yaml:"syslog"`
@@ -88,7 +98,12 @@ func Load(path string) (*File, error) {
 		return nil, fmt.Errorf("%s: controller.host (or inform_url) is required", path)
 	}
 	if f.Controller.APIKeyEnv == "" {
-		f.Controller.APIKeyEnv = "STU_UNIFI_API_KEY"
+		// DUI_ is the project's prefix; STU_ is the pre-rename one, still read.
+		if os.Getenv("DUI_UNIFI_API_KEY") != "" {
+			f.Controller.APIKeyEnv = "DUI_UNIFI_API_KEY"
+		} else {
+			f.Controller.APIKeyEnv = "STU_UNIFI_API_KEY"
+		}
 	}
 	if f.Controller.Site == "" {
 		f.Controller.Site = "default"
@@ -96,27 +111,35 @@ func Load(path string) (*File, error) {
 	if f.StateDir == "" {
 		f.StateDir = "."
 	}
-	if len(f.Switches) == 0 {
-		return nil, fmt.Errorf("%s: at least one switch is required", path)
+	// Fold the legacy "switches:" key into Devices. A file may use one key
+	// or the other, never both.
+	if len(f.Switches) > 0 {
+		if len(f.Devices) > 0 {
+			return nil, fmt.Errorf("%s: use either devices: or switches: (the legacy spelling), not both", path)
+		}
+		f.Devices, f.Switches = f.Switches, nil
+	}
+	if len(f.Devices) == 0 {
+		return nil, fmt.Errorf("%s: at least one device is required (devices:)", path)
 	}
 	seen := map[string]bool{}
-	for i := range f.Switches {
-		s := &f.Switches[i]
+	for i := range f.Devices {
+		s := &f.Devices[i]
 		if s.Name == "" {
-			return nil, fmt.Errorf("%s: switches[%d]: name is required", path, i)
+			return nil, fmt.Errorf("%s: devices[%d]: name is required", path, i)
 		}
 		if strings.ContainsAny(s.Name, "/\\ ") {
-			return nil, fmt.Errorf("%s: switch %q: name must not contain slashes or spaces", path, s.Name)
+			return nil, fmt.Errorf("%s: device %q: name must not contain slashes or spaces", path, s.Name)
 		}
 		if seen[s.Name] {
-			return nil, fmt.Errorf("%s: duplicate switch name %q", path, s.Name)
+			return nil, fmt.Errorf("%s: duplicate device name %q", path, s.Name)
 		}
 		seen[s.Name] = true
 		if s.Driver == "" {
-			return nil, fmt.Errorf("%s: switch %q: driver is required", path, s.Name)
+			return nil, fmt.Errorf("%s: device %q: driver is required", path, s.Name)
 		}
 		if s.URL == "" && s.SSH == "" {
-			return nil, fmt.Errorf("%s: switch %q: url or ssh is required", path, s.Name)
+			return nil, fmt.Errorf("%s: device %q: url or ssh is required", path, s.Name)
 		}
 		if s.Model == "" {
 			s.Model = "auto"
@@ -131,7 +154,7 @@ func Load(path string) (*File, error) {
 			s.Password = os.Getenv(s.PasswordEnv)
 		}
 		if s.URL != "" && (s.Username == "" || s.Password == "") {
-			return nil, fmt.Errorf("%s: switch %q: url needs username/password (set username_env/password_env and export them)", path, s.Name)
+			return nil, fmt.Errorf("%s: device %q: url needs username/password (set username_env/password_env and export them)", path, s.Name)
 		}
 	}
 	return &f, nil

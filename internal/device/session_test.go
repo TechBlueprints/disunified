@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -27,18 +27,18 @@ func testDesc() inform.Descriptor {
 
 func itoa(i int) string { return string(rune('0'+i/10)) + string(rune('0'+i%10)) }
 
-func testSnapshot() *switchmodel.Snapshot {
-	snap := &switchmodel.Snapshot{TakenAt: time.Now()}
-	snap.System = switchmodel.System{Uptime: 1000 * time.Second, CPUPercent: 12.5, MemTotalKB: 100, MemUsedKB: 40, MemBufferKB: 10, TemperatureC: 63.4, HasTemperature: true}
+func testSnapshot() *devicemodel.Snapshot {
+	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
+	snap.System = devicemodel.System{Uptime: 1000 * time.Second, CPUPercent: 12.5, MemTotalKB: 100, MemUsedKB: 40, MemBufferKB: 10, TemperatureC: 63.4, HasTemperature: true}
 	for i := 1; i <= 54; i++ {
-		p := switchmodel.Port{Index: i, IfName: "Ethernet" + itoa(i), Name: "Ethernet" + itoa(i), Media: switchmodel.MediaCopper10G, Lanes: 1, Present: true, Enabled: true, MTU: 9214}
+		p := devicemodel.Port{Index: i, IfName: "Ethernet" + itoa(i), Name: "Ethernet" + itoa(i), Media: devicemodel.MediaCopper10G, Lanes: 1, Present: true, Enabled: true, MTU: 9214}
 		if i > 48 {
-			p.Media = switchmodel.MediaQSFP28
+			p.Media = devicemodel.MediaQSFP28
 		}
 		if i == 49 {
 			p.Up, p.SpeedMbps, p.FullDuplex, p.STPState = true, 100000, true, "forwarding"
-			p.Counters = switchmodel.Counters{RxBytes: 111, TxBytes: 222, RxPackets: 3, TxPackets: 4, RxErrors: 5}
-			p.Neighbor = &switchmodel.Neighbor{SystemName: "agg", ChassisID: "aa:bb:cc:dd:ee:ff", PortID: "one00GigE48"}
+			p.Counters = devicemodel.Counters{RxBytes: 111, TxBytes: 222, RxPackets: 3, TxPackets: 4, RxErrors: 5}
+			p.Neighbor = &devicemodel.Neighbor{SystemName: "agg", ChassisID: "aa:bb:cc:dd:ee:ff", PortID: "one00GigE48"}
 		}
 		if i == 52 {
 			p.Present = false

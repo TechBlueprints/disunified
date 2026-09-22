@@ -1,8 +1,8 @@
-// Package switchmodel is the vendor-neutral picture of a switch that the
+// Package devicemodel is the vendor-neutral picture of a device that the
 // UniFi presentation layer consumes. Every vendor collector (Arista EOS
 // today, others later) produces a Snapshot; nothing UniFi-specific lives here
 // and nothing vendor-specific leaks past it.
-package switchmodel
+package devicemodel
 
 import (
 	"context"
@@ -58,8 +58,8 @@ type StormControlSpec struct {
 	UnknownUnicastPct *float64
 }
 
-// SwitchDesired is the UniFi-side intent for switch-wide settings.
-type SwitchDesired struct {
+// DeviceDesired is the UniFi-side intent for switch-wide settings.
+type DeviceDesired struct {
 	STPSet      bool
 	STPEnabled  bool
 	STPMode     string // "rstp" | "stp" | "mstp"
@@ -86,6 +86,13 @@ type PortCycler interface {
 	CyclePort(ctx context.Context, idx int) error
 }
 
+// OutletCycler power-cycles one outlet on a power device: the controller's
+// "relayctl" command, which the UI's per-outlet Power Cycle sends. Optional,
+// discovered with a type assertion like PortCycler.
+type OutletCycler interface {
+	CycleOutlet(ctx context.Context, idx int) error
+}
+
 // Rebooter really restarts the switch: the controller's "reboot" command
 // when the operator has opted in (-control-reboot).
 type Rebooter interface {
@@ -105,9 +112,33 @@ type SSHKeyInstaller interface {
 	InstallSSHKeys(ctx context.Context, keys []SSHKey) (installed int, err error)
 }
 
-// SwitchController applies switch-wide settings.
-type SwitchController interface {
-	ApplySwitch(ctx context.Context, desired SwitchDesired) (changed int, err error)
+// DeviceController applies switch-wide settings.
+type DeviceController interface {
+	ApplyDevice(ctx context.Context, desired DeviceDesired) (changed int, err error)
+}
+
+// OutletDesired is the UniFi-side intent for one outlet on a power device.
+type OutletDesired struct {
+	Index int
+	On    bool
+
+	// Name is the operator's name for the outlet, which the controller owns:
+	// a power device must not report outlet names back on its inform (the
+	// controller merges its own onto the row and drops the whole table when
+	// that merge changes nothing), so the name only ever travels
+	// controller -> bridge -> device. "" means leave the device's name alone.
+	Name string
+}
+
+// OutletController switches and names outlets on a power device. It is
+// optional and discovered with a type assertion, like the other write-side
+// interfaces, so a read-only PDU driver is a valid first step.
+//
+// Implementations must be idempotent: compare each desired value with the
+// device's current state and write only the differences. Switching an outlet
+// is a real relay on real load, so a redundant write is not free.
+type OutletController interface {
+	ApplyOutlets(ctx context.Context, desired []OutletDesired) (changed int, err error)
 }
 
 // Controller implementations also need the site VLAN list to exist on the
@@ -116,13 +147,18 @@ type VLANController interface {
 	EnsureVLANs(ctx context.Context, ids []int) (created int, err error)
 }
 
-// Snapshot is the state of one switch at one instant.
+// Snapshot is the state of one device at one instant.
 type Snapshot struct {
 	TakenAt  time.Time
 	System   System
 	Ports    []Port     // sorted by Index, one entry per front-panel port
 	MACTable []MACEntry // every learned address, including those on non-front-panel ports
 	VLANs    []int      // VLAN IDs that exist on the switch, ascending
+
+	// Outlets is the power-device shape, the way Ports is the switch shape:
+	// a rack PDU fills this and leaves Ports holding only its uplink. Sorted
+	// by Index. Empty for a device that has no outlets.
+	Outlets []Outlet
 
 	// UplinkHint is the driver's own idea of the uplink port when LLDP is
 	// silent (a virtual switch knows which physical NIC carries it); 0 = none.
@@ -151,7 +187,7 @@ func (s *Snapshot) UplinkPort() int {
 	return best
 }
 
-// System is the switch's identity and health.
+// System is the device's identity and health.
 type System struct {
 	Vendor  string
 	Model   string
@@ -162,7 +198,7 @@ type System struct {
 	// OOBInterfaces lists dedicated out-of-band management interfaces. A
 	// UniFi controller expects a switch's management address in-band, behind
 	// its uplink; an address on an OOB port leaves the switch without a place
-	// in the topology (see docs/adding-a-switch.md). Reported so the loop can
+	// in the topology (see docs/adding-a-device.md). Reported so the loop can
 	// warn loudly.
 	OOBInterfaces []OOBInterface
 
@@ -188,6 +224,16 @@ type System struct {
 
 	Fans []Fan
 	PSUs []PSU
+
+	// Aggregate power for a device that measures its whole load rather than
+	// each outlet (a switched rack PDU meters the phase, not the outlet).
+	// HasPowerDraw distinguishes "measured zero" from "does not measure":
+	// a device with no sensor must not report 0 W, which reads as a real
+	// measurement of an idle rack.
+	PowerBudgetW  float64
+	PowerDrawW    float64
+	PowerCurrentA float64
+	HasPowerDraw  bool
 
 	STPMode     string // "rstp", "mstp", "stp", "none", ""
 	STPPriority int    // bridge priority, 0 if unknown
@@ -335,6 +381,30 @@ type Port struct {
 	Health       PortHealth        // fault and change signals (anomaly reporting)
 }
 
+// Outlet is one outlet on a power device. Outlets are to a PDU what ports are
+// to a switch: the structural table the controller renders its UI from. Index
+// is 1-based and is the position the controller addresses in its outlet
+// overrides, so it must match the device's own numbering rather than a
+// position in this slice.
+type Outlet struct {
+	Index int
+	Name  string // the device's own label for the outlet
+	On    bool   // the relay is closed (delivering power)
+
+	// Switchable is false for an outlet that is permanently live (an unswitched
+	// bank on a hybrid PDU). The presentation layer will not offer a control
+	// the driver cannot honour.
+	Switchable bool
+
+	// HasMetering says the per-outlet measurements below are real. A device
+	// that does not meter leaves it false: reporting zeros would read as a
+	// genuine measurement of no load.
+	HasMetering bool
+	VoltageV    float64
+	CurrentA    float64
+	PowerW      float64
+}
+
 // PortHealth carries the vendor-neutral signals the presentation layer turns
 // into per-port anomaly flags. Counters are lifetime values; the consumer
 // keeps history and looks at growth.
@@ -409,19 +479,19 @@ type Capabilities struct {
 	FEC           bool // per-port forward error correction
 	LACP          bool // link aggregation (Controller honours PortDesired.LAG)
 	StormControl  bool // per-port storm control in percent
-	IGMPSnooping  bool // IGMP snooping (SwitchController honours IGMPSnooping)
+	IGMPSnooping  bool // IGMP snooping (DeviceController honours IGMPSnooping)
 	LLDPMED       bool
 	DHCPSnooping  bool
 	PortIsolation bool
-	SNMP          bool // SwitchController honours SNMPCommunity
+	SNMP          bool // DeviceController honours SNMPCommunity
 	// MirrorSessions / AggregateSessions are the counts the UI is told; 0
 	// hides the feature.
 	MirrorSessions    int
 	AggregateSessions int
 }
 
-// Capable is implemented by a Switch that wants to declare its own
-// Capabilities; a Switch without it gets the presentation layer's default
+// Capable is implemented by a Device that wants to declare its own
+// Capabilities; a Device without it gets the presentation layer's default
 // (the Arista EOS set).
 type Capable interface {
 	Capabilities() Capabilities

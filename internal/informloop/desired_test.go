@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 func TestDesiredPortsTreatsControllerDefaultsAsNoDescription(t *testing.T) {
@@ -15,7 +15,7 @@ func TestDesiredPortsTreatsControllerDefaultsAsNoDescription(t *testing.T) {
 	}}}
 	cfg := "switch.port.1.name=SFP28 1\nswitch.port.2.name=Julie desk\nswitch.port.2.status=disabled\nswitch.port.49.name=Port 49\nswitch.port.49.status=enabled\n"
 	got := l.desiredPorts(cfg)
-	want := []switchmodel.PortDesired{
+	want := []devicemodel.PortDesired{
 		{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true},
 		{Index: 2, Enabled: false, Description: "Julie desk", VLANSet: true, NativeVLAN: 1, TaggedAll: true},
 		{Index: 49, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true},
@@ -40,7 +40,7 @@ func TestDesiredPortsSpeedAndVLANs(t *testing.T) {
 		"switch.vlan.1.port.2.mode=untagged\nswitch.vlan.2.port.2.mode=tagged\nswitch.vlan.5.port.2.mode=tagged\n" +
 		"switch.vlan.2.port.3.mode=untagged\n"
 	got := l.desiredPorts(cfg)
-	want := []switchmodel.PortDesired{
+	want := []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, SpeedMbps: 10000, VLANSet: true, NativeVLAN: 1, TaggedVLANs: []int{2, 10}},
 		{Index: 3, Enabled: true, VLANSet: true, NativeVLAN: 2},
 	}
