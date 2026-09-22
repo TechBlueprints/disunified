@@ -224,6 +224,23 @@ func runConfig(ctx context.Context, f *config.File) {
 	wg.Wait()
 }
 
+// openAndStart opens a driver and takes its first snapshot, closing the
+// device again if Start fails so a retry begins from a clean connection.
+func openAndStart(ctx context.Context, drv devicemodel.Driver, cfg devicemodel.DriverConfig) (devicemodel.Device, *devicemodel.Snapshot, error) {
+	sw, err := drv.Open(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	started := time.Now()
+	snap, err := sw.Start(ctx)
+	if err != nil {
+		_ = sw.Close()
+		return nil, nil, err
+	}
+	_ = started
+	return sw, snap, nil
+}
+
 // runOne bridges one switch until ctx is cancelled.
 func runOne(ctx context.Context, o options) error {
 	log := o.logger
@@ -251,17 +268,37 @@ func runOne(ctx context.Context, o options) error {
 			opts["state_dir"] = filepath.Dir(o.stateFile)
 		}
 		cfg := devicemodel.DriverConfig{URL: o.deviceURL, SSH: o.deviceSSH, Username: o.username, Password: o.password, Options: opts}
-		sw, err = drv.Open(ctx, cfg)
-		if err != nil {
-			return err
+		// A device that does not answer at startup is retried, not dropped.
+		// Start is meant to fail loudly on a wrong command or credential, and
+		// it still does -- every attempt is logged -- but the same failure
+		// also comes from a card that is rebooting, a switch mid-upgrade or
+		// a lease that moved, and dropping the device for those meant it
+		// stayed gone until someone restarted the container (the PDU,
+		// 2026-09-22: one SNMP timeout at start, then nothing for hours).
+		// -collect-once keeps failing fast: it is a probe, not a service.
+		for attempt, wait := 1, 15*time.Second; ; attempt++ {
+			sw, snap, err = openAndStart(ctx, drv, cfg)
+			if err == nil {
+				break
+			}
+			if o.collectOnce {
+				return err
+			}
+			log.Printf("start attempt %d failed, retrying in %s: %v", attempt, wait, err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+			if wait < 5*time.Minute {
+				wait *= 2
+				if wait > 5*time.Minute {
+					wait = 5 * time.Minute
+				}
+			}
 		}
 		defer sw.Close()
-		started := time.Now()
-		snap, err = sw.Start(ctx)
-		if err != nil {
-			return err
-		}
-		log.Printf("switch: %s %s serial %s, %s, %d ports (%s)", snap.System.Vendor, snap.System.Model, snap.System.Serial, snap.System.Version, len(snap.Ports), time.Since(started).Round(time.Millisecond))
+		log.Printf("switch: %s %s serial %s, %s, %d ports", snap.System.Vendor, snap.System.Model, snap.System.Serial, snap.System.Version, len(snap.Ports))
 	}
 
 	if o.collectOnce {
