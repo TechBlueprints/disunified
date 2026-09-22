@@ -31,6 +31,15 @@ func pduSnapshot() *devicemodel.Snapshot {
 	return snap
 }
 
+// realOutletRows drops the leading rows for outlets the claimed model has but
+// the device does not, so a test can index the device's own outlets from 0.
+func realOutletRows(t *testing.T, m map[string]any) []map[string]any {
+	t.Helper()
+	rows := outletRows(t, m)
+	base := OutletIndexBase(pduDesc().Model)
+	return rows[base-1:]
+}
+
 func outletRows(t *testing.T, m map[string]any) []map[string]any {
 	t.Helper()
 	raw, ok := m["outlet_table"]
@@ -47,9 +56,10 @@ func outletRows(t *testing.T, m map[string]any) []map[string]any {
 func TestPowerDeviceReportsItsOutlets(t *testing.T) {
 	m := deviceTables(pduDesc(), pduSnapshot())
 	rows := outletRows(t, m)
-	if len(rows) != 16 {
-		t.Fatalf("outlet_table has %d rows, want 16", len(rows))
+	if len(rows) != 20 {
+		t.Fatalf("outlet_table has %d rows, want 20 (4 the model has and the device has not, plus 16 real)", len(rows))
 	}
+	real := realOutletRows(t, deviceTables(pduDesc(), pduSnapshot()))
 	if m["outlet_enabled"] != true {
 		t.Errorf("outlet_enabled = %v, want true", m["outlet_enabled"])
 	}
@@ -58,11 +68,11 @@ func TestPowerDeviceReportsItsOutlets(t *testing.T) {
 	if m["hw_caps"] != HWCapsOutlet {
 		t.Errorf("hw_caps = %v, want %d (the outlet bit)", m["hw_caps"], HWCapsOutlet)
 	}
-	if rows[7]["relay_state"] != false {
-		t.Errorf("outlet 8 relay_state = %v, want false", rows[7]["relay_state"])
+	if real[7]["relay_state"] != false {
+		t.Errorf("outlet 8 relay_state = %v, want false", real[7]["relay_state"])
 	}
-	if rows[0]["relay_state"] != true {
-		t.Errorf("outlet 1 relay_state = %v, want true", rows[0]["relay_state"])
+	if real[0]["relay_state"] != true {
+		t.Errorf("outlet 1 relay_state = %v, want true", real[0]["relay_state"])
 	}
 }
 
@@ -72,6 +82,7 @@ func TestPowerDeviceReportsItsOutlets(t *testing.T) {
 // outlets have to be reported at the model's AC positions, 5..20.
 func TestOutletsAreReportedAtTheModelsACPositions(t *testing.T) {
 	rows := outletRows(t, deviceTables(pduDesc(), pduSnapshot()))
+	rows = realOutletRows(t, deviceTables(pduDesc(), pduSnapshot()))
 	if got := rows[0]["index"]; got != 5 {
 		t.Errorf("first outlet reported at index %v, want 5 (the model's first AC outlet)", got)
 	}
@@ -111,7 +122,7 @@ func TestOutletTableNeverReportsNamesOrCyclePolicy(t *testing.T) {
 // outlet_type. A value at or above the AC class bit would send the controller
 // looking for the other family's keys.
 func TestOutletTableUsesTheRackPDUEncoding(t *testing.T) {
-	rows := outletRows(t, deviceTables(pduDesc(), pduSnapshot()))
+	rows := realOutletRows(t, deviceTables(pduDesc(), pduSnapshot()))
 	for _, r := range rows {
 		caps, ok := r["outlet_caps"].(int)
 		if !ok {
@@ -136,7 +147,7 @@ func TestOutletTableUsesTheRackPDUEncoding(t *testing.T) {
 func TestMeteredOutletReportsDecimalStrings(t *testing.T) {
 	snap := pduSnapshot()
 	snap.Outlets = []devicemodel.Outlet{{Index: 1, On: true, Switchable: true, HasMetering: true, VoltageV: 120, CurrentA: 1.5, PowerW: 180}}
-	rows := outletRows(t, deviceTables(pduDesc(), snap))
+	rows := realOutletRows(t, deviceTables(pduDesc(), snap))
 	if rows[0]["outlet_voltage"] != "120.000" {
 		t.Errorf("outlet_voltage = %v, want the decimal string this family sends", rows[0]["outlet_voltage"])
 	}
@@ -171,7 +182,30 @@ func TestOutletTableMarshals(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	rows, ok := back["outlet_table"].([]any)
-	if !ok || len(rows) != 16 {
+	if !ok || len(rows) != 20 {
 		t.Fatalf("outlet_table did not survive the round trip: %T", back["outlet_table"])
+	}
+}
+
+// Outlets the claimed model has but the device does not must be reported
+// present-but-off with no relay, on every inform. Otherwise the controller
+// shows four USB outlets that look enabled and switchable and are not there,
+// and a push enabling one would never be contradicted.
+func TestOutletsTheDeviceDoesNotHaveAreReportedOffAndUnswitchable(t *testing.T) {
+	rows := outletRows(t, deviceTables(pduDesc(), pduSnapshot()))
+	for i := 0; i < OutletIndexBase(pduDesc().Model)-1; i++ {
+		r := rows[i]
+		if r["index"] != i+1 {
+			t.Errorf("row %d has index %v, want %d", i, r["index"], i+1)
+		}
+		if r["relay_state"] != false {
+			t.Errorf("absent outlet %v reported on", r["index"])
+		}
+		if r["outlet_caps"] != 0 {
+			t.Errorf("absent outlet %v claims caps %v, want 0 (no relay)", r["index"], r["outlet_caps"])
+		}
+		if r["outlet_type"] != outletTypeUSB {
+			t.Errorf("absent outlet %v type = %v, want USB", r["index"], r["outlet_type"])
+		}
 	}
 }
