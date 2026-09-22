@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Shapes of the second wave of commands, all verified on EOS 4.26.14M
@@ -130,8 +130,8 @@ type showSTPTopologyStatus struct {
 
 // applyOpticAlarms flags ports whose optic reports a receive or transmit
 // parameter outside its own alarm thresholds (any lane, any channel).
-func applyOpticAlarms(ports []switchmodel.Port, th showTransceiverThresholds) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -160,8 +160,8 @@ func applyOpticAlarms(ports []switchmodel.Port, th showTransceiverThresholds) {
 
 // applySTPChanges sums each port's topology-change count over its lanes,
 // from the Cist topology (falling back to whatever topology lists the port).
-func applySTPChanges(ports []switchmodel.Port, ts showSTPTopologyStatus) {
-	byIndex := map[int]*switchmodel.Port{}
+func applySTPChanges(ports []devicemodel.Port, ts showSTPTopologyStatus) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -180,8 +180,8 @@ func applySTPChanges(ports []switchmodel.Port, ts showSTPTopologyStatus) {
 }
 
 // applySTPInconsistent flags ports an STP guard holds inconsistent.
-func applySTPInconsistent(ports []switchmodel.Port, st showSpanningTreeFull) {
-	byIndex := map[int]*switchmodel.Port{}
+func applySTPInconsistent(ports []devicemodel.Port, st showSpanningTreeFull) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -278,7 +278,7 @@ type showInterfacesStatusFull struct {
 
 // portStatic is what refreshStatic learns per EOS interface.
 type portStatic struct {
-	media   switchmodel.Media
+	media   devicemodel.Media
 	autoNeg bool
 }
 
@@ -292,24 +292,24 @@ func staticFromStatus(ss showInterfacesStatusFull) map[string]portStatic {
 	return m
 }
 
-func fecFor(status string) switchmodel.FEC {
+func fecFor(status string) devicemodel.FEC {
 	switch status {
 	case "reedSolomon", "reedSolomon544":
-		return switchmodel.FECRS
+		return devicemodel.FECRS
 	case "fireCode":
-		return switchmodel.FECFC
+		return devicemodel.FECFC
 	case "disabled":
-		return switchmodel.FECDisabled
+		return devicemodel.FECDisabled
 	}
-	return switchmodel.FECUnknown
+	return devicemodel.FECUnknown
 }
 
 // applyExtras attaches the second-wave data to ports (by slot; lane data is
 // taken from lane 1 or, for FEC/flow control, from any lane that reports it).
-func applyExtras(ports []switchmodel.Port, static map[string]portStatic,
+func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	xcvr showInterfacesTransceiver, inv showInventory, fec showInterfacesErrorCorrection,
 	fc showInterfaceFlowControl, pc showPortChannelSummary, stp showSpanningTreeFull) {
-	byIndex := map[int]*switchmodel.Port{}
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -329,7 +329,7 @@ func applyExtras(ports []switchmodel.Port, static map[string]portStatic,
 		if p == nil || isCopperMedia(p.Media) || !p.Present {
 			continue
 		}
-		o := &switchmodel.Optic{MediaType: x.MediaType, Serial: x.VendorSn}
+		o := &devicemodel.Optic{MediaType: x.MediaType, Serial: x.VendorSn}
 		if x.Temperature != 0 || x.RxPower != 0 || x.TxPower != 0 {
 			o.HasDOM = true
 			o.TempC, o.VoltageV, o.TxBiasMA, o.TxPowerDBm, o.RxPowerDBm = x.Temperature, x.Voltage, x.TxBias, x.TxPower, x.RxPower
@@ -344,7 +344,7 @@ func applyExtras(ports []switchmodel.Port, static map[string]portStatic,
 	}
 	for name, st := range fec.Statuses {
 		if slot, _, ok := parseEthName(name); ok {
-			if p := byIndex[slot]; p != nil && (p.FEC == switchmodel.FECUnknown || p.FEC == switchmodel.FECDisabled) {
+			if p := byIndex[slot]; p != nil && (p.FEC == devicemodel.FECUnknown || p.FEC == devicemodel.FECDisabled) {
 				p.FEC = fecFor(st.Status)
 			}
 		}
@@ -381,9 +381,9 @@ func applyExtras(ports []switchmodel.Port, static map[string]portStatic,
 	}
 }
 
-func isCopperMedia(m switchmodel.Media) bool {
+func isCopperMedia(m devicemodel.Media) bool {
 	switch m {
-	case switchmodel.MediaCopper1G, switchmodel.MediaCopper2G5, switchmodel.MediaCopper10G:
+	case devicemodel.MediaCopper1G, devicemodel.MediaCopper2G5, devicemodel.MediaCopper10G:
 		return true
 	}
 	return false
@@ -391,13 +391,13 @@ func isCopperMedia(m switchmodel.Media) bool {
 
 // macTable converts the unicast table. Entries on non-front-panel ports
 // (Cpu, Port-Channel, Vlan) keep PortIndex 0.
-func macTable(mt showMACAddressTable) []switchmodel.MACEntry {
-	out := make([]switchmodel.MACEntry, 0, len(mt.UnicastTable.Entries))
+func macTable(mt showMACAddressTable) []devicemodel.MACEntry {
+	out := make([]devicemodel.MACEntry, 0, len(mt.UnicastTable.Entries))
 	for _, e := range mt.UnicastTable.Entries {
 		if e.EntryType == "static" && e.Interface == "Cpu" {
 			continue // the switch's own address
 		}
-		m := switchmodel.MACEntry{MAC: strings.ToLower(e.MACAddress), VLAN: e.VLANID}
+		m := devicemodel.MACEntry{MAC: strings.ToLower(e.MACAddress), VLAN: e.VLANID}
 		if slot, _, ok := parseEthName(e.Interface); ok {
 			m.PortIndex = slot
 		}
@@ -427,24 +427,24 @@ func stpSystem(stp showSpanningTreeFull) (mode string, priority int) {
 	return "none", 0
 }
 
-func fans(c showSystemEnvCooling) []switchmodel.Fan {
-	var out []switchmodel.Fan
+func fans(c showSystemEnvCooling) []devicemodel.Fan {
+	var out []devicemodel.Fan
 	for _, t := range c.FanTraySlots {
-		out = append(out, switchmodel.Fan{Label: t.Label, SpeedPct: t.Speed, OK: t.Status == "ok"})
+		out = append(out, devicemodel.Fan{Label: t.Label, SpeedPct: t.Speed, OK: t.Status == "ok"})
 	}
 	return out
 }
 
-func psus(p showSystemEnvPower) []switchmodel.PSU {
+func psus(p showSystemEnvPower) []devicemodel.PSU {
 	slots := make([]string, 0, len(p.PowerSupplies))
 	for slot := range p.PowerSupplies {
 		slots = append(slots, slot)
 	}
 	sort.Strings(slots)
-	out := make([]switchmodel.PSU, 0, len(slots))
+	out := make([]devicemodel.PSU, 0, len(slots))
 	for _, slot := range slots {
 		s := p.PowerSupplies[slot]
-		psu := switchmodel.PSU{Slot: slot, Model: s.ModelName, Present: s.State != "notInserted" && s.State != "absent",
+		psu := devicemodel.PSU{Slot: slot, Model: s.ModelName, Present: s.State != "notInserted" && s.State != "absent",
 			OK: s.State == "ok", OutputW: s.OutputPower, CapacityW: s.Capacity}
 		names := make([]string, 0, len(s.TempSensors))
 		for n := range s.TempSensors {

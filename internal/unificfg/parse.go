@@ -26,6 +26,11 @@ type Config struct {
 	// VLANs the controller mentioned; VLANs without the key are absent.
 	IGMPSnooping map[int]bool
 
+	// Outlets is a power device's outlet intent, by 1-based outlet index.
+	// Its keys are top-level (outlet.<n>.*), not switch.*, because the
+	// controller treats a power device's outlets as a separate plane.
+	Outlets map[int]Outlet
+
 	SSHKeys     []SSHKey // sshd.auth.key.N.*, enabled ones, in order
 	Users       []User   // users.N.*: the device login the UniFi terminal uses (password is an MD5-crypt hash)
 	NTPServers  []string // ntpclient.N.server, in order, only enabled ones
@@ -33,6 +38,15 @@ type Config struct {
 	JumboFrames bool     // switch.jumboframes=enabled
 	DHCPSnoop   *bool    // switch.dhcp_snoop.status, nil if absent
 	SNMP        *SNMP    // switch.snmp.*, nil if absent
+}
+
+// Outlet is outlet.<n>.*: the controller's intent for one outlet on a power
+// device. RelayOn defaults to true on first sight, because an outlet the
+// controller has not spoken about must not be switched off.
+type Outlet struct {
+	Index   int
+	Name    string // outlet.<n>.name, "" if the controller did not name it
+	RelayOn bool   // outlet.<n>.relay_state: "disabled" => false, else true
 }
 
 // SNMP is switch.snmp.*: status, version ("1_2c", "3"), and the v1/v2c
@@ -142,11 +156,12 @@ var (
 	portRe     = regexp.MustCompile(`^switch\.port\.(\d+)\.([\w.]+)$`)
 	vlanRe     = regexp.MustCompile(`^switch\.vlan\.(\d+)\.(\w+)$`)
 	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.mode$`)
+	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
 )
 
 // Parse reads system_cfg text. Unknown keys are kept in Raw and ignored.
 func Parse(text string) *Config {
-	c := &Config{Raw: map[string]string{}, Ports: map[int]Port{}}
+	c := &Config{Raw: map[string]string{}, Ports: map[int]Port{}, Outlets: map[int]Outlet{}}
 	vlans := map[int]*VLAN{}
 	type membership struct {
 		slot, port int
@@ -175,6 +190,18 @@ func Parse(text string) *Config {
 			slot, _ := strconv.Atoi(m[1])
 			port, _ := strconv.Atoi(m[2])
 			members = append(members, membership{slot, port, v})
+			continue
+		}
+		if m := outletRe.FindStringSubmatch(k); m != nil {
+			idx, _ := strconv.Atoi(m[1])
+			o := c.outlet(idx)
+			switch m[2] {
+			case "relay_state":
+				o.RelayOn = v != "disabled"
+			case "name":
+				o.Name = v
+			}
+			c.Outlets[idx] = o
 			continue
 		}
 		if m := portRe.FindStringSubmatch(k); m != nil {
@@ -414,6 +441,27 @@ func (c *Config) port(idx int) Port {
 			StormCtrl: StormControl{Bcast: -1, Mcast: -1, Ucast: -1}}
 	}
 	return p
+}
+
+// outlet returns the outlet's current parse state, creating the default
+// (relay on) on first sight: an outlet the controller has not switched off
+// must not be switched off by a missing key.
+func (c *Config) outlet(idx int) Outlet {
+	o, seen := c.Outlets[idx]
+	if !seen {
+		o = Outlet{Index: idx, RelayOn: true}
+	}
+	return o
+}
+
+// OutletIndexes returns the configured outlet indexes in ascending order.
+func (c *Config) OutletIndexes() []int {
+	out := make([]int, 0, len(c.Outlets))
+	for i := range c.Outlets {
+		out = append(out, i)
+	}
+	sort.Ints(out)
+	return out
 }
 
 // VLANIDs returns every site VLAN ID the config lists, ascending.

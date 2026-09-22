@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // fixtureTransport serves docs/fixtures/arista-eos-4.26.14M/<cmd>.json, where the
@@ -76,7 +76,7 @@ func newFixtureCollector(t *testing.T) (*Collector, *fixtureTransport) {
 	return NewCollector(ft), ft
 }
 
-func portByIndex(t *testing.T, snap *switchmodel.Snapshot, idx int) switchmodel.Port {
+func portByIndex(t *testing.T, snap *devicemodel.Snapshot, idx int) devicemodel.Port {
 	t.Helper()
 	for _, p := range snap.Ports {
 		if p.Index == idx {
@@ -84,7 +84,7 @@ func portByIndex(t *testing.T, snap *switchmodel.Snapshot, idx int) switchmodel.
 		}
 	}
 	t.Fatalf("no port with index %d", idx)
-	return switchmodel.Port{}
+	return devicemodel.Port{}
 }
 
 func TestStartRunsEveryCommandOnce(t *testing.T) {
@@ -142,12 +142,12 @@ func TestPortsLayout(t *testing.T) {
 		}
 	}
 	for i := 1; i <= 48; i++ {
-		if p := portByIndex(t, snap, i); p.Media != switchmodel.MediaCopper10G {
+		if p := portByIndex(t, snap, i); p.Media != devicemodel.MediaCopper10G {
 			t.Errorf("port %d media = %q, want 10G-T", i, p.Media)
 		}
 	}
 	for i := 49; i <= 54; i++ {
-		if p := portByIndex(t, snap, i); p.Media != switchmodel.MediaQSFP28 {
+		if p := portByIndex(t, snap, i); p.Media != devicemodel.MediaQSFP28 {
 			t.Errorf("port %d media = %q, want QSFP28", i, p.Media)
 		}
 	}
@@ -206,7 +206,7 @@ func TestBreakoutFolded(t *testing.T) {
 	if p.Up {
 		t.Errorf("port 50 should be down (all lanes notconnect): %+v", p)
 	}
-	if p.Media != switchmodel.MediaQSFP28 {
+	if p.Media != devicemodel.MediaQSFP28 {
 		t.Errorf("port 50 media = %q", p.Media)
 	}
 }
@@ -218,7 +218,7 @@ func TestEmptyCageNotPresent(t *testing.T) {
 	if p.Present || p.Up {
 		t.Errorf("port 52 (no optic) = %+v", p)
 	}
-	if p.Media != switchmodel.MediaQSFP28 {
+	if p.Media != devicemodel.MediaQSFP28 {
 		t.Errorf("port 52 media = %q, want QSFP28 inferred from 100G bandwidth", p.Media)
 	}
 }
@@ -237,16 +237,16 @@ func TestMediaFor(t *testing.T) {
 	cases := []struct {
 		typ  string
 		bw   int64
-		want switchmodel.Media
+		want devicemodel.Media
 	}{
-		{"10GBASE-T", 0, switchmodel.MediaCopper10G},
-		{"10/100/1000", 1e9, switchmodel.MediaCopper1G},
-		{"100GBASE-CR4", 1e11, switchmodel.MediaQSFP28},
-		{"100GBASE-CWDM4", 1e11, switchmodel.MediaQSFP28},
-		{"Not Present", 1e11, switchmodel.MediaQSFP28},
-		{"N/A", 25e9, switchmodel.MediaSFP28},
-		{"10GBASE-SR", 1e10, switchmodel.MediaSFPPlus},
-		{"", 0, switchmodel.MediaUnknown},
+		{"10GBASE-T", 0, devicemodel.MediaCopper10G},
+		{"10/100/1000", 1e9, devicemodel.MediaCopper1G},
+		{"100GBASE-CR4", 1e11, devicemodel.MediaQSFP28},
+		{"100GBASE-CWDM4", 1e11, devicemodel.MediaQSFP28},
+		{"Not Present", 1e11, devicemodel.MediaQSFP28},
+		{"N/A", 25e9, devicemodel.MediaSFP28},
+		{"10GBASE-SR", 1e10, devicemodel.MediaSFPPlus},
+		{"", 0, devicemodel.MediaUnknown},
 	}
 	for _, tc := range cases {
 		if got := mediaFor(tc.typ, tc.bw); got != tc.want {

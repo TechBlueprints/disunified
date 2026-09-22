@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/device"
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
 // planningController changes ports 18 and 19 whenever asked and records applies.
 type planningController struct{ applied int }
 
-func (p *planningController) ApplyPorts(_ context.Context, d []switchmodel.PortDesired) (int, error) {
+func (p *planningController) ApplyPorts(_ context.Context, d []devicemodel.PortDesired) (int, error) {
 	p.applied++
 	return 2, nil
 }
-func (p *planningController) PlanPorts(d []switchmodel.PortDesired) []int { return []int{18, 19} }
+func (p *planningController) PlanPorts(d []devicemodel.PortDesired) []int { return []int{18, 19} }
 
-func newPendingLoop(t *testing.T, ctl switchmodel.Controller, allow bool, everApplied bool) (*Loop, *device.Session, *strings.Builder) {
+func newPendingLoop(t *testing.T, ctl devicemodel.Controller, allow bool, everApplied bool) (*Loop, *device.Session, *strings.Builder) {
 	t.Helper()
 	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: "switch.port.18.status=enabled\nswitch.port.19.status=enabled\n"}
 	if everApplied {
@@ -67,13 +67,13 @@ func TestFirstPushThatWouldChangePortsIsHeld(t *testing.T) {
 }
 
 // freshController changes only port 30 (a guest that just appeared).
-type freshController struct{ applied []switchmodel.PortDesired }
+type freshController struct{ applied []devicemodel.PortDesired }
 
-func (f *freshController) ApplyPorts(_ context.Context, d []switchmodel.PortDesired) (int, error) {
+func (f *freshController) ApplyPorts(_ context.Context, d []devicemodel.PortDesired) (int, error) {
 	f.applied = append(f.applied, d...)
 	return len(d), nil
 }
-func (f *freshController) PlanPorts(d []switchmodel.PortDesired) []int {
+func (f *freshController) PlanPorts(d []devicemodel.PortDesired) []int {
 	for _, p := range d {
 		if p.Index == 30 {
 			return []int{30}
@@ -86,7 +86,7 @@ func TestFreshPortIsWithheldUntilTheControllerAgrees(t *testing.T) {
 	ctl := &freshController{}
 	l, _, buf := newPendingLoop(t, ctl, false, true) // an established device: later pushes apply
 	l.freshPorts = map[int]string{30: "vm998-net0"}
-	desired := []switchmodel.PortDesired{{Index: 1, Enabled: true}, {Index: 30, Enabled: true}}
+	desired := []devicemodel.PortDesired{{Index: 1, Enabled: true}, {Index: 30, Enabled: true}}
 	got := l.withholdFreshPorts(desired)
 	if len(got) != 1 || got[0].Index != 1 {
 		t.Errorf("fresh port not withheld: %+v", got)
@@ -108,7 +108,7 @@ func TestFreshPortIsWithheldUntilTheControllerAgrees(t *testing.T) {
 
 type planningNothing struct{}
 
-func (planningNothing) ApplyPorts(context.Context, []switchmodel.PortDesired) (int, error) {
+func (planningNothing) ApplyPorts(context.Context, []devicemodel.PortDesired) (int, error) {
 	return 0, nil
 }
-func (planningNothing) PlanPorts([]switchmodel.PortDesired) []int { return nil }
+func (planningNothing) PlanPorts([]devicemodel.PortDesired) []int { return nil }

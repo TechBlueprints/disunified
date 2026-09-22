@@ -1,15 +1,15 @@
 # Contributing
 
-This project grew by driving a real switch against a real controller, one
+This project grew by driving a real device against a real controller, one
 feature at a time, and verifying every step live. Contributions follow the
 same loop, whether the contributor is a person or an AI agent.
 
 ## The loop
 
-1. **File an issue first.** Say which switch/OS version and which UniFi
+1. **File an issue first.** Say which device/OS version and which UniFi
    feature, and paste the relevant scrubbed output (see fixtures below).
 2. **Branch and PR against that issue.** One feature or one driver per PR.
-3. **Capture before you code.** Save the switch's command output as
+3. **Capture before you code.** Save the device's command output as
    fixtures under `docs/fixtures/<driver>-<version>/`, and the controller's
    config push under `docs/fixtures/controller-<version>/`, run through the
    driver's `scripts/sanitize-<driver>.py` (modelled on
@@ -21,7 +21,7 @@ same loop, whether the contributor is a person or an AI agent.
 5. **Verify with real data, end to end.** Run the bridge against a real
    controller, make the change in the UniFi UI (with a browser-automation
    tool such as Claude in Chrome, so the steps are reproducible), and check
-   the switch's running config and the controller's device record. Record
+   the device's running config and the controller's device record. Record
    what you saw in the PR: the pushed keys, the commands written, the
    controller's stored values.
 6. **Update the docs in the same PR:** [`docs/feature-map.md`](docs/feature-map.md) status rows,
@@ -39,12 +39,12 @@ you believe the protocol is, and the one time that mattered (an `uplink`
 object where a real switch sends a string) a real capture would have caught
 it in a unit test instead of a day of live debugging. Capture first, scrub,
 commit the fixture, then write the code and the test against it. Both
-directions: the switch's command output, a real UniFi device's inform for
+directions: the device's command output, a real UniFi device's inform for
 the wire contract, and the controller's recorded replies for replay.
 
 ## Adding a driver
 
-Follow [`docs/adding-a-switch.md`](docs/adding-a-switch.md) step by step; the rules for the vendor
+Follow [`docs/adding-a-device.md`](docs/adding-a-device.md) step by step; the rules for the vendor
 layer are in [`internal/drivers/CLAUDE.md`](internal/drivers/CLAUDE.md). Open the issue with the OS
 version, the port layout, and the output of `-collect-once` once the read
 side works — the UniFi model choice ([`docs/unifi-models.md`](docs/unifi-models.md)) is decided
@@ -52,7 +52,7 @@ there.
 
 ## For AI agents specifically
 
-- Read [`CLAUDE.md`](CLAUDE.md) (repo map and rules), then [`docs/adding-a-switch.md`](docs/adding-a-switch.md).
+- Read [`CLAUDE.md`](CLAUDE.md) (repo map and rules), then [`docs/adding-a-device.md`](docs/adding-a-device.md).
 - Never assume a command exists on the target OS version; run it.
 - Never write to a port that carries live traffic while testing; use an
   unused port and say which one in the issue.

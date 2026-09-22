@@ -35,7 +35,7 @@ driver.
 Uplink/Parent verified 2026-09-20 after merging main's `uplink: "eth0"` fix.
 **Adoption is safe by construction (2026-09-20):** the first push after
 adoption is held while the driver's plan says it would change ports
-(`switchmodel.Planner`), and the bridge seeds the controller's port
+(`devicemodel.Planner`), and the bridge seeds the controller's port
 overrides from the switch's live VLAN state on the handshake (retrying
 while held); verified by re-adopting proxmox-1 with FusionHub's tagged
 NICs watched: held → seeded 2 ports → new push applied with 0 changes.

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Shapes for the VLAN/speed state commands (EOS 4.26.14M, fixtures captured
@@ -51,7 +51,7 @@ type showInterfacesTransceiverProperties struct {
 
 // speedCapsFor derives the speeds a port can run. Optics list them
 // explicitly; copper and empty cages fall back to the media type.
-func speedCapsFor(media switchmodel.Media, mediaType string, xcvr []struct {
+func speedCapsFor(media devicemodel.Media, mediaType string, xcvr []struct {
 	SpeedCapabilities struct {
 		Speed string `json:"speed"`
 	} `json:"speedCapabilities"`
@@ -69,21 +69,21 @@ func speedCapsFor(media switchmodel.Media, mediaType string, xcvr []struct {
 	}
 	if len(caps) == 0 {
 		switch media {
-		case switchmodel.MediaCopper10G:
+		case devicemodel.MediaCopper10G:
 			caps = []int{100, 1000, 10000}
-		case switchmodel.MediaCopper2G5:
+		case devicemodel.MediaCopper2G5:
 			caps = []int{100, 1000, 2500}
-		case switchmodel.MediaCopper1G:
+		case devicemodel.MediaCopper1G:
 			caps = []int{10, 100, 1000}
-		case switchmodel.MediaQSFP28:
+		case devicemodel.MediaQSFP28:
 			caps, fec = []int{10000, 25000, 40000, 50000, 100000}, true
-		case switchmodel.MediaQSFPPlus:
+		case devicemodel.MediaQSFPPlus:
 			caps = []int{10000, 40000}
-		case switchmodel.MediaSFP28:
+		case devicemodel.MediaSFP28:
 			caps, fec = []int{1000, 10000, 25000}, true
-		case switchmodel.MediaSFPPlus:
+		case devicemodel.MediaSFPPlus:
 			caps = []int{1000, 10000}
-		case switchmodel.MediaSFP:
+		case devicemodel.MediaSFP:
 			caps = []int{1000}
 		}
 	}
@@ -183,19 +183,19 @@ func speedKeyword(mbps int) string {
 	return ""
 }
 
-func applyVLANState(ports []switchmodel.Port, sp showInterfacesSwitchport, props showInterfacesTransceiverProperties) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyVLANState(ports []devicemodel.Port, sp showInterfacesSwitchport, props showInterfacesTransceiverProperties) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
-	laneState := map[int]map[int]switchmodel.PortVLAN{} // slot -> lane -> state
+	laneState := map[int]map[int]devicemodel.PortVLAN{} // slot -> lane -> state
 	for name, e := range sp.Switchports {
 		slot, lane, ok := parseEthName(name)
 		if !ok {
 			continue
 		}
 		info := e.SwitchportInfo
-		v := switchmodel.PortVLAN{Mode: info.Mode}
+		v := devicemodel.PortVLAN{Mode: info.Mode}
 		switch info.Mode {
 		case "access":
 			v.NativeVLAN = info.AccessVlanID
@@ -204,7 +204,7 @@ func applyVLANState(ports []switchmodel.Port, sp showInterfacesSwitchport, props
 			v.Allowed, v.AllowAll = parseVLANList(info.TrunkAllowedVlans)
 		}
 		if laneState[slot] == nil {
-			laneState[slot] = map[int]switchmodel.PortVLAN{}
+			laneState[slot] = map[int]devicemodel.PortVLAN{}
 		}
 		laneState[slot][lane] = v
 	}
@@ -287,14 +287,14 @@ func equalInts(a, b []int) bool {
 }
 
 // portChannelVLANs extracts Port-ChannelN entries from `show interfaces switchport`.
-func portChannelVLANs(sp showInterfacesSwitchport) map[string]switchmodel.PortVLAN {
-	out := map[string]switchmodel.PortVLAN{}
+func portChannelVLANs(sp showInterfacesSwitchport) map[string]devicemodel.PortVLAN {
+	out := map[string]devicemodel.PortVLAN{}
 	for name, e := range sp.Switchports {
 		if !strings.HasPrefix(name, "Port-Channel") {
 			continue
 		}
 		info := e.SwitchportInfo
-		v := switchmodel.PortVLAN{Mode: info.Mode}
+		v := devicemodel.PortVLAN{Mode: info.Mode}
 		switch info.Mode {
 		case "access":
 			v.NativeVLAN = info.AccessVlanID

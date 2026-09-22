@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 func f64(v float64) *float64 { return &v }
@@ -17,13 +17,13 @@ func TestFeatureStateFromFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	p54 := portByIndex(t, snap, 54)
-	if !p54.BPDUGuard || p54.FECConfig != switchmodel.FECRS {
+	if !p54.BPDUGuard || p54.FECConfig != devicemodel.FECRS {
 		t.Errorf("port 54 config = bpduguard %v fec %q", p54.BPDUGuard, p54.FECConfig)
 	}
 	if p54.StormCtrl == nil || !pctEqual(p54.StormCtrl.BroadcastPct, f64(5)) || !pctEqual(p54.StormCtrl.MulticastPct, f64(1)) || p54.StormCtrl.UnknownUnicastPct != nil {
 		t.Errorf("port 54 storm = %+v", p54.StormCtrl)
 	}
-	if p49 := portByIndex(t, snap, 49); p49.FECConfig != switchmodel.FECRS || p49.BPDUGuard || p49.StormCtrl != nil {
+	if p49 := portByIndex(t, snap, 49); p49.FECConfig != devicemodel.FECRS || p49.BPDUGuard || p49.StormCtrl != nil {
 		t.Errorf("port 49 config = %+v %q %v", p49.StormCtrl, p49.FECConfig, p49.BPDUGuard)
 	}
 	if p2 := portByIndex(t, snap, 2); p2.FECConfig != "" || p2.StormCtrl != nil {
@@ -42,12 +42,12 @@ func TestFeatureStateFromFixtures(t *testing.T) {
 
 func TestApplyFeatureCommands(t *testing.T) {
 	c, ft := startedCollector(t)
-	rs, off := switchmodel.FECRS, switchmodel.FECDisabled
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	rs, off := devicemodel.FECRS, devicemodel.FECDisabled
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		// 52: empty cage, nothing configured -> RS-FEC + storm + bpduguard
-		{Index: 52, Enabled: true, FEC: &rs, StormCtrl: &switchmodel.StormControlSpec{BroadcastPct: f64(5), MulticastPct: f64(1)}, BPDUGuard: true},
+		{Index: 52, Enabled: true, FEC: &rs, StormCtrl: &devicemodel.StormControlSpec{BroadcastPct: f64(5), MulticastPct: f64(1)}, BPDUGuard: true},
 		// 54: already exactly that -> no-op
-		{Index: 54, Enabled: true, FEC: &rs, StormCtrl: &switchmodel.StormControlSpec{BroadcastPct: f64(5), MulticastPct: f64(1)}, BPDUGuard: true},
+		{Index: 54, Enabled: true, FEC: &rs, StormCtrl: &devicemodel.StormControlSpec{BroadcastPct: f64(5), MulticastPct: f64(1)}, BPDUGuard: true},
 		// 49: FEC key absent -> untouched even though RS is configured
 		{Index: 49, Enabled: true},
 		// 51: UniFi says disabled -> explicit RS config removed
@@ -70,7 +70,7 @@ func TestApplyFeatureCommands(t *testing.T) {
 	}
 	// Removing storm control and bpduguard from 54.
 	ft.configured = nil
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 54, Enabled: true, FEC: &rs}})
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 54, Enabled: true, FEC: &rs}})
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -83,11 +83,11 @@ func TestApplyFeatureCommands(t *testing.T) {
 func TestApplySwitchSettings(t *testing.T) {
 	c, ft := startedCollector(t)
 	// Same as the switch: no-op.
-	n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 32768})
+	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 32768})
 	if err != nil || n != 0 {
 		t.Fatalf("no-op: n=%d err=%v cmds=%v", n, err, ft.configured)
 	}
-	n, err = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{
+	n, err = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
 		STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 4096,
 		IGMPSnooping: map[int]bool{1: true, 10: false, 69: true},
 	})
@@ -98,7 +98,7 @@ func TestApplySwitchSettings(t *testing.T) {
 	if got != "enable\nconfigure\nspanning-tree priority 4096\nno ip igmp snooping vlan 10\nip igmp snooping vlan 69\nend\nwrite memory" {
 		t.Errorf("cmds:\n%s", got)
 	}
-	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: false})
+	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: false})
 	if n != 1 || !strings.Contains(strings.Join(ft.configured[1], "\n"), "spanning-tree mode none") {
 		t.Errorf("disable stp: n=%d cmds=%v", n, ft.configured)
 	}
@@ -106,7 +106,7 @@ func TestApplySwitchSettings(t *testing.T) {
 
 func TestApplyAggregationAndMirror(t *testing.T) {
 	c, ft := startedCollector(t)
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		// LAG 7 does not exist on the fixture switch (Po1-4 do), so its
 		// Port-Channel gets the VLAN config written.
 		{Index: 2, Enabled: true, LAG: 7, VLANSet: true, NativeVLAN: 1, TaggedAll: true},
@@ -132,7 +132,7 @@ func TestApplyAggregationAndMirror(t *testing.T) {
 	}
 	// Leaving the LAG and dropping the mirror.
 	ft.configured = nil
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true},
 		{Index: 4, Enabled: true},
 	})
@@ -169,7 +169,7 @@ func TestApplyDHCPSnoopingIsIgnored(t *testing.T) {
 	c, ft := startedCollector(t)
 	off, on := false, true
 	for _, v := range []*bool{&on, &off, &on} {
-		n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{DHCPSnooping: v})
+		n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{DHCPSnooping: v})
 		if err != nil || n != 0 || len(ft.configured) != 0 {
 			t.Fatalf("dhcp snooping %v: n=%d err=%v cmds=%v", *v, n, err, ft.configured)
 		}

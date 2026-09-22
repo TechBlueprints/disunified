@@ -3,7 +3,7 @@ package aristaeos
 import (
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // showInterfacesHardware is `show interfaces hardware`: per port, every link
@@ -60,7 +60,7 @@ func hardwareByInterface(h showInterfacesHardware) map[string]portHardware {
 // cage must keep claiming the cage speeds or it could never be joined back
 // from the UI. For a folded port the claim is the union of the lanes' caps
 // and the medium's table.
-func applyHardwareCaps(ports []switchmodel.Port, hw map[string]portHardware) {
+func applyHardwareCaps(ports []devicemodel.Port, hw map[string]portHardware) {
 	for i := range ports {
 		p := &ports[i]
 		ph, ok := hw[p.IfName]

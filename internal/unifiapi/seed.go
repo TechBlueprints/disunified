@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Network is one of the site's networks: its VLAN and record id.
@@ -59,7 +59,7 @@ func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 // have the bridge strip whatever the switch had (a Proxmox guest's VLAN
 // tag, 2026-09-20). Ports whose VLANs are not site networks are left alone
 // and named in the returned notes. UniFi is the source of truth from then on.
-func (c *Client) SeedPortConfig(ctx context.Context, mac string, snap *switchmodel.Snapshot) (seeded int, notes []string, err error) {
+func (c *Client) SeedPortConfig(ctx context.Context, mac string, snap *devicemodel.Snapshot) (seeded int, notes []string, err error) {
 	dev, err := c.DeviceByMAC(ctx, mac)
 	if err != nil {
 		return 0, nil, err
@@ -180,7 +180,7 @@ func emptyValue(v any) bool {
 // plus a name the driver gave (isDefaultName) — is seeded from its own
 // state as if the controller had nothing for it, so a new guest is never
 // left switched off by the slot's previous life.
-func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[string]any, isDefaultName func(idx int, name string) bool) (overrides []map[string]any, seeded int, notes []string) {
+func seedOverrides(snap *devicemodel.Snapshot, nets []Network, existing []map[string]any, isDefaultName func(idx int, name string) bool) (overrides []map[string]any, seeded int, notes []string) {
 	byVLAN := map[int]string{}
 	var defaultID string
 	for _, n := range nets {
@@ -263,7 +263,7 @@ func seedOverrides(snap *switchmodel.Snapshot, nets []Network, existing []map[st
 // overrideFor renders one port's live state as the controller's override,
 // nil when the port is at the controller's default (native 1, every VLAN
 // tagged, enabled) so nothing needs seeding.
-func overrideFor(p switchmodel.Port, byVLAN map[int]string, defaultID string) (map[string]any, string) {
+func overrideFor(p devicemodel.Port, byVLAN map[int]string, defaultID string) (map[string]any, string) {
 	if !p.Enabled {
 		return disabledOverride(), ""
 	}

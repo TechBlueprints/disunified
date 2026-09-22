@@ -6,7 +6,7 @@ import (
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Identity is what the operator (or the switch) supplies for the device the
@@ -21,7 +21,7 @@ type Identity struct {
 // DescriptorFor builds the inform.Descriptor for model (a UniFi model code
 // from the catalogue) presenting snap. The port list comes from the model's
 // profile; the uplink flag from id.UplinkPort or the snapshot.
-func DescriptorFor(model string, snap *switchmodel.Snapshot, id Identity) (inform.Descriptor, error) {
+func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (inform.Descriptor, error) {
 	profile, ok := emu.Profile(model)
 	if !ok {
 		return inform.Descriptor{}, fmt.Errorf("unknown model %q", model)

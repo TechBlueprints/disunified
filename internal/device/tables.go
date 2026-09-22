@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -33,7 +33,7 @@ func macHeader(mac string) [6]byte {
 // inform, so growth-based anomaly bits mean "since the last report".
 type portHistory struct {
 	At             time.Time
-	Counters       switchmodel.Counters
+	Counters       devicemodel.Counters
 	LinkChanges    uint64
 	STPChanges     int
 	FECUncorrected uint64
@@ -49,7 +49,7 @@ type portHistory struct {
 // with reason bit 1 when the port has ever dropped packets, minus 15 with
 // reason bit 2 when it has ever counted errors. An uplink negotiated below
 // its top speed costs a further 10 (our own rule; no UniFi sample had one).
-func portAnomalies(p switchmodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
+func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
 	f := strings.ToLower(p.Fault)
 	switch {
 	case strings.Contains(f, "link-flap"):
@@ -120,8 +120,8 @@ func portAnomalies(p switchmodel.Port, isUplink bool, prev *portHistory) (bits i
 	return bits, satisfaction, reason
 }
 
-func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned json.RawMessage, prev map[int]portHistory) []map[string]any {
-	live := map[int]switchmodel.Port{}
+func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned json.RawMessage, prev map[int]portHistory) []map[string]any {
+	live := map[int]devicemodel.Port{}
 	if snap != nil {
 		for _, p := range snap.Ports {
 			live[p.Index] = p
@@ -253,22 +253,22 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 			}
 			e["aggregated_by"] = false
 		}
-		if p.FEC != switchmodel.FECUnknown {
+		if p.FEC != devicemodel.FECUnknown {
 			// Real informs carry `fec` in the 802.3 clause vocabulary; the
 			// controller stores fec_mode only when the device sends it too
 			// (verified 2026-09-20), so send both.
 			e["fec_mode"] = string(p.FEC)
 			switch p.FEC {
-			case switchmodel.FECRS:
+			case devicemodel.FECRS:
 				e["fec"] = "cl-91"
-			case switchmodel.FECFC:
+			case devicemodel.FECFC:
 				e["fec"] = "cl-74"
 			}
 		}
 		if sc := speedCaps(p); sc != 0 {
 			e["speed_caps"] = sc
 		}
-		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) {
+		if p.Media != devicemodel.MediaUnknown && !isCopper(p.Media) {
 			e["sfp_found"] = p.Present
 			// Real switches send the optic identity keys on every optical
 			// port, empty when no module answers (captured on the ECS
@@ -302,7 +302,7 @@ func portTable(desc inform.Descriptor, snap *switchmodel.Snapshot, provisioned j
 		}
 		e["dot1x_mode"] = "unknown" // no 802.1X: what a real switch reports with it off
 		e["dot1x_status"] = "disabled"
-		if p.Media != switchmodel.MediaUnknown && !isCopper(p.Media) && p.Present {
+		if p.Media != devicemodel.MediaUnknown && !isCopper(p.Media) && p.Present {
 			e["sfp_rxfault"] = p.Health.OpticRxAlarm // real switches send the fault bits only with an optic seated
 			e["sfp_txfault"] = p.Health.OpticTxAlarm
 		}
@@ -333,7 +333,7 @@ func round2(f float64) float64 { return float64(int(f*100+0.5)) / 100 }
 
 // macEntries renders learned addresses. age = seconds since the address was
 // learned/moved (0 if unknown); withPort adds port_idx for the top-level table.
-func macEntries(macs []switchmodel.MACEntry, withPort bool, now time.Time) []map[string]any {
+func macEntries(macs []devicemodel.MACEntry, withPort bool, now time.Time) []map[string]any {
 	out := make([]map[string]any, 0, len(macs))
 	for _, m := range macs {
 		e := map[string]any{"mac": m.MAC, "vlan": m.VLAN, "age": 0, "uptime": 0}
@@ -353,8 +353,8 @@ func macEntries(macs []switchmodel.MACEntry, withPort bool, now time.Time) []map
 	return out
 }
 
-// switchTables renders the switch-level fields derived from the snapshot.
-func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string]any {
+// deviceTables renders the switch-level fields derived from the snapshot.
+func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string]any {
 	m := map[string]any{}
 	if snap == nil {
 		return m
@@ -439,7 +439,7 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 	m["flowctrl_enabled"] = flow
 	m["dot1x_portctrl_enabled"] = false
 
-	var live []switchmodel.MACEntry
+	var live []devicemodel.MACEntry
 	for _, e := range snap.MACTable {
 		if e.PortIndex > 0 {
 			live = append(live, e)
@@ -477,7 +477,100 @@ func switchTables(desc inform.Descriptor, snap *switchmodel.Snapshot) map[string
 	}
 	m["stp_topology_change_count"] = stpChanges
 	m["total_mac_in_used"] = macsInUse
+	// A power device reports its outlets the way a switch reports its ports.
+	// hw_caps is load-bearing here: without the outlet bit the controller
+	// accepts the inform, stores no outlet table and logs nothing, so the
+	// device adopts and shows no outlets at all.
+	if len(snap.Outlets) > 0 {
+		m["outlet_table"] = outletTable(desc, snap)
+		m["outlet_enabled"] = true
+		m["hw_caps"] = HWCapsOutlet
+		// What a real USP-PDU-Pro reports for the overview's Power Usage and
+		// "x W of y W": the device's whole measured draw and its capacity.
+		// Only sent when the device actually measures -- a fabricated 0 W
+		// reads as a real measurement of an idle rack.
+		if sys.HasPowerDraw {
+			m["outlet_ac_power_consumption"] = fmt.Sprintf("%.3f", sys.PowerDrawW)
+			if sys.PowerBudgetW > 0 {
+				m["outlet_ac_power_budget"] = fmt.Sprintf("%.3f", sys.PowerBudgetW)
+			}
+		}
+	}
 	return m
+}
+
+// outletTable renders a power device's outlets.
+//
+// Two encodings are in service at once and a device uses the one its family
+// uses. Rack PDUs describe an outlet with a small outlet_caps value beside an
+// outlet_type and send their measurements as decimal strings; plugs, strips
+// and the battery-backed models use the class bits with a has_relay/
+// has_metering pair and no outlet_type. The capability value is what the
+// controller itself tests, and this bridge presents a rack PDU, so the legacy
+// form is what it sends.
+//
+// Neither an outlet's name nor its cycle policy is reported. Both belong to
+// the controller, which holds them alongside the overrides and merges them
+// onto the entry it stores -- and that merge is also its change test, so a
+// device that reports them back reports nothing new and has its whole table
+// dropped. Silently.
+func outletTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[string]any {
+	base := OutletIndexBase(desc.Model)
+	table := make([]map[string]any, 0, len(snap.Outlets)+base-1)
+	// The claimed model may have outlets the real device does not: the
+	// USP-PDU-Pro's 1-4 are USB, and a rack PDU has none. Reporting nothing
+	// for them leaves the controller showing its own default -- four outlets
+	// that look enabled and switchable but are not there at all. They are
+	// reported instead as present-but-off with no relay, on every inform, so
+	// a controller that tries to switch one is corrected on the next cycle
+	// rather than silently disagreeing with the hardware forever.
+	for i := 1; i < base; i++ {
+		table = append(table, map[string]any{
+			"index":                      i,
+			"relay_state":                false,
+			"outlet_caps":                0,
+			"outlet_type":                outletTypeUSB,
+			"power_fault":                false,
+			"power_warning":              false,
+			"relay_activation_countdown": 0,
+			"relay_activation_time":      0,
+			"modem_power_cycle_count":    0,
+		})
+	}
+	for _, o := range snap.Outlets {
+		caps := 0
+		if o.Switchable {
+			caps |= outletCapHasRelay
+		}
+		if o.HasMetering {
+			caps |= outletCapPowerMeter
+		}
+		entry := map[string]any{
+			"index":       o.Index + base - 1,
+			"relay_state": o.On,
+			"outlet_caps": caps,
+			"outlet_type": outletTypeAC,
+			// The emulated device has no faults to report and nothing
+			// pending, so these are the quiet values a real rack PDU sends
+			// on every outlet, metered or not.
+			"power_fault":                false,
+			"power_warning":              false,
+			"relay_activation_countdown": 0,
+			"relay_activation_time":      0,
+			"modem_power_cycle_count":    0,
+		}
+		if o.HasMetering {
+			// Decimal strings, which is what this family sends; a bare
+			// number is the other family's spelling. An outlet that does
+			// not meter omits these entirely rather than reporting zeros,
+			// because a zero reads as a real measurement of no load.
+			entry["outlet_voltage"] = fmt.Sprintf("%.3f", o.VoltageV)
+			entry["outlet_current"] = fmt.Sprintf("%.3f", o.CurrentA)
+			entry["outlet_power"] = fmt.Sprintf("%.3f", o.PowerW)
+		}
+		table = append(table, entry)
+	}
+	return table
 }
 
 func mediaLabel(desc inform.Descriptor, idx int) string {
@@ -516,31 +609,31 @@ func trailingInt(s string) int {
 // unifiMedia maps the neutral media vocabulary onto the controller's port
 // media labels (seen in its hardware DB: GE, 2.5GbE, 10GbE, SFP, SFP+,
 // SFP28, QSFP28). "" = keep the profile's label.
-func unifiMedia(m switchmodel.Media) string {
+func unifiMedia(m devicemodel.Media) string {
 	switch m {
-	case switchmodel.MediaCopper1G:
+	case devicemodel.MediaCopper1G:
 		return "GE"
-	case switchmodel.MediaCopper2G5:
+	case devicemodel.MediaCopper2G5:
 		return "2.5GbE"
-	case switchmodel.MediaCopper10G:
+	case devicemodel.MediaCopper10G:
 		return "10GbE"
-	case switchmodel.MediaSFP:
+	case devicemodel.MediaSFP:
 		return "SFP"
-	case switchmodel.MediaSFPPlus:
+	case devicemodel.MediaSFPPlus:
 		return "SFP+"
-	case switchmodel.MediaSFP28:
+	case devicemodel.MediaSFP28:
 		return "SFP28"
-	case switchmodel.MediaQSFPPlus:
+	case devicemodel.MediaQSFPPlus:
 		return "QSFP+"
-	case switchmodel.MediaQSFP28:
+	case devicemodel.MediaQSFP28:
 		return "QSFP28"
 	}
 	return ""
 }
 
-func isCopper(m switchmodel.Media) bool {
+func isCopper(m devicemodel.Media) bool {
 	switch m {
-	case switchmodel.MediaCopper1G, switchmodel.MediaCopper2G5, switchmodel.MediaCopper10G:
+	case devicemodel.MediaCopper1G, devicemodel.MediaCopper2G5, devicemodel.MediaCopper10G:
 		return true
 	}
 	return false
@@ -548,7 +641,7 @@ func isCopper(m switchmodel.Media) bool {
 
 // netmaskFor returns the dotted netmask of the switch address ip, from the
 // snapshot's own interface addresses; "" if unknown.
-func netmaskFor(snap *switchmodel.Snapshot, ip string) string {
+func netmaskFor(snap *devicemodel.Snapshot, ip string) string {
 	if snap == nil {
 		return ""
 	}
@@ -564,7 +657,7 @@ func netmaskFor(snap *switchmodel.Snapshot, ip string) string {
 // ethernetTable lists the device's own interfaces as UniFi switches do:
 // eth0 (the switch, system MAC) and srv0, the service/management interface
 // with its own MAC, when the switch has one.
-func ethernetTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]any {
+func ethernetTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[string]any {
 	t := []map[string]any{{
 		"mac":        desc.MAC,
 		"name":       "eth0",
@@ -582,7 +675,7 @@ func ethernetTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[str
 // service interface is never seen on the wire; if ours is cabled, another
 // UniFi switch has that MAC as a client on one of its ports, and naming it
 // the service MAC gives the controller a second location for the device.
-func serviceMAC(snap *switchmodel.Snapshot, deviceMAC string) string {
+func serviceMAC(snap *devicemodel.Snapshot, deviceMAC string) string {
 	if snap == nil || snap.System.MgmtMAC == "" || snap.System.MgmtMAC == deviceMAC {
 		return ""
 	}
@@ -595,7 +688,7 @@ func serviceMAC(snap *switchmodel.Snapshot, deviceMAC string) string {
 }
 
 // lldpTable reports LLDP neighbours in the controller's shape.
-func lldpTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]any {
+func lldpTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[string]any {
 	if snap == nil {
 		return nil
 	}
@@ -637,7 +730,7 @@ func lldpTable(desc inform.Descriptor, snap *switchmodel.Snapshot) []map[string]
 
 // sysStats reports CPU/memory. Memory is in bytes on the wire; the
 // snapshot carries kB. Without a snapshot, unifi-emu's placeholder values.
-func sysStats(snap *switchmodel.Snapshot) map[string]any {
+func sysStats(snap *devicemodel.Snapshot) map[string]any {
 	if snap == nil || snap.System.MemTotalKB == 0 {
 		return map[string]any{"cpu": 1.5, "mem_total": 134217728, "mem_used": 67108864, "mem_buffer": 16777216}
 	}
@@ -658,7 +751,7 @@ func sysStats(snap *switchmodel.Snapshot) map[string]any {
 
 // systemStats is the `system-stats` object UniFi switches send alongside
 // sys_stats: percentages as strings. The UI's "Memory Usage" reads mem here.
-func systemStats(snap *switchmodel.Snapshot, uptime int64) map[string]any {
+func systemStats(snap *devicemodel.Snapshot, uptime int64) map[string]any {
 	if snap == nil || snap.System.MemTotalKB == 0 {
 		return map[string]any{}
 	}
@@ -673,7 +766,7 @@ func systemStats(snap *switchmodel.Snapshot, uptime int64) map[string]any {
 // macTableCapability mirrors what UniFi switches report for the MAC table
 // pressure card; thresholds follow the ratios seen on a real switch
 // (warning at 66%, critical at 79% of capacity).
-func macTableCapability(snap *switchmodel.Snapshot) map[string]any {
+func macTableCapability(snap *devicemodel.Snapshot) map[string]any {
 	if snap == nil || snap.System.MACTableCapacity == 0 {
 		return nil
 	}

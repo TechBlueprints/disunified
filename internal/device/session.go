@@ -4,7 +4,7 @@
 // The state machine is forked from github.com/jamesbraid/unifi-emu/inform
 // (session.go, tables.go; MIT, Copyright (c) James Braid) and differs in
 // three ways: adoption state persists to disk so a restart does not lose the
-// controller's key; the switch tables come from a live switchmodel.Snapshot
+// controller's key; the switch tables come from a live devicemodel.Snapshot
 // instead of constants; and controller-pushed port config is merged over the
 // live table rather than replacing it. The wire format and crypto are used
 // unchanged from unifi-emu's inform package.
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -32,13 +32,13 @@ type Session struct {
 	macHeader [6]byte
 	st        State
 	store     *Store // nil = no persistence
-	snap      *switchmodel.Snapshot
+	snap      *devicemodel.Snapshot
 	bootTime  time.Time // fallback uptime clock when no snapshot
 	locating  bool
 
 	versionPinned bool                // the operator named a version: never follow the switch's
 	prevHistory   map[int]portHistory // per port, at the last inform (anomaly deltas)
-	caps          switchmodel.Capabilities
+	caps          devicemodel.Capabilities
 	gatewayIP     string // reported as gateway_ip; "" = omit
 }
 
@@ -57,7 +57,7 @@ func (s *Session) SetUplinkPort(idx int) {
 }
 
 // SetCapabilities replaces the capability claims (default: DefaultCapabilities).
-func (s *Session) SetCapabilities(c switchmodel.Capabilities) {
+func (s *Session) SetCapabilities(c devicemodel.Capabilities) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.caps = c
@@ -155,14 +155,14 @@ func (s *Session) MarkApplied(cfgversion string) error {
 }
 
 // Snapshot returns the current switch snapshot (nil before the first poll).
-func (s *Session) Snapshot() *switchmodel.Snapshot {
+func (s *Session) Snapshot() *devicemodel.Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snap
 }
 
 // SetSnapshot replaces the switch state the next payload reports.
-func (s *Session) SetSnapshot(snap *switchmodel.Snapshot) {
+func (s *Session) SetSnapshot(snap *devicemodel.Snapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snap = snap
@@ -194,8 +194,8 @@ func (s *Session) PinVersion() {
 	s.versionPinned = true
 }
 
-// switchVersion is the switch's own version at the last collect.
-func (s *Session) switchVersion() string {
+// deviceVersion is the switch's own version at the last collect.
+func (s *Session) deviceVersion() string {
 	if s.snap == nil {
 		return ""
 	}
@@ -348,10 +348,15 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
 			m["service_mac"] = mac
 		}
-		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
-			m["lldp_table"] = lt
+		// lldp_table is always sent, empty when there is no neighbour: that
+		// is what real devices do (a USP-PDU-Pro on 10.6.106 sends []), and
+		// an absent key reads as a device that does not speak LLDP at all.
+		lt := lldpTable(s.desc, s.snap)
+		if lt == nil {
+			lt = []map[string]any{}
 		}
-		for k, v := range switchTables(s.desc, s.snap) {
+		m["lldp_table"] = lt
+		for k, v := range deviceTables(s.desc, s.snap) {
 			m[k] = v
 		}
 	}
@@ -382,6 +387,14 @@ type informResponse struct {
 	Cfgversion string `json:"cfgversion"`
 	Version    string `json:"version"`
 	PortIdx    int    `json:"port_idx"`
+	// OutletTable is relayctl's selection list: the controller names the
+	// outlets to act on, carrying only their index. Captured from Network
+	// 10.6.106 on 2026-09-21: {"cmd":"relayctl","outlet_table":[{"index":13}]}.
+	// One variant of the command carries no list at all, so an absent
+	// selection is valid rather than malformed.
+	OutletTable []struct {
+		Index int `json:"index"`
+	} `json:"outlet_table"`
 }
 
 // Our own Effect kinds, outside unifi-emu's range.
@@ -394,6 +407,9 @@ const (
 	EffectLocate
 	// EffectPortCycle: bounce a port (Interval unused; Text = port_idx).
 	EffectPortCycle
+	// EffectOutletCycle: power-cycle outlets on a power device (Text =
+	// comma-separated outlet indexes in the controller's numbering).
+	EffectOutletCycle
 )
 
 // Apply advances the session by one controller reply and returns what
@@ -425,7 +441,7 @@ func (s *Session) Apply(now time.Time, body []byte) []inform.Effect {
 		// offering the upgrade. Persisted via State.Firmware.
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.deviceVersion()
 		}
 		s.bootTime = now
 		effects = []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
@@ -479,10 +495,20 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		// and the device-side name has not been captured; "power-cycle" is the
 		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
+	case "relayctl":
+		// The UI's per-outlet Power Cycle. The controller picks the outlets and
+		// sends them as a selection list; the device is expected to open and
+		// close each relay itself. Switching an outlet on or off is NOT this
+		// command -- that arrives as system_cfg outlet.<n>.relay_state lines.
+		idx := make([]string, 0, len(r.OutletTable))
+		for _, o := range r.OutletTable {
+			idx = append(idx, strconv.Itoa(o.Index))
+		}
+		return []inform.Effect{{Kind: EffectOutletCycle, Text: strings.Join(idx, ",")}}
 	case "upgrade", "upgrade2":
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.deviceVersion()
 		}
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
