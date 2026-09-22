@@ -487,13 +487,22 @@ func (l *Loop) reconcile(ctx context.Context) {
 // only source of a name, and the driver pushes it down to the device.
 func (l *Loop) desiredOutlets(text string) []devicemodel.OutletDesired {
 	cfg := unificfg.Parse(text)
+	// The controller addresses outlets in the claimed model's index space,
+	// where the first AC outlet may not be 1; the driver knows only its own
+	// device's numbering. Translate here, at the boundary, so neither side
+	// has to carry the other's offset.
+	base := device.OutletIndexBase(l.desc.Model)
 	var desired []devicemodel.OutletDesired
 	for _, idx := range cfg.OutletIndexes() {
-		if l.cfg.ControlOutlets != nil && !l.cfg.ControlOutlets[idx] {
+		own := idx - base + 1
+		if own < 1 {
+			continue // an outlet the model has (a USB one) that this device does not
+		}
+		if l.cfg.ControlOutlets != nil && !l.cfg.ControlOutlets[own] {
 			continue
 		}
 		o := cfg.Outlets[idx]
-		desired = append(desired, devicemodel.OutletDesired{Index: idx, On: o.RelayOn, Name: o.Name})
+		desired = append(desired, devicemodel.OutletDesired{Index: own, On: o.RelayOn, Name: o.Name})
 	}
 	return desired
 }

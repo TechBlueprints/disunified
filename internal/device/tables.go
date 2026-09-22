@@ -482,7 +482,7 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 	// accepts the inform, stores no outlet table and logs nothing, so the
 	// device adopts and shows no outlets at all.
 	if len(snap.Outlets) > 0 {
-		m["outlet_table"] = outletTable(snap)
+		m["outlet_table"] = outletTable(desc, snap)
 		m["outlet_enabled"] = true
 		m["hw_caps"] = HWCapsOutlet
 	}
@@ -504,7 +504,8 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 // onto the entry it stores -- and that merge is also its change test, so a
 // device that reports them back reports nothing new and has its whole table
 // dropped. Silently.
-func outletTable(snap *devicemodel.Snapshot) []map[string]any {
+func outletTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[string]any {
+	base := OutletIndexBase(desc.Model)
 	table := make([]map[string]any, 0, len(snap.Outlets))
 	for _, o := range snap.Outlets {
 		caps := 0
@@ -515,7 +516,7 @@ func outletTable(snap *devicemodel.Snapshot) []map[string]any {
 			caps |= outletCapPowerMeter
 		}
 		entry := map[string]any{
-			"index":       o.Index,
+			"index":       o.Index + base - 1,
 			"relay_state": o.On,
 			"outlet_caps": caps,
 			"outlet_type": outletTypeAC,
