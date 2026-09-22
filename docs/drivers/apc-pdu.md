@@ -152,7 +152,23 @@ one-for-one with the AP7931's 16. `unifimodel.SuggestFor` picks it for any
 snapshot that has outlets, rather than ranking the card's single network port
 against every one-port switch in the catalogue.
 
-## 8. Things that will bite
+## 8. Verified live
+
+Round trip on Network 10.6.106, 2026-09-21, against the real AP7931:
+
+| Step | Result |
+|---|---|
+| Adoption handshake | 404 -> mgmt_cfg/authkey -> ADOPTING -> CONNECTED |
+| Outlets rendered | 16, at indices 5-20, named "Outlet 5".."Outlet 20", `hw_caps` 128 |
+| Switch **off** from the controller | relay open **~25 s** later; `1 of 16 outlets changed` |
+| Switch **on** from the controller | relay closed ~60 s later; `1 of 16 outlets changed` |
+| Reconcile with no change | `0 of 16 outlets changed` — no SNMP write at all |
+
+The apply is a true diff: only the outlet whose intent changed was written,
+and a steady state writes nothing, which matters because the loop re-applies
+the same intent on every cycle and an outlet is real load.
+
+## 9. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the
   inform, stores no outlet table and logs nothing: the device adopts and shows
