@@ -64,8 +64,11 @@ func loadReplies(t *testing.T, name string) []replayRecord {
 
 // replayDriver is one driver under replay.
 type replayDriver struct {
-	Name      string
-	Replies   string // fixture file under controller-10.6.106/
+	Name    string
+	Replies string // fixture file under controller-10.6.106/
+	// Model is the UniFi model the device claims; "" = UDC48X6 (the USW
+	// Leaf every switch replay uses). A power device claims a PDU.
+	Model     string
 	Collector devicemodel.Device
 	Control   devicemodel.Controller
 	Snapshot  *devicemodel.Snapshot
@@ -100,7 +103,11 @@ func runReplay(t *testing.T, d replayDriver) {
 	if len(snap.System.Addresses) > 0 {
 		ip = snap.System.Addresses[0].IP
 	}
-	desc, err := device.DescriptorFor("UDC48X6", snap, device.Identity{MAC: snap.System.MAC, IP: ip, UDAPIVersion: "1.0.0"})
+	model := d.Model
+	if model == "" {
+		model = "UDC48X6"
+	}
+	desc, err := device.DescriptorFor(model, snap, device.Identity{MAC: snap.System.MAC, IP: ip, UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

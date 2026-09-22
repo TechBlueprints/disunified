@@ -95,7 +95,15 @@ func (f *FixtureRunner) SetInt(_ context.Context, oid string, v int) error {
 	}
 	f.Sets = append(f.Sets, fmt.Sprintf("%s=%d", oid, v))
 	// A write the device accepted is visible to the next read, the way the
-	// real agent behaves.
+	// real agent behaves -- with one exception the card itself makes. An
+	// immediate-reboot command is not a state: the card opens the relay,
+	// waits its configured reboot duration and closes it again, and by the
+	// next poll the outlet reads back as on. A fixture that stored the 3
+	// would make the following reconcile see an outlet that is off and
+	// switch it on, which the real card never asks for.
+	if v == outletCmdReboot && strings.HasPrefix(strings.TrimPrefix(oid, "."), oidOutletCtlCmd+".") {
+		v = outletCmdOn
+	}
 	f.Values[strings.TrimPrefix(oid, ".")] = fmt.Sprint(v)
 	return nil
 }

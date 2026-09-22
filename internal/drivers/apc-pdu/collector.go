@@ -30,6 +30,15 @@ const (
 	oidIfTable   = "1.3.6.1.2.1.2.2.1"
 	oidIfPhysAdr = "1.3.6.1.2.1.2.2.1.6"
 
+	// IP-MIB: the card's own address and mask, its default route, and its ARP
+	// cache. Together they give the reachability fields a real UniFi device
+	// reports (netmask, gateway_mac) -- the controller uses them to place the
+	// device in a network. These tables index their rows by address.
+	oidIPAddrTable  = "1.3.6.1.2.1.4.20.1"   // .1.<ip> = address, .3.<ip> = mask
+	oidIPRouteNext  = "1.3.6.1.2.1.4.21.1.7" // .0.0.0.0 = default gateway
+	oidIPNetToMedia = "1.3.6.1.2.1.4.22.1.2" // .<ifIndex>.<ip> = MAC
+	oidDefaultRoute = "1.3.6.1.2.1.4.21.1.7.0.0.0.0"
+
 	oidRPDU        = "1.3.6.1.4.1.318.1.1.12"
 	oidIdent       = "1.3.6.1.4.1.318.1.1.12.1"
 	oidIdentHWRev  = "1.3.6.1.4.1.318.1.1.12.1.2.0"
@@ -108,6 +117,16 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	if err != nil {
 		return nil, err
 	}
+	ip := map[string]string{}
+	for _, root := range []string{oidIPAddrTable, oidIPRouteNext, oidIPNetToMedia} {
+		part, err := c.r.Walk(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range part {
+			ip[k] = v
+		}
+	}
 	rpdu := map[string]string{}
 	for _, root := range []string{oidIdent, oidLoad, oidOutletCtlName, oidOutletCtlCmd} {
 		part, err := c.r.Walk(ctx, root)
@@ -121,6 +140,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = c.system(sys, ifs, rpdu)
+	c.reachability(&snap.System, ip)
 	snap.Outlets = c.outlets(rpdu)
 	// The card has exactly one network interface, and it is the uplink. There
 	// is no LLDP on this firmware, so the loop is told directly rather than
@@ -292,6 +312,59 @@ func floatOr(s string, def float64) float64 {
 	n, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return def
+	}
+	return n
+}
+
+// reachability fills the card's own addresses, its ARP cache and its
+// gateway's MAC from the IP-MIB tables, whose rows are keyed by address.
+func (c *Collector) reachability(sys *devicemodel.System, ip map[string]string) {
+	masks := map[string]string{}
+	for oid, v := range ip {
+		switch {
+		case strings.HasPrefix(oid, oidIPAddrTable+".3."):
+			masks[strings.TrimPrefix(oid, oidIPAddrTable+".3.")] = strings.TrimSpace(v)
+		}
+	}
+	for oid, v := range ip {
+		switch {
+		case strings.HasPrefix(oid, oidIPAddrTable+".1."):
+			addr := strings.TrimSpace(v)
+			if addr == "" || strings.HasPrefix(addr, "127.") {
+				continue
+			}
+			sys.Addresses = append(sys.Addresses, devicemodel.IfAddress{
+				Iface: "eth0", IP: addr, PrefixLen: prefixLen(masks[addr]),
+			})
+		case strings.HasPrefix(oid, oidIPNetToMedia+"."):
+			// .<ifIndex>.<a>.<b>.<c>.<d>: the address is the last four labels.
+			parts := strings.Split(strings.TrimPrefix(oid, oidIPNetToMedia+"."), ".")
+			if len(parts) < 5 {
+				continue
+			}
+			if sys.ARP == nil {
+				sys.ARP = map[string]string{}
+			}
+			sys.ARP[strings.Join(parts[len(parts)-4:], ".")] = normaliseMAC(strings.TrimSpace(v))
+		}
+	}
+	sort.Slice(sys.Addresses, func(i, j int) bool { return sys.Addresses[i].IP < sys.Addresses[j].IP })
+	if gw := strings.TrimSpace(ip[oidDefaultRoute]); gw != "" {
+		sys.GatewayMAC = sys.ARP[gw]
+	}
+}
+
+// prefixLen turns a dotted netmask into a prefix length; 0 when unparseable.
+func prefixLen(mask string) int {
+	n := 0
+	for _, part := range strings.Split(mask, ".") {
+		v, err := strconv.Atoi(part)
+		if err != nil {
+			return 0
+		}
+		for ; v > 0; v >>= 1 {
+			n += v & 1
+		}
 	}
 	return n
 }

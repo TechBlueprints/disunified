@@ -146,12 +146,15 @@ type Loop struct {
 	reconciledOnce  bool
 	layoutSig       string
 	pendingCycles   []int
-	pendingReboot   bool
-	warnedVersion   string
-	oobWarned       string // last out-of-band warning state, to log on change only
-	uplinkPort      int    // the port last marked as uplink from the snapshot
-	everApplied     bool   // a system_cfg has been applied to this device (this run or a previous one)
-	heldVersion     string // the first push being held, to log once
+	// pendingOutletCycles holds relayctl outlet indexes, in the controller's
+	// numbering, until the driver runs them after the inform.
+	pendingOutletCycles []int
+	pendingReboot       bool
+	warnedVersion       string
+	oobWarned           string // last out-of-band warning state, to log on change only
+	uplinkPort          int    // the port last marked as uplink from the snapshot
+	everApplied         bool   // a system_cfg has been applied to this device (this run or a previous one)
+	heldVersion         string // the first push being held, to log once
 	// freshPorts are ports that appeared (a new guest, a new interface) since
 	// the last applied config: the controller knows nothing about them yet,
 	// so its config for them is the defaults. They are not written until a
@@ -367,6 +370,13 @@ func (l *Loop) informOnce(ctx context.Context) {
 				pending := l.pendingCycles
 				l.pendingCycles = append(pending, idx)
 			}
+		case device.EffectOutletCycle:
+			lines = append(lines, fmt.Sprintf("relayctl: power-cycle requested for outlet(s) %s", e.Text))
+			for _, s := range strings.Split(e.Text, ",") {
+				if idx, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+					l.pendingOutletCycles = append(l.pendingOutletCycles, idx)
+				}
+			}
 		}
 	}
 	connectedNow := false
@@ -391,14 +401,18 @@ func (l *Loop) informOnce(ctx context.Context) {
 	}
 }
 
-// cyclePorts runs queued port-cycle (and reboot) commands through the driver.
+// cyclePorts runs queued port-cycle, outlet-cycle and reboot commands
+// through the driver.
 func (l *Loop) cyclePorts(ctx context.Context) {
 	l.mu.Lock()
 	queue := l.pendingCycles
 	l.pendingCycles = nil
+	outlets := l.pendingOutletCycles
+	l.pendingOutletCycles = nil
 	reboot := l.pendingReboot
 	l.pendingReboot = false
 	l.mu.Unlock()
+	l.cycleOutlets(ctx, outlets)
 	if reboot {
 		if rb, ok := l.cfg.Controller.(devicemodel.Rebooter); ok {
 			cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
@@ -476,6 +490,42 @@ func (l *Loop) reconcile(ctx context.Context) {
 		l.cfg.Logger.Printf("[%s] reconciled system_cfg %s: %d of %d ports changed", l.desc.MAC, ver, changed, len(desired))
 	}
 	l.reconciledOnce = true
+}
+
+// cycleOutlets runs relayctl through the driver. The controller names outlets
+// in the claimed model's numbering; the driver knows only its device's own,
+// so the index is translated here, the same way desiredOutlets does it, and
+// an outlet the model has but the device does not (the USP-PDU-Pro's USB
+// four) is declined rather than mapped onto a real relay.
+func (l *Loop) cycleOutlets(ctx context.Context, queue []int) {
+	if len(queue) == 0 {
+		return
+	}
+	oc, ok := l.cfg.OutletController.(devicemodel.OutletCycler)
+	if !ok {
+		l.cfg.Logger.Printf("[%s] relayctl: driver cannot cycle outlets; ignored", l.desc.MAC)
+		return
+	}
+	base := device.OutletIndexBase(l.desc.Model)
+	for _, idx := range queue {
+		own := idx - base + 1
+		if own < 1 {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: the device has no such outlet; ignored", l.desc.MAC, idx)
+			continue
+		}
+		if l.cfg.ControlOutlets != nil && !l.cfg.ControlOutlets[own] {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: not under control; ignored", l.desc.MAC, idx)
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		err := oc.CycleOutlet(cctx, own)
+		cancel()
+		if err != nil {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: %v", l.desc.MAC, idx, err)
+		} else {
+			l.cfg.Logger.Printf("[%s] relayctl outlet %d: power cycle issued (device outlet %d)", l.desc.MAC, idx, own)
+		}
+	}
 }
 
 // desiredOutlets translates a system_cfg into per-outlet intent for the

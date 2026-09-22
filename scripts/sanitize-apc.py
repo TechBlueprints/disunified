@@ -10,6 +10,9 @@ Usage: scripts/sanitize-apc.py <in> <out>
 """
 import re, sys, ipaddress
 
+# Rows of ipAddrTable (4.20), ipRouteTable (4.21) and ipNetToMediaTable (4.22)
+# end in a dotted-quad address (4.22 rows carry an ifIndex before it).
+IPMIB_ROW_RE = re.compile(r'^(\.?1\.3\.6\.1\.2\.1\.4\.2[0-2]\.1\.\d+\.(?:\d+\.)?)((?:\d{1,3}\.){3}\d{1,3})$')
 MAC_RE = re.compile(r'\b(?:[0-9A-Fa-f]{1,2}:){5}[0-9A-Fa-f]{1,2}\b')
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
 # A value that is a hostname or FQDN: the PDU's own name shows up in sysName.0,
@@ -59,9 +62,17 @@ def map_host(m):
 out = []
 for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
     line = line.rstrip('\n')
-    # Split the OID column from the value so dotted OIDs are never rewritten.
+    # Split the OID column from the value so dotted OIDs are never rewritten --
+    # with one exception. The IP-MIB address, route and ARP tables index their
+    # rows BY ADDRESS, so a real address sits in the OID suffix itself
+    # (.1.3.6.1.2.1.4.22.1.2.<ifIndex>.10.0.0.1). Those rows get the same
+    # mapping as the value column, so a row's key and any value naming the
+    # same address still agree after scrubbing.
     if ' = ' in line:
         oid, _, value = line.partition(' = ')
+        m = IPMIB_ROW_RE.match(oid)
+        if m:
+            oid = m.group(1) + map_ip(re.match(r'(?:\d{1,3}\.){3}\d{1,3}', m.group(2)))
         value = SERIAL_RE.sub('SSJ00000000', value)
         value = MAC_RE.sub(map_mac, value)
         # An OID-valued line carries a MIB path, never a site identifier, and a

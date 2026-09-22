@@ -114,5 +114,6 @@ var (
 	_ devicemodel.Driver           = Driver{}
 	_ devicemodel.Device           = (*Collector)(nil)
 	_ devicemodel.OutletController = (*Collector)(nil)
+	_ devicemodel.OutletCycler     = (*Collector)(nil)
 	_ devicemodel.Capable          = (*Collector)(nil)
 )

@@ -86,6 +86,13 @@ type PortCycler interface {
 	CyclePort(ctx context.Context, idx int) error
 }
 
+// OutletCycler power-cycles one outlet on a power device: the controller's
+// "relayctl" command, which the UI's per-outlet Power Cycle sends. Optional,
+// discovered with a type assertion like PortCycler.
+type OutletCycler interface {
+	CycleOutlet(ctx context.Context, idx int) error
+}
+
 // Rebooter really restarts the switch: the controller's "reboot" command
 // when the operator has opted in (-control-reboot).
 type Rebooter interface {

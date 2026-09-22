@@ -348,9 +348,14 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
 			m["service_mac"] = mac
 		}
-		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
-			m["lldp_table"] = lt
+		// lldp_table is always sent, empty when there is no neighbour: that
+		// is what real devices do (a USP-PDU-Pro on 10.6.106 sends []), and
+		// an absent key reads as a device that does not speak LLDP at all.
+		lt := lldpTable(s.desc, s.snap)
+		if lt == nil {
+			lt = []map[string]any{}
 		}
+		m["lldp_table"] = lt
 		for k, v := range deviceTables(s.desc, s.snap) {
 			m[k] = v
 		}
@@ -382,6 +387,14 @@ type informResponse struct {
 	Cfgversion string `json:"cfgversion"`
 	Version    string `json:"version"`
 	PortIdx    int    `json:"port_idx"`
+	// OutletTable is relayctl's selection list: the controller names the
+	// outlets to act on, carrying only their index. Captured from Network
+	// 10.6.106 on 2026-09-21: {"cmd":"relayctl","outlet_table":[{"index":13}]}.
+	// One variant of the command carries no list at all, so an absent
+	// selection is valid rather than malformed.
+	OutletTable []struct {
+		Index int `json:"index"`
+	} `json:"outlet_table"`
 }
 
 // Our own Effect kinds, outside unifi-emu's range.
@@ -394,6 +407,9 @@ const (
 	EffectLocate
 	// EffectPortCycle: bounce a port (Interval unused; Text = port_idx).
 	EffectPortCycle
+	// EffectOutletCycle: power-cycle outlets on a power device (Text =
+	// comma-separated outlet indexes in the controller's numbering).
+	EffectOutletCycle
 )
 
 // Apply advances the session by one controller reply and returns what
@@ -479,6 +495,16 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		// and the device-side name has not been captured; "power-cycle" is the
 		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
+	case "relayctl":
+		// The UI's per-outlet Power Cycle. The controller picks the outlets and
+		// sends them as a selection list; the device is expected to open and
+		// close each relay itself. Switching an outlet on or off is NOT this
+		// command -- that arrives as system_cfg outlet.<n>.relay_state lines.
+		idx := make([]string, 0, len(r.OutletTable))
+		for _, o := range r.OutletTable {
+			idx = append(idx, strconv.Itoa(o.Index))
+		}
+		return []inform.Effect{{Kind: EffectOutletCycle, Text: strings.Join(idx, ",")}}
 	case "upgrade", "upgrade2":
 		if r.Version != "" {
 			s.desc.Version = r.Version
