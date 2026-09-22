@@ -4,7 +4,7 @@
 // The state machine is forked from github.com/jamesbraid/unifi-emu/inform
 // (session.go, tables.go; MIT, Copyright (c) James Braid) and differs in
 // three ways: adoption state persists to disk so a restart does not lose the
-// controller's key; the switch tables come from a live switchmodel.Snapshot
+// controller's key; the switch tables come from a live devicemodel.Snapshot
 // instead of constants; and controller-pushed port config is merged over the
 // live table rather than replacing it. The wire format and crypto are used
 // unchanged from unifi-emu's inform package.
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -32,13 +32,13 @@ type Session struct {
 	macHeader [6]byte
 	st        State
 	store     *Store // nil = no persistence
-	snap      *switchmodel.Snapshot
+	snap      *devicemodel.Snapshot
 	bootTime  time.Time // fallback uptime clock when no snapshot
 	locating  bool
 
 	versionPinned bool                // the operator named a version: never follow the switch's
 	prevHistory   map[int]portHistory // per port, at the last inform (anomaly deltas)
-	caps          switchmodel.Capabilities
+	caps          devicemodel.Capabilities
 	gatewayIP     string // reported as gateway_ip; "" = omit
 }
 
@@ -57,7 +57,7 @@ func (s *Session) SetUplinkPort(idx int) {
 }
 
 // SetCapabilities replaces the capability claims (default: DefaultCapabilities).
-func (s *Session) SetCapabilities(c switchmodel.Capabilities) {
+func (s *Session) SetCapabilities(c devicemodel.Capabilities) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.caps = c
@@ -155,14 +155,14 @@ func (s *Session) MarkApplied(cfgversion string) error {
 }
 
 // Snapshot returns the current switch snapshot (nil before the first poll).
-func (s *Session) Snapshot() *switchmodel.Snapshot {
+func (s *Session) Snapshot() *devicemodel.Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snap
 }
 
 // SetSnapshot replaces the switch state the next payload reports.
-func (s *Session) SetSnapshot(snap *switchmodel.Snapshot) {
+func (s *Session) SetSnapshot(snap *devicemodel.Snapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snap = snap
@@ -194,8 +194,8 @@ func (s *Session) PinVersion() {
 	s.versionPinned = true
 }
 
-// switchVersion is the switch's own version at the last collect.
-func (s *Session) switchVersion() string {
+// deviceVersion is the switch's own version at the last collect.
+func (s *Session) deviceVersion() string {
 	if s.snap == nil {
 		return ""
 	}
@@ -351,7 +351,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if lt := lldpTable(s.desc, s.snap); len(lt) > 0 {
 			m["lldp_table"] = lt
 		}
-		for k, v := range switchTables(s.desc, s.snap) {
+		for k, v := range deviceTables(s.desc, s.snap) {
 			m[k] = v
 		}
 	}
@@ -425,7 +425,7 @@ func (s *Session) Apply(now time.Time, body []byte) []inform.Effect {
 		// offering the upgrade. Persisted via State.Firmware.
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.deviceVersion()
 		}
 		s.bootTime = now
 		effects = []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
@@ -482,7 +482,7 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 	case "upgrade", "upgrade2":
 		if r.Version != "" {
 			s.desc.Version = r.Version
-			s.st.Firmware, s.st.FirmwareBase = r.Version, s.switchVersion()
+			s.st.Firmware, s.st.FirmwareBase = r.Version, s.deviceVersion()
 		}
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}

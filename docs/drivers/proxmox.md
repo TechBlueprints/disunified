@@ -50,7 +50,7 @@ never runs spanning tree across the two links for it.
 | LACP (802.3ad) or balance-* bond | one port per member (`bond0-1`, `bond0-2`), every member in the same LAG (UniFi's aggregate), each with its own counters, optic and LLDP; the first member carries the MAC table; lldpd announces on every member with its own port number; a UniFi aggregate/de-aggregate converts the bond (§3b) | **modelled, not verified live** — no host here has one (the two NICs go to different switches). Unit-tested against the captured bonding text with the mode line changed. If you run LACP, check the first run: two aggregated ports at 54 and 53, each with its upstream neighbour |
 | several NICs in the bridge, no bond | one port each | modelled |
 | a VLAN device on the uplink (`bond0.10` as the bridge port) | the device underneath, looked through | **modelled, not verified live** |
-| several bridges (`vmbr1`…) | one `switches:` entry per bridge (`options.bridge`) | verified for `vmbr0` |
+| several bridges (`vmbr1`…) | one `devices:` entry per bridge (`options.bridge`) | verified for `vmbr0` |
 | Open vSwitch bridges | not supported (no `bridge`/`ip` view of the ports) | — |
 
 **The node is the switch.** The device identifies itself with the bridge's
@@ -314,10 +314,10 @@ Per node, once:
    a plain bridge too but tags then mean per-VLAN bridges, which it does not
    model. `ethtool` and `chrony` are there by default.
 
-Then one `switches:` entry per node:
+Then one `devices:` entry per node:
 
 ```yaml
-switches:
+devices:
   - name: proxmox-2
     driver: proxmox
     ssh: root@192.0.2.102        # key auth; the node's in-band address

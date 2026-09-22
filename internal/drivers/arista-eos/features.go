@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Shapes and translations for the feature keys the controller sends once
@@ -60,8 +60,8 @@ var (
 	mirrorDstRe = regexp.MustCompile(`^monitor session (\d+) destination (Ethernet[\d/]+)`)
 )
 
-func applyRunningConfig(ports []switchmodel.Port, sys *switchmodel.System, rc showRunningConfig) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc showRunningConfig) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -93,11 +93,11 @@ func applyRunningConfig(ports []switchmodel.Port, sys *switchmodel.System, rc sh
 				case line == "spanning-tree bpduguard enable":
 					p.BPDUGuard = true
 				case line == "error-correction encoding reed-solomon":
-					p.FECConfig = switchmodel.FECRS
+					p.FECConfig = devicemodel.FECRS
 				case line == "error-correction encoding fire-code":
-					p.FECConfig = switchmodel.FECFC
+					p.FECConfig = devicemodel.FECFC
 				case line == "no error-correction encoding":
-					p.FECConfig = switchmodel.FECDisabled
+					p.FECConfig = devicemodel.FECDisabled
 				}
 			}
 			p.STPEdge = portfast && bpdufilter
@@ -140,8 +140,8 @@ func applyRunningConfig(ports []switchmodel.Port, sys *switchmodel.System, rc sh
 	}
 }
 
-func applyStormControl(ports []switchmodel.Port, sc showStormControl) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyStormControl(ports []devicemodel.Port, sc showStormControl) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -154,7 +154,7 @@ func applyStormControl(ports []switchmodel.Port, sc showStormControl) {
 		if p == nil || len(e.TrafficTypes) == 0 {
 			continue
 		}
-		spec := &switchmodel.StormControlSpec{}
+		spec := &devicemodel.StormControlSpec{}
 		for typ, t := range e.TrafficTypes {
 			if t.ThresholdType != "percentage" {
 				continue
@@ -185,16 +185,16 @@ func igmpSnooping(v showIGMPSnooping) map[int]bool {
 
 // ---- apply side ----
 
-func fecCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func fecCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	if d.FEC == nil || *d.FEC == p.FECConfig {
 		return nil
 	}
 	switch *d.FEC {
-	case switchmodel.FECRS:
+	case devicemodel.FECRS:
 		return []string{"error-correction encoding reed-solomon"}
-	case switchmodel.FECFC:
+	case devicemodel.FECFC:
 		return []string{"error-correction encoding fire-code"}
-	case switchmodel.FECDisabled:
+	case devicemodel.FECDisabled:
 		if p.FECConfig == "" {
 			return nil // EOS default (auto-negotiated), nothing configured to remove
 		}
@@ -210,13 +210,13 @@ func pctEqual(a, b *float64) bool {
 	return *a == *b
 }
 
-func stormCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func stormCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	have, want := p.StormCtrl, d.StormCtrl
 	if have == nil {
-		have = &switchmodel.StormControlSpec{}
+		have = &devicemodel.StormControlSpec{}
 	}
 	if want == nil {
-		want = &switchmodel.StormControlSpec{}
+		want = &devicemodel.StormControlSpec{}
 	}
 	var cmds []string
 	for _, t := range []struct {
@@ -243,7 +243,7 @@ func stormCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
 // stpEdgeCommands maps UniFi's per-port "STP disabled" onto an edge port
 // that neither sends nor honours BPDUs: `spanning-tree portfast` +
 // `spanning-tree bpdufilter enable` (verified on 4.26).
-func stpEdgeCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func stpEdgeCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	switch {
 	case d.STPEdge && !p.STPEdge:
 		return []string{"spanning-tree portfast", "spanning-tree bpdufilter enable"}
@@ -253,7 +253,7 @@ func stpEdgeCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
 	return nil
 }
 
-func bpduGuardCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func bpduGuardCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	switch {
 	case d.BPDUGuard && !p.BPDUGuard:
 		return []string{"spanning-tree bpduguard enable"}
@@ -263,9 +263,9 @@ func bpduGuardCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
 	return nil
 }
 
-// ApplySwitch implements switchmodel.SwitchController: STP mode/priority and
+// ApplyDevice implements devicemodel.DeviceController: STP mode/priority and
 // per-VLAN IGMP snooping, diffed against the last snapshot.
-func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired) (int, error) {
+func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
@@ -424,7 +424,7 @@ func listDiff(prefix string, have, want []string) []string {
 	return cmds
 }
 
-// CyclePort implements switchmodel.PortCycler: shutdown every lane, wait,
+// CyclePort implements devicemodel.PortCycler: shutdown every lane, wait,
 // no shutdown. The controller's "port-cycle" command.
 func (c *Collector) CyclePort(ctx context.Context, idx int) error {
 	c.mu.Lock()
@@ -465,17 +465,17 @@ func (c *Collector) CyclePort(ctx context.Context, idx int) error {
 	return nil
 }
 
-// Reboot implements switchmodel.Rebooter: save and reload. EOS asks for
+// Reboot implements devicemodel.Rebooter: save and reload. EOS asks for
 // confirmation on `reload`; `reload now` skips it.
 func (c *Collector) Reboot(ctx context.Context) error {
 	return c.t.Configure(ctx, []string{"enable", "write memory", "reload now"})
 }
 
-// InstallSSHKeys implements switchmodel.SSHKeyInstaller for the bridge's own
+// InstallSSHKeys implements devicemodel.SSHKeyInstaller for the bridge's own
 // user (the one the transport authenticates as, or SSHKeyUser when set): EOS
 // keeps one primary and one secondary key per user, so the first two
 // enabled controller keys are installed and the rest reported as skipped.
-func (c *Collector) InstallSSHKeys(ctx context.Context, keys []switchmodel.SSHKey) (int, error) {
+func (c *Collector) InstallSSHKeys(ctx context.Context, keys []devicemodel.SSHKey) (int, error) {
 	user := c.sshKeyUser
 	if user == "" {
 		return 0, fmt.Errorf("eos ssh keys: no target user configured")
@@ -580,8 +580,8 @@ type showErrdisabled struct {
 	} `json:"interfaceStatuses"`
 }
 
-func applyErrdisabled(ports []switchmodel.Port, ed showErrdisabled) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyErrdisabled(ports []devicemodel.Port, ed showErrdisabled) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -610,7 +610,7 @@ func applyErrdisabled(ports []switchmodel.Port, ed showErrdisabled) {
 // lagCommands: join or leave a channel group. Every lane of a cage joins
 // the same group (LACP active). The Port-Channel interface gets the VLAN
 // config in vlanTarget.
-func lagCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func lagCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	switch {
 	case d.LAG > 0 && p.LAGID != d.LAG:
 		return []string{"channel-group " + strconv.Itoa(d.LAG) + " mode active"}
@@ -621,8 +621,8 @@ func lagCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
 }
 
 // mirrorCommands are switch-level: session number = destination port index.
-func mirrorCommands(ports []switchmodel.Port, desired []switchmodel.PortDesired) []string {
-	byIndex := map[int]switchmodel.Port{}
+func mirrorCommands(ports []devicemodel.Port, desired []devicemodel.PortDesired) []string {
+	byIndex := map[int]devicemodel.Port{}
 	for _, p := range ports {
 		byIndex[p.Index] = p
 	}
@@ -653,7 +653,7 @@ func mirrorCommands(ports []switchmodel.Port, desired []switchmodel.PortDesired)
 	return cmds
 }
 
-func laneNames(p switchmodel.Port) []string {
+func laneNames(p devicemodel.Port) []string {
 	if len(p.Interfaces) > 0 {
 		return p.Interfaces
 	}

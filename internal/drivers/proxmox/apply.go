@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// ApplyPorts implements switchmodel.Controller for guest ports. The only
+// ApplyPorts implements devicemodel.Controller for guest ports. The only
 // per-port settings a bridge port has are the guest NIC's `link_down`,
 // `tag` and `trunks` options, written with `qm set` / `pct set` so Proxmox
 // persists them and hot-applies them to a running guest (network hotplug
@@ -22,7 +22,7 @@ import (
 //
 // Writes are diffs against the config as last read: a converged node costs
 // no command, and the loop's reconcile after every inform is free.
-func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDesired) (int, error) {
+func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
 	c.mu.Lock()
 	nics, node, keyOf := c.nics, c.node, c.keyOf
 	c.mu.Unlock()
@@ -96,7 +96,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 // planPort is the diff for one port: the guest NIC on this node the port
 // maps to and what it should become; ok is false when nothing changes (or
 // the port has no guest here).
-func (c *Collector) planPort(d switchmodel.PortDesired) (n, want guestNIC, ok bool) {
+func (c *Collector) planPort(d devicemodel.PortDesired) (n, want guestNIC, ok bool) {
 	c.mu.Lock()
 	node, nics, keyOf := c.node, c.nics, c.keyOf
 	c.mu.Unlock()
@@ -119,8 +119,8 @@ func (c *Collector) planPort(d switchmodel.PortDesired) (n, want guestNIC, ok bo
 	return n, want, true
 }
 
-// PlanPorts implements switchmodel.Planner: the ports ApplyPorts would write.
-func (c *Collector) PlanPorts(desired []switchmodel.PortDesired) []int {
+// PlanPorts implements devicemodel.Planner: the ports ApplyPorts would write.
+func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 	var out []int
 	for _, d := range desired {
 		if _, _, ok := c.planPort(d); ok {
@@ -136,7 +136,7 @@ func (c *Collector) PlanPorts(desired []switchmodel.PortDesired) []int {
 //	native N, no tagged    -> tag=N (access port; tag=1 for native 1)
 //	native N, tagged list  -> tag=N (absent for 1), trunks=list
 //	native N, all tagged   -> tag=N, trunks=2-4094 (every VLAN, N untagged)
-func vlanToConfig(d switchmodel.PortDesired) (tag int, trunks []int) {
+func vlanToConfig(d devicemodel.PortDesired) (tag int, trunks []int) {
 	native := d.NativeVLAN
 	if native <= 0 {
 		native = 1
@@ -234,12 +234,12 @@ func (c *Collector) CyclePort(ctx context.Context, idx int) error {
 	return c.setNIC(ctx, n, renderNICOptions(n.Raw, n))
 }
 
-// ApplySwitch honours IGMP snooping (bridge-wide: on when any managed VLAN
+// ApplyDevice honours IGMP snooping (bridge-wide: on when any managed VLAN
 // wants it) and, when the operator lets UniFi own NTP, chrony's server
 // list. STP and syslog requests are logged once and left alone: a Proxmox
 // bridge runs with bridge-stp off by design, and journald has no remote
 // target to set.
-func (c *Collector) ApplySwitch(ctx context.Context, d switchmodel.SwitchDesired) (int, error) {
+func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
 	c.mu.Lock()
 	snoop, ntpManaged := c.snooping, c.ntpManaged
 	stpManaged, stpVersion := c.stpManaged, c.stpVersion

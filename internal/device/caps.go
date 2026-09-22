@@ -1,6 +1,6 @@
 package device
 
-import "github.com/TechBlueprints/disunified/internal/switchmodel"
+import "github.com/TechBlueprints/disunified/internal/devicemodel"
 
 // Capability bitmaps the controller gates UI features on. Values from
 // unifi-emu's capability_bits.json. The rule:
@@ -71,6 +71,38 @@ const (
 	sysErrPSUIssue    = 8
 )
 
+// hw_caps says what hardware the device physically has. The controller
+// believes it over anything else the payload claims: a device that reports an
+// outlet table without declaring the outlet bit has that table discarded
+// without a word in the log, so it adopts, reports its outlets on every
+// inform, and shows none (unifi-emu, 2026-09-21).
+//
+// Only the outlet bit is claimed here. The three PoE bits in this field are a
+// three-value enum matched by exact equality, not independent flags, and
+// setting more than one provisions the device into a low-performance path.
+const (
+	hwCapScreen = 1
+	hwCapLEDBar = 2
+	hwCapLCM    = 8
+	hwCapRPS    = 16
+	hwCapOutlet = 128
+)
+
+// outlet_table[].outlet_caps bits, and the outlet_type a rack PDU sends
+// alongside them. A value at or above the AC class bit (65536) would select
+// the newer encoding; this bridge sends the rack-PDU form, so the values stay
+// small and outlet_type is what the controller reads to classify the outlet.
+const (
+	outletCapHasRelay   = 1
+	outletCapPowerMeter = 2
+
+	outletTypeAC  = 0
+	outletTypeUSB = 1
+)
+
+// HWCapsOutlet is the hw_caps value a power device reports.
+const HWCapsOutlet = hwCapOutlet
+
 // SysErrorCaps is the sys_error_caps claim.
 const SysErrorCaps = sysErrOverheating | sysErrFanIssue | sysErrPSUIssue
 
@@ -82,11 +114,11 @@ const FWCaps = fwCapSSH | fwCapSTAT | fwCapLAG | fwCapSNMP | fwCapSNMPv3 | fwCap
 // DefaultCapabilities is what a driver that declares no Capabilities
 // claims: nothing. The UI then offers only what every switch has (port
 // state, names, VLANs, speed from the port table). Each driver states
-// what its switch honours (switchmodel.Capable); claims must be true.
-var DefaultCapabilities = switchmodel.Capabilities{}
+// what its switch honours (devicemodel.Capable); claims must be true.
+var DefaultCapabilities = devicemodel.Capabilities{}
 
 // switchCaps renders switch_caps from a driver's capabilities.
-func switchCaps(c switchmodel.Capabilities) map[string]any {
+func switchCaps(c devicemodel.Capabilities) map[string]any {
 	feat := 0
 	set := func(on bool, bit int) {
 		if on {
@@ -126,7 +158,7 @@ func switchCaps(c switchmodel.Capabilities) map[string]any {
 
 // FWCapsFor renders fw_caps for a driver's capabilities: the base bits
 // (SSH, STA_STAT, LLDP) plus LAG and SNMP when honoured.
-func FWCapsFor(c switchmodel.Capabilities) int {
+func FWCapsFor(c devicemodel.Capabilities) int {
 	bits := fwCapSSH | fwCapSTAT | fwCapLLDP
 	if c.LACP {
 		bits |= fwCapLAG
@@ -138,7 +170,7 @@ func FWCapsFor(c switchmodel.Capabilities) int {
 }
 
 // speedCaps renders a port's speed_caps bitmap from its capabilities.
-func speedCaps(p switchmodel.Port) int {
+func speedCaps(p devicemodel.Port) int {
 	bits := 0
 	for _, mbps := range p.SpeedCaps {
 		switch mbps {

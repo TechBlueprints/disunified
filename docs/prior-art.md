@@ -46,7 +46,7 @@ foundation:
 switch's `port_table` and the `v<numeric>` firmware-string quirk. Both were
 superseded by real captures: the wire contract tests now compare our
 payload with real switches' informs from a UniFi OS support bundle
-([`adding-a-switch.md`](adding-a-switch.md)).
+([`adding-a-device.md`](adding-a-device.md)).
 
 **amd989/unifi-gateway** gave two operational habits: a pluggable
 collector per platform (our drivers) and logging every reply the

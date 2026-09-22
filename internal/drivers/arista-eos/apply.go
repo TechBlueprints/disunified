@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// ApplyPorts implements switchmodel.Controller: it compares each desired
+// ApplyPorts implements devicemodel.Controller: it compares each desired
 // port with the last collected snapshot and writes only the differences,
 // as one eAPI/SSH batch:
 //
@@ -19,14 +19,14 @@ import (
 // eAPI sessions start at privilege 1 whatever the user's level, so `enable`
 // leads. A breakout slot writes to every lane. `write memory` persists the
 // running config so a switch reboot keeps the controller's intent.
-func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDesired) (int, error) {
+func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
 	if snap == nil {
 		return 0, fmt.Errorf("eos apply: no snapshot yet")
 	}
-	live := map[int]switchmodel.Port{}
+	live := map[int]devicemodel.Port{}
 	for _, p := range snap.Ports {
 		live[p.Index] = p
 	}
@@ -38,7 +38,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 		cmds = append(cmds, mirror...)
 		changed++
 	}
-	lagVLAN := map[int]switchmodel.PortDesired{} // LAG id -> the VLAN intent its Port-Channel carries
+	lagVLAN := map[int]devicemodel.PortDesired{} // LAG id -> the VLAN intent its Port-Channel carries
 	for _, d := range desired {
 		p, ok := live[d.Index]
 		if !ok {
@@ -103,7 +103,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 		}
 	}
 	for lag, d := range lagVLAN {
-		pc := switchmodel.Port{IfName: "Port-Channel" + strconv.Itoa(lag)}
+		pc := devicemodel.Port{IfName: "Port-Channel" + strconv.Itoa(lag)}
 		if pv, ok := c.portChannelVLAN(snap, lag); ok {
 			pc.VLAN = pv
 		}
@@ -129,7 +129,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 	c.mu.Lock()
 	if c.last == snap {
 		updated := *snap
-		updated.Ports = append([]switchmodel.Port(nil), snap.Ports...)
+		updated.Ports = append([]devicemodel.Port(nil), snap.Ports...)
 		for i := range updated.Ports {
 			for _, d := range desired {
 				if updated.Ports[i].Index == d.Index {
@@ -169,7 +169,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []switchmodel.PortDe
 // (Ethernet49/1 is `speed forced 100gfull` by hand) and a blanket `speed
 // auto` would drop the 100G links. An optical port reverts to auto only via
 // the switch CLI.
-func speedCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func speedCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	switch {
 	case d.SpeedMbps > 0:
 		if p.AdminSpeed == d.SpeedMbps && !p.LanesDiverge {
@@ -187,11 +187,11 @@ func speedCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
 }
 
 // desiredVLAN is the switch-side state d asks for.
-func desiredVLAN(d switchmodel.PortDesired) switchmodel.PortVLAN {
+func desiredVLAN(d devicemodel.PortDesired) devicemodel.PortVLAN {
 	if !d.TaggedAll && len(d.TaggedVLANs) == 0 {
-		return switchmodel.PortVLAN{Mode: "access", NativeVLAN: d.NativeVLAN}
+		return devicemodel.PortVLAN{Mode: "access", NativeVLAN: d.NativeVLAN}
 	}
-	v := switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: d.NativeVLAN, AllowAll: d.TaggedAll}
+	v := devicemodel.PortVLAN{Mode: "trunk", NativeVLAN: d.NativeVLAN, AllowAll: d.TaggedAll}
 	if !d.TaggedAll {
 		v.Allowed = append([]int(nil), d.TaggedVLANs...)
 		if d.NativeVLAN > 0 {
@@ -206,7 +206,7 @@ func desiredVLAN(d switchmodel.PortDesired) switchmodel.PortVLAN {
 // is an EOS trunk with every VLAN allowed; a custom tagged set is a trunk
 // with an explicit allowed list (native included); "Block All" (native
 // only) is an access port.
-func vlanCommands(p switchmodel.Port, d switchmodel.PortDesired) []string {
+func vlanCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 	if !d.VLANSet || d.NativeVLAN == 0 {
 		return nil
 	}
@@ -303,7 +303,7 @@ func sanitizeDescription(s string) string {
 
 // portChannelVLAN reads a Port-Channel's 802.1Q state from the snapshot's
 // switchport table (kept per collector for the diff).
-func (c *Collector) portChannelVLAN(snap *switchmodel.Snapshot, lag int) (switchmodel.PortVLAN, bool) {
+func (c *Collector) portChannelVLAN(snap *devicemodel.Snapshot, lag int) (devicemodel.PortVLAN, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.portChannels["Port-Channel"+strconv.Itoa(lag)]

@@ -13,7 +13,7 @@ keywords (`show interface …` fails with "Incomplete token").
 
 Two channels exist:
 
-- **Device → controller**: the inform payload (`port_table`, switch-level fields). What the
+- **Device → controller**: the inform payload (`port_table`, device-level fields). What the
   UI *shows*.
 - **Controller → device**: `setparam.system_cfg` (the UniFi device config file, observed) and
   `setstate` (`port_overrides`/`port_table`, per prior art, **not yet observed** on 10.6.106),
@@ -36,7 +36,7 @@ STP on Proxmox is claimed and honoured only on a node whose bridge runs
 under mstpd ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b). Both verified live on Network
 10.6.106, 2026-09-19/20.
 
-## 1. Device → controller: switch-level fields
+## 1. Device → controller: device-level fields
 
 | Field | Meaning | Arista source (EOS 4.26.14M) | Arista | Proxmox |
 |---|---|---|---|---|

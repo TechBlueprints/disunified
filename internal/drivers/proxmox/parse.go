@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // sections splits the collector script's output ("@@@ name" lines) into
@@ -643,7 +643,7 @@ func parseLoadAvg(body string) []float64 {
 }
 
 // parseEthtoolFEC reads `ethtool --show-fec`: the active encoding.
-func parseEthtoolFEC(body string) switchmodel.FEC {
+func parseEthtoolFEC(body string) devicemodel.FEC {
 	for _, line := range strings.Split(body, "\n") {
 		k, v, ok := strings.Cut(line, ":")
 		if !ok || strings.TrimSpace(k) != "Active FEC encoding" {
@@ -651,14 +651,14 @@ func parseEthtoolFEC(body string) switchmodel.FEC {
 		}
 		switch strings.ToUpper(strings.TrimSpace(v)) {
 		case "RS":
-			return switchmodel.FECRS
+			return devicemodel.FECRS
 		case "BASER":
-			return switchmodel.FECFC
+			return devicemodel.FECFC
 		case "OFF", "NONE":
-			return switchmodel.FECDisabled
+			return devicemodel.FECDisabled
 		}
 	}
-	return switchmodel.FECUnknown
+	return devicemodel.FECUnknown
 }
 
 // --- mstpctl -f json showbridge / showportdetail (mstpd 0.2.0) ---

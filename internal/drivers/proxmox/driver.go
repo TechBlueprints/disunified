@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Driver is the Proxmox VE driver.
@@ -40,7 +40,7 @@ import (
 //	              /etc/lldpd.d/disunified.conf current, docs/drivers/proxmox.md §4)
 type Driver struct{}
 
-func init() { switchmodel.RegisterDriver(Driver{}) }
+func init() { devicemodel.RegisterDriver(Driver{}) }
 
 func (Driver) Name() string { return "proxmox" }
 
@@ -50,7 +50,7 @@ func (Driver) Describe() string {
 
 // Open builds the SSH runner and the collector; Start then runs the
 // collector script once so a missing tool or bad key fails here.
-func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmodel.Switch, error) {
+func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemodel.Device, error) {
 	if cfg.SSH == "" {
 		return nil, errors.New("proxmox: set ssh: user@node (key auth)")
 	}
@@ -88,12 +88,12 @@ func (Driver) Open(ctx context.Context, cfg switchmodel.DriverConfig) (switchmod
 
 // Compile-time checks.
 var (
-	_ switchmodel.Switch           = (*Collector)(nil)
-	_ switchmodel.Controller       = (*Collector)(nil)
-	_ switchmodel.Planner          = (*Collector)(nil)
-	_ switchmodel.SwitchController = (*Collector)(nil)
-	_ switchmodel.VLANController   = (*Collector)(nil)
-	_ switchmodel.PortCycler       = (*Collector)(nil)
-	_ switchmodel.Capable          = (*Collector)(nil)
-	_ switchmodel.Namer            = (*Collector)(nil)
+	_ devicemodel.Device           = (*Collector)(nil)
+	_ devicemodel.Controller       = (*Collector)(nil)
+	_ devicemodel.Planner          = (*Collector)(nil)
+	_ devicemodel.DeviceController = (*Collector)(nil)
+	_ devicemodel.VLANController   = (*Collector)(nil)
+	_ devicemodel.PortCycler       = (*Collector)(nil)
+	_ devicemodel.Capable          = (*Collector)(nil)
+	_ devicemodel.Namer            = (*Collector)(nil)
 )

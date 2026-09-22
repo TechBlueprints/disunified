@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 //go:embed collect.sh
 var collectScript string
 
-// Collector turns one node's bridge into a switchmodel.Snapshot.
+// Collector turns one node's bridge into a devicemodel.Snapshot.
 type Collector struct {
 	r   Runner
 	Log *log.Logger
@@ -40,7 +40,7 @@ type Collector struct {
 	mu          sync.Mutex
 	pendingTags []retag // guests on this node whose tags the last build asked to rewrite
 	node        string  // this node's hostname
-	last        *switchmodel.Snapshot
+	last        *devicemodel.Snapshot
 	prevCPU     cpuTimes
 	nics        map[string]guestNIC // key -> guest NIC, cluster-wide, at the last collect
 	keyOf       map[int]string      // port index -> guest key
@@ -70,7 +70,7 @@ func NewCollector(r Runner) *Collector {
 
 // Start runs the collector once so a missing tool, a bad key or a bridge
 // that does not exist fails here.
-func (c *Collector) Start(ctx context.Context) (*switchmodel.Snapshot, error) {
+func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	snap, err := c.Collect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("proxmox startup: %w", err)
@@ -86,12 +86,12 @@ func (c *Collector) Close() error { return c.r.Close() }
 // claimed only when the bridge runs under mstpd; a bridge with the kernel's
 // STP off claims nothing, so the controller's STP settings are never pushed
 // at it. No LAG/mirror/storm/FEC control.
-func (c *Collector) Capabilities() switchmodel.Capabilities {
+func (c *Collector) Capabilities() devicemodel.Capabilities {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// LACP: an aggregate on the node's physical ports converts their bond
 	// to 802.3ad through the Proxmox API (docs/drivers/proxmox.md §3b, untested live).
-	caps := switchmodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
+	caps := devicemodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
 	if c.stpManaged {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
 	}
@@ -99,7 +99,7 @@ func (c *Collector) Capabilities() switchmodel.Capabilities {
 }
 
 // Collect runs the script and assembles the snapshot.
-func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) {
+func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
 	out, err := c.r.Run(ctx, "bash -s -- "+shellQuote(c.Bridge), collectScript)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 }
 
 // build is Collect without the transport (tests feed it fixture output).
-func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, error) {
+func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
 	if _, ok := sec["end"]; !ok {
 		return nil, fmt.Errorf("proxmox: collector script did not run to completion (%d bytes)", len(out))
@@ -249,8 +249,8 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	c.pendingTags = retags
 	c.mu.Unlock()
 
-	ports := make([]switchmodel.Port, 0, c.Ports)
-	var macs []switchmodel.MACEntry
+	ports := make([]devicemodel.Port, 0, c.Ports)
+	var macs []devicemodel.MACEntry
 	vlanSet := map[int]bool{1: true}
 	for idx := 1; idx <= vmSlots; idx++ {
 		key, ok := keyOf[idx]
@@ -316,7 +316,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	uplinkHint := 0
 	hostMAC := strings.ToLower(bridge["address"])
 	slotFor := func(i int) int { return c.Ports - i } // uplink i -> port index, from the last port down
-	nicPorts := map[int]switchmodel.Port{}
+	nicPorts := map[int]devicemodel.Port{}
 	uplinkBy := map[int]uplink{}
 	for i, u := range phys {
 		uplinkBy[slotFor(i)] = u
@@ -367,7 +367,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	}
 
 	// --- system ---
-	sys := switchmodel.System{
+	sys := devicemodel.System{
 		Vendor:   "Proxmox",
 		Version:  pveVersion(sec["pveversion"]),
 		Hostname: hostname,
@@ -428,7 +428,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	for _, a := range addrs {
 		for _, ai := range a.AddrInfo {
 			if ai.Family == "inet" && ai.Scope == "global" {
-				sys.Addresses = append(sys.Addresses, switchmodel.IfAddress{Iface: a.Ifname, IP: ai.Local, PrefixLen: ai.PrefixLen})
+				sys.Addresses = append(sys.Addresses, devicemodel.IfAddress{Iface: a.Ifname, IP: ai.Local, PrefixLen: ai.PrefixLen})
 			}
 		}
 	}
@@ -471,7 +471,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 	if stpManaged {
 		c.enforceSTP(hostname, ports, stpPortBy, sys.STPPriority)
 	}
-	snap := &switchmodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, VLANs: vlanIDs, UplinkHint: uplinkHint}
+	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, VLANs: vlanIDs, UplinkHint: uplinkHint}
 	c.mu.Lock()
 	c.node = hostname
 	c.last = snap
@@ -496,7 +496,7 @@ func (c *Collector) build(out string, now time.Time) (*switchmodel.Snapshot, err
 }
 
 // applyMSTPPort fills a port's STP fields from mstpd's view of its member.
-func applyMSTPPort(p *switchmodel.Port, sp mstpPort) {
+func applyMSTPPort(p *devicemodel.Port, sp mstpPort) {
 	switch strings.ToLower(sp.State) {
 	case "forwarding", "learning", "listening", "discarding", "disabled":
 		p.STPState = strings.ToLower(sp.State)
@@ -529,7 +529,7 @@ func applyMSTPPort(p *switchmodel.Port, sp mstpPort) {
 // forward delay. Proxmox creates taps without either.
 const nodeSTPPriority = 61440
 
-func (c *Collector) enforceSTP(hostname string, ports []switchmodel.Port, stpPorts map[string]mstpPort, priority int) {
+func (c *Collector) enforceSTP(hostname string, ports []devicemodel.Port, stpPorts map[string]mstpPort, priority int) {
 	var cmds []string
 	if priority != nodeSTPPriority {
 		cmds = append(cmds, fmt.Sprintf("settreeprio %s 0 %d", c.Bridge, mstpPriority(nodeSTPPriority)))
@@ -555,7 +555,7 @@ func (c *Collector) enforceSTP(hostname string, ports []switchmodel.Port, stpPor
 
 // guestMembers is the bridge member behind a guest port: the fwpr side
 // when the guest has the firewall, else its tap/veth.
-func guestMembers(p switchmodel.Port) []string {
+func guestMembers(p devicemodel.Port) []string {
 	var out []string
 	for _, iface := range p.Interfaces {
 		if strings.HasPrefix(iface, "tap") || strings.HasPrefix(iface, "veth") {
@@ -594,9 +594,9 @@ func (c *Collector) warnOnce(key, format string, args ...any) {
 // disabled — nothing can be cabled into it; a guest or a NIC takes it
 // through Proxmox, and then the port is seeded from its own state (Clint,
 // 2026-09-20: "when there's no VM attached shouldn't they be disabled?").
-func emptyPort(idx int) switchmodel.Port {
-	return switchmodel.Port{Index: idx, Media: switchmodel.MediaQSFP28, Lanes: 1, Enabled: false, AutoNeg: true,
-		VLAN: switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}}
+func emptyPort(idx int) devicemodel.Port {
+	return devicemodel.Port{Index: idx, Media: devicemodel.MediaQSFP28, Lanes: 1, Enabled: false, AutoNeg: true,
+		VLAN: devicemodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}}
 }
 
 // guestPort is the static part of a guest NIC's port: what is known from
@@ -605,7 +605,7 @@ func emptyPort(idx int) switchmodel.Port {
 // kernel prints for a tap: virtio (and vmxnet3) are memory-bound, so they
 // are shown as 100G ports on a 100G switch; emulated NICs get their
 // nominal speed.
-func guestPort(idx int, n guestNIC, multi bool) switchmodel.Port {
+func guestPort(idx int, n guestNIC, multi bool) devicemodel.Port {
 	speed := 100000
 	switch n.Model {
 	case "e1000", "e1000e":
@@ -617,9 +617,9 @@ func guestPort(idx int, n guestNIC, multi bool) switchmodel.Port {
 	if n.Kind == "lxc" {
 		ifname = fmt.Sprintf("ct%d-net%d", n.VMID, n.Index)
 	}
-	p := switchmodel.Port{
+	p := devicemodel.Port{
 		Index: idx, IfName: ifname, Description: guestLabel(n, multi), Name: guestLabel(n, multi),
-		Media: switchmodel.MediaQSFP28, Lanes: 1, Present: true, Enabled: !n.LinkDown,
+		Media: devicemodel.MediaQSFP28, Lanes: 1, Present: true, Enabled: !n.LinkDown,
 		SpeedMbps: speed, FullDuplex: true, AutoNeg: true, SpeedCaps: []int{speed},
 		STPState: "disabled", MTU: n.MTU,
 		VLAN: vlanFromConfig(n),
@@ -633,8 +633,8 @@ func guestPort(idx int, n guestNIC, multi bool) switchmodel.Port {
 // vlanFromConfig is the 802.1Q state a NIC's tag/trunks options mean on a
 // VLAN-aware bridge: no tag and no trunks = every VLAN tagged with 1
 // untagged; tag=X alone = access on X; trunks = those VLANs tagged.
-func vlanFromConfig(n guestNIC) switchmodel.PortVLAN {
-	v := switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1}
+func vlanFromConfig(n guestNIC) devicemodel.PortVLAN {
+	v := devicemodel.PortVLAN{Mode: "trunk", NativeVLAN: 1}
 	if n.Tag > 0 {
 		v.NativeVLAN = n.Tag
 	}
@@ -650,8 +650,8 @@ func vlanFromConfig(n guestNIC) switchmodel.PortVLAN {
 }
 
 // portVLANOf reads the live `bridge vlan` state of a bridge member.
-func portVLANOf(v brVLANs) switchmodel.PortVLAN {
-	out := switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1}
+func portVLANOf(v brVLANs) devicemodel.PortVLAN {
+	out := devicemodel.PortVLAN{Mode: "trunk", NativeVLAN: 1}
 	var allowed []int
 	count := 0
 	for _, e := range v.VLANs {
@@ -686,8 +686,8 @@ func portVLANOf(v brVLANs) switchmodel.PortVLAN {
 	return out
 }
 
-func countersOf(l ipLink) switchmodel.Counters {
-	return switchmodel.Counters{
+func countersOf(l ipLink) devicemodel.Counters {
+	return devicemodel.Counters{
 		RxBytes: l.Stats64.Rx.Bytes, TxBytes: l.Stats64.Tx.Bytes,
 		RxPackets: l.Stats64.Rx.Packets, TxPackets: l.Stats64.Tx.Packets,
 		RxErrors: l.Stats64.Rx.Errors, TxErrors: l.Stats64.Tx.Errors,
@@ -701,8 +701,8 @@ func carrierChanges(carrier map[string]string, name string) uint64 {
 	return n
 }
 
-func macEntry(e fdbEntry, idx int, now time.Time) switchmodel.MACEntry {
-	return switchmodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
+func macEntry(e fdbEntry, idx int, now time.Time) devicemodel.MACEntry {
+	return devicemodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
 }
 
 // uplink is one physical port of the node, at the top of the port range:
@@ -833,12 +833,12 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 
 // physicalPort renders one uplink: link state and counters from the bridge
 // member (the bond, or the NIC), speed/optic/capabilities from the active NIC.
-func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) switchmodel.Port {
+func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) devicemodel.Port {
 	stats := member
 	if len(u.Ifaces) == 1 && u.Ifaces[0] != u.Member {
 		stats = active // a bond slave reports its own link and counters
 	}
-	p := switchmodel.Port{
+	p := devicemodel.Port{
 		Index: idx, IfName: u.Name, Interfaces: u.Ifaces, Name: u.Name, Lanes: 1,
 		Enabled: stats.hasFlag("UP"), Up: stats.hasFlag("LOWER_UP") && active.hasFlag("LOWER_UP"), MTU: member.MTU,
 		Counters: countersOf(stats), AutoNeg: et.Autoneg, SpeedCaps: et.Speeds, FECCapable: et.FEC,
@@ -847,7 +847,7 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 	}
 	p.Media, p.Present = mediaOf(et, mod)
 	if mod.Present {
-		p.Optic = &switchmodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
+		p.Optic = &devicemodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
 			TempC: mod.TempC, VoltageV: mod.VoltageV, HasDOM: mod.HasDOM}
 	}
 	if u.LAG != "" {
@@ -869,7 +869,7 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 	if v, ok := vlanBy[u.Member]; ok {
 		p.VLAN = portVLANOf(v)
 	} else {
-		p.VLAN = switchmodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}
+		p.VLAN = devicemodel.PortVLAN{Mode: "trunk", NativeVLAN: 1, AllowAll: true}
 	}
 	if !p.Up {
 		p.SpeedMbps = 0
@@ -879,7 +879,7 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 
 // mediaOf classifies a NIC: the transceiver's own identifier when a module
 // answers, else the port type and the fastest supported mode.
-func mediaOf(et ethtoolInfo, mod ethtoolModule) (switchmodel.Media, bool) {
+func mediaOf(et ethtoolInfo, mod ethtoolModule) (devicemodel.Media, bool) {
 	top := 0
 	if len(et.Speeds) > 0 {
 		top = et.Speeds[len(et.Speeds)-1]
@@ -887,48 +887,48 @@ func mediaOf(et ethtoolInfo, mod ethtoolModule) (switchmodel.Media, bool) {
 	if mod.Present {
 		switch {
 		case strings.HasPrefix(mod.Identifier, "QSFP28"), strings.HasPrefix(mod.Identifier, "QSFP-DD"):
-			return switchmodel.MediaQSFP28, true
+			return devicemodel.MediaQSFP28, true
 		case strings.HasPrefix(mod.Identifier, "QSFP"):
-			return switchmodel.MediaQSFPPlus, true
+			return devicemodel.MediaQSFPPlus, true
 		case top >= 25000:
-			return switchmodel.MediaSFP28, true
+			return devicemodel.MediaSFP28, true
 		case top >= 10000:
-			return switchmodel.MediaSFPPlus, true
+			return devicemodel.MediaSFPPlus, true
 		default:
-			return switchmodel.MediaSFP, true
+			return devicemodel.MediaSFP, true
 		}
 	}
 	if strings.Contains(et.Port, "Twisted Pair") || strings.Contains(et.Port, "TP") {
 		switch {
 		case top >= 10000:
-			return switchmodel.MediaCopper10G, true
+			return devicemodel.MediaCopper10G, true
 		case top >= 2500:
-			return switchmodel.MediaCopper2G5, true
+			return devicemodel.MediaCopper2G5, true
 		default:
-			return switchmodel.MediaCopper1G, true
+			return devicemodel.MediaCopper1G, true
 		}
 	}
 	switch {
 	case top >= 100000:
-		return switchmodel.MediaQSFP28, false
+		return devicemodel.MediaQSFP28, false
 	case top >= 40000:
-		return switchmodel.MediaQSFPPlus, false
+		return devicemodel.MediaQSFPPlus, false
 	case top >= 25000:
-		return switchmodel.MediaSFP28, false
+		return devicemodel.MediaSFP28, false
 	case top >= 10000:
-		return switchmodel.MediaSFPPlus, false
+		return devicemodel.MediaSFPPlus, false
 	case top > 0:
-		return switchmodel.MediaSFP, false
+		return devicemodel.MediaSFP, false
 	}
-	return switchmodel.MediaUnknown, false
+	return devicemodel.MediaUnknown, false
 }
 
 // neighborsByInterface flattens lldpd's json0 output.
-func neighborsByInterface(l lldpJSON0) map[string]switchmodel.Neighbor {
-	out := map[string]switchmodel.Neighbor{}
+func neighborsByInterface(l lldpJSON0) map[string]devicemodel.Neighbor {
+	out := map[string]devicemodel.Neighbor{}
 	for _, top := range l.LLDP {
 		for _, iface := range top.Interface {
-			var n switchmodel.Neighbor
+			var n devicemodel.Neighbor
 			for _, ch := range iface.Chassis {
 				for _, id := range ch.ID {
 					n.ChassisID = id.Value
@@ -972,7 +972,7 @@ func neighborsByInterface(l lldpJSON0) map[string]switchmodel.Neighbor {
 // applyHwmon fills temperature and fans: the CPU package sensor (coretemp /
 // k10temp) is the switch temperature; a chip with fanN_input rows (Dell's
 // dell_smm, most board sensors) gives the fans, as percent of fanN_max.
-func applyHwmon(sys *switchmodel.System, chips []hwmonChip) {
+func applyHwmon(sys *devicemodel.System, chips []hwmonChip) {
 	for _, ch := range chips {
 		switch ch.Name {
 		case "coretemp", "k10temp", "zenpower", "cpu_thermal":
@@ -1003,7 +1003,7 @@ func applyHwmon(sys *switchmodel.System, chips []hwmonChip) {
 			if !ok {
 				continue
 			}
-			f := switchmodel.Fan{Label: fmt.Sprintf("Fan %d", i), OK: rpm > 0}
+			f := devicemodel.Fan{Label: fmt.Sprintf("Fan %d", i), OK: rpm > 0}
 			if l := ch.Values[fmt.Sprintf("fan%d_label", i)]; l != "" {
 				f.Label = l
 			}

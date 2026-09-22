@@ -6,24 +6,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // The aggregate the controller would push for the node's two physical
 // ports (bond0-1 at 54, bond0-2 at 53), as the loop translates it.
-func lagDesired(lag int) []switchmodel.PortDesired {
-	return []switchmodel.PortDesired{
+func lagDesired(lag int) []devicemodel.PortDesired {
+	return []devicemodel.PortDesired{
 		{Index: 54, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, LAG: lag},
 		{Index: 53, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, LAG: lag},
 	}
 }
 
-// sameSwitchFixture rewrites the capture so both NICs see the same LLDP
+// sameDeviceFixture rewrites the capture so both NICs see the same LLDP
 // chassis (the only topology a LAG is valid on). In the capture only the
 // active NIC has a neighbour (lldpd announces on it alone; the standby's
 // link goes to another switch), so the active NIC's neighbour entry is
 // copied onto the standby.
-func sameSwitchFixture(t *testing.T, fixture string) string {
+func sameDeviceFixture(t *testing.T, fixture string) string {
 	t.Helper()
 	sec := sections(fixture)
 	var l lldpJSON0
@@ -61,7 +61,7 @@ func TestLAGRefusedAcrossSwitches(t *testing.T) {
 }
 
 func TestLAGConvertsTheBondToLACP(t *testing.T) {
-	r := &FixtureRunner{Fixture: sameSwitchFixture(t, loadFixture(t, "collect-node2.txt"))}
+	r := &FixtureRunner{Fixture: sameDeviceFixture(t, loadFixture(t, "collect-node2.txt"))}
 	c := NewCollector(r)
 	c.ManageLLDP = false
 	if _, err := c.Start(context.Background()); err != nil {
@@ -90,7 +90,7 @@ func TestLAGConvertsTheBondToLACP(t *testing.T) {
 }
 
 func TestLAGOnLACPBondIsAlreadyDone(t *testing.T) {
-	fixture := strings.Replace(sameSwitchFixture(t, loadFixture(t, "collect-node2.txt")), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
+	fixture := strings.Replace(sameDeviceFixture(t, loadFixture(t, "collect-node2.txt")), "Bonding Mode: fault-tolerance (active-backup)", "Bonding Mode: IEEE 802.3ad Dynamic link aggregation", 1)
 	r := &FixtureRunner{Fixture: fixture}
 	c := NewCollector(r)
 	c.ManageLLDP = false
@@ -108,7 +108,7 @@ func TestLAGOnLACPBondIsAlreadyDone(t *testing.T) {
 }
 
 func TestLAGGuardsGuestAndPartial(t *testing.T) {
-	r := &FixtureRunner{Fixture: sameSwitchFixture(t, loadFixture(t, "collect-node2.txt"))}
+	r := &FixtureRunner{Fixture: sameDeviceFixture(t, loadFixture(t, "collect-node2.txt"))}
 	c := NewCollector(r)
 	c.ManageLLDP = false
 	var buf strings.Builder
@@ -117,7 +117,7 @@ func TestLAGGuardsGuestAndPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A guest port in the aggregate.
-	d := append(lagDesired(1), switchmodel.PortDesired{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, LAG: 1})
+	d := append(lagDesired(1), devicemodel.PortDesired{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, LAG: 1})
 	if n, _ := c.ApplyPorts(context.Background(), d); n != 0 || len(r.Commands) != 0 || !strings.Contains(buf.String(), "guest port cannot be aggregated") {
 		t.Errorf("guest in LAG: n=%d cmds=%v log=%q", n, r.Commands, buf.String())
 	}

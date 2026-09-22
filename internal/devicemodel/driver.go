@@ -1,4 +1,4 @@
-package switchmodel
+package devicemodel
 
 import (
 	"context"
@@ -8,23 +8,25 @@ import (
 )
 
 // Driver is one vendor/OS implementation, registered by name. A driver
-// knows how to reach a switch and turn it into a Switch; everything the
+// knows how to reach a device and turn it into a Device; everything the
 // UniFi side needs is expressed through the neutral types in this package.
+// Every shipped driver presents a switch today, but nothing here assumes
+// one.
 //
-// Adding a switch means adding a driver: see docs/adding-a-switch.md and
+// Adding a device means adding a driver: see docs/adding-a-device.md and
 // internal/drivers/CLAUDE.md. The Arista EOS driver is the reference.
 type Driver interface {
 	// Name is the registry key and the -driver flag value, e.g. "arista-eos".
 	Name() string
 	// Describe is a one-line summary for -list-drivers.
 	Describe() string
-	// Open connects to the switch. It must validate the target (OS version,
+	// Open connects to the device. It must validate the target (OS version,
 	// command availability, credentials) and fail loudly rather than return
-	// a Switch that would report an empty port table.
-	Open(ctx context.Context, cfg DriverConfig) (Switch, error)
+	// a Device that would report an empty port table.
+	Open(ctx context.Context, cfg DriverConfig) (Device, error)
 }
 
-// DriverConfig is how the operator points a driver at a switch. Drivers
+// DriverConfig is how the operator points a driver at a device. Drivers
 // pick the fields they understand and document them.
 type DriverConfig struct {
 	URL      string // API endpoint, e.g. https://192.0.2.3/command-api
@@ -34,11 +36,11 @@ type DriverConfig struct {
 	Options  map[string]string // driver-specific knobs (documented per driver)
 }
 
-// Switch is an open connection to one switch. Collect is mandatory; the
-// write-side interfaces (Controller, SwitchController, VLANController) are
+// Device is an open connection to one device. Collect is mandatory; the
+// write-side interfaces (Controller, DeviceController, VLANController) are
 // optional and discovered with type assertions, so a read-only driver is
 // a valid first step.
-type Switch interface {
+type Device interface {
 	Collector
 	// Start runs every command the driver will ever use once, so a missing
 	// command or bad credential fails here, and returns the first snapshot.
@@ -56,7 +58,7 @@ func RegisterDriver(d Driver) {
 	driversMu.Lock()
 	defer driversMu.Unlock()
 	if _, dup := drivers[d.Name()]; dup {
-		panic("switchmodel: duplicate driver " + d.Name())
+		panic("devicemodel: duplicate driver " + d.Name())
 	}
 	drivers[d.Name()] = d
 }

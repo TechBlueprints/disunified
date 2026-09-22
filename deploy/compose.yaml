@@ -28,6 +28,6 @@ services:
       - ./config.yaml:/etc/disunified/config.yaml:ro
       - state:/var/lib/disunified
     # The bridge only makes outbound connections (to the controller's inform
-    # port 8080 and the switch's API); no ports need publishing.
+    # port 8080 and the device's API); no ports need publishing.
 volumes:
   state:

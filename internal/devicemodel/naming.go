@@ -1,11 +1,11 @@
-package switchmodel
+package devicemodel
 
 import (
 	"fmt"
 	"strings"
 )
 
-// Namer decides what a switch and its ports are called in the controller
+// Namer decides what a device and its ports are called in the controller
 // when nobody has named them. The bridge provisions these names through the
 // controller API on first adoption and again whenever the port layout
 // changes (a cage splits or joins), but only over names it recognises as
@@ -59,9 +59,9 @@ func (DefaultNamer) DefaultPortNames(p Port) []string {
 	return out
 }
 
-// NamerFor returns the driver's Namer when the open Switch implements one,
+// NamerFor returns the driver's Namer when the open Device implements one,
 // else DefaultNamer.
-func NamerFor(sw Switch) Namer {
+func NamerFor(sw Device) Namer {
 	if n, ok := sw.(Namer); ok {
 		return n
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 func TestSecondWaveData(t *testing.T) {
@@ -33,7 +33,7 @@ func TestSecondWaveData(t *testing.T) {
 		t.Errorf("mac table has %d entries", len(snap.MACTable))
 	}
 	p49 := portByIndex(t, snap, 49)
-	if p49.FEC != switchmodel.FECRS {
+	if p49.FEC != devicemodel.FECRS {
 		t.Errorf("port 49 fec = %q, want rs-fec", p49.FEC)
 	}
 	if p49.Optic == nil || !p49.Optic.HasDOM || p49.Optic.MediaType != "100GBASE-CWDM4" || p49.Optic.Part == "" {
@@ -52,14 +52,14 @@ func TestSecondWaveData(t *testing.T) {
 		t.Errorf("port 49 mcast/bcast = %d/%d", p49.Counters.RxMulticast, p49.Counters.RxBroadcast)
 	}
 	p50 := portByIndex(t, snap, 50)
-	if p50.FEC != switchmodel.FECFC {
+	if p50.FEC != devicemodel.FECFC {
 		t.Errorf("port 50 (breakout lanes) fec = %q, want fc-fec", p50.FEC)
 	}
 	p53 := portByIndex(t, snap, 53)
 	if len(p53.MACs) != 1 {
 		t.Errorf("port 53 has %d MACs, want 1 (the NAS)", len(p53.MACs))
 	}
-	if p1 := portByIndex(t, snap, 1); p1.Optic != nil || p1.FEC != switchmodel.FECUnknown || !p1.AutoNeg {
+	if p1 := portByIndex(t, snap, 1); p1.Optic != nil || p1.FEC != devicemodel.FECUnknown || !p1.AutoNeg {
 		t.Errorf("copper port 1 = optic %v fec %q autoneg %v", p1.Optic, p1.FEC, p1.AutoNeg)
 	}
 	if p52 := portByIndex(t, snap, 52); p52.Optic != nil {

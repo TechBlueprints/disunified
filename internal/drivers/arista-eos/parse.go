@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // The structs below are the subset of each command's JSON that the collector
@@ -141,51 +141,51 @@ func parseEthName(name string) (int, int, bool) {
 // configured bandwidth onto the neutral Media vocabulary. When no optic is
 // present EOS says "Not Present" (or "N/A" for breakout lanes), so the cage
 // type is inferred from the configured speed instead.
-func mediaFor(interfaceType string, bandwidth int64) switchmodel.Media {
+func mediaFor(interfaceType string, bandwidth int64) devicemodel.Media {
 	t := strings.ToUpper(interfaceType)
 	switch {
 	case strings.HasSuffix(t, "BASE-T") || t == "10/100/1000" || strings.HasSuffix(t, "BASE-TX"):
 		switch {
 		case strings.HasPrefix(t, "10G"):
-			return switchmodel.MediaCopper10G
+			return devicemodel.MediaCopper10G
 		case strings.HasPrefix(t, "2.5G"):
-			return switchmodel.MediaCopper2G5
+			return devicemodel.MediaCopper2G5
 		default:
-			return switchmodel.MediaCopper1G
+			return devicemodel.MediaCopper1G
 		}
 	case strings.HasPrefix(t, "100GBASE"), strings.HasPrefix(t, "100G"):
-		return switchmodel.MediaQSFP28
+		return devicemodel.MediaQSFP28
 	case strings.HasPrefix(t, "40GBASE"), strings.HasPrefix(t, "40G"):
-		return switchmodel.MediaQSFPPlus
+		return devicemodel.MediaQSFPPlus
 	case strings.HasPrefix(t, "25GBASE"), strings.HasPrefix(t, "25G"):
-		return switchmodel.MediaSFP28
+		return devicemodel.MediaSFP28
 	case strings.HasPrefix(t, "10GBASE"), strings.HasPrefix(t, "10G"):
-		return switchmodel.MediaSFPPlus
+		return devicemodel.MediaSFPPlus
 	case strings.HasPrefix(t, "1000BASE"), strings.HasPrefix(t, "1G"):
-		return switchmodel.MediaSFP
+		return devicemodel.MediaSFP
 	}
 	// "Not Present", "N/A", "" — infer from configured speed.
 	switch {
 	case bandwidth >= 100_000_000_000:
-		return switchmodel.MediaQSFP28
+		return devicemodel.MediaQSFP28
 	case bandwidth >= 40_000_000_000:
-		return switchmodel.MediaQSFPPlus
+		return devicemodel.MediaQSFPPlus
 	case bandwidth >= 25_000_000_000:
-		return switchmodel.MediaSFP28
+		return devicemodel.MediaSFP28
 	case bandwidth >= 10_000_000_000:
-		return switchmodel.MediaSFPPlus
+		return devicemodel.MediaSFPPlus
 	case bandwidth > 0:
-		return switchmodel.MediaSFP
+		return devicemodel.MediaSFP
 	}
-	return switchmodel.MediaUnknown
+	return devicemodel.MediaUnknown
 }
 
 // portsFromInterfaces builds the front-panel port list from `show interfaces`,
 // folding breakout lanes (Ethernet50/1..4) into their slot. media is keyed by
 // EOS interface name (from `show interfaces status`, captured at startup).
-func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) ([]switchmodel.Port, error) {
+func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) ([]devicemodel.Port, error) {
 	type slotAcc struct {
-		port  switchmodel.Port
+		port  devicemodel.Port
 		lanes []string
 	}
 	slots := map[int]*slotAcc{}
@@ -195,7 +195,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 		if !ok {
 			continue // Management1, Port-ChannelN, VlanN, ...
 		}
-		lanePort := switchmodel.Port{
+		lanePort := devicemodel.Port{
 			Index:       slot,
 			IfName:      name,
 			Interfaces:  []string{name},
@@ -213,7 +213,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 		}
 		if c := ifc.Counters; c != nil {
 			lanePort.Health.LinkChanges = c.LinkStatusChanges
-			lanePort.Counters = switchmodel.Counters{
+			lanePort.Counters = devicemodel.Counters{
 				RxBytes:   c.InOctets,
 				TxBytes:   c.OutOctets,
 				RxPackets: c.InUcastPkts + c.InMulticastPkts + c.InBroadcastPkts,
@@ -249,7 +249,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 			p.Counters.Add(lanePort.Counters)
 			p.Health.LinkChanges += lanePort.Health.LinkChanges
 			p.Interfaces = append(p.Interfaces, name)
-			if p.Media == switchmodel.MediaUnknown {
+			if p.Media == devicemodel.MediaUnknown {
 				p.Media = lanePort.Media
 			}
 			if p.Description == "" {
@@ -260,7 +260,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 		_ = lane
 	}
 
-	ports := make([]switchmodel.Port, 0, len(slots))
+	ports := make([]devicemodel.Port, 0, len(slots))
 	for _, acc := range slots {
 		p := acc.port
 		sort.Strings(p.Interfaces)
@@ -272,9 +272,9 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 			// (bandwidth-based, e.g. "SFP28" for a 25G lane) is wrong for
 			// the cage as a whole.
 			switch p.Media {
-			case switchmodel.MediaQSFP28, switchmodel.MediaQSFPPlus:
+			case devicemodel.MediaQSFP28, devicemodel.MediaQSFPPlus:
 			default:
-				p.Media = switchmodel.MediaQSFP28
+				p.Media = devicemodel.MediaQSFP28
 			}
 		}
 		if p.Name = p.Description; p.Name == "" {
@@ -288,8 +288,8 @@ func portsFromInterfaces(si showInterfaces, media map[string]switchmodel.Media) 
 
 // applyLLDP attaches neighbours to ports. Lane names (Ethernet50/2) are
 // mapped onto their folded slot.
-func applyLLDP(ports []switchmodel.Port, ld showLLDPNeighborsDetail) {
-	byIndex := map[int]*switchmodel.Port{}
+func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail) {
+	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
@@ -303,7 +303,7 @@ func applyLLDP(ports []switchmodel.Port, ld showLLDPNeighborsDetail) {
 			continue
 		}
 		in := entry.Info[0]
-		n := &switchmodel.Neighbor{
+		n := &devicemodel.Neighbor{
 			SystemName:      in.SystemName,
 			SystemDesc:      in.SystemDescription,
 			ChassisID:       strings.Trim(in.ChassisID, `"`),
@@ -327,7 +327,7 @@ func applyLLDP(ports []switchmodel.Port, ld showLLDPNeighborsDetail) {
 
 // applySTP sets STPState from whichever instance lists the port; ports STP
 // does not mention are left "" (the presentation layer decides a default).
-func applySTPStates(ports []switchmodel.Port, st showSpanningTreeFull) {
+func applySTPStates(ports []devicemodel.Port, st showSpanningTreeFull) {
 	states := map[int]string{}
 	for _, inst := range st.Instances {
 		for ifname, e := range inst.Interfaces {
