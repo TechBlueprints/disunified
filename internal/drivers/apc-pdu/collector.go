@@ -38,6 +38,11 @@ const (
 	oidIdentSerial = "1.3.6.1.4.1.318.1.1.12.1.6.0"
 	oidIdentNumOut = "1.3.6.1.4.1.318.1.1.12.1.8.0"
 
+	oidLoad            = "1.3.6.1.4.1.318.1.1.12.2"      // the phase/load subtree
+	oidIdentRatingA    = "1.3.6.1.4.1.318.1.1.12.1.7.0"  // the PDU's rating in amps
+	oidIdentVoltage    = "1.3.6.1.4.1.318.1.1.12.1.15.0" // configured line-to-line volts
+	oidIdentPowerFactr = "1.3.6.1.4.1.318.1.1.12.1.17.0" // configured power factor x1000
+
 	oidLoadPhaseMax = "1.3.6.1.4.1.318.1.1.12.2.1.1.0"     // amps
 	oidLoadStatus   = "1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1" // tenths of an amp
 
@@ -104,7 +109,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 		return nil, err
 	}
 	rpdu := map[string]string{}
-	for _, root := range []string{oidIdent, oidOutletCtlName, oidOutletCtlCmd} {
+	for _, root := range []string{oidIdent, oidLoad, oidOutletCtlName, oidOutletCtlCmd} {
 		part, err := c.r.Walk(ctx, root)
 		if err != nil {
 			return nil, err
@@ -142,13 +147,23 @@ func (c *Collector) system(sys, ifs, rpdu map[string]string) devicemodel.System 
 		// sysUpTime is in hundredths of a second.
 		out.Uptime = time.Duration(t) * 10 * time.Millisecond
 	}
+	// A switched rack PDU meters the phase, not the outlet: there is one
+	// aggregate current reading for the whole device. Watts are not measured
+	// -- the card computes them from the current and the operator-configured
+	// line voltage and power factor (its PDU Configuration screen), so the
+	// same arithmetic is done here.
+	if amps, ok := tenths(rpdu[oidLoadStatus]); ok {
+		v := floatOr(rpdu[oidIdentVoltage], 0)
+		pf := floatOr(rpdu[oidIdentPowerFactr], 1000) / 1000
+		out.HasPowerDraw = true
+		out.PowerCurrentA = amps
+		out.PowerDrawW = amps * v * pf
+		if rating := floatOr(rpdu[oidIdentRatingA], 0); rating > 0 && v > 0 {
+			out.PowerBudgetW = rating * v
+		}
+	}
 	// The AP7931 has no fans, no redundant supplies and no temperature sensor,
 	// so those stay empty rather than being invented.
-	//
-	// Load is reported in tenths of an amp. This unit reads 0.0 A on a live
-	// rack and its own Load Management page agrees, so the reading is the
-	// card's truth and not an SNMP artefact -- it is carried through as-is
-	// rather than being dressed up as metering the device does not have.
 	return out
 }
 
@@ -259,4 +274,24 @@ func normaliseMAC(s string) string {
 		parts[i] = strings.ToLower(parts[i])
 	}
 	return strings.Join(parts, ":")
+}
+
+// tenths parses a value the card reports in tenths of a unit (its load
+// readings), returning whole units.
+func tenths(s string) (float64, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, false
+	}
+	return float64(n) / 10, true
+}
+
+// floatOr parses a numeric value, falling back to def when the card did not
+// report it.
+func floatOr(s string, def float64) float64 {
+	n, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return def
+	}
+	return n
 }

@@ -485,6 +485,16 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 		m["outlet_table"] = outletTable(desc, snap)
 		m["outlet_enabled"] = true
 		m["hw_caps"] = HWCapsOutlet
+		// What a real USP-PDU-Pro reports for the overview's Power Usage and
+		// "x W of y W": the device's whole measured draw and its capacity.
+		// Only sent when the device actually measures -- a fabricated 0 W
+		// reads as a real measurement of an idle rack.
+		if sys.HasPowerDraw {
+			m["outlet_ac_power_consumption"] = fmt.Sprintf("%.3f", sys.PowerDrawW)
+			if sys.PowerBudgetW > 0 {
+				m["outlet_ac_power_budget"] = fmt.Sprintf("%.3f", sys.PowerBudgetW)
+			}
+		}
 	}
 	return m
 }

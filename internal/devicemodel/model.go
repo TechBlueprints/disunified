@@ -218,6 +218,16 @@ type System struct {
 	Fans []Fan
 	PSUs []PSU
 
+	// Aggregate power for a device that measures its whole load rather than
+	// each outlet (a switched rack PDU meters the phase, not the outlet).
+	// HasPowerDraw distinguishes "measured zero" from "does not measure":
+	// a device with no sensor must not report 0 W, which reads as a real
+	// measurement of an idle rack.
+	PowerBudgetW  float64
+	PowerDrawW    float64
+	PowerCurrentA float64
+	HasPowerDraw  bool
+
 	STPMode     string // "rstp", "mstp", "stp", "none", ""
 	STPPriority int    // bridge priority, 0 if unknown
 	STPRoot     string // MAC of the root bridge (this switch's own when it is the root), "" if unknown

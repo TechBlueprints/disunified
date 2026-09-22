@@ -218,3 +218,46 @@ func TestApplyOutletsIgnoresAnOutletTheDeviceDoesNotHave(t *testing.T) {
 		t.Errorf("wrote to a nonexistent outlet: changed=%d sets=%v", changed, r.Sets)
 	}
 }
+
+// A switched rack PDU meters the phase, not the outlet. The card measures
+// current only; watts come from that current and the operator-configured line
+// voltage and power factor, which is the same arithmetic the card's own
+// display does.
+func TestAggregatePowerIsReadAndComputed(t *testing.T) {
+	c, _ := newTestCollector(t)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	sys := snap.System
+	if !sys.HasPowerDraw {
+		t.Fatal("no aggregate power read; the load subtree must be walked")
+	}
+	// The capture has the rack idle: 0 tenths of an amp, rated 12 A at 120 V.
+	if sys.PowerCurrentA != 0 {
+		t.Errorf("current = %v A, want 0 (the capture is idle)", sys.PowerCurrentA)
+	}
+	if sys.PowerDrawW != 0 {
+		t.Errorf("draw = %v W, want 0", sys.PowerDrawW)
+	}
+	if sys.PowerBudgetW != 12*120 {
+		t.Errorf("budget = %v W, want 1440 (12 A x 120 V)", sys.PowerBudgetW)
+	}
+}
+
+// A device that does not measure must not report 0 W, which would read as a
+// real measurement of an idle rack.
+func TestNoLoadReadingMeansNoPowerClaim(t *testing.T) {
+	r, err := NewFixtureRunner(fixtureDir)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	delete(r.Values, "1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1")
+	snap, err := NewCollector(r).Collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if snap.System.HasPowerDraw {
+		t.Error("claimed a power measurement with no load reading")
+	}
+}
