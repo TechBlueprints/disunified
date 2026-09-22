@@ -177,7 +177,16 @@ one-for-one with the AP7931's 16. `unifimodel.SuggestFor` picks it for any
 snapshot that has outlets, rather than ranking the card's single network port
 against every one-port switch in the catalogue.
 
-## 8. Verified live
+## 8. Where the UI keeps the outlet controls
+
+Clicking an outlet **row** in the device's Outlets tab expands an inline
+editor beneath it: Link Device, Name, **Power Cycle**, Active / Disabled,
+Power Cycle on Internet Loss, Apply Changes. Clicking the label or the icon
+alone does nothing; it is the row. Active/Disabled arrives as
+`outlet.<n>.relay_state` in a system_cfg push; Power Cycle arrives as the
+`relayctl` command with a selection list.
+
+## 9. Verified live
 
 Round trip on Network 10.6.106, 2026-09-21, against the real AP7931:
 
@@ -188,12 +197,23 @@ Round trip on Network 10.6.106, 2026-09-21, against the real AP7931:
 | Switch **off** from the controller | relay open **~25 s** later; `1 of 16 outlets changed` |
 | Switch **on** from the controller | relay closed ~60 s later; `1 of 16 outlets changed` |
 | Reconcile with no change | `0 of 16 outlets changed` — no SNMP write at all |
+| UI outlet editor: **Disabled** → Apply Changes | relay open ~20 s later; `1 of 16 outlets changed` |
+| UI outlet editor: **Active** → Apply Changes | relay closed; `1 of 16 outlets changed` |
+| UI **Power Cycle** button | `relayctl` → the card's immediate-reboot: relay open 4 s, then closed; the following reconcile writes nothing |
+| Overview | model, parent (`garage-switch Port 9`), IP, MAC, version, uptime; Power Usage / Current / `0W of 1440W` |
+| Reachability keys | `gateway_mac` (matches what the real PDUs report for the same gateway), `lldp_table: []`, `netmask` |
+
+Every UI screen for the device was walked: list entry, overview, Outlets
+(graphic and list, USB 1-4 grey/Disabled, the 16 real outlets green), the
+per-outlet editor, Settings, History, System Statistics. The one visible
+artefact of claiming the model is a **Touchscreen** section under Settings,
+which the APC does not have -- the same class as Etherlighting on a switch.
 
 The apply is a true diff: only the outlet whose intent changed was written,
 and a steady state writes nothing, which matters because the loop re-applies
 the same intent on every cycle and an outlet is real load.
 
-## 9. Things that will bite
+## 10. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the
   inform, stores no outlet table and logs nothing: the device adopts and shows
