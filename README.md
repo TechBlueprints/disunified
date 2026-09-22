@@ -2,9 +2,9 @@
 
 A bridge that makes a non-UniFi device appear as a real, adopted UniFi
 device inside the UniFi Network controller — ports, stats, topology, and
-control. Every device it supports today is a switch, and the UniFi model the
-bridge claims is always a switch profile; the inform, adoption and control
-machinery underneath carries no vendor or device assumptions.
+control. What it supports today is switches and a rack PDU; the inform,
+adoption and control machinery underneath carries no vendor or device-type
+assumptions.
 
 The controller only speaks its own device protocol. This bridge speaks the
 device side of it (the inform protocol, adoption, capabilities) on behalf of
@@ -14,19 +14,21 @@ place that device is managed from.
 ## Supported devices
 
 Everything below is verified live on UniFi Network 10.6 (a UniFi OS gateway),
-end to end from the UniFi UI — read (ports, stats, topology) and control (the
-controller's config applied back to the device).
+end to end from the UniFi UI — read (ports or outlets, stats, topology) and
+control (the controller's config applied back to the device).
 
 | Device | Driver | Presented to UniFi as | Verified on |
 |---|---|---|---|
 | Arista EOS switch | `arista-eos` | `UDC48X6` ("USW Leaf") | DCS-7160-48TC6-F, EOS 4.26.14M |
 | Proxmox VE node (`vmbr0`) | `proxmox` | `UDC48X6` ("USW Leaf"), or `USWF07D` ("ECS Core") | three-node PVE 9.1 cluster |
+| APC switched rack PDU | `apc-pdu` | `USPPDUP` ("Smart Power PDU Pro") | AP7931, NMC AOS 3.9.2 |
 
 `disunified -list-drivers` prints what a given build supports. Adding another
 device means adding a driver: the neutral model, the wire protocol, adoption
-and the inform loop carry no vendor assumptions, though the UniFi model a
-driver claims has to be a switch profile (`type: usw`) — those are what
-`-list-models` prints. See
+and the inform loop carry no vendor assumptions. The model a driver claims
+has to be one the bundled catalogue carries as `type: usw` — which is what
+`-list-models` prints, and which is how UniFi files its own power devices as
+well as its switches. See
 [**Working on this repo with an AI agent**](#working-on-this-repo-with-an-ai-agent)
 and [`docs/adding-a-device.md`](docs/adding-a-device.md).
 
@@ -49,6 +51,14 @@ What each driver does today:
   modelled-but-untested LACP conversion). Only cluster-wide numbering
   (`numbering: cluster`, the default) has been tested live
   ([`docs/drivers/proxmox.md`](docs/drivers/proxmox.md)).
+- **`apc-pdu`** — an APC switched rack PDU, whose outlets become outlets the
+  controller can see, name and switch. The card has no API, so the driver uses
+  two transports: SNMPv1 to read identity and outlet state and to switch an
+  outlet, and a partial `config.ini` uploaded over FTP to set an outlet's name
+  (the name objects are read-only over SNMP). Writes need an SNMP community of
+  access type `Write+`, and `control.outlets` — the power-device equivalent of
+  `control.ports` — is off by default, because an outlet carries real load
+  ([`docs/drivers/apc-pdu.md`](docs/drivers/apc-pdu.md)).
 
 ## Status: experimental, no warranty
 
@@ -65,7 +75,7 @@ running it against anything you care about.
   storm control, NTP and syslog, and reboots the device when the controller
   asks. A wrong click in the UniFi UI, a controller bug, or a bug here can
   cut off the device, the hosts behind it, or the bridge itself.
-- **Verified on very little hardware:** the two drivers above, against UniFi
+- **Verified on very little hardware:** the three drivers above, against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
   never verified live in [`docs/feature-map.md`](docs/feature-map.md).
@@ -75,24 +85,26 @@ running it against anything you care about.
   something it never pushed before.
 - **Start safe:** run `-collect-once` and then monitoring only; back up the
   device's running config; keep an out-of-band way into it; turn on `control`
-  for one unused port before `ports: all`; use it only on controllers and
-  devices you own or are authorized to administer.
+  for one unused port before `ports: all` (or one outlet before
+  `outlets: all`); use it only on controllers and devices you own or are
+  authorized to administer.
 
 ## How it works
 
 ```
-UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified  <── eAPI/SSH ──  the device
+UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified  <── eAPI/SSH/SNMP ──  the device
                   ── system_cfg pushes / adoption ──>                         ── config diffs ──>
 ```
 
 - [`internal/devicemodel`](internal/devicemodel) — the vendor-neutral model of a device and the
   driver contract.
-- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `apc-pdu`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - [`internal/device`](internal/device) — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - [`internal/unificfg`](internal/unificfg) — parses the controller's `system_cfg` pushes.
 - [`internal/informloop`](internal/informloop) — collect → inform → apply/reconcile, every cycle.
-- [`internal/unifimodel`](internal/unifimodel) — picks the UniFi model to claim from the port layout.
+- [`internal/unifimodel`](internal/unifimodel) — picks the UniFi model to claim from the port layout, or the
+  power-device model from the outlets.
 - [`internal/unifiapi`](internal/unifiapi) — controller REST API, used only to name the device and
   its ports after the device itself on first provision.
 

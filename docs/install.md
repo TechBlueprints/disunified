@@ -25,7 +25,11 @@ in the UniFi UI.
   lldpd` on each node (the driver configures it); [`docs/drivers/proxmox.md`](drivers/proxmox.md) §5.
   Spanning tree on a node is optional (`mstpd`, [`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b);
   without it the driver claims no STP and ignores the controller's STP
-  settings for that node.
+  settings for that node. For the APC PDU driver, an SNMPv1 read community,
+  and — to switch outlets — a write community whose access type is `Write+`
+  (plain `Write` makes the card answer every SET with silence); naming an
+  outlet additionally needs the card's admin login, because the driver writes
+  names as a `config.ini` upload over FTP ([`docs/drivers/apc-pdu.md`](drivers/apc-pdu.md) §2, §5).
 - Optional, for naming the device and ports after the device itself: a UniFi
   API key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 
