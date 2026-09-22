@@ -207,5 +207,15 @@ func TestOutletsTheDeviceDoesNotHaveAreReportedOffAndUnswitchable(t *testing.T) 
 		if r["outlet_type"] != outletTypeUSB {
 			t.Errorf("absent outlet %v type = %v, want USB", r["index"], r["outlet_type"])
 		}
+		// A real USP-PDU-Pro's USB rows carry relay_group = their own index.
+		if r["relay_group"] != i+1 {
+			t.Errorf("absent outlet %v relay_group = %v, want %d", r["index"], r["relay_group"], i+1)
+		}
+	}
+	// And no real outlet carries a relay group: each has its own relay.
+	for _, r := range rows[OutletIndexBase(pduDesc().Model)-1:] {
+		if _, has := r["relay_group"]; has {
+			t.Errorf("real outlet %v carries relay_group; only the USB outlets do", r["index"])
+		}
 	}
 }
