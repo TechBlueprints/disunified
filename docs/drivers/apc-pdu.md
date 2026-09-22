@@ -213,7 +213,26 @@ The apply is a true diff: only the outlet whose intent changed was written,
 and a steady state writes nothing, which matters because the loop re-applies
 the same intent on every cycle and an outlet is real load.
 
-## 10. Things that will bite
+## 10. Give the card a manual address before adopting it
+
+Adopting a device into UniFi **deletes its client record**, and with it any
+fixed-IP reservation the controller held for that MAC. This card had
+its address (say `192.0.2.20`) as a DHCP reservation; the morning after adoption its lease
+renewed as a pool address and the bridge lost it. The same thing removed the
+Proxmox nodes' DNS records. Set `BootMode=Manual` on the card itself, before
+adopting or straight after.
+
+Doing that through `config.ini` needs the section's `Override=<MAC>` line
+(`02 00 00 00 00 01`, spaces and capitals as the card writes it): APC applies
+uploaded TCP/IP settings only when that key matches the card's own MAC, so a
+file meant for one card cannot re-address another. Without it the section is
+silently ignored. The change applied live, about a minute after the upload,
+with no reboot.
+
+The bridge now retries a device that does not answer at startup (15 s
+doubling to a 5-minute cap) rather than dropping it until a restart.
+
+## 11. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the
   inform, stores no outlet table and logs nothing: the device adopts and shows
