@@ -559,8 +559,20 @@ func defaultPortNames(ports []inform.Port, snap *devicemodel.Snapshot, namer dev
 func hostOf(deviceURL, deviceSSH string) string {
 	host := ""
 	if deviceURL != "" {
-		if u, err := url.Parse(deviceURL); err == nil {
+		if u, err := url.Parse(deviceURL); err == nil && u.Hostname() != "" {
 			host = u.Hostname()
+		} else {
+			// A driver whose endpoint is a bare address rather than a URL (a
+			// PDU is reached at an address, not an API path) parses as a
+			// path with no host, so the address has to be read directly.
+			h := deviceURL
+			if i := strings.IndexAny(h, "/"); i >= 0 {
+				h = h[:i]
+			}
+			if hh, _, ok := strings.Cut(h, ":"); ok {
+				h = hh
+			}
+			host = h
 		}
 	} else if deviceSSH != "" {
 		_, h, _ := strings.Cut(deviceSSH, "@")
