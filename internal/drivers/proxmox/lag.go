@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Link aggregation on the node's physical ports, from the controller's
@@ -27,14 +27,14 @@ import (
 // members whose LLDP neighbours are different chassis (a LAG cannot span
 // switches, and applying it would take the node off the network); an
 // aggregate that includes a guest port.
-func (c *Collector) applyLAG(ctx context.Context, desired []switchmodel.PortDesired) (int, error) {
+func (c *Collector) applyLAG(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
 	c.mu.Lock()
 	node, uplinks, bondModes, snap := c.node, c.uplinks, c.bondModes, c.last
 	c.mu.Unlock()
 	if len(uplinks) == 0 || snap == nil {
 		return 0, nil
 	}
-	portBy := map[int]switchmodel.Port{}
+	portBy := map[int]devicemodel.Port{}
 	for _, p := range snap.Ports {
 		portBy[p.Index] = p
 	}
@@ -185,7 +185,7 @@ func countSlaves(uplinks map[int]uplink, bond string) int {
 
 // sameNeighbour reports whether every member has an LLDP neighbour and
 // they all name the same chassis.
-func sameNeighbour(members []int, portBy map[int]switchmodel.Port) bool {
+func sameNeighbour(members []int, portBy map[int]devicemodel.Port) bool {
 	chassis := ""
 	for _, idx := range members {
 		p := portBy[idx]

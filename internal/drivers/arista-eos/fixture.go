@@ -12,7 +12,7 @@ import (
 // FixtureTransport serves captured EOS output from a directory instead of a
 // switch: <cmd>.json for JSON commands and <cmd>.txt for text ones, where
 // the file name is the command with spaces -> "-" and "/" -> "_" (what the
-// capture procedure in docs/adding-a-switch.md produces). Config batches
+// capture procedure in docs/adding-a-device.md produces). Config batches
 // are recorded, not executed. It is exported so tests in other packages
 // (the wire-contract and replay tests) can drive the real driver against
 // real captures.

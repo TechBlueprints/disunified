@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // loadFixtureRaw is the capture as taken: only the test guest carries a
@@ -111,7 +111,7 @@ func vm100(t *testing.T, fixture string) (mac, name string) {
 	return "", ""
 }
 
-func portByIf(t *testing.T, snap *switchmodel.Snapshot, ifname string) switchmodel.Port {
+func portByIf(t *testing.T, snap *devicemodel.Snapshot, ifname string) devicemodel.Port {
 	t.Helper()
 	for _, p := range snap.Ports {
 		if p.IfName == ifname {
@@ -119,7 +119,7 @@ func portByIf(t *testing.T, snap *switchmodel.Snapshot, ifname string) switchmod
 		}
 	}
 	t.Fatalf("no port %s", ifname)
-	return switchmodel.Port{}
+	return devicemodel.Port{}
 }
 
 func TestCollectNode2(t *testing.T) {
@@ -154,7 +154,7 @@ func TestCollectNode2(t *testing.T) {
 
 	// Guest ports are numbered cluster-wide in (vmid, net) order.
 	p1 := snap.Ports[0]
-	if p1.IfName != "vm100-net0" || p1.Index != 1 || !p1.Up || p1.SpeedMbps != 100000 || p1.Media != switchmodel.MediaQSFP28 {
+	if p1.IfName != "vm100-net0" || p1.Index != 1 || !p1.Up || p1.SpeedMbps != 100000 || p1.Media != devicemodel.MediaQSFP28 {
 		t.Errorf("port 1 = %+v", p1)
 	}
 	if p1.Counters.RxBytes == 0 || len(p1.MACs) != 1 || p1.MACs[0].PortIndex != 1 {
@@ -206,7 +206,7 @@ func TestCollectNode2(t *testing.T) {
 	if u.IfName != "bond0-1" || u.Index != 54 || !u.Up || u.SpeedMbps != 100000 || u.LAG != "" || u.STPState != "forwarding" || u.Optic == nil || u.Optic.Part != "QSFP-100G-CU2M" || len(u.Interfaces) != 1 || u.Interfaces[0] != "ens1f0np0" {
 		t.Errorf("uplink = %+v", u)
 	}
-	if s := snap.Ports[52]; s.IfName != "bond0-2" || s.Index != 53 || !s.Up || s.SpeedMbps != 10000 || s.STPState != "blocking" || s.LAG != "" || len(s.MACs) != 0 || s.Media != switchmodel.MediaSFP28 {
+	if s := snap.Ports[52]; s.IfName != "bond0-2" || s.Index != 53 || !s.Up || s.SpeedMbps != 10000 || s.STPState != "blocking" || s.LAG != "" || len(s.MACs) != 0 || s.Media != devicemodel.MediaSFP28 {
 		t.Errorf("standby = %+v", s)
 	}
 	if len(u.SpeedCaps) == 0 || u.SpeedCaps[len(u.SpeedCaps)-1] != 100000 || !u.FECCapable || len(u.MACs) < 50 {
@@ -220,7 +220,7 @@ func TestCollectNode2(t *testing.T) {
 	}
 	// eno1 is on the box but under neither the bridge nor the bond: a port
 	// with no link, enabled, below the bond's slaves; never the uplink.
-	if e := snap.Ports[51]; e.IfName != "eno1" || !e.Enabled || e.Up || e.Index != 52 || len(e.Interfaces) != 1 || e.Media != switchmodel.MediaCopper1G {
+	if e := snap.Ports[51]; e.IfName != "eno1" || !e.Enabled || e.Up || e.Index != 52 || len(e.Interfaces) != 1 || e.Media != devicemodel.MediaCopper1G {
 		t.Errorf("unattached NIC = %+v", e)
 	}
 	if snap.UplinkHint == 52 {
@@ -424,11 +424,11 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := func(idx int) switchmodel.PortDesired {
-		return switchmodel.PortDesired{Index: idx, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true}
+	all := func(idx int) devicemodel.PortDesired {
+		return devicemodel.PortDesired{Index: idx, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true}
 	}
 	// Everything already matches: nothing written.
-	var desired []switchmodel.PortDesired
+	var desired []devicemodel.PortDesired
 	for _, p := range snap.Ports {
 		if p.IfName != "" && !strings.HasPrefix(p.IfName, "ens") && p.VLAN.AllowAll {
 			desired = append(desired, all(p.Index))
@@ -439,11 +439,11 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 		t.Fatalf("converged apply: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	// Disable port 1 (VM 100 on this node) and put it on native 10 + tagged 20,30.
-	d := switchmodel.PortDesired{Index: 1, Enabled: false, VLANSet: true, NativeVLAN: 10, TaggedVLANs: []int{20, 30, 10}}
+	d := devicemodel.PortDesired{Index: 1, Enabled: false, VLANSet: true, NativeVLAN: 10, TaggedVLANs: []int{20, 30, 10}}
 	if plan := c.PlanPorts(append(desired, d)); len(plan) != 1 || plan[0] != 1 || len(r.Commands) != 0 {
 		t.Errorf("plan = %v (commands %v)", plan, r.Commands)
 	}
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{d})
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{d})
 	if err != nil || n != 1 || len(r.Commands) != 1 {
 		t.Fatalf("apply: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
@@ -453,18 +453,18 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 		t.Errorf("cmd = %q\nwant %q", r.Commands[0], want)
 	}
 	// Idempotent: the same intent again writes nothing.
-	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{d})
+	n, _ = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{d})
 	if n != 0 || len(r.Commands) != 1 {
 		t.Errorf("second apply wrote %v", r.Commands[1:])
 	}
 	// A guest on another node is never written from here.
 	p := portByIf(t, snap, "vm119-net0")
-	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{all(p.Index)})
+	n, _ = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{all(p.Index)})
 	if n != 0 || len(r.Commands) != 1 {
 		t.Errorf("wrote a foreign guest: %v", r.Commands)
 	}
 	// Back to default: options removed.
-	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{all(1)})
+	n, _ = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{all(1)})
 	if n != 1 || r.Commands[len(r.Commands)-1] != "qm set 100 --net0 'virtio="+mac+",bridge=vmbr0'" {
 		t.Errorf("restore = %v", r.Commands)
 	}
@@ -479,16 +479,16 @@ func TestApplyPortsWritesOnlyDiffs(t *testing.T) {
 
 func TestVLANToConfig(t *testing.T) {
 	cases := []struct {
-		d      switchmodel.PortDesired
+		d      devicemodel.PortDesired
 		tag    int
 		trunks string
 	}{
-		{switchmodel.PortDesired{NativeVLAN: 1, TaggedAll: true}, 0, ""},
-		{switchmodel.PortDesired{NativeVLAN: 8}, 8, ""},
-		{switchmodel.PortDesired{NativeVLAN: 8, TaggedVLANs: []int{9, 10, 11, 20}}, 8, "9-11;20"},
-		{switchmodel.PortDesired{NativeVLAN: 1, TaggedVLANs: []int{2, 10}}, 0, "2;10"},
-		{switchmodel.PortDesired{NativeVLAN: 5, TaggedAll: true}, 5, "2-4094"},
-		{switchmodel.PortDesired{NativeVLAN: 1}, 1, ""},
+		{devicemodel.PortDesired{NativeVLAN: 1, TaggedAll: true}, 0, ""},
+		{devicemodel.PortDesired{NativeVLAN: 8}, 8, ""},
+		{devicemodel.PortDesired{NativeVLAN: 8, TaggedVLANs: []int{9, 10, 11, 20}}, 8, "9-11;20"},
+		{devicemodel.PortDesired{NativeVLAN: 1, TaggedVLANs: []int{2, 10}}, 0, "2;10"},
+		{devicemodel.PortDesired{NativeVLAN: 5, TaggedAll: true}, 5, "2-4094"},
+		{devicemodel.PortDesired{NativeVLAN: 1}, 1, ""},
 	}
 	for _, tc := range cases {
 		tag, trunks := vlanToConfig(tc.d)
@@ -512,25 +512,25 @@ func TestApplySwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Snooping is on; UniFi wants it off on VLAN 1.
-	n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{IGMPSnooping: map[int]bool{1: false, 10: true}})
+	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IGMPSnooping: map[int]bool{1: false, 10: true}})
 	if err != nil || n != 1 || r.Commands[0] != "echo 0 > /sys/class/net/vmbr0/bridge/multicast_snooping" {
 		t.Fatalf("igmp: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
-	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{IGMPSnooping: map[int]bool{1: false}})
+	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IGMPSnooping: map[int]bool{1: false}})
 	if n != 0 {
 		t.Errorf("igmp not idempotent")
 	}
 	// NTP under UniFi's control.
-	n, err = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
+	n, err = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
 	if err != nil || n != 1 || !strings.HasPrefix(r.Commands[len(r.Commands)-1], "install -m 644 /dev/stdin /etc/chrony/sources.d/") {
 		t.Fatalf("ntp: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
-	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
+	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
 	if n != 0 {
 		t.Errorf("ntp not idempotent")
 	}
 	// STP requests are logged, not applied.
-	n, _ = c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
+	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
 	if n != 0 {
 		t.Errorf("stp applied")
 	}
@@ -649,16 +649,16 @@ func TestSTPUnderMSTPD(t *testing.T) {
 		t.Errorf("a converged bridge was written to: %v", r.Commands)
 	}
 	// Version follows the controller; priority and STP-off requests do not.
-	n, err := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "stp", STPPriority: 32768})
+	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "stp", STPPriority: 32768})
 	if err != nil || n != 1 || r.Commands[len(r.Commands)-1] != "mstpctl setforcevers vmbr0 stp" {
 		t.Errorf("apply stp version: n=%d err=%v cmds=%v", n, err, r.Commands)
 	}
 	// BPDU guard on the guest port.
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
 	if err != nil || n != 1 || r.Commands[len(r.Commands)-1] != "mstpctl -s" || !strings.Contains(r.Stdins[len(r.Stdins)-1], "setportbpduguard vmbr0 tap100i0 yes") {
 		t.Errorf("bpdu guard: n=%d err=%v cmds=%v stdin=%q", n, err, r.Commands, r.Stdins[len(r.Stdins)-1])
 	}
-	n, _ = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
+	n, _ = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 1, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true, BPDUGuard: true}})
 	if n != 0 {
 		t.Errorf("bpdu guard not idempotent")
 	}
@@ -691,7 +691,7 @@ func TestNoSTPWithoutMSTPD(t *testing.T) {
 	if caps := c.Capabilities(); caps.STP || caps.BPDUGuard {
 		t.Errorf("STP claimed without mstpd: %+v", caps)
 	}
-	n, _ := c.ApplySwitch(context.Background(), switchmodel.SwitchDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
+	n, _ := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
 	if n != 0 || len(r.Commands) != 0 {
 		t.Errorf("STP applied without mstpd: %d %v", n, r.Commands)
 	}

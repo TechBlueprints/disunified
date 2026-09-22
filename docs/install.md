@@ -1,13 +1,13 @@
 # Installing disunified
 
 Written for someone (or some agent) who has never seen this project. Every
-step has a check. Total time for one switch: about 20 minutes plus one click
+step has a check. Total time for one device: about 20 minutes plus one click
 in the UniFi UI.
 
 > **Experimental software, no warranty of any kind.** With `control` on,
-> the bridge rewrites your switch's configuration (VLANs, port state,
+> the bridge rewrites your device's configuration (VLANs, port state,
 > speeds, STP, LACP, reboots) to match the controller. Back up the
-> switch's config, keep out-of-band access to it, and enable control for
+> device's config, keep out-of-band access to it, and enable control for
 > one unused port before all of them. Verified only on the hardware and
 > versions listed in the README; see its "Status" section before step 1.
 
@@ -15,7 +15,7 @@ in the UniFi UI.
 
 - A UniFi Network controller (tested: Network 10.6 on a UniFi OS gateway),
   reachable from where the bridge runs on TCP 8080 (inform) and 443 (API).
-- A switch with a supported driver (`disunified -list-drivers`) and an
+- A device with a supported driver (`disunified -list-drivers`) and an
   account on it. For control (not just monitoring) the account needs write
   access; for the Arista driver that is a `network-admin` user that reaches
   enable mode without an enable password, and eAPI enabled
@@ -26,8 +26,8 @@ in the UniFi UI.
   Spanning tree on a node is optional (`mstpd`, [`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b);
   without it the driver claims no STP and ignores the controller's STP
   settings for that node.
-- Optional, for naming the device and ports after the switch: a UniFi API
-  key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
+- Optional, for naming the device and ports after the device itself: a UniFi
+  API key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 
 ## 1. Get it
 
@@ -55,30 +55,33 @@ is `docker run --rm …  ghcr.io/techblueprints/disunified:latest …`
 (everything after the image name is the bridge's own flags); step 6 is the
 container install proper.
 
-## 2. Check the switch connection
+## 2. Check the device connection
 
 ```sh
-export STU_SWITCH_USER=stu STU_SWITCH_PASS='...'
-./disunified -collect-once -switch-url https://192.0.2.3/command-api
+export DUI_DEVICE_USER=stu DUI_DEVICE_PASS='...'
+./disunified -collect-once -device-url https://192.0.2.3/command-api
 ```
 or, with the image:
 
 ```sh
-docker run --rm -e STU_SWITCH_USER -e STU_SWITCH_PASS \
+docker run --rm -e DUI_DEVICE_USER -e DUI_DEVICE_PASS \
   ghcr.io/techblueprints/disunified:latest \
-  -collect-once -switch-url https://192.0.2.3/command-api
+  -collect-once -device-url https://192.0.2.3/command-api
 ```
-**Check:** JSON with the switch's model, every port, and `suggested_model`.
+**Check:** JSON with the device's model, every port, and `suggested_model`.
 If it fails, the error names the command or credential at fault; fix that
-before going on. `-driver <name>` (or `STU_DRIVER`) names the driver, e.g.
-`-driver arista-eos -switch-url https://…/command-api` or
-`-driver proxmox -switch-ssh root@proxmox-2`; a config file names it per switch.
+before going on. `-driver <name>` (or `DUI_DRIVER`) names the driver, e.g.
+`-driver arista-eos -device-url https://…/command-api` or
+`-driver proxmox -device-ssh root@proxmox-2`; a config file names it per device.
+The pre-rename `-switch-url`/`-switch-ssh` flags and `STU_*` env names are
+still read, so an existing deployment keeps working unchanged.
 
 ## 3. Write the config
 
 Copy [`deploy/config.example.yaml`](../deploy/config.example.yaml) to `config.yaml` and [`deploy/env.example`](../deploy/env.example)
-to `env`; fill in the controller address, the switch address, and the
-environment variable names. Start with `control.ports: "off"` (read-only).
+to `env`; fill in the controller address, the device address, and the
+environment variable names. Devices go under `devices:` (the pre-rename
+`switches:` key is still accepted). Start with `control.ports: "off"` (read-only).
 
 ## 4. First run and adoption
 
@@ -87,22 +90,22 @@ set -a; . ./env; set +a
 ./disunified -config config.yaml
 ```
 **Check:** the log shows `switch: <vendor> <model> ... N ports`, then
-`inform: HTTP 404 (pending, nothing queued)`. In the UniFi UI the switch
+`inform: HTTP 404 (pending, nothing queued)`. In the UniFi UI the device
 appears under **Pending Adoption**. Click **Adopt**. Within a minute the log
 shows `authkey adopted` then `adoption handshake complete -> CONNECTED`, and
 the device page shows live ports. The adopted key is now in
-`state/<name>/device.json` — keep that file; one bridge per switch.
+`state/<name>/device.json` — keep that file; one bridge per device.
 
 ## 5. Turn on control
 
 Set `control.ports: all` (and the other `control` flags you want) and
 restart. **Check:** the log shows `reconciled ... 0 of N ports changed` (or
-the changes it made to bring the switch in line with the controller). From
-now on the UniFi UI is the switch's configuration: names, port state,
+the changes it made to bring the device in line with the controller). From
+now on the UniFi UI is the device's configuration: names, port state,
 speed, VLANs, FEC, storm control, STP, aggregation, mirroring.
 
 Things to know before you flip it: UniFi becomes the source of truth for
-port config and VLAN membership on that switch; the switch's own VLAN list
+port config and VLAN membership on that device; the device's own VLAN list
 is extended with the site's VLANs; with `igmp: true` snooping follows
 UniFi's per-network setting (UniFi defaults it off). Read
 [`docs/feature-map.md`](feature-map.md) for what each feature maps to on your driver.
@@ -125,7 +128,7 @@ UniFi's per-network setting (UniFi defaults it off). Read
   set `state_dir: /var/lib/disunified` in the config.
 - An SSH driver (Proxmox, or Arista over SSH) in the container needs a key
   and a known_hosts file: mount them read-only and name them in the
-  switch's `options` (`ssh_key: /etc/disunified/id_ed25519`,
+  device's `options` (`ssh_key: /etc/disunified/id_ed25519`,
   `known_hosts: /etc/disunified/known_hosts`); the container has no
   home directory or agent. The key file must be readable by uid 65532.
 

@@ -17,7 +17,7 @@ import (
 	"github.com/jamesbraid/unifi-emu/inform"
 
 	"github.com/TechBlueprints/disunified/internal/device"
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // Replay: real controller replies (docs/fixtures/controller-10.6.106/
@@ -66,9 +66,9 @@ func loadReplies(t *testing.T, name string) []replayRecord {
 type replayDriver struct {
 	Name      string
 	Replies   string // fixture file under controller-10.6.106/
-	Collector switchmodel.Switch
-	Control   switchmodel.Controller
-	Snapshot  *switchmodel.Snapshot
+	Collector devicemodel.Device
+	Control   devicemodel.Controller
+	Snapshot  *devicemodel.Snapshot
 	GatewayIP string
 	// Written returns the switch writes recorded since the last call, one
 	// per line, as the driver's own transport records them.
@@ -105,7 +105,7 @@ func runReplay(t *testing.T, d replayDriver) {
 		t.Fatal(err)
 	}
 	caps := device.DefaultCapabilities
-	if c, ok := d.Collector.(switchmodel.Capable); ok {
+	if c, ok := d.Collector.(devicemodel.Capable); ok {
 		caps = c.Capabilities()
 	}
 	desc.FWCaps = device.FWCapsFor(caps)

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 func TestVLANListRoundTrip(t *testing.T) {
@@ -45,7 +45,7 @@ func TestSwitchportStateFromFixtures(t *testing.T) {
 
 func TestApplySpeedAndVLANs(t *testing.T) {
 	c, ft := startedCollector(t)
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, SpeedMbps: 10000, VLANSet: true, NativeVLAN: 1, TaggedVLANs: []int{2, 10}},
 		{Index: 3, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true},  // already trunk ALL native 1: no-op
 		{Index: 4, Enabled: true, VLANSet: true, NativeVLAN: 2},                   // block all -> access
@@ -67,7 +67,7 @@ func TestApplySpeedAndVLANs(t *testing.T) {
 		t.Errorf("optical uplink must not be touched:\n%s", got)
 	}
 	// Idempotent on the updated in-memory snapshot.
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, SpeedMbps: 10000, VLANSet: true, NativeVLAN: 1, TaggedVLANs: []int{2, 10}},
 	})
 	if err != nil || n != 0 {
@@ -85,7 +85,7 @@ func TestApplyAutoSpeedOnCopper(t *testing.T) {
 		}
 	}
 	c.mu.Unlock()
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 2, Enabled: true}})
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 2, Enabled: true}})
 	if err != nil || n != 1 || !strings.Contains(strings.Join(ft.configured[0], "\n"), "interface Ethernet2\nspeed auto") {
 		t.Errorf("n=%d err=%v cmds=%v", n, err, ft.configured)
 	}
@@ -111,7 +111,7 @@ func TestSpeedGoesToLaneOneOnly(t *testing.T) {
 	// Port 50 is a 4-lane breakout at 25G. Asking for 100G must write the
 	// speed to lane 1 only (that joins the cage), while a VLAN change still
 	// reaches every lane that exists.
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 50, Enabled: true, SpeedMbps: 100000, VLANSet: true, NativeVLAN: 2},
 	})
 	if err != nil || n != 1 {
@@ -131,13 +131,13 @@ func TestSpeedGoesToLaneOneOnly(t *testing.T) {
 	}
 	// Splitting an unsplit cage: 25G on port 49 goes to Ethernet49/1 alone.
 	ft.configured = nil
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 49, Enabled: true, SpeedMbps: 25000}})
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 49, Enabled: true, SpeedMbps: 25000}})
 	if err != nil || n != 1 || strings.Join(ft.configured[0], "\n") != "enable\nconfigure\ninterface Ethernet49/1\nspeed forced 25gfull\nend\nwrite memory" {
 		t.Errorf("n=%d err=%v cmds=%v", n, err, ft.configured)
 	}
 	// Changing the lane speed of an already split cage reaches every lane.
 	ft.configured = nil
-	n, err = c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 50, Enabled: true, SpeedMbps: 10000}})
+	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 50, Enabled: true, SpeedMbps: 10000}})
 	if err != nil || n != 1 || strings.Count(strings.Join(ft.configured[0], "\n"), "speed forced 10gfull") != 4 {
 		t.Errorf("lane speed must go to all 4 lanes: n=%d err=%v cmds=%v", n, err, ft.configured)
 	}

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // The command sets. Every one of these exists on EOS 4.26.14M (verified live
@@ -52,7 +52,7 @@ var (
 // status` (an optic being inserted changes a port's media).
 const mediaRefreshEvery = 30
 
-// Collector turns EOS command output into a switchmodel.Snapshot.
+// Collector turns EOS command output into a devicemodel.Snapshot.
 type Collector struct {
 	t   Transport
 	Log *log.Logger // config batches are logged here when set
@@ -64,9 +64,9 @@ type Collector struct {
 	props     showInterfacesTransceiverProperties
 	hardware  map[string]portHardware
 	polls     int
-	last      *switchmodel.Snapshot
+	last      *devicemodel.Snapshot
 
-	portChannels map[string]switchmodel.PortVLAN // Port-ChannelN -> its switchport state
+	portChannels map[string]devicemodel.PortVLAN // Port-ChannelN -> its switchport state
 	managedSNMP  string                          // the SNMP community this bridge last configured
 
 	sshKeyUser    string   // user that receives the controller's SSH keys
@@ -84,7 +84,7 @@ func NewCollector(t Transport) *Collector {
 // Start runs the startup commands and then one full poll, so a command this
 // EOS version lacks — or bad credentials — fails here, loudly, rather than
 // producing an empty port table forever.
-func (c *Collector) Start(ctx context.Context) (*switchmodel.Snapshot, error) {
+func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	if err := c.refreshStatic(ctx); err != nil {
 		return nil, fmt.Errorf("eos startup: %w", err)
 	}
@@ -143,7 +143,7 @@ func (c *Collector) refreshStatic(ctx context.Context) error {
 }
 
 // Collect runs the poll commands and assembles a Snapshot.
-func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) {
+func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
 	c.mu.Lock()
 	c.polls++
 	needRefresh := c.static == nil || c.polls%mediaRefreshEvery == 0
@@ -194,7 +194,7 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 	static, hostname, inv, props, hw := c.static, c.hostname, c.inventory, c.props, c.hardware
 	c.mu.Unlock()
 
-	media := make(map[string]switchmodel.Media, len(static))
+	media := make(map[string]devicemodel.Media, len(static))
 	for k, v := range static {
 		media[k] = v.media
 	}
@@ -221,9 +221,9 @@ func (c *Collector) Collect(ctx context.Context) (*switchmodel.Snapshot, error) 
 	}
 	stpMode, stpPrio := stpSystem(stp)
 
-	snap := &switchmodel.Snapshot{
+	snap := &devicemodel.Snapshot{
 		TakenAt: time.Now(),
-		System: switchmodel.System{
+		System: devicemodel.System{
 			Vendor:      "Arista",
 			Model:       ver.ModelName,
 			Serial:      ver.SerialNumber,
@@ -292,7 +292,7 @@ func (c *Collector) Close() error { return c.t.Close() }
 // (every port, copper included). EOS 4.26 only prints them (`show
 // interfaces X phy detail`, text), so this is one text command per lane; a
 // failure is logged, not fatal, and a transport without text support skips it.
-func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []switchmodel.Port) {
+func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []devicemodel.Port) {
 	var cmds []string
 	var owners []int // ports index per command
 	for i, p := range ports {
@@ -333,7 +333,7 @@ func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []s
 }
 
 // oobInterfaces reports the ManagementN ports: link state and address.
-func oobInterfaces(ifs showInterfaces) []switchmodel.OOBInterface {
+func oobInterfaces(ifs showInterfaces) []devicemodel.OOBInterface {
 	names := make([]string, 0, 2)
 	for name := range ifs.Interfaces {
 		if strings.HasPrefix(name, "Management") {
@@ -341,10 +341,10 @@ func oobInterfaces(ifs showInterfaces) []switchmodel.OOBInterface {
 		}
 	}
 	sort.Strings(names)
-	out := make([]switchmodel.OOBInterface, 0, len(names))
+	out := make([]devicemodel.OOBInterface, 0, len(names))
 	for _, name := range names {
 		m := ifs.Interfaces[name]
-		o := switchmodel.OOBInterface{Name: name, Up: m.InterfaceStatus == "connected" || m.LineProtocolStatus == "up"}
+		o := devicemodel.OOBInterface{Name: name, Up: m.InterfaceStatus == "connected" || m.LineProtocolStatus == "up"}
 		if len(m.InterfaceAddress) > 0 && m.InterfaceAddress[0].PrimaryIP.Address != "0.0.0.0" {
 			o.IP = m.InterfaceAddress[0].PrimaryIP.Address
 		}
@@ -354,8 +354,8 @@ func oobInterfaces(ifs showInterfaces) []switchmodel.OOBInterface {
 }
 
 // ifAddresses lists every interface's primary IPv4 address.
-func ifAddresses(ifs showInterfaces) []switchmodel.IfAddress {
-	var out []switchmodel.IfAddress
+func ifAddresses(ifs showInterfaces) []devicemodel.IfAddress {
+	var out []devicemodel.IfAddress
 	for name, m := range ifs.Interfaces {
 		if len(m.InterfaceAddress) == 0 {
 			continue
@@ -364,7 +364,7 @@ func ifAddresses(ifs showInterfaces) []switchmodel.IfAddress {
 		if p.Address == "" || p.Address == "0.0.0.0" {
 			continue
 		}
-		out = append(out, switchmodel.IfAddress{Iface: name, IP: p.Address, PrefixLen: p.MaskLen})
+		out = append(out, devicemodel.IfAddress{Iface: name, IP: p.Address, PrefixLen: p.MaskLen})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Iface < out[j].Iface })
 	return out

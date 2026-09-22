@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
 )
 
 // The Arista replay: the controller's replies to the DCS-7160
@@ -50,7 +50,7 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 		Written:   written,
 		Loop: func(c *Config) {
 			c.ControlIGMP, c.ControlNTP, c.ControlSyslog, c.ControlSNMP = true, true, true, true
-			c.OnConnected = func(*switchmodel.Snapshot) { connected++ }
+			c.OnConnected = func(*devicemodel.Snapshot) { connected++ }
 		},
 		// What each recorded push must do to the switch, as a diff against
 		// the captured switch state (the fixture transport is stateless, so

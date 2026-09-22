@@ -6,9 +6,9 @@ in `internal/drivers/CLAUDE.md`.
 
 ## 1. What this is
 
-A bridge that presents a non-UniFi switch to a UniFi Network controller as an
+A bridge that presents a non-UniFi device to a UniFi Network controller as an
 adopted UniFi switch (read: ports, stats, topology; write: the controller's
-port and switch config applied to the vendor switch). The initial public
+port and switch config applied to the vendor device). The initial public
 release (2026-09-20) ships two drivers, both verified live on Network
 10.6.106: `arista-eos` (Clint's Arista DCS-7160-48TC6-F on EOS 4.26.14M,
 claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
@@ -20,9 +20,9 @@ per-feature status.
 
 | Path | Owns | Rules |
 |---|---|---|
-| `cmd/disunified` | flags/env, wiring | no vendor code; identity/model default from the switch |
-| `internal/switchmodel` | neutral model, `Driver` contract, registry | nothing vendor- or UniFi-specific |
-| `internal/drivers/<name>` | one vendor/OS; its own `CLAUDE.md` holds the facts that cost time | `internal/drivers/CLAUDE.md`, `docs/adding-a-switch.md`, `docs/drivers/<name>.md` |
+| `cmd/disunified` | flags/env, wiring | no vendor code; identity/model default from the device |
+| `internal/devicemodel` | neutral model, `Driver` contract, registry | nothing vendor- or UniFi-specific |
+| `internal/drivers/<name>` | one vendor/OS; its own `CLAUDE.md` holds the facts that cost time | `internal/drivers/CLAUDE.md`, `docs/adding-a-device.md`, `docs/drivers/<name>.md` |
 | `internal/device` | inform session (fork of unifi-emu), payload tables, capability claims, `State` persistence | wire keys live here and nowhere else |
 | `internal/unificfg` | parse `system_cfg` pushes | every key observed has a fixture under `docs/fixtures/controller-*` |
 | `internal/informloop` | collect → inform → apply pending → reconcile | apply is a diff; reconcile runs every cycle |
@@ -91,9 +91,10 @@ per-feature status.
 
 Clint's addresses, names, deployment host and update command are in
 `local-information/site.md` (gitignored). Generic shape: `config.yaml`
-(gitignored) is the real config with secrets in the environment (`.env`,
-gitignored, symlinked from outside the repo); every `control` flag is on.
-`state/<name>/device.json` holds the adopted key: one instance per switch,
+(gitignored) is the real config (a `devices:` list; the older `switches:`
+key is still accepted) with secrets in the environment (`.env`, gitignored,
+symlinked from outside the repo); every `control` flag is on.
+`state/<name>/device.json` holds the adopted key: one instance per device,
 keep the file. Logs: `run.log`, `inform-log/<name>/`. The deployed instance
 runs in a container on Clint's Podman host; **the Mac instance is stopped
 and must stay stopped** (one bridge per adopted key).
@@ -132,7 +133,7 @@ disable, NTP/syslog ownership, locate, real reboot on request,
 controller SSH keys on the switch user, emulated firmware upgrades
 (persisted), fault reporting (fan/PSU/overheating claims, errdisabled logged),
 first-provision naming with lane-range names on split, config file with
-multi-switch support, container packaging, install
+multi-device support, container packaging, install
 guide, contributor process. Refused-with-a-log: isolation, 802.1X, egress
 rate limit, jumbo-off, LLDP-MED-off.
 

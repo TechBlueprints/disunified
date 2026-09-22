@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	emu "github.com/jamesbraid/unifi-emu"
 )
 
@@ -28,17 +28,17 @@ type Layout struct {
 func (l Layout) Total() int { return l.Copper + l.SFP + l.SFPP + l.SFP28 + l.QSFP28 }
 
 // LayoutOf classifies a snapshot's ports.
-func LayoutOf(snap *switchmodel.Snapshot) Layout {
+func LayoutOf(snap *devicemodel.Snapshot) Layout {
 	var l Layout
 	for _, p := range snap.Ports {
 		switch p.Media {
-		case switchmodel.MediaSFP:
+		case devicemodel.MediaSFP:
 			l.SFP++
-		case switchmodel.MediaSFPPlus:
+		case devicemodel.MediaSFPPlus:
 			l.SFPP++
-		case switchmodel.MediaSFP28:
+		case devicemodel.MediaSFP28:
 			l.SFP28++
-		case switchmodel.MediaQSFP28, switchmodel.MediaQSFPPlus:
+		case devicemodel.MediaQSFP28, devicemodel.MediaQSFPPlus:
 			l.QSFP28++
 		default:
 			l.Copper++
@@ -141,6 +141,27 @@ func Suggest(l Layout) (Candidate, error) {
 	return best, fmt.Errorf("no catalogue model has %d ports and the fallback %s is missing from the catalogue", l.Total(), Fallback)
 }
 
+// PowerModel is the model a power device claims: the USP-PDU-Pro, whose
+// profile is a "usw" with one network port, which is exactly the shape a
+// bridged rack PDU presents. Its AC outlet count (16) is what a 16-outlet
+// rack PDU has, so the outlets line up one for one.
+const PowerModel = "USPPDUP"
+
+// SuggestFor picks the model for a whole snapshot rather than a bare port
+// layout. A device with outlets is a power device and claims PowerModel
+// regardless of its ports: it has exactly one network port, which would
+// otherwise rank it against every one-port switch in the catalogue.
+func SuggestFor(snap *devicemodel.Snapshot) (Candidate, error) {
+	if snap != nil && len(snap.Outlets) > 0 {
+		p, ok := emu.Profile(PowerModel)
+		if !ok {
+			return Candidate{}, fmt.Errorf("power model %s is missing from the catalogue", PowerModel)
+		}
+		return Candidate{Model: p.Model, Display: p.ModelDisplay, Ports: len(p.Ports)}, nil
+	}
+	return Suggest(LayoutOf(snap))
+}
+
 func abs(n int) int {
 	if n < 0 {
 		return -n
@@ -160,6 +181,8 @@ func ControllerDisplayNames(model string) []string {
 		return []string{"ECSAGG", "ECS Aggregation"}
 	case "UDC48X6":
 		return []string{"USW Leaf"}
+	case "USPPDUP":
+		return []string{"USP PDU Pro", "PDU Pro"}
 	}
 	return nil
 }

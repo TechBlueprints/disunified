@@ -1,24 +1,25 @@
 # disunified configuration. Secrets never go in this file: name the
 # environment variables that hold them (see deploy/env.example).
 #
-# One controller, any number of switches. Everything not listed here is
-# discovered: identity (MAC, serial, hostname), the uplink port, the port
-# layout, the UniFi model to claim, and the switch's own port capabilities.
+# One controller, any number of devices (switches, today). Everything not
+# listed here is discovered: identity (MAC, serial, hostname), the uplink
+# port, the port layout, the UniFi model to claim, and the device's own port
+# capabilities.
 
 controller:
   host: 192.0.2.1                     # where informs go (IP, or a name resolved to IPv4)
   api_url: https://unifi.example.net # optional: REST API, used only to name the device and its ports
-  api_key_env: STU_UNIFI_API_KEY     # env var holding a UniFi API key (Settings → Control Plane → Integrations)
+  api_key_env: DUI_UNIFI_API_KEY     # env var holding a UniFi API key (Settings → Control Plane → Integrations)
   site: default
 
 state_dir: /var/lib/disunified  # state/<name>/device.json (the adopted key) and inform-log/<name>/
 
-switches:
+devices:                             # "switches:" is still accepted (the pre-rename spelling)
   - name: arista                     # unique; used for state and log paths
     driver: arista-eos               # `disunified -list-drivers`
     url: https://192.0.2.3/command-api
-    username_env: STU_SWITCH_USER    # a switch user with write access if control.ports is set
-    password_env: STU_SWITCH_PASS
+    username_env: DUI_DEVICE_USER    # a switch user with write access if control.ports is set
+    password_env: DUI_DEVICE_PASS
     # ssh: admin@192.0.2.3            # alternative transport: key auth, no password
     model: auto                      # or a model code from `-list-models` (docs/unifi-models.md)
     # firmware: 7.3.109.16640        # version to report; default = the model's catalogue version.

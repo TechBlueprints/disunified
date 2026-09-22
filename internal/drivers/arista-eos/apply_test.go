@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TechBlueprints/disunified/internal/switchmodel"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 func startedCollector(t *testing.T) (*Collector, *fixtureTransport) {
@@ -22,9 +22,9 @@ func TestApplyDisablesOnePort(t *testing.T) {
 	// Fixture: every port enabled, no descriptions (port 54 carries storm
 	// control and BPDU guard, so it is left out here). Ask for port 2 down
 	// and everything else unchanged (enabled, no description).
-	var desired []switchmodel.PortDesired
+	var desired []devicemodel.PortDesired
 	for i := 1; i <= 53; i++ {
-		desired = append(desired, switchmodel.PortDesired{Index: i, Enabled: i != 2})
+		desired = append(desired, devicemodel.PortDesired{Index: i, Enabled: i != 2})
 	}
 	n, err := c.ApplyPorts(context.Background(), desired)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestApplyDisablesOnePort(t *testing.T) {
 
 func TestApplyBreakoutWritesEveryLane(t *testing.T) {
 	c, ft := startedCollector(t)
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 50, Enabled: false}})
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 50, Enabled: false}})
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -66,7 +66,7 @@ func TestApplyBreakoutWritesEveryLane(t *testing.T) {
 
 func TestApplyDescription(t *testing.T) {
 	c, ft := startedCollector(t)
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, Description: "  Julie desk\nno shutdown  "}, // control chars stripped
 		{Index: 3, Enabled: true, Description: ""},                            // already empty: no-op
 	})
@@ -81,7 +81,7 @@ func TestApplyDescription(t *testing.T) {
 
 func TestApplyNothingToDo(t *testing.T) {
 	c, ft := startedCollector(t)
-	n, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 1, Enabled: true}, {Index: 99, Enabled: false}})
+	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 1, Enabled: true}, {Index: 99, Enabled: false}})
 	if err != nil || n != 0 || len(ft.configured) != 0 {
 		t.Errorf("n=%d err=%v configure calls=%d", n, err, len(ft.configured))
 	}
@@ -89,7 +89,7 @@ func TestApplyNothingToDo(t *testing.T) {
 
 func TestApplyNeedsSnapshot(t *testing.T) {
 	c, _ := newFixtureCollector(t)
-	if _, err := c.ApplyPorts(context.Background(), []switchmodel.PortDesired{{Index: 2}}); err == nil {
+	if _, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 2}}); err == nil {
 		t.Error("apply before any poll must fail")
 	}
 }
