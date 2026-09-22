@@ -86,12 +86,37 @@ Writing an outlet command to `12.3.3.1.1.4.<n>` switches an outlet. Writing to
 
 ## 4. What is not claimed
 
-- **No per-outlet metering.** This unit reports 0.0 A, and its own Load
-  Management page agrees, so the reading is the card's truth and not an SNMP
-  artefact. The driver reports outlets as relay-only and omits the measurement
-  keys rather than sending zeros, because a zero reads as a real measurement
-  of no load. A model that does meter fills `HasMetering` and the payload
-  switches to the decimal-string form this device family uses.
+- **Metering is aggregate, not per-outlet — by hardware generation.** APC's
+  families: AP78xx Metered (1G), **AP79xx Switched (1G, this unit)**, AP84xx
+  Metered-by-Outlet (2G), AP86xx Metered-by-Outlet with Switching (2G),
+  AP88xx Metered (2G), AP89xx Switched (2G). Per-outlet current and power
+  exist only in the **rPDU2** branch (`318.1.1.26.9.4.3.1.6/.7`), which this
+  card cannot serve: rPDU2 arrived in MIB v3.9.9 and is implemented by the
+  hw05 `rpdu2g` application, while this is hw02 (`apc_hw02_rpdu_392.bin`).
+  That is a hardware-generation boundary with no firmware path. The 1G branch
+  does define `rPDUOutletStatusLoad` (`.12.3.5.1.1.7`), but its own MIB text
+  says "For other models this OID is not supported" — and the card duly
+  answers `noSuchName` for it.
+
+  The driver therefore reports outlets as relay-only and omits the per-outlet
+  measurement keys rather than sending zeros, because a zero reads as a real
+  measurement of no load. A model that does meter fills `HasMetering` and the
+  payload switches to the decimal-string form this family uses.
+
+- **Aggregate metering works, and a reading of 0.0 A does not mean zero.**
+  APC FAQ FA156074: on AP7xxx the current monitor is +/- 1.0 A between 0 and
+  1 A, and **firmware 3.3.1 and later report any load under 1 amp as zero**.
+  So `0.0 A` means "under roughly 1 A" (~120 W here), not "nothing". The
+  card's own data log (`data.txt` over FTP, columns `I / IMax / IMin`)
+  recorded `IMax 1.4` on 09/13/2026, which proves the sensor works.
+
+  Watts are not measured: the card derives them from the current and the
+  operator-set line voltage and power factor (its PDU Configuration screen,
+  `rPDUIdentDeviceLinetoLineVoltage` is read-write and exists only for this
+  purpose), so the driver does the same arithmetic. The budget is the PDU's
+  own rating x that voltage = **1440 VA**, which is exactly the load capacity
+  APC publishes for an AP7931 -- 12 A is the UL 80%-continuous derated figure
+  for its 15 A input, not a fault.
 - **No switch capabilities at all.** A rack PDU is not a switch; claiming one
   would put a control in the UI that the driver cannot honour.
 - No fans, PSUs or temperature: the AP7931 has none.
