@@ -57,12 +57,17 @@ func TestApplyAddressIsANoOpWhenTheSwitchAlreadyHasIt(t *testing.T) {
 	}
 }
 
-// The DHCP default is refused at the driver too, not only in the loop.
-func TestApplyAddressNeverAppliesDHCP(t *testing.T) {
+// A move to DHCP is declined with a reason: it cannot be confirmed by
+// dialling an address the driver cannot know in advance.
+func TestApplyAddressDeclinesDHCP(t *testing.T) {
 	c, ft := addressCollector(t, nil)
 	before := len(ft.Configured)
-	if changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); err != nil || changed || len(ft.Configured) != before {
+	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true})
+	if err == nil || changed || len(ft.Configured) != before {
 		t.Errorf("DHCP: changed=%v err=%v batches=%v", changed, err, ft.Configured[before:])
+	}
+	if err != nil && !strings.Contains(err.Error(), "cannot be confirmed") {
+		t.Errorf("the error must say why: %v", err)
 	}
 }
 

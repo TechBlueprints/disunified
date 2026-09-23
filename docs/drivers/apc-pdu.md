@@ -244,14 +244,19 @@ the card. Both forms were captured on 10.6.106:
 | Using DHCP (the default) | `netconf.1.ip=0.0.0.0`, `dhcpc.1.status=enabled` |
 | Static | `netconf.1.ip`, `netconf.1.netmask`, `route.1.gateway` (`route.1.ip=0.0.0.0` marks the default route), `resolv.nameserver.N.ip`, and **no** `dhcpc.1.*` lines at all |
 
-**"Using DHCP" is never applied.** It is the controller's default for every
-device it adopts and carries no operator intent; a bridge that honoured it
-would have moved this card off its manual address the moment the flag was
-turned on -- the replay demonstrates exactly that push arriving first. Only a
-static setting, which someone typed, reaches the card. The apply is a diff
-against the card's current mode and address, so re-sending what it already
-has uploads nothing (the driver's tests), and a different static address
-produces one `[NetworkTCP/IP]` upload with the Override line (the replay).
+**"Using DHCP" is applied only when it replaces a static setting.** It is
+also the controller's default for every device it adopts, and a chosen DHCP
+and the default DHCP are the same push, so the push alone cannot say whether
+anyone meant it. The transition can: the previous push having carried a
+static address means someone changed the setting by hand, and only then is
+DHCP applied. A device that was never static keeps its address -- a bridge
+that honoured the default would have moved this card off its manual address
+the moment the flag was turned on; the replay shows exactly that push
+arriving first. The apply is a diff against the card's current mode and
+address, so re-sending what it already has uploads nothing (the driver's
+tests), and a different static address produces one `[NetworkTCP/IP]` upload
+with the Override line (the replay). After a move to DHCP the bridge's own
+`url:` is stale until the new lease is known; the log says so.
 
 ## 11. Things that will bite
 

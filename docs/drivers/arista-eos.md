@@ -205,8 +205,9 @@ once the address moves; that is expected.
 The controller pushes the device's IP Settings in every system_cfg, and with
 `control: {address: true}` the driver applies a **static** setting to the
 interface that carries the address the bridge itself connects to (Vlan1 on
-this switch, in-band; see §2c). "Using DHCP" -- the controller's default for
-any adopted device -- is never applied. The pushed form on 10.6.106 is
+this switch, in-band; see §2c). "Using DHCP" is declined on this driver with a
+logged reason: a move is confirmed by dialling the new address, and a lease
+cannot be known in advance, so the switch keeps its static address. The pushed form on 10.6.106 is
 `netconf.1.ip` / `netconf.1.netmask`, `route.1.gateway` (with
 `route.1.ip=0.0.0.0`) and `resolv.nameserver.N.ip`.
 
