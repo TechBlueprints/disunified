@@ -111,9 +111,14 @@ device the outlets (`control.outlets`).
 
 One control flag is off by default and deserves its own decision:
 `control.address` lets the controller's **IP Settings** set the device's own
-management address (static only — the DHCP default is never applied). It is
-the one setting that can strand the bridge from the device it manages, so turn
-it on only when you have another way in.
+management address. A static setting is applied; DHCP only when it replaces a
+static setting you chose, never as the controller's default — and `arista-eos`
+declines DHCP outright, because it confirms a move by dialling the new address
+and cannot do that for a lease. It is the setting most likely to cut the bridge
+off from the device it manages: the Arista makes the change inside a config
+session with a commit timer that reverts unless the switch answers at the new
+address, but a device without that safety net simply takes it. Turn it on only
+when you have another way in.
 
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list
