@@ -122,3 +122,92 @@ func (c *Collector) warnOnce(key, msg string) {
 	c.warned[key] = true
 	log.Print(msg)
 }
+
+// ApplyAddress sets the card's own TCP/IP configuration from the controller's
+// IP Settings, through the same partial config.ini as everything else the
+// card will not take over SNMP.
+//
+// The section must carry Override= with the card's own MAC, spelled the way
+// the card writes it ("00 C0 B7 D2 A5 A1"): APC applies uploaded TCP/IP
+// settings only when that key matches, so a file meant for one card cannot
+// re-address another. Without it the section is silently ignored -- the card
+// answers 226 and changes nothing (2026-09-22).
+//
+// The change applies live, about a minute after the transfer, with no
+// reboot; the card simply starts answering at the new address. It is a diff:
+// the card's current mode and address are compared first, and a controller
+// that re-sends the address the card already has produces no upload.
+func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
+	c.mu.Lock()
+	last := c.last
+	c.mu.Unlock()
+	if last == nil {
+		return false, fmt.Errorf("apc-pdu: no snapshot yet")
+	}
+	cur := last.System.Addresses
+	c.mu.Lock()
+	dhcp := c.dhcp
+	c.mu.Unlock()
+	if d.DHCP {
+		if dhcp {
+			return false, nil
+		}
+		if err := c.r.PutConfig(ctx, tcpipConfig(last.System.MAC, "DHCP Only", "", "", "")); err != nil {
+			return false, err
+		}
+		c.mu.Lock()
+		c.dhcp = true
+		c.mu.Unlock()
+		return true, nil
+	}
+	if d.IP == "" || d.PrefixLen <= 0 {
+		return false, fmt.Errorf("apc-pdu: static address without an IP and prefix length")
+	}
+	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen && (d.Gateway == "" || d.Gateway == last.System.Gateway) {
+		return false, nil
+	}
+	if err := c.r.PutConfig(ctx, tcpipConfig(last.System.MAC, "Manual", d.IP, maskFromPrefix(d.PrefixLen), d.Gateway)); err != nil {
+		return false, err
+	}
+	c.mu.Lock()
+	c.dhcp = false
+	c.mu.Unlock()
+	return true, nil
+}
+
+// tcpipConfig renders the [NetworkTCP/IP] partial. mask and gateway are
+// omitted when empty (a DHCP switch needs neither).
+func tcpipConfig(mac, mode, ip, mask, gw string) []byte {
+	var b strings.Builder
+	b.WriteString("[NetworkTCP/IP]\r\n")
+	b.WriteString("Override=" + overrideMAC(mac) + "\r\n")
+	b.WriteString("BootMode=" + mode + "\r\n")
+	if ip != "" {
+		b.WriteString("SystemIP=" + ip + "\r\n")
+	}
+	if mask != "" {
+		b.WriteString("SubnetMask=" + mask + "\r\n")
+	}
+	if gw != "" {
+		b.WriteString("DefaultGateway=" + gw + "\r\n")
+	}
+	return []byte(b.String())
+}
+
+// overrideMAC spells a MAC the way the card's config file does: upper-case
+// octets separated by spaces.
+func overrideMAC(mac string) string {
+	return strings.ToUpper(strings.ReplaceAll(mac, ":", " "))
+}
+
+// maskFromPrefix renders a prefix length as the dotted mask the card wants.
+func maskFromPrefix(n int) string {
+	if n < 0 || n > 32 {
+		return ""
+	}
+	v := uint32(0xFFFFFFFF) << uint(32-n)
+	if n == 0 {
+		v = 0
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", v>>24, (v>>16)&255, (v>>8)&255, v&255)
+}

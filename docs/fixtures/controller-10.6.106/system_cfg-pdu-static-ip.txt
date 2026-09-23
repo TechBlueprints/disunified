@@ -1,0 +1,144 @@
+# unifi
+unifi.version=10.6.106
+unifi.anonymous_controller_id=<id>
+unifi.anonymous_site_id=<id>
+unifi.reporterid=<id>
+unifi.siteid=<id>
+unifi.idp=enabled
+unifi.mcip=239.254.127.63
+unifi.key=<key>
+unifi.feature.always_send_crash_logs=enabled
+# system
+system.analytics.status=enabled
+system.timezone=MST7MDT,M3.2.0,M11.1.0
+locale.timezone=MST7MDT,M3.2.0,M11.1.0
+# users
+users.status=enabled
+users.1.name=admin
+users.1.password=<hash>
+users.1.status=enabled
+users.2.name=nobody
+users.2.password=<hash>
+users.2.shell=/bin/false
+users.2.status=enabled
+# vlan
+vlan.status=disabled
+# bridge
+bridge.status=disabled
+# netconf
+netconf.status=enabled
+netconf.1.status=enabled
+netconf.1.devname=eth0
+netconf.1.ip=192.0.2.1
+netconf.1.autoip.status=disabled
+netconf.1.netmask=255.255.0.0
+netconf.1.promisc=enabled
+netconf.1.up=enabled
+# dhcpc
+dhcpc.status=enabled
+# route
+route.1.status=enabled
+route.1.devname=eth0
+route.1.ip=0.0.0.0
+route.1.gateway=192.0.2.2
+route.status=enabled
+# resolv
+resolv.status=enabled
+resolv.host.1.name=APCAP7931
+resolv.nameserver.1.ip=192.0.2.2
+resolv.nameserver.2.status=disabled
+# switch
+switch.power_source.status=disabled
+switch.managementvlan=1
+switch.wevent.idp=enabled
+switch.wevent.mcip=239.254.127.63
+switch.wevent.key=<key>
+switch.jumboframes=disabled
+switch.mtu=9216
+switch.vlan.1.id=1
+switch.vlan.1.mode=untagged
+switch.vlan.1.status=enabled
+switch.vlan.2.id=2
+switch.vlan.2.mode=tagged
+switch.vlan.2.status=enabled
+switch.vlan.3.id=8
+switch.vlan.3.mode=tagged
+switch.vlan.3.status=enabled
+switch.vlan.4.id=9
+switch.vlan.4.mode=tagged
+switch.vlan.4.status=enabled
+switch.vlan.5.id=10
+switch.vlan.5.mode=tagged
+switch.vlan.5.status=enabled
+switch.vlan.6.id=69
+switch.vlan.6.mode=tagged
+switch.vlan.6.status=enabled
+switch.vlan.7.id=1000
+switch.vlan.7.mode=tagged
+switch.vlan.7.status=enabled
+switch.vlan.8.id=2000
+switch.vlan.8.mode=tagged
+switch.vlan.8.status=enabled
+switch.vlan.9.id=3000
+switch.vlan.9.mode=tagged
+switch.vlan.9.status=enabled
+switch.vlan.10.id=4000
+switch.vlan.10.mode=tagged
+switch.vlan.10.status=enabled
+switch.routing_enabled=false
+switch.port.1.name=eth0
+switch.port.1.opmode=switch
+# outlet
+outlet.status=enabled
+outlet.1.relay_state=disabled
+outlet.2.relay_state=disabled
+outlet.3.relay_state=disabled
+outlet.4.relay_state=disabled
+outlet.5.relay_state=enabled
+outlet.6.relay_state=enabled
+outlet.7.relay_state=enabled
+outlet.8.relay_state=enabled
+outlet.9.relay_state=enabled
+outlet.10.relay_state=enabled
+outlet.11.relay_state=enabled
+outlet.12.relay_state=enabled
+outlet.13.relay_state=enabled
+outlet.14.relay_state=enabled
+outlet.15.relay_state=enabled
+outlet.16.relay_state=enabled
+outlet.17.relay_state=enabled
+outlet.18.relay_state=enabled
+outlet.19.relay_state=enabled
+outlet.20.relay_state=enabled
+# syslog
+syslog.status=enabled
+syslog.level=7
+# sshd
+sshd.status=enabled
+sshd.auth.passwd=enabled
+sshd.auth.key.1.status=enabled
+sshd.auth.key.1.value=<pubkey>
+sshd.auth.key.1.type=ssh-rsa
+sshd.auth.key.1.comment=<comment>
+sshd.auth.key.2.status=enabled
+sshd.auth.key.2.value=<pubkey>
+sshd.auth.key.2.type=ssh-rsa
+sshd.auth.key.2.comment=<comment>
+sshd.auth.key.3.status=enabled
+sshd.auth.key.3.value=<pubkey>
+sshd.auth.key.3.type=ssh-rsa
+sshd.auth.key.3.comment=<comment>
+sshd.auth.key.4.status=enabled
+sshd.auth.key.4.value=<pubkey>
+sshd.auth.key.4.type=ssh-rsa
+sshd.auth.key.4.comment=<comment>
+sshd.1.status=enabled
+sshd.1.ifname=eth0
+# ntpclient
+ntpclient.status=enabled
+ntpclient.1.status=enabled
+ntpclient.1.server=192.0.2.3
+ntpclient.2.status=enabled
+ntpclient.2.server=0.ubnt.pool.ntp.org
+# misc
+

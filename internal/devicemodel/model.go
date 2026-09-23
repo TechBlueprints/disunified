@@ -130,6 +130,27 @@ type OutletDesired struct {
 	Name string
 }
 
+// AddressDesired is the controller's intent for the device's own management
+// address: the IP Settings the operator chooses for an adopted device. DHCP
+// true means the device should take a lease; otherwise IP, PrefixLen and
+// Gateway apply. DNS is advisory and may be empty.
+type AddressDesired struct {
+	DHCP      bool
+	IP        string
+	PrefixLen int
+	Gateway   string
+	DNS       []string
+}
+
+// AddressController applies the controller's IP Settings to the device
+// itself, so the controller owns the device's address the way it owns
+// everything else. Optional. Implementations must be idempotent and must
+// refuse an address they cannot verify is reachable from the bridge, because
+// a wrong one takes the device off the network.
+type AddressController interface {
+	ApplyAddress(ctx context.Context, desired AddressDesired) (changed bool, err error)
+}
+
 // OutletController switches and names outlets on a power device. It is
 // optional and discovered with a type assertion, like the other write-side
 // interfaces, so a read-only PDU driver is a valid first step.
@@ -209,6 +230,8 @@ type System struct {
 	Addresses  []IfAddress       // the switch's own IPv4 addresses (management, VLAN, loopback)
 	ARP        map[string]string // IPv4 -> MAC the switch has resolved, lower-case colon form
 	GatewayMAC string            // MAC of the switch's gateway/controller next hop, "" if unknown
+	Gateway    string            // the device's own default gateway address, "" if unknown
+	DHCP       bool              // the device takes its management address from DHCP (vs a manual one)
 	Version    string            // vendor's own version string, e.g. "4.26.14M"
 	Hostname   string
 	Uptime     time.Duration

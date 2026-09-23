@@ -232,6 +232,27 @@ with no reboot.
 The bridge now retries a device that does not answer at startup (15 s
 doubling to a 5-minute cap) rather than dropping it until a restart.
 
+### Or let UniFi own the address: `control.address`
+
+The controller pushes the device's own IP Settings in every system_cfg, and
+with `control: {address: true}` the driver applies them to the card, so the
+address is set where everything else is -- in UniFi -- instead of by hand on
+the card. Both forms were captured on 10.6.106:
+
+| IP Setting | What the push carries |
+|---|---|
+| Using DHCP (the default) | `netconf.1.ip=0.0.0.0`, `dhcpc.1.status=enabled` |
+| Static | `netconf.1.ip`, `netconf.1.netmask`, `route.1.gateway` (`route.1.ip=0.0.0.0` marks the default route), `resolv.nameserver.N.ip`, and **no** `dhcpc.1.*` lines at all |
+
+**"Using DHCP" is never applied.** It is the controller's default for every
+device it adopts and carries no operator intent; a bridge that honoured it
+would have moved this card off its manual address the moment the flag was
+turned on -- the replay demonstrates exactly that push arriving first. Only a
+static setting, which someone typed, reaches the card. The apply is a diff
+against the card's current mode and address, so re-sending what it already
+has uploads nothing (the driver's tests), and a different static address
+produces one `[NetworkTCP/IP]` upload with the Override line (the replay).
+
 ## 11. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the

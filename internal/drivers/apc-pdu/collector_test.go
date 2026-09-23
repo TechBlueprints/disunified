@@ -310,3 +310,86 @@ func TestReachabilityFromTheIPMIB(t *testing.T) {
 		}
 	}
 }
+
+// The card's addressing mode is not in the MIB; it is read once at Start from
+// the card's own config file. The capture has the card on a manual address.
+func TestStartReadsTheAddressingModeFromTheConfigFile(t *testing.T) {
+	c, _ := newTestCollector(t)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if snap.System.DHCP {
+		t.Error("the capture has BootMode=Manual; reported as DHCP")
+	}
+	if snap.System.Gateway == "" {
+		t.Error("gateway address not read from the default route")
+	}
+}
+
+func TestConfigBootMode(t *testing.T) {
+	for in, want := range map[string]bool{"BootMode=Manual\r\n": false, "BootMode=DHCP Only\r\n": true, "BootMode=BOOTP Only\n": true, "BootMode=DHCP & BOOTP\n": true} {
+		if got, ok := configBootMode([]byte("[NetworkTCP/IP]\r\n" + in)); !ok || got != want {
+			t.Errorf("configBootMode(%q) = %v,%v want %v,true", in, got, ok, want)
+		}
+	}
+	if _, ok := configBootMode([]byte("[Other]\nX=1\n")); ok {
+		t.Error("reported a boot mode from a file with none")
+	}
+}
+
+// A controller that re-sends the address the card already has produces no
+// upload: an address change is the one write that can take the device off
+// the network, so it is never made idly.
+func TestApplyAddressIsANoOpWhenTheCardAlreadyHasIt(t *testing.T) {
+	c, r := newTestCollector(t)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	cur := snap.System.Addresses[0]
+	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: cur.IP, PrefixLen: cur.PrefixLen, Gateway: snap.System.Gateway})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if changed || len(r.Configs) != 0 {
+		t.Errorf("re-sending the current address wrote a config: changed=%v uploads=%v", changed, r.Configs)
+	}
+}
+
+// Switching the card to DHCP, and to a different manual address, each upload
+// one [NetworkTCP/IP] partial carrying the Override line -- without it the
+// card silently ignores the section.
+func TestApplyAddressWritesTheTCPIPSectionWithOverride(t *testing.T) {
+	c, r := newTestCollector(t)
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true})
+	if err != nil || !changed {
+		t.Fatalf("to DHCP: changed=%v err=%v", changed, err)
+	}
+	if len(r.Configs) != 1 || !strings.Contains(r.Configs[0], "[NetworkTCP/IP]\r\nOverride=02 00 00 00 00 01\r\nBootMode=DHCP Only\r\n") {
+		t.Errorf("DHCP upload = %q", r.Configs)
+	}
+	// Now the driver believes the card is on DHCP; the same DHCP intent is a no-op.
+	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); changed {
+		t.Error("re-sending DHCP wrote again")
+	}
+	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.40", PrefixLen: 24, Gateway: "192.0.2.1"})
+	if err != nil || !changed {
+		t.Fatalf("to static: changed=%v err=%v", changed, err)
+	}
+	want := "[NetworkTCP/IP]\r\nOverride=02 00 00 00 00 01\r\nBootMode=Manual\r\nSystemIP=192.0.2.40\r\nSubnetMask=255.255.255.0\r\nDefaultGateway=192.0.2.1\r\n"
+	if len(r.Configs) != 2 || r.Configs[1] != want {
+		t.Errorf("static upload = %q, want %q", r.Configs[len(r.Configs)-1], want)
+	}
+}
+
+func TestMaskFromPrefix(t *testing.T) {
+	for n, want := range map[int]string{16: "255.255.0.0", 24: "255.255.255.0", 32: "255.255.255.255", 0: "0.0.0.0", 33: ""} {
+		if got := maskFromPrefix(n); got != want {
+			t.Errorf("maskFromPrefix(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

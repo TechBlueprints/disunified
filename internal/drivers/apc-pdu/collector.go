@@ -80,6 +80,10 @@ type Collector struct {
 	mu     sync.Mutex
 	last   *devicemodel.Snapshot
 	warned map[string]bool
+	// dhcp is the card's addressing mode, read from its config file once at
+	// Start (it is not in the MIB) and kept current by ApplyAddress.
+	dhcp     bool
+	dhcpRead bool
 }
 
 // NewCollector builds a collector over a runner.
@@ -90,6 +94,13 @@ func NewCollector(r Runner) *Collector {
 // Start runs every read the driver will ever do, once, so a wrong community
 // or an unreachable card fails here rather than on the first inform.
 func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
+	if b, err := c.r.GetConfig(ctx); err != nil {
+		return nil, fmt.Errorf("apc-pdu: read config.ini: %w", err)
+	} else {
+		c.mu.Lock()
+		c.dhcp, c.dhcpRead = configBootMode(b)
+		c.mu.Unlock()
+	}
 	snap, err := c.Collect(ctx)
 	if err != nil {
 		return nil, err
@@ -141,6 +152,9 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = c.system(sys, ifs, rpdu)
 	c.reachability(&snap.System, ip)
+	c.mu.Lock()
+	snap.System.DHCP = c.dhcp
+	c.mu.Unlock()
 	snap.Outlets = c.outlets(rpdu)
 	// The card has exactly one network interface, and it is the uplink. There
 	// is no LLDP on this firmware, so the loop is told directly rather than
@@ -350,6 +364,7 @@ func (c *Collector) reachability(sys *devicemodel.System, ip map[string]string) 
 	}
 	sort.Slice(sys.Addresses, func(i, j int) bool { return sys.Addresses[i].IP < sys.Addresses[j].IP })
 	if gw := strings.TrimSpace(ip[oidDefaultRoute]); gw != "" {
+		sys.Gateway = gw
 		sys.GatewayMAC = sys.ARP[gw]
 	}
 }
@@ -367,4 +382,17 @@ func prefixLen(mask string) int {
 		}
 	}
 	return n
+}
+
+// configBootMode reads BootMode out of the card's config.ini: true for the
+// DHCP/BOOTP modes, false for Manual. ok is false when the key is absent.
+func configBootMode(cfg []byte) (dhcp bool, ok bool) {
+	for _, line := range strings.Split(string(cfg), "\n") {
+		k, v, found := strings.Cut(strings.TrimRight(line, "\r"), "=")
+		if !found || strings.TrimSpace(k) != "BootMode" {
+			continue
+		}
+		return !strings.EqualFold(strings.TrimSpace(v), "Manual"), true
+	}
+	return false, false
 }

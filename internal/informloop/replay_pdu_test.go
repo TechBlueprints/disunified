@@ -50,6 +50,7 @@ func TestReplayControllerRepliesPDU(t *testing.T) {
 		Loop: func(c *Config) {
 			c.OutletController = coll
 			c.ControlOutlets = nil // every outlet
+			c.AddressController = coll
 		},
 		Expect: map[int]replayExpect{
 			// 0: 404 pending, 1: adopt via mgmt_cfg, 2: emulated upgrade ->
@@ -77,6 +78,12 @@ func TestReplayControllerRepliesPDU(t *testing.T) {
 			// 12: the next cycle. The card has finished the reboot and reads
 			// the outlet back as on, so the reconcile must not fight it.
 			12: {mustNot: []string{ctl}},
+			// 13: the PDU's IP Settings set to a static address in the
+			// controller. The reply log's scrub gave that address a different
+			// documentation value from the card capture's, so this is a real
+			// change, and the bridge must write the card's TCP/IP section --
+			// with the Override line the card requires, or it is ignored.
+			13: {must: []string{"config.ini: [NetworkTCP/IP] Override=02 00 00 00 00 01 BootMode=Manual SystemIP=192.0.2.3 SubnetMask=255.255.0.0 DefaultGateway=192.0.2.4"}, mustNot: []string{ctl}},
 		},
 		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
 			switch i {
@@ -102,9 +109,16 @@ func TestReplayControllerRepliesPDU(t *testing.T) {
 			}
 		},
 	})
-	// Across the whole replay the names never went to the card: the
-	// controller does not send them, so nothing should have been uploaded.
-	if len(fr.Configs) != 0 {
-		t.Errorf("config uploads = %d, want 0 (the controller pushes no outlet names)", len(fr.Configs))
+	// Exactly one thing went to the card's config file in the whole replay:
+	// the static address. The controller sends no outlet names, and its
+	// default "Using DHCP" (every push before the last) is never applied --
+	// the card started on a manual address and must not have been moved.
+	if len(fr.Configs) != 1 {
+		t.Errorf("config uploads = %d, want 1 (the static address); got %q", len(fr.Configs), fr.Configs)
+	}
+	for _, c := range fr.Configs {
+		if strings.Contains(c, "DHCP") {
+			t.Errorf("the controller's default DHCP setting was applied to the card: %q", c)
+		}
 	}
 }
