@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -54,23 +56,38 @@ func (Driver) Describe() string {
 // Open builds the transport, then runs every command once via Start so a
 // command this EOS version lacks — or a bad credential — fails here.
 func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemodel.Device, error) {
-	var t Transport
+	var (
+		t      Transport
+		host   string
+		redial func(string) Transport
+	)
 	switch {
 	case cfg.URL != "":
 		if cfg.Username == "" || cfg.Password == "" {
 			return nil, errors.New("arista-eos: eAPI needs a username and password")
 		}
 		t = NewEAPI(cfg.URL, cfg.Username, cfg.Password, true, 20*time.Second)
+		host, redial = eapiHost(cfg.URL), func(h string) Transport {
+			return NewEAPI(replaceHost(cfg.URL, h), cfg.Username, cfg.Password, true, 20*time.Second)
+		}
 	case cfg.SSH != "":
 		user, host, ok := strings.Cut(cfg.SSH, "@")
 		if !ok {
 			return nil, fmt.Errorf("arista-eos: SSH target must be user@host, got %q", cfg.SSH)
 		}
 		t = NewSSH(host, user)
+		sshHost := host
+		host, redial = strings.Split(sshHost, ":")[0], func(h string) Transport {
+			if _, port, ok := strings.Cut(sshHost, ":"); ok {
+				h += ":" + port
+			}
+			return NewSSH(h, user)
+		}
 	default:
 		return nil, errors.New("arista-eos: set an eAPI URL or an SSH target")
 	}
 	c := NewCollector(t)
+	c.host, c.redial = host, redial
 	if cfg.Username != "" {
 		c.SetSSHKeyUser(cfg.Username) // controller SSH keys land on the bridge's own user
 	} else if cfg.SSH != "" {
@@ -93,3 +110,28 @@ var (
 	_ devicemodel.Rebooter         = (*Collector)(nil)
 	_ devicemodel.SSHKeyInstaller  = (*Collector)(nil)
 )
+
+// eapiHost is the host part of an eAPI URL; replaceHost puts another host in
+// its place, keeping scheme, port and path.
+func eapiHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+func replaceHost(rawURL, host string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	if p := u.Port(); p != "" {
+		u.Host = net.JoinHostPort(host, p)
+	} else {
+		u.Host = host
+	}
+	return u.String()
+}
+
+var _ devicemodel.AddressController = (*Collector)(nil)

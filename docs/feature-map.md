@@ -220,4 +220,6 @@ Outlets are the power-device shape beside ports. Status as verified live on
 | Outlet names device-side | partial `config.ini` over FTP | built and tested, **no source**: the controller pushes no names |
 | Reachability | `gateway_mac`, `netmask`, `lldp_table: []` from the IP-MIB | done |
 | Device's own IP Settings (static/DHCP) from the controller | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip`, `dhcpc.1.status` → card `[NetworkTCP/IP]` with `Override=<MAC>` | done, opt-in `control.address`; the DHCP default is never applied |
+
+The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
 | Fans / PSUs / temperature | — | none on an AP7931 |

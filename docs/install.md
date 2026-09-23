@@ -106,7 +106,14 @@ Set `control.ports: all` (and the other `control` flags you want) and
 restart. **Check:** the log shows `reconciled ... 0 of N ports changed` (or
 the changes it made to bring the device in line with the controller). From
 now on the UniFi UI is the device's configuration: names, port state,
-speed, VLANs, FEC, storm control, STP, aggregation, mirroring.
+speed, VLANs, FEC, storm control, STP, aggregation, mirroring, and on a power
+device the outlets (`control.outlets`).
+
+One control flag is off by default and deserves its own decision:
+`control.address` lets the controller's **IP Settings** set the device's own
+management address (static only — the DHCP default is never applied). It is
+the one setting that can strand the bridge from the device it manages, so turn
+it on only when you have another way in.
 
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list
