@@ -468,7 +468,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	if l.cfg.Controller == nil {
-		l.applyAddress(cctx, text)
+		l.applyAddress(cctx, "", text)
 		outlets := l.desiredOutlets(text)
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
@@ -484,7 +484,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
-	l.applyAddress(cctx, text)
+	l.applyAddress(cctx, "", text)
 	desired := l.withholdFreshPorts(l.desiredPorts(text))
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
@@ -736,36 +736,66 @@ func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
 // its device's own address. The push says "DHCP" as netconf.1.ip=0.0.0.0 with
 // the DHCP client enabled, or a static address with it disabled; a push with
 // no netconf at all is left alone. Errors are reported, not fatal.
-func (l *Loop) applyAddress(ctx context.Context, text string) {
+func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 	if l.cfg.AddressController == nil {
 		return
 	}
-	a := unificfg.Parse(text).Address
-	if a == nil {
+	d, reason, ok := addressIntent(prev, text)
+	if !ok {
+		if reason != "" {
+			l.cfg.Logger.Printf("[%s] IP Settings: %s", l.desc.MAC, reason)
+		}
 		return
 	}
-	// "Using DHCP" is the controller's default for every device it adopts
-	// and carries no operator intent, so it is never applied: a device on a
-	// manual address stays there. (The first push to the PDU said DHCP; a
-	// bridge that honoured it would have moved the card off its address the
-	// moment address control was switched on -- the replay shows exactly
-	// that.) Only a static setting, which someone typed, reaches the device.
-	if a.DHCP {
-		return
-	}
-	if a.IP == "" || a.Netmask == "" {
-		l.cfg.Logger.Printf("[%s] IP Settings: static without an address and mask; ignored", l.desc.MAC)
-		return
-	}
-	d := devicemodel.AddressDesired{IP: a.IP, PrefixLen: prefixLenOf(a.Netmask), Gateway: a.Gateway, DNS: a.DNS}
 	changed, err := l.cfg.AddressController.ApplyAddress(ctx, d)
 	if err != nil {
 		l.cfg.Logger.Printf("[%s] apply IP Settings: %v", l.desc.MAC, err)
 		return
 	}
-	if changed {
+	if !changed {
+		return
+	}
+	if d.DHCP {
+		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now takes its address from DHCP; the address this bridge is configured with is now stale -- update it once the lease is known", l.desc.MAC)
+	} else {
 		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now has %s/%d via %s", l.desc.MAC, d.IP, d.PrefixLen, d.Gateway)
 	}
+}
+
+// addressIntent turns the controller's IP Settings into an address to apply,
+// or says why there is nothing to do. prev is the previously applied
+// system_cfg ("" when there is none, or on a reconcile, where no transition
+// can have happened).
+//
+// A static setting is applied whenever it is pushed: someone typed it. "Using
+// DHCP" needs more care. It is also the controller's default for every device
+// it adopts, and a chosen DHCP and the default DHCP are the same push --
+// netconf.1.ip=0.0.0.0 with the DHCP client enabled -- so the push alone
+// cannot say whether anyone meant it. What can: the transition. The previous
+// push having carried a static address means the setting was changed by
+// hand, and only then is DHCP applied. A device that was never static keeps
+// its address (the first push to the PDU said DHCP; honouring it would have
+// moved the card off its address the moment address control was switched
+// on -- the replay shows exactly that push arriving first).
+func addressIntent(prev, text string) (d devicemodel.AddressDesired, reason string, ok bool) {
+	a := unificfg.Parse(text).Address
+	if a == nil {
+		return d, "", false
+	}
+	if a.DHCP {
+		if prev == "" {
+			return d, "", false
+		}
+		p := unificfg.Parse(prev).Address
+		if p == nil || p.DHCP {
+			return d, "", false
+		}
+		return devicemodel.AddressDesired{DHCP: true}, "", true
+	}
+	if a.IP == "" || a.Netmask == "" {
+		return d, "static without an address and mask; ignored", false
+	}
+	return devicemodel.AddressDesired{IP: a.IP, PrefixLen: prefixLenOf(a.Netmask), Gateway: a.Gateway, DNS: a.DNS}, "", true
 }
 
 // prefixLenOf turns a dotted mask into a prefix length.
@@ -824,6 +854,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	if !ok {
 		return false
 	}
+	_, prevText, _ := l.session.Applied() // what the device was following before this push
 	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
 		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
@@ -844,7 +875,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	if l.cfg.Controller == nil {
 		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 		defer cancel()
-		l.applyAddress(cctx, text)
+		l.applyAddress(cctx, prevText, text)
 		outlets := l.desiredOutlets(text)
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
@@ -873,7 +904,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
-	l.applyAddress(cctx, text)
+	l.applyAddress(cctx, prevText, text)
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
 		l.applyFailures++

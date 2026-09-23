@@ -36,7 +36,10 @@ const commitTimer = "00:02:00"
 // switch already has does nothing.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	if d.DHCP {
-		return false, nil // never applied: see the loop
+		// A move to DHCP cannot be confirmed: the driver confirms an address
+		// change by dialling the new address, and a lease is not knowable in
+		// advance. Rather than commit a change it cannot verify, it declines.
+		return false, fmt.Errorf("arista-eos: the controller wants this switch on DHCP; a DHCP address cannot be confirmed before the session's timer reverts it, so the switch keeps its static address -- set it to static in the controller, or move it by hand")
 	}
 	if d.IP == "" || d.PrefixLen <= 0 {
 		return false, fmt.Errorf("arista-eos: static address without an IP and prefix length")
