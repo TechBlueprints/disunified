@@ -3,6 +3,7 @@ package apcpdu
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,9 @@ type Runner interface {
 	// PutConfig uploads a partial config.ini. The card applies it live, with
 	// no reboot, a few seconds after the transfer completes.
 	PutConfig(ctx context.Context, body []byte) error
+	// GetConfig downloads the card's whole config.ini: the one place its
+	// addressing mode (BootMode) is readable, so Start fetches it once.
+	GetConfig(ctx context.Context) ([]byte, error)
 }
 
 // SNMP is the live Runner: SNMPv1 for reads and outlet switching, FTP for the
@@ -117,6 +121,23 @@ func (s *SNMP) PutConfig(ctx context.Context, body []byte) error {
 		return fmt.Errorf("ftp store config.ini: %w", err)
 	}
 	return nil
+}
+
+func (s *SNMP) GetConfig(ctx context.Context) ([]byte, error) {
+	c, err := ftp.Dial(s.Host+":21", ftp.DialWithContext(ctx), ftp.DialWithTimeout(s.Timeout))
+	if err != nil {
+		return nil, fmt.Errorf("ftp dial %s: %w", s.Host, err)
+	}
+	defer func() { _ = c.Quit() }()
+	if err := c.Login(s.User, s.Password); err != nil {
+		return nil, fmt.Errorf("ftp login: %w", err)
+	}
+	r, err := c.Retr("config.ini")
+	if err != nil {
+		return nil, fmt.Errorf("ftp retrieve config.ini: %w", err)
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }
 
 // pduValue renders a PDU the way snmpwalk's text output does, so the live

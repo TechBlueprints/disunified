@@ -31,6 +31,10 @@ type Config struct {
 	// controller treats a power device's outlets as a separate plane.
 	Outlets map[int]Outlet
 
+	// Address is the controller's IP Settings for the device itself:
+	// netconf.1.* and dhcpc.1.status. nil when the push carried no netconf.
+	Address *Address
+
 	SSHKeys     []SSHKey // sshd.auth.key.N.*, enabled ones, in order
 	Users       []User   // users.N.*: the device login the UniFi terminal uses (password is an MD5-crypt hash)
 	NTPServers  []string // ntpclient.N.server, in order, only enabled ones
@@ -47,6 +51,24 @@ type Outlet struct {
 	Index   int
 	Name    string // outlet.<n>.name, "" if the controller did not name it
 	RelayOn bool   // outlet.<n>.relay_state: "disabled" => false, else true
+}
+
+// Address is how the controller wants the device to address itself, from
+// three sections of the push (both forms captured on 10.6.106, 2026-09-22):
+//
+//	Using DHCP  netconf.1.ip=0.0.0.0, dhcpc.1.status=enabled
+//	Static      netconf.1.ip=<a>, netconf.1.netmask=<m>, route.1.gateway=<g>
+//	            (route.1.ip=0.0.0.0 marks the default route),
+//	            resolv.nameserver.N.ip=<dns>, and NO dhcpc.1.* lines at all
+//
+// So DHCP is "the per-interface DHCP client line exists", not the value of
+// a key that is always present.
+type Address struct {
+	DHCP    bool
+	IP      string
+	Netmask string
+	Gateway string
+	DNS     []string
 }
 
 // SNMP is switch.snmp.*: status, version ("1_2c", "3"), and the v1/v2c
@@ -162,6 +184,7 @@ var (
 // Parse reads system_cfg text. Unknown keys are kept in Raw and ignored.
 func Parse(text string) *Config {
 	c := &Config{Raw: map[string]string{}, Ports: map[int]Port{}, Outlets: map[int]Outlet{}}
+	routeGW, defaultRoute := map[string]string{}, map[string]bool{}
 	vlans := map[int]*VLAN{}
 	type membership struct {
 		slot, port int
@@ -190,6 +213,35 @@ func Parse(text string) *Config {
 			slot, _ := strconv.Atoi(m[1])
 			port, _ := strconv.Atoi(m[2])
 			members = append(members, membership{slot, port, v})
+			continue
+		}
+		if strings.HasPrefix(k, "netconf.1.") || k == "dhcpc.1.status" || strings.HasPrefix(k, "route.") || strings.HasPrefix(k, "resolv.nameserver.") {
+			if c.Address == nil {
+				c.Address = &Address{}
+			}
+			switch {
+			case k == "netconf.1.ip":
+				if v != "0.0.0.0" {
+					c.Address.IP = v
+				}
+			case k == "netconf.1.netmask":
+				c.Address.Netmask = v
+			case k == "dhcpc.1.status":
+				c.Address.DHCP = v == "enabled"
+			case strings.HasPrefix(k, "route.") && strings.HasSuffix(k, ".gateway"):
+				// route.N.gateway is the default gateway when route.N.ip is
+				// 0.0.0.0; the one static push on record has exactly one route.
+				routeGW[strings.TrimSuffix(strings.TrimPrefix(k, "route."), ".gateway")] = v
+			case strings.HasPrefix(k, "route.") && strings.HasSuffix(k, ".ip"):
+				if v == "0.0.0.0" {
+					defaultRoute[strings.TrimSuffix(strings.TrimPrefix(k, "route."), ".ip")] = true
+				}
+			case strings.HasPrefix(k, "resolv.nameserver.") && strings.HasSuffix(k, ".ip"):
+				if v != "" && v != "0.0.0.0" {
+					c.Address.DNS = append(c.Address.DNS, v)
+				}
+			}
+			c.Raw[k] = v
 			continue
 		}
 		if m := outletRe.FindStringSubmatch(k); m != nil {
@@ -428,6 +480,14 @@ func Parse(text string) *Config {
 			h += ":" + syslogPort
 		}
 		c.SyslogHosts = []string{h}
+	}
+	if c.Address != nil {
+		for n, gw := range routeGW {
+			if defaultRoute[n] {
+				c.Address.Gateway = gw
+			}
+		}
+		sort.Strings(c.Address.DNS)
 	}
 	return c
 }

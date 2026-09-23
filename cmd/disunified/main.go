@@ -78,6 +78,7 @@ func main() {
 		switchSSHFlag  = flag.String("switch-ssh", "", "pre-rename alias for -device-ssh")
 		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\", or a list like \"2,5-8\"; empty = read-only")
 		controlOutlets = flag.String("control-outlets", envChain("", "DUI_CONTROL_OUTLETS", "STU_CONTROL_OUTLETS"), "switch and name a power device's outlets from the controller: \"all\", or a list like \"2,5-8\"; empty = read-only")
+		controlAddress = flag.Bool("control-address", envChain("", "DUI_CONTROL_ADDRESS", "STU_CONTROL_ADDRESS") == "1", "let the controller's IP Settings for the device set the device's own management address (off by default)")
 		controlIGMP    = flag.Bool("control-igmp", envChain("", "DUI_CONTROL_IGMP", "STU_CONTROL_IGMP") == "1", "let the controller's per-network IGMP snooping setting drive the device (off by default)")
 		controlNTP     = flag.Bool("control-ntp", envChain("", "DUI_CONTROL_NTP", "STU_CONTROL_NTP") == "1", "let the controller's NTP servers replace the device's (off by default)")
 		controlSyslog  = flag.Bool("control-syslog", envChain("", "DUI_CONTROL_SYSLOG", "STU_CONTROL_SYSLOG") == "1", "let the controller's remote syslog host replace the device's (off by default)")
@@ -154,7 +155,7 @@ func main() {
 		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
-		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
+		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
 		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP,
 		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
@@ -176,6 +177,7 @@ type options struct {
 	driverOptions                              map[string]string
 	controlPorts                               string
 	controlOutlets                             string
+	controlAddress                             bool
 	controlIGMP, controlNTP, controlSyslog     bool
 	controlReboot, controlSSH, controlSNMP     bool
 	allowInitialChanges, noSeed                bool
@@ -201,7 +203,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
 			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
+			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
@@ -531,6 +533,14 @@ func runOne(ctx context.Context, o options) error {
 		} else {
 			log.Printf("control: switching and naming outlets %s from the controller", o.controlOutlets)
 		}
+	}
+	if o.controlAddress {
+		ac, ok := sw.(devicemodel.AddressController)
+		if sw == nil || !ok {
+			return errors.New("-control-address needs a device connection whose driver can set its device's address")
+		}
+		loopCfg.AddressController = ac
+		log.Printf("control: the controller's IP Settings set the device's own address")
 	}
 	if o.controlPorts != "" {
 		ctl, ok := sw.(devicemodel.Controller)

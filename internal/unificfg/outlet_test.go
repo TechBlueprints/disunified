@@ -80,3 +80,54 @@ func TestOutletDefaultsToOnWhenOnlyNamed(t *testing.T) {
 		t.Error("an outlet with no relay_state line must default to on")
 	}
 }
+
+// The controller's IP Settings for the device ride in the same push. The
+// captured push has the default, "Using DHCP": netconf.1.ip=0.0.0.0 with the
+// DHCP client enabled. A static setting is checked against its own capture
+// once one exists; this one guards the form we have.
+func TestParseAddressUsingDHCP(t *testing.T) {
+	c := parsePDUFixture(t)
+	if c.Address == nil {
+		t.Fatal("the push carries netconf.1.* but Address is nil")
+	}
+	if !c.Address.DHCP {
+		t.Error("dhcpc.1.status=enabled must parse as DHCP")
+	}
+	if c.Address.IP != "" {
+		t.Errorf("netconf.1.ip=0.0.0.0 must not become an address, got %q", c.Address.IP)
+	}
+}
+
+func TestParseAddressAbsent(t *testing.T) {
+	if c := Parse("switch.port.1.status=enabled"); c.Address != nil {
+		t.Errorf("a push with no netconf grew an Address: %+v", c.Address)
+	}
+}
+
+// The static form, from the controller's own push after the PDU's IP
+// Settings were set to a static address (2026-09-22): address and mask under
+// netconf.1.*, the gateway under route.1.gateway (route.1.ip=0.0.0.0 marks
+// the default route), DNS under resolv.nameserver.N.ip, and no dhcpc.1.*
+// lines at all.
+func TestParseAddressStatic(t *testing.T) {
+	b, err := os.ReadFile("../../docs/fixtures/controller-10.6.106/system_cfg-pdu-static-ip.txt")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	a := Parse(string(b)).Address
+	if a == nil {
+		t.Fatal("no Address parsed from the static push")
+	}
+	if a.DHCP {
+		t.Error("a static push has no dhcpc.1.status line and must not parse as DHCP")
+	}
+	if a.IP != "192.0.2.1" || a.Netmask != "255.255.0.0" {
+		t.Errorf("address = %s/%s, want 192.0.2.1/255.255.0.0", a.IP, a.Netmask)
+	}
+	if a.Gateway != "192.0.2.2" {
+		t.Errorf("gateway = %q, want the default route's route.1.gateway", a.Gateway)
+	}
+	if len(a.DNS) != 1 || a.DNS[0] != "192.0.2.2" {
+		t.Errorf("dns = %v, want the one resolv.nameserver", a.DNS)
+	}
+}

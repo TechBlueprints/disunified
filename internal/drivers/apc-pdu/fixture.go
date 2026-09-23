@@ -21,6 +21,8 @@ type FixtureRunner struct {
 	Configs []string
 	// FailSet makes the next SetInt fail, for the refusal paths.
 	FailSet error
+	// Config is the recorded config.ini (docs/fixtures/apc-aos-3.9.2/config.ini).
+	Config []byte
 }
 
 // walkLine matches one line of `snmpwalk -On` output:
@@ -54,7 +56,17 @@ func NewFixtureRunner(dir string) (*FixtureRunner, error) {
 	if len(f.Values) == 0 {
 		return nil, fmt.Errorf("apc-pdu: no walk-*.txt fixture lines in %s", dir)
 	}
+	if b, err := os.ReadFile(dir + "/config.ini"); err == nil {
+		f.Config = b
+	}
 	return f, nil
+}
+
+func (f *FixtureRunner) GetConfig(_ context.Context) ([]byte, error) {
+	if f.Config == nil {
+		return nil, fmt.Errorf("apc-pdu: fixture has no config.ini")
+	}
+	return f.Config, nil
 }
 
 // normaliseFixtureValue turns snmpwalk's rendered value into what the live

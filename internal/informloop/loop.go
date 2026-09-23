@@ -74,6 +74,9 @@ type Config struct {
 	// outlet. An outlet carries real load, so an operator who wants to try
 	// one outlet first can say so.
 	ControlOutlets map[int]bool
+	// AddressController applies the controller's IP Settings to the device
+	// itself. nil = the device keeps whatever address it has.
+	AddressController devicemodel.AddressController
 	// ControlIGMP lets the controller's per-network IGMP snooping setting
 	// drive the switch. Off by default: UniFi defaults snooping off per
 	// network while EOS defaults it on, so the first apply would turn
@@ -465,6 +468,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	if l.cfg.Controller == nil {
+		l.applyAddress(cctx, text)
 		outlets := l.desiredOutlets(text)
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
@@ -480,6 +484,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
+	l.applyAddress(cctx, text)
 	desired := l.withholdFreshPorts(l.desiredPorts(text))
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
@@ -727,6 +732,57 @@ func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
 	}
 }
 
+// applyAddress hands the controller's IP Settings to a driver that can set
+// its device's own address. The push says "DHCP" as netconf.1.ip=0.0.0.0 with
+// the DHCP client enabled, or a static address with it disabled; a push with
+// no netconf at all is left alone. Errors are reported, not fatal.
+func (l *Loop) applyAddress(ctx context.Context, text string) {
+	if l.cfg.AddressController == nil {
+		return
+	}
+	a := unificfg.Parse(text).Address
+	if a == nil {
+		return
+	}
+	// "Using DHCP" is the controller's default for every device it adopts
+	// and carries no operator intent, so it is never applied: a device on a
+	// manual address stays there. (The first push to the PDU said DHCP; a
+	// bridge that honoured it would have moved the card off its address the
+	// moment address control was switched on -- the replay shows exactly
+	// that.) Only a static setting, which someone typed, reaches the device.
+	if a.DHCP {
+		return
+	}
+	if a.IP == "" || a.Netmask == "" {
+		l.cfg.Logger.Printf("[%s] IP Settings: static without an address and mask; ignored", l.desc.MAC)
+		return
+	}
+	d := devicemodel.AddressDesired{IP: a.IP, PrefixLen: prefixLenOf(a.Netmask), Gateway: a.Gateway, DNS: a.DNS}
+	changed, err := l.cfg.AddressController.ApplyAddress(ctx, d)
+	if err != nil {
+		l.cfg.Logger.Printf("[%s] apply IP Settings: %v", l.desc.MAC, err)
+		return
+	}
+	if changed {
+		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now has %s/%d via %s", l.desc.MAC, d.IP, d.PrefixLen, d.Gateway)
+	}
+}
+
+// prefixLenOf turns a dotted mask into a prefix length.
+func prefixLenOf(mask string) int {
+	n := 0
+	for _, part := range strings.Split(mask, ".") {
+		v, err := strconv.Atoi(part)
+		if err != nil {
+			return 0
+		}
+		for ; v > 0; v >>= 1 {
+			n += v & 1
+		}
+	}
+	return n
+}
+
 // ensureVLANs creates the site's VLANs on the switch before ports reference
 // them. Errors are reported, not fatal: ports whose VLANs exist still apply.
 func (l *Loop) ensureVLANs(ctx context.Context, text string) {
@@ -788,6 +844,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	if l.cfg.Controller == nil {
 		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 		defer cancel()
+		l.applyAddress(cctx, text)
 		outlets := l.desiredOutlets(text)
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
@@ -816,6 +873,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
 	l.installSSHKeys(cctx, text)
+	l.applyAddress(cctx, text)
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
 	if err != nil {
 		l.applyFailures++

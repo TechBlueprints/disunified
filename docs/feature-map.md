@@ -219,4 +219,5 @@ Outlets are the power-device shape beside ports. Status as verified live on
 | Outlets the model has, the device does not (USB 1-4) | reported off, `outlet_caps` 0, every inform; override also set off | done; a push enabling one is declined |
 | Outlet names device-side | partial `config.ini` over FTP | built and tested, **no source**: the controller pushes no names |
 | Reachability | `gateway_mac`, `netmask`, `lldp_table: []` from the IP-MIB | done |
+| Device's own IP Settings (static/DHCP) from the controller | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip`, `dhcpc.1.status` → card `[NetworkTCP/IP]` with `Override=<MAC>` | done, opt-in `control.address`; the DHCP default is never applied |
 | Fans / PSUs / temperature | — | none on an AP7931 |

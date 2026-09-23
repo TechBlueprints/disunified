@@ -1,7 +1,7 @@
 # disunified configuration. Secrets never go in this file: name the
 # environment variables that hold them (see deploy/env.example).
 #
-# One controller, any number of devices (switches, today). Everything not
+# One controller, any number of devices: switches and a rack PDU, today. Everything not
 # listed here is discovered: identity (MAC, serial, hostname), the uplink
 # port, the port layout, the UniFi model to claim, and the device's own port
 # capabilities.
@@ -56,3 +56,16 @@ devices:                             # "switches:" is still accepted (the pre-re
       # no_seed: true                # do not write the switch's port state into the controller on adoption
       igmp: false                    # bridge-wide multicast_snooping follows UniFi
       ntp: false                     # chrony sources follow UniFi
+
+  - name: pdu-1                      # an APC switched rack PDU, presented as a USP-PDU-Pro
+    driver: apc-pdu                  # SNMPv1 for reads and switching, the card's config.ini over FTP for the rest
+    url: 192.0.2.20                  # the card's address (a bare host is fine; a URL is accepted and stripped)
+    username_env: DUI_APC_USER       # the card's own admin login: FTP for names and the address
+    password_env: DUI_APC_PASS
+    model: auto                      # picks USPPDUP for a device with outlets
+    options:
+      read_community: public
+      write_community: private       # its access-control entry must be type Write+, not Write, or SETs vanish
+    control:
+      outlets: all                   # "all", or "2,5-8"; empty = read-only. An outlet is real load.
+      address: true                  # the controller's IP Settings set the card's address (static only; the DHCP default is never applied)

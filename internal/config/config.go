@@ -69,12 +69,17 @@ type Control struct {
 	// An outlet carries real load, so it is off by default like everything
 	// else that writes.
 	Outlets string `yaml:"outlets"`
-	IGMP    bool   `yaml:"igmp"`
-	NTP     bool   `yaml:"ntp"`
-	Syslog  bool   `yaml:"syslog"`
-	Reboot  bool   `yaml:"reboot"`
-	SSHKeys bool   `yaml:"ssh_keys"`
-	SNMP    bool   `yaml:"snmp"`
+	// Address lets the controller's IP Settings for the device set the
+	// device's own management address (static or DHCP). Off by default: a
+	// wrong address takes the device off the network, and only a driver that
+	// can write its device's TCP/IP config honours it.
+	Address bool `yaml:"address"`
+	IGMP    bool `yaml:"igmp"`
+	NTP     bool `yaml:"ntp"`
+	Syslog  bool `yaml:"syslog"`
+	Reboot  bool `yaml:"reboot"`
+	SSHKeys bool `yaml:"ssh_keys"`
+	SNMP    bool `yaml:"snmp"`
 	// AllowInitialChanges lets the first push after adoption change ports
 	// (default: held until the controller's config matches the switch — the
 	// bridge seeds it from the switch when api_url is set).
