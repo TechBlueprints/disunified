@@ -199,3 +199,28 @@ verify over the new address; confirm from exec mode with
 every other commit ("another session … is pending commit timer") — abort it
 with `configure session X` + `abort`. eAPI over the old address times out
 once the address moves; that is expected.
+
+## The switch's own address: `control.address`
+
+The controller pushes the device's IP Settings in every system_cfg, and with
+`control: {address: true}` the driver applies a **static** setting to the
+interface that carries the address the bridge itself connects to (Vlan1 on
+this switch, in-band; see §2c). "Using DHCP" -- the controller's default for
+any adopted device -- is never applied. The pushed form on 10.6.106 is
+`netconf.1.ip` / `netconf.1.netmask`, `route.1.gateway` (with
+`route.1.ip=0.0.0.0`) and `resolv.nameserver.N.ip`.
+
+An address change severs the bridge's own connection, so it is made inside a
+**configuration session committed with a timer** (`configure session
+dui-address` … `commit timer 00:02:00`, verified on 4.26.14M, fixture
+`show-configuration-sessions.txt`): the switch applies the change at once and
+reverts it by itself unless it is confirmed. The driver then dials the switch
+at the new address; only if `show version` answers there does it confirm
+(`configure session dui-address commit`, then `write memory`) and switch its
+own transport over. If the new address does not answer, it returns an error
+and lets the timer put the old address back. The apply is a diff against the
+running configuration, so re-sending what the switch already has does
+nothing.
+
+After a successful move the bridge keeps working at the new address until it
+restarts; the operator then updates `url:` in the config file.

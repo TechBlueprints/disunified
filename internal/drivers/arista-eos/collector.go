@@ -57,6 +57,14 @@ type Collector struct {
 	t   Transport
 	Log *log.Logger // config batches are logged here when set
 
+	// host is the address the bridge reaches the switch at; the interface
+	// carrying it is the management interface an address change targets.
+	// redial opens a transport to the switch at another address, used to
+	// confirm a move before it becomes permanent; nil when the transport
+	// cannot be re-dialled (a fixture without one, or an unknown target).
+	host   string
+	redial func(host string) Transport
+
 	mu        sync.Mutex
 	hostname  string
 	static    map[string]portStatic
@@ -65,6 +73,10 @@ type Collector struct {
 	hardware  map[string]portHardware
 	polls     int
 	last      *devicemodel.Snapshot
+	// nameServers and mgmtDHCP are the running config's view of the
+	// switch's own addressing, kept for ApplyAddress's diff.
+	nameServers []string
+	mgmtDHCP    bool
 
 	portChannels map[string]devicemodel.PortVLAN // Port-ChannelN -> its switchport state
 	managedSNMP  string                          // the SNMP community this bridge last configured
@@ -246,6 +258,13 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	}
 	snap.System.OOBInterfaces = oobInterfaces(ifs)
 	snap.System.Addresses = ifAddresses(ifs)
+	if iface, _ := managementInterface(snap, c.host); iface != "" {
+		gw, dns, dhcp := addressingFromRunningConfig(rc, iface)
+		snap.System.Gateway, snap.System.DHCP = gw, dhcp
+		c.mu.Lock()
+		c.nameServers, c.mgmtDHCP = dns, dhcp
+		c.mu.Unlock()
+	}
 	snap.System.ARP = arpTable(arp)
 	snap.System.LoadAvg = top.TimeInfo.LoadAvg
 	snap.System.MACTableCapacity, snap.System.MACTableUsed = fdbCapacity(hwc)

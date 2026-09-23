@@ -186,7 +186,14 @@ every outlet is safe to toggle; the editor is reached by clicking the outlet
 record and any fixed-IP reservation on it** -- the PDU lost its reserved address the next
 morning; it is now manual on the card (config.ini `[NetworkTCP/IP]` needs the
 `Override=<MAC>` line or it is ignored). `main.go` retries a device's Start
-with capped backoff instead of dropping it.
+with capped backoff instead of dropping it. **The controller owns each device's
+address** (`control.address`): its IP Settings are pushed as `netconf.1.*` +
+`route.1.gateway` + `resolv.nameserver.N.ip`, and a static one is applied --
+to the PDU's card via config.ini (`Override=<MAC>` required), to the Arista
+inside a config session with `commit timer 00:02:00` that the switch reverts
+itself unless the driver, having dialled the new address, confirms with
+`configure session dui-address commit`. The DHCP default is never applied.
+Both devices' IP Settings in UniFi are static (2026-09-23).
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).

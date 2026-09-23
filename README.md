@@ -71,10 +71,13 @@ running it against anything you care about.
   device, takes down your network, or locks you out, that is on you.
 - **It writes to your device.** With `control` enabled it applies whatever
   the controller pushes: it replaces the device's VLAN configuration,
-  disables and re-enables ports, changes speeds and breakouts, STP, LACP,
-  storm control, NTP and syslog, and reboots the device when the controller
-  asks. A wrong click in the UniFi UI, a controller bug, or a bug here can
-  cut off the device, the hosts behind it, or the bridge itself.
+  disables and re-enables ports, switches outlets, changes speeds and
+  breakouts, STP, LACP, storm control, NTP and syslog, and reboots the device
+  when the controller asks. With the opt-in `control.address` it will even set
+  the device's own management address from the controller's IP Settings — the
+  one setting that can strand the bridge from the device it manages. A wrong
+  click in the UniFi UI, a controller bug, or a bug here can cut off the
+  device, the hosts behind it, or the bridge itself.
 - **Verified on very little hardware:** the three drivers above, against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
