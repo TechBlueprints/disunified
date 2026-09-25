@@ -13,6 +13,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
+- `ip domain-name` is deprecated on 4.26 ("This command is deprecated by
+  'dns domain'"): the DNS domain is `dns domain <name>`; `hostname <name>`
+  is unchanged. `show hostname` then reports the FQDN. The driver reads
+  the hostname only in `refreshStatic` and `main` captures it once at
+  start, so a hostname change on the switch reaches the inform after a
+  bridge restart.
 - No rogue-DHCP protection on EOS 4.26: `ip dhcp snooping` is Option-82
   insertion only (no `trust`), so `DHCPSnooping` is not claimed and the
   controller's `switch.dhcp_snoop` key is never pushed (verified
