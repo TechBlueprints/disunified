@@ -195,6 +195,18 @@ itself unless the driver, having dialled the new address, confirms with
 `configure session dui-address commit`. DHCP is applied only when it replaces a static setting in the previous push (the default is never applied), and declined on the Arista, whose driver cannot confirm a lease it cannot predict.
 Both devices' IP Settings in UniFi are static (2026-09-23).
 
+**Hostname (2026-09-24).** The controller stores a bridged device's `hostname`
+**once, from the adoption inform**; later informs carrying a new hostname are
+ignored (five cycles and a force-provision changed nothing). Real UniFi
+devices have no `hostname` field at all -- the gateway's DNS name for them
+comes from the device `name`; for ours it comes from the stored `hostname`
+(the PDU resolves as `power-1`, its card's hostname, not as its UniFi name).
+`PUT rest/device/<_id> {"hostname": "..."}` sets it and it sticks. The
+controller also pushes `resolv.host.1.name` (the UniFi name with spaces
+removed) in every system_cfg; no driver applies it yet. The Arista's own
+hostname was the factory `localhost` until Clint had it set from the CLI
+(`hostname` + `dns domain` -- `ip domain-name` is deprecated on 4.26).
+
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
 
