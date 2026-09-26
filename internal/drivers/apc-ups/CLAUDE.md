@@ -48,3 +48,14 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   scrubbed by `scripts/sanitize-apc-ups.py` (serial and UPS-name words).
   No real UniFi UPS inform exists on site, so the `vbms_table` emitter is
   spec-derived from unifi-emu's PROTOCOL.md rather than capture-verified.
+- **Model choice facts (2026-09-26).** UniFi's whole UPS lineup, per its
+  fingerprint DB, is UPS Tower (`USWDA23/24`, 5+5 outlets), UPS 2U
+  (`USWDA25/26`, 4+4) and UPS 2U Pro (`USPDA2B/2C`, 8/9 metered). The
+  `USPDA29`/`USPDA31` codes in unifi-emu's protocol notes are **not in the
+  fingerprint** -- the controller would not know them. The pinned emu
+  **v0.5.5 mislabels the 2U Pro as `type usw`**; the newer catalogue and the
+  fingerprint say `usp`, a power-path type this bridge has never exercised
+  and has no capture for, so its passing the descriptor gate is a catalogue
+  bug, not a real option. Tower and 2U draw surge-only outlets the SMTL does
+  not have; the Pro claims per-outlet metering the SMTL cannot do. 2U stays.
+
