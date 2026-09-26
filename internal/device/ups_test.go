@@ -158,3 +158,59 @@ func TestUPSTablesMarshal(t *testing.T) {
 		t.Fatalf("vbms_table did not survive the round trip: %T", back["vbms_table"])
 	}
 }
+
+func upsSnapshotWithGroups() *devicemodel.Snapshot {
+	snap := upsSnapshot()
+	snap.Outlets = []devicemodel.Outlet{
+		{Index: 1, On: true, Switchable: false}, // the unswitched main group
+		{Index: 2, On: true, Switchable: true},  // Outlet Group 1
+	}
+	return snap
+}
+
+// Two group rows, then the six slots the UPS 2U draws that the unit does not
+// have, reported present-but-off with no relay so nothing phantom is offered.
+func TestUPSReportsGroupRowsAndPadsTheModelsSlots(t *testing.T) {
+	m := deviceTables(upsDesc(), upsSnapshotWithGroups())
+	rows := outletRows(t, m)
+	if len(rows) != 8 {
+		t.Fatalf("outlet_table has %d rows, want 8 (2 groups + 6 placeholders for the UPS 2U's picture)", len(rows))
+	}
+	if m["hw_caps"] != HWCapsOutlet || m["outlet_enabled"] != true {
+		t.Errorf("hw_caps=%v outlet_enabled=%v", m["hw_caps"], m["outlet_enabled"])
+	}
+	main, g1 := rows[0], rows[1]
+	if main["index"] != 1 || main["relay_state"] != true || main["outlet_caps"] != 0 {
+		t.Errorf("main group row = %v, want index 1, on, no relay bit", main)
+	}
+	if g1["index"] != 2 || g1["relay_state"] != true || g1["outlet_caps"] != outletCapHasRelay {
+		t.Errorf("group 1 row = %v, want index 2, on, relay bit", g1)
+	}
+	for i, r := range rows[2:] {
+		if r["index"] != i+3 || r["relay_state"] != false || r["outlet_caps"] != 0 || r["outlet_type"] != outletTypeAC {
+			t.Errorf("placeholder row %v, want index %d, off, no relay, AC", r, i+3)
+		}
+		if _, has := r["relay_group"]; has {
+			t.Errorf("AC placeholder %v carries relay_group; only USB rows do", r["index"])
+		}
+	}
+	for _, r := range rows {
+		for _, banned := range []string{"name", "cycle_enabled", "outlet_voltage", "outlet_current", "outlet_power"} {
+			if _, present := r[banned]; present {
+				t.Errorf("row %v reports %q", r["index"], banned)
+			}
+		}
+	}
+}
+
+// A model the count table does not know is not padded.
+func TestOutletCountUnknownModelPadsNothing(t *testing.T) {
+	if OutletCount("SOME-OTHER-MODEL") != 0 {
+		t.Error("unknown model got a slot count")
+	}
+	desc := upsDesc()
+	desc.Model = "SOME-OTHER-MODEL"
+	if n := len(outletRows(t, deviceTables(desc, upsSnapshotWithGroups()))); n != 2 {
+		t.Errorf("%d rows for an unknown model, want the 2 real ones", n)
+	}
+}

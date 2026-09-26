@@ -112,10 +112,12 @@ type Collector struct {
 	mu       sync.Mutex
 	last     *devicemodel.Snapshot
 	resolved string // last address the name resolved to, for change logging
+	warned   map[string]bool
+	names    []string // the unit's own name for each reported outlet group, for logs only
 }
 
 // NewCollector builds a collector over a runner.
-func NewCollector(r Runner) *Collector { return &Collector{r: r} }
+func NewCollector(r Runner) *Collector { return &Collector{r: r, warned: map[string]bool{}} }
 
 // Start reads the whole unit once, so an unreachable port, Modbus left
 // disabled at the LCD, or a unit that is not a Smart-UPS fails here rather
@@ -130,6 +132,13 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		return nil, fmt.Errorf("apc-ups: %s answered Modbus but reported no Smart-UPS identity or rating; is it a Smart-UPS with Modbus enabled?", c.Addr)
 	}
 	log.Printf("apc-ups: %s %s, %s, rated %.0f W / %.0f VA", snap.System.Vendor, snap.System.Model, snap.System.Version, b.RealPowerRatingW, b.ApparentRatingVA)
+	for i, o := range snap.Outlets {
+		kind := "switched group"
+		if !o.Switchable {
+			kind = "unswitched main group (never commanded)"
+		}
+		log.Printf("apc-ups: outlet %d = %q, %s, %s", o.Index, c.names[i], kind, map[bool]string{true: "on", false: "off"}[o.On])
+	}
 	return snap, nil
 }
 
@@ -170,10 +179,13 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	// uplink. There is no LLDP on it, so the loop is told directly.
 	snap.Ports = []devicemodel.Port{c.uplinkPort()}
 	snap.UplinkHint = 1
-	// Outlet groups are read (OutletGroups) but not yet presented as outlets:
-	// presenting them would offer the controller a relay, and switching one
-	// is a follow-on that waits on a discussion with the operator
-	// (docs/drivers/apc-ups.md).
+	// The outlet groups are the outlets: one row per group the unit has,
+	// index = group + 1. The Main group is reported unswitchable -- it is on
+	// whenever the output is, and commanding it would drop the whole rack --
+	// so the controller is never offered a relay for it. Sockets are not
+	// individually switchable on this hardware (the command register
+	// addresses groups only), so a "group" row is the honest unit.
+	snap.Outlets, c.names = c.outlets(status, static)
 
 	c.mu.Lock()
 	c.last = snap
@@ -256,9 +268,26 @@ func (c *Collector) battery(status, dyn, static, cfg []uint16) *devicemodel.Batt
 	return b
 }
 
-// OutletGroups reports the unit's outlet groups from the last snapshot's
-// registers: the name the unit gives each present group and whether it is
-// on. Informational in this version; switching them is a follow-on.
+// outlets builds one Outlet per outlet group the unit reports present
+// (register 590), with the group's on/off state and the unit's own name for
+// it (kept for logs; names are controller-owned on the wire).
+func (c *Collector) outlets(status, static []uint16) ([]devicemodel.Outlet, []string) {
+	present := static[regSOGConfig-blockStatic]
+	var out []devicemodel.Outlet
+	var names []string
+	for g := 0; g < 4; g++ {
+		if present&(sogGroupPresent<<g) == 0 {
+			continue
+		}
+		on := status[regOutletGroup0+3*g+1]&outletGroupOn != 0
+		out = append(out, devicemodel.Outlet{Index: g + 1, On: on, Switchable: g != 0})
+		names = append(names, regString(static, regGroupName0-blockStatic+8*g, 8))
+	}
+	return out, names
+}
+
+// OutletGroups reports the unit's outlet groups from a status and static
+// block: the name the unit gives each present group and whether it is on.
 func OutletGroups(status, static []uint16) []string {
 	var out []string
 	present := static[regSOGConfig-blockStatic]

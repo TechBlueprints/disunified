@@ -590,6 +590,28 @@ func outletTable(desc inform.Descriptor, snap *devicemodel.Snapshot) []map[strin
 		}
 		table = append(table, entry)
 	}
+	// Slots the model draws beyond the device's own outlets (a UPS 2U draws
+	// eight; a two-group UPS reports two). Present-but-off with no relay, as
+	// the AC row shape without a relay_group, so nothing phantom is offered.
+	highest := 0
+	for _, e := range table {
+		if i, _ := e["index"].(int); i > highest {
+			highest = i
+		}
+	}
+	for i := highest + 1; i <= OutletCount(desc.Model); i++ {
+		table = append(table, map[string]any{
+			"index":                      i,
+			"relay_state":                false,
+			"outlet_caps":                0,
+			"outlet_type":                outletTypeAC,
+			"power_fault":                false,
+			"power_warning":              false,
+			"relay_activation_countdown": 0,
+			"relay_activation_time":      0,
+			"modem_power_cycle_count":    0,
+		})
+	}
 	return table
 }
 

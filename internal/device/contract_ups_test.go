@@ -18,11 +18,6 @@ import (
 // the bar the rest of the payload is held to, and said so in
 // docs/drivers/apc-ups.md.
 var upsContractOmissions = map[string]string{
-	"outlet_table":                     "this version presents no outlets (switching waits on a discussion)",
-	"outlet_enabled":                   "no outlet table",
-	"hw_caps":                          "no outlet table, so no outlet bit; the model's flags make it a UPS",
-	"outlet_ac_power_budget":           "PDU-family aggregate key; a UPS reports capacity in battpool",
-	"outlet_ac_power_consumption":      "PDU-family aggregate key; a UPS reports output in battpool",
 	"outlet_usb_power_budget":          "no USB outlets",
 	"outlet_ac_energy_7":               "no energy counter",
 	"outlet_ac_energy_30":              "no energy counter",
@@ -109,10 +104,22 @@ func TestWireContractUPS(t *testing.T) {
 	if ours["smart_power_caps"].(float64) != 0 {
 		t.Errorf("smart_power_caps = %v, want 0: nothing writable is honoured", ours["smart_power_caps"])
 	}
-	for _, k := range []string{"outlet_table", "hw_caps"} {
-		if _, ok := ours[k]; ok {
-			t.Errorf("payload carries %q; this version presents no outlets", k)
-		}
+	// Outlet groups are outlets: two real rows, then the six slots the UPS 2U
+	// draws that this unit lacks, and the claim that makes the controller
+	// keep the table at all. The AC row shape is held to a real USP-PDU-Pro's.
+	if hw, _ := ours["hw_caps"].(float64); int(hw) != HWCapsOutlet {
+		t.Errorf("hw_caps = %v, want %d", ours["hw_caps"], HWCapsOutlet)
+	}
+	if n := len(ours["outlet_table"].([]any)); n != 8 {
+		t.Errorf("outlet_table has %d rows, want 8", n)
+	}
+	compareKeys(t, "apc-ups group row", outletRow(t, real, 5), outletRow(t, ours, 2), pduOutletOmissions)
+	compareKeys(t, "apc-ups placeholder row", outletRow(t, real, 5), outletRow(t, ours, 3), pduOutletOmissions)
+	if r := outletRow(t, ours, 1); r["outlet_caps"].(float64) != 0 || r["relay_state"] != true {
+		t.Errorf("main group row = %v, want on with no relay bit", r)
+	}
+	if r := outletRow(t, ours, 2); r["outlet_caps"].(float64) != float64(outletCapHasRelay) || r["relay_state"] != true {
+		t.Errorf("group 1 row = %v, want on with the relay bit", r)
 	}
 	if n := len(ours["port_table"].([]any)); n != 1 {
 		t.Errorf("port_table has %d rows, want the one SmartConnect port", n)

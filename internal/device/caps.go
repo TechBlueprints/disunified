@@ -104,6 +104,24 @@ func OutletIndexBase(model string) int {
 	return 1
 }
 
+// OutletCount is how many outlet slots the controller draws for a claimed
+// battery-backed model -- the pinned catalogue carries no outlets for these,
+// so the counts come from Ubiquiti's fingerprint DB (standard + surge). 0 =
+// pad nothing. A device reporting fewer rows than the picture has slots
+// leaves the rest at the controller's default, which looks switchable; they
+// are reported instead as present-but-off with no relay (see outletTable).
+func OutletCount(model string) int {
+	switch model {
+	case "USWDA23", "USWDA24":
+		return 10
+	case "USWDA25", "USWDA26", "USPDA2B":
+		return 8
+	case "USPDA2C":
+		return 9
+	}
+	return 0
+}
+
 // outlet_table[].outlet_caps bits, and the outlet_type a rack PDU sends
 // alongside them. A value at or above the AC class bit (65536) would select
 // the newer encoding; this bridge sends the rack-PDU form, so the values stay

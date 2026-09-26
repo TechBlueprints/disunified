@@ -3,11 +3,12 @@
 // card, no serial cable. Written against an SMTL1500RM3UC (UPS ID 1026,
 // firmware UPS 15.5); fixtures in docs/fixtures/apc-smtl-15.5.
 //
-// This first version is read-only: it reports load, power and battery state
-// and switches nothing. The unit has a switchable outlet group; driving it
-// from the controller is a follow-on that waits on a discussion with the
-// operator and a test outlet known to carry no load. See
-// docs/drivers/apc-ups.md.
+// It reports load, power, battery state and the unit's outlet groups, and
+// can switch a switched group from the controller's outlet editor when the
+// operator turns control on (control.outlets). The Main group is never
+// commanded. The write path is unit-tested byte-exact against NUT's
+// apc_modbus encoding and has not been exercised against the unit (Clint's
+// decision, 2026-09-26). See docs/drivers/apc-ups.md.
 package apcups
 
 import (
@@ -106,10 +107,15 @@ func stripScheme(s string) string {
 	return s
 }
 
-// Compile-time checks. This version is a read-only collect device: no
-// OutletController, OutletCycler or Rebooter yet (see the package comment).
+// Compile-time checks: a collect device that switches outlet groups and
+// nothing else. Deliberately not a Controller (no ports to configure), not
+// a Rebooter (a UPS reboot is the rack), not an AddressController (Modbus
+// carries no IP configuration).
 var (
-	_ devicemodel.Driver  = Driver{}
-	_ devicemodel.Device  = (*Collector)(nil)
-	_ devicemodel.Capable = (*Collector)(nil)
+	_ devicemodel.Driver           = Driver{}
+	_ devicemodel.Device           = (*Collector)(nil)
+	_ devicemodel.Capable          = (*Collector)(nil)
+	_ devicemodel.OutletController = (*Collector)(nil)
+	_ devicemodel.OutletCycler     = (*Collector)(nil)
+	_ devicemodel.OutletPlanner    = (*Collector)(nil)
 )
