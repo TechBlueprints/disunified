@@ -73,5 +73,15 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - The eight profile outlet slots are drawn with no rows sent, all green; the
   controller plants an empty `outlet_table` itself.
 - "Update Available" is the honest version "15.5" losing to the UPS 2U's
-  release number; the emulated upgrade only relabels, never touches the unit.
+  release number. The rule is to accept it (ECS Core precedent): the
+  emulated upgrade persists and reports the controller's version, base kept.
+- **`gateway_mac` is the gateway's L2 address on the segment**, from `ip
+  neigh` on a host there -- the UDM answered ARP as `…:0b:a4` while the
+  controller lists the device as `…:0b:a3`. The PDU and Arista get it right
+  because they read their own ARP tables; an operator option has to be told.
+- **The port refuses a new connection for a moment after a session closes.**
+  Restarting the bridge (SIGINT, reconnect ~0.3 s later) got `connect:
+  connection refused` on the first attempt; `main.go`'s start retry
+  succeeded 15 s later. Expected, not a fault -- one Modbus session at a
+  time, and the stack takes a beat to free it. Don't tighten the retry.
 

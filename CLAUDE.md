@@ -121,6 +121,10 @@ and must stay stopped** (one bridge per adopted key).
   profile's icons and speed pickers; port count, display name, PoE and
   default port names come from the profile.
 - The controller sets the inform interval (65-80 s here).
+- **Topology parent = the upstream switch seeing the device's MAC on a port.**
+  Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
+  segment's L2 address, `if_table`, `uplink` as a string) are necessary, not
+  sufficient; a synthetic MAC is never placed. `docs/topology-placement.md`.
 
 ## 6. Driver facts
 

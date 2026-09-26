@@ -33,9 +33,12 @@ import (
 //	         that client record (and any fixed-IP reservation on it). Without
 //	         it a stable locally-administered address is derived from the serial.
 //	netmask      the unit's network mask, dotted (e.g. 255.255.255.0), and
-//	gateway_mac  its gateway's MAC. Modbus carries no IP configuration, and
-//	             the controller places a device by these; without them the
-//	             UPS adopts but has no parent in the topology.
+//	gateway_mac  the gateway's L2 address AS THE SEGMENT SEES IT (`ip neigh
+//	             show <gateway>` from a host on that network) -- not the
+//	             controller's listed MAC for the gateway device, which can be
+//	             a different interface. Modbus carries no IP configuration,
+//	             and the controller reads these reachability fields when it
+//	             places a device (docs/topology-placement.md).
 //	unit_id  Modbus unit id (default 1)
 //	timeout  per-request response timeout (default 3s)
 //

@@ -87,7 +87,7 @@ devices:
     options:
       mac: 02:00:00:00:00:02     # the SmartConnect port's MAC (Modbus does not expose it)
       netmask: 255.255.255.0     # the unit's network, and
-      gateway_mac: 02:00:00:00:00:fe  # its gateway's MAC: neither is readable over Modbus
+      gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it (ip neigh), not its listed device MAC
       # unit_id: 1
       # timeout: 3s
 ```
@@ -180,9 +180,11 @@ to change.
   reservation -- untested.
 - **"Update Available"**: the controller offers the UPS 2U firmware
   (`upgradable: true`) because the honest version "15.5" is older than the
-  model's release. Harmless -- the emulated upgrade only relabels the reported
-  version and never touches the unit -- but persistent unless `firmware:` is
-  pinned, which would make the Version column lie.
+  model's release. The rule (as for the ECS Core) is to **accept it**: the
+  emulated upgrade persists the requested version and reports it from then
+  on (`firmware: 1.6.1.413`, with `firmware_base: 15.5` kept in the state
+  file), and never touches the unit. Verified 2026-09-26: `upgrade to
+  "1.6.1.413" requested (emulated reboot)`.
 - Safe Shutdown Pairing lists the gateway as "Not Compatible": a UPS 2U pairs
   with a UNVR/UNAS, not a UDM. Informational.
 
