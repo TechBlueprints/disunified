@@ -70,8 +70,10 @@ the device reports. Discovery has to come from the LAN (the bridge host's
 neighbour table, on the same segment) or from a DNS name the gateway keeps
 for the lease.
 
-To switch: forget the device in the controller (`cmd/devmgr delete-device`
-by exact MAC),
+To switch: forget the device in the controller with **`cmd/sitemgr`**
+`{"cmd":"delete-device","mac":<exact MAC>}` -- not `cmd/devmgr`, which
+answers `rc: ok` to that command and deletes nothing (it answers ok to any
+command name; only a recorded effect proves anything) -- then
 back up and remove `state/<name>/device.json`, set `options: mac` to the
 real port's address, restart; the device is pending within seconds (the UPS
 saw one 404, no 400s), `cmd/devmgr adopt` by exact MAC completes the

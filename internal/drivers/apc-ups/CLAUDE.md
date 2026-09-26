@@ -90,4 +90,7 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   re-resolves every cycle and reports the address, `main.go` defaults `ip`
   from it. The controller exposes no address for an adopted real MAC, so
   this and the host's neighbour table are the only discovery paths.
+- **Forget = `cmd/sitemgr delete-device`.** `cmd/devmgr delete-device` returns
+  `rc: ok` and leaves the record (seen twice, 2026-09-26); `sitemgr` removed
+  it in seconds. `cmd/devmgr adopt` and `cmd/devmgr upgrade` do work.
 
