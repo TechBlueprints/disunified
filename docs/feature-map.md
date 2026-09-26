@@ -228,12 +228,13 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 
 | Feature | Wire | Status |
 |---|---|---|
-| Battery pipeline (on-battery / AC-restored alerts, low battery, graceful shutdown inputs) | `vbms_table.is_battery_mode`, `battpool.timeToRemain` | built; spec-derived (no real UniFi UPS inform on site) |
-| Charge, runtime, charging | `battpool.batteryLevel`, `timeToRemain`, `ischarging` | built; charging derived (map has no charging bit) |
-| Load, real power, capacity | `battpool.device_total_power_output` / `_budget`, `total_max_power`, `power_consumption` | built from Modbus load % × nameplate W |
+| Battery pipeline (on-battery / AC-restored alerts, low battery, graceful shutdown inputs) | `vbms_table.is_battery_mode`, `battpool.timeToRemain` | **done, verified live**: the controller stores every battpool key as sent (2026-09-26) |
+| Charge, runtime, charging | `battpool.batteryLevel`, `timeToRemain`, `ischarging` | done, verified live; charging derived (map has no charging bit) |
+| Load, real power, capacity | `battpool.device_total_power_output` / `_budget`, `total_max_power`, `power_consumption` | done, verified live: the UI's "1075/1350 W 80 %" ring is this |
 | Output V/A, input V, power factor | `battpool.device_output_voltage` / `_current`, `device_input_voltage`, `device_total_power_factor` | built; omitted when the unit reports not-applicable |
 | Overload / battery-low alerts | `bms_run_anomaly` 1024 / 64 / 4096 | built from measured load and shutdown-imminent |
 | Power controls (beeper, EPO, AC-recovery, NUT server) | `smart_power_caps` | claimed 0: none honoured |
-| Outlet groups | `outlet_table` | **not presented**: read (both groups) but switching waits on a discussion; no per-group metering exists |
+| Outlet groups | `outlet_table` | **not presented**: read (both groups); the profile's eight slots are drawn regardless, all green; rows and switching wait on a discussion; no per-group metering exists |
 | Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
+| Topology parent | `uplink`, `uplink_mac` | **absent with the synthetic MAC** (the controller places by MAC on a switch port); operator-declared uplink is the untested candidate |
 
