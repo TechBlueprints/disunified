@@ -170,14 +170,14 @@ to change.
 - `smart_power_caps` 0 and `hw_caps` 0 stored as sent; `total_max_power`
   1350; satisfaction 100; `uplink` composed by the controller from the
   `"eth0"` string, with the operator-supplied netmask carried through.
-- **No topology parent, by construction of the synthetic MAC.** The
-  controller places a device by finding its MAC on a switch port; the
-  synthetic address has never been seen on any port, so `uplink_mac` stays
-  empty and the page says "Connected To -". The rack PDU, adopted under its
-  card's real MAC, is placed (`uplink_mac` + remote port). The real
-  SmartConnect port *is* seen by a switch port; declaring that uplink as an
-  operator option is the candidate fix that keeps the synthetic MAC and the
-  reservation -- untested.
+- **Topology parent: first none, then placed.** Adopted first under a
+  synthetic MAC (to keep the real port's client record and reservation): no
+  parent after many cycles, every reachability field verified correct in the
+  controller's record. Re-adopted the same day under the real MAC: placed on
+  `access` port 24 within 20 s of CONNECTED. The controller places by
+  finding the device's MAC on a switch port; `docs/topology-placement.md`.
+  The trade: adoption under the real MAC deleted the unit's client record,
+  its fixed-IP reservation and its client DNS name (accepted).
 - **"Update Available"**: the controller offers the UPS 2U firmware
   (`upgradable: true`) because the honest version "15.5" is older than the
   model's release. The rule (as for the ECS Core) is to **accept it**: the
