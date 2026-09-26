@@ -1,0 +1,109 @@
+// Package apcups presents an APC Smart-UPS as an adopted UniFi UPS, read over
+// Modbus TCP from the unit's own SmartConnect Ethernet port -- no management
+// card, no serial cable. Written against an SMTL1500RM3UC (UPS ID 1026,
+// firmware UPS 15.5); fixtures in docs/fixtures/apc-smtl-15.5.
+//
+// This first version is read-only: it reports load, power and battery state
+// and switches nothing. The unit has a switchable outlet group; driving it
+// from the controller is a follow-on that waits on a discussion with the
+// operator and a test outlet known to carry no load. See
+// docs/drivers/apc-ups.md.
+package apcups
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
+)
+
+// Driver is the APC Smart-UPS (Modbus TCP) driver.
+//
+// Config: url = the SmartConnect port's address (host or host:502; a scheme
+// is accepted and ignored). No username or password: the port has none.
+// Options:
+//
+//	mac      the SmartConnect port's MAC address, reported as the device's
+//	         own. Modbus does not expose it; the controller already lists it
+//	         as a client, and adopting a device under its own MAC replaces
+//	         that client record (and any fixed-IP reservation on it). Without
+//	         it a stable locally-administered address is derived from the serial.
+//	netmask      the unit's network mask, dotted (e.g. 255.255.255.0), and
+//	gateway_mac  its gateway's MAC. Modbus carries no IP configuration, and
+//	             the controller places a device by these; without them the
+//	             UPS adopts but has no parent in the topology.
+//	unit_id  Modbus unit id (default 1)
+//	timeout  per-request response timeout (default 3s)
+//
+// Modbus must first be enabled on the unit's display: Configuration -> Menu
+// Type -> Advanced, then Configuration -> Modbus. It ships disabled.
+type Driver struct{}
+
+func init() { devicemodel.RegisterDriver(Driver{}) }
+
+func (Driver) Name() string { return "apc-ups" }
+
+func (Driver) Describe() string {
+	return "APC Smart-UPS over Modbus TCP on its SmartConnect port (read-only: load, power, battery); verified on SMTL1500RM3UC / UPS 15.5"
+}
+
+// Open builds the Modbus client and the collector; Start then reads the
+// whole unit once, so an unreachable port or Modbus left disabled fails here.
+func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemodel.Device, error) {
+	addr := strings.TrimSpace(cfg.URL)
+	if addr == "" {
+		addr = cfg.Options["host"]
+	}
+	if addr == "" {
+		return nil, errors.New("apc-ups: set url: the UPS's SmartConnect address")
+	}
+	addr = stripScheme(addr)
+	if addr == "" {
+		return nil, fmt.Errorf("apc-ups: could not read a host out of url %q", cfg.URL)
+	}
+	m := NewModbus(addr)
+	if v := cfg.Options["unit_id"]; v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 255 {
+			return nil, fmt.Errorf("apc-ups: unit_id must be 0..255, got %q", v)
+		}
+		m.UnitID = byte(n)
+	}
+	if v := cfg.Options["timeout"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("apc-ups: timeout %q: %w", v, err)
+		}
+		m.Timeout = d
+	}
+	c := NewCollector(m)
+	c.Addr = m.Addr
+	c.MAC = strings.ToLower(strings.TrimSpace(cfg.Options["mac"]))
+	c.Netmask = strings.TrimSpace(cfg.Options["netmask"])
+	c.GatewayMAC = strings.ToLower(strings.TrimSpace(cfg.Options["gateway_mac"]))
+	return c, nil
+}
+
+// stripScheme accepts the address with or without a scheme, path or port.
+func stripScheme(s string) string {
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	s = strings.TrimSuffix(s, "/")
+	if h, _, ok := strings.Cut(s, "/"); ok {
+		s = h
+	}
+	return s
+}
+
+// Compile-time checks. This version is a read-only collect device: no
+// OutletController, OutletCycler or Rebooter yet (see the package comment).
+var (
+	_ devicemodel.Driver  = Driver{}
+	_ devicemodel.Device  = (*Collector)(nil)
+	_ devicemodel.Capable = (*Collector)(nil)
+)

@@ -258,6 +258,12 @@ type System struct {
 	PowerCurrentA float64
 	HasPowerDraw  bool
 
+	// Battery is set only by a device that has one (a UPS). Its presence is
+	// what makes the presentation layer emit the battery tables; a switch or
+	// a PDU leaves it nil. Everything in it is a measurement or a derived
+	// state, never a claim about hardware the driver cannot see.
+	Battery *Battery
+
 	STPMode     string // "rstp", "mstp", "stp", "none", ""
 	STPPriority int    // bridge priority, 0 if unknown
 	STPRoot     string // MAC of the root bridge (this switch's own when it is the root), "" if unknown
@@ -426,6 +432,55 @@ type Outlet struct {
 	VoltageV    float64
 	CurrentA    float64
 	PowerW      float64
+}
+
+// Battery is the state of a UPS: its pack, its load and where its power is
+// coming from. Values a device does not report are left at zero with the
+// matching Has* flag false, so a consumer never mistakes "unmeasured" for
+// "measured zero" (an input voltage of 0 V reads as a real outage).
+type Battery struct {
+	OnBattery   bool // the load is being carried by the battery (mains lost)
+	Charging    bool // the pack is being charged
+	LowBattery  bool // the device signals shutdown-imminent
+	Overload    bool // the load exceeds the device's rating
+	OutputOff   bool // the output is switched off
+	Bypass      bool // the load is on bypass, not conditioned output
+	Testing     bool // a self-test is running
+	Calibrating bool // a runtime calibration is running
+	ECOMode     bool // high-efficiency / ECO mode
+	Boost       bool // AVR is boosting a low line
+	Trim        bool // AVR is trimming a high line
+	Fault       bool // the device reports a general fault
+	InputBad    bool // the device reports its input as not acceptable
+
+	ChargePct int           // state of charge, 0-100
+	Runtime   time.Duration // estimated runtime remaining at the present load
+	VoltageV  float64       // pack voltage
+
+	TemperatureC   float64 // pack temperature
+	HasTemperature bool
+
+	LoadPct           float64 // output load as a percentage of the real-power rating
+	RealPowerW        float64 // output real power
+	ApparentPowerVA   float64 // output apparent power
+	RealPowerRatingW  float64 // nameplate real-power rating
+	ApparentRatingVA  float64 // nameplate apparent-power rating
+	OutputVoltageV    float64
+	OutputCurrentA    float64
+	OutputFrequencyHz float64
+	HasOutput         bool // the output measurements above are real
+
+	InputVoltageV float64
+	HasInput      bool // false when the device reports the input as not applicable
+
+	EfficiencyPct float64
+	HasEfficiency bool // false when the device gives a reason instead of a number
+
+	TransferHighV int // AVR/transfer thresholds, volts; 0 if unknown
+	TransferLowV  int
+
+	ShutdownDelay time.Duration // configured delay before a commanded shutdown
+	TransferCause string        // the device's reason for the last status change, "" if unknown
 }
 
 // PortHealth carries the vendor-neutral signals the presentation layer turns

@@ -116,6 +116,28 @@ const (
 	outletTypeUSB = 1
 )
 
+// smart_power_caps says which power-device controls the controller may push
+// (each bit unlocks a system_cfg key; unifi-emu's capability_bits.json names
+// them). The UPS driver is read-only, so it claims none: a claimed bit whose
+// push is then ignored is a silent lie in the UI.
+const (
+	smartPowerCapNUTInfo      = 1  // nut_server block
+	smartPowerCapACRecovery   = 2  // power_cycle_on_ac_recovery.*
+	smartPowerCapBuzzer       = 4  // beep.status
+	smartPowerCapSafeShutdown = 8  // safe-shutdown timing
+	smartPowerCapEPO          = 16 // epo.status
+	smartPowerCapInputTHD     = 64 // ac_input_thd.level
+	SmartPowerCapsNone        = 0
+)
+
+// bms_run_anomaly bits: each set bit raises an operator-visible alert, so
+// only bits the device can justify from a measurement are ever set.
+const (
+	bmsAnomalyOverloadOver120  = 64
+	bmsAnomalyOverload100to120 = 1024
+	bmsAnomalyBatteryLow       = 4096
+)
+
 // HWCapsOutlet is the hw_caps value a power device reports.
 const HWCapsOutlet = hwCapOutlet
 

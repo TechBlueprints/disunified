@@ -223,3 +223,17 @@ Outlets are the power-device shape beside ports. Status as verified live on
 
 The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
 | Fans / PSUs / temperature | — | none on an AP7931 |
+
+## Power devices — `apc-ups` (APC SMTL1500RM3UC, UPS 15.5, over its SmartConnect port)
+
+| Feature | Wire | Status |
+|---|---|---|
+| Battery pipeline (on-battery / AC-restored alerts, low battery, graceful shutdown inputs) | `vbms_table.is_battery_mode`, `battpool.timeToRemain` | built; spec-derived (no real UniFi UPS inform on site) |
+| Charge, runtime, charging | `battpool.batteryLevel`, `timeToRemain`, `ischarging` | built; charging derived (map has no charging bit) |
+| Load, real power, capacity | `battpool.device_total_power_output` / `_budget`, `total_max_power`, `power_consumption` | built from Modbus load % × nameplate W |
+| Output V/A, input V, power factor | `battpool.device_output_voltage` / `_current`, `device_input_voltage`, `device_total_power_factor` | built; omitted when the unit reports not-applicable |
+| Overload / battery-low alerts | `bms_run_anomaly` 1024 / 64 / 4096 | built from measured load and shutdown-imminent |
+| Power controls (beeper, EPO, AC-recovery, NUT server) | `smart_power_caps` | claimed 0: none honoured |
+| Outlet groups | `outlet_table` | **not presented**: read (both groups) but switching waits on a discussion; no per-group metering exists |
+| Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
+
