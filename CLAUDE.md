@@ -350,6 +350,7 @@ exercised on the unit** (Clint's call): the groups are presented as outlet
 rows (Main without a relay, Group 1 with one, six placeholders for the UPS
 2U's picture), the command word at register 1538 is held byte-exact to
 NUT's encoding by tests, the Main group is refused, and the loop holds the
-first outlet push of a run that would switch anything. `control.outlets` is
-absent in the deployed config until Clint turns it on (`"2"`).
+first outlet push of a run that would switch anything. `control.outlets: "2"`
+was enabled the same evening (stack rebuilt from 861b3f5); no command has
+been sent to the unit yet.
 
