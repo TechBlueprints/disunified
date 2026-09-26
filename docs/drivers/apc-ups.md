@@ -65,15 +65,18 @@ The controller runs its battery pipeline for any device that sends
 - `smart_power_caps: 0` — no beeper, EPO, AC-recovery or NUT-server control
   is claimed, because none is honoured.
 
-**Not claimed:** an outlet table, `hw_caps`, temperature as a chassis sensor
-(the unit measures its battery), a replace-battery flag (see the CLAUDE.md
-note on NUT's status code). No `battery_table` rows: every public capture
-has that array empty.
+- `outlet_table`, `outlet_enabled`, `hw_caps` bit 128 -- the unit's outlet
+  groups as outlets (§6b), in the rack-PDU row encoding a real controller
+  has been seen to parse.
 
-**This version is read-only.** The unit has a switchable outlet group
-("Outlet Group 1"); driving it from the controller's outlet editor is a
-follow-on that waits on a discussion with the operator and a test outlet
-known to carry no load. The Modbus client implements reads only.
+**Not claimed:** temperature as a chassis sensor (the unit measures its
+battery), a replace-battery flag (see the CLAUDE.md note on NUT's status
+code), `smart_power_caps` bits (no beeper/EPO/AC-recovery control is
+honoured). No `battery_table` rows: every public capture has that array
+empty.
+
+**Control** is limited to switching and power-cycling the switched outlet
+group, and only when the operator turns it on (§11).
 
 ## 5. Configuration
 
@@ -88,6 +91,8 @@ devices:
       mac: 02:00:00:00:00:02     # the SmartConnect port's MAC (Modbus does not expose it)
       netmask: 255.255.255.0     # the unit's network, and
       gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it (ip neigh), not its listed device MAC
+    # control:
+    #   outlets: "2"              # switch Outlet Group 1 (row 2) from the controller; absent = read-only
       # unit_id: 1
       # timeout: 3s
 ```
@@ -133,13 +138,16 @@ drawn as non-battery, and every outlet on this unit is battery-backed.
 
 **Answered at adoption (2026-09-26): the eight profile slots are drawn
 regardless.** With no `outlet_table` sent and `hw_caps` 0, the device page
-still shows the UPS 2U graphic -- four "Battery Backed" slots, four plain
-sockets, the two surge-network ports and the FE port -- and every outlet
-renders green/enabled; the controller planted an empty `outlet_table` and
-`outlet_enabled: true` on the record itself. So the picture is always eight;
-what the rows can do is make six of them say "present, off, no relay" and
-two of them tell the truth about the groups. Whether the placeholder rows go
-in is the operator's call (they are read-only either way).
+still showed the UPS 2U graphic and every outlet rendered green/enabled; the
+controller planted an empty `outlet_table` and `outlet_enabled: true` on
+the record itself. So the picture is always eight, and the rows now make it
+say the true thing: **row 1** is the Main group (on whenever the output is,
+no relay bit, never commanded), **row 2** is Outlet Group 1 (its relay), and
+**rows 3-8** are the slots the unit does not have -- present, off, no relay
+-- so nothing phantom is offered. Group 1 is never mapped onto the profile's
+surge slots. Row shape is the rack-PDU encoding (small `outlet_caps` beside
+`outlet_type`), the form a real controller has been seen to parse for this
+bridge; the battery-backed models' class-bit form has no capture behind it.
 
 ## 7. Addressing: dial the lease's DNS name, and the address follows
 
@@ -221,4 +229,44 @@ volume layout is `state/<name>/device.json` (mode 600, the image's uid
 65532), the same as every other device. Move an adoption by stopping the old
 instance first, then copying that file, then starting the new one -- one
 bridge holds a key at a time.
+
+## 11. Outlet control -- built, unit-tested, not exercised on the unit
+
+Clint's call (2026-09-26): the code is in place and covered by synthetic
+tests; no command has been sent to the unit, which carries a whole rack at
+~80 % load. **`control.outlets` is absent in the deployed config**, so the
+driver's write path is not even wired into the loop until an operator adds
+`control: {outlets: "2"}` and redeploys.
+
+What it does when on:
+
+- The controller's outlet editor (Active / Disabled on row 2) arrives as
+  `outlet.2.relay_state`; **Power Cycle** arrives as `relayctl`. Both go to
+  the outlet command word at register 1538 (function 16, two registers,
+  high word first): command bit | target-group bit -- `0x0204` off,
+  `0x0202` on, `0x0210` reboot for Group 1 -- exactly NUT's `apc_modbus`
+  encoding for `load.off` / `load.on` / `load.cycle`. The tests hold the
+  frame byte for byte.
+- **Strict diff.** A push that matches the device writes nothing; the loop
+  re-applies every cycle and a group relay is real load.
+- **The Main group is never commanded.** Its target bit exists in the
+  register; the driver never sets it, refuses a push or a cycle for row 1
+  with one log line, and reports the row without a relay bit so the editor
+  is not offered in the first place.
+- **The first outlet push of a run is held if it would switch anything.**
+  Per process, not from state: a bridge that ran read-only has an applied
+  cfgversion, yet the controller's stored outlet state and the device may
+  disagree the moment control is enabled, or after any restart (someone
+  toggled at the LCD; a slot edited while nothing listened). The loop logs
+  `HOLDING the first outlet push of this run` and applies nothing until the
+  UI is set to match the device -- a push that changes nothing goes through
+  and ends the hold. `control.allow_initial_changes: true` overrides.
+- Sockets are not individually switchable on this hardware: Group 1's relay
+  switches its whole bank. Which sockets that is, is printed on the rear
+  panel; nothing in the map says.
+
+Enabling it: `control: {outlets: "2"}` in the deployed config (not "all" --
+row 1 is refused anyway, but say what you mean), rebuild and recreate the
+stack, then check the log for the hold. The first real test is Clint's to
+run, on a bank known to carry nothing.
 

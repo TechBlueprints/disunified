@@ -234,7 +234,10 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 | Output V/A, input V, power factor | `battpool.device_output_voltage` / `_current`, `device_input_voltage`, `device_total_power_factor` | built; omitted when the unit reports not-applicable |
 | Overload / battery-low alerts | `bms_run_anomaly` 1024 / 64 / 4096 | built from measured load and shutdown-imminent |
 | Power controls (beeper, EPO, AC-recovery, NUT server) | `smart_power_caps` | claimed 0: none honoured |
-| Outlet groups | `outlet_table` | **not presented**: read (both groups); the profile's eight slots are drawn regardless, all green; rows and switching wait on a discussion; no per-group metering exists |
+| Outlet groups as outlets | `outlet_table`, `outlet_enabled`, `hw_caps` 128 | done: row 1 Main (no relay), row 2 Group 1 (relay), rows 3-8 placeholders off for the UPS 2U's picture; no per-group metering exists |
+| Outlet on/off from the controller | `outlet.2.relay_state` → command word at register 1538 (`0x0204`/`0x0202`) | **built, unit-tested byte-exact to NUT, not exercised on the unit** (Clint); `control.outlets` absent in the deployed config |
+| Outlet power cycle | `relayctl` → reboot word (`0x0210`) | built, not exercised; the Main group is refused |
+| First outlet push guard | loop hold via `OutletPlanner`, per process | done, tested: a first push that would switch a group is held until the UI matches the device |
 | Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
 | Topology parent | `uplink`, `uplink_mac` | **absent with the synthetic MAC** (the controller places by MAC on a switch port); operator-declared uplink is the untested candidate |
 

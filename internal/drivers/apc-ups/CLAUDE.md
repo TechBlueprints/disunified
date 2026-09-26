@@ -39,11 +39,17 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   **adopting a device deletes its client record and any fixed-IP
   reservation** (the PDU lost its address this way) — give the unit a manual
   address, or accept that, before adopting.
-- **Read-only in this version by decision, not by limitation.** The unit has
-  a switched group (`Outlet Group 1`, SOG0, command register 1538). Switching
-  it from the controller is a follow-on that waits on a discussion with
-  Clint and a test outlet known to carry nothing; the unit runs a whole rack
-  at ~80 % load.
+- **Outlet control is built and never exercised on the unit** (Clint's
+  call). Command word at 1538: `cmd | (1 << (8+group))`, high word first,
+  function 16 -- `0x0204`/`0x0202`/`0x0210` = Group 1 off/on/reboot. Tests
+  hold it byte-exact to NUT's `apc_modbus`. Groups only (one relay per
+  switched group); the Main group (row 1) is reported without a relay and
+  refused if pushed. **`control.outlets` is absent in the deployed config**;
+  enable with `"2"`, not `"all"`.
+- **The loop holds the first outlet push of a run** that would switch
+  anything (`OutletPlanner`), per process -- a read-only bridge has an
+  applied cfgversion, so the ports' from-state hold would not fire when
+  control is first enabled. A push that changes nothing ends the hold.
 - Fixture `docs/fixtures/apc-smtl-15.5/registers.txt` is the live capture,
   scrubbed by `scripts/sanitize-apc-ups.py` (serial and UPS-name words).
   No real UniFi UPS inform exists on site, so the `vbms_table` emitter is
