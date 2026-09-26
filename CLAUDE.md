@@ -100,9 +100,11 @@ Clint's addresses, names, deployment host and update command are in
 key is still accepted) with secrets in the environment (`.env`, gitignored,
 symlinked from outside the repo); every `control` flag is on.
 `state/<name>/device.json` holds the adopted key: one instance per device,
-keep the file. Logs: `run.log`, `inform-log/<name>/`. The deployed instance
-runs in a container on Clint's Podman host; **the Mac instance is stopped
-and must stay stopped** (one bridge per adopted key).
+keep the file. Logs: `run.log`, `inform-log/<name>/`. The deployed bridges
+run in **two** containers on Clint's Podman host: one stack for the switches
+and the PDU, a separate stack (own image, volume and env) for the UPS, so a
+UPS rebuild never recreates the others; **every Mac instance is stopped and
+must stay stopped** (one bridge per adopted key).
 
 ## 5. Protocol facts that cost time (all verified on 10.6.106)
 
@@ -179,8 +181,9 @@ names must never be reported back or the whole table is dropped; and the
 controller merges its names by index, so the AC outlets are reported at the
 USP-PDU-Pro's AC positions **5..20** or they come back named "USB Outlet 1-4".
 The controller pushes `relay_state` at the reported indices but **no names**.
-Deployed as its own container at `/opt/disunified-pdu` so a PDU rebuild cannot
-disturb the switch bridge. **Verified live through the UniFi UI** (every screen
+Deployed in the same container as the switches (`/opt/disunified`; an
+earlier note here claimed a separate `/opt/disunified-pdu` -- it does not
+exist). **Verified live through the UniFi UI** (every screen
 walked): the outlet editor's Active/Disabled switches the relay (~20 s,
 `1 of 16 outlets changed`), its **Power Cycle** button arrives as
 `relayctl` with a selection list and runs the card's own immediate-reboot
@@ -337,7 +340,10 @@ synthetic MAC gave no topology parent — the controller places by MAC on a
 switch port, `docs/topology-placement.md`): placed on its switch port within
 20 s; the client record, reservation and client DNS name went with it. The
 profile's eight outlet slots are drawn regardless; the update badge is
-accepted per the rule (version becomes the controller's, base kept). Still
-on the Mac; moving it to the Podman host means stopping the Mac instance
-(one bridge per adopted key).
+accepted per the rule (version becomes the controller's, base kept). **Deployed
+2026-09-26 as its own stack on the Podman host** (`/opt/disunified-ups`,
+image `localhost/disunified-ups`, volume `disunified-ups-state`, env with
+only the UniFi vars), dialling the gateway's lease-backed DNS name for the
+unit; the Mac instance is stopped for good. Path and update command in
+`local-information/site.md`.
 
