@@ -61,4 +61,17 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - The config validator rejects a `url` without username/password (the guard
   for API endpoints). Modbus has none: the device entry needs **`auth: none`**
   or the bridge exits at startup before informing anything.
+- **Adopted 2026-09-26; the controller keeps `vbms_table`.** Read back from
+  `stat/device`: every `battpool` key stored with the value sent, the UI's
+  load ring and battery card live. Verified, not just spec-derived.
+- **A synthetic MAC costs the topology parent.** The controller places a
+  device by where its MAC appears on a switch port; a locally-administered
+  address is seen nowhere, so `uplink_mac` never fills and the page says
+  "Connected To -". Real-MAC devices (the PDU) are placed. The trade is the
+  reservation on the real client record, which adoption under the real MAC
+  deletes.
+- The eight profile outlet slots are drawn with no rows sent, all green; the
+  controller plants an empty `outlet_table` itself.
+- "Update Available" is the honest version "15.5" losing to the UPS 2U's
+  release number; the emulated upgrade only relabels, never touches the unit.
 

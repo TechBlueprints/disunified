@@ -131,10 +131,15 @@ groups plus explicit placeholders for the six slots the unit does not have
 switchable. Group 1 is never mapped onto the profile's surge slots: those are
 drawn as non-battery, and every outlet on this unit is battery-backed.
 
-**Open, to be answered at adoption (read-only, no risk):** whether the
-Outlets tab appears at all for a device that sends no `outlet_table` and no
-`hw_caps` outlet bit, or whether the eight profile slots are drawn regardless.
-If they are, the placeholder rows go in immediately, ahead of any control.
+**Answered at adoption (2026-09-26): the eight profile slots are drawn
+regardless.** With no `outlet_table` sent and `hw_caps` 0, the device page
+still shows the UPS 2U graphic -- four "Battery Backed" slots, four plain
+sockets, the two surge-network ports and the FE port -- and every outlet
+renders green/enabled; the controller planted an empty `outlet_table` and
+`outlet_enabled: true` on the record itself. So the picture is always eight;
+what the rows can do is make six of them say "present, off, no relay" and
+two of them tell the truth about the groups. Whether the placeholder rows go
+in is the operator's call (they are read-only either way).
 
 ## 7. Give the unit a manual address before adopting it
 
@@ -143,15 +148,43 @@ reservation on it (the rack PDU lost its address this way the morning after).
 Set a manual address on the unit's display first, or expect the DHCP lease
 to change.
 
-## 8. Verified
+## 8. Verified live (Network 10.6.106, 2026-09-26)
 
-- Live register read against the real unit, 2026-09-26: identity, rating,
-  load (~80 % of 1350 W), voltages, battery state and both outlet groups
-  decode to the values NUT's `apc_modbus` reports for the same unit. That
-  capture is the fixture.
-- Not yet adopted by a controller: the `vbms_table` emitter is spec-derived
-  (unifi-emu `docs/PROTOCOL.md`), there being no real UniFi UPS on site to
-  capture an inform from. Adoption and a UI walk are the next step.
+- Live register read against the real unit: identity, rating, load (~80 % of
+  1350 W), voltages, battery state and both outlet groups decode to the
+  values NUT's `apc_modbus` reports for the same unit. That capture is the
+  fixture.
+- **Adopted**, one click in the device list; handshake in ~10 s (`authkey
+  adopted` -> `CONNECTED`), both `system_cfg` pushes accepted without
+  applying (read-only), device renamed by provisioning, inform interval set
+  by the controller (86 s). No unhandled commands.
+- **The controller kept `vbms_table` and parsed `battpool` field for field**
+  -- read back from its own `stat/device` record: `batteryLevel`,
+  `timeToRemain`, `ischarging`, `is_battery_mode`, `device_total_power_output`
+  / `_budget`, output V/A, input V, power factor, `bms_run_anomaly`. The
+  device page renders a real UPS: "Power Utilization 1075.73/1350 W 80 %",
+  "Battery Ready 100 %", "Operating Mode Line", output voltage, power
+  factor, power, current, live per cycle. The emitter was spec-derived
+  (no real UniFi UPS inform exists on site); the controller's behaviour is
+  now the verification.
+- `smart_power_caps` 0 and `hw_caps` 0 stored as sent; `total_max_power`
+  1350; satisfaction 100; `uplink` composed by the controller from the
+  `"eth0"` string, with the operator-supplied netmask carried through.
+- **No topology parent, by construction of the synthetic MAC.** The
+  controller places a device by finding its MAC on a switch port; the
+  synthetic address has never been seen on any port, so `uplink_mac` stays
+  empty and the page says "Connected To -". The rack PDU, adopted under its
+  card's real MAC, is placed (`uplink_mac` + remote port). The real
+  SmartConnect port *is* seen by a switch port; declaring that uplink as an
+  operator option is the candidate fix that keeps the synthetic MAC and the
+  reservation -- untested.
+- **"Update Available"**: the controller offers the UPS 2U firmware
+  (`upgradable: true`) because the honest version "15.5" is older than the
+  model's release. Harmless -- the emulated upgrade only relabels the reported
+  version and never touches the unit -- but persistent unless `firmware:` is
+  pinned, which would make the Version column lie.
+- Safe Shutdown Pairing lists the gateway as "Not Compatible": a UPS 2U pairs
+  with a UNVR/UNAS, not a UDM. Informational.
 
 ## 9. Things that will bite
 
