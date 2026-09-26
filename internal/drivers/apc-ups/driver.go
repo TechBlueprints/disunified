@@ -23,9 +23,12 @@ import (
 
 // Driver is the APC Smart-UPS (Modbus TCP) driver.
 //
-// Config: url = the SmartConnect port's address (host or host:502; a scheme
-// is accepted and ignored). No username or password: the port has none.
-// Options:
+// Config: url = the SmartConnect port's address or DNS name (host or
+// host:502; a scheme is accepted and ignored). The port has no credentials:
+// the device entry needs auth: none. Prefer the name the gateway keeps for
+// the unit's DHCP lease over the address: it follows the lease when the
+// address changes, and the bridge reports whatever it resolves to each
+// cycle (docs/drivers/apc-ups.md §7). Options:
 //
 //	mac      the SmartConnect port's MAC address, reported as the device's
 //	         own. Modbus does not expose it; the controller already lists it

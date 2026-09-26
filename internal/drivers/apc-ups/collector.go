@@ -102,9 +102,16 @@ type Collector struct {
 	// the topology -- the lesson that cost a day on the Arista).
 	Netmask    string
 	GatewayMAC string
+	// Resolve turns the dialled host into addresses when it is a name rather
+	// than a literal. The UPS's address is held only by a DHCP lease (nothing
+	// can push one onto it), and the gateway keeps a DNS name for the lease
+	// itself -- one that survives adoption deleting the client record. Dialling
+	// that name follows the lease; the resolved address is what is reported.
+	Resolve func(ctx context.Context, host string) ([]net.IP, error)
 
-	mu   sync.Mutex
-	last *devicemodel.Snapshot
+	mu       sync.Mutex
+	last     *devicemodel.Snapshot
+	resolved string // last address the name resolved to, for change logging
 }
 
 // NewCollector builds a collector over a runner.
@@ -149,6 +156,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = c.system(static)
+	c.fillAddress(ctx, &snap.System)
 	snap.System.Battery = c.battery(status, dyn, static, cfg)
 	// The UPS measures its whole output; this is the aggregate the overview's
 	// power card reads, the same fields a metered PDU fills.
@@ -183,9 +191,6 @@ func (c *Collector) system(static []uint16) devicemodel.System {
 	}
 	if sys.MAC == "" {
 		sys.MAC = syntheticMAC(sys.Serial)
-	}
-	if host, _, err := net.SplitHostPort(c.Addr); err == nil && net.ParseIP(host) != nil {
-		sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: host, PrefixLen: prefixLen(c.Netmask)}}
 	}
 	sys.GatewayMAC = strings.ToLower(c.GatewayMAC)
 	return sys
@@ -324,4 +329,50 @@ func prefixLen(mask string) int {
 func syntheticMAC(serial string) string {
 	h := sha256.Sum256([]byte("apc-ups " + serial))
 	return fmt.Sprintf("02:%02x:%02x:%02x:%02x:%02x", h[0], h[1], h[2], h[3], h[4])
+}
+
+// fillAddress reports the unit's address: the dialled literal, or what the
+// dialled name resolves to right now. A name that stops resolving leaves
+// the address unreported rather than stale.
+func (c *Collector) fillAddress(ctx context.Context, sys *devicemodel.System) {
+	host, _, err := net.SplitHostPort(c.Addr)
+	if err != nil {
+		host = c.Addr
+	}
+	ip := host
+	if net.ParseIP(host) == nil {
+		resolve := c.Resolve
+		if resolve == nil {
+			resolve = func(ctx context.Context, h string) ([]net.IP, error) {
+				addrs, err := net.DefaultResolver.LookupIPAddr(ctx, h)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]net.IP, 0, len(addrs))
+				for _, a := range addrs {
+					out = append(out, a.IP)
+				}
+				return out, nil
+			}
+		}
+		ips, err := resolve(ctx, host)
+		ip = ""
+		for _, a := range ips {
+			if v4 := a.To4(); v4 != nil {
+				ip = v4.String()
+				break
+			}
+		}
+		if err != nil || ip == "" {
+			log.Printf("apc-ups: %s does not resolve to an IPv4 address (%v); address unreported this cycle", host, err)
+			return
+		}
+		c.mu.Lock()
+		if c.resolved != "" && c.resolved != ip {
+			log.Printf("apc-ups: %s now resolves to %s (was %s): following the lease", host, ip, c.resolved)
+		}
+		c.resolved = ip
+		c.mu.Unlock()
+	}
+	sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: ip, PrefixLen: prefixLen(c.Netmask)}}
 }

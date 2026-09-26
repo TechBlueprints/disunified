@@ -84,4 +84,10 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   connection refused` on the first attempt; `main.go`'s start retry
   succeeded 15 s later. Expected, not a fault -- one Modbus session at a
   time, and the stack takes a beat to free it. Don't tighten the retry.
+- **Dial the lease's DNS name.** The gateway keeps a DNS name for the DHCP
+  lease itself (the unit's DHCP hostname), and it survived adoption deleting
+  the client record -- verified. `url:` = that name; the collector
+  re-resolves every cycle and reports the address, `main.go` defaults `ip`
+  from it. The controller exposes no address for an adopted real MAC, so
+  this and the host's neighbour table are the only discovery paths.
 

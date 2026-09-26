@@ -81,7 +81,7 @@ known to carry no load. The Modbus client implements reads only.
 devices:
   - name: ups
     driver: apc-ups
-    url: 192.0.2.30              # the SmartConnect port's address (:502 implied)
+    url: ups.example.net         # the gateway's DNS name for the unit's DHCP lease (or its address; :502 implied)
     auth: none                   # the port has no credentials; without this a url is rejected
     model: USWDA25               # UPS 2U; "auto" ranks by port layout and will not pick a UPS
     options:
@@ -141,12 +141,25 @@ what the rows can do is make six of them say "present, off, no relay" and
 two of them tell the truth about the groups. Whether the placeholder rows go
 in is the operator's call (they are read-only either way).
 
-## 7. Give the unit a manual address before adopting it
+## 7. Addressing: dial the lease's DNS name, and the address follows
 
 Adopting a device deletes its UniFi client record and any fixed-IP
-reservation on it (the rack PDU lost its address this way the morning after).
-Set a manual address on the unit's display first, or expect the DHCP lease
-to change.
+reservation on it (the rack PDU lost its address this way the morning after;
+so did this unit). Nothing can push an address onto the UPS -- Modbus carries
+no IP configuration -- so its address is held only by the DHCP lease.
+
+What survives adoption is the **gateway's DNS name for the lease itself**:
+the name the unit sends as its DHCP hostname still resolved to its address
+after the client record was gone (verified 2026-09-26). So point `url:` at
+that name rather than the address. The Modbus client dials the name on every
+reconnect, the collector re-resolves it each cycle and reports the resolved
+address (logging a move), and the bridge's `ip` defaults from it. If the
+lease ever changes, the bridge follows; nothing is edited by hand.
+
+The controller itself offers **no** way to learn an adopted device's real
+address afterwards: an adopted MAC appears in neither `stat/sta` nor the v2
+active-clients list, and there is no lease endpoint. It only knows the
+address the device reports.
 
 ## 8. Verified live (Network 10.6.106, 2026-09-26)
 
