@@ -38,7 +38,10 @@ any port.
   own record — and is never placed: no switch has ever seen that MAC.
   `gateway_mac` was wrong at first and was fixed to the segment's real
   address (`…:a4`, not the controller's listed device MAC `…:a3`); that
-  changed nothing, which is what eliminated it as the cause.
+  changed nothing, which is what eliminated it as the cause. **Re-adopted
+  under the real MAC the same day: `uplink_mac` was set 20 s after
+  CONNECTED** -- `access` port 24, where the cable goes. Same payload, same
+  fields; only the MAC changed.
 - **The address must be in-band**, behind the same port the MAC is seen on.
   An OOB management address puts the IP behind one switch and the identity
   behind another, and the controller places nothing (the Arista lesson,
@@ -59,10 +62,20 @@ habit of re-leasing the same address to the same MAC — reliable in practice
 until the lease database is reset — and by the operator updating `url:` if it
 ever moves. The bridge's start retry rides out a move until then.
 
-To switch: forget the device in the controller (or `rest/device` delete),
+The controller exposes **no** address for an adopted device's real MAC
+afterwards -- not in `stat/sta`, not in the v2 active-clients list even with
+UniFi devices included, and there is no lease endpoint -- so "read the new
+address back from the controller" is not available; it only knows the address
+the device reports. Discovery has to come from the LAN (the bridge host's
+neighbour table, on the same segment) or from a DNS name the gateway keeps
+for the lease.
+
+To switch: forget the device in the controller (`cmd/devmgr delete-device`
+by exact MAC),
 back up and remove `state/<name>/device.json`, set `options: mac` to the
-real port's address, restart; the controller answers HTTP 400 for about a
-minute after a forget, then the device is pending again (`CLAUDE.md` §7).
+real port's address, restart; the device is pending within seconds (the UPS
+saw one 404, no 400s), `cmd/devmgr adopt` by exact MAC completes the
+handshake in ~10 s. Never adopt by "Adopt All": a stray device may be pending.
 
 ## 4. How to verify, without the UI
 

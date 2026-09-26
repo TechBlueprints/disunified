@@ -332,9 +332,12 @@ turn outlets off without discussing it first"** — a process rule, not a
 design mandate; the unit runs a rack at ~80 % load. **Adopted 2026-09-26 from the Mac** (`config.local.ups.yaml`, synthetic MAC so
 the real port's DHCP reservation survives): the controller kept `vbms_table`
 and the UI shows the live load ring and battery card — the spec-derived
-emitter is now controller-verified. Costs of the synthetic MAC: no topology
-parent (the controller places by MAC on a switch port). The profile's eight
-outlet slots are drawn regardless; `upgradable: true` because "15.5" < the
-2U's release. Still on the Mac; moving it to the Podman host means stopping
-the Mac instance (one bridge per adopted key).
+emitter is now controller-verified. **Re-adopted under the real MAC the same day** (Clint's call; the
+synthetic MAC gave no topology parent — the controller places by MAC on a
+switch port, `docs/topology-placement.md`): placed on its switch port within
+20 s; the client record, reservation and client DNS name went with it. The
+profile's eight outlet slots are drawn regardless; the update badge is
+accepted per the rule (version becomes the controller's, base kept). Still
+on the Mac; moving it to the Podman host means stopping the Mac instance
+(one bridge per adopted key).
 
