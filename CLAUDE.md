@@ -345,5 +345,11 @@ accepted per the rule (version becomes the controller's, base kept). **Deployed
 image `localhost/disunified-ups`, volume `disunified-ups-state`, env with
 only the UniFi vars), dialling the gateway's lease-backed DNS name for the
 unit; the Mac instance is stopped for good. Path and update command in
-`local-information/site.md`.
+`local-information/site.md`. **Outlet-group control built 2026-09-26, never
+exercised on the unit** (Clint's call): the groups are presented as outlet
+rows (Main without a relay, Group 1 with one, six placeholders for the UPS
+2U's picture), the command word at register 1538 is held byte-exact to
+NUT's encoding by tests, the Main group is refused, and the loop holds the
+first outlet push of a run that would switch anything. `control.outlets` is
+absent in the deployed config until Clint turns it on (`"2"`).
 
