@@ -210,3 +210,15 @@ address the device reports.
 - There is no per-outlet or per-group metering in the map: output power is
   the whole load. "Which outlet is unused" cannot be read; it has to be known.
 - The map has no charging bit; charging is "on mains below 100 %".
+
+## 10. Deploying
+
+Give the UPS its own stack -- compose file, image tag, state volume, env --
+rather than adding it to a stack that holds other adopted keys: a rebuild of
+this driver then never recreates the switch or PDU bridge. Its env needs
+only the controller API variables; the port has no credentials. The state
+volume layout is `state/<name>/device.json` (mode 600, the image's uid
+65532), the same as every other device. Move an adoption by stopping the old
+instance first, then copying that file, then starting the new one -- one
+bridge holds a key at a time.
+
