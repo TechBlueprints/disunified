@@ -2,6 +2,8 @@ package apcups
 
 import (
 	"bufio"
+	"errors"
+	"net"
 
 	"context"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
@@ -245,5 +247,52 @@ func TestSyntheticMACIsStableLocalAndUnicast(t *testing.T) {
 	snap2, _ := c2.Collect(context.Background())
 	if snap2.System.MAC != "02:00:00:00:00:02" {
 		t.Errorf("operator MAC not honoured: %q", snap2.System.MAC)
+	}
+}
+
+// Dialled by a name, the reported address is what the name resolves to now;
+// a name that stops resolving reports nothing rather than a stale address.
+func TestDialledByNameReportsTheResolvedAddress(t *testing.T) {
+	fr, err := NewFixtureRunner(fixtureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCollector(fr)
+	c.Addr = "ups.example.net:502"
+	c.Netmask = "255.255.0.0"
+	answer := "192.0.2.30"
+	c.Resolve = func(_ context.Context, host string) ([]net.IP, error) {
+		if host != "ups.example.net" {
+			t.Errorf("resolved %q, want the dialled name", host)
+		}
+		if answer == "" {
+			return nil, errors.New("NXDOMAIN")
+		}
+		return []net.IP{net.ParseIP(answer)}, nil
+	}
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.System.Addresses) != 1 || snap.System.Addresses[0].IP != "192.0.2.30" || snap.System.Addresses[0].PrefixLen != 16 {
+		t.Errorf("addresses = %+v, want the resolved 192.0.2.30/16", snap.System.Addresses)
+	}
+	answer = "192.0.2.31" // the lease moved
+	snap, _ = c.Collect(context.Background())
+	if snap.System.Addresses[0].IP != "192.0.2.31" {
+		t.Errorf("after a lease move the reported address is %s, want 192.0.2.31", snap.System.Addresses[0].IP)
+	}
+	answer = ""
+	snap, _ = c.Collect(context.Background())
+	if len(snap.System.Addresses) != 0 {
+		t.Errorf("a name that does not resolve reported %+v; want no address rather than a stale one", snap.System.Addresses)
+	}
+}
+
+func TestDialledByLiteralReportsTheLiteral(t *testing.T) {
+	c, _ := startFixture(t)
+	snap, _ := c.Collect(context.Background())
+	if snap.System.Addresses[0].IP != "192.0.2.30" {
+		t.Errorf("addresses = %+v", snap.System.Addresses)
 	}
 }

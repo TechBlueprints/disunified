@@ -333,6 +333,12 @@ func runOne(ctx context.Context, o options) error {
 		}
 		if o.ip == "" {
 			o.ip = hostOf(o.deviceURL, o.deviceSSH)
+			// A device dialled by name reports the address the name resolved
+			// to (the driver puts it first in Addresses), so a lease-backed
+			// DNS name can be followed without an operator naming the address.
+			if net.ParseIP(o.ip) == nil && len(snap.System.Addresses) > 0 {
+				o.ip = snap.System.Addresses[0].IP
+			}
 		}
 		if o.uplink == 0 {
 			o.uplink = snap.UplinkPort()
