@@ -108,6 +108,33 @@ port; this unit has six outlets in two groups and one port. The UPS 2U Pro
 (`USPDA2B`) was not chosen: it is `type: usp`, an unexercised path, and it
 claims per-outlet metering this unit cannot do.
 
+## 6b. The outlet picture, and why it cannot show two
+
+The controller draws a device's outlet slots from its own hardware profile
+for the claimed model, not from what the device reports -- the way it draws
+port count from the profile. The PDU work established this live: slots the
+device did not report were still drawn, at the controller's defaults, "four
+outlets that look enabled and switchable but are not there at all"
+(`internal/device/tables.go`). So a UPS 2U shows eight slots however many rows
+are sent, and no UniFi power model has two outlets to borrow a picture from
+(Tower 10, 2U 8, 2U Pro 8/9, PDUs 20/24, strip 6+1, plug 1 -- and the plug
+runs the access-point path).
+
+What is controllable is what each slot *says*. The unit has two outlet
+groups, not two outlets: `Unswitched Group` (Main, always on with the output)
+and `Outlet Group 1` (one relay for its whole bank; sockets are not
+individually switchable -- the command register addresses groups only). When
+outlet control is wired, the proposed shape is two real rows for the two
+groups plus explicit placeholders for the six slots the unit does not have
+(present-but-off, no relay -- the PDU's pattern), so nothing phantom looks
+switchable. Group 1 is never mapped onto the profile's surge slots: those are
+drawn as non-battery, and every outlet on this unit is battery-backed.
+
+**Open, to be answered at adoption (read-only, no risk):** whether the
+Outlets tab appears at all for a device that sends no `outlet_table` and no
+`hw_caps` outlet bit, or whether the eight profile slots are drawn regardless.
+If they are, the placeholder rows go in immediately, ahead of any control.
+
 ## 7. Give the unit a manual address before adopting it
 
 Adopting a device deletes its UniFi client record and any fixed-IP
