@@ -161,6 +161,10 @@ when an OOB port carries any address, or when one is merely cabled. Keep
 LLDP off on a cabled OOB port: it would announce the same chassis ID to a
 second UniFi switch. On EOS, two lines under the interface do that.
 
+See `docs/topology-placement.md` for what actually draws the parent edge (the
+upstream switch seeing the device's MAC), and why a bridged device on a
+synthetic MAC gets no parent however correct its reachability fields.
+
 ## 3. Choose the UniFi model
 
 Run `disunified -collect-once -device-url ...` (or `-device-ssh`). It
