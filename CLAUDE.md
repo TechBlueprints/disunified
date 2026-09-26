@@ -325,5 +325,12 @@ generation carries no load/voltage at all (NUT issue #1868), so the free
 Synology NUT feed could never have given the load ring; the Homebrew `nut`
 bottle lacks `apc_modbus`. Read-only by decision: **Clint's rule is "don't
 turn outlets off without discussing it first"** — a process rule, not a
-design mandate; the unit runs a rack at ~80 % load. Not yet adopted.
+design mandate; the unit runs a rack at ~80 % load. **Adopted 2026-09-26 from the Mac** (`config.local.ups.yaml`, synthetic MAC so
+the real port's DHCP reservation survives): the controller kept `vbms_table`
+and the UI shows the live load ring and battery card — the spec-derived
+emitter is now controller-verified. Costs of the synthetic MAC: no topology
+parent (the controller places by MAC on a switch port). The profile's eight
+outlet slots are drawn regardless; `upgradable: true` because "15.5" < the
+2U's release. Still on the Mac; moving it to the Podman host means stopping
+the Mac instance (one bridge per adopted key).
 
