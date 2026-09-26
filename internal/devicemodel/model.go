@@ -162,6 +162,16 @@ type OutletController interface {
 	ApplyOutlets(ctx context.Context, desired []OutletDesired) (changed int, err error)
 }
 
+// OutletPlanner is an optional OutletController capability: PlanOutlets
+// reports which outlets ApplyOutlets would switch for desired, without
+// writing. The loop uses it to hold the first outlet push it sees in a run
+// when that push would switch something -- an outlet is real load, and a
+// controller that disagrees with the device on first contact is more likely
+// stale than right.
+type OutletPlanner interface {
+	PlanOutlets(desired []OutletDesired) (changed []int)
+}
+
 // Controller implementations also need the site VLAN list to exist on the
 // switch before ports can reference it.
 type VLANController interface {

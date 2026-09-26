@@ -15,14 +15,16 @@ import (
 // TCP client; tests replay a register dump captured from a real unit.
 type Runner interface {
 	ReadRegisters(ctx context.Context, start, count int) ([]uint16, error)
+	// WriteRegisters writes values at start (function 16). The only write
+	// this package makes is the outlet command word at register 1538.
+	WriteRegisters(ctx context.Context, start int, values []uint16) error
 }
 
 // Modbus is one persistent Modbus TCP connection to the UPS's SmartConnect
-// port. It implements Read Holding Registers (3), the only function this
-// read-only first version needs. Nothing in the package writes to the unit
-// yet: switching an outlet group (command register 1538) is a follow-on that
-// waits on a discussion with the operator and a test outlet known to carry
-// no load -- the unit this was written against carries a whole rack.
+// port. It implements Read Holding Registers (3) and Write Multiple
+// Registers (16); the only thing ever written is the outlet command word
+// (apply.go), and the frame is held byte-exact to what NUT's apc_modbus
+// sends, since no write has been exercised against the unit.
 //
 // One connection is kept open and reused. The port's stack is small: a burst
 // of short-lived connections made a real unit refuse connections for a while
@@ -115,16 +117,16 @@ func (e *Exception) Error() string {
 	return fmt.Sprintf("apc-ups: modbus exception 0x%02x for function %d", e.Code, e.Function)
 }
 
-func (m *Modbus) read(start, count int) ([]uint16, error) {
+// transact sends one request body (function code onward) inside an MBAP
+// header and returns the response body, or an *Exception.
+func (m *Modbus) transact(body []byte) ([]byte, error) {
 	m.tid++
-	req := make([]byte, 12)
+	req := make([]byte, 7+len(body))
 	binary.BigEndian.PutUint16(req[0:], m.tid)
 	binary.BigEndian.PutUint16(req[2:], 0) // protocol id
-	binary.BigEndian.PutUint16(req[4:], 6) // bytes to follow
+	binary.BigEndian.PutUint16(req[4:], uint16(1+len(body)))
 	req[6] = m.UnitID
-	req[7] = 3 // read holding registers
-	binary.BigEndian.PutUint16(req[8:], uint16(start))
-	binary.BigEndian.PutUint16(req[10:], uint16(count))
+	copy(req[7:], body)
 
 	if err := m.conn.SetDeadline(time.Now().Add(m.Timeout)); err != nil {
 		return nil, err
@@ -143,22 +145,82 @@ func (m *Modbus) read(start, count int) ([]uint16, error) {
 	if n < 1 || n > 2+2*125 {
 		return nil, fmt.Errorf("apc-ups: implausible frame length %d", n)
 	}
-	body := make([]byte, n)
-	if _, err := io.ReadFull(m.conn, body); err != nil {
+	resp := make([]byte, n)
+	if _, err := io.ReadFull(m.conn, resp); err != nil {
 		return nil, fmt.Errorf("apc-ups: read body: %w", err)
 	}
-	if body[0]&0x80 != 0 {
-		if len(body) < 2 {
+	if resp[0]&0x80 != 0 {
+		if len(resp) < 2 {
 			return nil, errors.New("apc-ups: truncated exception")
 		}
-		return nil, &Exception{Function: body[0] &^ 0x80, Code: body[1]}
+		return nil, &Exception{Function: resp[0] &^ 0x80, Code: resp[1]}
 	}
-	if body[0] != 3 || len(body) < 2 || int(body[1]) != 2*count || len(body) < 2+2*count {
-		return nil, fmt.Errorf("apc-ups: malformed response (%d bytes for %d registers)", len(body), count)
+	return resp, nil
+}
+
+func (m *Modbus) read(start, count int) ([]uint16, error) {
+	body := make([]byte, 5)
+	body[0] = 3 // read holding registers
+	binary.BigEndian.PutUint16(body[1:], uint16(start))
+	binary.BigEndian.PutUint16(body[3:], uint16(count))
+	resp, err := m.transact(body)
+	if err != nil {
+		return nil, err
+	}
+	if resp[0] != 3 || len(resp) < 2 || int(resp[1]) != 2*count || len(resp) < 2+2*count {
+		return nil, fmt.Errorf("apc-ups: malformed response (%d bytes for %d registers)", len(resp), count)
 	}
 	regs := make([]uint16, count)
 	for i := range regs {
-		regs[i] = binary.BigEndian.Uint16(body[2+2*i:])
+		regs[i] = binary.BigEndian.Uint16(resp[2+2*i:])
 	}
 	return regs, nil
+}
+
+// WriteRegisters writes values at start with Write Multiple Registers (16),
+// the function NUT's apc_modbus uses for the command word. A failed request
+// is retried once on a fresh connection, like a read; an exception is not.
+func (m *Modbus) WriteRegisters(ctx context.Context, start int, values []uint16) error {
+	if len(values) < 1 || len(values) > 123 {
+		return fmt.Errorf("apc-ups: write of %d registers is outside 1..123", len(values))
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := m.dial(ctx); err != nil {
+			return err
+		}
+		err := m.write(start, values)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		m.drop()
+		var ex *Exception
+		if errors.As(err, &ex) {
+			break
+		}
+	}
+	return lastErr
+}
+
+func (m *Modbus) write(start int, values []uint16) error {
+	body := make([]byte, 6+2*len(values))
+	body[0] = 16 // write multiple registers
+	binary.BigEndian.PutUint16(body[1:], uint16(start))
+	binary.BigEndian.PutUint16(body[3:], uint16(len(values)))
+	body[5] = byte(2 * len(values))
+	for i, v := range values {
+		binary.BigEndian.PutUint16(body[6+2*i:], v)
+	}
+	resp, err := m.transact(body)
+	if err != nil {
+		return err
+	}
+	// The reply echoes the function, start and count.
+	if len(resp) < 5 || resp[0] != 16 || int(binary.BigEndian.Uint16(resp[1:])) != start || int(binary.BigEndian.Uint16(resp[3:])) != len(values) {
+		return fmt.Errorf("apc-ups: malformed write response (%d bytes)", len(resp))
+	}
+	return nil
 }

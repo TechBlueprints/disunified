@@ -145,7 +145,7 @@ func TestCollectorDecodesTheStatusWordInRegisterOrder(t *testing.T) {
 	}
 }
 
-func TestCollectorSeesBothOutletGroupsButPresentsNoOutlets(t *testing.T) {
+func TestCollectorPresentsTheOutletGroupsAsOutlets(t *testing.T) {
 	c, _ := startFixture(t)
 	snap, _ := c.Collect(context.Background())
 	r := rawRegs(t)
@@ -158,14 +158,24 @@ func TestCollectorSeesBothOutletGroupsButPresentsNoOutlets(t *testing.T) {
 		static[i] = r[516+i]
 	}
 	groups := OutletGroups(status, static)
-	if len(groups) != 2 {
-		t.Fatalf("groups = %v, want the SMTL1500's unswitched group and Outlet Group 1", groups)
+	if len(groups) != 2 || groups[0] != "0:Unswitched Group:on" || groups[1] != "1:Outlet Group 1:on" {
+		t.Fatalf("groups = %v, want the SMTL1500's unswitched group and Outlet Group 1, both on", groups)
 	}
-	if groups[0] != "0:Unswitched Group:on" || groups[1] != "1:Outlet Group 1:on" {
-		t.Errorf("groups = %v", groups)
+	// One outlet per group, index = group + 1; the Main group is never switchable.
+	if len(snap.Outlets) != 2 {
+		t.Fatalf("outlets = %+v, want two (the two groups)", snap.Outlets)
 	}
-	if len(snap.Outlets) != 0 {
-		t.Errorf("outlets presented: %v; this version reports none", snap.Outlets)
+	main, g1 := snap.Outlets[0], snap.Outlets[1]
+	if main.Index != 1 || !main.On || main.Switchable {
+		t.Errorf("main group row = %+v, want index 1, on, unswitchable", main)
+	}
+	if g1.Index != 2 || !g1.On || !g1.Switchable {
+		t.Errorf("group 1 row = %+v, want index 2, on, switchable", g1)
+	}
+	for _, o := range snap.Outlets {
+		if o.Name != "" || o.HasMetering {
+			t.Errorf("outlet %d reports a name or metering (%+v); names are controller-owned and the map has no per-group metering", o.Index, o)
+		}
 	}
 	if len(snap.Ports) != 1 || snap.UplinkHint != 1 || !snap.Ports[0].Up {
 		t.Errorf("ports = %+v hint %d, want one up SmartConnect port as the uplink", snap.Ports, snap.UplinkHint)

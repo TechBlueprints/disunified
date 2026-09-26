@@ -158,6 +158,10 @@ type Loop struct {
 	uplinkPort          int    // the port last marked as uplink from the snapshot
 	everApplied         bool   // a system_cfg has been applied to this device (this run or a previous one)
 	heldVersion         string // the first push being held, to log once
+	// heldOutletVersion / everOutletApplied: the outlet counterpart of the
+	// ports' hold, per process rather than from state (see holdInitialOutletPush).
+	heldOutletVersion string
+	everOutletApplied bool
 	// freshPorts are ports that appeared (a new guest, a new interface) since
 	// the last applied config: the controller knows nothing about them yet,
 	// so its config for them is the defaults. They are not written until a
@@ -470,11 +474,15 @@ func (l *Loop) reconcile(ctx context.Context) {
 	if l.cfg.Controller == nil {
 		l.applyAddress(cctx, "", text)
 		outlets := l.desiredOutlets(text)
+		if l.holdInitialOutletPush(ver, outlets) {
+			return
+		}
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
 			l.cfg.Logger.Printf("[%s] reconcile system_cfg %s: %v", l.desc.MAC, ver, err)
 			return
 		}
+		l.everOutletApplied = true
 		if changed > 0 || !l.reconciledOnce {
 			l.cfg.Logger.Printf("[%s] reconciled system_cfg %s: %d of %d outlets changed", l.desc.MAC, ver, changed, len(outlets))
 		}
@@ -877,6 +885,9 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		defer cancel()
 		l.applyAddress(cctx, prevText, text)
 		outlets := l.desiredOutlets(text)
+		if l.holdInitialOutletPush(ver, outlets) {
+			return true
+		}
 		changed, err := l.cfg.OutletController.ApplyOutlets(cctx, outlets)
 		if err != nil {
 			l.applyFailures++
@@ -887,6 +898,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		}
 		l.applyFailures = 0
 		l.everApplied = true
+		l.everOutletApplied = true
 		l.cfg.Logger.Printf("[%s] applied system_cfg %s to the device: %d of %d outlets changed", l.desc.MAC, ver, changed, len(outlets))
 		if err := l.session.MarkApplied(ver); err != nil {
 			l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
@@ -939,6 +951,38 @@ func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bo
 	if l.heldVersion != ver {
 		l.heldVersion = ver
 		l.cfg.Logger.Printf("[%s] HOLDING the first push after adoption (system_cfg %s): it would change %d ports %v, and a new device's controller config is only the defaults. Not applied. Seed the controller from the switch (automatic with api_url), or set these ports in the UI; the push that changes nothing goes through. control.allow_initial_changes: true overrides.", l.desc.MAC, ver, len(changed), changed)
+	}
+	if l.cfg.OnHeld != nil {
+		l.cfg.OnHeld(l.session.Snapshot())
+	}
+	return true
+}
+
+// holdInitialOutletPush keeps the first outlet push of this run from
+// switching anything. Unlike the ports' hold it is per process, not from
+// state: a bridge that ran read-only for days has an applied cfgversion,
+// yet the moment outlet control is enabled (or after any restart) the
+// controller's stored outlet state and the device's real state may
+// disagree -- someone toggled at the LCD, or edited a slot in the UI while
+// nothing was listening. Silently applying that difference is the one thing
+// this must never do: an outlet group is a rack of load. It reports whether
+// the push is held. Needs devicemodel.OutletPlanner; AllowInitialChanges
+// overrides; a push that changes nothing goes through and ends the hold.
+func (l *Loop) holdInitialOutletPush(ver string, desired []devicemodel.OutletDesired) bool {
+	if l.everOutletApplied || l.cfg.AllowInitialChanges {
+		return false
+	}
+	planner, ok := l.cfg.OutletController.(devicemodel.OutletPlanner)
+	if !ok {
+		return false
+	}
+	changed := planner.PlanOutlets(desired)
+	if len(changed) == 0 {
+		return false
+	}
+	if l.heldOutletVersion != ver {
+		l.heldOutletVersion = ver
+		l.cfg.Logger.Printf("[%s] HOLDING the first outlet push of this run (system_cfg %s): it would switch %d outlets %v, and the controller's outlet state disagrees with the device. Not applied. Set those outlets in the UI to match the device; the push that changes nothing goes through. control.allow_initial_changes: true overrides.", l.desc.MAC, ver, len(changed), changed)
 	}
 	if l.cfg.OnHeld != nil {
 		l.cfg.OnHeld(l.session.Snapshot())

@@ -19,6 +19,11 @@ type FixtureRunner struct {
 	// Reads records every block read in order, so a test can assert the
 	// collector asks for exactly what the reference driver asks for.
 	Reads []string
+	// Writes records every register write as "<start>=<hex words>", so a
+	// test can assert exactly what the driver would have sent.
+	Writes []string
+	// FailWrite makes the next WriteRegisters fail, for the refusal paths.
+	FailWrite error
 }
 
 // NewFixtureRunner loads registers.txt from dir.
@@ -65,4 +70,41 @@ func (f *FixtureRunner) ReadRegisters(_ context.Context, start, count int) ([]ui
 		out[i] = v
 	}
 	return out, nil
+}
+
+// WriteRegisters records the write and, for the outlet command word, moves
+// the group's status bit the way the unit would: on sets it, off clears it,
+// a reboot is not a state -- the unit opens and closes the relay and by the
+// next poll the group reads back as on (the PDU fixture makes the same
+// distinction).
+func (f *FixtureRunner) WriteRegisters(_ context.Context, start int, values []uint16) error {
+	if f.FailWrite != nil {
+		err := f.FailWrite
+		f.FailWrite = nil
+		return err
+	}
+	var hex string
+	for _, v := range values {
+		hex += fmt.Sprintf("%04x", v)
+	}
+	f.Writes = append(f.Writes, fmt.Sprintf("%d=%s", start, hex))
+	if start != regOutletCommand || len(values) != 2 {
+		return nil
+	}
+	word := uint32(values[0])<<16 | uint32(values[1])
+	for g := 0; g < 4; g++ {
+		if word&groupTarget(g) == 0 {
+			continue
+		}
+		reg := regOutletGroup0 + 3*g + 1 // low word of the group's status field
+		switch {
+		case word&cmdOutputOn != 0:
+			f.Regs[reg] |= outletGroupOn
+		case word&cmdOutputOff != 0:
+			f.Regs[reg] &^= outletGroupOn
+		case word&cmdOutputReboot != 0:
+			f.Regs[reg] |= outletGroupOn
+		}
+	}
+	return nil
 }
