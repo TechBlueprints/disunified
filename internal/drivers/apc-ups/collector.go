@@ -2,6 +2,7 @@ package apcups
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net"
@@ -180,6 +181,9 @@ func (c *Collector) system(static []uint16) devicemodel.System {
 		Version: strings.TrimPrefix(regString(static, regFirmware-blockStatic, 8), "UPS "),
 		MAC:     c.MAC,
 	}
+	if sys.MAC == "" {
+		sys.MAC = syntheticMAC(sys.Serial)
+	}
 	if host, _, err := net.SplitHostPort(c.Addr); err == nil && net.ParseIP(host) != nil {
 		sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: host, PrefixLen: prefixLen(c.Netmask)}}
 	}
@@ -310,4 +314,14 @@ func prefixLen(mask string) int {
 	}
 	ones, _ := net.IPMask(ip.To4()).Size()
 	return ones
+}
+
+// syntheticMAC derives a stable locally-administered unicast address from the
+// unit's serial, for a bridged device adopted under its own identity rather
+// than the SmartConnect port's. Adopting under the port's real MAC replaces
+// the unit's client record in the controller, and any fixed-IP reservation
+// on it; a synthetic address leaves both alone.
+func syntheticMAC(serial string) string {
+	h := sha256.Sum256([]byte("apc-ups " + serial))
+	return fmt.Sprintf("02:%02x:%02x:%02x:%02x:%02x", h[0], h[1], h[2], h[3], h[4])
 }

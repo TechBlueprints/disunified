@@ -223,3 +223,27 @@ func TestReachabilityComesFromTheOperator(t *testing.T) {
 		t.Error("an absent or bad mask must give no prefix, not a guess")
 	}
 }
+
+// Without an operator-supplied MAC the device gets a stable locally
+// administered one from its serial, so adoption never touches the port's own
+// client record or reservation.
+func TestSyntheticMACIsStableLocalAndUnicast(t *testing.T) {
+	c, _ := startFixture(t)
+	snap, _ := c.Collect(context.Background())
+	mac := snap.System.MAC
+	if mac != syntheticMAC("SSJ00000000") || mac != syntheticMAC(snap.System.Serial) {
+		t.Errorf("MAC %q is not the serial-derived address", mac)
+	}
+	if !strings.HasPrefix(mac, "02:") || len(mac) != 17 {
+		t.Errorf("MAC %q is not a locally-administered unicast address", mac)
+	}
+	if syntheticMAC("SSJ00000000") == syntheticMAC("another unit") {
+		t.Error("different serials gave the same address")
+	}
+	c2 := NewCollector(&FixtureRunner{Regs: rawRegs(t)})
+	c2.Addr, c2.MAC = "192.0.2.30:502", "02:00:00:00:00:02"
+	snap2, _ := c2.Collect(context.Background())
+	if snap2.System.MAC != "02:00:00:00:00:02" {
+		t.Errorf("operator MAC not honoured: %q", snap2.System.MAC)
+	}
+}
