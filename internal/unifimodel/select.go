@@ -183,6 +183,10 @@ func ControllerDisplayNames(model string) []string {
 		return []string{"USW Leaf"}
 	case "USPPDUP":
 		return []string{"USP PDU Pro", "PDU Pro"}
+	case "USWDA25", "USWDA26":
+		return []string{"UPS 2U"}
+	case "USWDA23", "USWDA24":
+		return []string{"UPS Tower"}
 	}
 	return nil
 }

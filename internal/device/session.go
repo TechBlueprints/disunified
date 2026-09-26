@@ -359,6 +359,9 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		for k, v := range deviceTables(s.desc, s.snap) {
 			m[k] = v
 		}
+		for k, v := range upsTables(s.desc, s.snap) {
+			m[k] = v
+		}
 	}
 	// Echo provisioned config the controller pushed via setstate, except
 	// port_table, which is merged into the live table above.

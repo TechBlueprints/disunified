@@ -16,7 +16,10 @@ claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
 (control) are done for both** — see `docs/feature-map.md` for the
 per-feature status. A third driver, `apc-pdu`, followed: Clint's APC AP7931
 rack PDU (NMC AOS 3.9.2) as a `USPPDUP` power distribution unit, outlets read
-and switched (`docs/drivers/apc-pdu.md`).
+and switched (`docs/drivers/apc-pdu.md`). A fourth, `apc-ups`, presents his APC
+SMTL1500RM3UC Smart-UPS as a `USWDA25` "UPS 2U", read over Modbus TCP from the
+unit's own SmartConnect port — no card, no cable (`docs/drivers/apc-ups.md`);
+read-only so far, outlet switching pending a discussion.
 
 ## 2. Map
 
@@ -308,3 +311,19 @@ image; compose's `build:` needs `dockerfile: Containerfile` because the file is
 not named `Dockerfile`.
 
 The WebRTC terminal is parked.
+
+**APC Smart-UPS bridged 2026-09-26 (branch `apc-ups`).** The SMTL1500RM3UC's
+green SmartConnect port, documented as cloud-only, serves **Modbus TCP on 502**
+once enabled at the LCD (Advanced → Configuration → Modbus): APC's SMTL
+release notes record it at UPS 01.3. `internal/drivers/apc-ups` reads NUT's
+four register blocks on one connection and fills a new `devicemodel.Battery`;
+`internal/device/tables_ups.go` emits `vbms_table`/`battpool` (spec-derived
+from unifi-emu's PROTOCOL.md — no real UniFi UPS inform exists on site).
+Facts that cost time: two-register values are big-endian by register; a
+socket-per-register scan made the unit refuse connections; USB HID on this
+generation carries no load/voltage at all (NUT issue #1868), so the free
+Synology NUT feed could never have given the load ring; the Homebrew `nut`
+bottle lacks `apc_modbus`. Read-only by decision: **Clint's rule is "don't
+turn outlets off without discussing it first"** — a process rule, not a
+design mandate; the unit runs a rack at ~80 % load. Not yet adopted.
+
