@@ -82,6 +82,7 @@ devices:
   - name: ups
     driver: apc-ups
     url: 192.0.2.30              # the SmartConnect port's address (:502 implied)
+    auth: none                   # the port has no credentials; without this a url is rejected
     model: USWDA25               # UPS 2U; "auto" ranks by port layout and will not pick a UPS
     options:
       mac: 02:00:00:00:00:02     # the SmartConnect port's MAC (Modbus does not expose it)
