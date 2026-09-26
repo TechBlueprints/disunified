@@ -40,13 +40,17 @@ type Device struct {
 	Name   string `yaml:"name"`   // required, unique: used for state and log paths
 	Driver string `yaml:"driver"` // e.g. arista-eos (see -list-drivers)
 
-	URL         string            `yaml:"url"`          // API endpoint (driver-specific)
-	SSH         string            `yaml:"ssh"`          // user@host[:port]
-	Username    string            `yaml:"username"`     // or UsernameEnv
-	UsernameEnv string            `yaml:"username_env"` // env var name
-	Password    string            `yaml:"password"`     // discouraged; prefer PasswordEnv
-	PasswordEnv string            `yaml:"password_env"` // env var name
-	Options     map[string]string `yaml:"options"`      // driver-specific knobs
+	URL         string `yaml:"url"`          // API endpoint (driver-specific)
+	SSH         string `yaml:"ssh"`          // user@host[:port]
+	Username    string `yaml:"username"`     // or UsernameEnv
+	UsernameEnv string `yaml:"username_env"` // env var name
+	Password    string `yaml:"password"`     // discouraged; prefer PasswordEnv
+	PasswordEnv string `yaml:"password_env"` // env var name
+	// Auth: "" means a url needs username/password (an API endpoint without
+	// them is the usual misconfiguration); "none" says the device has no
+	// credentials at all (Modbus TCP on a UPS's SmartConnect port).
+	Auth    string            `yaml:"auth"`
+	Options map[string]string `yaml:"options"` // driver-specific knobs
 
 	Model        string `yaml:"model"`         // UniFi model to claim; "auto" (default) picks by port layout
 	IP           string `yaml:"ip"`            // reported device IP (default: the switch address when it is an IP literal)
@@ -158,8 +162,15 @@ func Load(path string) (*File, error) {
 		if s.PasswordEnv != "" {
 			s.Password = os.Getenv(s.PasswordEnv)
 		}
-		if s.URL != "" && (s.Username == "" || s.Password == "") {
-			return nil, fmt.Errorf("%s: device %q: url needs username/password (set username_env/password_env and export them)", path, s.Name)
+		switch s.Auth {
+		case "":
+			if s.URL != "" && (s.Username == "" || s.Password == "") {
+				return nil, fmt.Errorf("%s: device %q: url needs username/password (set username_env/password_env and export them, or auth: none for a device that has no credentials)", path, s.Name)
+			}
+		case "none":
+			// A credential-less transport, declared rather than inferred.
+		default:
+			return nil, fmt.Errorf("%s: device %q: auth must be \"none\" or unset, got %q", path, s.Name, s.Auth)
 		}
 	}
 	return &f, nil

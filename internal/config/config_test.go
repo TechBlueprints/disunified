@@ -65,3 +65,21 @@ func TestLoadRejectsBothDevicesAndSwitches(t *testing.T) {
 		t.Error("devices: and switches: together must be rejected")
 	}
 }
+
+// A device with no credentials at all (Modbus TCP) says so explicitly; the
+// guard for API endpoints that forgot theirs stays.
+func TestURLWithAuthNoneNeedsNoCredentials(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: u\n    driver: apc-ups\n    url: 192.0.2.30\n    auth: none\n"), 0o644)
+	if _, err := Load(p); err != nil {
+		t.Errorf("auth: none with a url must be accepted, got %v", err)
+	}
+}
+
+func TestAuthRejectsUnknownValues(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: u\n    driver: apc-ups\n    url: 192.0.2.30\n    auth: maybe\n"), 0o644)
+	if _, err := Load(p); err == nil {
+		t.Error("an unknown auth value must be rejected")
+	}
+}

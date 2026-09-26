@@ -58,4 +58,7 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   and has no capture for, so its passing the descriptor gate is a catalogue
   bug, not a real option. Tower and 2U draw surge-only outlets the SMTL does
   not have; the Pro claims per-outlet metering the SMTL cannot do. 2U stays.
+- The config validator rejects a `url` without username/password (the guard
+  for API endpoints). Modbus has none: the device entry needs **`auth: none`**
+  or the bridge exits at startup before informing anything.
 

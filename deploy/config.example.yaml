@@ -20,6 +20,7 @@ devices:                             # "switches:" is still accepted (the pre-re
     url: https://192.0.2.3/command-api
     username_env: DUI_DEVICE_USER    # a switch user with write access if control.ports is set
     password_env: DUI_DEVICE_PASS
+    # auth: none            # only for a device that has no credentials at all (apc-ups over Modbus)
     # ssh: admin@192.0.2.3            # alternative transport: key auth, no password
     model: auto                      # or a model code from `-list-models` (docs/unifi-models.md)
     # firmware: 7.3.109.16640        # version to report; default = the model's catalogue version.
