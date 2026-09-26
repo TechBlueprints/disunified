@@ -235,7 +235,7 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 | Overload / battery-low alerts | `bms_run_anomaly` 1024 / 64 / 4096 | built from measured load and shutdown-imminent |
 | Power controls (beeper, EPO, AC-recovery, NUT server) | `smart_power_caps` | claimed 0: none honoured |
 | Outlet groups as outlets | `outlet_table`, `outlet_enabled`, `hw_caps` 128 | done: row 1 Main (no relay), row 2 Group 1 (relay), rows 3-8 placeholders off for the UPS 2U's picture; no per-group metering exists |
-| Outlet on/off from the controller | `outlet.2.relay_state` → command word at register 1538 (`0x0204`/`0x0202`) | **built, unit-tested byte-exact to NUT, not exercised on the unit** (Clint); `control.outlets` absent in the deployed config |
+| Outlet on/off from the controller | `outlet.2.relay_state` → command word at register 1538 (`0x0204`/`0x0202`) | **built, unit-tested byte-exact to NUT, not exercised on the unit** (Clint); `control.outlets: "2"` enabled 2026-09-26 evening, no command sent yet |
 | Outlet power cycle | `relayctl` → reboot word (`0x0210`) | built, not exercised; the Main group is refused |
 | First outlet push guard | loop hold via `OutletPlanner`, per process | done, tested: a first push that would switch a group is held until the UI matches the device |
 | Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
