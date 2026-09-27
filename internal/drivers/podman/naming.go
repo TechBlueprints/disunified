@@ -2,13 +2,18 @@ package podman
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // DeviceName names the switch after the host: the host is the switch,
-// same MAC, address and hostname.
-func (c *Collector) DeviceName(sys devicemodel.System) string { return sys.Hostname }
+// same MAC, address and hostname. The short name, as the Proxmox nodes are
+// named: `hostname` on this host returns the FQDN.
+func (c *Collector) DeviceName(sys devicemodel.System) string {
+	name, _, _ := strings.Cut(sys.Hostname, ".")
+	return name
+}
 
 // DefaultDeviceNames: no earlier convention.
 func (c *Collector) DefaultDeviceNames(sys devicemodel.System) []string { return nil }
