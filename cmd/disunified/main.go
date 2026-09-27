@@ -472,6 +472,7 @@ func runOne(ctx context.Context, o options) error {
 			log.Printf("provision-names: no UNIFI API key set (DUI_UNIFI_API_KEY), skipping")
 		} else {
 			api := unifiapi.New(o.unifiURL, key, o.unifiSite, true)
+			api.PowerPath = desc.Type == "usp"
 			seed := !o.noSeed && o.controlPorts != ""
 			var last time.Time
 			provision = func(snap *devicemodel.Snapshot) {
@@ -487,7 +488,7 @@ func runOne(ctx context.Context, o options) error {
 				}
 				switch {
 				case err != nil:
-					log.Printf("provision: %v (retried on the next layout change or held push)", err)
+					log.Printf("%v (retried on the next layout change or held push)", err)
 				case r.RenamedDevice || r.RenamedPorts > 0 || r.Seeded > 0 || r.Cleared > 0:
 					log.Printf("provision: device renamed=%v, %d ports named after the switch, %d ports seeded from the switch's own config, %d released slots cleared", r.RenamedDevice, r.RenamedPorts, r.Seeded, r.Cleared)
 				}

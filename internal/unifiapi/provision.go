@@ -42,6 +42,10 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *devicemodel.Sn
 	if err != nil {
 		return res, err
 	}
+	if c.PowerPath {
+		snap = &devicemodel.Snapshot{System: snap.System} // no port config on the power path
+		seed = false
+	}
 	var nets []Network
 	if seed {
 		if nets, err = c.Networks(ctx); err != nil {

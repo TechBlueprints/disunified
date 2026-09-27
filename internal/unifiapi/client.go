@@ -22,7 +22,12 @@ type Client struct {
 	BaseURL string // https://unifi.example.net
 	APIKey  string
 	Site    string
-	http    *http.Client
+	// PowerPath marks a device the controller handles on its power path
+	// (inform type "usp", the UPS 2U Pro): its record takes a name and
+	// outlet_overrides but rejects any update carrying port_overrides with
+	// api.err.Invalid (2026-09-26), so Provision names the device only.
+	PowerPath bool
+	http      *http.Client
 }
 
 // New builds a client. insecure skips TLS verification (self-signed).
