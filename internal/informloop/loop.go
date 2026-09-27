@@ -477,6 +477,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	defer cancel()
 	if l.cfg.Controller == nil {
 		l.applyAddress(cctx, "", text)
+		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return
@@ -907,6 +908,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 		defer cancel()
 		l.applyAddress(cctx, prevText, text)
+		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return true
