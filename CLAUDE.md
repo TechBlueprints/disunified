@@ -22,9 +22,10 @@ SMTL1500RM3UC Smart-UPS as a `USPDA2B` "UPS 2U Pro" (first as a `USWDA25`
 card, no cable (`docs/drivers/apc-ups.md`); outlet-group control built and
 enabled, never yet exercised on the unit. A fifth, `podman`, presents Clint's
 Podman host (a QEMU guest of proxmox-2) as a `UDC48X6` with its containers as
-ports, on the proxmox pattern (`docs/drivers/podman.md`); built 2026-09-27,
-adoption pending the host's address (it holds a fixed-IP reservation that
-adoption would delete).
+ports, on the proxmox pattern (`docs/drivers/podman.md`); built and adopted
+2026-09-27: placed under its node's VM port; its address made static through
+the controller's IP Settings (`control.address`, NetworkManager via nmcli) --
+the loop's read-only branch now applies address and NUT blocks too.
 
 ## 2. Map
 
