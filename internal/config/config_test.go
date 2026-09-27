@@ -18,7 +18,7 @@ func TestLoadExample(t *testing.T) {
 	if f.Controller.Host != "192.0.2.1" || f.Controller.APIKeyEnv != "DUI_UNIFI_API_KEY" || f.Controller.Site != "default" {
 		t.Errorf("controller = %+v", f.Controller)
 	}
-	if len(f.Devices) != 3 || f.Devices[1].Driver != "proxmox" || f.Devices[1].SSH == "" || f.Devices[0].Name != "arista" || f.Devices[0].Driver != "arista-eos" || f.Devices[0].Username != "stu" || f.Devices[0].Password != "x" {
+	if len(f.Devices) != 5 || f.Devices[3].Driver != "apc-ups" || f.Devices[3].Auth != "none" || f.Devices[4].Driver != "podman" || !f.Devices[4].Control.Address || f.Devices[1].Driver != "proxmox" || f.Devices[1].SSH == "" || f.Devices[0].Name != "arista" || f.Devices[0].Driver != "arista-eos" || f.Devices[0].Username != "stu" || f.Devices[0].Password != "x" {
 		t.Errorf("devices = %+v", f.Devices)
 	}
 	if f.Devices[0].Model != "auto" || f.Devices[0].UDAPIVersion != "1.0.0" || f.Devices[0].Control.Ports != "all" || !f.Devices[0].Control.IGMP {

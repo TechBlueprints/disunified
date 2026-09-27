@@ -6,7 +6,12 @@ the proof that it worked. The Arista EOS driver ([`internal/drivers/arista-eos`]
 is the reference implementation — copy its shape, not its commands. The
 Proxmox driver ([`internal/drivers/proxmox`](../internal/drivers/proxmox), [`docs/drivers/proxmox.md`](drivers/proxmox.md)) shows the
 shape for a virtual switch read over SSH with one script per poll, and
-for a driver whose "ports" are not fixed hardware.
+for a driver whose "ports" are not fixed hardware; the Podman driver
+([`internal/drivers/podman`](../internal/drivers/podman), [`docs/drivers/podman.md`](drivers/podman.md)) is the
+smallest complete example of that shape (read-only, ~700 lines with tests).
+For a power device -- outlets instead of ports, a battery instead of PSUs --
+the APC PDU ([`docs/drivers/apc-pdu.md`](drivers/apc-pdu.md)) and UPS
+([`docs/drivers/apc-ups.md`](drivers/apc-ups.md)) drivers are the references.
 
 ## 0. What a driver is
 
@@ -21,6 +26,14 @@ capabilities, LLDP neighbours, MAC table, STP state, optics, FEC, flow
 control, LAG membership, temperature/fans/PSUs. Write side (optional, add
 incrementally): enable/disable, description, speed, VLAN membership, VLAN
 creation, FEC, storm control, BPDU guard, STP mode/priority, IGMP snooping.
+
+A power device is the same contract with a different shape: `Snapshot.Outlets`
+(index, on, switchable, optional metering) beside `Ports`, and
+`System.Battery` for a UPS. Write side: `OutletController` (switch),
+`OutletCycler` (power cycle), `OutletPlanner` (what a push would switch, so
+the loop can hold a first push). Every device may also implement
+`AddressController` (the controller's IP Settings applied to the device
+itself) -- with the guards in [`internal/drivers/CLAUDE.md`](../internal/drivers/CLAUDE.md).
 
 ## 1. Before writing code: capture the device
 
@@ -46,7 +59,10 @@ The controller side is captured too, and the same scrub rule applies:
   in `docs/fixtures/controller-<version>/inform-*.json`. Those come from the
   UniFi OS console support bundle (`unifi/devices/<type>/<mac>/last.inform`),
   scrubbed with [`scripts/sanitize-controller.py`](../scripts/sanitize-controller.py). Every key a real switch
-  sends must be present with the same JSON type or listed with a reason.
+  sends must be present with the same JSON type or listed with a reason
+  (device-level omissions in the test's map; port-level ones through
+  `runContractPorts`, e.g. no FEC on a virtio NIC). A power device compares
+  against the captured USP-PDU-Pro inform instead.
 - `internal/informloop/replay_<driver>_test.go` (one per driver, sharing
   the harness in `replay_test.go`) replays the controller's recorded
   replies (`docs/fixtures/controller-<version>/replies.ndjson`, cut from the
@@ -65,6 +81,11 @@ Create `internal/drivers/<name>/` with:
   target) and returns a `Device`. Document which config fields you use.
 - A `Transport` if the vendor needs one (`Run` for structured output,
   `Configure` for config commands). Fail the whole batch on any error line.
+  A host read through its shell takes an [`internal/sshrun`](../internal/sshrun) `Runner` and
+  runs one embedded script per poll; a register-map device takes a small
+  client of its own (`apc-ups/modbus.go`). Reduce what a script prints to
+  what the driver reads -- a capture must never carry another process's
+  environment or credentials.
 - A `Collector` implementing `devicemodel.Device`: `Start` runs *every*
   command once and fails loudly on a missing command or bad credential;
   `Collect` builds the Snapshot. Then, as you add writes,
@@ -172,14 +193,26 @@ prints the port layout and the suggested model from the catalogue (see
 [`docs/unifi-models.md`](unifi-models.md) for how the catalogue is built, how to scan a newer
 controller for new models, and what the choice affects). Pass `-model` to
 override. The port count must match; front-port media is cosmetic because
-the device's per-port media report replaces the profile's icons.
+the device's per-port media report replaces the profile's icons. A power
+device is not ranked by ports: it claims a power model outright
+(`USPPDUP` for a PDU, `USWDA25`/`USPDA2B` for a UPS), and the model decides
+how many outlet slots the controller draws (`device.OutletCount`) -- the
+driver pads the slots it lacks as present-but-off (`docs/drivers/apc-ups.md` §6b).
+The catalogue's `usw` models run the switch path; `usp` ones the power path,
+which takes a name and outlet overrides but rejects port overrides.
 
 ## 4. Prove it live, in this order
 
 1. `-collect-once` shows sane data.
 2. Read-only run (no `-control-ports`): the device appears under Pending
    Adoption, adopt it, `stat/device` shows live counters, an attached
-   client appears behind the right port.
+   client appears behind the right port. **Before adopting, decide the
+   device's address:** adoption deletes the client record the device had,
+   with its fixed-IP reservation and client DNS name (every driver so far
+   hit this). Either make the address static on the device first, or adopt
+   and then set IP Settings → Static in the UI with `control.address` on.
+   The parent edge appears only when the device's real MAC is seen on an
+   upstream port ([`docs/topology-placement.md`](topology-placement.md)).
 3. `-control-ports <one unused port>`: disable/enable, rename, set a
    speed, set VLANs in the UI; verify on the device after each. Then
    `-control-ports all` and confirm the reconcile makes zero changes.
@@ -199,6 +232,8 @@ the device's per-port media report replaces the profile's icons.
 | [`internal/device`](../internal/device) | inform session, payload, capability claims, persistence |
 | [`internal/informloop`](../internal/informloop) | the loop: collect → inform → apply/reconcile |
 | [`internal/unifimodel`](../internal/unifimodel) | which UniFi model to claim |
-| [`internal/unifiapi`](../internal/unifiapi) | controller REST API (naming) |
+| [`internal/unifiapi`](../internal/unifiapi) | controller REST API (naming, seeding overrides) |
+| [`internal/sshrun`](../internal/sshrun) | SSH transport shared by the host drivers |
+| [`internal/nutd`](../internal/nutd) | NUT server behind a UPS's "NUT Server" switch |
 | [`cmd/disunified`](../cmd/disunified) | flags, wiring, no vendor code |
 | [`docs/`](.) | protocol notes, per-vendor notes, feature map, fixtures |

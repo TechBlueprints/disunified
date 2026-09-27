@@ -2,8 +2,9 @@
 
 A bridge that makes a non-UniFi device appear as a real, adopted UniFi
 device inside the UniFi Network controller — ports, stats, topology, and
-control. What it supports today is switches and a rack PDU; the inform,
-adoption and control machinery underneath carries no vendor or device-type
+control. What it supports today: physical and virtual switches (an Arista,
+Proxmox nodes, a Podman host), a rack PDU and a UPS; the inform, adoption
+and control machinery underneath carries no vendor or device-type
 assumptions.
 
 The controller only speaks its own device protocol. This bridge speaks the
@@ -23,13 +24,14 @@ control (the controller's config applied back to the device).
 | Proxmox VE node (`vmbr0`) | `proxmox` | `UDC48X6` ("USW Leaf"), or `USWF07D` ("ECS Core") | three-node PVE 9.1 cluster |
 | APC switched rack PDU | `apc-pdu` | `USPPDUP` ("Smart Power PDU Pro") | AP7931, NMC AOS 3.9.2 |
 | Podman host (containers as ports) | `podman` | `UDC48X6` ("USW Leaf") | Podman 5.8.2, AlmaLinux 10.2 |
+| APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
 
 `disunified -list-drivers` prints what a given build supports. Adding another
 device means adding a driver: the neutral model, the wire protocol, adoption
 and the inform loop carry no vendor assumptions. The model a driver claims
-has to be one the bundled catalogue carries as `type: usw` — which is what
-`-list-models` prints, and which is how UniFi files its own power devices as
-well as its switches. See
+has to be one the bundled catalogue carries as `type: usw` or `usp` — which
+is what `-list-models` prints: UniFi files its switches, its PDUs and two of
+its UPSes as `usw`, and the UPS 2U Pro as `usp` (the power path). See
 [**Working on this repo with an AI agent**](#working-on-this-repo-with-an-ai-agent)
 and [`docs/adding-a-device.md`](docs/adding-a-device.md).
 
@@ -59,6 +61,14 @@ What each driver does today:
   the client behind its port; one on a Podman bridge network (NAT) is a
   port that counts traffic and, honestly, no client. Read over SSH;
   read-only ([`docs/drivers/podman.md`](docs/drivers/podman.md)).
+- **`apc-ups`** — an APC Smart-UPS read over Modbus TCP from its own
+  SmartConnect port (enabled at the LCD; no network card, no cable): the
+  controller gets the battery pipeline (charge, runtime, on-battery, low
+  battery, load, power, voltages), Safe Shutdown Pairing for a UniFi OS
+  console, the outlet groups as switchable outlets, an optional load-shed
+  policy written to the unit, and — behind the UI's "NUT Server" switch — a
+  NUT server run by the bridge so other hosts can shut down on the same UPS
+  ([`docs/drivers/apc-ups.md`](docs/drivers/apc-ups.md)).
 - **`apc-pdu`** — an APC switched rack PDU, whose outlets become outlets the
   controller can see, name and switch. The card has no API, so the driver uses
   two transports: SNMPv1 to read identity and outlet state and to switch an
@@ -79,14 +89,17 @@ running it against anything you care about.
   device, takes down your network, or locks you out, that is on you.
 - **It writes to your device.** With `control` enabled it applies whatever
   the controller pushes: it replaces the device's VLAN configuration,
-  disables and re-enables ports, switches outlets, changes speeds and
-  breakouts, STP, LACP, storm control, NTP and syslog, and reboots the device
-  when the controller asks. With the opt-in `control.address` it will even set
-  the device's own management address from the controller's IP Settings — the
-  one setting that can strand the bridge from the device it manages. A wrong
+  disables and re-enables ports, switches outlets and UPS outlet groups,
+  changes speeds and breakouts, STP, LACP, storm control, NTP and syslog,
+  and reboots the device when the controller asks; a UPS driver option
+  writes a load-shed policy into the unit. With the opt-in `control.address`
+  it will even set the device's own management address from the
+  controller's IP Settings (a switch's config, a PDU card's config.ini, a
+  Podman host's NetworkManager profile) — the one setting that can strand
+  the bridge from the device it manages. A wrong
   click in the UniFi UI, a controller bug, or a bug here can cut off the
   device, the hosts behind it, or the bridge itself.
-- **Verified on very little hardware:** the three drivers above, against UniFi
+- **Verified on very little hardware:** the five drivers above, against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
   never verified live in [`docs/feature-map.md`](docs/feature-map.md).
@@ -103,7 +116,7 @@ running it against anything you care about.
 ## How it works
 
 ```
-UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified  <── eAPI/SSH/SNMP ──  the device
+UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified  <── eAPI/SSH/SNMP/Modbus ──  the device
                   ── system_cfg pushes / adoption ──>                         ── config diffs ──>
 ```
 
@@ -116,8 +129,12 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
 - [`internal/informloop`](internal/informloop) — collect → inform → apply/reconcile, every cycle.
 - [`internal/unifimodel`](internal/unifimodel) — picks the UniFi model to claim from the port layout, or the
   power-device model from the outlets.
-- [`internal/unifiapi`](internal/unifiapi) — controller REST API, used only to name the device and
-  its ports after the device itself on first provision.
+- [`internal/unifiapi`](internal/unifiapi) — controller REST API: names the device and its ports
+  after the device itself on first provision, and seeds the controller's
+  port/outlet overrides from the device's live state so the first push
+  changes nothing.
+- [`internal/sshrun`](internal/sshrun) — the SSH transport the host drivers (Proxmox, Podman)
+  share; [`internal/nutd`](internal/nutd) — the NUT server a UPS's "NUT Server" switch turns on.
 
 ## Install
 

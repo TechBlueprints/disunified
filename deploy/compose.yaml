@@ -28,6 +28,12 @@ services:
       - ./config.yaml:/etc/disunified/config.yaml:ro
       - state:/var/lib/disunified
     # The bridge only makes outbound connections (to the controller's inform
-    # port 8080 and the device's API); no ports need publishing.
+    # port 8080 and the device's API); no ports need publishing -- unless a
+    # UPS's NUT server is on (control.nut): then publish 3493, or give the
+    # container its own LAN address with a macvlan network (and, if it
+    # bridges the host it runs on, keep a bridge-network leg too: a macvlan
+    # container cannot reach its own host).
+    # ports:
+    #   - "3493:3493"
 volumes:
   state:

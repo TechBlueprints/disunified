@@ -1,7 +1,8 @@
 # disunified configuration. Secrets never go in this file: name the
 # environment variables that hold them (see deploy/env.example).
 #
-# One controller, any number of devices: switches and a rack PDU, today. Everything not
+# One controller, any number of devices: switches (physical, Proxmox, Podman), a rack
+# PDU and a UPS, today. Everything not
 # listed here is discovered: identity (MAC, serial, hostname), the uplink
 # port, the port layout, the UniFi model to claim, and the device's own port
 # capabilities.
@@ -70,3 +71,30 @@ devices:                             # "switches:" is still accepted (the pre-re
     control:
       outlets: all                   # "all", or "2,5-8"; empty = read-only. An outlet is real load.
       address: true                  # the controller's IP Settings set the card's address (static only; the DHCP default is never applied)
+
+  - name: ups-1                      # an APC Smart-UPS, presented as a UniFi UPS 2U Pro
+    driver: apc-ups                  # Modbus TCP on the unit's own SmartConnect port (enable it at the LCD)
+    url: ups.example.net             # the gateway's DNS name for the unit's DHCP lease, or its address (:502 implied)
+    auth: none                       # Modbus has no credentials; without this a url is rejected
+    model: USPDA2B                   # UPS 2U Pro (pairs a UniFi OS console for safe shutdown); USWDA25 = UPS 2U
+    hostname: ups-1
+    options:
+      mac: 02:00:00:00:00:02         # the SmartConnect port's MAC (Modbus does not expose it)
+      netmask: 255.255.255.0         # the unit's network, and
+      gateway_mac: 02:00:00:00:00:fe # the gateway's L2 MAC as the segment sees it -- what places the device
+      # shed_on_battery_after: 30s   # write the unit's load-shed policy: switched groups turn off this long into an outage
+    control:
+      outlets: "2"                   # the switched outlet group (row 2); row 1 is the unswitched main group
+      nut: true                      # the UI's NUT Server switch runs a NUT server in the bridge (publish 3493, or macvlan)
+
+  - name: podman                     # a Podman host: the host is the switch, its containers are the ports
+    driver: podman                   # one SSH exec of a script per poll; read-only
+    ssh: root@podman.example.net     # from a container on that host: the host's address on the Podman bridge (a macvlan leg cannot reach it)
+    model: UDC48X6                   # USW Leaf: NICs from 54 down, container endpoints from 1 up
+    options:
+      ssh_key: /etc/disunified/ssh/id_ed25519
+      known_hosts: /etc/disunified/ssh/known_hosts
+      # uplink: enp6s18              # default: the NIC carrying the default route
+      # slots_file: /var/lib/disunified/podman-slots.json   # endpoint -> port map, kept on the host
+    control:
+      address: true                  # IP Settings -> the uplink's NetworkManager profile (static only, same address)

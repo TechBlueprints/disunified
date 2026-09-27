@@ -38,7 +38,9 @@ the loop's read-only branch now applies address and NUT blocks too.
 | `internal/unificfg` | parse `system_cfg` pushes | every key observed has a fixture under `docs/fixtures/controller-*` |
 | `internal/informloop` | collect → inform → apply pending → reconcile | apply is a diff; reconcile runs every cycle |
 | `internal/unifimodel` | choose the UniFi model from the port layout | `docs/unifi-models.md` |
-| `internal/unifiapi` | controller REST API (naming only) | touches only controller-default names |
+| `internal/unifiapi` | controller REST API: naming, seeding port/outlet overrides, `PowerPath` for `usp` records | touches only controller-default names and unconfigured overrides |
+| `internal/sshrun` | the SSH transport the host drivers share (`Runner`, `SSH`, `ShellQuote`) | drivers take a `Runner` so tests serve captures |
+| `internal/nutd` | the NUT server behind a UPS's "NUT Server" switch (read-only upsd protocol) | driven only by the controller's `nutserver.*` push |
 | `docs/` | protocol notes, `drivers/<name>.md`, feature map, fixtures | scrub fixtures with `scripts/sanitize-<driver>.py` / `sanitize-controller.py` |
 
 ## 3. How Clint wants to work
@@ -48,8 +50,8 @@ the loop's read-only branch now applies address and NUT blocks too.
   its history rewritten with git filter-repo the same day to purge adoption
   authkeys that had been pasted into a test and a state backup: **never commit
   a real `authkey`** (tests use `0123456789abcdef0123456789abcdef`, fixtures
-  `00000000000000000000000000000001`). Making it public is a separate,
-  pending step.
+  `00000000000000000000000000000001`). The repo has been public since
+  2026-09-20.
 - **What an agent must never put in a tracked file, a test, a fixture, a
   commit message or a PR** (this repo is public; history was rewritten twice
   on 2026-09-20 to purge exactly these):
@@ -95,8 +97,8 @@ the loop's read-only branch now applies address and NUT blocks too.
 - **No affiliation with Ubiquiti**: the README, LICENSE and any published
   page must say this is an independent fan/home-user project, not endorsed
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
-- Bypass-permissions mode is on for this session; the bridge is restarted by
-  Claude (`pkill -INT -f 'disunified -controller'`, then re-run).
+- The bridges run in the container on the Podman host (§4); nothing runs on
+  the Mac. Redeploy = ship `HEAD` with `git archive`, rebuild, recreate.
 
 ## 4. Running instance
 
