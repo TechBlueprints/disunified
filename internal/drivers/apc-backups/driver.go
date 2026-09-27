@@ -24,6 +24,11 @@ import (
 //	netmask      the card's network mask, dotted (e.g. 255.255.255.0), and
 //	gateway_mac  the gateway's L2 address as the segment sees it: with the
 //	             mask, what the controller places the device by.
+//	gateway      the default gateway to write with a static address. The
+//	             controller's push for a UPS-class ("usp") device carries
+//	             the address, mask and nameservers but no route, so
+//	             without this a card made static keeps whatever gateway it
+//	             had -- none, if it was on DHCP.
 //	timeout      per-request timeout (default 15s)
 //
 // The card accepts a handful of concurrent web sessions; the driver logs
@@ -65,6 +70,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	c.MAC = strings.ToLower(strings.TrimSpace(cfg.Options["mac"]))
 	c.Netmask = strings.TrimSpace(cfg.Options["netmask"])
 	c.GatewayMAC = strings.ToLower(strings.TrimSpace(cfg.Options["gateway_mac"]))
+	c.Gateway = strings.TrimSpace(cfg.Options["gateway"])
 	return c, nil
 }
 

@@ -103,8 +103,19 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24, Gateway: "192.0.2.1"}); changed {
 		t.Error("the same static address again must be a no-op")
 	}
+	// The controller's push for a usp device carries no route: the
+	// operator's gateway option fills it, and a card holding a different
+	// gateway is rewritten.
+	c.Gateway = "192.0.2.254"
+	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24})
+	if err != nil || !changed || !strings.Contains(fr.Puts[len(fr.Puts)-1], "DefaultGateway=192.0.2.254\r\n") {
+		t.Errorf("gateway from the option: %v, %v, %q", changed, err, fr.Puts[len(fr.Puts)-1])
+	}
+	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24}); changed {
+		t.Error("with the card holding the option's gateway, no rewrite")
+	}
 	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true})
-	if err != nil || !changed || len(fr.Puts) != 2 || !strings.Contains(fr.Puts[1], "BootMode=DHCP Only\r\n") {
+	if err != nil || !changed || len(fr.Puts) != 3 || !strings.Contains(fr.Puts[2], "BootMode=DHCP Only\r\n") {
 		t.Errorf("back to DHCP: %v, %v, puts %q", changed, err, fr.Puts)
 	}
 	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); changed {

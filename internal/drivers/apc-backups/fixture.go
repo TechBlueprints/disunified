@@ -127,9 +127,11 @@ func (f *FixtureRunner) PutConfig(_ context.Context, body []byte) error {
 	f.Puts = append(f.Puts, string(body))
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "BootMode=") {
-			re := regexp.MustCompile(`(?m)^BootMode=.*$`)
-			f.Config = re.ReplaceAllString(f.Config, line)
+		for _, key := range []string{"BootMode=", "DefaultGateway=", "SystemIP=", "SubnetMask="} {
+			if strings.HasPrefix(line, key) {
+				re := regexp.MustCompile(`(?m)^` + key + `.*$`)
+				f.Config = re.ReplaceAllString(f.Config, line)
+			}
 		}
 	}
 	return nil

@@ -23,6 +23,11 @@ type Collector struct {
 	MAC        string
 	Netmask    string
 	GatewayMAC string
+	// Gateway is the default gateway to write with a static address when
+	// the controller's push carries none: on the power path ("usp") the
+	// controller sends netconf.1.* and the nameservers but no route, so a
+	// card made static from that push alone would have no gateway.
+	Gateway string
 	// Resolve turns a host name into addresses; nil = the system resolver.
 	Resolve func(ctx context.Context, host string) ([]net.IP, error)
 	Log     *log.Logger
@@ -32,6 +37,7 @@ type Collector struct {
 	about    about
 	ratedV   int
 	dhcp     bool
+	cardGW   string // DefaultGateway from the card's config.ini (0.0.0.0 = none)
 	names    []string
 	rows     []outletRow // the last poll's rows, in snapshot order
 	resolved string
@@ -62,6 +68,10 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	c.about = ab
 	c.ratedV = parseRatedVoltage(pages["ulinput"])
 	c.dhcp = strings.HasPrefix(ini["NetworkTCP/IP"]["BootMode"], "DHCP")
+	c.cardGW = ini["NetworkTCP/IP"]["DefaultGateway"]
+	if c.cardGW == "0.0.0.0" {
+		c.cardGW = ""
+	}
 	c.mu.Unlock()
 	snap, err := c.build(ctx, pages)
 	if err != nil {
@@ -107,7 +117,7 @@ func (c *Collector) build(ctx context.Context, pages map[string]string) (*device
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = devicemodel.System{
 		Vendor: "APC", Model: ab.Model, Serial: ab.Serial, Version: strings.TrimPrefix(strings.SplitN(ab.Firmware, " /", 2)[0], "UPS "),
-		MAC: strings.ToLower(c.MAC), GatewayMAC: strings.ToLower(c.GatewayMAC), DHCP: dhcp,
+		MAC: strings.ToLower(c.MAC), GatewayMAC: strings.ToLower(c.GatewayMAC), DHCP: dhcp, Gateway: c.Gateway,
 	}
 	c.fillAddress(ctx, &snap.System)
 
