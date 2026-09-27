@@ -26,8 +26,14 @@ func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (infor
 	if !ok {
 		return inform.Descriptor{}, fmt.Errorf("unknown model %q", model)
 	}
-	if profile.Type != "usw" {
-		return inform.Descriptor{}, fmt.Errorf("model %q is a %q, not a switch", model, profile.Type)
+	// A switch, or a power device on the controller's power path: the
+	// UPS-class models (UPS 2U Pro and kin) inform as "usp", the rack
+	// PDUs and battery-backed UPS Tower/2U as "usw" (unifi-emu's
+	// PROTOCOL.md, "There is no power device type"). Either way the
+	// payload is the switch payload plus the power tables.
+	typ := wireType(model, profile.Type)
+	if typ != "usw" && typ != "usp" {
+		return inform.Descriptor{}, fmt.Errorf("model %q is a %q, not a switch or power device", model, typ)
 	}
 	ports := make([]inform.Port, len(profile.Ports))
 	copy(ports, profile.Ports)
@@ -59,9 +65,23 @@ func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (infor
 		Version:      version,
 		IP:           id.IP,
 		Hostname:     id.Hostname,
-		Type:         profile.Type,
+		Type:         typ,
 		FWCaps:       FWCaps,
 		UDAPIVersion: id.UDAPIVersion,
 		Ports:        ports,
 	}, nil
+}
+
+// wireType is the type a model informs as. The pinned catalogue (unifi-emu
+// v0.5.5) labels the UPS 2U Pro "usw"; Ubiquiti's public fingerprint DB and
+// the newer catalogue say "usp", the controller's power path, and the
+// controller resolves the family from the model string regardless -- so
+// the wire must carry what the controller expects. Everything else is the
+// catalogue's word.
+func wireType(model, catalogue string) string {
+	switch model {
+	case "USPDA2B", "USPDA2C":
+		return "usp"
+	}
+	return catalogue
 }

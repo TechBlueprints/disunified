@@ -242,3 +242,20 @@ func TestPlaceholderOutletsAreTheSlotsTheDeviceLacks(t *testing.T) {
 		t.Errorf("nil snapshot: %v, want nil", got)
 	}
 }
+
+// The UPS 2U Pro is a "usp" in the catalogue -- the controller's power
+// path -- and must build a descriptor like the "usw" battery models do;
+// anything else (an access point) is still refused.
+func TestDescriptorAcceptsThePowerDeviceType(t *testing.T) {
+	snap := &devicemodel.Snapshot{System: devicemodel.System{MAC: "02:00:00:00:00:01", Serial: "SSJ00000000"}}
+	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: "192.0.2.10", UDAPIVersion: "1.0.0"})
+	if err != nil {
+		t.Fatalf("USPDA2B: %v", err)
+	}
+	if desc.Type != "usp" {
+		t.Errorf("type = %q, want usp on the wire", desc.Type)
+	}
+	if _, err := DescriptorFor("U6LR", snap, Identity{MAC: snap.System.MAC}); err == nil {
+		t.Errorf("an access point model must still be refused")
+	}
+}
