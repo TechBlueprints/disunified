@@ -18,7 +18,8 @@ Built 2026-09-27 for a Back-UPS Pro 500 (BG500) behind its embedded NMC
   `00000000` none) + `submit=Next ››` → 303 to `ulsogcfm.htm`, whose hidden
   `SogControl` (`none,off,none,none,`) is posted to `Forms/ulsogcfm1` with
   `submit=Apply`. Nothing switches before the second post (verified by
-  abandoning at the confirmation: both groups stayed on). A push with no
+  abandoning at the confirmation: both groups stayed on). **Verified live
+  both ways on SOG2, 2026-09-27**: off in ~60 s from the push, on in ~30 s. A push with no
   action redirects straight back to `ulsogctl.htm`.
 - **Rows on the pages: MOG1, MOG2, SOG1, SOG2** (main groups always on,
   switched groups with a relay). `config.ini` numbers them differently

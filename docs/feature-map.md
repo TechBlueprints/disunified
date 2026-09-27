@@ -259,7 +259,7 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 |---|---|---|
 | Battery pipeline (charge, runtime, input, on-battery, low battery, load) | `vbms_table.battpool`, `is_battery_mode`, `bms_run_anomaly` | done, verified live (level, runtime, budget, input stored); on-battery states matched on status text, unverified until an outage |
 | Outlets: 2 main groups (no relay) + 2 switched groups (relay), metered | `outlet_table` rows 1-4 with `outlet_caps` 2 / 3, `outlet_power/voltage/current`; rows 5-8 placeholders | done, verified live (controller stores the watts) |
-| Outlet on/off from the controller | `outlet.3/4.relay_state` → the card's two-step `ulsogctl1`/`ulsogcfm1` form | built, fixture-tested against the captured form; **not yet exercised on the unit** |
+| Outlet on/off from the controller | `outlet.3/4.relay_state` → the card's two-step `ulsogctl1`/`ulsogcfm1` form | **done, verified live** 2026-09-27: Disabled/Active on the switched group from the controller reached the card's own page in ~60 s / ~30 s, `1 of 2 outlets changed` each way |
 | Outlet power cycle | `relayctl` → the card's Reboot action | built, fixture-tested |
 | IP Settings → the card | `netconf.1.*` (+ `options.gateway`: the usp push has no route) → `config.ini` `[NetworkTCP/IP]` over FTP | done, verified live (DHCP Only → Manual, gateway written) |
 | UPS off / reboot, outlet names, backup/watchdog settings | -- | deliberately not written |

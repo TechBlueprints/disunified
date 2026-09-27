@@ -119,9 +119,12 @@ there.
 - IP Settings → Static applied to the card through config.ini (`BootMode`
   went `DHCP Only` → `Manual` at the same address); the gateway needed the
   option (§3). The DNS name kept resolving through the device hostname.
-- Outlet switching is built and fixture-tested against the captured
-  two-step form; **no switched group has been commanded on the unit yet**
-  (both are named "unplugged" and carry 0 W -- the natural test subjects).
+- **Outlet switching verified on the unit** (Clint's go-ahead, on the
+  unplugged switched group 2): the controller's Disabled reached the card
+  -- its own On/Off/Reboot page showed the group Off -- about 60 s after
+  the push (one inform interval plus the two posts), the controller's
+  stored row followed, and Active brought it back in ~30 s; the bridge
+  logged `1 of 2 outlets changed` each way, group 1 untouched.
 
 ## 6. Fixture and scrub
 
