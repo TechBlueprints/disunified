@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"net"
+	"time"
 
 	"context"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
@@ -59,7 +60,7 @@ func startFixture(t *testing.T) (*Collector, *FixtureRunner) {
 
 func TestCollectorReadsTheReferenceDriversFourBlocks(t *testing.T) {
 	_, fr := startFixture(t)
-	want := []string{"0,27", "128,44", "516,120", "1026,22"}
+	want := []string{"0,27", "128,44", "516,120", "1026,48"} // NUT's four blocks, the config block widened to the load-shed settings (1073)
 	if strings.Join(fr.Reads, " ") != strings.Join(want, " ") {
 		t.Errorf("reads = %v, want exactly %v (the map is sparse; other blocks are refused)", fr.Reads, want)
 	}
@@ -304,5 +305,53 @@ func TestDialledByLiteralReportsTheLiteral(t *testing.T) {
 	snap, _ := c.Collect(context.Background())
 	if snap.System.Addresses[0].IP != "192.0.2.30" {
 		t.Errorf("addresses = %+v", snap.System.Addresses)
+	}
+}
+
+// The unit's load-shed settings are read from the config block (registers
+// 1054-1073, captured 2026-09-26): on this unit neither group sheds -- the
+// config bits are 0 and the time-on-battery thresholds hold the unit's
+// "never" (32767) -- so both groups stay on until the battery is exhausted.
+func TestLoadShedIsReadFromTheConfigBlock(t *testing.T) {
+	fr, err := NewFixtureRunner(fixtureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCollector(fr)
+	if _, err := c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	sheds := c.Sheds()
+	if len(sheds) != 2 {
+		t.Fatalf("sheds = %v, want one per reported group (Main, Group 1)", sheds)
+	}
+	for i, s := range sheds {
+		if s.Enabled() {
+			t.Errorf("group %d: %+v, want no shedding on the captured unit", i, s)
+		}
+	}
+	if got := sheds[1].String(); got != "load shed: none (stays on until the battery is exhausted)" {
+		t.Errorf("String = %q", got)
+	}
+	// The decode itself, against the bit layout of LoadShedConfigSetting_BF
+	// (990-9840A p.12): a switched group set to shed 60 s into an outage,
+	// through its off delay, and on overload.
+	cfg := make([]uint16, blockConfigLen)
+	cfg[regSOG0LoadShedCfg-blockConfig+1] = shedOnTimeOnBattery | shedUseOffDelay | shedOnOverload
+	cfg[regSOG0ShedOnBattery-blockConfig] = 60
+	cfg[regSOG0ShedRuntime-blockConfig] = 240 // present but not enabled by a bit
+	got := loadShed(cfg, 0)
+	want := LoadShed{OnBatteryAfter: 60 * time.Second, OnOverload: true, UseOffDelay: true}
+	if got != want {
+		t.Errorf("loadShed = %+v, want %+v", got, want)
+	}
+	if s := got.String(); s != "load shed: after 1m0s on battery, on overload, through the off delay" {
+		t.Errorf("String = %q", s)
+	}
+	// Runtime-based shedding on the Main group; overload never applies to it.
+	cfg[regMOGLoadShedCfg-blockConfig+1] = shedOnRuntimeRemain | shedOnOverload
+	cfg[regMOGShedRuntime-blockConfig] = 300
+	if got := loadShed(cfg, -1); got != (LoadShed{RuntimeBelow: 300 * time.Second}) {
+		t.Errorf("main group = %+v", got)
 	}
 }

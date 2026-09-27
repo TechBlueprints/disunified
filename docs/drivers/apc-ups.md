@@ -370,6 +370,16 @@ What it does when on:
 - Sockets are not individually switchable on this hardware: Group 1's relay
   switches its whole bank. Which sockets that is, is printed on the rear
   panel; nothing in the map says.
+- **Load shedding is the unit's own feature for "the half I can lose".**
+  Each group has a `LoadShedConfigSetting_BF` (1054 Main, 1056 Group 1) and
+  thresholds: shed after N seconds on battery (1068) or when runtime
+  remaining falls to X seconds (1064), optionally through the group's off
+  delay and with a manual restart. The driver reads them (config block
+  widened to 1073) and logs each group's policy at start. **On this unit
+  nothing sheds** -- both groups run until the battery is exhausted --
+  which is what makes "two PDUs on the UPS, one expendable" a policy the
+  UPS is not yet enforcing. Setting it is a config write to the unit (LCD,
+  or those ReadWrite registers); the bridge does not do it.
 
 Enabling it: `control: {outlets: "2"}` in the deployed config (not "all" --
 row 1 is refused anyway, but say what you mean), rebuild and recreate the
