@@ -369,7 +369,12 @@ What it does when on:
   and ends the hold. `control.allow_initial_changes: true` overrides.
 - Sockets are not individually switchable on this hardware: Group 1's relay
   switches its whole bank. Which sockets that is, is printed on the rear
-  panel; nothing in the map says.
+  panel; nothing in the map says. On the SMTL1500RM3UC the rear panel has
+  two rows of three NEMA 5-15R: the **upper row is labelled "GROUP 1"**
+  (the switched group, row 2 in the bridge) and the **lower row is the
+  unswitched Main group** (row 1); both rows sit under one
+  "Battery/Surge Protected Outlets" label -- every socket is battery-backed
+  (APC's rear-panel diagram, 2026-09-27).
 - **Load shedding is the unit's own feature for "the half I can lose".**
   Each group has a `LoadShedConfigSetting_BF` (1054 Main, 1056 Group 1) and
   thresholds: shed after N seconds on battery (1068) or when runtime
