@@ -48,7 +48,11 @@ type Device struct {
 	// record with api.err.OobPortNotSupported because the device claims no
 	// such port. Updates must send it back empty.
 	OOBPortConfig []map[string]any `json:"oob_port_config"`
-	PortTable     []struct {
+	// OutletOverrides is the controller's per-outlet configuration for a
+	// power device (relay_state, name), the outlet counterpart of
+	// PortOverrides; replaced wholesale on update, like PortOverrides.
+	OutletOverrides []map[string]any `json:"outlet_overrides"`
+	PortTable       []struct {
 		PortIdx int    `json:"port_idx"`
 		Name    string `json:"name"`
 	} `json:"port_table"`

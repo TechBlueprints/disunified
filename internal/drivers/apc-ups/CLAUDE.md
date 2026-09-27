@@ -99,4 +99,14 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - **Forget = `cmd/sitemgr delete-device`.** `cmd/devmgr delete-device` returns
   `rc: ok` and leaves the record (seen twice, 2026-09-26); `sitemgr` removed
   it in seconds. `cmd/devmgr adopt` and `cmd/devmgr upgrade` do work.
-
+- **The UPS 2U picture is two multi-cells, coloured by outlets 1 and 5 only**
+  (read from the UI bundle 2026-09-26): rows 2-4 and 6-8 never colour
+  anything, the row data is table merged with override (override on top,
+  and the stored table already carries the override's relay_state), and
+  there is **no outlet editor for a UPS 2U** in Network 10.6.106 -- the
+  API (`PUT rest/device` `outlet_overrides`) is the only way a relay push
+  reaches the bridge. The provisioner seeds the placeholder overrides off
+  so the surge row draws "Not Powered". `docs/drivers/apc-ups.md` §6b.
+- **Safe Shutdown Pairing needs the 2U Pro (`USPDA2B`, `type usp`) to
+  offer a UDM**; NUT Server is gated on `smart_power_caps` bit 1 (claimed
+  0). Both in `docs/drivers/apc-ups.md` §8.

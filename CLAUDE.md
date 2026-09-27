@@ -353,4 +353,10 @@ NUT's encoding by tests, the Main group is refused, and the loop holds the
 first outlet push of a run that would switch anything. `control.outlets: "2"`
 was enabled the same evening (stack rebuilt from 861b3f5); no command has
 been sent to the unit yet.
+**The UPS 2U picture (2026-09-26, from the UI bundle):** two multi-cells
+coloured by outlets 1 and 5 alone, override on top of the table; the
+provisioner seeds the placeholder overrides off (`device.PlaceholderOutlets`,
+`unifiapi.SeedOutletOverrides`); there is **no outlet editor for a UPS 2U**
+in 10.6.106 -- the API is the only relay-push path; Safe Shutdown Pairing of
+a UDM needs the 2U Pro (`usp`, open); NUT Server is claimed off.
 

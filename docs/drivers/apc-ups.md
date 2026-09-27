@@ -149,6 +149,42 @@ surge slots. Row shape is the rack-PDU encoding (small `outlet_caps` beside
 `outlet_type`), the form a real controller has been seen to parse for this
 bridge; the battery-backed models' class-bit form has no capture behind it.
 
+**How the picture is really drawn (read out of the Network 10.6.106 UI
+bundle, 2026-09-26 evening).** The UPS 2U's diagram in the controller's
+device catalogue is two rows, `01-02-03-04 __ 12 13` and `05-06-07-08 __
+__ 11` (12/13 the surge in/out RJ45s, 11 the LAN port). A hyphenated entry
+is one *multi-cell*: its four sub-outlets are all rendered from the **same**
+data, the first outlet's, with tooltips and clicks disabled on the sub-cells.
+So the top row's colour is outlet **1**'s `relay_state` and the bottom
+row's is outlet **5**'s; outlets 2-4 and 6-8 are never consulted for the
+picture. A cell is active (green) when `relay_state` is true, the device
+is online and, for a surge cell, the UPS is not on battery (surge cells dim
+in battery mode); a non-metered model reads `relay_state`, a metered one
+reads `outlet_power > 0`. The row data is `outlet_table[i]` merged with
+`outlet_overrides[i]`, override on top -- and the controller's stored
+table already carries the override's `relay_state`, which is why our
+reported `false` on the placeholders showed as `true` until the overrides
+were set.
+
+Consequences: (1) the provisioner now seeds the placeholders' overrides
+off (`device.PlaceholderOutlets` → `unifiapi.SeedOutletOverrides`, on the
+adoption handshake and every provision, idempotent), which turned the
+bottom row grey "Not Powered" live; the resulting `system_cfg` carried
+`outlet.3..8.relay_state=false` and the loop applied it as `0 of 1 outlets
+changed` -- rows outside `control.outlets` are never considered. (2) The
+top row stays green because it is row 1, the Main group, on. (3) Group 1
+(row 2) is **invisible in the picture** at index 2. Mapping it to index 5
+instead would make the bottom row follow its relay -- at the price of the
+surge-cell rule dimming that row whenever the UPS runs on battery, which
+on this unit would read "Not Powered" over a live bank. Not done; Clint's
+call. (4) **The UPS 2U has no outlet editor in this Network version**: its
+panel tabs are Overview (the picture), Insights and Settings; the PDU's
+middle tab is Outlets. Multi-cells do not open one on click. So nothing in
+the UI can switch a UPS 2U outlet; the control path that exists is the
+API -- `PUT rest/device/<_id> {"outlet_overrides": [...]}` with a
+`relay_state`, which the controller pushes as `outlet.<n>.relay_state` in
+`system_cfg` and the loop applies (row 2 only, with the first-push hold).
+
 ## 7. Addressing: dial the lease's DNS name, and the address follows
 
 Adopting a device deletes its UniFi client record and any fixed-IP
@@ -206,8 +242,27 @@ address the device reports.
   on (`firmware: 1.6.1.413`, with `firmware_base: 15.5` kept in the state
   file), and never touches the unit. Verified 2026-09-26: `upgrade to
   "1.6.1.413" requested (emulated reboot)`.
-- Safe Shutdown Pairing lists the gateway as "Not Compatible": a UPS 2U pairs
-  with a UNVR/UNAS, not a UDM. Informational.
+- **Safe Shutdown Pairing** lists the gateway as "Not Compatible", tooltip
+  "UPS 2U does not support <gateway>. UPS 2U Pro is recommended instead."
+  Pairing is the controller shutting a paired UniFi OS console down cleanly
+  when the UPS reports battery mode with `timeToRemain` under a threshold;
+  the UPS side is those two fields, already sent, and nothing is pushed to
+  the UPS. The 2U pairs with UNVR/UNAS-class consoles; the 2U Pro adds the
+  UDM class. Claiming `USPDA2B` would offer it, at a cost: it is `type: usp`
+  (two gates reject that today, `internal/device/descriptor.go` and
+  `main.go`, and no bridged device has informed as `usp`), all eight of its
+  outlets are metered (`outlet_caps 65539`; the map has whole-load only),
+  firmware 7.3.109, and a re-adoption. Only worth it if the console is
+  actually on this UPS. Open.
+- **NUT Server** (Settings → UPS Settings): "Shares UPS status with other
+  devices. Use the ID / Hostname and port when configuring third-party
+  devices for safe shutdown." On a real UniFi UPS it starts a NUT `upsd` on
+  the UPS; gated on `smart_power_caps` bit 1, claimed 0 here, so ticking it
+  would push `nut_server.*` keys nothing parses and show a hostname/port
+  nothing serves. Left off. (A NUT server *in the bridge* would be a real
+  feature: it holds every NUT variable, and the upsd protocol is plain text.)
+- **No outlet editor for a UPS 2U** in this version (§6b): Overview,
+  Insights, Settings only. Outlet control reaches the bridge via the API.
 
 ## 9. Things that will bite
 
