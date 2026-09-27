@@ -109,6 +109,13 @@ Codes without a product name are internal codes but shipping hardware
 | 5 | 5 RJ45 | USF5P (PoE), USFXG, USMINI, USMINI2, USWED35 |
 | 1 | 1 RJ45 (power devices) | USPPDUP, USPPDUHD, USPED18, USPDA2B, USPDA2C, USWDA23-26, USPRPS, USPRPSP |
 
+`USPDA2B`/`USPDA2C` (UPS 2U Pro) inform as `type: usp`, the controller's
+power path -- the pinned catalogue says `usw`, the fingerprint DB `usp`, and
+`internal/device/descriptor.go` sends `usp`. Everything else in the table is
+`usw`. A `usp` record rejects `port_overrides` and does not store
+`total_max_power`/`power_source`; the bridge exercised it live 2026-09-26
+(`docs/drivers/apc-ups.md` §6).
+
 Notes: `UDC48X6` carries `SWITCH_LEAF` and a `knownUnsupportedFeatures` list
 (DOT1X, LLDP_MED, EGRESS_RATE_LIMIT) that does not hide UI controls. No
 profile has a distinct 10G-copper class. Refresh the catalogue (above)

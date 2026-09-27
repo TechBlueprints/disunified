@@ -107,12 +107,37 @@ adopts but has no parent in the topology.
 
 ## 6. Model claimed
 
-`USWDA25` ("UPS 2U", `type: usw`). It runs the ordinary switch inform path,
-which is what a UPS needs — there is no UPS device type on the wire — and it
-is the rackmount UniFi UPS. Its profile draws eight outlets and one 100 M
-port; this unit has six outlets in two groups and one port. The UPS 2U Pro
-(`USPDA2B`) was not chosen: it is `type: usp`, an unexercised path, and it
-claims per-outlet metering this unit cannot do.
+**`USPDA2B` ("UPS 2U Pro", `type: usp`) since 2026-09-26 evening.** It was
+first adopted as `USWDA25` ("UPS 2U", `type: usw`, the ordinary switch
+inform path), then re-adopted as the 2U Pro for one reason: **Safe Shutdown
+Pairing offers a UDM-class console only for the 2U Pro**, and Clint's
+gateway and core switches all hang off this unit. What the switch cost and
+proved, in one re-adoption (forget, clear state, adopt by MAC, ~2.5 min):
+
+- `usp` is the controller's *power path*; no bridged device had informed as
+  it before. The controller accepted the inform, stored `vbms_table`,
+  `outlet_table`, `outlet_overrides`, `outlet_enabled`, `hw_caps` and
+  `smart_power_caps` as sent, placed the device on its switch port in 40 s
+  and set the hostname. Two switch-path keys are **not** stored on this
+  path: `total_max_power` and `power_source` (the budget still reaches the
+  UI through `battpool.device_total_power_budget`).
+- The pinned catalogue (unifi-emu v0.5.5) labels the 2U Pro `usw`;
+  Ubiquiti's fingerprint DB says `usp` and the controller resolves the
+  family from the model string, so `internal/device/descriptor.go`
+  corrects the wire type for `USPDA2B/2C` (`wireType`).
+- The record **rejects `port_overrides`** with `api.err.Invalid`, so the
+  provisioner sends the name only on this path (`unifiapi.Client.PowerPath`,
+  set from the descriptor type). Outlet overrides are accepted.
+- The 2U Pro claims per-outlet metering the unit cannot do; the rows are
+  reported without the meter bit, so the UI reads `relay_state` for the
+  picture rather than `outlet_power` (§6b). The update badge offered
+  `1.6.1.4933` and was accepted per the rule (`firmware_base: 15.5` kept).
+- The picture is eight individual cells (§6b), which is strictly better
+  than the 2U's two multi-cells: Group 1 gets its own cell.
+
+`USWDA25` remains a valid claim (`model:` in the config); switching back is
+the same re-adoption. The rest of this section is the 2U's story, kept
+because it explains the row layout, which did not change.
 
 ## 6b. The outlet picture, and why it cannot show two
 
@@ -184,6 +209,17 @@ the UI can switch a UPS 2U outlet; the control path that exists is the
 API -- `PUT rest/device/<_id> {"outlet_overrides": [...]}` with a
 `relay_state`, which the controller pushes as `outlet.<n>.relay_state` in
 `system_cfg` and the loop applies (row 2 only, with the first-push hold).
+
+**The 2U Pro's picture is different, and better for this unit** (Ubiquiti's
+fingerprint DB, `USPDA2B`): `01 02 03 __ 04 __ 10 11` / `05 06 07 __ 08 __
+09 __` -- eight *individual* cells, every outlet in both the `standard` and
+the `surge` list (battery-backed with surge), 09 the LAN port, 10/11 surge
+in/out. Each cell reads its own row (`outlet_table[i]` merged with the
+override), so row 1 (Main) and row 2 (Group 1) each colour their own cell
+and the six seeded placeholders draw "Not Powered". Single cells are
+clickable (`subPanel: OUTLETS`), where the 2U's multi-cells were not.
+Whether that opens an outlet editor for a `usp` device is the next thing
+to check in the UI.
 
 ## 7. Addressing: dial the lease's DNS name, and the address follows
 
