@@ -94,6 +94,7 @@ devices:
       # shed_on_battery_after: 30s  # hold every switched group to "shed after 30 s on battery" (written to the unit at start if it differs)
     # control:
     #   outlets: "2"              # switch Outlet Group 1 (row 2) from the controller; absent = read-only
+    #   nut: true                 # run a NUT server in the bridge when the controller's NUT Server switch is on (§12); publish its port
       # unit_id: 1
       # timeout: 3s
 ```
@@ -411,3 +412,54 @@ row 1 is refused anyway, but say what you mean), rebuild and recreate the
 stack, then check the log for the hold. The first real test is Clint's to
 run, on a bank known to carry nothing.
 
+## 12. NUT server -- the controller's "NUT Server" switch, made real
+
+A real UniFi UPS runs a NUT `upsd` on itself when the switch under Settings →
+UPS Settings is on; third-party hosts point `upsmon` at it. The bridge can
+be that server: `control.nut: true` claims `smart_power_caps` bit 1, which
+is what makes the controller offer the switch's form (ID / Hostname, Port,
+optional Login Credential) and push its settings; `internal/nutd` serves the
+session's latest snapshot in NUT's own vocabulary.
+
+**The wire (captured 2026-09-27, `system_cfg-ups-nutserver.txt`).** The
+switch stores `nut_server {enabled, id, port, credential_required,
+username, password}` on the device record and pushes
+
+```
+nutserver.status=enabled
+nutserver.id=ups
+nutserver.port=3493
+nutserver.credential=disabled
+nutserver.username=
+nutserver.password=
+```
+
+in `system_cfg`; the controller also plants `nut_client_ips: []` on the
+record once the capability is claimed. The bridge parses the block
+(`unificfg.NUTServer`), hands it to the server on every applied and
+reconciled push (`informloop.Config.NUT`), and reports the addresses of
+logged-in clients as `nut_client_ips` (no real UPS inform carrying that key
+has been captured; the shape mirrors the controller's own). Switching the
+UI off pushes a config without the block, which stops the listener.
+
+**What it serves.** `LIST UPS` / `LIST VAR` / `GET VAR` as `upsc` and
+`upsmon` use them; `USERNAME` / `PASSWORD` / `LOGIN` (the pushed
+credential when "Login Credential" is on, any when it is off), `PRIMARY`
+granted to a logged-in client so an upsmon primary does not log errors,
+`LIST CLIENT`, `GET NUMLOGINS`; `STARTTLS` refused as unsupported; `FSD`,
+`SET`, `INSTCMD` refused -- the server is read-only, the controller owns
+control. Variables: `ups.status` (`OL`/`OB` + `LB CHRG BYPASS OFF OVER
+TRIM BOOST CAL TEST ALARM`), `battery.charge/runtime/voltage[/temperature]`,
+`ups.load/realpower[.nominal]/power[.nominal]`, `input.voltage` and
+`output.*` only when measured, the transfer thresholds, identity, and
+`outlet.group.N.*` for the two groups. A host that only ever got charge and
+runtime over USB (this generation's HID carries no load or voltage) gets
+the full set from here.
+
+**Deployment.** The container publishes the port (`3493:3493` in the
+stack's compose file); the bridge binds all interfaces on the pushed port.
+Clients address it as `<id>@<bridge host>`: `upsc ups@<host>` lists every
+variable; `upsmon` `MONITOR ups@<host> 1 <user> <pass> secondary` (any
+user/password when the credential switch is off). Nothing here shuts the
+UPS down: a NUT client that reaches `LB` shuts *itself* down, which is the
+point.

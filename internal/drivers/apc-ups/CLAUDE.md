@@ -135,3 +135,11 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   logged. Idempotent -- a unit already holding the policy gets no write.
   The Main group is never written and an absent option never clears
   anything. Live result recorded in `docs/drivers/apc-ups.md` §11.
+- **NUT server (2026-09-27).** `control.nut: true` claims `smart_power_caps`
+  bit 1; the controller then offers the NUT Server form and pushes
+  `nutserver.status/id/port/credential/username/password` (captured:
+  `system_cfg-ups-nutserver.txt`) and plants `nut_client_ips: []`.
+  `internal/nutd` runs upsd's protocol over the session snapshot; the loop
+  hands every push's block to it. Publish 3493 on the container. The claim
+  is a session setting, not a driver capability -- the server is the
+  bridge's.

@@ -42,6 +42,23 @@ type Config struct {
 	JumboFrames bool     // switch.jumboframes=enabled
 	DHCPSnoop   *bool    // switch.dhcp_snoop.status, nil if absent
 	SNMP        *SNMP    // switch.snmp.*, nil if absent
+	// NUTServer is nutserver.*: the controller's "NUT Server" switch for a
+	// UPS, pushed only to a device claiming smart_power_caps bit 1. Nil if
+	// the block is absent (the switch off, or the capability unclaimed).
+	NUTServer *NUTServer
+}
+
+// NUTServer is nutserver.* as captured on Network 10.6.106
+// (docs/fixtures/controller-10.6.106/system_cfg-ups-nutserver.txt):
+// status, id (the UPS name NUT clients address, "ups@host"), port,
+// credential (enabled/disabled) and the username/password clients must
+// present when it is enabled.
+type NUTServer struct {
+	Enabled            bool
+	ID                 string
+	Port               int
+	CredentialRequired bool
+	Username, Password string
 }
 
 // Outlet is outlet.<n>.*: the controller's intent for one outlet on a power
@@ -398,6 +415,24 @@ func Parse(text string) *Config {
 				c.SNMP.Version = v
 			default:
 				c.SNMP.Community = v
+			}
+		case "nutserver.status", "nutserver.id", "nutserver.port", "nutserver.credential", "nutserver.username", "nutserver.password":
+			if c.NUTServer == nil {
+				c.NUTServer = &NUTServer{}
+			}
+			switch k {
+			case "nutserver.status":
+				c.NUTServer.Enabled = v == "enabled"
+			case "nutserver.id":
+				c.NUTServer.ID = v
+			case "nutserver.port":
+				c.NUTServer.Port, _ = strconv.Atoi(v)
+			case "nutserver.credential":
+				c.NUTServer.CredentialRequired = v == "enabled"
+			case "nutserver.username":
+				c.NUTServer.Username = v
+			case "nutserver.password":
+				c.NUTServer.Password = v
 			}
 		case "switch.mtu":
 			c.MTU, _ = strconv.Atoi(v)
