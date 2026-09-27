@@ -374,7 +374,11 @@ step, never Claude's). **Paired 2026-09-27.** Both rack PDUs hang off the
 UPS (~960 W important, ~130 W expendable, the expendable one on the switched
 Group 1 = top rear row); the driver reads the groups' load-shed policy
 (config block widened to 1073) and `options.shed_on_battery_after: 30s`
-writes it -- the one config write the bridge makes to the unit.
+writes it -- the one config write the bridge makes to the unit. **NUT server
+built 2026-09-27**: `control.nut` claims `smart_power_caps` bit 1, the
+controller pushes `nutserver.*` (captured), `internal/nutd` serves upsd's
+protocol from the snapshot on the pushed port (read-only), logged-in clients
+reported as `nut_client_ips`; the UPS stack publishes 3493.
 **Clint 2026-09-26: push, merge and redeploy the UPS stack without asking;
 re-adopt when needed.** The first outlet command is still his to send.
 

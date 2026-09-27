@@ -93,6 +93,10 @@ type Config struct {
 	// ControlReboot: the controller's reboot command really reloads the
 	// switch (off by default: it is emulated).
 	ControlReboot bool
+	// NUT, when set, receives the controller's nutserver block on every
+	// applied and reconciled push (a push without the block means "off").
+	// The bridge's NUT server implements it; nil ignores the block.
+	NUT NUTApplier
 	// ControlSNMP: the controller's SNMP v1/v2c community is configured on
 	// the switch (read-only) and removed when UniFi turns SNMP off.
 	ControlSNMP bool
@@ -491,6 +495,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	}
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
+	l.applyNUT(text)
 	l.installSSHKeys(cctx, text)
 	l.applyAddress(cctx, "", text)
 	desired := l.withholdFreshPorts(l.desiredPorts(text))
@@ -723,6 +728,24 @@ func (l *Loop) installSSHKeys(ctx context.Context, text string) {
 	}
 }
 
+// NUTApplier is what the loop hands the controller's NUT Server settings
+// to: the bridge's NUT server, which starts, reconfigures or stops its
+// listener to match. A nil spec means the block is absent: off.
+type NUTApplier interface {
+	ApplyNUT(spec *unificfg.NUTServer) error
+}
+
+// applyNUT hands the push's nutserver block to the NUT server, if the
+// bridge runs one. Idempotent on the server side; errors are logged.
+func (l *Loop) applyNUT(text string) {
+	if l.cfg.NUT == nil {
+		return
+	}
+	if err := l.cfg.NUT.ApplyNUT(unificfg.Parse(text).NUTServer); err != nil {
+		l.cfg.Logger.Printf("[%s] NUT server: %v", l.desc.MAC, err)
+	}
+}
+
 // applyDeviceSettings writes STP/IGMP settings; errors are logged, and the
 // port apply still proceeds (they are independent).
 func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
@@ -915,6 +938,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	defer cancel()
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
+	l.applyNUT(text)
 	l.installSSHKeys(cctx, text)
 	l.applyAddress(cctx, prevText, text)
 	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)

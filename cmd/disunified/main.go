@@ -31,6 +31,7 @@ import (
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/informloop"
+	"github.com/TechBlueprints/disunified/internal/nutd"
 	"github.com/TechBlueprints/disunified/internal/unifiapi"
 	"github.com/TechBlueprints/disunified/internal/unifimodel"
 	emu "github.com/jamesbraid/unifi-emu"
@@ -439,6 +440,15 @@ func runOne(ctx context.Context, o options) error {
 		sess.SetSmartPowerCaps(device.SmartPowerCapNUTInfo)
 		log.Printf("control: NUT server capability claimed; the controller's NUT Server switch is honoured")
 	}
+	// The NUT server serves the session's latest snapshot; the controller's
+	// nutserver block (via the loop) starts and stops it, and its logged-in
+	// clients are reported back as nut_client_ips.
+	var nut *nutd.Server
+	if o.controlNUT {
+		nut = nutd.New(sess.Snapshot, log)
+		sess.SetNUTClients(nut.Clients)
+		defer nut.Close()
+	}
 	if versionPinned {
 		sess.PinVersion()
 	}
@@ -525,6 +535,7 @@ func runOne(ctx context.Context, o options) error {
 	// --- Loop ---
 	loopCfg := informloop.Config{
 		Logger:     log,
+		NUT:        nutApplier(nut),
 		Interval:   o.interval,
 		RecordDir:  o.recordDir,
 		DeviceHost: hostOf(o.deviceURL, o.deviceSSH),
@@ -752,4 +763,12 @@ func envDuration(def time.Duration, keys ...string) time.Duration {
 		}
 	}
 	return def
+}
+
+// nutApplier keeps a nil *nutd.Server from becoming a non-nil interface.
+func nutApplier(s *nutd.Server) informloop.NUTApplier {
+	if s == nil {
+		return nil
+	}
+	return s
 }

@@ -39,8 +39,9 @@ type Session struct {
 	versionPinned  bool                // the operator named a version: never follow the switch's
 	prevHistory    map[int]portHistory // per port, at the last inform (anomaly deltas)
 	caps           devicemodel.Capabilities
-	smartPowerCaps int    // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
-	gatewayIP      string // reported as gateway_ip; "" = omit
+	smartPowerCaps int             // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
+	nutClients     func() []string // addresses of NUT clients served, for nut_client_ips; nil = none
+	gatewayIP      string          // reported as gateway_ip; "" = omit
 }
 
 // SetUplinkPort marks idx as the uplink in the reported port table (0 = no
@@ -72,6 +73,14 @@ func (s *Session) SetSmartPowerCaps(bits int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.smartPowerCaps = bits
+}
+
+// SetNUTClients supplies the addresses of the NUT clients currently
+// served, reported as nut_client_ips when the capability is claimed.
+func (s *Session) SetNUTClients(f func() []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nutClients = f
 }
 
 // NewSession starts a device from st (a fresh State means factory-default:
@@ -372,6 +381,18 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		}
 		for k, v := range upsTables(s.desc, s.snap, s.smartPowerCaps) {
 			m[k] = v
+		}
+		if s.smartPowerCaps&SmartPowerCapNUTInfo != 0 {
+			// The addresses of the NUT clients the bridge's server is
+			// serving. The controller plants this key as [] on a device
+			// claiming the capability; no real UPS inform carrying it has
+			// been captured, so the value shape (a list of address strings)
+			// mirrors the controller's own.
+			ips := []string{}
+			if s.nutClients != nil {
+				ips = s.nutClients()
+			}
+			m["nut_client_ips"] = ips
 		}
 	}
 	// Echo provisioned config the controller pushed via setstate, except

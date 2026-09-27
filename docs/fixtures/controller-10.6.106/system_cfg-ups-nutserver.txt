@@ -1,0 +1,86 @@
+# unifi
+unifi.version=device-1
+unifi.anonymous_controller_id=00000000000000000000000000000001
+unifi.anonymous_site_id=00000000000000000000000000000002
+unifi.reporterid=00000000000000000000000000000001
+unifi.siteid=00000000000000000000000000000003
+unifi.idp=enabled
+unifi.mcip=239.254.127.63
+unifi.key=<key>
+unifi.feature.always_send_crash_logs=enabled
+# system
+system.timezone=MST7MDT,device-2,device-3
+locale.timezone=MST7MDT,device-2,device-3
+# users
+users.status=enabled
+users.1.name=admin
+users.1.password=<hash>
+users.1.status=enabled
+users.2.name=nobody
+users.2.password=<hash>
+users.2.shell=/bin/false
+users.2.status=enabled
+# netconf
+netconf.status=enabled
+netconf.1.status=enabled
+netconf.1.devname=eth0
+netconf.1.ip=0.0.0.0
+netconf.1.autoip.status=disabled
+netconf.1.promisc=enabled
+netconf.1.up=enabled
+# dhcpc
+dhcpc.status=enabled
+dhcpc.1.status=enabled
+dhcpc.1.devname=eth0
+# resolv
+resolv.status=enabled
+resolv.host.1.name=APCSmart-UPS1500
+resolv.nameserver.1.status=disabled
+resolv.nameserver.2.status=disabled
+# outlet
+outlet.status=enabled
+outlet.1.relay_state=enabled
+outlet.2.relay_state=enabled
+outlet.3.relay_state=disabled
+outlet.4.relay_state=disabled
+outlet.5.relay_state=disabled
+outlet.6.relay_state=disabled
+outlet.7.relay_state=disabled
+outlet.8.relay_state=disabled
+beep.status=enabled
+nutserver.status=enabled
+nutserver.id=ups
+nutserver.port=3493
+nutserver.credential=disabled
+nutserver.username=
+nutserver.password=
+# syslog
+syslog.status=enabled
+syslog.level=7
+# sshd
+sshd.status=enabled
+sshd.auth.passwd=enabled
+sshd.auth.key.1.status=enabled
+sshd.auth.key.1.value=<pubkey>
+sshd.auth.key.1.type=ssh-rsa
+sshd.auth.key.1.comment=goudieni@adobe.com
+sshd.auth.key.2.status=enabled
+sshd.auth.key.2.value=<pubkey>
+sshd.auth.key.2.type=ssh-rsa
+sshd.auth.key.2.comment=clint@MacBook-Pro-2
+sshd.auth.key.3.status=enabled
+sshd.auth.key.3.value=<pubkey>
+sshd.auth.key.3.type=ssh-rsa
+sshd.auth.key.3.comment=goudieni@adobe.com
+sshd.auth.key.4.status=enabled
+sshd.auth.key.4.value=<pubkey>
+sshd.auth.key.4.type=ssh-rsa
+sshd.auth.key.4.comment=clint@device-4
+sshd.1.status=enabled
+sshd.1.ifname=eth0
+# ntpclient
+ntpclient.status=enabled
+ntpclient.1.status=enabled
+ntpclient.1.server=192.0.2.1
+ntpclient.2.status=enabled
+ntpclient.2.server=0.ubnt.pool.ntp.org
