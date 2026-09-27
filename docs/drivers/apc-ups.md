@@ -396,6 +396,15 @@ What it does when on:
   -- the bridge never clears a policy. Chosen 2026-09-27: the expendable
   PDU (`rack-pdu-noups`-class load, ~130 W of ~1080 W) is on Group 1, so
   shedding it 30 s into an outage leaves the important PDU the battery.
+  **Applied live 2026-09-27 15:31 UTC**: the SmartConnect port accepted
+  both function-16 writes (the first writes the bridge has ever made to
+  the unit -- so the outlet command path's transport is proven too), the
+  read-back decoded `load shed: after 30s on battery` for Group 1 with the
+  Main group unchanged, and a restart wrote nothing (idempotent). What
+  remains unexercised is the shed itself: the unit acting on the policy in
+  a real outage (or a self-test long enough to trip it, which a 30 s
+  threshold makes unlikely -- and is not something to arrange without
+  Clint).
 
 Enabling it: `control: {outlets: "2"}` in the deployed config (not "all" --
 row 1 is refused anyway, but say what you mean), rebuild and recreate the
