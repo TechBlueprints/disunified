@@ -20,7 +20,11 @@ and switched (`docs/drivers/apc-pdu.md`). A fourth, `apc-ups`, presents his APC
 SMTL1500RM3UC Smart-UPS as a `USPDA2B` "UPS 2U Pro" (first as a `USWDA25`
 "UPS 2U"), read over Modbus TCP from the unit's own SmartConnect port — no
 card, no cable (`docs/drivers/apc-ups.md`); outlet-group control built and
-enabled, never yet exercised on the unit.
+enabled, never yet exercised on the unit. A fifth, `podman`, presents Clint's
+Podman host (a QEMU guest of proxmox-2) as a `UDC48X6` with its containers as
+ports, on the proxmox pattern (`docs/drivers/podman.md`); built 2026-09-27,
+adoption pending the host's address (it holds a fixed-IP reservation that
+adoption would delete).
 
 ## 2. Map
 
