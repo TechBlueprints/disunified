@@ -48,6 +48,31 @@ itself) -- with the guards in [`internal/drivers/CLAUDE.md`](../internal/drivers
    [`scripts/check-site-info.sh`](../scripts/check-site-info.sh) before committing. The repo is public.
 3. Verify each command exists on that version by running it; note the ones
    that do not (see [`docs/drivers/arista-eos.md`](drivers/arista-eos.md) §1 for how 4.26 differs).
+4. **Capture a write path without writing.** A device that confirms a
+   change in a second step (a web form's confirmation page, a config
+   session with a commit timer) lets you capture the whole flow and stop
+   before the step that acts: post step one, save the confirmation, log
+   out. That is how the Back-UPS outlet control was captured with both
+   outlets still on ([`docs/drivers/apc-backups.md`](drivers/apc-backups.md) §3). For a
+   single-step write, capture it on something that carries nothing.
+
+### APC network cards: which surface a card offers
+
+Three APC drivers exist because the cards differ; `sysDescr` over SNMP
+(`public`) names the card and its application, and that decides the
+transport before any code:
+
+| Card / application | What it exposes | Driver |
+|---|---|---|
+| NMC AOS 3.x, app `rpdu` (rack PDU) | PowerNet `318.1.1.12` over SNMPv1 (read + outlet SET with a `Write+` community); `config.ini` over FTP for names and TCP/IP | `apc-pdu` |
+| Smart-UPS SmartConnect port (no card) | Modbus TCP on 502 once enabled at the LCD; nothing else local | `apc-ups` |
+| NMC AOS 6.x, app `gsn` (Back-UPS Pro network models) | web pages and `/Forms/*` handlers only -- the PowerNet device branch is empty; `config.ini` over FTP for TCP/IP | `apc-backups` |
+| NMC AOS 6.x, app `sumx` (Smart-UPS with a card) | PowerNet `318.1.1.1` over SNMP (untested here); the web surface is the same family as `gsn` | none yet -- start from `apc-backups` for the web, `apc-pdu` for SNMP |
+
+Common to every card: `POST /Forms/login1` answers with a session token in
+the redirect path (`/NMC/<token>/`), sessions are few and time out, log
+out; partial `config.ini` uploads apply live and the `[NetworkTCP/IP]`
+section is ignored without `Override=<the card's MAC>`.
 
 ### Controller-side captures
 

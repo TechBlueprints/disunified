@@ -141,6 +141,12 @@ stay stopped** (one bridge per adopted key).
   profile's icons and speed pickers; port count, display name, PoE and
   default port names come from the profile.
 - The controller sets the inform interval (65-80 s here).
+- **The power path (`usp`) pushes IP Settings without a gateway.** A
+  `usp` device's static push carries `netconf.1.*` and the nameservers but
+  no `route.1.gateway` (the switch path's does); a driver writing a static
+  address from it alone leaves the device without a gateway
+  (`apc-backups`, 2026-09-27: `options.gateway` fills it). Same gap for any
+  future `usp` address control.
 - **Topology parent = the upstream switch seeing the device's MAC on a port.**
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not
