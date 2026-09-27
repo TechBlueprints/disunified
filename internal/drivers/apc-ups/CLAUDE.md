@@ -114,3 +114,17 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - **Safe Shutdown Pairing needs the 2U Pro (`USPDA2B`, `type usp`) to
   offer a UDM**; NUT Server is gated on `smart_power_caps` bit 1 (claimed
   0). Both in `docs/drivers/apc-ups.md` §8.
+- **The config block is read 1026..1073 (48 registers), past NUT's 22**, to
+  reach the outlet groups' load-shed settings. Names from APC's *Modbus
+  Register Map - Smart-UPS* (990-9840A, the SMT/SMX/SRT map): 1029 is
+  `MOG.TurnOffCountdownSetting` (NUT's "shutdown delay"), 1034 `SOG0`'s
+  (90 s on this unit), 1054/1056 `MOG`/`SOG0.LoadShedConfigSetting_BF`
+  (bits 0 UseOffDelay, 1 ManualRestart, 3 TimeOnBattery, 4 RunTimeRemaining,
+  5 UPSOverload), 1064/1068 SOG0's runtime / time-on-battery thresholds,
+  1072/1073 the MOG's; 1048-1053 are undefined and read 0xffff inside the
+  block. `OutletStatus_BF` bit 7 = PendingLoadShed, 14 = LowRuntime.
+  **On the unit neither group sheds** (config 0, time-on-battery 32767 =
+  never), so both PDUs stay on until the battery is exhausted; the start-up
+  log now prints each group's policy (`LoadShed`). The registers are
+  ReadWrite -- a shed policy could be set over Modbus -- but the bridge
+  only reads them.

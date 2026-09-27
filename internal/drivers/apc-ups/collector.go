@@ -29,7 +29,10 @@ const (
 	blockStatus, blockStatusLen   = 0, 27
 	blockDynamic, blockDynamicLen = 128, 44
 	blockStatic, blockStaticLen   = 516, 120
-	blockConfig, blockConfigLen   = 1026, 22
+	// The config block runs past NUT's 22 registers to 1073 so the outlet
+	// groups' load-shed settings are read too (APC 990-9840A; 1048-1053
+	// are undefined and read back as 0xffff inside a block read).
+	blockConfig, blockConfigLen = 1026, 48
 
 	regStatus         = 0   // UPSStatus_BF, 2 registers
 	regChangeCause    = 2   // UPSStatusChangeCause
@@ -57,8 +60,91 @@ const (
 	regGroupName0     = 604 // 8 registers per group, 4 groups
 	regTransferHigh   = 1026
 	regTransferLow    = 1027
-	regShutdownDelay  = 1029 // seconds, signed
+	regShutdownDelay  = 1029 // MOG.TurnOffCountdownSetting_EN: seconds of delay for a delayed off, signed
+	// Outlet-group load shedding (APC "Modbus Register Map - Smart-UPS",
+	// 990-9840A, p.11-12): what makes a group turn itself off during an
+	// outage. Read-only here; the bridge reports it, it does not set it.
+	regMOGLoadShedCfg    = 1054 // LoadShedConfigSetting_BF, 2 registers; SOGn at 1056+2n
+	regSOG0LoadShedCfg   = 1056
+	regSOG0ShedRuntime   = 1064 // LoadShedRunTimeRemainingSetting, seconds; SOGn at 1064+n
+	regSOG0ShedOnBattery = 1068 // LoadShedTimeOnBatterySetting, seconds; SOGn at 1068+n
+	regMOGShedRuntime    = 1072
+	regMOGShedOnBattery  = 1073
 )
+
+// LoadShedConfigSetting_BF bits (low word of the two-register field).
+const (
+	shedUseOffDelay     = 1 << 0 // shed through the TurnOffCountdown delay rather than at once
+	shedManualRestart   = 1 << 1 // turn off, not shut down: the group needs a manual command to return
+	shedOnTimeOnBattery = 1 << 3 // shed when time on battery exceeds LoadShedTimeOnBatterySetting
+	shedOnRuntimeRemain = 1 << 4 // shed when runtime remaining falls to LoadShedRunTimeRemainingSetting
+	shedOnOverload      = 1 << 5 // shed at once when the UPS is overloaded (switched groups only)
+	shedNeverOnBattery  = 32767  // the unit's "never" for LoadShedTimeOnBatterySetting
+)
+
+// LoadShed is one outlet group's self-shedding policy as the unit holds it:
+// the conditions under which the UPS turns the group off on its own during
+// an outage. A zero policy means the group stays on until the battery is
+// exhausted, which is the factory setting.
+type LoadShed struct {
+	OnBatteryAfter time.Duration // shed once on battery this long; 0 = not enabled
+	RuntimeBelow   time.Duration // shed once runtime remaining falls to this; 0 = not enabled
+	OnOverload     bool
+	UseOffDelay    bool
+	ManualRestart  bool
+}
+
+// Enabled reports whether any shedding condition is set.
+func (l LoadShed) Enabled() bool { return l.OnBatteryAfter > 0 || l.RuntimeBelow > 0 || l.OnOverload }
+
+// String describes the policy the way the start-up log prints it.
+func (l LoadShed) String() string {
+	if !l.Enabled() {
+		return "load shed: none (stays on until the battery is exhausted)"
+	}
+	var parts []string
+	if l.OnBatteryAfter > 0 {
+		parts = append(parts, fmt.Sprintf("after %s on battery", l.OnBatteryAfter))
+	}
+	if l.RuntimeBelow > 0 {
+		parts = append(parts, fmt.Sprintf("when runtime falls to %s", l.RuntimeBelow))
+	}
+	if l.OnOverload {
+		parts = append(parts, "on overload")
+	}
+	s := "load shed: " + strings.Join(parts, ", ")
+	if l.UseOffDelay {
+		s += ", through the off delay"
+	}
+	if l.ManualRestart {
+		s += ", manual restart"
+	}
+	return s
+}
+
+// loadShed decodes the policy for a group from the config block: g = -1 for
+// the Main group, 0-2 for the switched groups. The bits enable each
+// condition; the threshold registers hold its value.
+func loadShed(cfg []uint16, g int) LoadShed {
+	cfgReg, rtReg, obReg := regMOGLoadShedCfg, regMOGShedRuntime, regMOGShedOnBattery
+	if g >= 0 {
+		cfgReg, rtReg, obReg = regSOG0LoadShedCfg+2*g, regSOG0ShedRuntime+g, regSOG0ShedOnBattery+g
+	}
+	bits := cfg[cfgReg-blockConfig+1] // low word
+	var l LoadShed
+	if bits&shedOnTimeOnBattery != 0 {
+		if v := cfg[obReg-blockConfig]; v != shedNeverOnBattery {
+			l.OnBatteryAfter = time.Duration(v) * time.Second
+		}
+	}
+	if bits&shedOnRuntimeRemain != 0 {
+		l.RuntimeBelow = time.Duration(cfg[rtReg-blockConfig]) * time.Second
+	}
+	l.OnOverload = g >= 0 && bits&shedOnOverload != 0
+	l.UseOffDelay = bits&shedUseOffDelay != 0
+	l.ManualRestart = bits&shedManualRestart != 0
+	return l
+}
 
 // UPSStatus_BF bits (the low 32 bits of registers 0-1).
 const (
@@ -113,7 +199,8 @@ type Collector struct {
 	last     *devicemodel.Snapshot
 	resolved string // last address the name resolved to, for change logging
 	warned   map[string]bool
-	names    []string // the unit's own name for each reported outlet group, for logs only
+	names    []string   // the unit's own name for each reported outlet group, for logs only
+	shed     []LoadShed // each reported group's load-shed policy, same order; for logs and Sheds
 }
 
 // NewCollector builds a collector over a runner.
@@ -137,9 +224,17 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		if !o.Switchable {
 			kind = "unswitched main group (never commanded)"
 		}
-		log.Printf("apc-ups: outlet %d = %q, %s, %s", o.Index, c.names[i], kind, map[bool]string{true: "on", false: "off"}[o.On])
+		log.Printf("apc-ups: outlet %d = %q, %s, %s; %s", o.Index, c.names[i], kind, map[bool]string{true: "on", false: "off"}[o.On], c.shed[i])
 	}
 	return snap, nil
+}
+
+// Sheds returns the load-shed policy of each reported outlet group, in
+// snapshot order, from the last Collect.
+func (c *Collector) Sheds() []LoadShed {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]LoadShed(nil), c.shed...)
 }
 
 func (c *Collector) Close() error { return nil }
@@ -186,6 +281,13 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	// individually switchable on this hardware (the command register
 	// addresses groups only), so a "group" row is the honest unit.
 	snap.Outlets, c.names = c.outlets(status, static)
+	c.shed = c.shed[:0]
+	present := static[regSOGConfig-blockStatic]
+	for g := 0; g < 4; g++ {
+		if present&(sogGroupPresent<<g) != 0 {
+			c.shed = append(c.shed, loadShed(cfg, g-1))
+		}
+	}
 
 	c.mu.Lock()
 	c.last = snap
