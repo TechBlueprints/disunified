@@ -463,11 +463,18 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 // need the cage's VLAN/FEC/storm config. ApplyPorts is a diff, so a
 // converged switch costs nothing and logs nothing.
 func (l *Loop) reconcile(ctx context.Context) {
-	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
-		return
-	}
 	ver, text, ok := l.session.Applied()
 	if !ok {
+		return
+	}
+	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
+		// Read-only for ports and outlets, but the device-level settings a
+		// driver does honour (its own address, the NUT server) still follow
+		// the controller's last push.
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		defer cancel()
+		l.applyAddress(cctx, "", text)
+		l.applyNUT(text)
 		return
 	}
 	if !l.reconciledOnce && l.cfg.OnSystemCfg != nil {
@@ -888,6 +895,13 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	}
 	_, prevText, _ := l.session.Applied() // what the device was following before this push
 	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
+		// No port or outlet control; the device-level settings a driver
+		// honours (address, NUT server) are still applied before the push
+		// is marked as followed.
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		l.applyAddress(cctx, prevText, text)
+		l.applyNUT(text)
+		cancel()
 		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
 			l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
