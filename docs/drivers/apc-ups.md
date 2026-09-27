@@ -228,7 +228,12 @@ the 2U): eight rows, `Power (W) -` throughout (no meter bit claimed), and
 clicking row 2 opens the same editor the PDU has -- Link Device, Name,
 **Power Cycle**, Outlet **Active / Disabled**, Power Cycle on Internet Loss,
 Apply / Cancel. Cancelled without applying; that is the UI path for the
-Group 1 relay, and the loop's first-push hold stands behind it. **Safe
+Group 1 relay, and the loop's first-push hold stands behind it. The
+picture's tooltip shows "Cycle Enabled ✗" on every row: that is the
+editor's *Power Cycle on Internet Loss* flag (`cycle_enabled`), off by
+default on a real USP-PDU-Pro's rows too, and not something the bridge
+claims -- it would mean the device cycling a group when the internet
+drops. **Safe
 Shutdown Pairing** lists the gateway as "Click to Pair"; clicking it asks
 for the console owner's UniFi OS credentials in the panel ("To pair the
 <console>, please enter the owner's credentials"), so pairing is the
