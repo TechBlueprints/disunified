@@ -330,6 +330,12 @@ address the device reports.
 
 ## 10. Deploying
 
+(2026-09-27: the UPS lives in the one shared container again -- the separate
+stack below was worth it while the driver was new and rebuilt hourly, and
+nothing more. The shared container sits on the `lan` macvlan, so the NUT
+server answers at the container's own LAN name.) The original advice, kept
+for a driver's first days:
+
 Give the UPS its own stack -- compose file, image tag, state volume, env --
 rather than adding it to a stack that holds other adopted keys: a rebuild of
 this driver then never recreates the switch or PDU bridge. Its env needs
@@ -461,10 +467,12 @@ TRIM BOOST CAL TEST ALARM`), `battery.charge/runtime/voltage[/temperature]`,
 runtime over USB (this generation's HID carries no load or voltage) gets
 the full set from here.
 
-**Deployment.** The container publishes the port (`3493:3493` in the
-stack's compose file); the bridge binds all interfaces on the pushed port.
-Clients address it as `<id>@<bridge host>`: `upsc ups@<host>` lists every
-variable; `upsmon` `MONITOR ups@<host> 1 <user> <pass> secondary` (any
+**Deployment.** The bridge binds all interfaces on the pushed port. With
+the container on a macvlan network it has its own LAN address and DNS name
+(the gateway names the lease from the container's hostname), and that is
+the NUT address; on a bridge network the port has to be published
+(`3493:3493`) and the host's address used instead. Clients address it as
+`<id>@<that name>`: `upsc ups@<host>` lists every variable; `upsmon` `MONITOR ups@<host> 1 <user> <pass> secondary` (any
 user/password when the credential switch is off). Nothing here shuts the
 UPS down: a NUT client that reaches `LB` shuts *itself* down, which is the
 point.

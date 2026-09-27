@@ -106,11 +106,17 @@ Clint's addresses, names, deployment host and update command are in
 key is still accepted) with secrets in the environment (`.env`, gitignored,
 symlinked from outside the repo); every `control` flag is on.
 `state/<name>/device.json` holds the adopted key: one instance per device,
-keep the file. Logs: `run.log`, `inform-log/<name>/`. The deployed bridges
-run in **two** containers on Clint's Podman host: one stack for the switches
-and the PDU, a separate stack (own image, volume and env) for the UPS, so a
-UPS rebuild never recreates the others; **every Mac instance is stopped and
-must stay stopped** (one bridge per adopted key).
+keep the file. Logs: `run.log`, `inform-log/<name>/`. Since 2026-09-27 every
+deployed bridge (Arista, three Proxmox nodes, PDU, UPS, the Podman host
+itself) runs in **one** container on Clint's Podman host (`/opt/disunified`;
+the UPS had its own stack for a day while its driver was new -- merged back,
+old dir kept as `/opt/disunified-ups.retired-20260927`, its volume as a
+backup). The container is on two networks: the podman bridge (to reach its
+own host: a macvlan container cannot) and the `lan` macvlan (its own LAN
+address and MAC, a client behind its port on the podman switch, the NUT
+server's address). A rebuild bounces all six for about a minute; they
+resume from the state volume. **Every Mac instance is stopped and must
+stay stopped** (one bridge per adopted key).
 
 ## 5. Protocol facts that cost time (all verified on 10.6.106)
 
