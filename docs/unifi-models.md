@@ -112,9 +112,11 @@ Codes without a product name are internal codes but shipping hardware
 `USPDA2B`/`USPDA2C` (UPS 2U Pro) inform as `type: usp`, the controller's
 power path -- the pinned catalogue says `usw`, the fingerprint DB `usp`, and
 `internal/device/descriptor.go` sends `usp`. Everything else in the table is
-`usw`. A `usp` record rejects `port_overrides` and does not store
-`total_max_power`/`power_source`; the bridge exercised it live 2026-09-26
-(`docs/drivers/apc-ups.md` §6).
+`usw`. A `usp` record rejects `port_overrides`, does not store
+`total_max_power`/`power_source`, and its IP Settings push carries no
+`route.1.gateway` (a driver applying it needs a gateway from elsewhere --
+`apc-backups`'s `options.gateway`); the bridge exercised the path live
+2026-09-26/27 (`docs/drivers/apc-ups.md` §6, `docs/drivers/apc-backups.md` §3).
 
 Notes: `UDC48X6` carries `SWITCH_LEAF` and a `knownUnsupportedFeatures` list
 (DOT1X, LLDP_MED, EGRESS_RATE_LIMIT) that does not hide UI controls. No
