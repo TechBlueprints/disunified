@@ -1,6 +1,15 @@
 package unifiapi
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
+)
 
 // The controller's overrides come back from JSON (float64 indices) and
 // carry names the operator may have set; only relay_state on the
@@ -52,5 +61,47 @@ func TestPlaceholderOverridesSteadyStateChangesNothing(t *testing.T) {
 	}
 	if _, changed := placeholderOverrides(existing, nil); changed != 0 {
 		t.Errorf("changed = %d, want 0 with no placeholders", changed)
+	}
+}
+
+// On the power path the provisioner names the device but sends no
+// port_overrides: the controller answers api.err.Invalid to any update
+// carrying them on a "usp" record (2026-09-26). Driven against a fake
+// controller so the PUT body itself is checked.
+func TestPowerPathProvisionNamesTheDeviceAndSendsNoPortOverrides(t *testing.T) {
+	var put map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/stat/device"):
+			_, _ = w.Write([]byte(`{"data":[{"_id":"id1","mac":"02:00:00:00:00:01","name":"UPS 2U Pro","model":"USPDA2B","port_table":[{"port_idx":1,"name":"Port 1"}]}]}`))
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/rest/device/id1"):
+			_ = json.NewDecoder(r.Body).Decode(&put)
+			_, _ = w.Write([]byte(`{"meta":{"rc":"ok"},"data":[]}`))
+		default:
+			http.Error(w, r.Method+" "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", "default", true)
+	c.PowerPath = true
+	snap := &devicemodel.Snapshot{
+		System: devicemodel.System{Model: "APC UPS", Hostname: "ups-1"},
+		Ports:  []devicemodel.Port{{Index: 1, IfName: "eth0", Present: true, Enabled: true}},
+	}
+	r, err := c.Provision(context.Background(), "02:00:00:00:00:01", snap, devicemodel.DefaultNamer{}, []string{"UPS 2U Pro"}, func(int, string) bool { return true }, true)
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	if !r.RenamedDevice || r.RenamedPorts != 0 || r.Seeded != 0 {
+		t.Errorf("result = %+v, want the device renamed and no port work", r)
+	}
+	if put == nil {
+		t.Fatal("no PUT reached the controller")
+	}
+	if _, has := put["port_overrides"]; has {
+		t.Errorf("PUT carried port_overrides on the power path: %v", put)
+	}
+	if n, _ := put["name"].(string); n == "" {
+		t.Errorf("PUT carried no name: %v", put)
 	}
 }
