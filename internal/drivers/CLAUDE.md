@@ -26,9 +26,11 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   for a lane-speed change; everything else to all lanes; set `LanesDiverge`
   when lanes differ; claim the cage's speeds.
 - Never set an optical port to auto speed; only write FEC when asked.
-- Tests use a fixture transport (`aristaeos.FixtureTransport` is the
-  reference) over real captures — never hand-written samples — and cover
-  parsing, every apply sequence, and idempotence. `go test ./...` must pass
+- Tests use a fixture transport (`aristaeos.FixtureTransport` for a
+  command API; `proxmox`/`podman.FixtureRunner` for a script over SSH;
+  `apcups.FixtureRunner` for a register map) over real captures — never
+  hand-written samples — and cover parsing, every apply sequence, and
+  idempotence. `go test ./...` must pass
   before a live run, including the wire-contract and replay tests, which
   drive your driver end to end against real controller data.
 - The management address the bridge uses must be in-band (behind the
@@ -38,3 +40,22 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   `docs/adding-a-device.md` §2; counters that exist only as text go through
   a `TextRunner`-style capability, never through guessing.
 - Live verification order and what to record is in `docs/adding-a-device.md` §4.
+- **A host read over SSH uses `internal/sshrun`** (`Runner` + `SSH`), one
+  script per poll printing tagged sections, and a `FixtureRunner` that
+  serves the capture and records writes. Reduce the script's output *on
+  the host* to the fields the driver reads: `podman inspect` carries every
+  container's environment, which is where API keys live, and a raw capture
+  of it must never be committed (2026-09-27).
+- **Power devices:** outlets are `Snapshot.Outlets`, the battery is
+  `System.Battery`; an outlet is real load, so `ApplyOutlets` is a strict
+  diff, `OutletPlanner` lets the loop hold a first push that would switch
+  anything, an unswitchable group is reported without a relay bit and
+  refused if pushed, and a placeholder slot the model draws but the device
+  lacks is reported present-but-off with no relay. A configuration written
+  to the unit (a load-shed policy) sits behind an explicit driver option,
+  is idempotent, and is read back before it is logged.
+- **A device's own address (`AddressController`)** is applied only when the
+  driver can verify it will still reach the device afterwards; DHCP is
+  declined by a driver that cannot predict the lease. Adopting a device
+  deletes its client record, fixed-IP reservation and client DNS name --
+  the controller's IP Settings are the replacement (`docs/drivers/podman.md` §5).

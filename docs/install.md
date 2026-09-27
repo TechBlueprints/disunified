@@ -30,6 +30,14 @@ in the UniFi UI.
   (plain `Write` makes the card answer every SET with silence); naming an
   outlet additionally needs the card's admin login, because the driver writes
   names as a `config.ini` upload over FTP ([`docs/drivers/apc-pdu.md`](drivers/apc-pdu.md) §2, §5).
+  For the APC UPS driver, Modbus enabled on the unit's display (Configuration
+  → Menu Type → Advanced, then Configuration → Modbus) and no credentials
+  (`auth: none`); the port's MAC, netmask and gateway MAC go in `options`
+  because Modbus carries no network identity ([`docs/drivers/apc-ups.md`](drivers/apc-ups.md) §2, §5).
+  For the Podman driver, root SSH to the host with a key, `python3` on it,
+  and -- if the bridge runs on that very host -- a leg on a Podman bridge
+  network to reach it, because a macvlan container cannot talk to its own
+  host ([`docs/drivers/podman.md`](drivers/podman.md) §4).
 - Optional, for naming the device and ports after the device itself: a UniFi
   API key (UniFi OS → Settings → Control Plane → Integrations → Create API Key).
 
@@ -113,12 +121,22 @@ One control flag is off by default and deserves its own decision:
 `control.address` lets the controller's **IP Settings** set the device's own
 management address. A static setting is applied; DHCP only when it replaces a
 static setting you chose, never as the controller's default — and `arista-eos`
-declines DHCP outright, because it confirms a move by dialling the new address
-and cannot do that for a lease. It is the setting most likely to cut the bridge
+and `podman` decline DHCP outright, because they cannot confirm a lease
+(`podman` also applies a static address only if the host already carries it:
+"make the lease permanent", never "move the host"). It is the answer to a
+fact every adoption meets: adopting a device deletes the client record it had,
+with its fixed-IP reservation and DNS name. It is the setting most likely to cut the bridge
 off from the device it manages: the Arista makes the change inside a config
 session with a commit timer that reverts unless the switch answers at the new
 address, but a device without that safety net simply takes it. Turn it on only
 when you have another way in.
+
+Two more UPS-only switches live in the same block: `control.outlets`
+(switch outlet groups from the UI; off by default, an outlet is real load)
+and `control.nut` (claim the NUT-server capability: the UI's **NUT Server**
+switch then runs a NUT server in the bridge, which needs its port reachable --
+`3493:3493` published, or the container on a macvlan network with its own
+address; [`docs/drivers/apc-ups.md`](drivers/apc-ups.md) §12).
 
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list
@@ -142,7 +160,7 @@ UniFi's per-network setting (UniFi defaults it off). Read
   `:latest`. Pin `:v1.2.3` if you would rather update deliberately.
 - Mount a volume at `/var/lib/disunified` (state and reply logs) and
   set `state_dir: /var/lib/disunified` in the config.
-- An SSH driver (Proxmox, or Arista over SSH) in the container needs a key
+- An SSH driver (Proxmox, Podman, or Arista over SSH) in the container needs a key
   and a known_hosts file: mount them read-only and name them in the
   device's `options` (`ssh_key: /etc/disunified/id_ed25519`,
   `known_hosts: /etc/disunified/known_hosts`); the container has no
@@ -162,3 +180,8 @@ one inform interval.
   log; the feature map says what that driver cannot do.
 - Every reply from the controller is in `inform-log/<name>/*.ndjson`; that
   is the first thing to read when something unexpected happens.
+- The device lost its reserved address / DNS name after adoption: expected
+  (the client record went with the adoption). Use the device's own IP
+  Settings with `control.address`, or make the address static on the device.
+- A container on a macvlan network cannot reach its own host (kernel rule):
+  give it a second leg on a Podman bridge network and target the host there.
