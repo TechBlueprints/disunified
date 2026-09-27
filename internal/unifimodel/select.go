@@ -185,6 +185,8 @@ func ControllerDisplayNames(model string) []string {
 		return []string{"USP PDU Pro", "PDU Pro"}
 	case "USWDA25", "USWDA26":
 		return []string{"UPS 2U"}
+	case "USPDA2B", "USPDA2C":
+		return []string{"UPS 2U Pro"}
 	case "USWDA23", "USWDA24":
 		return []string{"UPS Tower"}
 	}

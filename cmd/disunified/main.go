@@ -128,7 +128,7 @@ func main() {
 	}
 	if *listModels {
 		for _, m := range emu.Models() {
-			if p, ok := emu.Profile(m); ok && p.Type == "usw" {
+			if p, ok := emu.Profile(m); ok && (p.Type == "usw" || p.Type == "usp") {
 				fmt.Printf("%-10s %-40s %d ports\n", m, p.ModelDisplay, len(p.Ports))
 			}
 		}
@@ -382,8 +382,8 @@ func runOne(ctx context.Context, o options) error {
 	if !ok {
 		return fmt.Errorf("unknown model %q (see -list-models)", o.model)
 	}
-	if profile.Type != "usw" {
-		return fmt.Errorf("model %q is a %q, not a switch", o.model, profile.Type)
+	if profile.Type != "usw" && profile.Type != "usp" {
+		return fmt.Errorf("model %q is a %q, not a switch or power device", o.model, profile.Type)
 	}
 	if snap != nil && len(profile.Ports) != len(snap.Ports) {
 		log.Printf("WARNING: model %s has %d ports, the switch has %d; ports beyond the profile are not drawn", o.model, len(profile.Ports), len(snap.Ports))
