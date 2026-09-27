@@ -98,3 +98,19 @@ devices:                             # "switches:" is still accepted (the pre-re
       # slots_file: /var/lib/disunified/podman-slots.json   # endpoint -> port map, kept on the host
     control:
       address: true                  # IP Settings -> the uplink's NetworkManager profile (static only, same address)
+
+  - name: ups-2                      # an APC Back-UPS Pro network model (BG500/1000/1500) behind its embedded NMC
+    driver: apc-backups              # the card's web pages (nothing over SNMP for this family); config.ini over FTP for the address
+    url: http://192.0.2.22           # the card's web UI (http; AOS 6 offers no https by default)
+    username_env: DUI_APC_USER       # the card's device/admin login -- web and FTP
+    password_env: DUI_APC_PASS
+    model: USPDA2B                   # UPS 2U Pro: single-cell outlets with an editor, metering columns, pairing
+    hostname: ups-2
+    options:
+      mac: 02:00:00:00:00:03         # the card's MAC (About page / config.ini Override); places it, gates the TCP/IP upload
+      netmask: 255.255.255.0
+      gateway_mac: 02:00:00:00:00:fe
+      gateway: 192.0.2.1             # written with a static address: the controller's push for a UPS carries no route
+    control:
+      outlets: "3,4"                 # the switched groups (rows 3-4); the main groups (1-2) are refused regardless
+      address: true

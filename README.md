@@ -3,7 +3,7 @@
 A bridge that makes a non-UniFi device appear as a real, adopted UniFi
 device inside the UniFi Network controller — ports, stats, topology, and
 control. What it supports today: physical and virtual switches (an Arista,
-Proxmox nodes, a Podman host), a rack PDU and a UPS; the inform, adoption
+Proxmox nodes, a Podman host), a rack PDU and two kinds of UPS; the inform, adoption
 and control machinery underneath carries no vendor or device-type
 assumptions.
 
@@ -25,6 +25,7 @@ control (the controller's config applied back to the device).
 | APC switched rack PDU | `apc-pdu` | `USPPDUP` ("Smart Power PDU Pro") | AP7931, NMC AOS 3.9.2 |
 | Podman host (containers as ports) | `podman` | `UDC48X6` ("USW Leaf") | Podman 5.8.2, AlmaLinux 10.2 |
 | APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
+| APC Back-UPS Pro network model (its NMC's web pages) | `apc-backups` | `USPDA2B` ("UPS 2U Pro") | BG500, UPS 05.3, NMC AOS 6.0.1 |
 
 `disunified -list-drivers` prints what a given build supports. Adding another
 device means adding a driver: the neutral model, the wire protocol, adoption
@@ -69,6 +70,13 @@ What each driver does today:
   policy written to the unit, and — behind the UI's "NUT Server" switch — a
   NUT server run by the bridge so other hosts can shut down on the same UPS
   ([`docs/drivers/apc-ups.md`](docs/drivers/apc-ups.md)).
+- **`apc-backups`** — an APC Back-UPS Pro network model (BG500/1000/1500)
+  through the web pages of its embedded Network Management Card, which is
+  all that card offers for this family (nothing over SNMP): battery,
+  runtime, input, per-outlet watts, the two main and two switched outlet
+  groups as outlets (the switched ones controllable through the card's
+  two-step form), and the card's own address through config.ini
+  ([`docs/drivers/apc-backups.md`](docs/drivers/apc-backups.md)).
 - **`apc-pdu`** — an APC switched rack PDU, whose outlets become outlets the
   controller can see, name and switch. The card has no API, so the driver uses
   two transports: SNMPv1 to read identity and outlet state and to switch an
@@ -99,7 +107,7 @@ running it against anything you care about.
   the bridge from the device it manages. A wrong
   click in the UniFi UI, a controller bug, or a bug here can cut off the
   device, the hosts behind it, or the bridge itself.
-- **Verified on very little hardware:** the five drivers above, against UniFi
+- **Verified on very little hardware:** the six drivers above, against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
   never verified live in [`docs/feature-map.md`](docs/feature-map.md).
@@ -122,7 +130,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
 
 - [`internal/devicemodel`](internal/devicemodel) — the vendor-neutral model of a device and the
   driver contract.
-- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `apc-pdu`, `apc-ups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `apc-pdu`, `apc-ups`, `apc-backups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - [`internal/device`](internal/device) — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - [`internal/unificfg`](internal/unificfg) — parses the controller's `system_cfg` pushes.
