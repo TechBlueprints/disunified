@@ -23,7 +23,7 @@ import (
 // No real UniFi UPS inform has been captured (none is on site), so this
 // emitter is spec-derived rather than capture-verified -- below the bar the
 // rest of the payload is held to. See docs/drivers/apc-ups.md.
-func upsTables(_ inform.Descriptor, snap *devicemodel.Snapshot) map[string]any {
+func upsTables(_ inform.Descriptor, snap *devicemodel.Snapshot, smartPowerCaps int) map[string]any {
 	m := map[string]any{}
 	if snap == nil || snap.System.Battery == nil {
 		return m
@@ -76,7 +76,7 @@ func upsTables(_ inform.Descriptor, snap *devicemodel.Snapshot) map[string]any {
 		"bms_run_anomaly": anomaly,
 		"battery_table":   []any{},
 	}
-	m["smart_power_caps"] = SmartPowerCapsNone
+	m["smart_power_caps"] = smartPowerCaps
 	// Keys every captured battery-backed power device sends as literals: no
 	// fan, and the battery's temperature is not a chassis sensor, so no
 	// temperature card is claimed. power_source "0" is the class constant the

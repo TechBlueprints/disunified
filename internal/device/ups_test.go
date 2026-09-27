@@ -49,7 +49,7 @@ func vbms(t *testing.T, m map[string]any) (map[string]any, map[string]any) {
 // vbms_table is what makes a device a UPS to the controller, and its keys
 // are read with these exact spellings and no others.
 func TestUPSReportsTheBatteryTablesWithTheControllersSpellings(t *testing.T) {
-	m := upsTables(upsDesc(), upsSnapshot())
+	m := upsTables(upsDesc(), upsSnapshot(), SmartPowerCapsNone)
 	tbl, pool := vbms(t, m)
 	for _, k := range []string{"is_battery_mode", "battpool", "bms_run_anomaly", "battery_table"} {
 		if _, ok := tbl[k]; !ok {
@@ -87,7 +87,7 @@ func TestUPSOnBatteryAndLowBatteryAreSignalled(t *testing.T) {
 	snap := upsSnapshot()
 	snap.System.Battery.OnBattery = true
 	snap.System.Battery.LowBattery = true
-	tbl, pool := vbms(t, upsTables(upsDesc(), snap))
+	tbl, pool := vbms(t, upsTables(upsDesc(), snap, SmartPowerCapsNone))
 	if tbl["is_battery_mode"] != true {
 		t.Error("is_battery_mode not set while on battery")
 	}
@@ -107,7 +107,7 @@ func TestUPSOverloadBandsFollowTheMeasuredLoad(t *testing.T) {
 	}{{80.97, 0}, {105, bmsAnomalyOverload100to120}, {130, bmsAnomalyOverloadOver120}} {
 		snap := upsSnapshot()
 		snap.System.Battery.LoadPct = tc.load
-		tbl, _ := vbms(t, upsTables(upsDesc(), snap))
+		tbl, _ := vbms(t, upsTables(upsDesc(), snap, SmartPowerCapsNone))
 		if got := tbl["bms_run_anomaly"].(int) &^ bmsAnomalyBatteryLow; got != tc.want {
 			t.Errorf("load %.0f%%: anomaly %d, want %d", tc.load, got, tc.want)
 		}
@@ -119,7 +119,7 @@ func TestUPSOmitsUnmeasuredValues(t *testing.T) {
 	snap := upsSnapshot()
 	snap.System.Battery.HasInput = false
 	snap.System.Battery.HasOutput = false
-	_, pool := vbms(t, upsTables(upsDesc(), snap))
+	_, pool := vbms(t, upsTables(upsDesc(), snap, SmartPowerCapsNone))
 	for _, k := range []string{"device_input_voltage", "device_total_power_output", "device_output_voltage", "device_output_current"} {
 		if _, ok := pool[k]; ok {
 			t.Errorf("battpool reports %q though it was not measured", k)
@@ -140,14 +140,14 @@ func TestUPSReportsNoOutletTable(t *testing.T) {
 
 // A switch must not grow battery tables.
 func TestSwitchReportsNoBatteryTables(t *testing.T) {
-	m := upsTables(testDesc(), testSnapshot())
+	m := upsTables(testDesc(), testSnapshot(), SmartPowerCapsNone)
 	if len(m) != 0 {
 		t.Errorf("a switch reported UPS keys %v", m)
 	}
 }
 
 func TestUPSTablesMarshal(t *testing.T) {
-	b, err := json.Marshal(upsTables(upsDesc(), upsSnapshot()))
+	b, err := json.Marshal(upsTables(upsDesc(), upsSnapshot(), SmartPowerCapsNone))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,5 +257,16 @@ func TestDescriptorAcceptsThePowerDeviceType(t *testing.T) {
 	}
 	if _, err := DescriptorFor("U6LR", snap, Identity{MAC: snap.System.MAC}); err == nil {
 		t.Errorf("an access point model must still be refused")
+	}
+}
+
+// smart_power_caps is a claim: 0 unless a bridge feature honours the block
+// a bit unlocks. The NUT server claims bit 1 and nothing else changes.
+func TestSmartPowerCapsClaimIsWhatTheSessionWasGiven(t *testing.T) {
+	if got := upsTables(upsDesc(), upsSnapshot(), SmartPowerCapsNone)["smart_power_caps"]; got != 0 {
+		t.Errorf("default claim = %v, want 0", got)
+	}
+	if got := upsTables(upsDesc(), upsSnapshot(), SmartPowerCapNUTInfo)["smart_power_caps"]; got != 1 {
+		t.Errorf("NUT claim = %v, want 1", got)
 	}
 }

@@ -36,10 +36,11 @@ type Session struct {
 	bootTime  time.Time // fallback uptime clock when no snapshot
 	locating  bool
 
-	versionPinned bool                // the operator named a version: never follow the switch's
-	prevHistory   map[int]portHistory // per port, at the last inform (anomaly deltas)
-	caps          devicemodel.Capabilities
-	gatewayIP     string // reported as gateway_ip; "" = omit
+	versionPinned  bool                // the operator named a version: never follow the switch's
+	prevHistory    map[int]portHistory // per port, at the last inform (anomaly deltas)
+	caps           devicemodel.Capabilities
+	smartPowerCaps int    // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
+	gatewayIP      string // reported as gateway_ip; "" = omit
 }
 
 // SetUplinkPort marks idx as the uplink in the reported port table (0 = no
@@ -61,6 +62,16 @@ func (s *Session) SetCapabilities(c devicemodel.Capabilities) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.caps = c
+}
+
+// SetSmartPowerCaps sets the smart_power_caps claim a power device makes
+// (default SmartPowerCapsNone). Each bit unlocks a system_cfg block the
+// controller will push, so a bit is claimed only by a bridge feature that
+// honours that block (SmartPowerCapNUTInfo: the NUT server).
+func (s *Session) SetSmartPowerCaps(bits int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.smartPowerCaps = bits
 }
 
 // NewSession starts a device from st (a fresh State means factory-default:
@@ -359,7 +370,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		for k, v := range deviceTables(s.desc, s.snap) {
 			m[k] = v
 		}
-		for k, v := range upsTables(s.desc, s.snap) {
+		for k, v := range upsTables(s.desc, s.snap, s.smartPowerCaps) {
 			m[k] = v
 		}
 	}
