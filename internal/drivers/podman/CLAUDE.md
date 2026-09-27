@@ -38,3 +38,8 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   `app-N`/`net-N` (keeps `disunified*`), the host to `host-1.example.net`,
   MACs/IPs/UUIDs/machine-id. Container ids stay (random, needed to join
   `ps`/`inspect`/`netns` within one capture).
+- **Address control writes NetworkManager** (`nmcli con mod` + `nmcli device
+  reapply`, no bounce), only for an address the uplink already carries, and
+  refuses DHCP -- the bridge reaches this host by that address and, on site,
+  runs on it. The fixture runner answers `nmcli -g ipv4.method con show`
+  from its `nmipv4` section and applies `con mod` to it.

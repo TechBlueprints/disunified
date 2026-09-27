@@ -250,4 +250,5 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 | Containers as ports, named after the container, slots kept on the host | `port_table[].name`, counters from the container's netns | built, tested (creation order, persistence, release) |
 | macvlan/ipvlan containers as the client behind their port | `mac_table` | built (no macvlan container on site yet; the capture has none) |
 | Bridge-network containers | port only, no client | decided: reporting a NAT'd MAC would invent a client |
+| IP Settings → the host's NetworkManager profile | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip` → `nmcli con mod` + `device reapply` | built, tested: only an address the uplink already carries (make the lease static); DHCP refused |
 | Port control (state/name) | -- | not built; `Capabilities{}` |

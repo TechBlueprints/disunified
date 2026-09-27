@@ -108,11 +108,27 @@ container and network names other than the bridge's own, DMI/machine ids).
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
 priority; the uplink's FEC).
 
-## 7. Not done
+## 7. Address control (`control.address`)
 
-- **Control.** Port state could map to the container's veth (`ip link set
-  … down` inside the netns) or to `podman network disconnect`; names are
-  the container's. Nothing is written today; `Capabilities{}`.
+The controller's IP Settings for the device are applied to the host's
+uplink through NetworkManager: `nmcli con mod <profile> ipv4.method manual
+ipv4.addresses A/P ipv4.gateway G ipv4.dns D ipv4.ignore-auto-dns yes`,
+then `nmcli device reapply <nic>`, which applies it to the live interface
+without bouncing it (the SSH session this runs over survives), and the
+profile's method read back. Two guards, because the host is the address the
+bridge reaches it by (and, on site, the host the bridge runs on): a static
+address is applied **only if the uplink already carries it** -- "make the
+lease permanent", never "move the host" -- and **DHCP is refused** (after
+adoption the controller no longer holds the reservation, so a lease could
+land anywhere). Idempotent. This is the answer to "adoption deletes the
+reservation": adopt, then set IP Settings → Static with the same address,
+and UniFi owns the host's address from then on.
+
+## 8. Not done
+
+- **Port control.** Port state could map to the container's veth (`ip link
+  set … down` inside the netns) or to `podman network disconnect`; names
+  are the container's. Nothing is written today; `Capabilities{}`.
 - **LLDP.** No `lldpd` on the host; placement works by MAC, and the
   upstream device sees the host as a client on its port, which is what a
   switch behind a switch looks like.
