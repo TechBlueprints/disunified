@@ -438,10 +438,15 @@ run, on a bank known to carry nothing.
 
 A real UniFi UPS runs a NUT `upsd` on itself when the switch under Settings →
 UPS Settings is on; third-party hosts point `upsmon` at it. The bridge can
-be that server: `control.nut: true` claims `smart_power_caps` bit 1, which
-is what makes the controller offer the switch's form (ID / Hostname, Port,
-optional Login Credential) and push its settings; `internal/nutd` serves the
-session's latest snapshot in NUT's own vocabulary.
+be that server: every UPS claims `smart_power_caps` bit 1 (since 2026-09-27
+unconditionally -- the controller's UI bundles a `nut_server` block into
+every save of a UPS's settings and rejects the save for a device without
+the claim, so even a rename failed on the Back-UPS until it claimed it;
+`control.nut` is accepted but no longer needed), which is what makes the
+controller offer the switch's form (ID / Hostname, Port, optional Login
+Credential) and push its settings; `internal/nutd` serves the session's
+latest snapshot in NUT's own vocabulary, and starts only when the switch
+is on.
 
 **The wire (captured 2026-09-27, `system_cfg-ups-nutserver.txt`).** The
 switch stores `nut_server {enabled, id, port, credential_required,

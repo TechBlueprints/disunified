@@ -141,6 +141,13 @@ stay stopped** (one bridge per adopted key).
   profile's icons and speed pickers; port count, display name, PoE and
   default port names come from the profile.
 - The controller sets the inform interval (65-80 s here).
+- **A UPS must claim `smart_power_caps` bit 1 or its Settings panel cannot
+  be saved.** The UI bundles `nut_server` into every save of a UPS device's
+  settings (even a rename); the controller answers `api.err.InvalidPayload`
+  for the null it sends when the device has no block and
+  `api.err.NutInformationAccessNotSupported` for a real block on a device
+  that did not claim the bit (2026-09-27, Back-UPS). Every UPS now claims it;
+  the NUT server itself starts only when the switch is on.
 - **The power path (`usp`) pushes IP Settings without a gateway.** A
   `usp` device's static push carries `netconf.1.*` and the nameservers but
   no `route.1.gateway` (the switch path's does); a driver writing a static
