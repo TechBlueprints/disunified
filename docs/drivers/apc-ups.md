@@ -218,8 +218,19 @@ in/out. Each cell reads its own row (`outlet_table[i]` merged with the
 override), so row 1 (Main) and row 2 (Group 1) each colour their own cell
 and the six seeded placeholders draw "Not Powered". Single cells are
 clickable (`subPanel: OUTLETS`), where the 2U's multi-cells were not.
-Whether that opens an outlet editor for a `usp` device is the next thing
-to check in the UI.
+**Checked live as the 2U Pro (2026-09-26 21:50 MDT):** the picture draws
+cells 1 and 2 green (Main, Group 1) and 3-8 "Not Powered"; every cell
+carries the battery-backed icon (the 2U Pro lists all eight as standard
+*and* surge). The panel's middle tab is now **Outlets** (it was Insights on
+the 2U): eight rows, `Power (W) -` throughout (no meter bit claimed), and
+clicking row 2 opens the same editor the PDU has -- Link Device, Name,
+**Power Cycle**, Outlet **Active / Disabled**, Power Cycle on Internet Loss,
+Apply / Cancel. Cancelled without applying; that is the UI path for the
+Group 1 relay, and the loop's first-push hold stands behind it. **Safe
+Shutdown Pairing** lists the gateway as "Click to Pair"; clicking it asks
+for the console owner's UniFi OS credentials in the panel ("To pair the
+<console>, please enter the owner's credentials"), so pairing is the
+operator's own step, not the bridge's -- cancelled, left for Clint.
 
 ## 7. Addressing: dial the lease's DNS name, and the address follows
 
