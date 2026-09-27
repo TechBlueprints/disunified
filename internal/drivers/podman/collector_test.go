@@ -73,6 +73,9 @@ func TestHostIsTheSwitchAndTheNICIsTheUplink(t *testing.T) {
 	if got := c.DeviceName(sys); got != "host-1" {
 		t.Errorf("DeviceName = %q", got)
 	}
+	if got := c.DeviceName(devicemodel.System{Hostname: "host-1.example.net"}); got != "host-1" {
+		t.Errorf("DeviceName(fqdn) = %q, want the short name", got)
+	}
 }
 
 // Every container endpoint is a port named after the container; a running
