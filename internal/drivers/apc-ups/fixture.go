@@ -89,6 +89,13 @@ func (f *FixtureRunner) WriteRegisters(_ context.Context, start int, values []ui
 	}
 	f.Writes = append(f.Writes, fmt.Sprintf("%d=%s", start, hex))
 	if start != regOutletCommand || len(values) != 2 {
+		// A configuration write: the unit holds the value from then on.
+		for i, v := range values {
+			if _, ok := f.Regs[start+i]; !ok {
+				return &Exception{Function: 16, Code: 0x02}
+			}
+			f.Regs[start+i] = v
+		}
 		return nil
 	}
 	word := uint32(values[0])<<16 | uint32(values[1])

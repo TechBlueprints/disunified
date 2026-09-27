@@ -128,3 +128,10 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   log now prints each group's policy (`LoadShed`). The registers are
   ReadWrite -- a shed policy could be set over Modbus -- but the bridge
   only reads them.
+- **`shed_on_battery_after` writes the unit's load-shed policy** (the
+  driver's second and only other write path besides the command word):
+  `1068+g` = seconds, then `1056+2g` low word = existing bits with
+  TimeOnBattery set and UseOffDelay/ManualRestart cleared; read back and
+  logged. Idempotent -- a unit already holding the policy gets no write.
+  The Main group is never written and an absent option never clears
+  anything. Live result recorded in `docs/drivers/apc-ups.md` §11.

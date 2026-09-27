@@ -43,6 +43,13 @@ import (
 //	             a different interface. Modbus carries no IP configuration,
 //	             and the controller reads these reachability fields when it
 //	             places a device (docs/topology-placement.md).
+//	shed_on_battery_after  a duration, e.g. 30s: make every switched outlet
+//	         group shed its load (turn itself off) once the unit has been on
+//	         battery this long, returning on its own when mains is back. The
+//	         policy is written to the unit at start only when it differs
+//	         (LoadShedConfigSetting_BF + LoadShedTimeOnBatterySetting),
+//	         read back, and logged. Absent = the unit's policy is left as it
+//	         is. The Main group is never shed.
 //	unit_id  Modbus unit id (default 1)
 //	timeout  per-request response timeout (default 3s)
 //
@@ -92,6 +99,13 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	c.MAC = strings.ToLower(strings.TrimSpace(cfg.Options["mac"]))
 	c.Netmask = strings.TrimSpace(cfg.Options["netmask"])
 	c.GatewayMAC = strings.ToLower(strings.TrimSpace(cfg.Options["gateway_mac"]))
+	if v := cfg.Options["shed_on_battery_after"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 || d > maxShedOnBattery {
+			return nil, fmt.Errorf("apc-ups: shed_on_battery_after must be a duration from 1s to %s, got %q", maxShedOnBattery, v)
+		}
+		c.ShedOnBatteryAfter = d.Round(time.Second)
+	}
 	return c, nil
 }
 

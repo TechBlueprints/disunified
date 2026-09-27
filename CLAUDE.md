@@ -370,7 +370,11 @@ green, 3-8 Not Powered), the panel gains an **Outlets** tab whose row editor
 is the PDU's (Active/Disabled, Power Cycle) -- the UI control path for Group 1
 exists on this model -- and Safe Shutdown Pairing offers the gateway as
 "Click to Pair", which asks for the console owner's credentials (Clint's
-step, never Claude's).
+step, never Claude's). **Paired 2026-09-27.** Both rack PDUs hang off the
+UPS (~960 W important, ~130 W expendable, the expendable one on the switched
+Group 1 = top rear row); the driver reads the groups' load-shed policy
+(config block widened to 1073) and `options.shed_on_battery_after: 30s`
+writes it -- the one config write the bridge makes to the unit.
 **Clint 2026-09-26: push, merge and redeploy the UPS stack without asking;
 re-adopt when needed.** The first outlet command is still his to send.
 

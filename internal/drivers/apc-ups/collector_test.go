@@ -355,3 +355,78 @@ func TestLoadShedIsReadFromTheConfigBlock(t *testing.T) {
 		t.Errorf("main group = %+v", got)
 	}
 }
+
+// shed_on_battery_after makes Start hold every switched group to "shed
+// after N seconds on battery": the threshold register and the config bits
+// are written (function 16, one register each), the block is read back, and
+// the logged policy is the unit's. The Main group is never written. A second
+// Start against a unit that already holds the policy writes nothing.
+func TestShedOnBatteryAfterIsWrittenOnceAndReadBack(t *testing.T) {
+	fr, err := NewFixtureRunner(fixtureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCollector(fr)
+	c.Addr = "192.0.2.30:502"
+	c.ShedOnBatteryAfter = 30 * time.Second
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"1068=001e", "1056=00000008"} // SOG0 threshold 30 s, then TimeOnBattery bit, nothing else set
+	if strings.Join(fr.Writes, " ") != strings.Join(want, " ") {
+		t.Errorf("writes = %v, want %v", fr.Writes, want)
+	}
+	sheds := c.Sheds()
+	if len(sheds) != 2 || sheds[0].Enabled() {
+		t.Fatalf("sheds = %v: the Main group must stay unshed", sheds)
+	}
+	if sheds[1] != (LoadShed{OnBatteryAfter: 30 * time.Second}) {
+		t.Errorf("Group 1 = %+v, want shed after 30s on battery, immediate, automatic return", sheds[1])
+	}
+	if s := sheds[1].String(); s != "load shed: after 30s on battery" {
+		t.Errorf("String = %q", s)
+	}
+	fr.Writes = nil
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fr.Writes) != 0 {
+		t.Errorf("second Start wrote %v; the policy was already in place", fr.Writes)
+	}
+}
+
+// A unit that refuses the write (the port may not take function 16) does
+// not stop the bridge: Start succeeds, the unit's real policy is what is
+// reported, and the warning carries the reason.
+func TestShedOnBatteryAfterWriteFailureKeepsInforming(t *testing.T) {
+	fr, err := NewFixtureRunner(fixtureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.FailWrite = &Exception{Function: 16, Code: 0x01}
+	c := NewCollector(fr)
+	c.Addr = "192.0.2.30:502"
+	c.ShedOnBatteryAfter = 30 * time.Second
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatalf("Start must survive a refused policy write: %v", err)
+	}
+	if sheds := c.Sheds(); sheds[1].Enabled() {
+		t.Errorf("Group 1 = %+v, want the unit's own (unshed) policy after a refused write", sheds[1])
+	}
+}
+
+// The option is a bounded duration; the Main group has no such option.
+func TestShedOnBatteryAfterOption(t *testing.T) {
+	for _, bad := range []string{"0s", "-5s", "9h30m", "thirty"} {
+		if _, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{URL: "192.0.2.30", Options: map[string]string{"shed_on_battery_after": bad}}); err == nil {
+			t.Errorf("shed_on_battery_after %q accepted", bad)
+		}
+	}
+	d, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{URL: "192.0.2.30", Options: map[string]string{"shed_on_battery_after": "30s"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.(*Collector).ShedOnBatteryAfter; got != 30*time.Second {
+		t.Errorf("ShedOnBatteryAfter = %s, want 30s", got)
+	}
+}

@@ -91,6 +91,7 @@ devices:
       mac: 02:00:00:00:00:02     # the SmartConnect port's MAC (Modbus does not expose it)
       netmask: 255.255.255.0     # the unit's network, and
       gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it (ip neigh), not its listed device MAC
+      # shed_on_battery_after: 30s  # hold every switched group to "shed after 30 s on battery" (written to the unit at start if it differs)
     # control:
     #   outlets: "2"              # switch Outlet Group 1 (row 2) from the controller; absent = read-only
       # unit_id: 1
@@ -383,8 +384,18 @@ What it does when on:
   widened to 1073) and logs each group's policy at start. **On this unit
   nothing sheds** -- both groups run until the battery is exhausted --
   which is what makes "two PDUs on the UPS, one expendable" a policy the
-  UPS is not yet enforcing. Setting it is a config write to the unit (LCD,
-  or those ReadWrite registers); the bridge does not do it.
+  UPS is not yet enforcing. **`options.shed_on_battery_after: 30s`** makes
+  the bridge hold every switched group to that policy: at start it reads
+  the group's `LoadShedConfigSetting_BF`, and only if the policy differs
+  writes the threshold (`LoadShedTimeOnBatterySetting`, one register) and
+  then the config word with the TimeOnBattery bit set and UseOffDelay /
+  ManualRestart cleared (immediate shed, automatic return; the other
+  condition bits are left alone), reads the block back and logs what the
+  unit holds. A refused write is a logged warning, not a failed start. The
+  Main group is never written. Absent, the unit's policy is left as it is
+  -- the bridge never clears a policy. Chosen 2026-09-27: the expendable
+  PDU (`rack-pdu-noups`-class load, ~130 W of ~1080 W) is on Group 1, so
+  shedding it 30 s into an outage leaves the important PDU the battery.
 
 Enabling it: `control: {outlets: "2"}` in the deployed config (not "all" --
 row 1 is refused anyway, but say what you mean), rebuild and recreate the
