@@ -69,6 +69,8 @@ path). Nothing prints `Env`, `Cmd`, `Args` or mounts.
 
 ## 4. Configuration
 
+(For a bridge running on the host it presents, see §4b.)
+
 ```yaml
 devices:
   - name: podman-host
@@ -86,6 +88,37 @@ The bridge's public key goes into the host's `root` `authorized_keys`; the
 host's key into `known_hosts`. A bridge running **on** the host it presents
 reaches it over SSH like any other host (the container's own address is on
 a podman bridge; the host answers on its LAN address).
+
+## 4b. Running the bridge on the host it presents
+
+The bridge that presents the Podman host can run *on* it, as one of its
+containers; it then appears as a port (and, on macvlan, a client) of the
+switch it is bridging. Facts that cost time doing that (2026-09-27):
+
+- **Two networks.** A macvlan container cannot reach its own host (kernel
+  rule: children and the parent's IP stack are isolated), so the container
+  keeps a leg on a Podman bridge network and the device entry targets the
+  host's address on *that* network (`ssh: root@10.89.x.1`; the bridge
+  network's gateway address is the host). The macvlan leg gives it a LAN
+  address of its own, which is what makes it a client behind its port and
+  what a NUT server (`docs/drivers/apc-ups.md` §12) answers on.
+- **`mac_address` applies to the first network in the list** -- put the
+  macvlan first, or the fixed MAC lands on the bridge leg and the LAN leg
+  gets a random MAC and a new lease on every recreate.
+- **A lease can move on a recreate** even with a fixed MAC (the old lease
+  is still held under a different hostname); pin it with a client
+  reservation -- a container is a *client* in the controller, so a
+  reservation and a local DNS record work for it, unlike for an adopted
+  device (§5) -- and point clients at the name.
+- **compose:** `networks: [default, lan]` on the service needs a top-level
+  `networks: default: {}` (podman-compose otherwise fails with "missing
+  networks: default"), and `podman-compose up --force-recreate` with a bad
+  networks list removes the container *and* its bridge network before
+  failing -- every device in that container is offline until the next
+  attempt succeeds. Check a compose change with `podman-compose config`
+  before recreating a container that holds adopted keys.
+- **Counters and MACs still come from inside the netns** (`nsenter`), so the
+  bridge's own endpoints report like any other container's.
 
 ## 5. Adopting -- what it costs
 
