@@ -159,6 +159,21 @@ func compareKeys(t *testing.T, what string, real, ours map[string]any, omit map[
 // hid for a day. extraOmissions are the driver's own gaps, with reasons.
 func runContract(t *testing.T, driver string, ours map[string]any, extraOmissions map[string]string) {
 	t.Helper()
+	runContractPorts(t, driver, ours, extraOmissions, nil)
+}
+
+// runContractPorts is runContract with per-driver port-level omissions
+// too (a key a real switch's port carries that this device's port cannot,
+// with the reason).
+func runContractPorts(t *testing.T, driver string, ours map[string]any, extraOmissions, extraPortOmissions map[string]string) {
+	t.Helper()
+	portOmit := map[string]string{}
+	for k, v := range portOmissions {
+		portOmit[k] = v
+	}
+	for k, v := range extraPortOmissions {
+		portOmit[k] = v
+	}
 	omit := map[string]string{}
 	for k, v := range contractOmissions {
 		omit[k] = v
@@ -172,10 +187,10 @@ func runContract(t *testing.T, driver string, ours map[string]any, extraOmission
 	for _, ref := range []string{"inform-ecs-aggregation-uswf066.json", "inform-usw-xg16-usxg.json"} {
 		real := loadReference(t, ref)
 		compareKeys(t, driver+" "+ref+" device", real, ours, omit)
-		compareKeys(t, driver+" "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
+		compareKeys(t, driver+" "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmit)
 		rd := downPort(t, real, false)
 		_, optical := rd["sfp_found"]
-		compareKeys(t, driver+" "+ref+" down port", rd, downPort(t, ours, optical), portOmissions)
+		compareKeys(t, driver+" "+ref+" down port", rd, downPort(t, ours, optical), portOmit)
 	}
 	// The one that hid for a day: uplink is the NAME of the if_table interface.
 	if u, ok := ours["uplink"].(string); !ok || u == "" {

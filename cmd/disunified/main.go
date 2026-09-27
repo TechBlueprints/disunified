@@ -41,6 +41,7 @@ import (
 	_ "github.com/TechBlueprints/disunified/internal/drivers/apc-pdu"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/apc-ups"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/podman"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
 

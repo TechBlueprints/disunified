@@ -22,6 +22,7 @@ control (the controller's config applied back to the device).
 | Arista EOS switch | `arista-eos` | `UDC48X6` ("USW Leaf") | DCS-7160-48TC6-F, EOS 4.26.14M |
 | Proxmox VE node (`vmbr0`) | `proxmox` | `UDC48X6` ("USW Leaf"), or `USWF07D` ("ECS Core") | three-node PVE 9.1 cluster |
 | APC switched rack PDU | `apc-pdu` | `USPPDUP` ("Smart Power PDU Pro") | AP7931, NMC AOS 3.9.2 |
+| Podman host (containers as ports) | `podman` | `UDC48X6` ("USW Leaf") | Podman 5.8.2, AlmaLinux 10.2 |
 
 `disunified -list-drivers` prints what a given build supports. Adding another
 device means adding a driver: the neutral model, the wire protocol, adoption
@@ -51,6 +52,13 @@ What each driver does today:
   modelled-but-untested LACP conversion). Only cluster-wide numbering
   (`numbering: cluster`, the default) has been tested live
   ([`docs/drivers/proxmox.md`](docs/drivers/proxmox.md)).
+- **`podman`** — a Podman host as a switch, the way a Proxmox node is one:
+  every container network endpoint is a port named after the container,
+  the host's NICs are the top ports with the default route's NIC as the
+  uplink. A container on a macvlan network (its own LAN address) shows as
+  the client behind its port; one on a Podman bridge network (NAT) is a
+  port that counts traffic and, honestly, no client. Read over SSH;
+  read-only ([`docs/drivers/podman.md`](docs/drivers/podman.md)).
 - **`apc-pdu`** — an APC switched rack PDU, whose outlets become outlets the
   controller can see, name and switch. The card has no API, so the driver uses
   two transports: SNMPv1 to read identity and outlet state and to switch an
@@ -101,7 +109,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
 
 - [`internal/devicemodel`](internal/devicemodel) — the vendor-neutral model of a device and the
   driver contract.
-- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `apc-pdu`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `apc-pdu`, `apc-ups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - [`internal/device`](internal/device) — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - [`internal/unificfg`](internal/unificfg) — parses the controller's `system_cfg` pushes.

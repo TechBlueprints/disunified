@@ -242,3 +242,12 @@ The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a 
 | Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
 | Topology parent | `uplink`, `uplink_mac` | **absent with the synthetic MAC** (the controller places by MAC on a switch port); operator-declared uplink is the untested candidate |
 
+## Container hosts — `podman` (Podman 5.8.2 / AlmaLinux 10.2, over SSH)
+
+| Feature | Wire | Status |
+|---|---|---|
+| The host as a USW Leaf: identity, uplink NIC at 54, reachability, health | `port_table`, `uplink`, `if_table`, `connect_request_ip`, `general_temperature`/`has_fan` false | built, fixture-tested, contract-tested; adoption pending the host's address decision |
+| Containers as ports, named after the container, slots kept on the host | `port_table[].name`, counters from the container's netns | built, tested (creation order, persistence, release) |
+| macvlan/ipvlan containers as the client behind their port | `mac_table` | built (no macvlan container on site yet; the capture has none) |
+| Bridge-network containers | port only, no client | decided: reporting a NAT'd MAC would invent a client |
+| Port control (state/name) | -- | not built; `Capabilities{}` |

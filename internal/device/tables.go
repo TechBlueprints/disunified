@@ -375,6 +375,11 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 	// fan_table / psu_table use the keys real UniFi switches report (captured
 	// from a USW-Aggregation-Pro on 10.6): the UI shows a supply as "Not
 	// Installed" unless `present` is true, and reads `power`/`power_capacity`.
+	// A device with no fans says so, as a fanless switch does (a container
+	// host in a VM has no sensors at all); one with fans lists them.
+	if len(sys.Fans) == 0 {
+		m["has_fan"] = false
+	}
 	if len(sys.Fans) > 0 {
 		m["has_fan"] = true
 		level := 0
