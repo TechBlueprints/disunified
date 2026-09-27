@@ -82,6 +82,10 @@ const (
 	shedNeverOnBattery  = 32767  // the unit's "never" for LoadShedTimeOnBatterySetting
 )
 
+// maxShedOnBattery is the largest time-on-battery threshold the register
+// holds short of its "never" value.
+const maxShedOnBattery = (shedNeverOnBattery - 1) * time.Second
+
 // LoadShed is one outlet group's self-shedding policy as the unit holds it:
 // the conditions under which the UPS turns the group off on its own during
 // an outage. A zero policy means the group stays on until the battery is
@@ -199,8 +203,12 @@ type Collector struct {
 	last     *devicemodel.Snapshot
 	resolved string // last address the name resolved to, for change logging
 	warned   map[string]bool
-	names    []string   // the unit's own name for each reported outlet group, for logs only
-	shed     []LoadShed // each reported group's load-shed policy, same order; for logs and Sheds
+	// ShedOnBatteryAfter, when set, is the load-shed policy every switched
+	// group is held to: shed after this long on battery, immediate, automatic
+	// return. Start writes it to the unit if the unit's policy differs.
+	ShedOnBatteryAfter time.Duration
+	names              []string   // the unit's own name for each reported outlet group, for logs only
+	shed               []LoadShed // each reported group's load-shed policy, same order; for logs and Sheds
 }
 
 // NewCollector builds a collector over a runner.
@@ -219,6 +227,14 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		return nil, fmt.Errorf("apc-ups: %s answered Modbus but reported no Smart-UPS identity or rating; is it a Smart-UPS with Modbus enabled?", c.Addr)
 	}
 	log.Printf("apc-ups: %s %s, %s, rated %.0f W / %.0f VA", snap.System.Vendor, snap.System.Model, snap.System.Version, b.RealPowerRatingW, b.ApparentRatingVA)
+	if c.ShedOnBatteryAfter > 0 {
+		if err := c.ensureLoadShed(ctx); err != nil {
+			// The bridge still informs: the policy line below says what the
+			// unit actually holds, and the warning says why it is not the
+			// configured one.
+			log.Printf("apc-ups: WARNING: shed_on_battery_after %s not applied: %v", c.ShedOnBatteryAfter, err)
+		}
+	}
 	for i, o := range snap.Outlets {
 		kind := "switched group"
 		if !o.Switchable {
@@ -227,6 +243,72 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		log.Printf("apc-ups: outlet %d = %q, %s, %s; %s", o.Index, c.names[i], kind, map[bool]string{true: "on", false: "off"}[o.On], c.shed[i])
 	}
 	return snap, nil
+}
+
+// ensureLoadShed writes the configured time-on-battery policy to every
+// switched group whose policy differs from it -- the TimeOnBattery
+// condition set, UseOffDelay and ManualRestart cleared so the shed is
+// immediate and the group returns with mains, the other conditions left as
+// they are -- then reads the block back and re-decodes it, so the start-up
+// log states what the unit holds rather than what was sent. The Main group
+// (g = -1) is never touched: it cannot be shed and has nothing to gain.
+func (c *Collector) ensureLoadShed(ctx context.Context) error {
+	cfg, err := c.r.ReadRegisters(ctx, blockConfig, blockConfigLen)
+	if err != nil {
+		return err
+	}
+	static, err := c.r.ReadRegisters(ctx, blockStatic, blockStaticLen)
+	if err != nil {
+		return err
+	}
+	present := static[regSOGConfig-blockStatic]
+	want := LoadShed{OnBatteryAfter: c.ShedOnBatteryAfter}
+	secs := uint16(c.ShedOnBatteryAfter / time.Second)
+	wrote := 0
+	for g := 0; g < 3; g++ {
+		if present&(sogGroupPresent<<(g+1)) == 0 {
+			continue
+		}
+		have := loadShed(cfg, g)
+		if have.OnBatteryAfter == want.OnBatteryAfter && !have.UseOffDelay && !have.ManualRestart {
+			continue
+		}
+		cfgReg := regSOG0LoadShedCfg + 2*g
+		bits := cfg[cfgReg-blockConfig+1]&^(shedUseOffDelay|shedManualRestart) | shedOnTimeOnBattery
+		if err := c.r.WriteRegisters(ctx, regSOG0ShedOnBattery+g, []uint16{secs}); err != nil {
+			return fmt.Errorf("group %d time-on-battery threshold: %w", g+1, err)
+		}
+		if err := c.r.WriteRegisters(ctx, cfgReg, []uint16{cfg[cfgReg-blockConfig], bits}); err != nil {
+			return fmt.Errorf("group %d load-shed config: %w", g+1, err)
+		}
+		wrote++
+	}
+	if wrote == 0 {
+		return nil
+	}
+	// Read back: the policy the log prints is the unit's, and a unit that
+	// took the write but holds something else is reported as an error.
+	if cfg, err = c.r.ReadRegisters(ctx, blockConfig, blockConfigLen); err != nil {
+		return fmt.Errorf("read back: %w", err)
+	}
+	for g := 0; g < 3; g++ {
+		if present&(sogGroupPresent<<(g+1)) == 0 {
+			continue
+		}
+		if have := loadShed(cfg, g); have.OnBatteryAfter != want.OnBatteryAfter || have.UseOffDelay || have.ManualRestart {
+			return fmt.Errorf("group %d holds %q after the write", g+1, have)
+		}
+	}
+	c.mu.Lock()
+	c.shed = c.shed[:0]
+	for g := 0; g < 4; g++ {
+		if present&(sogGroupPresent<<g) != 0 {
+			c.shed = append(c.shed, loadShed(cfg, g-1))
+		}
+	}
+	c.mu.Unlock()
+	log.Printf("apc-ups: load-shed policy written to %d switched group(s): shed after %s on battery, immediate, automatic return", wrote, c.ShedOnBatteryAfter)
+	return nil
 }
 
 // Sheds returns the load-shed policy of each reported outlet group, in
