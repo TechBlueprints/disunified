@@ -17,9 +17,10 @@ claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
 per-feature status. A third driver, `apc-pdu`, followed: Clint's APC AP7931
 rack PDU (NMC AOS 3.9.2) as a `USPPDUP` power distribution unit, outlets read
 and switched (`docs/drivers/apc-pdu.md`). A fourth, `apc-ups`, presents his APC
-SMTL1500RM3UC Smart-UPS as a `USWDA25` "UPS 2U", read over Modbus TCP from the
-unit's own SmartConnect port — no card, no cable (`docs/drivers/apc-ups.md`);
-read-only so far, outlet switching pending a discussion.
+SMTL1500RM3UC Smart-UPS as a `USPDA2B` "UPS 2U Pro" (first as a `USWDA25`
+"UPS 2U"), read over Modbus TCP from the unit's own SmartConnect port — no
+card, no cable (`docs/drivers/apc-ups.md`); outlet-group control built and
+enabled, never yet exercised on the unit.
 
 ## 2. Map
 
@@ -357,6 +358,15 @@ been sent to the unit yet.
 coloured by outlets 1 and 5 alone, override on top of the table; the
 provisioner seeds the placeholder overrides off (`device.PlaceholderOutlets`,
 `unifiapi.SeedOutletOverrides`); there is **no outlet editor for a UPS 2U**
-in 10.6.106 -- the API is the only relay-push path; Safe Shutdown Pairing of
-a UDM needs the 2U Pro (`usp`, open); NUT Server is claimed off.
+in 10.6.106 -- the API is the only relay-push path; NUT Server is claimed off.
+**Re-adopted as the UPS 2U Pro (`USPDA2B`, `type usp`) 2026-09-26 21:40 MDT**
+because only that model pairs a UDM for Safe Shutdown, and the gateway and
+core switches are on this UPS. First `usp` inform ever sent by the bridge:
+accepted, placed in 40 s, power tables stored; the record rejects
+`port_overrides` (`unifiapi.Client.PowerPath` sends the name only), the
+pinned catalogue's `usw` label is corrected on the wire (`wireType`), the
+update to `1.6.1.4933` accepted. Its picture is eight single cells.
+Pairing itself and the outlet editor are still to be checked in the UI.
+**Clint 2026-09-26: push, merge and redeploy the UPS stack without asking;
+re-adopt when needed.** The first outlet command is still his to send.
 

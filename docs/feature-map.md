@@ -224,7 +224,7 @@ Outlets are the power-device shape beside ports. Status as verified live on
 The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
 | Fans / PSUs / temperature | — | none on an AP7931 |
 
-## Power devices — `apc-ups` (APC SMTL1500RM3UC, UPS 15.5, over its SmartConnect port)
+## Power devices — `apc-ups` (APC SMTL1500RM3UC, UPS 15.5, over its SmartConnect port; claimed as `USPDA2B` "UPS 2U Pro", `type usp`, since 2026-09-26 -- first as `USWDA25`)
 
 | Feature | Wire | Status |
 |---|---|---|

@@ -60,10 +60,14 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   `USPDA29`/`USPDA31` codes in unifi-emu's protocol notes are **not in the
   fingerprint** -- the controller would not know them. The pinned emu
   **v0.5.5 mislabels the 2U Pro as `type usw`**; the newer catalogue and the
-  fingerprint say `usp`, a power-path type this bridge has never exercised
-  and has no capture for, so its passing the descriptor gate is a catalogue
-  bug, not a real option. Tower and 2U draw surge-only outlets the SMTL does
-  not have; the Pro claims per-outlet metering the SMTL cannot do. 2U stays.
+  fingerprint say `usp`, so `descriptor.go` corrects the wire type
+  (`wireType`). **Claimed as the 2U Pro since 2026-09-26 evening**: it is
+  the only UPS model that offers Safe Shutdown Pairing for a UDM-class
+  console, and the gateway is on this unit. The `usp` path took the inform,
+  placed the device and stored the power tables; it rejects `port_overrides`
+  (provision names only, `Client.PowerPath`) and does not store
+  `total_max_power`/`power_source`. Its picture is eight single cells, one
+  per row. The Pro's per-outlet metering is simply not claimed on the rows.
 - The config validator rejects a `url` without username/password (the guard
   for API endpoints). Modbus has none: the device entry needs **`auth: none`**
   or the bridge exits at startup before informing anything.
