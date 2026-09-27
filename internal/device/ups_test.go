@@ -2,6 +2,7 @@ package device
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -212,5 +213,32 @@ func TestOutletCountUnknownModelPadsNothing(t *testing.T) {
 	desc.Model = "SOME-OTHER-MODEL"
 	if n := len(outletRows(t, deviceTables(desc, upsSnapshotWithGroups()))); n != 2 {
 		t.Errorf("%d rows for an unknown model, want the 2 real ones", n)
+	}
+}
+
+// A UPS 2U draws eight slots; a two-group UPS reporting rows 1 and 2 leaves
+// 3-8 as placeholders. A rack PDU claimed as a USP-PDU-Pro reports its AC
+// outlets at 5..20, leaving the USB slots 1-4. A model with no picture of
+// its own, or a device without outlets, has none.
+func TestPlaceholderOutletsAreTheSlotsTheDeviceLacks(t *testing.T) {
+	two := &devicemodel.Snapshot{Outlets: []devicemodel.Outlet{{Index: 1, On: true}, {Index: 2, On: true, Switchable: true}}}
+	if got := PlaceholderOutlets("USWDA25", two); !reflect.DeepEqual(got, []int{3, 4, 5, 6, 7, 8}) {
+		t.Errorf("USWDA25 with two rows: %v, want 3..8", got)
+	}
+	var sixteen []devicemodel.Outlet
+	for i := 1; i <= 16; i++ {
+		sixteen = append(sixteen, devicemodel.Outlet{Index: i, On: true, Switchable: true})
+	}
+	if got := PlaceholderOutlets("USPPDUP", &devicemodel.Snapshot{Outlets: sixteen}); !reflect.DeepEqual(got, []int{1, 2, 3, 4}) {
+		t.Errorf("USPPDUP with sixteen rows: %v, want 1..4", got)
+	}
+	if got := PlaceholderOutlets("SOME-OTHER-MODEL", two); got != nil {
+		t.Errorf("unknown model: %v, want nil", got)
+	}
+	if got := PlaceholderOutlets("USWDA25", &devicemodel.Snapshot{}); got != nil {
+		t.Errorf("no outlets: %v, want nil", got)
+	}
+	if got := PlaceholderOutlets("USWDA25", nil); got != nil {
+		t.Errorf("nil snapshot: %v, want nil", got)
 	}
 }

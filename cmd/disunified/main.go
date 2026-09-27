@@ -491,6 +491,20 @@ func runOne(ctx context.Context, o options) error {
 				case r.RenamedDevice || r.RenamedPorts > 0 || r.Seeded > 0 || r.Cleared > 0:
 					log.Printf("provision: device renamed=%v, %d ports named after the switch, %d ports seeded from the switch's own config, %d released slots cleared", r.RenamedDevice, r.RenamedPorts, r.Seeded, r.Cleared)
 				}
+				// Outlet slots the model draws but the device lacks: the
+				// controller's default override shows them powered; set it
+				// off so the picture matches the rows the device reports.
+				if ph := device.PlaceholderOutlets(profile.Model, snap); len(ph) > 0 {
+					pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
+					n, err := api.SeedOutletOverrides(pctx, macStr, ph)
+					pcancel()
+					switch {
+					case err != nil:
+						log.Printf("provision: %v (retried on the next provision)", err)
+					case n > 0:
+						log.Printf("provision: %d outlet slots the device does not have set off in the controller (of %v)", n, ph)
+					}
+				}
 			}
 			if snap != nil {
 				provision(snap)

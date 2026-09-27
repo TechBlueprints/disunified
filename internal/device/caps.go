@@ -122,6 +122,35 @@ func OutletCount(model string) int {
 	return 0
 }
 
+// PlaceholderOutlets lists the controller-side outlet indices the claimed
+// model draws but the device does not have: the slots below the index base
+// (a USP-PDU-Pro's USB 1-4) and the slots past the device's last outlet up
+// to the model's count (a UPS 2U's six spare positions). They are the rows
+// outletTable reports present-but-off with no relay. The controller's own
+// default for an outlet it has no override for is "on", so its picture
+// shows them powered until an override says otherwise; the provisioner
+// seeds those overrides off from this list. Nil when there are none.
+func PlaceholderOutlets(model string, snap *devicemodel.Snapshot) []int {
+	if snap == nil || len(snap.Outlets) == 0 {
+		return nil
+	}
+	base := OutletIndexBase(model)
+	highest := 0
+	for _, o := range snap.Outlets {
+		if i := o.Index + base - 1; i > highest {
+			highest = i
+		}
+	}
+	var out []int
+	for i := 1; i < base; i++ {
+		out = append(out, i)
+	}
+	for i := highest + 1; i <= OutletCount(model); i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
 // outlet_table[].outlet_caps bits, and the outlet_type a rack PDU sends
 // alongside them. A value at or above the AC class bit (65536) would select
 // the newer encoding; this bridge sends the rack-PDU form, so the values stay
