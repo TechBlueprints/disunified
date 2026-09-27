@@ -325,6 +325,8 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil && s.snap.System.HasTemperature {
 			m["general_temperature"] = int(s.snap.System.TemperatureC + 0.5)
 			m["has_temperature"] = true
+		} else if s.snap != nil {
+			m["has_temperature"] = false // no sensor (a VM host): said outright, as a sensorless device does
 		}
 		m["switch_caps"] = switchCaps(s.caps)
 		pt := portTable(s.desc, s.snap, s.st.Provisioned["port_table"], s.prevHistory)
