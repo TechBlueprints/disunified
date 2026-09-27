@@ -25,7 +25,11 @@ Podman host (a QEMU guest of proxmox-2) as a `UDC48X6` with its containers as
 ports, on the proxmox pattern (`docs/drivers/podman.md`); built and adopted
 2026-09-27: placed under its node's VM port; its address made static through
 the controller's IP Settings (`control.address`, NetworkManager via nmcli) --
-the loop's read-only branch now applies address and NUT blocks too.
+the loop's read-only branch now applies address and NUT blocks too. A sixth,
+`apc-backups`, presents Clint's APC Back-UPS Pro 500 (BG500, embedded NMC)
+through the card's web pages as a `USPDA2B` -- built and adopted 2026-09-27
+(`docs/drivers/apc-backups.md`); SNMP tells nothing about that family, the
+usp IP Settings push carries no gateway (`options.gateway`).
 
 ## 2. Map
 
