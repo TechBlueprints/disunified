@@ -237,7 +237,18 @@ drops. **Safe
 Shutdown Pairing** lists the gateway as "Click to Pair"; clicking it asks
 for the console owner's UniFi OS credentials in the panel ("To pair the
 <console>, please enter the owner's credentials"), so pairing is the
-operator's own step, not the bridge's -- cancelled, left for Clint.
+operator's own step, not the bridge's. **Paired 2026-09-27.** What that
+did: nothing on the wire to the UPS and nothing new on either Network
+device record; the console's row in the device list gained a badge, "Power
+Protected by <UPS name>". The shutdown threshold is not in the UPS's
+Network settings (they stay NUT Server + Manage), so it lives on the UniFi
+OS side of the console. Whatever it is set to, it has to sit under the
+runtime the UPS reports (`timeToRemain`, seconds; ~6 min for this unit at
+80 % load) or the console is told to shut down almost as soon as mains
+drops -- and the shed of the expendable group (§11) buys the console more
+runtime, not less. `is_battery_mode` has never been observed true live (no
+outage yet); the unit's self-test would exercise it without tripping a
+30 s shed or a sane threshold.
 
 ## 7. Addressing: dial the lease's DNS name, and the address follows
 
@@ -452,6 +463,15 @@ reconciled push (`informloop.Config.NUT`), and reports the addresses of
 logged-in clients as `nut_client_ips` (no real UPS inform carrying that key
 has been captured; the shape mirrors the controller's own). Switching the
 UI off pushes a config without the block, which stops the listener.
+
+**"ID / Hostname" is the NUT name, nothing more.** The form's one field
+becomes `nutserver.id` and no hostname leaves the controller; the label
+reflects NUT's `<name>@<host>` habit of naming a UPS after its host. Keep it
+`ups`: a client is configured as `ups@<address>`, and Synology's NUT client
+hard-codes the name `ups` (with `monuser`/`secret`, which this server
+accepts while "Login Credential" is off). The `<host>` half is wherever the
+bridge answers -- for a real UniFi UPS the device's own address, for this
+bridge the container's (Deployment, below) -- which the UI cannot know.
 
 **What it serves.** `LIST UPS` / `LIST VAR` / `GET VAR` as `upsc` and
 `upsmon` use them; `USERNAME` / `PASSWORD` / `LOGIN` (the pushed
