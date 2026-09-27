@@ -131,7 +131,7 @@ func (c *Collector) CycleOutlet(ctx context.Context, idx int) error {
 // A diff: the card's current mode and address are compared first.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	c.mu.Lock()
-	last, dhcp := c.last, c.dhcp
+	last, dhcp, cardGW := c.last, c.dhcp, c.cardGW
 	c.mu.Unlock()
 	if last == nil {
 		return false, fmt.Errorf("apc-backups: no snapshot yet")
@@ -154,15 +154,26 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if d.IP == "" || d.PrefixLen <= 0 {
 		return false, fmt.Errorf("apc-backups: static address without an IP and prefix length")
 	}
+	gw := d.Gateway
+	if gw == "" {
+		gw = c.Gateway // the push carried no route (the power path never does); the operator's
+	}
+	if gw == "" {
+		gw = cardGW // keep whatever the card holds rather than blank it
+	}
+	if gw == "" {
+		c.warnOnce("no-gateway", "static IP Settings carry no gateway and options.gateway is not set: the card will have none (on-subnet only)")
+	}
 	cur := last.System.Addresses
-	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen {
+	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen && cardGW == gw {
 		return false, nil
 	}
-	if err := c.r.PutConfig(ctx, tcpipConfig(c.MAC, "Manual", d.IP, maskFromPrefix(d.PrefixLen), d.Gateway)); err != nil {
+	if err := c.r.PutConfig(ctx, tcpipConfig(c.MAC, "Manual", d.IP, maskFromPrefix(d.PrefixLen), gw)); err != nil {
 		return false, fmt.Errorf("apc-backups: %w", err)
 	}
 	c.mu.Lock()
 	c.dhcp = false
+	c.cardGW = gw
 	c.mu.Unlock()
 	return true, nil
 }
