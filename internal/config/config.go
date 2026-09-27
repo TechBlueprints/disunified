@@ -84,10 +84,10 @@ type Control struct {
 	Reboot  bool `yaml:"reboot"`
 	SSHKeys bool `yaml:"ssh_keys"`
 	SNMP    bool `yaml:"snmp"`
-	// NUT lets the controller's "NUT Server" switch run a Network UPS Tools
-	// server in the bridge for the device (power devices only): the bridge
-	// claims the capability, and the controller's nut_server block turns
-	// the listener on and off. Off by default: an open port.
+	// NUT is accepted for compatibility and no longer needed: every UPS
+	// claims the NUT-server capability (the controller's UI cannot save a
+	// UPS's settings otherwise), and the controller's "NUT Server" switch
+	// alone starts and stops the listener.
 	NUT bool `yaml:"nut"`
 	// AllowInitialChanges lets the first push after adoption change ports
 	// (default: held until the controller's config matches the switch — the

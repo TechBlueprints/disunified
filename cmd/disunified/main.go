@@ -435,18 +435,26 @@ func runOne(ctx context.Context, o options) error {
 	}
 	sess := device.NewSession(desc, url, st, store, time.Now())
 	sess.SetCapabilities(caps)
-	if o.controlNUT {
-		if snap == nil || snap.System.Battery == nil {
-			return fmt.Errorf("control.nut: the device is not a UPS (no battery reported); the NUT server serves battery status")
-		}
+	// Every UPS claims the NUT-server capability, whether or not
+	// control.nut was set: the controller's UI bundles a nut_server block
+	// into every save of a UPS's settings panel and rejects the save
+	// (api.err.InvalidPayload / NutInformationAccessNotSupported) for a UPS
+	// that has not claimed the bit -- even a rename fails (2026-09-27). The
+	// claim only makes the UI's "NUT Server" switch real; the server itself
+	// starts when that switch is on and stops when it is off.
+	isUPS := snap != nil && snap.System.Battery != nil
+	if o.controlNUT && !isUPS {
+		return fmt.Errorf("control.nut: the device is not a UPS (no battery reported); the NUT server serves battery status")
+	}
+	if isUPS {
 		sess.SetSmartPowerCaps(device.SmartPowerCapNUTInfo)
-		log.Printf("control: NUT server capability claimed; the controller's NUT Server switch is honoured")
+		log.Printf("control: NUT server capability claimed (every UPS claims it, or the UI cannot save the device's settings); the controller's NUT Server switch is honoured")
 	}
 	// The NUT server serves the session's latest snapshot; the controller's
 	// nutserver block (via the loop) starts and stops it, and its logged-in
 	// clients are reported back as nut_client_ips.
 	var nut *nutd.Server
-	if o.controlNUT {
+	if isUPS {
 		nut = nutd.New(sess.Snapshot, log)
 		sess.SetNUTClients(nut.Clients)
 		defer nut.Close()
