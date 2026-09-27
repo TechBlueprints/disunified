@@ -63,6 +63,8 @@ type Collector struct {
 	slots      map[string]int // endpoint key -> port index, as on the host
 	slotsKnown bool
 	last       *devicemodel.Snapshot
+	nm         nmState // NetworkManager's view of the uplink, from the last poll
+	uplinkNIC  string
 	warned     map[string]bool
 	knownNames map[int][]string
 }
@@ -382,6 +384,10 @@ func (c *Collector) build(ctx context.Context, out string, now time.Time) (*devi
 		}
 	}
 	sort.Slice(macs, func(i, j int) bool { return macs[i].MAC < macs[j].MAC })
+	c.mu.Lock()
+	c.nm = parseNM(sec["nmconn"], sec["nmipv4"])
+	c.uplinkNIC = uplinkName
+	c.mu.Unlock()
 	return &devicemodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, UplinkHint: uplinkHint}, nil
 }
 

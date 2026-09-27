@@ -41,8 +41,40 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 	if slotsWrite.MatchString(command) {
 		f.setSection("slots", stdin)
 	}
+	// NetworkManager, as the host would answer: a profile modification is
+	// kept in the nmipv4 section and read back by the method query.
+	if m := nmMod.FindStringSubmatch(command); m != nil {
+		f.setSection("nmipv4", "manual\n"+m[1]+"\n"+m[2]+"\n"+m[3]+"\n")
+	}
+	if strings.HasPrefix(command, "nmcli -g ipv4.method con show ") {
+		body := f.section("nmipv4")
+		if i := strings.Index(body, "\n"); i >= 0 {
+			return body[:i] + "\n", nil
+		}
+		return body, nil
+	}
 	return "", nil
 }
+
+var nmMod = regexp.MustCompile(`^nmcli con mod '[^']*' ipv4.method manual ipv4.addresses '([^']*)' ipv4.gateway '([^']*)' ipv4.dns '([^']*)' ipv4.ignore-auto-dns yes$`)
+
+// section returns a section's body from the capture.
+func (f *FixtureRunner) section(name string) string {
+	head := "@@@ " + name + "\n"
+	i := strings.Index(f.Fixture, head)
+	if i < 0 {
+		return ""
+	}
+	rest := f.Fixture[i+len(head):]
+	if j := strings.Index(rest, "@@@ "); j >= 0 {
+		return rest[:j]
+	}
+	return rest
+}
+
+// SetSection replaces a section's body in the capture (tests start from a
+// host with no slot file yet, or a different NetworkManager state).
+func (f *FixtureRunner) SetSection(name, body string) { f.setSection(name, body) }
 
 // setSection replaces a section's body in the capture.
 func (f *FixtureRunner) setSection(name, body string) {

@@ -41,6 +41,10 @@ for n in $PHYS; do
   echo "$n master=$(basename "$(readlink $d/master 2>/dev/null)" 2>/dev/null) speed=$(cat $d/speed 2>/dev/null) duplex=$(cat $d/duplex 2>/dev/null) carrier=$(cat $d/carrier 2>/dev/null) permaddr=$(ethtool -P $n 2>/dev/null | awk '{print $3}')"
 done
 s ethtool;    for n in $PHYS; do echo "## $n"; ethtool "$n" 2>/dev/null; done
+# NetworkManager's view of the uplink: the connection profile and its IPv4
+# settings, for the controller's IP Settings (control.address).
+s nmconn;     nmcli -g GENERAL.CONNECTION device show "$UP" 2>/dev/null
+s nmipv4;     CON=$(nmcli -g GENERAL.CONNECTION device show "$UP" 2>/dev/null); [ -n "$CON" ] && nmcli -g ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns con show "$CON" 2>/dev/null
 s carrier;    for d in /sys/class/net/*; do [ -e "$d/carrier_changes" ] && echo "$(basename "$d")=$(cat "$d/carrier_changes" 2>/dev/null)"; done
 
 # Podman's own view: networks (driver, interface, subnets), every

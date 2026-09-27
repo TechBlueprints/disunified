@@ -151,7 +151,17 @@ func TestOnlyLANEndpointsAreClients(t *testing.T) {
 // nothing; a removed container frees its slot and a new endpoint takes the
 // lowest free one.
 func TestSlotsPersistOnTheHost(t *testing.T) {
-	c, fr, snap := startFixture(t)
+	fr, err := NewFixtureRunner(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.SetSection("slots", "") // a host that has never been presented: no slot file yet
+	c := NewCollector(fr)
+	c.Log = log.New(testWriter{t}, "", 0)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(fr.Commands) != 1 || !strings.Contains(fr.Commands[0], "podman-slots.json") {
 		t.Fatalf("first poll must write the slot file once, got %v", fr.Commands)
 	}
