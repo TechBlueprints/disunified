@@ -168,7 +168,7 @@ const (
 // them). The UPS driver is read-only, so it claims none: a claimed bit whose
 // push is then ignored is a silent lie in the UI.
 const (
-	smartPowerCapNUTInfo      = 1  // nut_server block
+	SmartPowerCapNUTInfo      = 1  // nut_server block: claimed by the bridge's NUT server (control.nut)
 	smartPowerCapACRecovery   = 2  // power_cycle_on_ac_recovery.*
 	smartPowerCapBuzzer       = 4  // beep.status
 	smartPowerCapSafeShutdown = 8  // safe-shutdown timing

@@ -86,6 +86,7 @@ func main() {
 		controlReboot  = flag.Bool("control-reboot", envChain("", "DUI_CONTROL_REBOOT", "STU_CONTROL_REBOOT") == "1", "the controller's Restart really reloads the device (off by default: emulated)")
 		controlSSH     = flag.Bool("control-ssh-keys", envChain("", "DUI_CONTROL_SSH_KEYS", "STU_CONTROL_SSH_KEYS") == "1", "install the SSH keys the controller pushes on the device's bridge user (off by default)")
 		controlSNMP    = flag.Bool("control-snmp", envChain("", "DUI_CONTROL_SNMP", "STU_CONTROL_SNMP") == "1", "the controller's SNMP v1/v2c community is configured on the device (off by default)")
+		controlNUT     = flag.Bool("control-nut", envChain("", "DUI_CONTROL_NUT") == "1", "power devices: claim the NUT-server capability so the controller's NUT Server switch runs a NUT server in the bridge (off by default)")
 
 		// Controller REST API (names)
 		unifiURL  = flag.String("unifi-url", envChain("", "DUI_UNIFI_URL", "STU_UNIFI_URL"), "controller URL for the REST API, e.g. https://unifi.example.net (needs STU_UNIFI_API_KEY)")
@@ -157,7 +158,7 @@ func main() {
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
 		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
-		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP,
+		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP, controlNUT: *controlNUT,
 		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
 	}
@@ -181,6 +182,7 @@ type options struct {
 	controlAddress                             bool
 	controlIGMP, controlNTP, controlSyslog     bool
 	controlReboot, controlSSH, controlSNMP     bool
+	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
 	unifiURL, unifiSite, unifiKey              string
 	provision                                  bool
@@ -205,7 +207,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
 			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
-			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP,
+			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP, controlNUT: sw.Control.NUT,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
@@ -430,6 +432,13 @@ func runOne(ctx context.Context, o options) error {
 	}
 	sess := device.NewSession(desc, url, st, store, time.Now())
 	sess.SetCapabilities(caps)
+	if o.controlNUT {
+		if snap == nil || snap.System.Battery == nil {
+			return fmt.Errorf("control.nut: the device is not a UPS (no battery reported); the NUT server serves battery status")
+		}
+		sess.SetSmartPowerCaps(device.SmartPowerCapNUTInfo)
+		log.Printf("control: NUT server capability claimed; the controller's NUT Server switch is honoured")
+	}
 	if versionPinned {
 		sess.PinVersion()
 	}
