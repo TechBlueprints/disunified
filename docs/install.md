@@ -180,6 +180,17 @@ one inform interval.
   log; the feature map says what that driver cannot do.
 - Every reply from the controller is in `inform-log/<name>/*.ndjson`; that
   is the first thing to read when something unexpected happens.
+- The controller's own log is the second: on a UniFi OS console,
+  `/usr/lib/unifi/logs/server.log` (root over SSH), lines shaped
+  `[<time>] <thread> LEVEL  category - message`. `grep -a "> ERROR "` and
+  `grep -a "> WARN " | grep -i <device MAC>` find what concerns a bridged
+  device; a rejected REST save shows up as `sanitize - Unsupported format
+  exists in Device payload={...}` with the exact body the UI sent, which is
+  how the UPS `nut_server: null` failure was pinned down. Ignore the flood
+  of `PoE validation failed for supervisor …` / `PoE port validation
+  failed for device …` lines: that is the controller's power-supervision
+  check complaining that non-PoE devices are not drawing PoE, for real
+  devices as much as bridged ones.
 - The device lost its reserved address / DNS name after adoption: expected
   (the client record went with the adoption). Use the device's own IP
   Settings with `control.address`, or make the address static on the device.

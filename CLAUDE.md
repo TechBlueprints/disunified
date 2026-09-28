@@ -141,6 +141,11 @@ stay stopped** (one bridge per adopted key).
   profile's icons and speed pickers; port count, display name, PoE and
   default port names come from the profile.
 - The controller sets the inform interval (65-80 s here).
+- **The controller's log is readable**: `/usr/lib/unifi/logs/server.log`
+  on the console (root SSH, the Mac's key works); a rejected REST save is
+  logged as `sanitize - Unsupported format exists in Device payload={…}`
+  with the body the UI sent. The PoE-supervision warnings there are noise
+  (`docs/install.md`, Troubleshooting).
 - **A UPS must claim `smart_power_caps` bit 1 or its Settings panel cannot
   be saved.** The UI bundles `nut_server` into every save of a UPS device's
   settings (even a rename); the controller answers `api.err.InvalidPayload`
