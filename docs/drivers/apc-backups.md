@@ -102,9 +102,11 @@ devices:
 Adopt by address, not by the name the client record gave the card: adoption
 deletes that record, its fixed-IP reservation and its DNS name (every APC
 device so far). The card's own DHCP hostname is `apcXXXXXX`, so the
-friendly name does not come back from the lease; it comes back from the
-device `hostname` once adopted (the gateway resolves adopted devices by
-it). Then set IP Settings → Static in the UI to the address it already
+friendly name does not come back from the lease, and **the gateway
+publishes no name for an adopted device** (neither its `hostname` nor its
+`name` -- checked 2026-09-29): recreate the name where the site keeps its
+names, as a static DNS entry (Settings → Routing → DNS) or a record in the
+site's own zone. Then set IP Settings → Static in the UI to the address it already
 has: the bridge writes it to the card, and UniFi owns the address from
 there.
 
@@ -118,7 +120,8 @@ there.
   pool (level 100, runtime 900 s, budget 300 W, input 116.7 V).
 - IP Settings → Static applied to the card through config.ini (`BootMode`
   went `DHCP Only` → `Manual` at the same address); the gateway needed the
-  option (§3). The DNS name kept resolving through the device hostname.
+  option (§3). The DNS name kept resolving because it is a record in the
+  site's own zone, not through anything the controller did.
 - **Outlet switching verified on the unit** (Clint's go-ahead, on the
   unplugged switched group 2): the controller's Disabled reached the card
   -- its own On/Off/Reboot page showed the group Off -- about 60 s after

@@ -37,8 +37,10 @@ Built 2026-09-27 for a Back-UPS Pro 500 (BG500) behind its embedded NMC
   live. The whole file carries SNMP communities, e-mail and users -- the
   fixture keeps only the four sections the driver reads.
 - **Adoption deleted the card's client record** (fixed IP + DNS name);
-  the card's DHCP hostname is `apcXXXXXX`, so dial by address and set the
-  device `hostname` to the name you want resolvable.
+  the card's DHCP hostname is `apcXXXXXX`, and the gateway publishes no
+  name for an adopted device (the device `hostname` field changes nothing
+  on the network -- 2026-09-29), so dial by address and recreate the name
+  as a static DNS entry or in the site's own zone.
 - Status text captured so far is only "UPS is online."; on-battery / low
   battery / overload are matched on the words and unverified live.
 - The UPS off/reboot form (`ulctrl1`) is never posted.
