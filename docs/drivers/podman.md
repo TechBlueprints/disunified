@@ -142,7 +142,9 @@ record, any fixed-IP reservation and its client DNS record** (the UPS and
 PDU precedents, `docs/drivers/apc-ups.md` §7). A host that serves things at
 that address wants its address configured statically on the host
 (NetworkManager `ipv4.method manual`) before adoption, not held by a lease
-the controller is about to forget. Placement then follows the MAC on the
+the controller is about to forget, and its DNS name recreated as a static
+DNS entry (Settings → Routing → DNS): the gateway publishes no name for an
+adopted device, whatever its `hostname` or `name` (2026-09-29). Placement then follows the MAC on the
 upstream port within a minute; for a host that is a VM, that port is its
 node's `VM-<id>` port.
 

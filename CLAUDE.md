@@ -246,10 +246,15 @@ Both devices' IP Settings in UniFi are static (2026-09-23).
 **Hostname (2026-09-24).** The controller stores a bridged device's `hostname`
 **once, from the adoption inform**; later informs carrying a new hostname are
 ignored (five cycles and a force-provision changed nothing). Real UniFi
-devices have no `hostname` field at all -- the gateway's DNS name for them
-comes from the device `name`; for ours it comes from the stored `hostname`
-(the PDU resolves as `power-1`, its card's hostname, not as its UniFi name).
-`PUT rest/device/<_id> {"hostname": "..."}` sets it and it sticks. The
+devices have no `hostname` field at all. **The gateway publishes no DNS
+name for an adopted device** -- not from `hostname`, not from `name`
+(corrected 2026-09-29: the podman bridge, hostname and name `podman`, static
+IP Settings, resolved nowhere; the switches' names are static DNS entries
+Clint made in Settings → Routing → DNS, the PDU's and the Back-UPS's names
+are records in his own DNS zone, the container's name is its DHCP lease.
+The earlier note here that the PDU resolved through its stored hostname was
+wrong). `PUT rest/device/<_id> {"hostname": "..."}` sets the field and it
+sticks, but it changes nothing on the network. The
 controller also pushes `resolv.host.1.name` (the UniFi name with spaces
 removed) in every system_cfg; no driver applies it yet. The Arista's own
 hostname was the factory `localhost` until Clint had it set from the CLI

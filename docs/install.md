@@ -199,6 +199,9 @@ one inform interval.
   devices as much as bridged ones.
 - The device lost its reserved address / DNS name after adoption: expected
   (the client record went with the adoption). Use the device's own IP
-  Settings with `control.address`, or make the address static on the device.
+  Settings with `control.address`, or make the address static on the device,
+  and recreate the name as a static DNS entry (Settings → Routing → DNS):
+  the gateway publishes no name for an adopted device, whatever its
+  `hostname` or `name`.
 - A container on a macvlan network cannot reach its own host (kernel rule):
   give it a second leg on a Podman bridge network and target the host there.
