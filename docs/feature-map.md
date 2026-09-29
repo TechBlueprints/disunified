@@ -223,11 +223,12 @@ Outlets are the power-device shape beside ports. Status as verified live on
 
 The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
 
-**DHCP for a bridged device (findings 2026-09-24, not built).** The gateway registers a DNS name
-for every adopted device, forward and reverse, at the IP its inform reports: a real device by its
-UniFi `name`, a bridged one by the `hostname` stored at adoption (`localhost` is not registered).
-So the name follows a lease only once the bridge already knows the lease -- the record cannot
-help the bridge find a device that moved. A reservation cannot be re-created for an adopted MAC
+**DHCP for a bridged device (findings 2026-09-24, corrected 2026-09-29, not built).** The gateway
+registers **no** DNS name for an adopted device, whatever its UniFi `name` or the `hostname` stored
+at adoption (the 09-24 note here said otherwise; the names it relied on turned out to be static DNS
+entries and records in the site's own zone; a device with a name, a hostname and a static address
+resolved nowhere until a static DNS entry was added). So no record can help the bridge find a
+device that moved. A reservation cannot be re-created for an adopted MAC
 (adoption deletes the client record), so a static IP Setting is UniFi's only fixed address for an
 adopted device. If DHCP is ever built, the bridge is the thing making the move, so it can find
 the device afterwards: (1) re-resolve the device's own DHCP hostname (the card's `HostName=`, EOS
