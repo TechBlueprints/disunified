@@ -27,6 +27,12 @@ control (the controller's config applied back to the device).
 | APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
 | APC Back-UPS Pro network model (its NMC's web pages) | `apc-backups` | `USPDA2B` ("UPS 2U Pro") | BG500, UPS 05.3, NMC AOS 6.0.1 |
 
+"Verified on" means exactly that one device. What each driver has and has
+not been tried on, and what a pull request needs to extend it (a PVE 8 node,
+a Fedora CoreOS Podman host, another Arista model…), is in
+[`docs/support-matrix.md`](docs/support-matrix.md) — every gap there is marked
+**PRs welcome** with the proof it needs.
+
 `disunified -list-drivers` prints what a given build supports. Adding another
 device means adding a driver: the neutral model, the wire protocol, adoption
 and the inform loop carry no vendor assumptions. The model a driver claims
@@ -224,6 +230,12 @@ to paste as they are and fill in:
    fresh support-bundle inform from a real device and the new controller
    replies, refresh the fixtures under `docs/fixtures/controller-<version>/`,
    and tell me which wire keys changed."*
+5. *"The `<driver>` driver lists `<gap>` as untested in
+   [`docs/support-matrix.md`](docs/support-matrix.md). I have `<device / OS version>` at
+   `<address>`. Follow that file's "How to close a gap": capture and scrub a
+   fixture, extend the collector tests, run it against my controller at
+   `<controller>` read-only and then on unused port `<N>`, and open a PR that
+   moves the row to verified with the evidence."*
 
 ### For an AI agent adding a new device
 

@@ -10,6 +10,18 @@ own physical NICs and bond members take the top ports, counting down from
 Scrubbed captures of the collector's output are in
 [`docs/fixtures/proxmox-9.1.6/`](../fixtures/proxmox-9.1.6).
 
+**Requirements** (§5 has the steps): root SSH with a key, `lldpd` installed,
+a VLAN-aware bridge. **Limits to know before you start:** with the default
+cluster-wide numbering there are **48 guest ports across the whole
+cluster** (the 54-port model minus the node's NICs); a bigger cluster needs
+`numbering: node`, which has not run live. The driver writes
+`/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and, with
+`control.ntp`, `/etc/chrony/sources.d/disunified.sources`; nothing else on
+the node. Only PVE 9.1 has run it: PVE 8, a standalone node, a second bridge,
+an LACP bond, `numbering: node` and UI-driven LACP (§3b) are each listed
+with what a PR needs in [`docs/support-matrix.md`](../support-matrix.md) --
+**PRs welcome**.
+
 ## 0. What is and is not the switch
 
 The switch this driver presents is the **virtual switch inside the node**:

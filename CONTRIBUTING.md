@@ -50,6 +50,17 @@ version, the port layout, and the output of `-collect-once` once the read
 side works — the UniFi model choice ([`docs/unifi-models.md`](docs/unifi-models.md)) is decided
 there.
 
+## Extending a driver to your device or OS version
+
+Shorter than a new driver, and the most useful PR this project can get.
+[`docs/support-matrix.md`](docs/support-matrix.md) lists, per driver, what
+has run and what has not, and for every gap what the proof is; its "How to
+close a gap" section is the loop, and it ends with a prompt to hand to an
+agent. In short: issue naming the row → capture and scrub a fixture under
+`docs/fixtures/<driver>-<version>/` → the collector test over it → live,
+read-only first → PR that moves the row to verified. Keep the existing
+fixture covered too; both versions stay tested.
+
 ## For AI agents specifically
 
 - Read [`CLAUDE.md`](CLAUDE.md) (repo map and rules), then [`docs/adding-a-device.md`](docs/adding-a-device.md).
