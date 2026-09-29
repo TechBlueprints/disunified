@@ -267,8 +267,9 @@ filter and returns every client (filter locally); `rest/dnsrecord` answers
 each network's DHCP range (`dhcpd_start`/`dhcpd_stop`); and `cmd/devmgr
 force-provision` really does push a fresh system_cfg (the bridge logged the
 apply), the one devmgr command whose `rc:ok` has been seen to mean
-something. The gateway's DNS registers every adopted device at the IP its
-inform reports -- what that means for DHCP is in `docs/feature-map.md`.
+something. (An earlier version of this note said the gateway's DNS
+registers every adopted device at the IP its inform reports; it does not --
+see the hostname note above, corrected 2026-09-29.)
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
