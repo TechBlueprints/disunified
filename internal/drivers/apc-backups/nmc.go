@@ -90,6 +90,15 @@ var tokenRe = regexp.MustCompile(`/NMC/([^/]+)/`)
 // login posts the card's login form and returns the session token from
 // the redirect it answers with.
 func (w *Web) login(ctx context.Context) (string, error) {
+	// A fresh cookie jar for every session. The card sets a session cookie
+	// at login and requires it on every page, but a login that carries the
+	// cookie of a session the card has since dropped is answered 400 -- and
+	// a jar kept across polls carried exactly that after the card
+	// invalidated one session, so every later login failed (143 x 10 polls
+	// on 2026-09-27/28, the controller showing 18 h of stale data).
+	if jar, err := cookiejar.New(nil); err == nil {
+		w.http.Jar = jar
+	}
 	form := url.Values{"login_username": {w.User}, "login_password": {w.Password}, "submit": {"Log On"}}
 	res, err := w.post(ctx, w.Base+"/Forms/login1", form)
 	if err != nil {

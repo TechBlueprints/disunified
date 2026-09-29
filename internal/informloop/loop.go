@@ -97,6 +97,12 @@ type Config struct {
 	// applied and reconciled push (a push without the block means "off").
 	// The bridge's NUT server implements it; nil ignores the block.
 	NUT NUTApplier
+	// StaleAfter is how many consecutive collect failures the loop tolerates
+	// before it stops informing: the controller then shows the device
+	// Disconnected, as it would a real device whose management went away,
+	// instead of hours of frozen numbers. 0 = the default (5, about five
+	// minutes at the controller's interval); -1 = never withhold.
+	StaleAfter int
 	// ControlSNMP: the controller's SNMP v1/v2c community is configured on
 	// the switch (read-only) and removed when UniFi turns SNMP off.
 	ControlSNMP bool
@@ -149,6 +155,7 @@ type Loop struct {
 	session *device.Session
 
 	collectFailures int
+	staleSilenced   bool // informs withheld because collection keeps failing
 	applyFailures   int
 	reconciledOnce  bool
 	layoutSig       string
@@ -261,6 +268,9 @@ func (l *Loop) Run(ctx context.Context) {
 // inform that was *sent* adopted, so the state is sampled before Apply.
 func (l *Loop) informOnce(ctx context.Context) {
 	l.collect(ctx)
+	if l.stale() {
+		return
+	}
 	now := time.Now()
 	enc, err := l.session.EncodeInform(now)
 	if l.cfg.RecordDir != "" {
@@ -1092,6 +1102,7 @@ func (l *Loop) collect(ctx context.Context) {
 	if l.collectFailures > 0 {
 		l.cfg.Logger.Printf("[%s] collect from switch recovered after %d failures", l.desc.MAC, l.collectFailures)
 		l.collectFailures = 0
+		l.staleSilenced = false
 	}
 	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
 		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
@@ -1322,3 +1333,21 @@ var authKeyRe = regexp.MustCompile(`authkey=[0-9a-fA-F]{32}`)
 
 // maskAuthKey hides the device auth key in logged mgmt_cfg text.
 func maskAuthKey(s string) string { return authKeyRe.ReplaceAllString(s, "authkey=<key>") }
+
+// stale reports whether informs are withheld: collection has failed
+// StaleAfter times in a row, so what the session holds no longer describes
+// the device. Logged once on the way in; collect logs the recovery.
+func (l *Loop) stale() bool {
+	limit := l.cfg.StaleAfter
+	if limit == 0 {
+		limit = 5
+	}
+	if limit < 0 || l.collectFailures < limit {
+		return false
+	}
+	if !l.staleSilenced {
+		l.staleSilenced = true
+		l.cfg.Logger.Printf("[%s] %d collect failures in a row: informs withheld until the device answers again, so the controller shows it disconnected rather than stale", l.desc.MAC, l.collectFailures)
+	}
+	return true
+}
