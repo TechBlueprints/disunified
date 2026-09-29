@@ -222,6 +222,22 @@ Outlets are the power-device shape beside ports. Status as verified live on
 | Device's own IP Settings (static/DHCP) from the controller | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip`, `dhcpc.1.status` → card `[NetworkTCP/IP]` with `Override=<MAC>` | done, opt-in `control.address`; DHCP only when it replaces a static setting (the default is never applied); declined on the Arista |
 
 The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
+
+**DHCP for a bridged device (findings 2026-09-24, not built).** The gateway registers a DNS name
+for every adopted device, forward and reverse, at the IP its inform reports: a real device by its
+UniFi `name`, a bridged one by the `hostname` stored at adoption (`localhost` is not registered).
+So the name follows a lease only once the bridge already knows the lease -- the record cannot
+help the bridge find a device that moved. A reservation cannot be re-created for an adopted MAC
+(adoption deletes the client record), so a static IP Setting is UniFi's only fixed address for an
+adopted device. If DHCP is ever built, the bridge is the thing making the move, so it can find
+the device afterwards: (1) re-resolve the device's own DHCP hostname (the card's `HostName=`, EOS
+`hostname`) -- whether the gateway registers a lease hostname for a device MAC is **unverified**
+(the test is: card to `DHCP Only`, find it from a host on the LAN L2 by MAC, watch the name for a
+minute, restore `Manual`; about three minutes offline); (2) probe the DHCP range
+(`rest/networkconf` `dhcpd_start`..`dhcpd_stop`) with the driver's own protocol and match the
+known MAC -- the container sits on a podman bridge network and cannot ARP the LAN; then persist
+the discovered address in `state/<name>/` and rerun discovery whenever collect fails. The Arista
+would do it inside the same commit-timer session, confirming once the lease is found.
 | Fans / PSUs / temperature | — | none on an AP7931 |
 
 ## Power devices — `apc-ups` (APC SMTL1500RM3UC, UPS 15.5, over its SmartConnect port; claimed as `USPDA2B` "UPS 2U Pro", `type usp`, since 2026-09-26 -- first as `USWDA25`)
