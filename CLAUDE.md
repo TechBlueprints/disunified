@@ -45,7 +45,7 @@ usp IP Settings push carries no gateway (`options.gateway`).
 | `internal/unifiapi` | controller REST API: naming, seeding port/outlet overrides, `PowerPath` for `usp` records | touches only controller-default names and unconfigured overrides |
 | `internal/sshrun` | the SSH transport the host drivers share (`Runner`, `SSH`, `ShellQuote`) | drivers take a `Runner` so tests serve captures |
 | `internal/nutd` | the NUT server behind a UPS's "NUT Server" switch (read-only upsd protocol) | driven only by the controller's `nutserver.*` push |
-| `docs/` | protocol notes, `drivers/<name>.md`, feature map, fixtures | scrub fixtures with `scripts/sanitize-<driver>.py` / `sanitize-controller.py` |
+| `docs/` | protocol notes, `drivers/<name>.md`, feature map, `support-matrix.md` (verified/untested per driver; every gap says what a PR needs), fixtures | scrub fixtures with `scripts/sanitize-<driver>.py` / `sanitize-controller.py` |
 
 ## 3. How Clint wants to work
 

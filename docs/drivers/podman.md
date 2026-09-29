@@ -11,6 +11,21 @@ with its containers under it.
 Verified on Podman 5.8.2 / AlmaLinux 10.2, rootful, netavark, on a host that
 is a QEMU guest of a Proxmox node (2026-09-27). Read-only: no port control.
 
+## 0. Requirements, and what has not been tried
+
+On the host: root SSH with a key; **rootful** Podman (rootless containers are
+invisible to root's `podman ps`); **`python3`** (`collect.sh` reduces
+`podman inspect` on the host with it so container environments never leave
+the box -- a host without it, Fedora CoreOS for one, reports no containers);
+the **netavark** backend (CNI's `inspect` shape has not been seen);
+`iproute2`, `ethtool`, `nsenter`. NetworkManager is needed only for
+`control.address` (§7); reading works without it.
+
+Only that one host has run it. Other distributions with `python3`, a
+bare-metal host, ipvlan networks, several NICs, and the hosts that are
+expected *not* to work (Fedora CoreOS, rootless, CNI) are listed with what a
+PR needs in [`docs/support-matrix.md`](../support-matrix.md) -- **PRs welcome**.
+
 ## 1. What a port is
 
 One port per **endpoint** -- a container on a network. A container on two
