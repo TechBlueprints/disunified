@@ -179,10 +179,19 @@ const (
 
 // bms_run_anomaly bits: each set bit raises an operator-visible alert, so
 // only bits the device can justify from a measurement are ever set.
+//
+// The four are one enum in unifi-emu's capability_bits.json, which files it
+// under "unplaced" -- v0.5.5 recovered the bit names but could not tie them
+// to a document field. This bridge's live captures are what place them on
+// bms_run_anomaly, so the mapping is ours and is not in that file.
 const (
 	bmsAnomalyOverloadOver120  = 64
 	bmsAnomalyOverload100to120 = 1024
 	bmsAnomalyBatteryLow       = 4096
+	// DISCHARGE_TIME_LIMIT, the fourth bit. Never set: the bridge has no
+	// discharge-limit policy for a UPS to breach. Listed so the next
+	// reader knows the bitmap is fully enumerated.
+	bmsAnomalyDischargeTimeLimit = 16384
 )
 
 // HWCapsOutlet is the hw_caps value a power device reports.

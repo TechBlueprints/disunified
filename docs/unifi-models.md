@@ -36,6 +36,39 @@ catalogue and documents how to regenerate `model_profiles.json` with its
 unifi-emu dependency or vendor the generated file. Until then, pass
 `-model <CODE>` explicitly for a model your controller lists.
 
+## The second source: Ubiquiti's product fingerprint DB
+
+The pinned catalogue is the *controller's* hardware database. Ubiquiti also
+publishes a *product* database, unauthenticated, and several facts in this
+repo are cited to it:
+
+<https://static.ui.com/fingerprint/ui/public.json> (≈690 devices, ~780 KB,
+one `devices` array; fetch it with `curl` and read it with `python3 -c`).
+
+Per device, under `unifi.network`: `model` (the inform model code),
+`type` (`usw`/`usp`/`uap` — the wire type), `sysid`,
+`deviceCapabilities` (`SMART_POWER`, `SMART_OUTLET`, `OUTLET_MONITOR`,
+`BATTERY_MANAGEMENT`…), `minimumFirmwareRequired` (the **device's**
+firmware, not a controller version), and for a power device the exact
+`outlets` layout the UI draws — the `standard`/`surge`/`usb`/`lan` index
+lists behind [`caps.go`](../internal/device/caps.go)'s `OutletCount` and
+`PlaceholderOutlets`. Top level: `sku`, `shortnames`, `product.name`.
+
+Use it for two things the controller's DB cannot answer:
+
+- **The wire type when the two disagree.** `USPDA2B`/`USPDA2C` are `usw` in
+  the pinned catalogue and `usp` here; `usp` is what the controller
+  actually resolves (see the note under the port-count table).
+- **What a model physically is**, before there is any capture — outlet
+  counts and classes, and whether per-outlet metering is even expected of
+  it (`SMART_OUTLET` without `OUTLET_MONITOR` means switchable but not
+  metered, so a device with only an aggregate load reading can wear that
+  model honestly).
+
+It is a product list, not an adoption guarantee: a model in it may still be
+missing from an older controller's hardware DB, and the two can disagree, so
+check both. Every UniFi UPS model code in the table below came from here.
+
 ## Choosing: match the port count, else take the Leaf
 
 1. **Find a model whose port count matches the device** (`-model auto` does
