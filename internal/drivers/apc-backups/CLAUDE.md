@@ -42,3 +42,10 @@ Built 2026-09-27 for a Back-UPS Pro 500 (BG500) behind its embedded NMC
 - Status text captured so far is only "UPS is online."; on-battery / low
   battery / overload are matched on the words and unverified live.
 - The UPS off/reboot form (`ulctrl1`) is never posted.
+- **One cookie jar per session, never across polls.** The card sets a
+  session cookie at login and needs it on every page; a login that carries
+  a *dead* session's cookie is answered 400. A jar kept across polls did
+  exactly that after the card dropped one session (first sign: a page GET
+  answering 400), and every login for the next 18 h failed while the loop
+  kept informing the last snapshot. `login()` now starts with a fresh jar,
+  and the loop withholds informs after five failed collects.

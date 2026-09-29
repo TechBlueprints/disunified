@@ -176,6 +176,12 @@ one inform interval.
   controller must be reachable on 8080 from the bridge.
 - Adopted then pending again: the state file was lost or two bridges share
   one MAC. Forget the device in the UI and adopt again.
+- A device shows **Disconnected** in UniFi while the bridge is running: the
+  bridge could not read the device five times in a row (`collect from
+  switch (N in a row): …` in the log) and has stopped informing on purpose,
+  so the controller shows the truth rather than frozen numbers; it resumes
+  the moment a read succeeds (`collect … recovered`). Fix whatever the log
+  names -- credentials, a session limit, the device's address.
 - A UI setting has no effect: look for `UNSUPPORTED` / `NOTE` lines in the
   log; the feature map says what that driver cannot do.
 - Every reply from the controller is in `inform-log/<name>/*.ndjson`; that
