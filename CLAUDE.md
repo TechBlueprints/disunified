@@ -191,7 +191,9 @@ locally, uid 65532; `restart: always`. Host, path and the one-line update
 command are in `local-information/site.md`. Notes that bit: `git archive`
 ships only committed, non-ignored files; `--force-recreate` is needed or
 the old container keeps running; container logs are UTC; rsync is not
-installed on the Mac.
+installed on the Mac. The image is distroless: `podman exec … sh` fails, so
+read `payload-last.json` and the reply logs from the state volume's
+`Mountpoint` (`podman volume inspect`) on the host.
 
 **Renamed 2026-09-21: switch-to-unifi → disunified.** The GitHub repo, the
 module path, the command, the image, the container paths (`/etc/disunified`,
@@ -252,6 +254,16 @@ controller also pushes `resolv.host.1.name` (the UniFi name with spaces
 removed) in every system_cfg; no driver applies it yet. The Arista's own
 hostname was the factory `localhost` until Clint had it set from the CLI
 (`hostname` + `dns domain` -- `ip domain-name` is deprecated on 4.26).
+
+Controller API facts (10.6.106, 2026-09-24): `rest/user?mac=` ignores the
+filter and returns every client (filter locally); `rest/dnsrecord` answers
+`api.err.InvalidObject` -- static DNS records live at
+`/proxy/network/v2/api/site/<site>/static-dns`; `rest/networkconf` carries
+each network's DHCP range (`dhcpd_start`/`dhcpd_stop`); and `cmd/devmgr
+force-provision` really does push a fresh system_cfg (the bridge logged the
+apply), the one devmgr command whose `rc:ok` has been seen to mean
+something. The gateway's DNS registers every adopted device at the IP its
+inform reports -- what that means for DHCP is in `docs/feature-map.md`.
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; `control.snmp: true` in the deployed config).
