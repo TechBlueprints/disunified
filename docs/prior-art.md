@@ -77,6 +77,34 @@ from EOS's own forwarding, and a bridge on a separate host is simpler to
 run and update. The bridge runs in a container on a host next to the
 switch.
 
+## 6. What went back upstream, and where it stands
+
+unifi-emu is the dependency, pinned at v0.5.5, and everything learned here
+that it gets wrong or omits was offered back. **As of 2026-09-28 none of it
+has been reviewed** — the repo has not been pushed since 2026-09-14.
+
+| Ref | What | State (2026-09-28) |
+|---|---|---|
+| [#2](https://github.com/jamesbraid/unifi-emu/issues/2) | FYI plus the 10.6.106 findings: `uplink` as a string, capability claims gated on `udapi_version`, `setparam.system_cfg` as the control channel, the real locate command names, `build-ssh-session`, the support bundle as reference | open, no reply |
+| [#3](https://github.com/jamesbraid/unifi-emu/pull/3) | `inform`: handle `set-locate`/`unset-locate`, report `locating` | open, no review |
+| [#4](https://github.com/jamesbraid/unifi-emu/pull/4) | `inform`: switches report `uplink` as the management interface name plus `if_table` | open, no review |
+| [#5](https://github.com/jamesbraid/unifi-emu/pull/5) | `docs/PROTOCOL.md`: the notes verified on 10.6.106 | open, no review |
+| [#6](https://github.com/jamesbraid/unifi-emu/issues/6) | Gateways: PROTOCOL.md and the payload both stop at a stub ([`gateways.md`](gateways.md)) | open, no reply |
+| [#7](https://github.com/jamesbraid/unifi-emu/issues/7) | Power devices: outlets are neither documented nor expressible | open, no reply |
+
+What that means for work here:
+
+- **Never wait on an upstream merge.** The corrections live in the fork,
+  [`internal/device`](../internal/device); the dependency and the catalogue
+  stay pinned. A catalogue refresh means running unifi-emu's `modelgen`
+  against Clint's controller, not expecting a release
+  ([`unifi-models.md`](unifi-models.md)).
+- **Check those six before filing anything new upstream**, and read the
+  comment on #7: it corrects two errors in its own issue body.
+- Where this repo's notes contradict unifi-emu's docs — `uplink` as a string,
+  power devices as a payload shape — **ours are the verified ones**, taken from
+  real informs on 10.6.106. PROTOCOL.md still documents the emulator's stub.
+
 ## Sources
 
 - <https://github.com/jamesbraid/unifi-emu> / <https://pkg.go.dev/github.com/jamesbraid/unifi-emu/inform>

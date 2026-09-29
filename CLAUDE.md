@@ -429,3 +429,17 @@ reported as `nut_client_ips`; the UPS stack publishes 3493.
 **Clint 2026-09-26: push, merge and redeploy the UPS stack without asking;
 re-adopt when needed.** The first outlet command is still his to send.
 
+
+**Gateways: researched, not attempted (2026-09-20).** Could the bridge present
+a non-UniFi router as a UniFi *gateway*, so another location shows up as its
+own network? The blocker is a controller constraint, not a protocol one: one
+gateway per site (`api.err.NoSecondGateway` — unifi-emu's prior art, unverified
+on 10.6.106), so it would need its own site. unifi-emu's gateway payload is a
+stub whose `uplink` is an **object**, the opposite of the switch string that
+cost a day. The whole picture, including the cheaper alternative (present the
+router as a switch, which works today), is `docs/gateways.md`.
+
+**What has gone upstream, and the fact that none of it has been reviewed, is
+`docs/prior-art.md` §6** (issues #2/#6/#7, PRs #3/#4/#5; unifi-emu unpushed
+since 2026-09-14). **Never wait on an upstream merge** — the corrections live
+in the `internal/device` fork and the dependency stays pinned at v0.5.5.
