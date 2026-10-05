@@ -256,7 +256,17 @@ The earlier note here that the PDU resolved through its stored hostname was
 wrong). `PUT rest/device/<_id> {"hostname": "..."}` sets the field and it
 sticks, but it changes nothing on the network. The
 controller also pushes `resolv.host.1.name` (the UniFi name with spaces
-removed) in every system_cfg; no driver applies it yet. The Arista's own
+removed) in every system_cfg; no driver applies it yet. **That key is how
+real devices get a DNS name (2026-10-05):** the device sets it as its
+hostname and sends it as its DHCP hostname, and the gateway's dnsmasq names
+the lease -- the console's `/run/dnsmasq.lease` shows every real device's
+UniFi name there. A bridged device names itself or is not named: the
+Smart-UPS's SmartConnect port sends no hostname (`*` in its lease), its
+pre-adoption name lived on in the lease file only until the gateway's next
+reboot, and the bridge then failed every collect for two days. It now has a
+static DNS record in the controller; a bridge-written record for
+static-address devices and the hostname for DHCP ones are queued in
+`docs/feature-map.md` §3 (`resolv.host.1.name`). The Arista's own
 hostname was the factory `localhost` until Clint had it set from the CLI
 (`hostname` + `dns domain` -- `ip domain-name` is deprecated on 4.26).
 
@@ -397,7 +407,7 @@ profile's eight outlet slots are drawn regardless; the update badge is
 accepted per the rule (version becomes the controller's, base kept). **Deployed
 2026-09-26 as its own stack on the Podman host** (`/opt/disunified-ups`,
 image `localhost/disunified-ups`, volume `disunified-ups-state`, env with
-only the UniFi vars), dialling the gateway's lease-backed DNS name for the
+only the UniFi vars), dialling the DNS name for the
 unit; the Mac instance is stopped for good. Path and update command in
 `local-information/site.md`. **Outlet-group control built 2026-09-26, never
 exercised on the unit** (Clint's call): the groups are presented as outlet
