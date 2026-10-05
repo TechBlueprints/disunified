@@ -127,6 +127,7 @@ by capture before implementing.
 | `sshd.auth.key.N.*` **obs** | site SSH keys | `username <bridge user> ssh-key [secondary] …` (EOS: 2 keys per user; `-control-ssh-keys`) | **done, verified live** | logged and ignored |
 | `users.N.name/password` **obs** (MD5-crypt), `sshd.auth.key.N.*` | device login for the UniFi terminal | **Not served.** The UI's Manage → Debug terminal is a WebRTC session the controller asks the device to build (`build-ssh-session` inform cmd), not SSH to the device IP; it is hidden by not claiming `fw_caps` UTERM (4). An SSH gateway that honours these credentials over plain SSH is parked on branch `ssh-gateway` (`docs/ssh-gateway-status.md` there). Keys are still installed on the switch user (`-control-ssh-keys`) | parked | parked (same WebRTC terminal) |
 | `unifi.*`, `netconf.*`, `dhcpc.*`, `resolv.*`, `route.*`, `bridge.*` **obs** | UniFi OS internals | ignore | n/a | n/a |
+| `resolv.host.1.name` **obs** (the UniFi name, pushed in every system_cfg) | the device's own hostname, which a real device sends as its DHCP hostname and so gets a DNS name from the gateway | **queued (2026-10-05)**: a device on DHCP sets it as its hostname so its lease carries it (podman: `hostnamectl`; a card's `HostName=`); a device with a static address cannot be named by a lease, so the bridge writes a static DNS record for it through the controller API (`v2/api/site/<site>/static-dns`, `{enabled, key, record_type: "A", value}`) and keeps it on the address it reports, the way the switches are named by hand today. Both opt-in. | queued (static record) | queued (static record) |
 | `system.timezone`, `locale.timezone` **obs** | clock | `clock timezone` | todo (safe) | todo |
 
 ### `setstate` (prior art; **not yet observed** on 10.6.106)
@@ -223,18 +224,25 @@ Outlets are the power-device shape beside ports. Status as verified live on
 
 The same IP Settings apply to the Arista (`control.address` on `arista-eos`): a static setting is written to the interface carrying the bridge's own target address, inside a config session with `commit timer`, confirmed only once the switch answers at the new address. Verified on EOS 4.26.14M.
 
-**DHCP for a bridged device (findings 2026-09-24, corrected 2026-09-29, not built).** The gateway
-registers **no** DNS name for an adopted device, whatever its UniFi `name` or the `hostname` stored
-at adoption (the 09-24 note here said otherwise; the names it relied on turned out to be static DNS
-entries and records in the site's own zone; a device with a name, a hostname and a static address
-resolved nowhere until a static DNS entry was added). So no record can help the bridge find a
-device that moved. A reservation cannot be re-created for an adopted MAC
+**DHCP for a bridged device (findings 2026-09-24, corrected 2026-09-29 and 2026-10-05, not built).**
+The controller registers **no** DNS name for an adopted device, whatever its UniFi `name` or the
+`hostname` stored at adoption (the 09-24 note here said otherwise; the names it relied on turned out
+to be static DNS entries and records in the site's own zone; a device with a name, a hostname and a
+static address resolved nowhere until a static DNS entry was added). What the gateway does name is
+**whatever sends a hostname in its DHCP request**: in its lease file (`/run/dnsmasq.lease` on the
+console) every real UniFi device's lease carries its UniFi name as the hostname, because the device
+applies the pushed `resolv.host.1.name` and its DHCP client sends it (verified 2026-10-05). An
+adopted device names itself or is not named: the Smart-UPS's SmartConnect port sends no hostname
+(its lease line has `*`), so the name it kept after adoption was the deleted client record's, left
+in the lease file until the gateway's next reboot rebuilt the lease without it; the bridge then
+failed every collect for two days until a static DNS entry was added. So no record the controller
+holds can help the bridge find a device that moved, and a lease name is only as durable as the
+device's own DHCP hostname. A reservation cannot be re-created for an adopted MAC
 (adoption deletes the client record), so a static IP Setting is UniFi's only fixed address for an
 adopted device. If DHCP is ever built, the bridge is the thing making the move, so it can find
 the device afterwards: (1) re-resolve the device's own DHCP hostname (the card's `HostName=`, EOS
-`hostname`) -- whether the gateway registers a lease hostname for a device MAC is **unverified**
-(the test is: card to `DHCP Only`, find it from a host on the LAN L2 by MAC, watch the name for a
-minute, restore `Manual`; about three minutes offline); (2) probe the DHCP range
+`hostname`) -- the gateway does register a lease hostname for a device MAC (above; the earlier
+test proposed here is no longer needed); (2) probe the DHCP range
 (`rest/networkconf` `dhcpd_start`..`dhcpd_stop`) with the driver's own protocol and match the
 known MAC -- the container sits on a podman bridge network and cannot ARP the LAN; then persist
 the discovered address in `state/<name>/` and rerun discovery whenever collect fails. The Arista

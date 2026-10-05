@@ -257,13 +257,23 @@ reservation on it (the rack PDU lost its address this way the morning after;
 so did this unit). Nothing can push an address onto the UPS -- Modbus carries
 no IP configuration -- so its address is held only by the DHCP lease.
 
-What survives adoption is the **gateway's DNS name for the lease itself**:
-the name the unit sends as its DHCP hostname still resolved to its address
-after the client record was gone (verified 2026-09-26). So point `url:` at
-that name rather than the address. The Modbus client dials the name on every
-reconnect, the collector re-resolves it each cycle and reports the resolved
-address (logging a move), and the bridge's `ip` defaults from it. If the
-lease ever changes, the bridge follows; nothing is edited by hand.
+The gateway's DNS name for the lease looked like it survived adoption
+(2026-09-26), but it did not: the SmartConnect port sends **no hostname** in
+its DHCP requests (the lease line on the console shows `*` for the name), so
+the name was the deleted client record's, left in dnsmasq's lease file until
+the gateway next rebooted and rebuilt the lease without it. That reboot came
+a week later and the bridge failed every collect for two days
+(`lookup ...: no such host`) before anyone noticed (2026-10-05). The gateway
+names only devices that send a hostname themselves, and nothing can set one
+on the SmartConnect port. So give the unit a **static DNS record** in the
+controller (Settings → Routing → DNS, or `v2/api/site/<site>/static-dns`) at
+its leased address and point `url:` at that name. The Modbus client dials the
+name on every reconnect, the collector re-resolves it each cycle and reports
+the resolved address (logging a move), and the bridge's `ip` defaults from
+it. The record is as static as the lease: if the lease ever moves, the record
+is edited by hand (a bridge-written record is queued in the feature map).
+The loop withholds informs after five failed collects, so the controller
+shows the device offline rather than stale, which is how this was found.
 
 The controller itself offers **no** way to learn an adopted device's real
 address afterwards: an adopted MAC appears in neither `stat/sta` nor the v2
