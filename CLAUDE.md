@@ -453,9 +453,16 @@ gateway per site (`api.err.NoSecondGateway` — unifi-emu's prior art, unverifie
 on 10.6.106), so it would need its own site. unifi-emu's gateway payload is a
 stub whose `uplink` is an **object**, the opposite of the switch string that
 cost a day. The whole picture, including the cheaper alternative (present the
-router as a switch, which works today), is `docs/gateways.md`.
+router as a switch, which works today), is `docs/gateways.md`. **2026-10-19:
+a third party adopted an emulated gateway** built from our upstream PR #15 on a
+UniFi OS Server (10.6.106). Provisioning waited on an answer to the controller's
+`wg-genkeypair` cmd, sent back as an inform notification (`inform_as_notif`).
+That is their finding, not verified here; the detail is in `docs/gateways.md`
+under "Since then".
 
 **What has gone upstream, and the fact that none of it has been reviewed, is
-`docs/prior-art.md` §6** (issues #2/#6/#7, PRs #3/#4/#5; unifi-emu unpushed
-since 2026-09-14). **Never wait on an upstream merge** — the corrections live
-in the `internal/device` fork and the dependency stays pinned at v0.5.5.
+`docs/prior-art.md` §6** (issues #2 and #6–#9; PRs #3–#5, the stacked series
+#10–#13, #14 and #15; unifi-emu unpushed since 2026-09-14; the only response
+is that third party's, on #6 and #15). **Never wait on an upstream merge** —
+the corrections live in the `internal/device` fork and the dependency stays
+pinned at v0.5.5.
