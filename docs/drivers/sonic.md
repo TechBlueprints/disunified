@@ -296,6 +296,143 @@ along the way:
 - Whether the guest stays as a permanent lab switch after the DX010 is
   adopted.
 
+## 5. Driver specification (A1 + A2, read side) -- finalised 2026-10-27
+
+Investigated on the VS guest (`202505.1238524`, SKU `Seastone-DX010`, L2
+preset). This is the contract the implementation follows; the Podman
+driver ([`internal/drivers/podman`](../../internal/drivers/podman)) is the
+pattern for everything not said here.
+
+### 5.1 Transport and collector
+
+- `internal/drivers/sonic`, registered as `sonic`. Config: `ssh:
+  admin@<host>` (key auth), options `ssh_key`, `known_hosts` as podman.
+- **One SSH exec per poll: `python3 -` with `collect.py` on stdin**
+  (embedded with `go:embed`). The script runs as the SSH user, needs no
+  sudo, and reads Redis in one process through `swsscommon.swsscommon.
+  SonicV2Connector(use_unix_socket_path=True)` (`connect`, `keys`,
+  `get_all`), present on every SONiC host. Measured: every table below in
+  56 ms, ~100 KB. Fallback if `swsscommon` is missing: the host's
+  `redis` Python module on `/var/run/redis/redis.sock` with the db ids
+  from `/var/run/redis/sonic-db/database_config.json` (APPL 0, ASIC 1,
+  COUNTERS 2, CONFIG 4, STATE 6).
+- Output: tagged sections `@@@ <name>` as the other collectors print, each
+  Redis section one JSON object `{key: {field: value}}`. Linux facts
+  (`/proc/uptime`, `/proc/stat` line 1, `/proc/loadavg`, `/proc/meminfo`,
+  `ip -j addr show`, `ip -j route show default`, `ip -j neigh show`,
+  `hostname`, `/etc/sonic/sonic_version.yml`) as text/JSON sections.
+  `decode-syseeprom` needs root: not run; the serial comes from
+  `STATE_DB DEVICE_METADATA|localhost chassis_serial_number` (hardware
+  fills it; `N/A` on the VS).
+- **Reduce on the host.** Only the tables listed are dumped. `CONFIG_DB`
+  carries secrets elsewhere (`TACPLUS_SERVER` passkeys, `SNMP_COMMUNITY`
+  names); the script never dumps whole databases, and the SNMP section is
+  key names only. Never widen it to a full `redis-dump`.
+
+Redis sections (key pattern → use):
+
+| Section | DB / pattern | Use |
+|---|---|---|
+| `metadata` | CONFIG `DEVICE_METADATA\|localhost` | hostname, `hwsku`, `platform`, `mac` (system MAC) |
+| `state_metadata` | STATE `DEVICE_METADATA\|localhost` | `chassis_serial_number` |
+| `cfg_port` | CONFIG `PORT\|*` | index, lanes, alias, speed, fec, mtu, admin_status, description |
+| `appl_port` | APPL `PORT_TABLE:*` | `oper_status`, `speed`, `flap_count`, `last_up_time`, `description` |
+| `state_port` | STATE `PORT_TABLE\|*` | `supported_speeds` (hardware), `fec` -- **not** `speed` (`4294967295` on the VS) |
+| `cfg_vlan`, `cfg_vlan_member` | CONFIG `VLAN\|*`, `VLAN_MEMBER\|*` | VLAN list; per-port `tagging_mode` (`untagged`/`tagged`) |
+| `cfg_lag`, `cfg_lag_member`, `appl_lag` | CONFIG `PORTCHANNEL\|*`, `PORTCHANNEL_MEMBER\|*`; APPL `LAG_TABLE:*` | LAG name/id and member state |
+| `cfg_mgmt` | CONFIG `MGMT_INTERFACE\|*`, `MGMT_PORT\|*`, `VLAN_INTERFACE\|*`, `INTERFACE\|*`, `LOOPBACK_INTERFACE\|*` | configured addresses; absence of `MGMT_INTERFACE` = DHCP on eth0 |
+| `cfg_stp` | CONFIG `STP\|*`, `STP_VLAN\|*`, `STP_PORT\|*`, `STP_VLAN_PORT\|*` | STP mode/priority/per-port, when configured (`show spanning-tree` says "not configured" on a fresh L2 preset) |
+| `cfg_mirror`, `cfg_ntp`, `cfg_syslog`, `cfg_snmp` | CONFIG `MIRROR_SESSION\|*`, `NTP_SERVER\|*`, `SYSLOG_SERVER\|*`, `SNMP_COMMUNITY\|*` (keys only) | device-level reports |
+| `cfg_breakout`, `cfg_feature` | CONFIG `BREAKOUT_CFG\|*`, `FEATURE\|*` | breakout mode per cage; which daemons exist (`lldp`, `pmon`) |
+| `lldp_loc`, `lldp` | APPL `LLDP_LOC_CHASSIS`, `LLDP_ENTRY_TABLE:*` | own chassis id/name; neighbours per port |
+| `fdb` | STATE `FDB_TABLE\|*` | key `FDB_TABLE\|Vlan<id>:<mac>` → `{port, type}` (no timestamps) |
+| `counters_map`, `counters`, `rates` | COUNTERS `COUNTERS_PORT_NAME_MAP`, `COUNTERS:oid:0x10*`, `RATES:oid:0x10*` | SAI port stats; port OIDs are `oid:0x1` + 15 hex digits (queues are `0x15…`, so the `0x10*` glob is ports only) |
+| `xcvr`, `dom`, `fan`, `psu`, `temp`, `chassis`, `asic_temp` | STATE `TRANSCEIVER_INFO\|*`, `TRANSCEIVER_DOM_SENSOR\|*`, `FAN_INFO\|*`, `PSU_INFO\|*`, `TEMPERATURE_INFO\|*`, `CHASSIS_INFO\|*`, `ASIC_TEMPERATURE_INFO` | hardware only; empty or zero on the VS, the parser must treat absence as unknown |
+
+### 5.2 Mapping to the model
+
+- **Ports.** One `Port` per `CONFIG_DB PORT` entry: `Index` = its `index`
+  (1..32), `IfName` = the key (`Ethernet0`), `Interfaces` = `[key]`,
+  `Description` = `description`, `Media` QSFP28 (hardware SKU with 100G
+  cages; QSFP+ for a 40G SKU), `Lanes` = the lane count (4). Breakout: a
+  `BREAKOUT_CFG` mode other than `1x100G` folds the child ports (`Ethernet0`,
+  `Ethernet1`, `Ethernet2`, `Ethernet3`) into one cage the way the Arista
+  driver folds lanes, `LanesDiverge` when their config differs. `Enabled` =
+  `admin_status == up`, `Up` = APPL `oper_status == up`, `SpeedMbps` =
+  APPL `speed` (kbps/1000 → Mbps: `100000` is 100G), `AdminSpeed` =
+  CONFIG `speed`, `MTU` = `mtu`, `FEC`/`FECConfig` from STATE/CONFIG `fec`
+  (`rs` → `rs-fec`, `fc` → fire-code, `none` → disabled, `N/A` → unknown),
+  `SpeedCaps` from STATE `supported_speeds` when non-empty, else the SKU's
+  speed only. `Health.LinkChanges` = `flap_count`. No PCS/FEC counters on
+  the VS (`PORT_COUNTER_CAPABILITIES|PORT_FEC_COUNTER` is empty); on
+  hardware `SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES` /
+  `_NOT_CORRECTABLE_FRAMES` fill `FECCorrected`/`FECUncorrected`.
+- **Counters** from `COUNTERS:<oid>` via the name map:
+  `IF_IN/OUT_OCTETS`, `IF_IN/OUT_UCAST_PKTS + NON_UCAST_PKTS` → packets,
+  `IF_IN/OUT_ERRORS`, `IF_IN/OUT_DISCARDS`, `IF_IN/OUT_MULTICAST_PKTS`,
+  `IF_IN/OUT_BROADCAST_PKTS`.
+- **VLAN** per port from `VLAN_MEMBER`: the `untagged` membership is the
+  native VLAN; `tagged` ones are `Allowed`; `Mode` is `trunk` when any
+  tagged membership exists, else `access`; `AllowAll` is never true (SONiC
+  has no "all VLANs" trunk). `Snapshot.VLANs` from `VLAN|*` ids ascending.
+- **MAC table** from `FDB_TABLE`: `PortIndex` via the port's index,
+  `LastMove` zero. `MACTableUsed` = entry count; capacity unknown.
+- **LLDP** `LLDP_ENTRY_TABLE:<port>` → `Neighbor` (`lldp_rem_sys_name`,
+  `lldp_rem_sys_desc`, `lldp_rem_chassis_id`, `lldp_rem_port_id`,
+  `lldp_rem_port_desc`, `lldp_rem_man_addr`; `IsBridge`/`IsRouter` from
+  `lldp_rem_sys_cap_enabled` bits 2 and 4 of the hex string).
+- **System.** `Vendor` = `Celestica` for a `Seastone`/`DX010` SKU, else the
+  platform's vendor token; `Model` = `hwsku`; `Serial`; `MAC` = metadata
+  `mac`; `MgmtMAC` = `eth0`'s link address; `Hostname`; `Version` =
+  `build_version` from `sonic_version.yml` (`202505.1238524-ff3c0c9f6`);
+  `Uptime`, `LoadAvg`, `CPUPercent` (delta of `/proc/stat` between polls,
+  as podman), memory from `/proc/meminfo`; `Addresses` = every IPv4 on
+  `eth0`, `Vlan*`, `Loopback*`; `Gateway` from the default route,
+  `GatewayMAC` from `ip neigh`; `DHCP` = `eth0` has a `dynamic` address
+  and no `MGMT_INTERFACE` entry; **`OOBInterfaces` = `eth0`** (name, up,
+  its IPv4) so the loop warns when the bridge dials it; `STPMode` =
+  `none` unless `STP|GLOBAL` exists (then its `mode`, `priority`);
+  `NTPServers`, `SyslogHosts`, `SNMPCommunities` from the config tables;
+  `Fans`/`PSUs`/`TemperatureC`/`HasTemperature` from the pmon tables when
+  present (hardware).
+- **Uplink.** `UplinkHint` = the port whose LLDP neighbour is a bridge, else
+  0; on the lab guest LLDP is empty, so the loop's own MAC-based placement
+  does the work.
+- **Naming** (`Namer`): `DeviceName` = `"SONiC " + hwsku` (`SONiC
+  Seastone-DX010`); `PortName` = description if set, else the SONiC alias
+  (`Eth1`…`Eth32`, the faceplate labels); `DefaultPortNames` = alias and
+  interface name.
+- **Capabilities** (read side): `Capabilities{}` like podman, until the
+  control side claims STP, FEC, LACP, mirroring.
+- **Identity for the controller.** The device MAC is the system MAC. On
+  hardware it is the base MAC the in-band VLAN interface uses, so the
+  upstream switch sees it and the controller places the device. On the VS
+  the generated system MAC is never seen on the LAN while the bridge dials
+  `eth0`; placement needs an in-band `Vlan1000` address on the guest (a
+  static address, Clint's call) -- also what the OOB rule asks for.
+
+### 5.3 Fixtures, tests, sanitiser
+
+- Capture: `docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt`,
+  the script's output from the VS guest, through
+  `scripts/sanitize-sonic.py` modelled on `sanitize-podman.py`: MACs →
+  `02:00:00:xx:xx:xx` (consistent, lower/upper case preserved per
+  occurrence form), IPv4 → `192.0.2.0/24` (keep prefix lengths), global
+  IPv6 → `2001:db8::/32`, hostname → `host-1`, LLDP management-address
+  lists element-wise, SNMP community keys → `community-N`, port
+  descriptions kept unless they contain a mapped value, build info and
+  SKU kept. Container-free, so no app/net renaming.
+- `FixtureRunner` answers the `python3 -` command with the capture and
+  records any other command (none on the read side).
+- Tests: parsing of every section, the full snapshot from the fixture
+  (32 ports, port 1 up with the learned MACs, the others down, VLAN 1000
+  untagged everywhere, system fields), idempotence (two collects equal),
+  and the per-driver contract and replay test files the other drivers
+  have under `internal/device` and `internal/informloop`.
+- Done means: `go test ./...` green, `-collect-once` against the guest
+  prints the snapshot, `scripts/check-site-info.sh` clean, a local commit
+  on a `sonic` branch, nothing pushed.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
