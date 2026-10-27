@@ -617,6 +617,27 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | breakout (speed on lane 1) | `config interface breakout <cage> <mode>` with the mode from `platform.json` (`1x100G[40G]`, `4x25G[10G]`, `2x50G`…) | `BREAKOUT_CFG\|<cage> brkout_mode`; child ports `Ethernet<n+1..3>` appear in `PORT` | **hardware only** (`platform.json` absent on the VS): refused with a log where absent; on the DX010 the first live test is on an empty cage with a 4x25G DAC |
 | `PortCycler` | not implemented: no PoE, the controller never issues it | | |
 
+**Corrections after pass 1 (2026-10-27), probed:**
+
+- **Multi-VLAN forms.** `config vlan member add|del` take `-m <v1,v2,…>`
+  (a VLAN list, *for one port*; a port list is rejected) and `-e` ("every
+  existing VLAN except the listed ones"). So "Allow All" on a port is one
+  command, `config vlan member add -e -m <native_vlan> <port>`; dropping
+  every tagged membership is `config vlan member del -e -m <native_vlan>
+  <port>`; a custom tagged set is `add -m 2,69 <port>`. `config vlan add
+  -m 2,8,…` creates several VLANs at once. Each `config` call costs about
+  200--250 ms on the VS, so a 31-port Allow-All push is about 8 s with
+  these forms against about 60 s with one call per membership; the loop's
+  apply budget is 20 s. Use them.
+- **Clearing a description** is `hset … description ''` (APPL_DB follows)
+  and then `hdel` to tidy CONFIG_DB; a bare `hdel` leaves APPL_DB's copy.
+- **The guest's management NIC is owned by the Proxmox driver.** The
+  `link_down` flag set by hand on the hypervisor was removed twice, a
+  minute after each setting, by the Proxmox bridge reconciling the node's
+  port "VM-999 net0" (enabled in the controller) -- the right behaviour
+  for that driver. The port is disabled **in the controller** instead, so
+  UniFi owns that too.
+
 ### 6.3 Device controller (`DeviceController.ApplyDevice`)
 
 | Intent (`DeviceDesired`) | SONiC write | CONFIG_DB effect (probed) | Rules |
