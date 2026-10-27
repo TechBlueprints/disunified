@@ -549,6 +549,152 @@ PSUs, temperatures) that has never seen real data.
   prints the snapshot, `scripts/check-site-info.sh` clean, a local commit
   on a `sonic` branch, nothing pushed.
 
+## 6. Driver specification: the control side (A4) -- finalised 2026-10-27
+
+Goal: from the controller's point of view the SONiC switch behaves like
+the Arista: every feature in [`docs/feature-map.md`](../feature-map.md)
+§3 that the Arista driver honours is honoured here, and every one the
+platform lacks is refused with a log and left unclaimed. Every write below
+was probed on the VS guest (`202505.1238524`, SKU `Seastone-DX010`); the
+CONFIG_DB effect of each is recorded in 6.2.
+
+### 6.1 Mechanics
+
+- **Transport:** the same SSH runner; writes are `sudo config …` commands
+  (the `admin` user has passwordless sudo on SONiC), one `Run` per command
+  or a `bash -s` batch joined with `&&`, followed by `sudo config save -y`
+  once per apply batch so a switch reboot keeps the controller's intent.
+  The FixtureRunner records every command and **applies it to the
+  capture's CONFIG_DB sections** (PORT, VLAN, VLAN_MEMBER, PORTCHANNEL*,
+  MIRROR_SESSION, PORT_STORM_CONTROL, STP*, NTP_SERVER, SYSLOG_SERVER,
+  SNMP_COMMUNITY, VLAN_INTERFACE, STATIC_ROUTE) so the next Collect reads
+  the change back and the idempotence tests mean something, the way the
+  podman runner applies a slot-file write.
+- **Diffs against the last snapshot**, idempotent; a second apply of the
+  same intent runs no command. Every apply refreshes nothing itself; the
+  loop collects after it.
+- **`Start` runs every command the driver will use** in a harmless form
+  (`config --help`-level checks cost nothing; the real test is the
+  presence of each sub-command in `config interface --help`,
+  `config vlan member --help`, `config portchannel member --help`,
+  `config mirror_session span --help`, `config interface storm-control
+  --help`, `config spanning-tree interface --help`, `config ntp --help`,
+  `config syslog --help`, `config snmp community --help`, `config
+  interface ip --help`, `config route --help`) and fails loudly on a
+  missing one.
+- **Capabilities** are computed from the snapshot, not constant:
+  `FEC`, `Jumbo`, `LACP`, `StormControl`, `SNMP` true; `MirrorSessions`
+  1 and `AggregateSessions` 8 (the Arista's claims; Tomahawk allows more,
+  claim what is tested); `STP`, `BPDUGuard`, `STPPortCost` **true only
+  when `FEATURE|stp` exists** (community images: no); `IGMPSnooping`,
+  `LLDPMED`, `DHCPSnooping`, `PortIsolation` false.
+- **Refused with a log, never claimed:** IGMP snooping, port isolation,
+  802.1X, LLDP-MED off, egress rate limit, DHCP snooping, and STP on an
+  image without the daemon. A refusal returns no error (the push is
+  acknowledged, nothing is written), exactly as the Arista's isolation
+  refusal.
+
+### 6.2 Port controller (`Controller.ApplyPorts`, `Planner.PlanPorts`, `VLANController.EnsureVLANs`)
+
+Order within one apply: mirror removals, LAG leaves, VLAN creation
+(`EnsureVLANs` runs before `ApplyPorts` in the loop), per-port state,
+VLAN membership, LAG joins and the LAG's own membership, mirror adds,
+`config save -y`.
+
+| Intent (`PortDesired`) | SONiC write | CONFIG_DB effect (probed) | Rules |
+|---|---|---|---|
+| `Enabled` | `config interface startup\|shutdown <port>` | `PORT\|<p> admin_status up\|down` | every lane of a split cage |
+| `Description` | **no CLI on 202505** (`config interface description` does not exist); `sonic-db-cli CONFIG_DB hset "PORT\|<p>" description '<text>'`, `hdel … description` to clear | `PORT\|<p> description`, shown by `show interfaces description` | sanitise like the Arista (printable, no quotes/newlines, ≤ 64) |
+| `SpeedMbps` (0 = auto) | `config interface speed <p> <Mbps>`; auto: `config interface autoneg <p> enabled` on a copper port only, **never on an optical/QSFP cage** (set the cage's native speed instead); a forced speed: `autoneg disabled` + `speed` | `PORT\|<p> speed`, `autoneg on\|off` | speed to lane 1 to split/join is **breakout** (below); a lane-speed change to every lane |
+| FEC | `config interface fec <p> rs\|fc\|none` | `PORT\|<p> fec` | only when asked (`FEC != nil`), like the Arista |
+| jumbo (`switch.jumboframes`/`switch.mtu`, device-level in UniFi) | `config interface mtu <p> 9100\|1500` on every front port | `PORT\|<p> mtu` | SONiC's default is 9100; "jumbo off" = 1500; reported `Jumbo` capability true |
+| VLANs (`VLANSet`, `NativeVLAN`, `TaggedAll`, `TaggedVLANs`) | native: `config vlan member add -u <nat> <p>`; tagged: `config vlan member add <id> <p>`; removals: `config vlan member del <id> <p>` | `VLAN_MEMBER\|Vlan<id>\|<p> tagging_mode` | **UniFi VLAN 1 ↔ `Vlan<native_vlan>`** (§5.2a). "Allow All" = untagged native + tagged member of **every VLAN the controller lists** (SONiC has no "all" trunk; `EnsureVLANs` gives the list, the driver remembers it). "Block All" = native only. A port can be untagged in one VLAN only: change native by `del` then `add -u`. |
+| `EnsureVLANs(ids)` | `config vlan add <id>` for missing ids; never deletes | `VLAN\|Vlan<id>` | **collision check:** if `ids` contains `native_vlan`, return an error naming it and write nothing; `ApplyPorts` likewise refuses any desired port that lists `native_vlan` as a tagged VLAN. This is how the §5.2a loop rule is met without UniFi knowledge in the driver. |
+| `LAG` | `config portchannel add PortChannel<lag>` (once), member: `config vlan member del` every membership of the port first, then `config portchannel member add PortChannel<lag> <p>`; leave: `member del`, then the port's own VLAN intent; `config portchannel del` when empty | `PORTCHANNEL\|PortChannel<n>`, `PORTCHANNEL_MEMBER\|…\|<p>`, `LAG_TABLE` | SONiC refuses a member with VLAN config ("Interface configured as VLAN_MEMBER"). The PortChannel carries the VLAN config of its members' intent (`config vlan member add [-u] <id> PortChannel<n>`), reported back on each member port as the Arista does. `lag` is the UniFi id (lowest member index). LACP active is SONiC's default. |
+| `MirrorSource` (this port is the destination) | session name `dui<dst>`: `config vlan member del` every membership of the destination, `config mirror_session span add dui<dst> <dst> <src> both`; removal: `config mirror_session remove dui<dst>` then the destination's VLAN intent | `MIRROR_SESSION\|dui<dst> {type SPAN, dst_port, src_port, direction BOTH}`; `STATE_DB MIRROR_SESSION_TABLE\|dui<dst> status active` | SONiC refuses a destination with VLAN config ("Destination Interface … has vlan config"); the driver strips it and restores it when the session goes. Report `MirrorFrom` from `MIRROR_SESSION`. |
+| storm control (`StormCtrl`, percent) | `config interface storm-control add <p> broadcast\|unknown-multicast\|unknown-unicast <kbps>`; `del` to clear | `PORT_STORM_CONTROL\|<p>\|<type> kbps` | kbps = pct/100 × port speed (Mbps) × 1000, rounded; report back as a percent of the configured speed; UniFi's multicast = `unknown-multicast` |
+| `BPDUGuard`, `STPEdge`, `STPPathCost` | `config spanning-tree interface bpdu_guard enable\|disable <p>`, `portfast enable\|disable <p>`, `cost <p> <n>`; "STP disabled on the port" (`STPEdge`) = `portfast enable` **and** `config spanning-tree interface disable <p>` | `STP_PORT\|<p> {bpdu_guard, portfast, enabled, path_cost}` | **only when `FEATURE\|stp` exists**; otherwise refuse with a log (not claimed, so not pushed) |
+| breakout (speed on lane 1) | `config interface breakout <cage> <mode>` with the mode from `platform.json` (`1x100G[40G]`, `4x25G[10G]`, `2x50G`…) | `BREAKOUT_CFG\|<cage> brkout_mode`; child ports `Ethernet<n+1..3>` appear in `PORT` | **hardware only** (`platform.json` absent on the VS): refused with a log where absent; on the DX010 the first live test is on an empty cage with a 4x25G DAC |
+| `PortCycler` | not implemented: no PoE, the controller never issues it | | |
+
+### 6.3 Device controller (`DeviceController.ApplyDevice`)
+
+| Intent (`DeviceDesired`) | SONiC write | CONFIG_DB effect (probed) | Rules |
+|---|---|---|---|
+| STP mode/enabled/priority | `config spanning-tree enable pvst` / `disable pvst`, `config spanning-tree priority <n>` | `STP\|GLOBAL {mode pvst, priority, hello_time 2, forward_delay 15, max_age 20}`, `STP_VLAN\|Vlan<id>` and `STP_PORT\|<p>` for every VLAN and port | only with `FEATURE\|stp`; SONiC's only mode is PVST (per-VLAN 802.1D): UniFi `stp`/`rstp` → `pvst`, `mstp` → refused with a log. Report `STPMode` `stp` when enabled, `none` otherwise; `STPPriority` from `STP\|GLOBAL`; `STPRoot` unknown without the daemon's state tables. Without the feature: refuse with a log. |
+| IGMP snooping | — | — | refused with a log (community SONiC has none); not claimed, so never pushed |
+| NTP (`ManageNTP`, `NTPServers`) | `config ntp add\|del <ip>` (restarts chrony) | `NTP_SERVER\|<ip>` | manage the set as the Arista does: add the controller's, remove the ones the bridge added earlier (remembered per run + persisted in the state dir), leave others. Hostnames: SONiC accepts IPs; a hostname is resolved by the bridge first or logged. |
+| syslog (`ManageSyslog`, `SyslogHosts`) | `config syslog add <ip> --port <n>` / `del` (restarts rsyslog) | `SYSLOG_SERVER\|<ip> {port}` | same ownership rule |
+| SNMP (`SNMPSet`, `SNMPCommunity`) | `config snmp community add <name> RO` / `del` (restarts snmp) | `SNMP_COMMUNITY\|<name> {TYPE RO}` | replace the previously managed community only; `public` from the image is left alone unless it is the managed one |
+| DHCP snooping | — | — | refused with a log; not claimed |
+| timezone | not written (as the Arista) | | |
+
+### 6.4 Other interfaces
+
+- **`SSHKeyInstaller`:** the controller's site keys go into the bridge
+  user's `~/.ssh/authorized_keys` on the switch, in a marked block
+  (`# disunified-managed-begin` … `-end`) rewritten as a whole; lines
+  outside the block (the operator's own key, the bridge's own key) are
+  never touched. Compare by `<type> <value>`. All keys, not the Arista's
+  two. Written with one `bash -s` that rewrites the file atomically.
+- **`Rebooter`:** `sudo reboot`. Only with `control.reboot`; the loop
+  emulates otherwise.
+- **Locate:** no LED command on SONiC (nothing for a port or chassis
+  LED in `config`); the session reports `locating` as every driver does.
+- **`AddressController.ApplyAddress`:** static only; DHCP is declined
+  (a VLAN interface on SONiC has no DHCP client, and a lease could not be
+  confirmed anyway). The target is the interface carrying the address the
+  bridge dials (`Vlan<native_vlan>` on a switch set up as §3 B3 says).
+  Sequence: `config interface ip add <iface> <new>/<len>` (SONiC keeps
+  both addresses), `config route add prefix 0.0.0.0/0 nexthop <gw>` when
+  the gateway changes (`STATIC_ROUTE\|default\|0.0.0.0/0`), dial the
+  switch at the new address and run a trivial command; only then
+  `config interface ip remove <iface> <old>/<len>`, remove a stale default
+  route, `config save -y`, and switch the runner's target. If the new
+  address does not answer within the dial timeout, remove it again and
+  return an error: the old address never went away. DNS servers: SONiC
+  has `config dns nameserver add\|del`; written when present in the push,
+  diffed against `DNS_NAMESERVER\|*`. Follows the podman/Arista guards
+  in `internal/drivers/CLAUDE.md`.
+- **Hostname (`resolv.host.1.name`):** queued repo-wide; SONiC's
+  `config hostname <name>` exists and is the obvious implementation when
+  the feature is turned on for every driver. Not part of A4.
+- **Firmware, fault reporting:** generic in `internal/device`; nothing
+  driver-side beyond fans/PSUs/temperatures on hardware (§5).
+
+### 6.5 Verification plan (what "done" means for A4)
+
+1. Unit tests per apply sequence against the fixture, each verifying the
+   recorded commands and that a second apply is a no-op; the LAG and
+   mirror sequences verify the VLAN strip-and-restore; the collision
+   refusal; storm-control arithmetic; the address sequence with a fake
+   dial.
+2. Replay tests: drive the driver through the loop with the recorded
+   controller pushes under `docs/fixtures/controller-10.6.106/`
+   (`system_cfg-port2-name-speed-vlans.txt`, `system_cfg-port54-fec-storm-
+   bpdu-caps.txt`, `replies.ndjson`) and assert the SONiC commands.
+3. Live on the VS guest, `control.ports` on the empty ports first, from the
+   controller (UI or REST with the full combinations the notes record):
+   disable/enable, rename, VLAN profile with native + tagged, Block All,
+   Allow All, a two-port aggregate (ports 3+4), a mirror (4 ← 3), storm
+   control, FEC, jumbo off/on, NTP and syslog hosts, SNMP community, SSH
+   keys, reboot, and IP Settings → Static (the address change, dialled
+   back). After each, the next reconcile reports zero changes.
+4. `docs/feature-map.md` gets a `sonic` column or table per feature with
+   the verified-on build; `docs/support-matrix.md` lists verified /
+   untested / refused; the driver `CLAUDE.md` holds the facts that cost
+   time; this file's §6 is updated with anything the implementation
+   corrects.
+5. Hardware-only items stay marked untested until the DX010 is here:
+   breakout, optics, fans/PSUs/temperatures, real speeds and FEC, STP if
+   an image with the daemon is ever installed.
+
+**STP on the real switch:** a community image has no STP daemon, so the
+DX010 will not run spanning tree until an image is built with
+`INCLUDE_STP=y` (the `sonic-stp` source and `docker-stp` rules are on the
+202505 branch; only the flag is off). That is a build decision for later,
+not a driver gap: the driver claims STP when the feature is present.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
