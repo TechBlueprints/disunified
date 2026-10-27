@@ -298,6 +298,21 @@ reboot and shows in `OOBInterfaces` with `Up: false`. Adoption deletes a
 device's client record and reservation, so the address was made static
 on the device first, as `docs/adding-a-device.md` §4 says.
 
+**A3 done 2026-10-27: the VS guest is adopted.** Read-only run from the
+Mac against the in-band address, model `USWF07D`; `cmd/devmgr adopt` on
+the system MAC; `mgmt_cfg` → ADOPTING → first `system_cfg` → CONNECTED in
+about a minute; the provisioner named the device and its 32 ports after
+the switch (`Eth1`…); the pushed config was accepted without applying.
+**Placement took two inform cycles**: the controller set the uplink to the
+Proxmox node's port that carries the guest's front-panel NIC, because that
+is where the system MAC is seen -- the in-band address on
+`Vlan<native_vlan>` is what makes the device placeable
+([`docs/topology-placement.md`](../topology-placement.md)). The guest's
+own NIC MACs remain as ordinary client records on the node's ports; the
+dead management port's stale address keeps the loop's OOB warning alive
+until the guest reboots. First-party UI walk-through of the device page
+is still to do.
+
 **Still open**
 
 - Whether `sonic-installer` on `20181130.77` accepts a `202505` image, or
