@@ -432,6 +432,46 @@ real UniFi VLAN (an ISP handoff). Decided:
 - An untagged member leaves frames untagged, so the id is never seen on
   the wire; the hazard is only a *tagged* membership of a colliding id.
 
+### 5.2b Corrections from the implementation (2026-10-27)
+
+The read side was built from this spec by an Opus 5.5 agent in one pass
+(`internal/drivers/sonic`, branch `sonic`). What it found the spec had
+wrong, now the rule:
+
+- **Speeds are Mb/s already** (`100000` = 100G); no conversion.
+- **`Lanes` is 1 for an unsplit cage**, the model's meaning ("1, or the
+  number of lanes a breakout was folded from"); a cage is every `PORT`
+  entry sharing an `index`, so a split cage folds its children by index.
+- **The L2 preset's `CONFIG_DB PORT` has no `mtu`, `fec` or
+  `description`**; MTU comes from `APPL_DB` (9100). A missing CONFIG field
+  is the default, not an error.
+- **`APPL_DB PORT_TABLE` holds two non-port markers** (`PortConfigDone`,
+  `PortInitDone`); ports come from `CONFIG_DB PORT` only.
+- **LLDP capability bits are the LLDP-MIB BITS string, most significant
+  bit first**: bridge is `0x20`, router `0x08` of the first byte (`"28 00"`
+  = both).
+- **The LLDP local chassis id is `eth0`'s MAC**, not the system MAC.
+- **`RATES:oid:0x10*` also matches `RATES:<oid>:PORT` markers**; the
+  parser ignores them. `COUNTERS:oid:0x10*` is exactly the ports.
+- **`UplinkHint` has one fallback when LLDP is silent**: the up port on
+  which the default gateway's MAC was learned (port 1 on the lab guest).
+  The contract test requires an uplink, and a MAC-learned gateway is a
+  truthful signal.
+- **A stock SONiC has only an RSA host key** and refuses SHA-1
+  `ssh-rsa`; `internal/sshrun` now offers `rsa-sha2-512/256` for an
+  `ssh-rsa` known_hosts entry (commit on the `sonic` branch).
+- The sanitiser rewrites compressed and link-local IPv6 too (EUI-64
+  carries the MAC); the podman one did not.
+
+**A1 and A2 done 2026-10-27**: fixture
+`docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt` (138 MACs,
+captured while the guest was still on `Vlan1000`), `go test ./...` green,
+contract test as `USWF07D`, replay test read-only against the Proxmox
+replies, live `-collect-once` against the guest. Still to do on the read
+side: the `native_vlan` option of §5.2a (the guest now runs `Vlan4094`), a
+recapture on 4094, and hardware-only parsing (STP modes, optics, fans,
+PSUs, temperatures) that has never seen real data.
+
 ### 5.3 Fixtures, tests, sanitiser
 
 - Capture: `docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt`,
