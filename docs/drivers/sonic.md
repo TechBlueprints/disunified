@@ -288,6 +288,16 @@ along the way:
 - The default `admin` password is the image's; change it before the guest
   stays on a reachable network.
 
+**In-band management done 2026-10-27.** The guest now carries its
+bridge-facing address on `Vlan<native_vlan>` (the Default network on the
+wire, with a saved `STATIC_ROUTE` default via the gateway) and the
+management NIC's link is held down on the hypervisor, so the guest has
+exactly what the hardware will have: an in-band address on the system MAC
+and a console. The old DHCP address lingers on the down `eth0` until a
+reboot and shows in `OOBInterfaces` with `Up: false`. Adoption deletes a
+device's client record and reservation, so the address was made static
+on the device first, as `docs/adding-a-device.md` §4 says.
+
 **Still open**
 
 - Whether `sonic-installer` on `20181130.77` accepts a `202505` image, or
