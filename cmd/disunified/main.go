@@ -613,7 +613,11 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.ControlSSHKeys = o.controlSSH
 		loopCfg.ControlSNMP = o.controlSNMP
 		loopCfg.AllowInitialChanges = o.allowInitialChanges
-		loopCfg.JumboAlwaysOn = true // every driver so far: EOS 7160 forwards jumbo at L2 unconditionally
+		// EOS 7160 and Linux bridges forward jumbo at L2 unconditionally; a
+		// driver that can turn it off (SONiC, by port MTU) says so.
+		if js, ok := ctl.(devicemodel.JumboSwitcher); !ok || !js.SwitchesJumbo() {
+			loopCfg.JumboAlwaysOn = true
+		}
 		loopCfg.DefaultPortNames = defaults
 		if allow == nil {
 			log.Printf("control: writing controller config to ALL ports (igmp=%v)", o.controlIGMP)

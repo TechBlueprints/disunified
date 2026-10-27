@@ -40,6 +40,7 @@ type Config struct {
 	NTPServers  []string // ntpclient.N.server, in order, only enabled ones
 	SyslogHosts []string // syslog.ip[:port] when syslog.status=enabled and an ip is set
 	JumboFrames bool     // switch.jumboframes=enabled
+	JumboSet    bool     // switch.jumboframes is present at all
 	DHCPSnoop   *bool    // switch.dhcp_snoop.status, nil if absent
 	SNMP        *SNMP    // switch.snmp.*, nil if absent
 	// NUTServer is nutserver.*: the controller's "NUT Server" switch for a
@@ -401,6 +402,7 @@ func Parse(text string) *Config {
 			syslogPort = v
 		case "switch.jumboframes":
 			c.JumboFrames = v == "enabled"
+			c.JumboSet = true
 		case "switch.dhcp_snoop.status":
 			b := v == "enabled"
 			c.DHCPSnoop = &b

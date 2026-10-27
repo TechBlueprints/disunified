@@ -12,6 +12,7 @@
 # community names), so nothing here dumps a whole database, and the SNMP
 # section is key names only. Never widen this to a full redis dump.
 import json
+import os
 import subprocess
 import sys
 
@@ -126,6 +127,7 @@ section("cfg_mirror", "CONFIG_DB", "MIRROR_SESSION|*")
 section("cfg_ntp", "CONFIG_DB", "NTP_SERVER|*")
 section("cfg_syslog", "CONFIG_DB", "SYSLOG_SERVER|*")
 section("cfg_snmp", "CONFIG_DB", "SNMP_COMMUNITY|*", keys_only=True)
+section("cfg_storm", "CONFIG_DB", "PORT_STORM_CONTROL|*")
 section("cfg_breakout", "CONFIG_DB", "BREAKOUT_CFG|*")
 section("cfg_feature", "CONFIG_DB", "FEATURE|*")
 section("lldp_loc", "APPL_DB", "LLDP_LOC_CHASSIS")
@@ -143,6 +145,13 @@ section("chassis", "STATE_DB", "CHASSIS_INFO|*")
 section("asic_temp", "STATE_DB", "ASIC_TEMPERATURE_INFO")
 
 # --- Linux ---
+# Dynamic port breakout needs the platform's platform.json (absent on the VS).
+s("platform_json")
+try:
+    _plat = (DB.get_all("CONFIG_DB", "DEVICE_METADATA|localhost") or {}).get("platform", "")
+    sys.stdout.write(("yes" if _plat and os.path.exists("/usr/share/sonic/device/%s/platform.json" % _plat) else "no") + "\n")
+except Exception:
+    sys.stdout.write("no\n")
 text("hostname", ["hostname"])
 text("version", path="/etc/sonic/sonic_version.yml")
 text("uptime", path="/proc/uptime")
