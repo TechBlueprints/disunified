@@ -490,6 +490,18 @@ wrong, now the rule:
   `ssh-rsa` known_hosts entry (commit on the `sonic` branch).
 - The sanitiser rewrites compressed and link-local IPv6 too (EUI-64
   carries the MAC); the podman one did not.
+- **Found when the lab guest went in-band (2026-10-27):** two Linux-side
+  rules the first pass got wrong. (1) `System.DHCP` describes **the
+  address the bridge dials** (the host in the driver's `ssh` config),
+  not `eth0`: it is true only when that address is a `dynamic` one in
+  `ip -j addr`, or belongs to `eth0` with no `MGMT_INTERFACE` entry; a
+  static in-band address with a stale DHCP lease on a down `eth0` reports
+  `DHCP: false`. (2) `OOBInterface.Up` is **carrier**, from `ip -j link`'s
+  `operstate == "UP"` (equivalently the `LOWER_UP` flag), not the
+  administrative `UP` flag: a management port with no cable, or a VM NIC
+  with `link_down`, reports `Up: false`. `Addresses` keeps every
+  configured address including one on a down interface; `OOBInterfaces`
+  carries the carrier state the loop warns from.
 
 **A1 and A2 done 2026-10-27**: fixture
 `docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt` (138 MACs,
