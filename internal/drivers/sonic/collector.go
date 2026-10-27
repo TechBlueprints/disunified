@@ -2,7 +2,7 @@
 // switch state lives in SONiC's Redis databases; one SSH exec per poll runs
 // collect.py (`python3 -`, embedded) as the login user, which reads the
 // tables the driver needs through swsscommon and prints them as tagged
-// JSON sections, plus a few Linux facts. Read-only.
+// JSON sections, plus a few Linux facts. Writes are in control.go.
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (the virtual switch, hardware
 // SKU Seastone-DX010); see docs/drivers/sonic.md §5 for the specification
@@ -56,11 +56,28 @@ type Collector struct {
 	aliases map[int]string   // port index -> SONiC alias (the faceplate label, "Eth1")
 	ifnames map[int][]string // port index -> every interface folded into it
 	last    *devicemodel.Snapshot
+	state   *swState // CONFIG_DB as the control side diffs it: the last collect plus the writes since
+	// siteVLANs are the controller's VLANs in SONiC ids (native_vlan
+	// excluded), from the last EnsureVLANs: what "Allow All" tags.
+	siteVLANs []int
+	warned    map[string]bool
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
-	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}}
+	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{}}
+}
+
+// warnOnce logs a message the first time it is seen in this run.
+func (c *Collector) warnOnce(key, format string, args ...any) {
+	c.mu.Lock()
+	seen := c.warned[key]
+	c.warned[key] = true
+	host := c.host
+	c.mu.Unlock()
+	if !seen {
+		c.Log.Printf("sonic %s: "+format, append([]any{host}, args...)...)
+	}
 }
 
 // Start runs the collector once and checks it saw a SONiC switch.
@@ -81,15 +98,30 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 			up++
 		}
 	}
+	if err := c.verifyCommands(ctx); err != nil {
+		return nil, err
+	}
 	c.Log.Printf("sonic: %s, %s %s, SONiC %s, %d ports (%d up), %d MACs, uplink hint %d", snap.System.Hostname, snap.System.Vendor, snap.System.Model, snap.System.Version, len(snap.Ports), up, len(snap.MACTable), snap.UplinkHint)
 	return snap, nil
 }
 
 func (c *Collector) Close() error { return c.r.Close() }
 
-// Capabilities: none yet. The read side honours no control; the write side
-// will claim STP, FEC, LACP and mirroring as it implements them.
-func (c *Collector) Capabilities() devicemodel.Capabilities { return devicemodel.Capabilities{} }
+// Capabilities are computed from the switch (§6.1): FEC, jumbo, LACP,
+// storm control and SNMP always; one mirror session and eight aggregates
+// (what is tested); STP, BPDU guard and port cost only when the image has
+// the STP daemon (FEATURE|stp). IGMP snooping, LLDP-MED, DHCP snooping and
+// isolation never: community SONiC has none of them.
+func (c *Collector) Capabilities() devicemodel.Capabilities {
+	caps := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
+	c.mu.Lock()
+	st := c.state
+	c.mu.Unlock()
+	if st != nil && st.stpFeature {
+		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
+	}
+	return caps
+}
 
 // Collect runs collect.py and builds the snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
@@ -114,7 +146,7 @@ var required = []string{"metadata", "cfg_port", "appl_port", "version", "addr"}
 var redisSections = []string{
 	"metadata", "state_metadata", "cfg_port", "appl_port", "state_port", "cfg_vlan", "cfg_vlan_member",
 	"cfg_lag", "cfg_lag_member", "appl_lag", "cfg_mgmt", "cfg_stp", "cfg_mirror", "cfg_ntp", "cfg_syslog",
-	"cfg_snmp", "cfg_breakout", "cfg_feature", "lldp_loc", "lldp", "fdb", "counters_map", "counters", "rates",
+	"cfg_snmp", "cfg_storm", "cfg_breakout", "cfg_feature", "lldp_loc", "lldp", "fdb", "counters_map", "counters", "rates",
 	"xcvr", "dom", "fan", "psu", "temp", "chassis", "asic_temp",
 }
 
@@ -184,6 +216,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	c.prevCPU = cpu
 	c.host = sys.Hostname
+	c.state = newState(db, sec)
 	for _, p := range ports {
 		c.aliases[p.Index] = p.alias
 		c.ifnames[p.Index] = append([]string(nil), p.Interfaces...)

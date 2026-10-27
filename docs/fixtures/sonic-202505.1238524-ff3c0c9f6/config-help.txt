@@ -1,0 +1,187 @@
+@@@ config interface --help
+Usage: config interface [OPTIONS] COMMAND [ARGS]...
+
+  Interface-related configuration tasks
+
+Options:
+  -n, --namespace []  Namespace name
+  -h, -?, --help      Show this message and exit.
+
+Commands:
+  advertised-speeds     Set interface advertised speeds
+  advertised-types      Set interface advertised types
+  autoneg               Set interface auto negotiation mode
+  breakout              Set interface breakout mode
+  buffer                Set or clear buffer configuration
+  cable-length          Set interface cable length
+  dhcp-mitigation-rate  Set interface DHCP rate limit attribute
+  fec                   Set interface fec
+  ip                    Set IP interface attributes
+  ipv6                  Enable or Disable IPv6 processing on interface
+  link-training         Set interface link training mode
+  mpls                  Add or remove MPLS
+  mtu                   Set interface mtu
+  pfc                   Set PFC configuration.
+  shutdown              Shut down interface
+  speed                 Set interface speed
+  startup               Start up interface
+  storm-control         Configure storm-control
+  tpid                  Set interface tpid
+  transceiver           SFP transceiver configuration
+  type                  Set interface type
+  vrf                   Bind or unbind VRF
+  vrrp                  Vrrp configuration
+  vrrp6                 Vrrpv6 configuration
+@@@ config vlan --help
+Usage: config vlan [OPTIONS] COMMAND [ARGS]...
+
+  VLAN-related configuration tasks
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add         Add VLAN
+  del         Delete VLAN
+  dhcp_relay
+  member
+  proxy_arp   Configure proxy ARP for a VLAN
+@@@ config vlan member --help
+Usage: config vlan member [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add  Add VLAN member
+  del  Delete VLAN member
+@@@ config portchannel --help
+Usage: config portchannel [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -n, --namespace []  Namespace name
+  -h, -?, --help      Show this message and exit.
+
+Commands:
+  add          Add port channel
+  del          Remove port channel
+  member
+  retry-count
+@@@ config portchannel member --help
+Usage: config portchannel member [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add member to port channel
+  del  Remove member from portchannel
+@@@ config mirror_session --help
+Usage: config mirror_session [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add     Add ERSPAN mirror session.(Legacy support)
+  erspan  ERSPAN mirror_session
+  remove  Delete mirror session
+  span    SPAN mirror session
+@@@ config mirror_session span --help
+Usage: config mirror_session span [OPTIONS] COMMAND [ARGS]...
+
+  SPAN mirror session
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add  Add SPAN mirror session
+@@@ config interface storm-control --help
+Usage: config interface storm-control [OPTIONS] COMMAND [ARGS]...
+
+  Configure storm-control
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add
+  del
+@@@ config spanning-tree interface --help
+Usage: config spanning-tree interface [OPTIONS] COMMAND [ARGS]...
+
+  Configure STP for interface
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  bpdu_guard   Configure STP bpdu guard for interface
+  cost         Configure STP path cost for interface
+  disable      Disable STP for interface
+  enable       Enable STP for interface
+  portfast     Configure STP portfast for interface
+  priority     Configure STP port priority for interface
+  root_guard   Configure STP root guard for interface
+  uplink_fast  Configure STP uplink fast for interface
+@@@ config ntp --help
+Usage: config ntp [OPTIONS] COMMAND [ARGS]...
+
+  NTP server configuration tasks
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add NTP server IP
+  del  Delete NTP server IP
+@@@ config syslog --help
+Usage: config syslog [OPTIONS] COMMAND [ARGS]...
+
+  Configure syslog server
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add                   Add object to SYSLOG_SERVER table
+  del                   Delete object from SYSLOG_SERVER table
+  level                 Configure log level
+  rate-limit-container  Configure syslog rate limit for containers
+  rate-limit-feature    Configure syslog rate limit feature
+  rate-limit-host       Configure syslog rate limit for host
+@@@ config snmp community --help
+Usage: config snmp community [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add      Add snmp community string
+  del      Delete snmp community string
+  replace  Replace snmp community string
+@@@ config interface ip --help
+Usage: config interface ip [OPTIONS] COMMAND [ARGS]...
+
+  Set IP interface attributes
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add              Add an IP address towards the interface
+  loopback-action  Set IP interface loopback action
+  remove           Remove an IP address from the interface
+@@@ config route --help
+Usage: config route [OPTIONS] COMMAND [ARGS]...
+
+  route-related configuration tasks
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add route command
+  del  Del route command
+@@@ end

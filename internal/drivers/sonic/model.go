@@ -80,6 +80,7 @@ func buildPorts(db map[string]table, native int) []cagePort {
 			stpPort[name] = f
 		}
 	}
+	storm := stormTable(db["cfg_storm"])
 
 	byIndex := map[int][]string{}
 	for name, f := range cfg {
@@ -106,7 +107,14 @@ func buildPorts(db map[string]table, native int) []cagePort {
 		cageLanes := 0
 		var caps []int
 		for i, name := range names {
-			lp := lanePort(idx, name, cfg[name], appl[name], state[name], counters[oids[name]], vlans[name], lags[name], stpPort[name])
+			// A LAG member has no VLAN config of its own (SONiC refuses
+			// it); it reports the PortChannel's, as the Arista's do.
+			vl := vlans[name]
+			if lag := lags[name]; lag != "" {
+				vl = vlans[lag]
+			}
+			lp := lanePort(idx, name, cfg[name], appl[name], state[name], counters[oids[name]], vl, lags[name], stpPort[name])
+			lp.StormCtrl = stormSpec(storm[name], atoi(cfg[name]["speed"]))
 			cageLanes += laneCount(cfg[name]["lanes"])
 			caps = mergeSpeeds(caps, speedList(state[name]["supported_speeds"]))
 			if n := lldp[name]; len(n) > 0 && lp.Neighbor == nil {
@@ -193,9 +201,8 @@ func lanePort(idx int, name string, cfg, appl, state, ctr map[string]string, vl 
 		FECConfig:   fecOf(cfg["fec"]),
 		FEC:         fecOf(state["fec"]),
 	}
-	if p.Description == "" {
-		p.Description = appl["description"]
-	}
+	// The description is CONFIG_DB's alone: `hdel … description` leaves
+	// APPL_DB's copy behind (seen on the VS), so APPL_DB is not read for it.
 	if !p.AutoNeg {
 		p.AdminSpeed = atoi(cfg["speed"])
 	}
@@ -245,7 +252,9 @@ func lanePort(idx int, name string, cfg, appl, state, ctr map[string]string, vl 
 	}
 	if stp != nil {
 		p.BPDUGuard = isTrue(stp["bpdu_guard"])
-		p.STPEdge = isTrue(stp["portfast"])
+		// "STP disabled on the port" in UniFi terms is portfast on and STP
+		// off for the interface (§6.2).
+		p.STPEdge = isTrue(stp["portfast"]) && stp["enabled"] == "false"
 		p.STPPathCost = atoi(stp["path_cost"])
 	}
 	return p

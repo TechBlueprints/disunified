@@ -30,7 +30,10 @@ import (
 //	             no UniFi network uses (docs/drivers/sonic.md §5.2a).
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (virtual switch, hardware SKU
-// Seastone-DX010). Read-only: no port control yet.
+// Seastone-DX010). Port control (docs/drivers/sonic.md §6.2) writes
+// `sudo config …` commands, so the login user needs passwordless sudo (the
+// admin user has it); device-level control, SSH keys, reboot and the
+// address are not built yet.
 type Driver struct{}
 
 func init() { devicemodel.RegisterDriver(Driver{}) }
@@ -38,7 +41,7 @@ func init() { devicemodel.RegisterDriver(Driver{}) }
 func (Driver) Name() string { return "sonic" }
 
 func (Driver) Describe() string {
-	return "community SONiC switch over SSH (admin@host, key auth); Redis tables via swsscommon; read-only"
+	return "community SONiC switch over SSH (admin@host, key auth, passwordless sudo); Redis tables via swsscommon; port control via config"
 }
 
 // Open builds the SSH runner and the collector; Start then runs the
@@ -87,4 +90,9 @@ var (
 	_ devicemodel.Device  = (*Collector)(nil)
 	_ devicemodel.Capable = (*Collector)(nil)
 	_ devicemodel.Namer   = (*Collector)(nil)
+
+	_ devicemodel.Controller     = (*Collector)(nil)
+	_ devicemodel.Planner        = (*Collector)(nil)
+	_ devicemodel.VLANController = (*Collector)(nil)
+	_ devicemodel.JumboSwitcher  = (*Collector)(nil)
 )

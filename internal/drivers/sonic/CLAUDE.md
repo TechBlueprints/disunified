@@ -68,6 +68,38 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   restricts the offered host-key algorithms to the known_hosts key types;
   for an `ssh-rsa` entry it now also offers `rsa-sha2-512`/`rsa-sha2-256`
   (without that the handshake fails: "no common algorithm for host key").
+- **Control side (§6.2), `control.go`.** Writes are `sudo config …` (and
+  `sudo sonic-db-cli CONFIG_DB hset/hdel 'PORT|<p>' description` -- there
+  is no `config interface description` on 202505), run as one `bash -s`
+  batch under `set -e`, ending in `sudo config save -y`. `config` needs root
+  **even for `--help`**; `Start` reads each group's help through sudo and
+  fails on a missing sub-command (`config-help.txt` in the fixture dir is
+  the captured help). The plan works on a copy of CONFIG_DB (`swState`) and
+  applies each write's effect as it plans, so later steps see earlier ones;
+  after a successful batch that copy becomes the state, so a second apply
+  before the next collect writes nothing.
+- **SONiC refuses VLAN config on a LAG member and on a mirror destination**,
+  and allows one untagged VLAN per port: members and destinations are
+  stripped first and restored after; a native change is `del` then `add
+  -u`. The FixtureRunner models these refusals, so a wrong order fails a
+  test. A LAG member reports its PortChannel's VLANs; an emptied
+  PortChannel is stripped and deleted. A LAG member's MTU is its
+  PortChannel's (`config interface mtu` on a member is not sent).
+- **Allow All = tagged in every VLAN `EnsureVLANs` was given** (SONiC has no
+  "all" trunk); a first push of the default profile to 32 ports is ~300
+  `config vlan member add` calls. `EnsureVLANs` refuses a list holding
+  `native_vlan` whole; `ApplyPorts` skips a port that names it.
+- **`hdel … description` leaves APPL_DB's copy behind** (seen on the VS
+  after a probe): the description is read from CONFIG_DB only.
+- **Jumbo** is switch-wide in UniFi (`switch.jumboframes`) and a port MTU on
+  SONiC: `PortDesired.Jumbo` (set by the loop when the key is in the push)
+  -> 9100 or 1500; the driver implements `devicemodel.JumboSwitcher`, so the
+  loop's "always forwards jumbo" note is not printed for it.
+- **STP port settings only with `FEATURE|stp`**; breakout (a lane speed on a
+  4-lane cage, or a cage speed on a split one) is refused with a log
+  (no `platform.json` on the VS, and the breakout write is not built).
+  `collect.py` prints `platform_json` (yes/no) and `cfg_storm`
+  (`PORT_STORM_CONTROL`).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). The FDB keys put a MAC
   right after `Vlan4094:`; the MAC pattern must not refuse a preceding `:`.

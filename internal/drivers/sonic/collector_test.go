@@ -15,7 +15,11 @@ const fixture = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.t
 
 // fixtureMACs is how many addresses the capture's FDB learned (all on
 // Ethernet0, all in Vlan4094).
-const fixtureMACs = 141
+const fixtureMACs = 144
+
+// fixtureMACsByVLAN: 137 learned in Vlan4094 (reported as VLAN 1), 7 stale
+// ones in Vlan2.
+var fixtureMACsByVLAN = map[int]int{1: 137, 2: 7}
 
 type testWriter struct{ t *testing.T }
 
@@ -213,11 +217,18 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if len(p1.MACs) != fixtureMACs || len(snap.MACTable) != fixtureMACs || snap.System.MACTableUsed != fixtureMACs {
 		t.Errorf("port 1 has %d MACs, table %d, used %d; want the %d the FDB learned", len(p1.MACs), len(snap.MACTable), snap.System.MACTableUsed, fixtureMACs)
 	}
+	// Learned in Vlan4094 (the native_vlan) = UniFi's VLAN 1; a few stale
+	// entries remain in Vlan2, a VLAN deleted after a probe, and keep its id.
+	byVLAN := map[int]int{}
 	for _, m := range snap.MACTable {
-		if m.PortIndex != 1 || m.VLAN != 1 || !m.LastMove.IsZero() || m.MAC != strings.ToLower(m.MAC) {
+		byVLAN[m.VLAN]++
+		if m.PortIndex != 1 || !m.LastMove.IsZero() || m.MAC != strings.ToLower(m.MAC) {
 			t.Errorf("MAC entry %+v", m)
 			break
 		}
+	}
+	if !reflect.DeepEqual(byVLAN, fixtureMACsByVLAN) {
+		t.Errorf("MACs by VLAN = %v, want %v", byVLAN, fixtureMACsByVLAN)
 	}
 	if !reflect.DeepEqual(snap.VLANs, []int{1}) {
 		t.Errorf("VLANs = %v", snap.VLANs)
@@ -271,11 +282,17 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if got := c.DefaultPortNames(p1); !reflect.DeepEqual(got, []string{"Eth1", "Ethernet0"}) {
 		t.Errorf("DefaultPortNames = %v", got)
 	}
-	if c.Capabilities() != (devicemodel.Capabilities{}) {
-		t.Error("the read side claims no capabilities")
+	// Claimed from the switch: no FEATURE|stp on a community image, so no
+	// STP claims.
+	want := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
+	if got := c.Capabilities(); got != want {
+		t.Errorf("capabilities = %+v, want %+v", got, want)
 	}
 	if len(fr.Commands) != 0 {
-		t.Errorf("the read side ran %v besides the collector", fr.Commands)
+		t.Errorf("collecting wrote %v", fr.Commands)
+	}
+	if len(fr.Helps) != len(commandChecks)-1 { // spanning-tree is checked only with FEATURE|stp
+		t.Errorf("Start read %d help texts: %v", len(fr.Helps), fr.Helps)
 	}
 }
 
@@ -328,7 +345,11 @@ func TestBreakoutChildrenFold(t *testing.T) {
 		t.Errorf("DefaultPortNames = %v", got)
 	}
 	// A child with its own speed makes the cage diverge.
-	fr.Fixture = strings.Replace(fr.Fixture, `"index": "1", "lanes": "69,70,71,72", "speed": "100000"`, `"index": "1", "lanes": "69,70,71,72", "speed": "50000"`, 1)
+	const at100 = `"index": "1", "lanes": "69,70,71,72", "mtu": "9100", "speed": "100000"`
+	if strings.Count(fr.Fixture, at100) != 1 {
+		t.Fatalf("capture changed: %q not found once", at100)
+	}
+	fr.Fixture = strings.Replace(fr.Fixture, at100, `"index": "1", "lanes": "69,70,71,72", "mtu": "9100", "speed": "50000"`, 1)
 	snap, err = c.Collect(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -388,11 +409,15 @@ func TestNativeVLANOption(t *testing.T) {
 				break
 			}
 		}
+		// The 137 addresses learned in Vlan4094 follow the mapping.
+		n := 0
 		for _, m := range snap.MACTable {
-			if m.VLAN != tc.want {
-				t.Errorf("native_vlan=%q: MAC entry on VLAN %d, want %d", tc.option, m.VLAN, tc.want)
-				break
+			if m.VLAN == tc.want {
+				n++
 			}
+		}
+		if n != fixtureMACsByVLAN[1] {
+			t.Errorf("native_vlan=%q: %d MAC entries on VLAN %d, want %d", tc.option, n, tc.want, fixtureMACsByVLAN[1])
 		}
 	}
 	for _, bad := range []string{"1", "0", "4095", "abc", "-5", "40.94"} {

@@ -645,6 +645,10 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 			}
 			d.StormCtrl = spec
 		}
+		if cfg.JumboSet {
+			j := cfg.JumboFrames
+			d.Jumbo = &j
+		}
 		d.BPDUGuard = p.BPDUGuard
 		d.STPEdge = !p.STPPortMode
 		switch p.OpMode {
