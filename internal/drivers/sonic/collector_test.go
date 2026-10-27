@@ -15,7 +15,7 @@ const fixture = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.t
 
 // fixtureMACs is how many addresses the capture's FDB learned (all on
 // Ethernet0, all in Vlan4094).
-const fixtureMACs = 132
+const fixtureMACs = 141
 
 type testWriter struct{ t *testing.T }
 
@@ -24,19 +24,47 @@ func (w testWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// startFixture runs the collector over the in-band capture, dialled on its
+// Vlan4094 address as the bridge dials it.
 func startFixture(t *testing.T) (*Collector, *FixtureRunner, *devicemodel.Snapshot) {
 	t.Helper()
-	fr, err := NewFixtureRunner(fixture)
+	return startFixtureAt(t, fixture, "Vlan4094")
+}
+
+// startFixtureAt runs the collector over a capture, dialled on the first
+// IPv4 address the capture shows on dialIface.
+func startFixtureAt(t *testing.T, path, dialIface string) (*Collector, *FixtureRunner, *devicemodel.Snapshot) {
+	t.Helper()
+	fr, err := NewFixtureRunner(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	c := NewCollector(fr)
 	c.Log = log.New(testWriter{t}, "", 0)
+	c.Dial = ifaceAddr(t, fr.Fixture, dialIface)
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c, fr, snap
+}
+
+// ifaceAddr is the first global IPv4 address a capture shows on an interface.
+func ifaceAddr(t *testing.T, capture, iface string) string {
+	t.Helper()
+	var addrs []ipAddr
+	if err := decodeJSON("addr", sections(capture)["addr"], &addrs); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range addrs {
+		for _, ai := range a.AddrInfo {
+			if a.Ifname == iface && ai.Family == "inet" && ai.Scope == "global" {
+				return ai.Local
+			}
+		}
+	}
+	t.Fatalf("the capture has no IPv4 address on %s", iface)
+	return ""
 }
 
 func fixtureSections(t *testing.T) map[string]string {
@@ -59,7 +87,8 @@ func TestEverySectionParses(t *testing.T) {
 		"cfg_vlan": 1, "cfg_vlan_member": 32, "cfg_snmp": 1, "lldp_loc": 1, "counters_map": 1,
 		"counters": 32, "fdb": fixtureMACs, "asic_temp": 1,
 		// configured nowhere on the L2 preset, or hardware only
-		"cfg_lag": 0, "cfg_lag_member": 0, "appl_lag": 0, "cfg_mgmt": 0, "cfg_stp": 0, "cfg_mirror": 0,
+		"cfg_mgmt": 2, // VLAN_INTERFACE|Vlan4094 and its address
+		"cfg_lag":  0, "cfg_lag_member": 0, "appl_lag": 0, "cfg_stp": 0, "cfg_mirror": 0,
 		"cfg_ntp": 0, "cfg_syslog": 0, "cfg_breakout": 0, "lldp": 0,
 		"xcvr": 0, "dom": 0, "fan": 0, "psu": 0, "temp": 0, "chassis": 0,
 	}
@@ -93,7 +122,7 @@ func TestEverySectionParses(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if len(addrs) == 0 || len(routes) != 1 || len(neigh) == 0 {
+	if len(addrs) == 0 || len(routes) != 2 || len(neigh) == 0 {
 		t.Errorf("ip -j: %d links, %d default routes, %d neighbours", len(addrs), len(routes), len(neigh))
 	}
 	if v := yamlValue(sec["version"], "build_version"); v != "202505.1238524-ff3c0c9f6" {
@@ -209,11 +238,17 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if sys.MAC == "" || sys.MgmtMAC == "" || sys.MAC == sys.MgmtMAC {
 		t.Errorf("system MAC %q, eth0 MAC %q: both set and different on the VS", sys.MAC, sys.MgmtMAC)
 	}
+	// In-band: the static address on Vlan4094 is the one dialled; eth0
+	// keeps its old lease. (At capture time eth0 still had carrier; the
+	// NO-CARRIER case is TestOOBUpIsCarrier.)
 	if len(sys.OOBInterfaces) != 1 || sys.OOBInterfaces[0].Name != "eth0" || !sys.OOBInterfaces[0].Up || sys.OOBInterfaces[0].IP == "" {
-		t.Errorf("OOB = %+v; want eth0, up, with its address", sys.OOBInterfaces)
+		t.Errorf("OOB = %+v; want eth0 as captured (carrier), with its lease", sys.OOBInterfaces)
 	}
-	if !sys.DHCP || len(sys.Addresses) != 1 || sys.Addresses[0].Iface != "eth0" || sys.Addresses[0].IP != sys.OOBInterfaces[0].IP {
-		t.Errorf("addresses %v dhcp %v; want eth0's lease only", sys.Addresses, sys.DHCP)
+	if sys.DHCP {
+		t.Error("DHCP true; the dialled Vlan4094 address is static (the lease is eth0's)")
+	}
+	if len(sys.Addresses) != 2 || sys.Addresses[0].Iface != "Vlan4094" || sys.Addresses[1].Iface != "eth0" || sys.Addresses[1].IP != sys.OOBInterfaces[0].IP {
+		t.Errorf("addresses %v; want the dialled Vlan4094 address, then eth0's", sys.Addresses)
 	}
 	if sys.Gateway == "" || sys.GatewayMAC == "" || sys.ARP[sys.Gateway] != sys.GatewayMAC {
 		t.Errorf("gateway %q mac %q", sys.Gateway, sys.GatewayMAC)
@@ -364,6 +399,79 @@ func TestNativeVLANOption(t *testing.T) {
 		if _, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{SSH: "admin@192.0.2.9", Options: map[string]string{"native_vlan": bad}}); err == nil || !strings.Contains(err.Error(), "native_vlan") {
 			t.Errorf("Open(native_vlan=%q) = %v; want a native_vlan error", bad, err)
 		}
+	}
+}
+
+// The earlier capture (collect-eth0-dhcp.txt): the bridge dialled the DHCP
+// lease on eth0, whose link was up. DHCP is true for that address, the OOB
+// port has carrier, and dialled on any other host DHCP says nothing.
+func TestDHCPFollowsTheDialledAddress(t *testing.T) {
+	const old = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect-eth0-dhcp.txt"
+	_, _, snap := startFixtureAt(t, old, "eth0")
+	sys := snap.System
+	if !sys.DHCP {
+		t.Error("dialled on eth0's lease: DHCP must be true")
+	}
+	if len(sys.OOBInterfaces) != 1 || !sys.OOBInterfaces[0].Up || len(sys.Addresses) != 1 || sys.Addresses[0].Iface != "eth0" {
+		t.Errorf("OOB %+v addresses %v; want eth0 with carrier, its lease the only address", sys.OOBInterfaces, sys.Addresses)
+	}
+	if sys.Gateway == "" || sys.GatewayMAC == "" {
+		t.Errorf("gateway %q mac %q", sys.Gateway, sys.GatewayMAC)
+	}
+	fr, err := NewFixtureRunner(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCollector(fr)
+	c.Log = log.New(testWriter{t}, "", 0)
+	c.Dial = "192.0.2.250" // not an address of the switch
+	snap, err = c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.System.DHCP {
+		t.Error("DHCP must describe the dialled address only")
+	}
+	// The in-band capture dialled on its stale eth0 lease would be DHCP.
+	_, _, snap = startFixtureAt(t, fixture, "eth0")
+	if !snap.System.DHCP || snap.System.Addresses[0].Iface != "eth0" {
+		t.Errorf("dialled on eth0's lease: DHCP %v, addresses %v; want true, eth0 first", snap.System.DHCP, snap.System.Addresses)
+	}
+}
+
+// OOBInterface.Up is carrier, not the admin flag. The capture's eth0 is
+// given the state the same capture shows for docker0 -- admin UP,
+// NO-CARRIER, operstate DOWN, iproute2's own form -- as a management port
+// with no cable (or a VM NIC with link_down) reports it. Its address stays
+// listed and DHCP still follows the dialled Vlan4094 address.
+func TestOOBUpIsCarrier(t *testing.T) {
+	fr, err := NewFixtureRunner(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const up = `"ifname":"eth0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"UP"`
+	const down = `"ifname":"eth0","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"DOWN"`
+	if strings.Count(fr.Fixture, up) != 1 || !strings.Contains(fr.Fixture, `"flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"noqueue","operstate":"DOWN"`) {
+		t.Fatal("capture changed: eth0 up and docker0 without carrier expected")
+	}
+	fr.Fixture = strings.Replace(fr.Fixture, up, down, 1)
+	c := NewCollector(fr)
+	c.Log = log.New(testWriter{t}, "", 0)
+	c.Dial = ifaceAddr(t, fr.Fixture, "Vlan4094")
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := snap.System
+	if len(sys.OOBInterfaces) != 1 || sys.OOBInterfaces[0].Up || sys.OOBInterfaces[0].IP == "" {
+		t.Errorf("OOB = %+v; want eth0 without carrier, its stale address kept", sys.OOBInterfaces)
+	}
+	if sys.DHCP || len(sys.Addresses) != 2 || sys.Addresses[0].Iface != "Vlan4094" {
+		t.Errorf("DHCP %v addresses %v; want static, Vlan4094 first, eth0's address kept", sys.DHCP, sys.Addresses)
+	}
+	// The default route via the carrier-less eth0 is not the gateway.
+	if sys.Gateway == "" || sys.GatewayMAC == "" {
+		t.Errorf("gateway %q mac %q; want the Vlan4094 route's", sys.Gateway, sys.GatewayMAC)
 	}
 }
 

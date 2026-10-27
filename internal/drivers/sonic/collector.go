@@ -14,6 +14,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,7 +44,11 @@ type Collector struct {
 	// member of Vlan<NativeVLAN> is reported as native VLAN 1, and the VLAN
 	// list carries 1 in its place. 2..4094; DefaultNativeVLAN unless set.
 	NativeVLAN int
-	Log        *log.Logger
+	// Dial is the host the bridge reaches the switch on (the host part of
+	// the ssh target, as given: an address or a name, resolved each poll).
+	// System.DHCP describes that address; "" = unknown, DHCP false.
+	Dial string
+	Log  *log.Logger
 
 	mu      sync.Mutex
 	host    string
@@ -168,7 +173,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
-	sys := buildSystem(db, sec, addrs, routes, neigh)
+	sys := buildSystem(db, sec, addrs, routes, neigh, dialAddrs(c.Dial))
 	sys.MACTableUsed = len(macs)
 	cpu := parseCPUTimes(sec["stat"])
 	c.mu.Lock()
@@ -192,6 +197,23 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	snap.UplinkHint = uplinkHint(snap)
 	return snap, nil
+}
+
+// dialAddrs resolves the dialled host as given: an address is itself, a
+// name is whatever it resolves to now (nothing if it does not).
+func dialAddrs(host string) []string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return []string{ip.String()}
+	}
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return nil
+	}
+	return ips
 }
 
 // uplinkHint: the port whose LLDP neighbour is a bridge; failing that, the

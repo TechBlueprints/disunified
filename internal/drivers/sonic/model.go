@@ -444,8 +444,18 @@ func keyNames(t table, prefix string) []string {
 	return out
 }
 
-// buildSystem maps identity, health and reachability.
-func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, routes []ipRoute, neigh []ipNeigh) devicemodel.System {
+func hasString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSystem maps identity, health and reachability. dial is the address
+// (or the addresses a name resolved to) the bridge reaches the switch on.
+func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, routes []ipRoute, neigh []ipNeigh, dial []string) devicemodel.System {
 	meta := db["metadata"].first()
 	sys := devicemodel.System{
 		Vendor:   vendorOf(meta["hwsku"], meta["platform"]),
@@ -475,22 +485,26 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 	sys.MemBufferKB = mem["Buffers"] + mem["Cached"]
 	sys.LoadAvg = parseLoadAvg(sec["loadavg"])
 
-	// Addresses: in-band first (Vlan*, Loopback*), then the management port.
+	// Addresses: every configured IPv4 on the in-band and management
+	// interfaces, a down one included; the dialled address first, then
+	// in-band (Vlan*, Loopback*), then the management port.
 	_, hasMgmtIntf := firstWithPrefix(db["cfg_mgmt"], "MGMT_INTERFACE|")
+	isDialled := map[string]bool{}
+	for _, d := range dial {
+		isDialled[d] = true
+	}
 	rank := func(n string) int {
 		switch {
 		case strings.HasPrefix(n, "Vlan"):
-			return 0
-		case strings.HasPrefix(n, "Loopback"):
 			return 1
-		case n == "eth0":
+		case strings.HasPrefix(n, "Loopback"):
 			return 2
+		case n == "eth0":
+			return 3
 		}
 		return -1
 	}
-	sorted := append([]ipAddr(nil), addrs...)
-	sort.SliceStable(sorted, func(i, j int) bool { return rank(sorted[i].Ifname) < rank(sorted[j].Ifname) })
-	for _, a := range sorted {
+	for _, a := range addrs {
 		if rank(a.Ifname) < 0 {
 			continue
 		}
@@ -503,7 +517,12 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 			if v4 == "" {
 				v4 = ai.Local
 			}
-			if a.Ifname == "eth0" && ai.Dynamic && !hasMgmtIntf {
+		}
+		// DHCP describes the address the bridge dials: a lease, or eth0
+		// left on its default (DHCP) with no MGMT_INTERFACE configured. A
+		// stale lease on a down eth0 says nothing about the dialled address.
+		for _, ai := range a.AddrInfo {
+			if isDialled[ai.Local] && (ai.Dynamic || (a.Ifname == "eth0" && !hasMgmtIntf)) {
 				sys.DHCP = true
 			}
 		}
@@ -511,13 +530,36 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 			if hw, err := net.ParseMAC(a.Address); err == nil {
 				sys.MgmtMAC = hw.String()
 			}
-			sys.OOBInterfaces = append(sys.OOBInterfaces, devicemodel.OOBInterface{Name: "eth0", Up: a.hasFlag("LOWER_UP"), IP: v4})
+			// Up is carrier, not the admin flag: an unplugged management
+			// port is admin UP, NO-CARRIER.
+			sys.OOBInterfaces = append(sys.OOBInterfaces, devicemodel.OOBInterface{Name: "eth0", Up: a.carrier(), IP: v4})
 		}
 	}
+	addrRank := func(a devicemodel.IfAddress) int {
+		if isDialled[a.IP] {
+			return 0
+		}
+		return rank(a.Iface)
+	}
+	sort.SliceStable(sys.Addresses, func(i, j int) bool { return addrRank(sys.Addresses[i]) < addrRank(sys.Addresses[j]) })
+
+	// The default gateway: the default route with the lowest metric whose
+	// interface has carrier (a stale DHCP route stays on a down eth0).
+	carrier := map[string]bool{}
+	for _, a := range addrs {
+		carrier[a.Ifname] = a.carrier()
+	}
+	gwDev := ""
+	best := -1
 	for _, r := range routes {
-		if r.Dst == "default" && r.Gateway != "" {
-			sys.Gateway = r.Gateway
-			break
+		if r.Dst != "default" || r.Gateway == "" || hasString(r.Flags, "linkdown") {
+			continue
+		}
+		if up, known := carrier[r.Dev]; known && !up {
+			continue
+		}
+		if best < 0 || r.Metric < best {
+			best, sys.Gateway, gwDev = r.Metric, r.Gateway, r.Dev
 		}
 	}
 	sys.ARP = map[string]string{}
@@ -530,8 +572,10 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 		if err != nil {
 			continue
 		}
-		sys.ARP[n.Dst] = hw.String()
-		if n.Dst == sys.Gateway {
+		if _, seen := sys.ARP[n.Dst]; !seen || n.Dev == gwDev {
+			sys.ARP[n.Dst] = hw.String()
+		}
+		if n.Dst == sys.Gateway && (sys.GatewayMAC == "" || n.Dev == gwDev) {
 			sys.GatewayMAC = hw.String()
 		}
 	}

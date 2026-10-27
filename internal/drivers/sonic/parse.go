@@ -221,16 +221,23 @@ func vendorOf(hwsku, platform string) string {
 // --- ip -j addr / route / neigh ---
 
 type ipAddr struct {
-	Ifname   string   `json:"ifname"`
-	Flags    []string `json:"flags"`
-	Address  string   `json:"address"`
-	AddrInfo []struct {
+	Ifname    string   `json:"ifname"`
+	Flags     []string `json:"flags"`
+	Operstate string   `json:"operstate"`
+	Address   string   `json:"address"`
+	AddrInfo  []struct {
 		Family    string `json:"family"`
 		Local     string `json:"local"`
 		PrefixLen int    `json:"prefixlen"`
 		Scope     string `json:"scope"`
 		Dynamic   bool   `json:"dynamic"`
 	} `json:"addr_info"`
+}
+
+// carrier: the link is up (operstate UP, or LOWER_UP), not merely
+// administratively up -- a port with no cable is admin UP, NO-CARRIER.
+func (a ipAddr) carrier() bool {
+	return a.Operstate == "UP" || a.hasFlag("LOWER_UP")
 }
 
 func (a ipAddr) hasFlag(f string) bool {
@@ -243,9 +250,11 @@ func (a ipAddr) hasFlag(f string) bool {
 }
 
 type ipRoute struct {
-	Dst     string `json:"dst"`
-	Gateway string `json:"gateway"`
-	Dev     string `json:"dev"`
+	Dst     string   `json:"dst"`
+	Gateway string   `json:"gateway"`
+	Dev     string   `json:"dev"`
+	Metric  int      `json:"metric"`
+	Flags   []string `json:"flags"`
 }
 
 type ipNeigh struct {
