@@ -97,7 +97,14 @@ func (t *SSH) dial(ctx context.Context) (*ssh.Client, error) {
 	// does: otherwise the server may present a key of another type and the
 	// known_hosts check fails with "key mismatch" even though the host is known.
 	if algos := knownKeyTypes(kh, t.Addr); len(algos) > 0 {
-		cfg.HostKeyAlgorithms = algos
+		var offer []string
+		for _, a := range algos {
+			if a == ssh.KeyAlgoRSA {
+				offer = append(offer, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256)
+			}
+			offer = append(offer, a)
+		}
+		cfg.HostKeyAlgorithms = offer
 	}
 	d := net.Dialer{Timeout: t.Timeout}
 	conn, err := d.DialContext(ctx, "tcp", t.Addr)
