@@ -32,7 +32,7 @@ type sonicRig struct {
 	log  *strings.Builder
 }
 
-func newSonicRig(t *testing.T, systemCfg string) *sonicRig {
+func newSonicRig(t *testing.T, systemCfg string, opts ...func(*Config, *sonic.Collector)) *sonicRig {
 	t.Helper()
 	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238524-ff3c0c9f6", "collect.txt"))
 	if err != nil {
@@ -57,7 +57,11 @@ func newSonicRig(t *testing.T, systemCfg string) *sonicRig {
 	desc := inform.Descriptor{MAC: snap.System.MAC}
 	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: systemCfg}
 	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
-	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults})
+	cfg := Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults}
+	for _, o := range opts {
+		o(&cfg, coll)
+	}
+	l, err := New(desc, sess, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,13 +124,9 @@ func count(cmds []string, re *regexp.Regexp) int {
 func TestReplaySonicPort2NameSpeedVLANs(t *testing.T) {
 	r := newSonicRig(t, readSystemCfg(t, "system_cfg-port2-name-speed-vlans.txt"))
 	cmds := r.applyAndReconcile(t)
-	for _, id := range []int{2, 8, 9, 10, 69, 1000, 2000, 3000, 4000} {
-		if !contains(cmds, fmt.Sprintf("sudo config vlan add %d", id)) {
-			t.Errorf("VLAN %d not created", id)
-		}
-	}
-	if contains(cmds, "sudo config vlan add 1") || contains(cmds, "sudo config vlan add 4094") {
-		t.Error("VLAN 1 is Vlan4094, which exists; neither may be created")
+	// The site's VLANs in one command; VLAN 1 is Vlan4094, which exists.
+	if !contains(cmds, "sudo config vlan add -m 2,8,9,10,69,1000,2000,3000,4000") || count(cmds, regexp.MustCompile(`config vlan add`)) != 1 {
+		t.Errorf("VLANs not created in one command: %q", cmds[:min(len(cmds), 3)])
 	}
 	if !contains(cmds, "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet4' description 'stu capture'") {
 		t.Error("port 2's name not written")
@@ -145,18 +145,24 @@ func TestReplaySonicPort2NameSpeedVLANs(t *testing.T) {
 	if n := count(cmds, regexp.MustCompile(`^sudo config interface mtu Ethernet\d+ 1500$`)); n != 32 {
 		t.Errorf("%d ports set to MTU 1500, want 32", n)
 	}
-	// Allow All on the 31 other ports: tagged in the 9 site VLANs; port 2
-	// in its two; nothing in 4094 tagged.
-	if n := count(cmds, regexp.MustCompile(`^sudo config vlan member add \d+ Ethernet\d+$`)); n != 31*9+2 {
-		t.Errorf("%d tagged memberships, want %d", n, 31*9+2)
+	// Allow All on the 31 other ports: one command each, every VLAN but the
+	// native; port 2 in its own two; the native membership untouched.
+	if n := count(cmds, regexp.MustCompile(`^sudo config vlan member add -e -m 4094 Ethernet\d+$`)); n != 31 {
+		t.Errorf("%d Allow-All commands, want 31", n)
+	}
+	if n := count(cmds, regexp.MustCompile(`vlan member`)); n != 32 {
+		t.Errorf("%d membership commands, want 32 (one per port)", n)
 	}
 	if n := count(cmds, regexp.MustCompile(`vlan member (add|del) (-u )?4094 `)); n != 0 {
 		t.Errorf("the native VLAN was touched %d times; every port is already untagged in it", n)
 	}
 	// Port 2's own profile: native 1, tagged 2 and 10, the rest excluded.
-	if n := count(cmds, regexp.MustCompile(`^sudo config vlan member add \d+ Ethernet4$`)); n != 2 ||
-		!contains(cmds, "sudo config vlan member add 2 Ethernet4") || !contains(cmds, "sudo config vlan member add 10 Ethernet4") {
-		t.Errorf("port 2 tagged in %d VLANs, want exactly 2 and 10", n)
+	if !contains(cmds, "sudo config vlan member add -m 2,10 Ethernet4") {
+		t.Error("port 2 not tagged in exactly 2 and 10")
+	}
+	// The whole push: VLANs + save, then 32 MTUs, 1 name, 32 memberships + save.
+	if len(cmds) != 2+32+1+32+1 {
+		t.Errorf("%d commands in all, want %d", len(cmds), 2+32+1+32+1)
 	}
 	if cmds[len(cmds)-1] != "sudo config save -y" {
 		t.Errorf("the batch must end with config save, ends with %q", cmds[len(cmds)-1])
@@ -194,13 +200,42 @@ func TestReplaySonicPortFECStormBPDU(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if n := count(cmds, regexp.MustCompile(`Ethernet16`)); n != 3+1+9 { // fec, 2 storm, mtu, 9 tagged VLANs
-		t.Errorf("%d commands for port 5, want 13", n)
+	if n := count(cmds, regexp.MustCompile(`Ethernet16`)); n != 3+1+1 { // fec, 2 storm, mtu, Allow All
+		t.Errorf("%d commands for port 5, want 5", n)
 	}
 	if n := count(cmds, regexp.MustCompile(`spanning-tree|interface speed|autoneg|description`)); n != 0 {
 		t.Errorf("%d STP/speed/name writes; BPDU guard is refused without the STP daemon, 100G is the cage's speed", n)
 	}
 	if !strings.Contains(r.log.String(), "no STP daemon") {
 		t.Error("the BPDU-guard refusal must be logged")
+	}
+}
+
+// A device-level push (system_cfg.txt, the Arista's first full push): two NTP
+// servers, one by name, which the bridge resolves; four SSH keys, scrubbed to
+// placeholders in the capture, which are not public keys and are refused;
+// IP Settings on the controller's DHCP default, which is not applied.
+func TestReplaySonicDeviceLevel(t *testing.T) {
+	r := newSonicRig(t, readSystemCfg(t, "system_cfg.txt"), func(c *Config, coll *sonic.Collector) {
+		c.ControlNTP, c.ControlSyslog, c.ControlSSHKeys, c.ControlSNMP = true, true, true, true
+		c.AddressController = coll
+		coll.Resolve = func(h string) (string, error) {
+			if h == "0.ubnt.pool.ntp.org" {
+				return "192.0.2.123", nil
+			}
+			return h, nil
+		}
+	})
+	cmds := r.applyAndReconcile(t)
+	for _, want := range []string{"sudo config ntp add 192.0.2.1", "sudo config ntp add 192.0.2.123"} {
+		if !contains(cmds, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if n := count(cmds, regexp.MustCompile(`authorized-keys|interface ip|route|dns|syslog|snmp`)); n != 0 {
+		t.Errorf("%d key/address/syslog/SNMP writes; none are in this push in a form to apply", n)
+	}
+	if !strings.Contains(r.log.String(), "not a public key line") {
+		t.Error("the placeholder keys must be refused with a log")
 	}
 }

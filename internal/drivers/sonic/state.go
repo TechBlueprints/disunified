@@ -19,6 +19,15 @@ type swState struct {
 	storm   map[string]map[string]int    // interface -> storm type -> kbps
 	stp     map[string]map[string]string // STP_PORT by interface
 
+	// Device level (§6.3, §6.4).
+	stpGlobal map[string]string            // STP|GLOBAL, nil when STP is not configured
+	ntp       map[string]bool              // NTP_SERVER addresses
+	syslog    map[string]string            // SYSLOG_SERVER address -> port ("" = default)
+	snmp      map[string]bool              // SNMP_COMMUNITY names
+	dns       map[string]bool              // DNS_NAMESERVER addresses
+	routes    map[string]map[string]string // STATIC_ROUTE by "<vrf>|<prefix>"
+	keys      []string                     // the bridge's block in authorized_keys, one key per line
+
 	stpFeature   bool // FEATURE|stp exists: the image has the STP daemon
 	platformJSON bool // the platform has a platform.json: dynamic port breakout
 }
@@ -77,9 +86,48 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			s.stp[name] = copyFields(f)
 		}
 	}
+	if g, ok := db["cfg_stp"]["STP|GLOBAL"]; ok {
+		s.stpGlobal = copyFields(g)
+	}
+	s.ntp, s.syslog, s.snmp, s.dns, s.routes = map[string]bool{}, map[string]string{}, map[string]bool{}, map[string]bool{}, map[string]map[string]string{}
+	for k := range db["cfg_ntp"] {
+		if n, ok := strings.CutPrefix(k, "NTP_SERVER|"); ok {
+			s.ntp[n] = true
+		}
+	}
+	for k, f := range db["cfg_syslog"] {
+		if n, ok := strings.CutPrefix(k, "SYSLOG_SERVER|"); ok {
+			s.syslog[n] = f["port"]
+		}
+	}
+	for k := range db["cfg_snmp"] {
+		if n, ok := strings.CutPrefix(k, "SNMP_COMMUNITY|"); ok {
+			s.snmp[n] = true
+		}
+	}
+	for k := range db["cfg_dns"] {
+		if n, ok := strings.CutPrefix(k, "DNS_NAMESERVER|"); ok {
+			s.dns[n] = true
+		}
+	}
+	for k, f := range db["cfg_route"] {
+		if n, ok := strings.CutPrefix(k, "STATIC_ROUTE|"); ok {
+			s.routes[n] = copyFields(f)
+		}
+	}
+	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			s.keys = append(s.keys, line)
+		}
+	}
 	_, s.stpFeature = db["cfg_feature"]["FEATURE|stp"]
 	s.platformJSON = strings.TrimSpace(sec["platform_json"]) == "yes"
 	return s
+}
+
+// defaultRoute is the static default route's next hop(s), "" if none.
+func (s *swState) defaultRoute() string {
+	return s.routes["default|0.0.0.0/0"]["nexthop"]
 }
 
 func copyFields(f map[string]string) map[string]string {
@@ -130,6 +178,26 @@ func (s *swState) clone() *swState {
 	for k, v := range s.stp {
 		c.stp[k] = copyFields(v)
 	}
+	if s.stpGlobal != nil {
+		c.stpGlobal = copyFields(s.stpGlobal)
+	}
+	c.ntp, c.syslog, c.snmp, c.dns, c.routes = map[string]bool{}, map[string]string{}, map[string]bool{}, map[string]bool{}, map[string]map[string]string{}
+	for k := range s.ntp {
+		c.ntp[k] = true
+	}
+	for k, v := range s.syslog {
+		c.syslog[k] = v
+	}
+	for k := range s.snmp {
+		c.snmp[k] = true
+	}
+	for k := range s.dns {
+		c.dns[k] = true
+	}
+	for k, v := range s.routes {
+		c.routes[k] = copyFields(v)
+	}
+	c.keys = append([]string(nil), s.keys...)
 	return c
 }
 

@@ -313,55 +313,121 @@ func (pl *plan) wantVLANs(idx int, d devicemodel.PortDesired) (map[int]bool, boo
 	return want, true
 }
 
-// syncVLANs diffs an interface's memberships: removals first (so a native
-// change is del then add -u), then the untagged add, then tagged ascending.
+// syncVLANs diffs an interface's memberships: removals first (tagged, then
+// a changed untagged one, so a native change is del then add -u), then the
+// untagged add, then the tagged adds. Several VLANs go in one command with
+// -m, and "every VLAN but these" with -e (§6.2, corrections after pass 1):
+// a config call costs 200-250 ms, and Allow All on 31 ports one membership
+// at a time would blow the loop's 20 s apply budget.
 func (pl *plan) syncVLANs(idx int, iface string, d devicemodel.PortDesired) {
 	want, ok := pl.wantVLANs(idx, d)
 	if !ok {
 		return
 	}
-	for _, id := range pl.sim.memberIDs(iface) {
-		tagged := pl.sim.members[iface][id]
+	have := pl.sim.members[iface]
+	var delTagged, addTagged []int
+	delUntagged, addUntagged, untaggedAfter := 0, 0, 0
+	for id, tagged := range have {
 		if w, keep := want[id]; keep && w == tagged {
+			if !tagged {
+				untaggedAfter = id
+			}
 			continue
 		}
-		pl.delVLAN(idx, iface, id)
-	}
-	var ids []int
-	for id := range want {
-		ids = append(ids, id)
-	}
-	sort.Ints(ids)
-	for _, untaggedPass := range []bool{true, false} {
-		for _, id := range ids {
-			tagged := want[id]
-			if tagged == untaggedPass {
-				continue
-			}
-			if have, ok := pl.sim.members[iface][id]; ok && have == tagged {
-				continue
-			}
-			vid, ifc := id, iface
-			flag := ""
-			if !tagged {
-				flag = "-u "
-			}
-			pl.add(idx, fmt.Sprintf("config vlan member add %s%d %s", flag, vid, ifc), func(s *swState) { s.setMember(ifc, vid, tagged) })
+		if tagged {
+			delTagged = append(delTagged, id)
+		} else {
+			delUntagged = id
 		}
 	}
+	for id, tagged := range want {
+		if h, ok := have[id]; ok && h == tagged {
+			continue
+		}
+		if tagged {
+			addTagged = append(addTagged, id)
+		} else {
+			addUntagged, untaggedAfter = id, id
+		}
+	}
+	sort.Ints(delTagged)
+	sort.Ints(addTagged)
+	pl.vlanMembers(idx, iface, "del", delTagged, untaggedAfter, delUntagged)
+	if delUntagged > 0 {
+		pl.vlanMembers(idx, iface, "del", []int{delUntagged}, 0, 0)
+	}
+	if addUntagged > 0 {
+		vid, ifc := addUntagged, iface
+		pl.add(idx, fmt.Sprintf("config vlan member add -u %d %s", vid, ifc), func(s *swState) { s.setMember(ifc, vid, false) })
+	}
+	pl.vlanMembers(idx, iface, "add", addTagged, untaggedAfter, 0)
 }
 
-func (pl *plan) delVLAN(idx int, iface string, id int) {
-	vid, ifc := id, iface
-	pl.add(idx, fmt.Sprintf("config vlan member del %d %s", vid, ifc), func(s *swState) { s.delMember(ifc, vid) })
+// vlanMembers adds (tagged) or deletes the memberships ids of one interface
+// in one command: the plain form for one VLAN, `-m a,b,c` for several, and
+// `-e -m <native>[,<untagged>]` when ids are exactly every VLAN on the
+// switch except the native one and the port's untagged one -- Allow All, or
+// dropping every tagged membership. -e takes whatever VLANs exist at that
+// moment, so a switch holding a VLAN outside ids gets the explicit list.
+// alsoGoing is an untagged VLAN being deleted right after (it may be
+// excluded too).
+func (pl *plan) vlanMembers(idx int, iface, verb string, ids []int, untagged, alsoGoing int) {
+	if len(ids) == 0 {
+		return
+	}
+	in := map[int]bool{}
+	for _, id := range ids {
+		in[id] = true
+	}
+	allowed := map[int]bool{pl.native: true, untagged: true, alsoGoing: true}
+	var except []int
+	exceptOK := len(ids) > 1
+	for id := range pl.sim.vlans {
+		if in[id] {
+			continue
+		}
+		if !allowed[id] {
+			exceptOK = false
+		}
+		except = append(except, id)
+	}
+	sort.Ints(except)
+	if !containsInt(except, pl.native) {
+		exceptOK = false // -e needs at least the native excluded; nothing else qualifies
+	}
+	var form string
+	switch {
+	case exceptOK:
+		form = "-e -m " + joinInts(except)
+	case len(ids) > 1:
+		form = "-m " + joinInts(ids)
+	default:
+		form = strconv.Itoa(ids[0])
+	}
+	ifc, list, add := iface, append([]int(nil), ids...), verb == "add"
+	pl.add(idx, fmt.Sprintf("config vlan member %s %s %s", verb, form, ifc), func(s *swState) {
+		for _, id := range list {
+			if add {
+				s.setMember(ifc, id, true)
+			} else {
+				s.delMember(ifc, id)
+			}
+		}
+	})
+}
+
+func joinInts(ids []int) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.Itoa(id)
+	}
+	return strings.Join(parts, ",")
 }
 
 // stripVLANs removes every membership of an interface (before it joins a
 // LAG, becomes a mirror destination, or a PortChannel is deleted).
 func (pl *plan) stripVLANs(idx int, iface string) {
-	for _, id := range pl.sim.memberIDs(iface) {
-		pl.delVLAN(idx, iface, id)
-	}
+	pl.vlanMembers(idx, iface, "del", pl.sim.memberIDs(iface), 0, 0)
 }
 
 // --- per-port state ---
@@ -382,6 +448,8 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 		if want := sanitizeDescription(d.Description); want != pl.sim.field(ln, "description") {
 			key := sshrun.ShellQuote("PORT|" + ln)
 			if want == "" {
+				// hset '' first so APPL_DB follows; a bare hdel leaves its copy.
+				pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+key+" description ''", nil)
 				pl.add(d.Index, "sonic-db-cli CONFIG_DB hdel "+key+" description", func(s *swState) { s.setField(ln, "description", "") })
 			} else {
 				pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+key+" description "+sshrun.ShellQuote(want), func(s *swState) { s.setField(ln, "description", want) })
@@ -656,11 +724,11 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 	if len(missing) == 0 {
 		return 0, nil
 	}
-	var cmds []string
-	for _, id := range missing {
-		cmds = append(cmds, "sudo config vlan add "+strconv.Itoa(id))
+	add := "sudo config vlan add " + strconv.Itoa(missing[0])
+	if len(missing) > 1 {
+		add = "sudo config vlan add -m " + joinInts(missing)
 	}
-	cmds = append(cmds, "sudo config save -y")
+	cmds := []string{add, "sudo config save -y"}
 	c.Log.Printf("sonic: creating VLANs %v", missing)
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic create vlans %v: %w", missing, err)
@@ -686,6 +754,6 @@ func (c *Collector) SwitchesJumbo() bool { return true }
 const batchCommand = "bash -s"
 
 func (c *Collector) runBatch(ctx context.Context, cmds []string) error {
-	_, err := c.r.Run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\n")
+	_, err := c.runner().Run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\n")
 	return err
 }
