@@ -432,6 +432,20 @@ real UniFi VLAN (an ISP handoff). Decided:
 - An untagged member leaves frames untagged, so the id is never seen on
   the wire; the hazard is only a *tagged* membership of a colliding id.
 
+Implemented on the read side 2026-10-27 (`native_vlan` option, default
+4094, validated 2..4094; the substitute id is replaced by 1 in the port's
+native VLAN, in `Snapshot.VLANs` and in every MAC entry, so it never
+reaches the controller). Edge cases the implementation surfaced, decided
+for the control side:
+
+| Case | Read side today | Control side rule |
+|---|---|---|
+| Port in no VLAN (a routed port on SONiC) | `PortVLAN{}` (mode "", native 0) | The first push gives it the pushed config: an untagged member of `Vlan<native_vlan>` plus the tagged VLANs. Nothing on a DX010 after the L2 preset is routed. |
+| Tagged membership of `Vlan<native_vlan>` | reported as tagged `<native_vlan>` (indistinguishable from a real UniFi VLAN of that id) | Never written: a push that would tag the native id is refused with a log, like the Arista's isolation refusal. |
+| Tagged VLANs with no untagged membership | native 0 | Written only if the controller ever pushes a port without a native network; not seen in any capture yet -- capture first, then decide. |
+| `Vlan<native_vlan>` absent on the switch | VLANs without 1 | Created before the first port push (`config vlan add`), never deleted by a reconcile. |
+| Changing `native_vlan` on a running bridge | -- | Not migrated: the operator moves the memberships by hand first (what was done on the lab guest 1000 → 4094). Documented, not automated. |
+
 ### 5.2b Corrections from the implementation (2026-10-27)
 
 The read side was built from this spec by an Opus 5.5 agent in one pass
