@@ -288,3 +288,14 @@ would do it inside the same commit-timer session, confirming once the lease is f
 | Outlet power cycle | `relayctl` → the card's Reboot action | built, fixture-tested |
 | IP Settings → the card | `netconf.1.*` (+ `options.gateway`: the usp push has no route) → `config.ini` `[NetworkTCP/IP]` over FTP | done, verified live (DHCP Only → Manual, gateway written) |
 | UPS off / reboot, outlet names, backup/watchdog settings | -- | deliberately not written |
+
+## Switches — `sonic` (community SONiC 202505.1238524-ff3c0c9f6, virtual switch as `Seastone-DX010`, over SSH)
+
+| Feature | Wire | Status |
+|---|---|---|
+| Identity (system MAC, hwsku, build id as firmware), health, eth0 as the OOB port | device fields, `if_table`, `uplink` | built, fixture-tested, contract-tested as `USWF07D`; not adopted |
+| 32 QSFP28 cages from CONFIG_DB `PORT`, named by alias (`Eth1`…), admin/oper state, speed, MTU, flap count, SAI counters | `port_table` | built, fixture-tested |
+| VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | built (L2 preset: all ports untagged in 1000) |
+| MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | built, fixture-tested (138 learned on port 1) |
+| LLDP neighbours, LAGs, mirror sessions, STP, breakout folding, pmon (fans/PSUs/temperatures), optics | `lldp_table`, `port_table`, `fan_table`, `psu_table` | parsed when present; empty on the VS, untested on hardware |
+| Port, VLAN, device control | -- | not built; `Capabilities{}` (docs/drivers/sonic.md §2 A4) |

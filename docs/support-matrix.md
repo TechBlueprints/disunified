@@ -177,6 +177,38 @@ the issue which outlet is safe to switch.
 
 ---
 
+## `sonic` — community SONiC switch (read side only)
+
+Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6).
+
+### Verified
+
+| What | Where / when |
+|---|---|
+| SONiC **202505.1238524-ff3c0c9f6**, the **virtual switch** (KVM image) as hardware SKU `Seastone-DX010`, L2 preset: 32 ports, one linked | `-collect-once` against the lab guest, 2026-10-27 |
+| Read: ports from CONFIG_DB `PORT` (index, alias, admin state, speed, MTU), oper state and flap count from APPL_DB, SAI counters, VLAN membership, the FDB as the MAC table, identity and health, eth0 as the OOB port | fixture + `internal/drivers/sonic/collector_test.go` + `internal/device/contract_sonic_test.go` (as `USWF07D`) |
+| Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
+
+Nothing has been adopted into a controller yet.
+
+### Untested — expected to work — PRs welcome
+
+| Gap | Why it should work | What the PR needs |
+|---|---|---|
+| **Real hardware** (the DX010 first) | the same Redis tables; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them when present | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
+| **LLDP neighbours, LAGs, mirror sessions, STP, breakout** | parsed from `LLDP_ENTRY_TABLE`, `PORTCHANNEL*`, `MIRROR_SESSION`, `STP*`; a split cage folds by `index` (tested by re-indexing a port in the capture) | a capture with each configured |
+| **Other SONiC branches** (`202411`, master) | `swsscommon` and the table names are stable across branches | a capture per branch |
+
+### Known blocker
+
+- **SSH to a stock SONiC**: its only host key is RSA and its sshd refuses
+  the SHA-1 `ssh-rsa` signature, while `internal/sshrun` offers only the
+  algorithm named in known_hosts (`ssh-rsa`). Until sshrun also offers
+  `rsa-sha2-512`/`rsa-sha2-256` for an RSA entry, the driver cannot dial it
+  (`internal/drivers/sonic/CLAUDE.md`).
+
+---
+
 ## How to close a gap
 
 1. **Open an issue** naming the row in this file, your device/OS version,
