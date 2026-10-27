@@ -23,12 +23,14 @@ var commandChecks = []struct {
 	{group: "mirror_session", subs: []string{"span", "remove"}},
 	{group: "mirror_session span", subs: []string{"add"}},
 	{group: "interface storm-control", subs: []string{"add", "del"}},
+	{group: "spanning-tree", subs: []string{"enable", "disable", "priority", "interface"}, stp: true},
 	{group: "spanning-tree interface", subs: []string{"bpdu_guard", "portfast", "enable", "disable", "cost"}, stp: true},
 	{group: "ntp", subs: []string{"add", "del"}},
 	{group: "syslog", subs: []string{"add", "del"}},
 	{group: "snmp community", subs: []string{"add", "del"}},
 	{group: "interface ip", subs: []string{"add", "remove"}},
 	{group: "route", subs: []string{"add", "del"}},
+	{group: "dns nameserver", subs: []string{"add", "del"}},
 }
 
 // helpCommand is how a group's help is read: `config` needs root even for
@@ -44,7 +46,7 @@ func (c *Collector) verifyCommands(ctx context.Context) error {
 		if chk.stp && !stp {
 			continue
 		}
-		out, err := c.r.Run(ctx, helpCommand(chk.group), "")
+		out, err := c.runner().Run(ctx, helpCommand(chk.group), "")
 		if err != nil {
 			return fmt.Errorf("sonic: `config %s --help` failed (the bridge user needs passwordless sudo for config): %w", chk.group, err)
 		}

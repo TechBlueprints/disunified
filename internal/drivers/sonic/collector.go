@@ -61,11 +61,34 @@ type Collector struct {
 	// excluded), from the last EnsureVLANs: what "Allow All" tags.
 	siteVLANs []int
 	warned    map[string]bool
+
+	// Redial opens a runner to the switch at another address, with the same
+	// user, key and known_hosts (set by Open; tests set a fixture's). The
+	// address controller proves a new address through it.
+	Redial func(host string) sshrun.Runner
+	// StateDir is where the driver keeps what it owns on the switch (the
+	// managed NTP/syslog/SNMP entries), next to device.json; "" = memory only.
+	StateDir string
+	// Resolve turns an NTP/syslog hostname into an address (default: the
+	// system resolver); tests set their own.
+	Resolve func(host string) (string, error)
+
+	managedNTP    map[string]bool
+	managedSyslog map[string]bool
+	managedSNMP   string
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
-	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{}}
+	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{},
+		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}}
+}
+
+// runner is the current transport (the address controller may swap it).
+func (c *Collector) runner() sshrun.Runner {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.r
 }
 
 // warnOnce logs a message the first time it is seen in this run.
@@ -105,7 +128,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	return snap, nil
 }
 
-func (c *Collector) Close() error { return c.r.Close() }
+func (c *Collector) Close() error { return c.runner().Close() }
 
 // Capabilities are computed from the switch (§6.1): FEC, jumbo, LACP,
 // storm control and SNMP always; one mirror session and eight aggregates
@@ -125,7 +148,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 
 // Collect runs collect.py and builds the snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
-	out, err := c.r.Run(ctx, collectCommand, collectScript)
+	out, err := c.runner().Run(ctx, collectCommand, collectScript)
 	if err != nil {
 		return nil, fmt.Errorf("sonic: collect: %w", err)
 	}
@@ -146,7 +169,7 @@ var required = []string{"metadata", "cfg_port", "appl_port", "version", "addr"}
 var redisSections = []string{
 	"metadata", "state_metadata", "cfg_port", "appl_port", "state_port", "cfg_vlan", "cfg_vlan_member",
 	"cfg_lag", "cfg_lag_member", "appl_lag", "cfg_mgmt", "cfg_stp", "cfg_mirror", "cfg_ntp", "cfg_syslog",
-	"cfg_snmp", "cfg_storm", "cfg_breakout", "cfg_feature", "lldp_loc", "lldp", "fdb", "counters_map", "counters", "rates",
+	"cfg_snmp", "cfg_route", "cfg_dns", "cfg_storm", "cfg_breakout", "cfg_feature", "lldp_loc", "lldp", "fdb", "counters_map", "counters", "rates",
 	"xcvr", "dom", "fan", "psu", "temp", "chassis", "asic_temp",
 }
 

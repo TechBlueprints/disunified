@@ -14,12 +14,12 @@ import (
 const fixture = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt"
 
 // fixtureMACs is how many addresses the capture's FDB learned (all on
-// Ethernet0, all in Vlan4094).
-const fixtureMACs = 144
+// Ethernet0).
+const fixtureMACs = 133
 
-// fixtureMACsByVLAN: 137 learned in Vlan4094 (reported as VLAN 1), 7 stale
-// ones in Vlan2.
-var fixtureMACsByVLAN = map[int]int{1: 137, 2: 7}
+// fixtureMACsByVLAN: 121 learned in Vlan4094 (reported as VLAN 1); the rest
+// stale, in VLANs deleted after the controller's live tests (2, 69, 2000).
+var fixtureMACsByVLAN = map[int]int{1: 121, 2: 8, 69: 2, 2000: 2}
 
 type testWriter struct{ t *testing.T }
 
@@ -218,7 +218,7 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 		t.Errorf("port 1 has %d MACs, table %d, used %d; want the %d the FDB learned", len(p1.MACs), len(snap.MACTable), snap.System.MACTableUsed, fixtureMACs)
 	}
 	// Learned in Vlan4094 (the native_vlan) = UniFi's VLAN 1; a few stale
-	// entries remain in Vlan2, a VLAN deleted after a probe, and keep its id.
+	// entries remain in VLANs deleted since, and keep their ids.
 	byVLAN := map[int]int{}
 	for _, m := range snap.MACTable {
 		byVLAN[m.VLAN]++
@@ -291,7 +291,7 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if len(fr.Commands) != 0 {
 		t.Errorf("collecting wrote %v", fr.Commands)
 	}
-	if len(fr.Helps) != len(commandChecks)-1 { // spanning-tree is checked only with FEATURE|stp
+	if len(fr.Helps) != len(commandChecks)-2 { // the two spanning-tree groups are checked only with FEATURE|stp
 		t.Errorf("Start read %d help texts: %v", len(fr.Helps), fr.Helps)
 	}
 }
@@ -409,7 +409,7 @@ func TestNativeVLANOption(t *testing.T) {
 				break
 			}
 		}
-		// The 137 addresses learned in Vlan4094 follow the mapping.
+		// The addresses learned in Vlan4094 follow the mapping.
 		n := 0
 		for _, m := range snap.MACTable {
 			if m.VLAN == tc.want {

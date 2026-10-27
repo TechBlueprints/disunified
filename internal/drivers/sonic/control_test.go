@@ -127,6 +127,7 @@ func TestApplyStateAndName(t *testing.T) {
 	}
 	r.expect("restore", base, []string{
 		"sudo config interface startup Ethernet4",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet4' description ''",
 		"sudo sonic-db-cli CONFIG_DB hdel 'PORT|Ethernet4' description",
 		save,
 	})
@@ -135,48 +136,51 @@ func TestApplyStateAndName(t *testing.T) {
 	}
 }
 
-// (b) VLANs with the native mapping: UniFi's 1 is Vlan4094 untagged.
+// (b) VLANs with the native mapping: UniFi's 1 is Vlan4094 untagged. Several
+// VLANs go in one command (-m), "all but the native" with -e.
 func TestApplyVLANs(t *testing.T) {
 	r := newRig(t, nil)
 	n := len(r.fr.Commands)
-	created, err := r.c.EnsureVLANs(context.Background(), []int{1, 2, 69})
-	if err != nil || created != 2 {
+	created, err := r.c.EnsureVLANs(context.Background(), []int{1, 2, 8, 69})
+	if err != nil || created != 3 {
 		t.Fatalf("EnsureVLANs = %d, %v", created, err)
 	}
-	if got, want := r.fr.Commands[n:], []string{"sudo config vlan add 2", "sudo config vlan add 69", save}; !reflect.DeepEqual(got, want) {
+	if got, want := r.fr.Commands[n:], []string{"sudo config vlan add -m 2,8,69", save}; !reflect.DeepEqual(got, want) {
 		t.Errorf("EnsureVLANs wrote %q, want %q", got, want)
 	}
-	if created, _ := r.c.EnsureVLANs(context.Background(), []int{1, 2, 69}); created != 0 {
+	if created, _ := r.c.EnsureVLANs(context.Background(), []int{1, 2, 8, 69}); created != 0 {
 		t.Error("a second EnsureVLANs must create nothing")
 	}
 	base := r.baseline()
-	if snap, _ := r.c.Collect(context.Background()); !reflect.DeepEqual(snap.VLANs, []int{1, 2, 69}) {
-		t.Errorf("VLANs = %v, want [1 2 69]", snap.VLANs)
+	if snap, _ := r.c.Collect(context.Background()); !reflect.DeepEqual(snap.VLANs, []int{1, 2, 8, 69}) {
+		t.Errorf("VLANs = %v, want [1 2 8 69]", snap.VLANs)
 	}
 	tagged := edit(base, 3, func(d *devicemodel.PortDesired) { d.TaggedVLANs = []int{2, 69} })
 	snap := r.expect("native 1 + tagged 2,69", tagged, []string{
-		"sudo config vlan member add 2 Ethernet8",
-		"sudo config vlan member add 69 Ethernet8",
+		"sudo config vlan member add -m 2,69 Ethernet8",
 		save,
 	})
 	if v := port(snap, 3).VLAN; v.Mode != "trunk" || v.NativeVLAN != 1 || !reflect.DeepEqual(v.Allowed, []int{1, 2, 69}) {
 		t.Errorf("read back VLAN = %+v", v)
 	}
+	r.expect("tagged 8,69", edit(base, 3, func(d *devicemodel.PortDesired) { d.TaggedVLANs = []int{8, 69} }), []string{
+		"sudo config vlan member del 2 Ethernet8",
+		"sudo config vlan member add 8 Ethernet8",
+		save,
+	})
 	r.expect("back to Block All", base, []string{
-		"sudo config vlan member del 2 Ethernet8",
-		"sudo config vlan member del 69 Ethernet8",
+		"sudo config vlan member del -m 8,69 Ethernet8",
 		save,
 	})
-	// Allow All: every VLAN the controller listed, tagged.
+	// Allow All: every VLAN on the switch but the native, in one command.
 	r.expect("Allow All", edit(base, 3, func(d *devicemodel.PortDesired) { d.TaggedAll = true }), []string{
-		"sudo config vlan member add 2 Ethernet8",
-		"sudo config vlan member add 69 Ethernet8",
+		"sudo config vlan member add -e -m 4094 Ethernet8",
 		save,
 	})
-	// A native change is del, then add -u (SONiC allows one untagged VLAN).
+	// A native change is del, then add -u (SONiC allows one untagged VLAN);
+	// dropping every tagged membership is del -e.
 	snap = r.expect("native 2", edit(base, 3, func(d *devicemodel.PortDesired) { d.NativeVLAN = 2 }), []string{
-		"sudo config vlan member del 2 Ethernet8",
-		"sudo config vlan member del 69 Ethernet8",
+		"sudo config vlan member del -e -m 4094 Ethernet8",
 		"sudo config vlan member del 4094 Ethernet8",
 		"sudo config vlan member add -u 2 Ethernet8",
 		save,
@@ -184,6 +188,58 @@ func TestApplyVLANs(t *testing.T) {
 	if v := port(snap, 3).VLAN; v.Mode != "access" || v.NativeVLAN != 2 {
 		t.Errorf("read back VLAN = %+v", v)
 	}
+	// Allow All on native 2: -e excludes the native and the port's own untagged VLAN.
+	r.expect("native 2, Allow All", edit(base, 3, func(d *devicemodel.PortDesired) { d.NativeVLAN, d.TaggedAll = 2, true }), []string{
+		"sudo config vlan member add -e -m 2,4094 Ethernet8",
+		save,
+	})
+}
+
+// A VLAN on the switch that the controller does not list is not tagged by
+// Allow All: -e would take it, so the explicit list goes instead.
+func TestAllowAllWithAForeignVLAN(t *testing.T) {
+	r := newRig(t, nil)
+	ctx := context.Background()
+	if _, err := r.fr.Run(ctx, "sudo config vlan add 77", ""); err != nil { // made on the switch by hand
+		t.Fatal(err)
+	}
+	if _, err := r.c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.c.EnsureVLANs(ctx, []int{1, 2, 8}); err != nil {
+		t.Fatal(err)
+	}
+	base := r.baseline()
+	r.expect("Allow All beside Vlan77", edit(base, 3, func(d *devicemodel.PortDesired) { d.TaggedAll = true }), []string{
+		"sudo config vlan member add -m 2,8 Ethernet8",
+		save,
+	})
+}
+
+// A 31-port Allow-All first push with VLANs 2,8,9,10,69 is one command per
+// port, well inside the loop's 20 s apply budget at ~250 ms a command.
+func TestAllowAllFirstPushIsOneCommandPerPort(t *testing.T) {
+	r := newRig(t, nil)
+	ctx := context.Background()
+	n := len(r.fr.Commands)
+	if _, err := r.c.EnsureVLANs(ctx, []int{1, 2, 8, 9, 10, 69}); err != nil {
+		t.Fatal(err)
+	}
+	ensure := append([]string(nil), r.fr.Commands[n:]...)
+	if want := []string{"sudo config vlan add -m 2,8,9,10,69", save}; !reflect.DeepEqual(ensure, want) {
+		t.Errorf("EnsureVLANs wrote %q", ensure)
+	}
+	ds := r.baseline()
+	for i := range ds {
+		if ds[i].Index >= 2 {
+			ds[i].TaggedAll = true
+		}
+	}
+	got, changed := r.apply(ds)
+	if changed != 31 || len(got) != 32 || got[0] != "sudo config vlan member add -e -m 4094 Ethernet4" || got[31] != save {
+		t.Errorf("Allow-All push: %d ports, %d commands: %q", changed, len(got), got)
+	}
+	t.Logf("ApplyPorts: %d commands, first three %q", len(got), got[:3])
 }
 
 // The native-id collision (§5.2a): a controller network on native_vlan is

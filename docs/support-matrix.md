@@ -177,7 +177,7 @@ the issue which outlet is safe to switch.
 
 ---
 
-## `sonic` — community SONiC switch (read side; port control built, not yet verified live)
+## `sonic` — community SONiC switch (read side; control built, not yet verified live)
 
 Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6).
 
@@ -189,8 +189,9 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | Read: ports from CONFIG_DB `PORT` (index, alias, admin state, speed, MTU), oper state and flap count from APPL_DB, SAI counters, VLAN membership, the FDB as the MAC table, identity and health, eth0 as the OOB port | fixture + `internal/drivers/sonic/collector_test.go` + `internal/device/contract_sonic_test.go` (as `USWF07D`) |
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
+| Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
 
-Adopted read-only as `USWF07D` ([`drivers/sonic.md`](drivers/sonic.md) §2 A3); port control has not run against the guest yet.
+Adopted read-only as `USWF07D` ([`drivers/sonic.md`](drivers/sonic.md) §2 A3); the control side has not run against the guest yet.
 
 ### Untested — expected to work — PRs welcome
 

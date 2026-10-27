@@ -604,7 +604,13 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 		sys.STPPriority = atoi(g["priority"])
 	}
 	sys.NTPServers = keyNames(db["cfg_ntp"], "NTP_SERVER|")
-	sys.SyslogHosts = keyNames(db["cfg_syslog"], "SYSLOG_SERVER|")
+	// Syslog hosts as UniFi writes them: host, or host:port off the default.
+	for _, h := range keyNames(db["cfg_syslog"], "SYSLOG_SERVER|") {
+		if port := db["cfg_syslog"]["SYSLOG_SERVER|"+h]["port"]; port != "" && port != "514" {
+			h += ":" + port
+		}
+		sys.SyslogHosts = append(sys.SyslogHosts, h)
+	}
 	sys.SNMPCommunities = keyNames(db["cfg_snmp"], "SNMP_COMMUNITY|")
 
 	// Platform (pmon; hardware only -- absent or N/A on the VS).

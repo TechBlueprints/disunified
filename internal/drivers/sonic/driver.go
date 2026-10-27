@@ -30,10 +30,14 @@ import (
 //	             no UniFi network uses (docs/drivers/sonic.md §5.2a).
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (virtual switch, hardware SKU
-// Seastone-DX010). Port control (docs/drivers/sonic.md §6.2) writes
-// `sudo config …` commands, so the login user needs passwordless sudo (the
-// admin user has it); device-level control, SSH keys, reboot and the
-// address are not built yet.
+// Seastone-DX010). Control (docs/drivers/sonic.md §6: ports, VLANs, STP,
+// NTP, syslog, SNMP, SSH keys, reboot, the static address) writes `sudo
+// config …` commands, so the login user needs passwordless sudo (the admin
+// user has it). The managed NTP/syslog/SNMP entries are remembered in
+// <state_dir>/sonic-managed.json (state_dir is set by the bridge, next to
+// device.json). An address change dials the new address with the same
+// key and known_hosts, so known_hosts must carry the switch's host key for
+// the new address before the change.
 type Driver struct{}
 
 func init() { devicemodel.RegisterDriver(Driver{}) }
@@ -64,8 +68,23 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	c := NewCollector(t)
 	c.NativeVLAN = native
 	c.Dial = host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		c.Dial = h
+	port := ""
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		c.Dial, port = h, p
+	}
+	keyFile, knownHosts := cfg.Options["ssh_key"], cfg.Options["known_hosts"]
+	c.Redial = func(h string) sshrun.Runner {
+		addr := h
+		if port != "" {
+			addr = net.JoinHostPort(h, port)
+		}
+		r := sshrun.New(addr, user)
+		r.KeyFile, r.KnownHosts = keyFile, knownHosts
+		return r
+	}
+	c.StateDir = strings.TrimSpace(cfg.Options["state_dir"])
+	if err := c.loadManaged(); err != nil {
+		return nil, err
 	}
 	return c, nil
 }
@@ -95,4 +114,9 @@ var (
 	_ devicemodel.Planner        = (*Collector)(nil)
 	_ devicemodel.VLANController = (*Collector)(nil)
 	_ devicemodel.JumboSwitcher  = (*Collector)(nil)
+
+	_ devicemodel.DeviceController  = (*Collector)(nil)
+	_ devicemodel.SSHKeyInstaller   = (*Collector)(nil)
+	_ devicemodel.Rebooter          = (*Collector)(nil)
+	_ devicemodel.AddressController = (*Collector)(nil)
 )

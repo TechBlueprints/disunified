@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/TechBlueprints/disunified/internal/sshrun"
 )
 
 // FixtureRunner serves a captured collector run (docs/fixtures/sonic-*/
@@ -25,7 +27,37 @@ type FixtureRunner struct {
 	Help     map[string]string // "config interface --help" -> output
 	Commands []string          // every write, in order, as sent (with sudo)
 	Helps    []string          // the help commands Start ran
+
+	KeyScripts []string // the authorized_keys rewrites, as sent
+	// DialFails makes a runner from Dial fail its first command, as a
+	// switch that does not answer at the new address would.
+	DialFails bool
+	Dials     []string // the addresses Dial was asked for
 }
+
+// Dial is the fixture's Collector.Redial: a runner for the switch at host,
+// sharing this capture (it is the same switch).
+func (f *FixtureRunner) Dial(host string) sshrun.Runner {
+	f.Dials = append(f.Dials, host)
+	return &dialled{f: f, host: host}
+}
+
+type dialled struct {
+	f    *FixtureRunner
+	host string
+}
+
+func (d *dialled) Run(ctx context.Context, command, stdin string) (string, error) {
+	if command == "true" && d.f.DialFails {
+		return "", fmt.Errorf("ssh dial %s:22: i/o timeout", d.host)
+	}
+	if command == "true" {
+		return "", nil
+	}
+	return d.f.Run(ctx, command, stdin)
+}
+
+func (d *dialled) Close() error { return nil }
 
 // NewFixtureRunner loads a capture file and, when present, the help texts
 // beside it.
@@ -55,6 +87,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 			return "", fmt.Errorf("%s: no such command", command)
 		}
 		return body, nil
+	case command == keysCommand:
+		f.Commands = append(f.Commands, command)
+		f.KeyScripts = append(f.KeyScripts, stdin)
+		return "", f.applyKeys(stdin)
 	case command == batchCommand:
 		for _, line := range strings.Split(stdin, "\n") {
 			line = strings.TrimSpace(line)
@@ -190,6 +226,12 @@ func (f *FixtureRunner) apply(line string) error {
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
 		return nil
+	case len(w) == 1 && (w[0] == "reboot" || w[0] == "true"):
+		return nil
+	case strings.HasPrefix(cmd, "config ntp") || strings.HasPrefix(cmd, "config syslog") || cmd == "config snmp community" ||
+		cmd == "config dns nameserver" || strings.HasPrefix(cmd, "config route") || cmd == "config interface ip" ||
+		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
+		return f.applyDevice(w)
 
 	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (w[2] == "hset" || w[2] == "hdel"):
 		key := w[3]
@@ -220,12 +262,18 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.portField(at(3), "mtu", at(4))
 
 	case cmd == "config vlan add":
+		ids := []string{at(3)}
+		if at(3) == "-m" {
+			ids = strings.Split(at(4), ",")
+		}
 		return f.update("cfg_vlan", func(t table) error {
-			k := "VLAN|Vlan" + at(3)
-			if _, ok := t[k]; ok {
-				return fmt.Errorf("Vlan%s already exists", at(3))
+			for _, id := range ids {
+				k := "VLAN|Vlan" + id
+				if _, ok := t[k]; ok {
+					return fmt.Errorf("Vlan%s already exists", id)
+				}
+				t[k] = map[string]string{"vlanid": id}
 			}
-			t[k] = map[string]string{"vlanid": at(3)}
 			return nil
 		})
 
@@ -356,21 +404,65 @@ func (f *FixtureRunner) portField(p, field, value string) error {
 	return f.update("cfg_port", func(t table) error { t["PORT|"+p][field] = value; return nil })
 }
 
-// vlanMember: add [-u] <vid> <port> | del <vid> <port>.
+// vlanMember: add|del [-u] [-m] [-e] <vid or list> <port>. -m takes a
+// comma list of VLANs for the one port; -e turns the list into "every
+// existing VLAN except these". Each VLAN is applied as the single form
+// would be, so the same refusals hold.
 func (f *FixtureRunner) vlanMember(args []string) error {
 	if len(args) < 3 {
 		return fmt.Errorf("usage")
 	}
 	op := args[0]
-	untagged := false
+	untagged, multi, except := false, false, false
 	rest := args[1:]
-	if len(rest) > 0 && rest[0] == "-u" {
-		untagged, rest = true, rest[1:]
+	for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
+		switch rest[0] {
+		case "-u":
+			untagged = true
+		case "-m":
+			multi = true
+		case "-e":
+			except = true
+		default:
+			return fmt.Errorf("unknown flag %s", rest[0])
+		}
+		rest = rest[1:]
 	}
 	if len(rest) != 2 {
 		return fmt.Errorf("usage")
 	}
-	vid, port := rest[0], rest[1]
+	port := rest[1]
+	ids := []string{rest[0]}
+	if multi {
+		ids = strings.Split(rest[0], ",")
+	} else if strings.Contains(rest[0], ",") {
+		return fmt.Errorf("a VLAN list needs -m")
+	}
+	if except {
+		if !multi {
+			return fmt.Errorf("-e needs -m")
+		}
+		skip := map[string]bool{}
+		for _, id := range ids {
+			skip[id] = true
+		}
+		ids = nil
+		for k := range f.table("cfg_vlan") {
+			if id := strings.TrimPrefix(k, "VLAN|Vlan"); !skip[id] {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+	}
+	for _, vid := range ids {
+		if err := f.vlanMemberOne(op, vid, port, untagged); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error {
 	if _, ok := f.table("cfg_vlan")["VLAN|Vlan"+vid]; !ok {
 		return fmt.Errorf("Vlan%s does not exist", vid)
 	}

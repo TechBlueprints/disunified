@@ -127,6 +127,8 @@ section("cfg_mirror", "CONFIG_DB", "MIRROR_SESSION|*")
 section("cfg_ntp", "CONFIG_DB", "NTP_SERVER|*")
 section("cfg_syslog", "CONFIG_DB", "SYSLOG_SERVER|*")
 section("cfg_snmp", "CONFIG_DB", "SNMP_COMMUNITY|*", keys_only=True)
+section("cfg_route", "CONFIG_DB", "STATIC_ROUTE|*")
+section("cfg_dns", "CONFIG_DB", "DNS_NAMESERVER|*")
 section("cfg_storm", "CONFIG_DB", "PORT_STORM_CONTROL|*")
 section("cfg_breakout", "CONFIG_DB", "BREAKOUT_CFG|*")
 section("cfg_feature", "CONFIG_DB", "FEATURE|*")
@@ -152,6 +154,22 @@ try:
     sys.stdout.write(("yes" if _plat and os.path.exists("/usr/share/sonic/device/%s/platform.json" % _plat) else "no") + "\n")
 except Exception:
     sys.stdout.write("no\n")
+# The bridge's own block in the login user's authorized_keys -- only the
+# lines between its markers, never the operator's keys.
+s("authorized_keys")
+try:
+    _in = False
+    with open(os.path.expanduser("~/.ssh/authorized_keys")) as _f:
+        for _line in _f:
+            _line = _line.rstrip("\n")
+            if _line == "# disunified-managed-begin":
+                _in = True
+            elif _line == "# disunified-managed-end":
+                _in = False
+            elif _in and _line.strip():
+                sys.stdout.write(_line + "\n")
+except Exception:
+    pass
 text("hostname", ["hostname"])
 text("version", path="/etc/sonic/sonic_version.yml")
 text("uptime", path="/proc/uptime")

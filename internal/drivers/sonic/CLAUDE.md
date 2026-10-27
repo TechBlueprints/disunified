@@ -85,12 +85,38 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   test. A LAG member reports its PortChannel's VLANs; an emptied
   PortChannel is stripped and deleted. A LAG member's MTU is its
   PortChannel's (`config interface mtu` on a member is not sent).
-- **Allow All = tagged in every VLAN `EnsureVLANs` was given** (SONiC has no
-  "all" trunk); a first push of the default profile to 32 ports is ~300
-  `config vlan member add` calls. `EnsureVLANs` refuses a list holding
-  `native_vlan` whole; `ApplyPorts` skips a port that names it.
-- **`hdel … description` leaves APPL_DB's copy behind** (seen on the VS
-  after a probe): the description is read from CONFIG_DB only.
+- **Multi-VLAN forms** (probed): `config vlan member add|del -m a,b <port>`
+  (a VLAN list for ONE port; a port list is rejected) and `-e -m <list>`
+  ("every existing VLAN except these"); `config vlan add -m a,b`. A config
+  call costs 200-250 ms, so Allow All is one `add -e -m <native_vlan>
+  <port>` per port (31 ports ~ 8 s, inside the loop's 20 s), never one call
+  per membership. `-e` takes whatever VLANs exist at that moment: it is
+  used only when the switch holds no VLAN outside the controller's list
+  (EnsureVLANs runs first); otherwise the explicit `-m` list.
+  `EnsureVLANs` refuses a list holding `native_vlan` whole; `ApplyPorts`
+  skips a port that names it.
+- **`hdel … description` leaves APPL_DB's copy behind**: clearing is `hset
+  … description ''` (APPL_DB follows) then `hdel`; the description is read
+  from CONFIG_DB only.
+- **Device level (§6.3), `device.go`.** STP is PVST only and only with
+  `FEATURE|stp`; IGMP and DHCP snooping are refused with a log. NTP and
+  syslog: add the controller's, remove only what the bridge added
+  (`<state_dir>/sonic-managed.json`, with the managed SNMP community);
+  hostnames are resolved by the bridge (`Resolve` hook in tests). The SNMP
+  community is a credential: commands are logged with `<community>`.
+- **SSH keys** go in a marked block of the login user's authorized_keys
+  (`# disunified-managed-begin/-end`), rewritten whole by one `bash -s --
+  disunified-authorized-keys` script (awk drops the old block, mktemp + mv);
+  `collect.py` prints only that block, never the operator's lines. A pushed
+  key that is not `<type> <base64>` is refused (the controller fixture's
+  `<pubkey>` placeholders are).
+- **Address (§6.4), `address.go`:** static only; add the new address (and
+  route/DNS), dial it with `Redial` (same user, key, known_hosts) and run
+  `true`, then remove the old one through the new runner and save; on no
+  answer the new address (and route) are removed again. known_hosts must
+  carry the switch's key under the new address. Default route lives in
+  `STATIC_ROUTE|default|0.0.0.0/0` (`cfg_route`), DNS in `DNS_NAMESERVER`
+  (`cfg_dns`).
 - **Jumbo** is switch-wide in UniFi (`switch.jumboframes`) and a port MTU on
   SONiC: `PortDesired.Jumbo` (set by the loop when the key is in the push)
   -> 9100 or 1500; the driver implements `devicemodel.JumboSwitcher`, so the
