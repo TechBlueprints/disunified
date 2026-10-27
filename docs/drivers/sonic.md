@@ -422,7 +422,11 @@ VLAN as the native one -- on Clint's site the L2 preset's `Vlan1000` is a
 real UniFi VLAN (an ISP handoff). Decided:
 
 - Driver option `native_vlan` (CONFIG `PORT`-independent), **default
-  4094**. UniFi native VLAN 1 ↔ SONiC `Vlan<native_vlan>` with the port an
+  4094** (confirmed by Clint 2026-10-27 after asking for 0: 802.1Q reserves
+  0 and 4095, SONiC's CLI, kernel bridge and SAI all accept 2--4094 only,
+  and UniFi keeps the top of the range for itself -- its network editor
+  stops around 4009/4010 and it runs its own AP traffic on 4093 -- so 4094
+  is a number SONiC takes and the controller cannot hand out). UniFi native VLAN 1 ↔ SONiC `Vlan<native_vlan>` with the port an
   `untagged` member; every other UniFi VLAN keeps its id and is a `tagged`
   member. The read side reports a port whose untagged membership is
   `Vlan<native_vlan>` as native VLAN 1.
