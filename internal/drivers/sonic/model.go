@@ -39,8 +39,9 @@ func ifNum(name string) int {
 // buildPorts makes one Port per front-panel cage. A cage is every CONFIG_DB
 // PORT entry sharing an `index`: one entry for an unsplit cage, the child
 // ports (Ethernet0..3) of a broken-out one, folded the way the Arista driver
-// folds lanes.
-func buildPorts(db map[string]table) []cagePort {
+// folds lanes. An untagged membership of Vlan<native> is UniFi's native
+// VLAN 1 (SONiC has no VLAN 1); every other membership keeps its id.
+func buildPorts(db map[string]table, native int) []cagePort {
 	cfg := db["cfg_port"].byName("|")
 	appl := db["appl_port"].byName(":")
 	state := db["state_port"].byName("|")
@@ -60,7 +61,11 @@ func buildPorts(db map[string]table) []cagePort {
 		if vid <= 0 {
 			continue
 		}
-		vlans[parts[2]] = append(vlans[parts[2]], membership{vid: vid, tagged: f["tagging_mode"] == "tagged"})
+		tagged := f["tagging_mode"] == "tagged"
+		if !tagged && vid == native {
+			vid = 1
+		}
+		vlans[parts[2]] = append(vlans[parts[2]], membership{vid: vid, tagged: tagged})
 	}
 	lags := map[string]string{}
 	for k := range db["cfg_lag_member"] {
@@ -374,8 +379,9 @@ func opticOf(x, d map[string]string) *devicemodel.Optic {
 }
 
 // buildMACTable reads STATE_DB FDB_TABLE: key FDB_TABLE|Vlan<id>:<mac>,
-// value {port, type}. No timestamps.
-func buildMACTable(fdb table, byIfname map[string]int) []devicemodel.MACEntry {
+// value {port, type}. No timestamps. An address learned in Vlan<native> is
+// on UniFi's VLAN 1, like the ports' untagged membership.
+func buildMACTable(fdb table, byIfname map[string]int, native int) []devicemodel.MACEntry {
 	var out []devicemodel.MACEntry
 	for k, f := range fdb {
 		_, rest, ok := strings.Cut(k, "|")
@@ -390,7 +396,11 @@ func buildMACTable(fdb table, byIfname map[string]int) []devicemodel.MACEntry {
 		if err != nil {
 			continue
 		}
-		out = append(out, devicemodel.MACEntry{MAC: hw.String(), VLAN: atoi(strings.TrimPrefix(vlan, "Vlan")), PortIndex: byIfname[f["port"]]})
+		vid := atoi(strings.TrimPrefix(vlan, "Vlan"))
+		if vid == native {
+			vid = 1
+		}
+		out = append(out, devicemodel.MACEntry{MAC: hw.String(), VLAN: vid, PortIndex: byIfname[f["port"]]})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].MAC != out[j].MAC {
@@ -401,13 +411,18 @@ func buildMACTable(fdb table, byIfname map[string]int) []devicemodel.MACEntry {
 	return out
 }
 
-func vlanIDs(t table) []int {
+// vlanIDs lists the switch's VLANs, with 1 in place of Vlan<native> so the
+// controller never sees the substitute id.
+func vlanIDs(t table, native int) []int {
 	var out []int
 	for k, f := range t {
 		id := atoi(f["vlanid"])
 		if id == 0 {
 			_, name, _ := strings.Cut(k, "|")
 			id = atoi(strings.TrimPrefix(name, "Vlan"))
+		}
+		if id == native {
+			id = 1
 		}
 		if id > 0 {
 			out = append(out, id)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
@@ -20,6 +21,12 @@ import (
 //
 //	ssh_key      private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts  known_hosts file (default ~/.ssh/known_hosts)
+//	native_vlan  the SONiC VLAN that is UniFi's untagged Default network,
+//	             2..4094 (default 4094). SONiC refuses to create VLAN 1, so
+//	             a port that is an untagged member of Vlan<native_vlan> is
+//	             reported with native VLAN 1, an address learned there is on
+//	             VLAN 1, and the VLAN list shows 1 in its place. Pick an id
+//	             no UniFi network uses (docs/drivers/sonic.md §5.2a).
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (virtual switch, hardware SKU
 // Seastone-DX010). Read-only: no port control yet.
@@ -43,10 +50,30 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	if !ok || user == "" || host == "" {
 		return nil, fmt.Errorf("sonic: SSH target must be user@host, got %q", cfg.SSH)
 	}
+	native, err := nativeVLANOption(cfg.Options["native_vlan"])
+	if err != nil {
+		return nil, err
+	}
 	t := sshrun.New(host, user)
 	t.KeyFile = cfg.Options["ssh_key"]
 	t.KnownHosts = cfg.Options["known_hosts"]
-	return NewCollector(t), nil
+	c := NewCollector(t)
+	c.NativeVLAN = native
+	return c, nil
+}
+
+// nativeVLANOption parses options.native_vlan: unset is DefaultNativeVLAN;
+// otherwise an integer SONiC can create, 2..4094.
+func nativeVLANOption(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return DefaultNativeVLAN, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 2 || n > 4094 {
+		return 0, fmt.Errorf("sonic: native_vlan must be a VLAN id SONiC can create, 2..4094 (VLAN 1 does not exist on SONiC; UniFi's VLAN 1 is mapped onto this one), got %q", s)
+	}
+	return n, nil
 }
 
 // Compile-time contract: what this driver is, and deliberately is not.

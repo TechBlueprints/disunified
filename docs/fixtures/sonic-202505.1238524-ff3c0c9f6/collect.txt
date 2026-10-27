@@ -115,42 +115,42 @@
 }
 @@@ cfg_vlan
 {
-"VLAN|Vlan1000": {"vlanid": "1000"}
+"VLAN|Vlan4094": {"vlanid": "4094"}
 }
 @@@ cfg_vlan_member
 {
-"VLAN_MEMBER|Vlan1000|Ethernet0": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet100": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet104": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet108": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet112": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet116": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet12": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet120": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet124": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet16": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet20": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet24": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet28": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet32": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet36": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet4": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet40": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet44": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet48": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet52": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet56": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet60": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet64": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet68": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet72": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet76": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet8": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet80": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet84": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet88": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet92": {"tagging_mode": "untagged"},
-"VLAN_MEMBER|Vlan1000|Ethernet96": {"tagging_mode": "untagged"}
+"VLAN_MEMBER|Vlan4094|Ethernet0": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet100": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet104": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet108": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet112": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet116": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet12": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet120": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet124": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet16": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet20": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet24": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet28": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet32": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet36": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet4": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet40": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet44": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet48": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet52": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet56": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet60": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet64": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet68": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet72": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet76": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet8": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet80": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet84": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet88": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet92": {"tagging_mode": "untagged"},
+"VLAN_MEMBER|Vlan4094|Ethernet96": {"tagging_mode": "untagged"}
 }
 @@@ cfg_lag
 {}
@@ -203,144 +203,138 @@
 {}
 @@@ fdb
 {
-"FDB_TABLE|Vlan1000:02:00:00:00:00:03": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:04": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:05": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:06": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:07": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:08": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:09": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:0f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:10": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:11": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:12": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:13": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:14": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:15": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:16": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:17": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:18": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:19": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:1f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:20": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:21": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:22": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:23": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:24": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:25": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:26": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:27": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:28": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:29": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:2f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:30": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:31": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:32": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:33": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:34": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:35": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:36": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:37": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:38": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:39": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:3f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:40": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:41": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:42": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:43": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:44": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:45": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:46": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:47": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:48": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:49": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:4f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:50": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:51": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:52": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:53": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:54": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:55": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:56": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:57": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:02": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:58": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:59": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:5f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:60": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:61": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:62": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:63": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:64": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:65": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:66": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:67": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:68": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:69": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:6f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:70": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:71": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:72": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:73": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:74": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:75": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:76": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:77": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:78": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:79": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7b": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7c": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7d": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7e": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:7f": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:80": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:81": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:82": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:83": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:84": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:85": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:86": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:87": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:88": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:89": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:8a": {"port": "Ethernet0", "type": "dynamic"},
-"FDB_TABLE|Vlan1000:02:00:00:00:00:8b": {"port": "Ethernet0", "type": "dynamic"}
+"FDB_TABLE|Vlan4094:02:00:00:00:00:03": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:04": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:05": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:06": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:07": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:08": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:09": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:0f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:10": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:11": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:12": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:13": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:14": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:15": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:16": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:17": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:18": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:19": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:1f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:20": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:21": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:22": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:23": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:24": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:25": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:26": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:27": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:28": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:29": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:2f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:30": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:31": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:32": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:33": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:34": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:35": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:36": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:37": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:38": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:39": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:3f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:40": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:41": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:42": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:43": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:44": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:45": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:46": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:47": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:48": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:49": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:4f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:50": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:51": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:52": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:53": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:54": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:02": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:55": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:56": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:57": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:58": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:59": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:5f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:60": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:61": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:62": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:63": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:64": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:65": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:66": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:67": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:68": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:69": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:6f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:70": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:71": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:72": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:73": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:74": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:75": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:76": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:77": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:78": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:79": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7a": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7b": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7c": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7d": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7e": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:7f": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:80": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:81": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:82": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:83": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:84": {"port": "Ethernet0", "type": "dynamic"},
+"FDB_TABLE|Vlan4094:02:00:00:00:00:85": {"port": "Ethernet0", "type": "dynamic"}
 }
 @@@ counters_map
 {
@@ -348,7 +342,7 @@
 }
 @@@ counters
 {
-"COUNTERS:oid:0x1000000000002": {"SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_STATS_FRAGMENTS": "0", "SAI_PORT_STAT_ETHER_STATS_JABBERS": "0", "SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS": "0", "SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_DISCARDS": "944", "SAI_PORT_STAT_IF_IN_ERRORS": "0", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_OCTETS": "26355283", "SAI_PORT_STAT_IF_IN_UCAST_PKTS": "125615", "SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS": "0", "SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_DISCARDS": "0", "SAI_PORT_STAT_IF_OUT_ERRORS": "0", "SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_OCTETS": "108430", "SAI_PORT_STAT_IF_OUT_QLEN": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS": "935", "SAI_PORT_STAT_PFC_0_RX_PKTS": "0", "SAI_PORT_STAT_PFC_0_TX_PKTS": "0", "SAI_PORT_STAT_PFC_1_RX_PKTS": "0", "SAI_PORT_STAT_PFC_1_TX_PKTS": "0", "SAI_PORT_STAT_PFC_2_RX_PKTS": "0", "SAI_PORT_STAT_PFC_2_TX_PKTS": "0", "SAI_PORT_STAT_PFC_3_RX_PKTS": "0", "SAI_PORT_STAT_PFC_3_TX_PKTS": "0", "SAI_PORT_STAT_PFC_4_RX_PKTS": "0", "SAI_PORT_STAT_PFC_4_TX_PKTS": "0", "SAI_PORT_STAT_PFC_5_RX_PKTS": "0", "SAI_PORT_STAT_PFC_5_TX_PKTS": "0", "SAI_PORT_STAT_PFC_6_RX_PKTS": "0", "SAI_PORT_STAT_PFC_6_TX_PKTS": "0", "SAI_PORT_STAT_PFC_7_RX_PKTS": "0", "SAI_PORT_STAT_PFC_7_TX_PKTS": "0", "SAI_PORT_STAT_TRIM_PACKETS": "0"},
+"COUNTERS:oid:0x1000000000002": {"SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_STATS_FRAGMENTS": "0", "SAI_PORT_STAT_ETHER_STATS_JABBERS": "0", "SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS": "0", "SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_DISCARDS": "944", "SAI_PORT_STAT_IF_IN_ERRORS": "0", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_OCTETS": "43430057", "SAI_PORT_STAT_IF_IN_UCAST_PKTS": "210418", "SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS": "0", "SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_DISCARDS": "0", "SAI_PORT_STAT_IF_OUT_ERRORS": "0", "SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_OCTETS": "189750", "SAI_PORT_STAT_IF_OUT_QLEN": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS": "1649", "SAI_PORT_STAT_PFC_0_RX_PKTS": "0", "SAI_PORT_STAT_PFC_0_TX_PKTS": "0", "SAI_PORT_STAT_PFC_1_RX_PKTS": "0", "SAI_PORT_STAT_PFC_1_TX_PKTS": "0", "SAI_PORT_STAT_PFC_2_RX_PKTS": "0", "SAI_PORT_STAT_PFC_2_TX_PKTS": "0", "SAI_PORT_STAT_PFC_3_RX_PKTS": "0", "SAI_PORT_STAT_PFC_3_TX_PKTS": "0", "SAI_PORT_STAT_PFC_4_RX_PKTS": "0", "SAI_PORT_STAT_PFC_4_TX_PKTS": "0", "SAI_PORT_STAT_PFC_5_RX_PKTS": "0", "SAI_PORT_STAT_PFC_5_TX_PKTS": "0", "SAI_PORT_STAT_PFC_6_RX_PKTS": "0", "SAI_PORT_STAT_PFC_6_TX_PKTS": "0", "SAI_PORT_STAT_PFC_7_RX_PKTS": "0", "SAI_PORT_STAT_PFC_7_TX_PKTS": "0", "SAI_PORT_STAT_TRIM_PACKETS": "0"},
 "COUNTERS:oid:0x100000000005c": {"SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_STATS_FRAGMENTS": "0", "SAI_PORT_STAT_ETHER_STATS_JABBERS": "0", "SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS": "0", "SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_DISCARDS": "0", "SAI_PORT_STAT_IF_IN_ERRORS": "0", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_OCTETS": "0", "SAI_PORT_STAT_IF_IN_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS": "0", "SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_DISCARDS": "0", "SAI_PORT_STAT_IF_OUT_ERRORS": "0", "SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_OCTETS": "0", "SAI_PORT_STAT_IF_OUT_QLEN": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS": "0", "SAI_PORT_STAT_PFC_0_RX_PKTS": "0", "SAI_PORT_STAT_PFC_0_TX_PKTS": "0", "SAI_PORT_STAT_PFC_1_RX_PKTS": "0", "SAI_PORT_STAT_PFC_1_TX_PKTS": "0", "SAI_PORT_STAT_PFC_2_RX_PKTS": "0", "SAI_PORT_STAT_PFC_2_TX_PKTS": "0", "SAI_PORT_STAT_PFC_3_RX_PKTS": "0", "SAI_PORT_STAT_PFC_3_TX_PKTS": "0", "SAI_PORT_STAT_PFC_4_RX_PKTS": "0", "SAI_PORT_STAT_PFC_4_TX_PKTS": "0", "SAI_PORT_STAT_PFC_5_RX_PKTS": "0", "SAI_PORT_STAT_PFC_5_TX_PKTS": "0", "SAI_PORT_STAT_PFC_6_RX_PKTS": "0", "SAI_PORT_STAT_PFC_6_TX_PKTS": "0", "SAI_PORT_STAT_PFC_7_RX_PKTS": "0", "SAI_PORT_STAT_PFC_7_TX_PKTS": "0", "SAI_PORT_STAT_TRIM_PACKETS": "0"},
 "COUNTERS:oid:0x100000000005d": {"SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_STATS_FRAGMENTS": "0", "SAI_PORT_STAT_ETHER_STATS_JABBERS": "0", "SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS": "0", "SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_DISCARDS": "0", "SAI_PORT_STAT_IF_IN_ERRORS": "0", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_OCTETS": "0", "SAI_PORT_STAT_IF_IN_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS": "0", "SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_DISCARDS": "0", "SAI_PORT_STAT_IF_OUT_ERRORS": "0", "SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_OCTETS": "0", "SAI_PORT_STAT_IF_OUT_QLEN": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS": "0", "SAI_PORT_STAT_PFC_0_RX_PKTS": "0", "SAI_PORT_STAT_PFC_0_TX_PKTS": "0", "SAI_PORT_STAT_PFC_1_RX_PKTS": "0", "SAI_PORT_STAT_PFC_1_TX_PKTS": "0", "SAI_PORT_STAT_PFC_2_RX_PKTS": "0", "SAI_PORT_STAT_PFC_2_TX_PKTS": "0", "SAI_PORT_STAT_PFC_3_RX_PKTS": "0", "SAI_PORT_STAT_PFC_3_TX_PKTS": "0", "SAI_PORT_STAT_PFC_4_RX_PKTS": "0", "SAI_PORT_STAT_PFC_4_TX_PKTS": "0", "SAI_PORT_STAT_PFC_5_RX_PKTS": "0", "SAI_PORT_STAT_PFC_5_TX_PKTS": "0", "SAI_PORT_STAT_PFC_6_RX_PKTS": "0", "SAI_PORT_STAT_PFC_6_TX_PKTS": "0", "SAI_PORT_STAT_PFC_7_RX_PKTS": "0", "SAI_PORT_STAT_PFC_7_TX_PKTS": "0", "SAI_PORT_STAT_TRIM_PACKETS": "0"},
 "COUNTERS:oid:0x100000000005e": {"SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_STATS_FRAGMENTS": "0", "SAI_PORT_STAT_ETHER_STATS_JABBERS": "0", "SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS": "0", "SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS": "0", "SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS": "0", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_DISCARDS": "0", "SAI_PORT_STAT_IF_IN_ERRORS": "0", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_OCTETS": "0", "SAI_PORT_STAT_IF_IN_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS": "0", "SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_DISCARDS": "0", "SAI_PORT_STAT_IF_OUT_ERRORS": "0", "SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS": "0", "SAI_PORT_STAT_IF_OUT_OCTETS": "0", "SAI_PORT_STAT_IF_OUT_QLEN": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS": "0", "SAI_PORT_STAT_PFC_0_RX_PKTS": "0", "SAI_PORT_STAT_PFC_0_TX_PKTS": "0", "SAI_PORT_STAT_PFC_1_RX_PKTS": "0", "SAI_PORT_STAT_PFC_1_TX_PKTS": "0", "SAI_PORT_STAT_PFC_2_RX_PKTS": "0", "SAI_PORT_STAT_PFC_2_TX_PKTS": "0", "SAI_PORT_STAT_PFC_3_RX_PKTS": "0", "SAI_PORT_STAT_PFC_3_TX_PKTS": "0", "SAI_PORT_STAT_PFC_4_RX_PKTS": "0", "SAI_PORT_STAT_PFC_4_TX_PKTS": "0", "SAI_PORT_STAT_PFC_5_RX_PKTS": "0", "SAI_PORT_STAT_PFC_5_TX_PKTS": "0", "SAI_PORT_STAT_PFC_6_RX_PKTS": "0", "SAI_PORT_STAT_PFC_6_TX_PKTS": "0", "SAI_PORT_STAT_PFC_7_RX_PKTS": "0", "SAI_PORT_STAT_PFC_7_TX_PKTS": "0", "SAI_PORT_STAT_TRIM_PACKETS": "0"},
@@ -383,7 +377,7 @@
 }
 @@@ rates
 {
-"RATES:oid:0x1000000000002": {"RX_BPS": "21828.441401865646", "RX_PPS": "106.61262160032545", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_IN_OCTETS_last": "26355283", "SAI_PORT_STAT_IF_IN_UCAST_PKTS_last": "125615", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_OUT_OCTETS_last": "108430", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS_last": "935", "TX_BPS": "62.813340810168413", "TX_PPS": "0.21962706589936429"},
+"RATES:oid:0x1000000000002": {"RX_BPS": "19387.957949341497", "RX_PPS": "106.7981146903993", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_IN_OCTETS_last": "43430057", "SAI_PORT_STAT_IF_IN_UCAST_PKTS_last": "210418", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_OUT_OCTETS_last": "189750", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS_last": "1649", "TX_BPS": "47.394198134507114", "TX_PPS": "0.16613655049503284"},
 "RATES:oid:0x1000000000002:PORT": {"INIT_DONE": "DONE"},
 "RATES:oid:0x100000000005c": {"RX_BPS": "0", "RX_PPS": "0", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_IN_OCTETS_last": "0", "SAI_PORT_STAT_IF_IN_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS_last": "0", "SAI_PORT_STAT_IF_OUT_OCTETS_last": "0", "SAI_PORT_STAT_IF_OUT_UCAST_PKTS_last": "0", "TX_BPS": "0", "TX_PPS": "0"},
 "RATES:oid:0x100000000005c:PORT": {"INIT_DONE": "DONE"},
@@ -484,53 +478,53 @@ sonic_utilities: 1.2
 sonic_os_version: 12
 secure_boot_image: 'no'
 @@@ uptime
-1507.42 5791.40
+2561.10 9858.97
 @@@ stat
-cpu  11531 4 6335 579140 270 0 1970 105 0 0
+cpu  18698 5 9823 985897 357 0 3432 190 0 0
 @@@ loadavg
-0.09 0.06 0.07 1/717 8720
+0.07 0.12 0.09 1/711 11455
 @@@ meminfo
 MemTotal:        8060880 kB
-MemFree:         4722868 kB
-MemAvailable:    5514608 kB
-Buffers:           36080 kB
-Cached:           948696 kB
+MemFree:         4655188 kB
+MemAvailable:    5485348 kB
+Buffers:           40836 kB
+Cached:           981756 kB
 SwapCached:            0 kB
-Active:           346944 kB
-Inactive:        2486696 kB
-Active(anon):       2908 kB
-Inactive(anon):  1857628 kB
-Active(file):     344036 kB
-Inactive(file):   629068 kB
+Active:           353832 kB
+Inactive:        2548168 kB
+Active(anon):       2912 kB
+Inactive(anon):  1888200 kB
+Active(file):     350920 kB
+Inactive(file):   659968 kB
 Unevictable:           0 kB
 Mlocked:               0 kB
 SwapTotal:             0 kB
 SwapFree:              0 kB
 Zswap:                 0 kB
 Zswapped:              0 kB
-Dirty:                60 kB
+Dirty:               192 kB
 Writeback:             0 kB
-AnonPages:       1809456 kB
-Mapped:           284860 kB
-Shmem:             11672 kB
-KReclaimable:      86856 kB
-Slab:             383364 kB
-SReclaimable:      86856 kB
-SUnreclaim:       296508 kB
-KernelStack:       11312 kB
-PageTables:        17764 kB
+AnonPages:       1835388 kB
+Mapped:           285648 kB
+Shmem:             11676 kB
+KReclaimable:      88124 kB
+Slab:             384788 kB
+SReclaimable:      88124 kB
+SUnreclaim:       296664 kB
+KernelStack:       11344 kB
+PageTables:        17780 kB
 SecPageTables:         0 kB
 NFS_Unstable:          0 kB
 Bounce:                0 kB
 WritebackTmp:          0 kB
 CommitLimit:     4030440 kB
-Committed_AS:    4795276 kB
+Committed_AS:    4799508 kB
 VmallocTotal:   34359738367 kB
 VmallocUsed:       33748 kB
 VmallocChunk:          0 kB
 Percpu:             4144 kB
 HardwareCorrupted:     0 kB
-AnonHugePages:    696320 kB
+AnonHugePages:    761856 kB
 ShmemHugePages:        0 kB
 ShmemPmdMapped:        0 kB
 FileHugePages:         0 kB
@@ -545,9 +539,9 @@ DirectMap4k:      173900 kB
 DirectMap2M:     5068800 kB
 DirectMap1G:     5242880 kB
 @@@ addr
-[{"ifindex":1,"ifname":"lo","flags":["LOOPBACK","UP","LOWER_UP"],"mtu":65536,"qdisc":"noqueue","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"loopback","address":"00:00:00:00:00:00","broadcast":"00:00:00:00:00:00","addr_info":[{"family":"inet","local":"127.0.0.1","prefixlen":16,"scope":"host","label":"lo","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"::1","prefixlen":128,"scope":"host","noprefixroute":true,"valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":2,"ifname":"eth0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:02","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet","local":"192.0.2.1","prefixlen":16,"broadcast":"192.0.2.2","scope":"global","dynamic":true,"label":"eth0","valid_life_time":84904,"preferred_life_time":84904},{"family":"inet6","local":"2001:db8::1","prefixlen":64,"scope":"global","dynamic":true,"mngtmpaddr":true,"valid_life_time":86070,"preferred_life_time":64470},{"family":"inet6","local":"fe80::1","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":3,"ifname":"eth1","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:58","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::2","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":4,"ifname":"docker0","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"noqueue","operstate":"DOWN","group":"default","link_type":"ether","address":"02:00:00:00:00:8c","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet","local":"192.0.2.3","prefixlen":24,"broadcast":"192.0.2.4","scope":"global","label":"docker0","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"2001:db8::2","prefixlen":80,"scope":"global","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"fe80::3","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":5,"ifname":"Ethernet0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":6,"ifname":"Ethernet80","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":7,"ifname":"Ethernet84","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":8,"ifname":"Ethernet88","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":9,"ifname":"Ethernet92","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":10,"ifname":"Ethernet96","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":11,"ifname":"Ethernet100","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":12,"ifname":"Ethernet104","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":13,"ifname":"Ethernet108","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":14,"ifname":"Ethernet16","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":15,"ifname":"Ethernet20","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":16,"ifname":"Ethernet24","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":17,"ifname":"Ethernet28","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":18,"ifname":"Ethernet32","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":19,"ifname":"Ethernet36","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":20,"ifname":"Ethernet40","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":21,"ifname":"Ethernet44","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":22,"ifname":"Ethernet4","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":23,"ifname":"Ethernet8","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":24,"ifname":"Ethernet12","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":25,"ifname":"Ethernet48","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":26,"ifname":"Ethernet52","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":27,"ifname":"Ethernet56","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":28,"ifname":"Ethernet60","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":29,"ifname":"Ethernet64","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":30,"ifname":"Ethernet68","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":31,"ifname":"Ethernet72","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":32,"ifname":"Ethernet76","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":33,"ifname":"Ethernet112","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":34,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":35,"ifname":"Ethernet120","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":36,"ifname":"Ethernet124","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":37,"ifname":"Bridge","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"noqueue","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":38,"ifname":"dummy","flags":["BROADCAST","NOARP","UP","LOWER_UP"],"mtu":1500,"qdisc":"noqueue","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:8d","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::5","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":39,"link":"Bridge","ifname":"Vlan1000","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"noqueue","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]}]
+[{"ifindex":1,"ifname":"lo","flags":["LOOPBACK","UP","LOWER_UP"],"mtu":65536,"qdisc":"noqueue","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"loopback","address":"00:00:00:00:00:00","broadcast":"00:00:00:00:00:00","addr_info":[{"family":"inet","local":"127.0.0.1","prefixlen":16,"scope":"host","label":"lo","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"::1","prefixlen":128,"scope":"host","noprefixroute":true,"valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":2,"ifname":"eth0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:02","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet","local":"192.0.2.1","prefixlen":16,"broadcast":"192.0.2.2","scope":"global","dynamic":true,"label":"eth0","valid_life_time":83850,"preferred_life_time":83850},{"family":"inet6","local":"2001:db8::1","prefixlen":64,"scope":"global","dynamic":true,"mngtmpaddr":true,"valid_life_time":85916,"preferred_life_time":64316},{"family":"inet6","local":"fe80::1","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":3,"ifname":"eth1","flags":["BROADCAST","MULTICAST","PROMISC","UP","LOWER_UP"],"mtu":1500,"qdisc":"fq_codel","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:55","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::2","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":4,"ifname":"docker0","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"qdisc":"noqueue","operstate":"DOWN","group":"default","link_type":"ether","address":"02:00:00:00:00:86","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet","local":"192.0.2.3","prefixlen":24,"broadcast":"192.0.2.4","scope":"global","label":"docker0","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"2001:db8::2","prefixlen":80,"scope":"global","valid_life_time":4294967295,"preferred_life_time":4294967295},{"family":"inet6","local":"fe80::3","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":5,"ifname":"Ethernet0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":6,"ifname":"Ethernet80","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":7,"ifname":"Ethernet84","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":8,"ifname":"Ethernet88","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":9,"ifname":"Ethernet92","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":10,"ifname":"Ethernet96","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":11,"ifname":"Ethernet100","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":12,"ifname":"Ethernet104","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":13,"ifname":"Ethernet108","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":14,"ifname":"Ethernet16","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":15,"ifname":"Ethernet20","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":16,"ifname":"Ethernet24","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":17,"ifname":"Ethernet28","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":18,"ifname":"Ethernet32","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":19,"ifname":"Ethernet36","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":20,"ifname":"Ethernet40","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":21,"ifname":"Ethernet44","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":22,"ifname":"Ethernet4","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":23,"ifname":"Ethernet8","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":24,"ifname":"Ethernet12","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":25,"ifname":"Ethernet48","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":26,"ifname":"Ethernet52","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":27,"ifname":"Ethernet56","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":28,"ifname":"Ethernet60","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":29,"ifname":"Ethernet64","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":30,"ifname":"Ethernet68","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":31,"ifname":"Ethernet72","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":32,"ifname":"Ethernet76","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":33,"ifname":"Ethernet112","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":34,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":35,"ifname":"Ethernet120","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":36,"ifname":"Ethernet124","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"mq","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":37,"ifname":"Bridge","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"noqueue","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":38,"ifname":"dummy","flags":["BROADCAST","NOARP","UP","LOWER_UP"],"mtu":1500,"qdisc":"noqueue","master":"Bridge","operstate":"UNKNOWN","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:87","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::5","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]},{"ifindex":40,"link":"Bridge","ifname":"Vlan4094","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9100,"qdisc":"noqueue","operstate":"UP","group":"default","txqlen":1000,"link_type":"ether","address":"02:00:00:00:00:01","broadcast":"ff:ff:ff:ff:ff:ff","addr_info":[{"family":"inet6","local":"fe80::4","prefixlen":64,"scope":"link","valid_life_time":4294967295,"preferred_life_time":4294967295}]}]
 @@@ route
 [{"dst":"default","gateway":"192.0.2.5","dev":"eth0","metric":202,"flags":[]}]
 @@@ neigh
-[{"dst":"192.0.2.6","dev":"eth0","lladdr":"02:00:00:00:00:8e","state":["DELAY"]},{"dst":"192.0.2.5","dev":"eth0","lladdr":"02:00:00:00:00:4a","state":["DELAY"]},{"dst":"fe80::6","dev":"Vlan1000","lladdr":"02:00:00:00:00:67","state":["REACHABLE"]},{"dst":"fe80::7","dev":"Vlan1000","lladdr":"02:00:00:00:00:4a","router":null,"state":["STALE"]},{"dst":"fe80::8","dev":"Vlan1000","lladdr":"02:00:00:00:00:6d","state":["REACHABLE"]},{"dst":"fe80::9","dev":"Vlan1000","lladdr":"02:00:00:00:00:7d","state":["REACHABLE"]},{"dst":"fe80::a","dev":"Vlan1000","lladdr":"02:00:00:00:00:45","router":null,"state":["REACHABLE"]},{"dst":"fe80::4","dev":"eth0","lladdr":"02:00:00:00:00:01","router":null,"state":["STALE"]},{"dst":"fe80::b","dev":"Vlan1000","lladdr":"02:00:00:00:00:05","state":["REACHABLE"]},{"dst":"fe80::c","dev":"Vlan1000","lladdr":"02:00:00:00:00:4e","router":null,"state":["REACHABLE"]},{"dst":"fe80::d","dev":"Vlan1000","lladdr":"02:00:00:00:00:6c","state":["REACHABLE"]},{"dst":"fe80::e","dev":"Vlan1000","lladdr":"02:00:00:00:00:70","router":null,"state":["REACHABLE"]},{"dst":"fe80::1","dev":"Vlan1000","lladdr":"02:00:00:00:00:02","state":["REACHABLE"]},{"dst":"fe80::f","dev":"Vlan1000","lladdr":"02:00:00:00:00:0b","state":["REACHABLE"]},{"dst":"fe80::10","dev":"Vlan1000","lladdr":"02:00:00:00:00:3a","state":["REACHABLE"]},{"dst":"fe80::11","dev":"Vlan1000","lladdr":"02:00:00:00:00:56","state":["REACHABLE"]},{"dst":"fe80::12","dev":"Vlan1000","lladdr":"02:00:00:00:00:0c","state":["REACHABLE"]},{"dst":"fe80::13","dev":"Vlan1000","lladdr":"02:00:00:00:00:0e","state":["REACHABLE"]},{"dst":"fe80::14","dev":"Vlan1000","lladdr":"02:00:00:00:00:88","state":["REACHABLE"]},{"dst":"fe80::15","dev":"Vlan1000","lladdr":"02:00:00:00:00:46","router":null,"state":["REACHABLE"]},{"dst":"fe80::16","dev":"eth1","lladdr":"02:00:00:00:00:7c","state":["STALE"]},{"dst":"fe80::17","dev":"Vlan1000","lladdr":"02:00:00:00:00:21","state":["REACHABLE"]},{"dst":"fe80::18","dev":"Vlan1000","lladdr":"02:00:00:00:00:57","state":["REACHABLE"]},{"dst":"fe80::19","dev":"Vlan1000","lladdr":"02:00:00:00:00:3c","state":["REACHABLE"]},{"dst":"fe80::1a","dev":"Vlan1000","lladdr":"02:00:00:00:00:2f","state":["REACHABLE"]},{"dst":"fe80::1b","dev":"Vlan1000","lladdr":"02:00:00:00:00:3b","state":["REACHABLE"]},{"dst":"fe80::1c","dev":"Vlan1000","lladdr":"02:00:00:00:00:5a","state":["REACHABLE"]},{"dst":"fe80::1d","dev":"Vlan1000","lladdr":"02:00:00:00:00:42","state":["REACHABLE"]},{"dst":"fe80::7","dev":"eth0","lladdr":"02:00:00:00:00:4a","router":null,"state":["DELAY"]},{"dst":"fe80::1e","dev":"Vlan1000","lladdr":"02:00:00:00:00:80","state":["REACHABLE"]},{"dst":"fe80::1f","dev":"Vlan1000","lladdr":"02:00:00:00:00:50","state":["REACHABLE"]},{"dst":"fe80::20","dev":"Vlan1000","lladdr":"02:00:00:00:00:6a","state":["REACHABLE"]},{"dst":"fe80::21","dev":"Vlan1000","lladdr":"02:00:00:00:00:06","state":["REACHABLE"]},{"dst":"fe80::22","dev":"Vlan1000","lladdr":"02:00:00:00:00:34","router":null,"state":["REACHABLE"]},{"dst":"fe80::23","dev":"Vlan1000","lladdr":"02:00:00:00:00:10","state":["REACHABLE"]},{"dst":"fe80::24","dev":"Vlan1000","lladdr":"02:00:00:00:00:59","state":["REACHABLE"]},{"dst":"fe80::25","dev":"eth1","lladdr":"02:00:00:00:00:8b","state":["STALE"]},{"dst":"fe80::16","dev":"Vlan1000","lladdr":"02:00:00:00:00:7c","state":["STALE"]},{"dst":"fe80::26","dev":"Vlan1000","lladdr":"02:00:00:00:00:36","state":["REACHABLE"]},{"dst":"fe80::27","dev":"Vlan1000","lladdr":"02:00:00:00:00:41","router":null,"state":["REACHABLE"]},{"dst":"fe80::28","dev":"eth1","lladdr":"02:00:00:00:00:7b","state":["STALE"]},{"dst":"fe80::29","dev":"Vlan1000","lladdr":"02:00:00:00:00:55","state":["REACHABLE"]},{"dst":"fe80::2a","dev":"Vlan1000","lladdr":"02:00:00:00:00:24","state":["REACHABLE"]},{"dst":"fe80::2b","dev":"Vlan1000","lladdr":"02:00:00:00:00:7f","state":["REACHABLE"]},{"dst":"fe80::2c","dev":"Vlan1000","lladdr":"02:00:00:00:00:6f","state":["REACHABLE"]},{"dst":"fe80::2d","dev":"Vlan1000","lladdr":"02:00:00:00:00:09","router":null,"state":["REACHABLE"]},{"dst":"fe80::2e","dev":"Vlan1000","lladdr":"02:00:00:00:00:0a","state":["REACHABLE"]},{"dst":"fe80::2f","dev":"eth1","lladdr":"02:00:00:00:00:79","state":["STALE"]},{"dst":"fe80::30","dev":"Vlan1000","lladdr":"02:00:00:00:00:44","state":["REACHABLE"]},{"dst":"fe80::31","dev":"Vlan1000","lladdr":"02:00:00:00:00:12","state":["REACHABLE"]},{"dst":"fe80::32","dev":"Vlan1000","lladdr":"02:00:00:00:00:25","state":["REACHABLE"]},{"dst":"fe80::33","dev":"Vlan1000","lladdr":"02:00:00:00:00:0d","state":["REACHABLE"]},{"dst":"fe80::34","dev":"Vlan1000","lladdr":"02:00:00:00:00:03","state":["REACHABLE"]},{"dst":"fe80::35","dev":"Vlan1000","lladdr":"02:00:00:00:00:8f","state":["STALE"]},{"dst":"fe80::25","dev":"Vlan1000","lladdr":"02:00:00:00:00:8b","router":null,"state":["REACHABLE"]},{"dst":"fe80::36","dev":"Vlan1000","lladdr":"02:00:00:00:00:69","state":["REACHABLE"]},{"dst":"fe80::37","dev":"Vlan1000","lladdr":"02:00:00:00:00:22","router":null,"state":["REACHABLE"]},{"dst":"fe80::38","dev":"eth1","lladdr":"02:00:00:00:00:76","state":["STALE"]},{"dst":"fe80::39","dev":"Vlan1000","lladdr":"02:00:00:00:00:4f","router":null,"state":["REACHABLE"]},{"dst":"fe80::28","dev":"Vlan1000","lladdr":"02:00:00:00:00:7b","state":["STALE"]},{"dst":"fe80::3a","dev":"Vlan1000","lladdr":"02:00:00:00:00:68","state":["REACHABLE"]},{"dst":"fe80::3b","dev":"Vlan1000","lladdr":"02:00:00:00:00:72","state":["REACHABLE"]},{"dst":"fe80::3c","dev":"Vlan1000","lladdr":"02:00:00:00:00:1f","state":["REACHABLE"]},{"dst":"fe80::3d","dev":"Vlan1000","lladdr":"02:00:00:00:00:7e","state":["REACHABLE"]},{"dst":"fe80::3e","dev":"Vlan1000","lladdr":"02:00:00:00:00:43","state":["REACHABLE"]},{"dst":"fe80::3f","dev":"Vlan1000","lladdr":"02:00:00:00:00:5b","state":["REACHABLE"]},{"dst":"fe80::40","dev":"Vlan1000","lladdr":"02:00:00:00:00:04","state":["REACHABLE"]},{"dst":"fe80::41","dev":"Vlan1000","lladdr":"02:00:00:00:00:3e","state":["REACHABLE"]},{"dst":"fe80::7","dev":"eth1","lladdr":"02:00:00:00:00:4a","router":null,"state":["STALE"]},{"dst":"fe80::42","dev":"Vlan1000","lladdr":"02:00:00:00:00:3f","state":["REACHABLE"]},{"dst":"fe80::2f","dev":"Vlan1000","lladdr":"02:00:00:00:00:79","state":["STALE"]},{"dst":"fe80::43","dev":"Vlan1000","lladdr":"02:00:00:00:00:4c","state":["STALE"]},{"dst":"fe80::44","dev":"Vlan1000","lladdr":"02:00:00:00:00:53","state":["REACHABLE"]},{"dst":"fe80::45","dev":"Vlan1000","lladdr":"02:00:00:00:00:66","state":["REACHABLE"]},{"dst":"fe80::46","dev":"Vlan1000","lladdr":"02:00:00:00:00:0f","state":["REACHABLE"]},{"dst":"fe80::47","dev":"Vlan1000","lladdr":"02:00:00:00:00:51","state":["REACHABLE"]},{"dst":"fe80::48","dev":"Vlan1000","lladdr":"02:00:00:00:00:6b","state":["REACHABLE"]},{"dst":"fe80::49","dev":"Vlan1000","lladdr":"02:00:00:00:00:40","state":["REACHABLE"]},{"dst":"fe80::38","dev":"Vlan1000","lladdr":"02:00:00:00:00:76","state":["STALE"]},{"dst":"fe80::4a","dev":"Vlan1000","lladdr":"02:00:00:00:00:08","state":["REACHABLE"]},{"dst":"fe80::4b","dev":"Vlan1000","lladdr":"02:00:00:00:00:84","router":null,"state":["REACHABLE"]},{"dst":"fe80::4c","dev":"Vlan1000","lladdr":"02:00:00:00:00:35","router":null,"state":["REACHABLE"]},{"dst":"fe80::4d","dev":"Vlan1000","lladdr":"02:00:00:00:00:81","state":["REACHABLE"]},{"dst":"fe80::4e","dev":"Vlan1000","lladdr":"02:00:00:00:00:83","router":null,"state":["REACHABLE"]},{"dst":"fe80::4f","dev":"Vlan1000","lladdr":"02:00:00:00:00:82","state":["REACHABLE"]},{"dst":"fe80::50","dev":"Vlan1000","lladdr":"02:00:00:00:00:52","state":["REACHABLE"]},{"dst":"fe80::51","dev":"Vlan1000","lladdr":"02:00:00:00:00:73","state":["REACHABLE"]}]
+[{"dst":"192.0.2.6","dev":"eth0","lladdr":"02:00:00:00:00:88","state":["REACHABLE"]},{"dst":"192.0.2.5","dev":"eth0","lladdr":"02:00:00:00:00:47","state":["REACHABLE"]},{"dst":"fe80::6","dev":"Vlan4094","lladdr":"02:00:00:00:00:50","state":["REACHABLE"]},{"dst":"fe80::7","dev":"Vlan4094","lladdr":"02:00:00:00:00:60","state":["REACHABLE"]},{"dst":"fe80::8","dev":"Vlan4094","lladdr":"02:00:00:00:00:0f","state":["REACHABLE"]},{"dst":"fe80::4","dev":"eth0","lladdr":"02:00:00:00:00:01","router":null,"state":["REACHABLE"]},{"dst":"fe80::9","dev":"Vlan4094","lladdr":"02:00:00:00:00:4d","state":["REACHABLE"]},{"dst":"fe80::a","dev":"Vlan4094","lladdr":"02:00:00:00:00:65","state":["REACHABLE"]},{"dst":"fe80::b","dev":"Vlan4094","lladdr":"02:00:00:00:00:3d","state":["REACHABLE"]},{"dst":"fe80::c","dev":"Vlan4094","lladdr":"02:00:00:00:00:08","state":["REACHABLE"]},{"dst":"fe80::d","dev":"Vlan4094","lladdr":"02:00:00:00:00:7e","router":null,"state":["REACHABLE"]},{"dst":"fe80::e","dev":"Vlan4094","lladdr":"02:00:00:00:00:32","router":null,"state":["REACHABLE"]},{"dst":"fe80::f","dev":"Vlan4094","lladdr":"02:00:00:00:00:7b","state":["REACHABLE"]},{"dst":"fe80::10","dev":"Vlan4094","lladdr":"02:00:00:00:00:7d","router":null,"state":["REACHABLE"]},{"dst":"fe80::11","dev":"Vlan4094","lladdr":"02:00:00:00:00:7c","state":["REACHABLE"]},{"dst":"fe80::12","dev":"Vlan4094","lladdr":"02:00:00:00:00:4e","state":["REACHABLE"]},{"dst":"fe80::13","dev":"Vlan4094","lladdr":"02:00:00:00:00:6d","state":["REACHABLE"]},{"dst":"fe80::14","dev":"Vlan4094","lladdr":"02:00:00:00:00:47","router":null,"state":["STALE"]},{"dst":"fe80::15","dev":"Vlan4094","lladdr":"02:00:00:00:00:61","state":["REACHABLE"]},{"dst":"fe80::16","dev":"Vlan4094","lladdr":"02:00:00:00:00:67","state":["REACHABLE"]},{"dst":"fe80::17","dev":"Vlan4094","lladdr":"02:00:00:00:00:77","state":["REACHABLE"]},{"dst":"fe80::18","dev":"Vlan4094","lladdr":"02:00:00:00:00:42","router":null,"state":["REACHABLE"]},{"dst":"fe80::19","dev":"Vlan4094","lladdr":"02:00:00:00:00:05","state":["REACHABLE"]},{"dst":"fe80::1a","dev":"eth1","lladdr":"02:00:00:00:00:76","state":["STALE"]},{"dst":"fe80::1b","dev":"Vlan4094","lladdr":"02:00:00:00:00:4a","router":null,"state":["REACHABLE"]},{"dst":"fe80::1c","dev":"Vlan4094","lladdr":"02:00:00:00:00:66","state":["REACHABLE"]},{"dst":"fe80::1d","dev":"Vlan4094","lladdr":"02:00:00:00:00:69","router":null,"state":["REACHABLE"]},{"dst":"fe80::1e","dev":"Vlan4094","lladdr":"02:00:00:00:00:0b","state":["REACHABLE"]},{"dst":"fe80::14","dev":"eth0","lladdr":"02:00:00:00:00:47","router":null,"state":["REACHABLE"]},{"dst":"fe80::1f","dev":"Vlan4094","lladdr":"02:00:00:00:00:37","state":["REACHABLE"]},{"dst":"fe80::20","dev":"Vlan4094","lladdr":"02:00:00:00:00:53","state":["REACHABLE"]},{"dst":"fe80::21","dev":"Vlan4094","lladdr":"02:00:00:00:00:0c","state":["REACHABLE"]},{"dst":"fe80::22","dev":"Vlan4094","lladdr":"02:00:00:00:00:0e","state":["REACHABLE"]},{"dst":"fe80::23","dev":"Vlan4094","lladdr":"02:00:00:00:00:82","state":["REACHABLE"]},{"dst":"fe80::24","dev":"Vlan4094","lladdr":"02:00:00:00:00:43","router":null,"state":["REACHABLE"]},{"dst":"fe80::25","dev":"Vlan4094","lladdr":"02:00:00:00:00:1f","state":["REACHABLE"]},{"dst":"fe80::26","dev":"Vlan4094","lladdr":"02:00:00:00:00:54","state":["REACHABLE"]},{"dst":"fe80::27","dev":"eth1","lladdr":"02:00:00:00:00:85","state":["STALE"]},{"dst":"fe80::28","dev":"Vlan4094","lladdr":"02:00:00:00:00:2c","state":["REACHABLE"]},{"dst":"fe80::29","dev":"Vlan4094","lladdr":"02:00:00:00:00:39","state":["REACHABLE"]},{"dst":"fe80::2a","dev":"Vlan4094","lladdr":"02:00:00:00:00:3f","state":["REACHABLE"]},{"dst":"fe80::2b","dev":"Vlan4094","lladdr":"02:00:00:00:00:38","state":["REACHABLE"]},{"dst":"fe80::2c","dev":"eth1","lladdr":"02:00:00:00:00:75","state":["STALE"]},{"dst":"fe80::2d","dev":"Vlan4094","lladdr":"02:00:00:00:00:7a","state":["REACHABLE"]},{"dst":"fe80::2e","dev":"Vlan4094","lladdr":"02:00:00:00:00:4c","state":["REACHABLE"]},{"dst":"fe80::2f","dev":"Vlan4094","lladdr":"02:00:00:00:00:64","state":["REACHABLE"]},{"dst":"fe80::30","dev":"Vlan4094","lladdr":"02:00:00:00:00:06","state":["REACHABLE"]},{"dst":"fe80::31","dev":"eth1","lladdr":"02:00:00:00:00:73","state":["STALE"]},{"dst":"fe80::32","dev":"Vlan4094","lladdr":"02:00:00:00:00:31","router":null,"state":["REACHABLE"]},{"dst":"fe80::33","dev":"Vlan4094","lladdr":"02:00:00:00:00:56","state":["REACHABLE"]},{"dst":"fe80::34","dev":"Vlan4094","lladdr":"02:00:00:00:00:10","state":["REACHABLE"]},{"dst":"fe80::35","dev":"Vlan4094","lladdr":"02:00:00:00:00:33","state":["REACHABLE"]},{"dst":"fe80::36","dev":"Vlan4094","lladdr":"02:00:00:00:00:3e","router":null,"state":["REACHABLE"]},{"dst":"fe80::37","dev":"Vlan4094","lladdr":"02:00:00:00:00:52","state":["REACHABLE"]},{"dst":"fe80::38","dev":"Vlan4094","lladdr":"02:00:00:00:00:22","state":["REACHABLE"]},{"dst":"fe80::39","dev":"eth1","lladdr":"02:00:00:00:00:70","state":["STALE"]},{"dst":"fe80::3a","dev":"Vlan4094","lladdr":"02:00:00:00:00:68","state":["REACHABLE"]},{"dst":"fe80::3b","dev":"Vlan4094","lladdr":"02:00:00:00:00:79","state":["REACHABLE"]},{"dst":"fe80::3c","dev":"Vlan4094","lladdr":"02:00:00:00:00:09","router":null,"state":["REACHABLE"]},{"dst":"fe80::3d","dev":"Vlan4094","lladdr":"02:00:00:00:00:0a","state":["REACHABLE"]},{"dst":"fe80::14","dev":"eth1","lladdr":"02:00:00:00:00:47","router":null,"state":["STALE"]},{"dst":"fe80::3e","dev":"Vlan4094","lladdr":"02:00:00:00:00:41","state":["REACHABLE"]},{"dst":"fe80::3f","dev":"Vlan4094","lladdr":"02:00:00:00:00:12","state":["REACHABLE"]},{"dst":"fe80::40","dev":"Vlan4094","lladdr":"02:00:00:00:00:23","state":["REACHABLE"]},{"dst":"fe80::41","dev":"Vlan4094","lladdr":"02:00:00:00:00:0d","state":["REACHABLE"]},{"dst":"fe80::42","dev":"Vlan4094","lladdr":"02:00:00:00:00:03","state":["REACHABLE"]},{"dst":"fe80::43","dev":"Vlan4094","lladdr":"02:00:00:00:00:6b","state":["REACHABLE"]},{"dst":"fe80::27","dev":"Vlan4094","lladdr":"02:00:00:00:00:85","router":null,"state":["REACHABLE"]},{"dst":"fe80::44","dev":"Vlan4094","lladdr":"02:00:00:00:00:20","router":null,"state":["REACHABLE"]},{"dst":"fe80::45","dev":"Vlan4094","lladdr":"02:00:00:00:00:63","state":["REACHABLE"]},{"dst":"fe80::46","dev":"Vlan4094","lladdr":"02:00:00:00:00:4b","router":null,"state":["REACHABLE"]},{"dst":"fe80::47","dev":"Vlan4094","lladdr":"02:00:00:00:00:62","state":["REACHABLE"]},{"dst":"fe80::48","dev":"Vlan4094","lladdr":"02:00:00:00:00:6c","state":["REACHABLE"]},{"dst":"fe80::1d","dev":"eth1","lladdr":"02:00:00:00:00:69","state":["STALE"]},{"dst":"fe80::49","dev":"Vlan4094","lladdr":"02:00:00:00:00:1d","state":["REACHABLE"]},{"dst":"fe80::4a","dev":"Vlan4094","lladdr":"02:00:00:00:00:78","state":["REACHABLE"]},{"dst":"fe80::4b","dev":"Vlan4094","lladdr":"02:00:00:00:00:40","state":["REACHABLE"]},{"dst":"fe80::4c","dev":"Vlan4094","lladdr":"02:00:00:00:00:58","state":["REACHABLE"]},{"dst":"fe80::4d","dev":"Vlan4094","lladdr":"02:00:00:00:00:04","state":["REACHABLE"]},{"dst":"fe80::4e","dev":"Vlan4094","lladdr":"02:00:00:00:00:3b","state":["REACHABLE"]},{"dst":"fe80::4f","dev":"Vlan4094","lladdr":"02:00:00:00:00:3c","state":["REACHABLE"]}]
 @@@ end

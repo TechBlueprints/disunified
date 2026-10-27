@@ -32,22 +32,32 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
 - **The LLDP chassis id is eth0's MAC, not the system MAC** in
   `DEVICE_METADATA|localhost` (`sonic-cfggen` generates the latter on the
   VS). The system MAC is the device MAC; eth0's is `MgmtMAC`.
+- **SONiC has no VLAN 1** (the CLI refuses it; 2..4094 only), and UniFi's
+  untagged Default network is VLAN 1. Option `native_vlan` (default 4094,
+  2..4094, anything else refused in `Open`) names the stand-in: an
+  *untagged* member of `Vlan<native_vlan>` reports native VLAN 1, an
+  address learned in it is on VLAN 1, and `Snapshot.VLANs` shows 1 in its
+  place. A *tagged* membership of that id is reported as the id itself
+  (the hazard §5.2a names: it would collide with a real UniFi VLAN of that
+  number). A port in no VLAN at all is a routed port on SONiC and reports
+  an empty `PortVLAN` (native 0). The lab guest runs every port untagged in
+  `Vlan4094`. The control side must map the other way (VLAN 1 -> untagged
+  in `Vlan<native_vlan>`).
 - **FDB**: STATE_DB `FDB_TABLE|Vlan<id>:<mac>` -> `{port, type}`, no
   timestamps; a PortChannel's MACs go to its lowest member's port.
 - **Uplink hint** when LLDP is silent (the lab guest): the up port on which
   the default gateway's MAC was learned. On the VS the gateway is reached
-  over eth0 but its MAC is also learned in Vlan1000 on Ethernet0, so port 1
-  is the hint.
+  over eth0 but its MAC is also learned in `Vlan4094` on Ethernet0, so
+  port 1 is the hint.
 - **eth0 is the OOB port** (`OOBInterfaces`); with the bridge dialling it the
   loop warns. `DHCP` = eth0 has a `dynamic` address and no `MGMT_INTERFACE`.
 - **SSH host key: SONiC 202505 ships only an RSA host key**, and its sshd
   (Debian 12) refuses the SHA-1 `ssh-rsa` signature. `internal/sshrun`
-  restricts the offered host-key algorithms to the known_hosts key types,
-  so an RSA entry offers only `ssh-rsa` and the handshake fails ("no common
-  algorithm for host key"). It needs `rsa-sha2-512`/`rsa-sha2-256` offered
-  for an `ssh-rsa` entry; until then the driver cannot dial a stock SONiC.
+  restricts the offered host-key algorithms to the known_hosts key types;
+  for an `ssh-rsa` entry it now also offers `rsa-sha2-512`/`rsa-sha2-256`
+  (without that the handshake fails: "no common algorithm for host key").
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). The FDB keys put a MAC
-  right after `Vlan1000:`; the MAC pattern must not refuse a preceding `:`.
+  right after `Vlan4094:`; the MAC pattern must not refuse a preceding `:`.
   The capture's own `version` section keeps the build host string from
   `sonic_version.yml` (a CI host, not site data).
