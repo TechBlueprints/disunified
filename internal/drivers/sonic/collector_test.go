@@ -13,6 +13,10 @@ import (
 
 const fixture = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt"
 
+// fixtureMACs is how many addresses the capture's FDB learned (all on
+// Ethernet0, all in Vlan4094).
+const fixtureMACs = 132
+
 type testWriter struct{ t *testing.T }
 
 func (w testWriter) Write(p []byte) (int, error) {
@@ -53,7 +57,7 @@ func TestEverySectionParses(t *testing.T) {
 	wantEntries := map[string]int{
 		"metadata": 1, "state_metadata": 1, "cfg_port": 32, "appl_port": 34, "state_port": 32,
 		"cfg_vlan": 1, "cfg_vlan_member": 32, "cfg_snmp": 1, "lldp_loc": 1, "counters_map": 1,
-		"counters": 32, "fdb": 138, "asic_temp": 1,
+		"counters": 32, "fdb": fixtureMACs, "asic_temp": 1,
 		// configured nowhere on the L2 preset, or hardware only
 		"cfg_lag": 0, "cfg_lag_member": 0, "appl_lag": 0, "cfg_mgmt": 0, "cfg_stp": 0, "cfg_mirror": 0,
 		"cfg_ntp": 0, "cfg_syslog": 0, "cfg_breakout": 0, "lldp": 0,
@@ -130,7 +134,8 @@ func TestLLDPCapabilityBits(t *testing.T) {
 }
 
 // The full snapshot from the VS guest: 32 QSFP28 cages, port 1 up with
-// every learned MAC, the other 31 down, VLAN 1000 untagged everywhere.
+// every learned MAC, the other 31 down, every port an untagged member of
+// Vlan4094 -- the default native_vlan -- and so on UniFi's VLAN 1.
 func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	c, fr, snap := startFixture(t)
 	if len(snap.Ports) != 32 {
@@ -150,8 +155,8 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 		if !p.Enabled || p.MTU != 9100 {
 			t.Errorf("port %d: enabled %v mtu %d", p.Index, p.Enabled, p.MTU)
 		}
-		if p.VLAN.Mode != "access" || p.VLAN.NativeVLAN != 1000 || p.VLAN.AllowAll || len(p.VLAN.Allowed) != 0 {
-			t.Errorf("port %d VLAN = %+v; want access 1000 (untagged member of Vlan1000)", p.Index, p.VLAN)
+		if p.VLAN.Mode != "access" || p.VLAN.NativeVLAN != 1 || p.VLAN.AllowAll || len(p.VLAN.Allowed) != 0 {
+			t.Errorf("port %d VLAN = %+v; want access 1 (untagged member of Vlan4094, the native_vlan)", p.Index, p.VLAN)
 		}
 		if p.FEC != devicemodel.FECUnknown || p.FECConfig != devicemodel.FECUnknown {
 			t.Errorf("port %d FEC %q/%q; the VS reports N/A and configures none", p.Index, p.FEC, p.FECConfig)
@@ -176,16 +181,16 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if p1.Health.LinkChanges != 1 || p1.Health.HasFECCounters {
 		t.Errorf("port 1 health = %+v; flap_count 1, no FEC counters on the VS", p1.Health)
 	}
-	if len(p1.MACs) != 138 || len(snap.MACTable) != 138 || snap.System.MACTableUsed != 138 {
-		t.Errorf("port 1 has %d MACs, table %d, used %d; want the 138 the FDB learned", len(p1.MACs), len(snap.MACTable), snap.System.MACTableUsed)
+	if len(p1.MACs) != fixtureMACs || len(snap.MACTable) != fixtureMACs || snap.System.MACTableUsed != fixtureMACs {
+		t.Errorf("port 1 has %d MACs, table %d, used %d; want the %d the FDB learned", len(p1.MACs), len(snap.MACTable), snap.System.MACTableUsed, fixtureMACs)
 	}
 	for _, m := range snap.MACTable {
-		if m.PortIndex != 1 || m.VLAN != 1000 || !m.LastMove.IsZero() || m.MAC != strings.ToLower(m.MAC) {
+		if m.PortIndex != 1 || m.VLAN != 1 || !m.LastMove.IsZero() || m.MAC != strings.ToLower(m.MAC) {
 			t.Errorf("MAC entry %+v", m)
 			break
 		}
 	}
-	if !reflect.DeepEqual(snap.VLANs, []int{1000}) {
+	if !reflect.DeepEqual(snap.VLANs, []int{1}) {
 		t.Errorf("VLANs = %v", snap.VLANs)
 	}
 	// No LLDP neighbours on the lab guest; the default gateway's MAC is
@@ -312,6 +317,53 @@ func TestVocabulary(t *testing.T) {
 	}
 	if got := speedList("100000,10000,40000,25000,"); !reflect.DeepEqual(got, []int{10000, 25000, 40000, 100000}) {
 		t.Errorf("speedList = %v", got)
+	}
+}
+
+// native_vlan names the SONiC VLAN that is UniFi's VLAN 1. The capture's
+// ports are untagged members of Vlan4094: with the default that is VLAN 1
+// everywhere (ports, VLAN list, learned addresses); with native_vlan 2 the
+// same capture is plain VLAN 4094.
+func TestNativeVLANOption(t *testing.T) {
+	for _, tc := range []struct {
+		option string
+		want   int
+	}{{"", 1}, {"4094", 1}, {"2", 4094}} {
+		fr, err := NewFixtureRunner(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dev, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{SSH: "admin@192.0.2.9", Options: map[string]string{"native_vlan": tc.option}})
+		if err != nil {
+			t.Fatalf("Open(native_vlan=%q): %v", tc.option, err)
+		}
+		c := dev.(*Collector)
+		c.r = fr // the capture instead of the host Open dialled
+		c.Log = log.New(testWriter{t}, "", 0)
+		snap, err := c.Start(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(snap.VLANs, []int{tc.want}) {
+			t.Errorf("native_vlan=%q: VLANs = %v, want [%d]", tc.option, snap.VLANs, tc.want)
+		}
+		for _, p := range snap.Ports {
+			if p.VLAN.NativeVLAN != tc.want || p.VLAN.Mode != "access" || len(p.VLAN.Allowed) != 0 {
+				t.Errorf("native_vlan=%q: port %d VLAN = %+v, want access %d", tc.option, p.Index, p.VLAN, tc.want)
+				break
+			}
+		}
+		for _, m := range snap.MACTable {
+			if m.VLAN != tc.want {
+				t.Errorf("native_vlan=%q: MAC entry on VLAN %d, want %d", tc.option, m.VLAN, tc.want)
+				break
+			}
+		}
+	}
+	for _, bad := range []string{"1", "0", "4095", "abc", "-5", "40.94"} {
+		if _, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{SSH: "admin@192.0.2.9", Options: map[string]string{"native_vlan": bad}}); err == nil || !strings.Contains(err.Error(), "native_vlan") {
+			t.Errorf("Open(native_vlan=%q) = %v; want a native_vlan error", bad, err)
+		}
 	}
 }
 

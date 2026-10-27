@@ -109,7 +109,7 @@ func TestWireContractSonic(t *testing.T) {
 		t.Errorf("port_table has %d rows, want 32 (the ECS Core)", len(ports))
 	}
 	first, _ := ports[0].(map[string]any)
-	if macs, _ := first["mac_table"].([]any); len(macs) != 138 {
-		t.Errorf("port 1 reports %d MACs, want the 138 learned", len(macs))
+	if macs, _ := first["mac_table"].([]any); len(macs) != 132 {
+		t.Errorf("port 1 reports %d MACs, want the 132 learned", len(macs))
 	}
 }

@@ -199,13 +199,14 @@ Nothing has been adopted into a controller yet.
 | **LLDP neighbours, LAGs, mirror sessions, STP, breakout** | parsed from `LLDP_ENTRY_TABLE`, `PORTCHANNEL*`, `MIRROR_SESSION`, `STP*`; a split cage folds by `index` (tested by re-indexing a port in the capture) | a capture with each configured |
 | **Other SONiC branches** (`202411`, master) | `swsscommon` and the table names are stable across branches | a capture per branch |
 
-### Known blocker
+### Known limits (by design)
 
-- **SSH to a stock SONiC**: its only host key is RSA and its sshd refuses
-  the SHA-1 `ssh-rsa` signature, while `internal/sshrun` offers only the
-  algorithm named in known_hosts (`ssh-rsa`). Until sshrun also offers
-  `rsa-sha2-512`/`rsa-sha2-256` for an RSA entry, the driver cannot dial it
-  (`internal/drivers/sonic/CLAUDE.md`).
+- **UniFi's VLAN 1 is `Vlan<native_vlan>` on the switch** (default 4094):
+  SONiC cannot create VLAN 1. Pick an id no UniFi network uses
+  ([`drivers/sonic.md`](drivers/sonic.md) §5.2a).
+- **SSH to a stock SONiC** needs `rsa-sha2-*` host-key signatures (its only
+  host key is RSA, SHA-1 `ssh-rsa` is refused); `internal/sshrun` offers
+  them for an `ssh-rsa` known_hosts entry.
 
 ---
 

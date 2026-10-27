@@ -295,7 +295,7 @@ would do it inside the same commit-timer session, confirming once the lease is f
 |---|---|---|
 | Identity (system MAC, hwsku, build id as firmware), health, eth0 as the OOB port | device fields, `if_table`, `uplink` | built, fixture-tested, contract-tested as `USWF07D`; not adopted |
 | 32 QSFP28 cages from CONFIG_DB `PORT`, named by alias (`Eth1`…), admin/oper state, speed, MTU, flap count, SAI counters | `port_table` | built, fixture-tested |
-| VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | built (L2 preset: all ports untagged in 1000) |
-| MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | built, fixture-tested (138 learned on port 1) |
+| VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | built: an untagged member of `Vlan<native_vlan>` (default 4094) is UniFi's VLAN 1, and the VLAN list shows 1 in its place (the lab guest: all 32 ports untagged in 4094) |
+| MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | built, fixture-tested (132 learned on port 1; `Vlan<native_vlan>` reported as VLAN 1) |
 | LLDP neighbours, LAGs, mirror sessions, STP, breakout folding, pmon (fans/PSUs/temperatures), optics | `lldp_table`, `port_table`, `fan_table`, `psu_table` | parsed when present; empty on the VS, untested on hardware |
 | Port, VLAN, device control | -- | not built; `Capabilities{}` (docs/drivers/sonic.md §2 A4) |

@@ -26,13 +26,24 @@ import (
 //go:embed collect.py
 var collectScript string
 
-// collectCommand is the one command a poll runs; the script is its stdin.
-const collectCommand = "python3 -"
+const (
+	// collectCommand is the one command a poll runs; the script is its stdin.
+	collectCommand = "python3 -"
+
+	// DefaultNativeVLAN is the SONiC VLAN presented as UniFi's VLAN 1 when
+	// the native_vlan option is not set (docs/drivers/sonic.md §5.2a).
+	DefaultNativeVLAN = 4094
+)
 
 // Collector reads a SONiC switch and builds the neutral snapshot.
 type Collector struct {
-	r   sshrun.Runner
-	Log *log.Logger
+	r sshrun.Runner
+	// NativeVLAN is the SONiC VLAN that stands in for UniFi's untagged
+	// Default network (VLAN 1, which SONiC refuses to create): an untagged
+	// member of Vlan<NativeVLAN> is reported as native VLAN 1, and the VLAN
+	// list carries 1 in its place. 2..4094; DefaultNativeVLAN unless set.
+	NativeVLAN int
+	Log        *log.Logger
 
 	mu      sync.Mutex
 	host    string
@@ -44,7 +55,7 @@ type Collector struct {
 
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
-	return &Collector{r: r, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}}
+	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}}
 }
 
 // Start runs the collector once and checks it saw a SONiC switch.
@@ -132,7 +143,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
-	ports := buildPorts(db)
+	ports := buildPorts(db, c.NativeVLAN)
 	if len(ports) == 0 {
 		return nil, fmt.Errorf("sonic: CONFIG_DB PORT is empty")
 	}
@@ -146,7 +157,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	for name, idx := range lagPorts(db, byIfname) {
 		byIfname[name] = idx
 	}
-	macs := buildMACTable(db["fdb"], byIfname)
+	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN)
 	pi := map[int]int{}
 	for i := range ports {
 		pi[ports[i].Index] = i
@@ -174,7 +185,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	c.mu.Unlock()
 
-	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, MACTable: macs, VLANs: vlanIDs(db["cfg_vlan"])}
+	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, MACTable: macs, VLANs: vlanIDs(db["cfg_vlan"], c.NativeVLAN)}
 	for _, p := range ports {
 		p.Port.Name = c.PortName(p.Port)
 		snap.Ports = append(snap.Ports, p.Port)
