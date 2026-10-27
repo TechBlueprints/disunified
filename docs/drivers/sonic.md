@@ -411,6 +411,27 @@ Redis sections (key pattern → use):
   `eth0`; placement needs an in-band `Vlan1000` address on the guest (a
   static address, Clint's call) -- also what the OOB rule asks for.
 
+### 5.2a The native VLAN (decided 2026-10-27)
+
+SONiC has no VLAN 1: the config CLI rejects it as "default VLAN" and
+accepts 2--4094 only, and a port in no VLAN is a routed port, not an
+access port. UniFi's untagged "Default" network is VLAN 1. So the driver
+needs a **substitute id for the native, untagged network**, and it must be
+one the controller never uses, or a reconcile would treat a real UniFi
+VLAN as the native one -- on Clint's site the L2 preset's `Vlan1000` is a
+real UniFi VLAN (an ISP handoff). Decided:
+
+- Driver option `native_vlan` (CONFIG `PORT`-independent), **default
+  4094**. UniFi native VLAN 1 ↔ SONiC `Vlan<native_vlan>` with the port an
+  `untagged` member; every other UniFi VLAN keeps its id and is a `tagged`
+  member. The read side reports a port whose untagged membership is
+  `Vlan<native_vlan>` as native VLAN 1.
+- The lab guest moves from `Vlan1000` to `Vlan4094` (add, move all 32
+  ports untagged, delete 1000, `config save -y`); the in-band address for
+  adoption lives on `Vlan4094`, which on the wire is the Default network.
+- An untagged member leaves frames untagged, so the id is never seen on
+  the wire; the hazard is only a *tagged* membership of a colliding id.
+
 ### 5.3 Fixtures, tests, sanitiser
 
 - Capture: `docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt`,
