@@ -44,6 +44,7 @@ import (
 	_ "github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/podman"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/sonic"
 )
 
 // buildVersion is this bridge's own version, stamped by the release build
