@@ -50,7 +50,19 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   over eth0 but its MAC is also learned in `Vlan4094` on Ethernet0, so
   port 1 is the hint.
 - **eth0 is the OOB port** (`OOBInterfaces`); with the bridge dialling it the
-  loop warns. `DHCP` = eth0 has a `dynamic` address and no `MGMT_INTERFACE`.
+  loop warns. Its `Up` is **carrier** (`operstate == "UP"` or `LOWER_UP`),
+  never the admin `UP` flag: an unplugged port is admin UP, NO-CARRIER.
+- **`DHCP` describes the address the bridge dials** (`Collector.Dial`, the
+  host of the `ssh` target as given, resolved each poll): true only if that
+  address is `dynamic` in `ip -j addr`, or sits on eth0 with no
+  `MGMT_INTERFACE`. A stale lease on eth0 says nothing about a static
+  in-band address. `Addresses` keeps every configured address (a down
+  interface's too), the dialled one first. The gateway is the default
+  route with the lowest metric on an interface with carrier; in-band, FRR
+  installs the saved static route (`proto 196`, metric 20) beside eth0's
+  DHCP route (metric 202). Fixtures: `collect.txt` (in-band, dialled on
+  Vlan4094) and `collect-eth0-dhcp.txt` (the earlier state, dialled on
+  eth0's lease).
 - **SSH host key: SONiC 202505 ships only an RSA host key**, and its sshd
   (Debian 12) refuses the SHA-1 `ssh-rsa` signature. `internal/sshrun`
   restricts the offered host-key algorithms to the known_hosts key types;

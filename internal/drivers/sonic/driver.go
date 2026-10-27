@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,10 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	t.KnownHosts = cfg.Options["known_hosts"]
 	c := NewCollector(t)
 	c.NativeVLAN = native
+	c.Dial = host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		c.Dial = h
+	}
 	return c, nil
 }
 
