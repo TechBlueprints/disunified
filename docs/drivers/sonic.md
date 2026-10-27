@@ -710,6 +710,35 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
    breakout, optics, fans/PSUs/temperatures, real speeds and FEC, STP if
    an image with the daemon is ever installed.
 
+### 6.6 Live results on the VS guest (2026-10-27, build 1238524, driven from the controller UI)
+
+Bridge run from the `sonic` branch with `control.ports: 2-32`; every push
+below reached the switch within one inform cycle and the following
+reconcile reported zero changes. Exact SONiC commands as logged:
+
+| Controller action | Commands the driver ran | Verified on the guest |
+|---|---|---|
+| first push after enabling control (seeded from the switch: 32 ports Block All) | `config vlan add -m 2,8,9,10,69,1000,2000,3000,4000,4010`; `config interface mtu <p> 1500` × 31 (jumbo off in the site config); VLAN memberships | VLANs created, every port untagged in the native VLAN, MTU 1500 on 31 ports, port 1 untouched. **The first batch (62 commands) hit the loop's 20 s apply budget**; the next cycle finished it. |
+| port 2: Port State Disabled + name `lab-2` | `config interface shutdown Ethernet4`; `sonic-db-cli … hset 'PORT\|Ethernet4' description 'lab-2'`; `config vlan member add -e -m 4094 Ethernet4` (the UI's disabled port carries Allow All) | admin down, description shown by `show interfaces description` |
+| port 2: Active again; port 4: Allow All | `config interface startup Ethernet4`; `config vlan member add -e -m 4094 Ethernet12` | both ports tagged in all ten VLANs, untagged native |
+| port 2: Block All | `config vlan member del -e -m 4094 Ethernet4` | native only |
+| port 3: Custom tagged kids (2) + visitor (69) | `config vlan member add -m 2,69 Ethernet8` | tagged 2 and 69, untagged native |
+| ports 5+6: Aggregating | `config portchannel add PortChannel1`; `config vlan member del 4094 Ethernet16`; `config portchannel member add PortChannel1 Ethernet16` … | **failed**: "Port MTU of Ethernet16 is different than the PortChannel1 MTU size" (members at 1500, new PortChannel at SONiC's 9100 default; `config interface mtu PortChannel1` is "Invalid port"). Fix probed: `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL\|PortChannel1' mtu 1500` (APPL_DB `LAG_TABLE` follows), then the members join and `config vlan member add -u 4094 PortChannel1` works. Completed by hand that way; the driver's next reconcile reported the LAG as applied (read side correct). |
+| port 8: Mirroring from port 7 | `config vlan member del 4094 Ethernet28`; `config mirror_session span add dui8 Ethernet28 Ethernet24 both` | `MIRROR_SESSION\|dui8` SPAN, STATE_DB status active, destination with no VLAN config |
+| port 9: Manual, 100G forced, RS-FEC, storm control broadcast 5 % + multicast 1 % | `config interface fec Ethernet32 rs`; `config interface storm-control add Ethernet32 broadcast 5000000`; `… unknown-multicast 1000000` | `fec rs`, `PORT_STORM_CONTROL` kbps exactly 5 % and 1 % of 100G |
+| port 8 back to Switching | `config mirror_session remove dui8`; `config vlan member add -u 4094 Ethernet28` | session gone, membership restored |
+| ports 5+6 back to Switching | `config portchannel member del PortChannel1 Ethernet16`, `… Ethernet20`; `config vlan member add -u 4094 Ethernet16`, `… Ethernet20`; `config vlan member del 4094 PortChannel1`; `config portchannel del PortChannel1` | PortChannel gone, both members untagged native again |
+
+Two fixes follow from this (pass 3): the loop needs an apply budget of
+its own, larger than the collect one (a SONiC `config` call is ~250 ms
+and a full push is dozens of them, while a collect is 60 ms); and a new
+PortChannel's MTU must be set to its members' MTU through CONFIG_DB
+before members join, and follow the jumbo setting afterwards.
+
+Not yet exercised live: jumbo on/off from the UI, the device-level
+settings (NTP, syslog, SNMP, SSH keys, reboot, IP Settings → Static),
+and STP (no daemon on this image).
+
 **STP on the real switch:** a community image has no STP daemon, so the
 DX010 will not run spanning tree until an image is built with
 `INCLUDE_STP=y` (the `sonic-stp` source and `docker-stp` rules are on the
