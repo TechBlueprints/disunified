@@ -250,18 +250,51 @@ then `all` with a zero-change reconcile; record each push as a scrubbed
 [`docs/support-matrix.md`](../support-matrix.md). Deploy into the one
 container on the Podman host like the others.
 
-## 4. Open questions to settle during Phase A
+## 4. Phase A log
 
-- Does the `202505` VS image carry `sonic-stp`, and does the Broadcom
-  image? (`show spanning_tree`, `docker ps` for an `stp` container.)
-  Decides whether STP is reported or refused.
-- Does the VS's hardware SKU ship a `platform.json` with breakout modes,
-  so dynamic port breakout can be exercised before the hardware?
-- Which Proxmox node hosts the VS guest, and whether the guest stays as a
-  permanent lab switch after the DX010 is adopted.
+**A0 done 2026-10-27.** The VS guest runs on a Proxmox node (guest id,
+addresses and MACs in `local-information/site.md`): image
+`SONiC.202505.1238524-ff3c0c9f6` (Debian 12.14, kernel 6.1), 4 vCPU,
+8 GB, disk on the cluster's NFS store, serial console socket, first
+login over the serial socket with the image default, the Mac's key
+installed, hostname set, factory config kept beside the live one. Found
+along the way:
+
+- **The VS image carries the DX010's hardware SKUs** (`Seastone-DX010`,
+  `Celestica-DX010-C32`, the `-D48C8`/`-25-50`/`-50`… variants, with
+  `lanemap.ini` for the VS), so the guest runs as `Seastone-DX010`: 32 ports
+  `Ethernet0`…`Ethernet124`, aliases `Eth1`…`Eth32`, 100G, the DX010's lane
+  numbers. Generated with `sonic-cfggen -H -k Seastone-DX010 --preset l2 -p`,
+  installed as `config_db.json`, `config reload -y`. The reload drops the
+  hostname; set it again and `config save -y`.
+- **No `platform.json` on the VS platform** (`x86_64-kvm_x86_64-r0`), so
+  dynamic port breakout is hardware-only, as expected.
+- **`config spanning-tree` and `show spanning-tree` exist** in the 202505
+  image. Whether to report STP is still a Phase A1 decision.
+- The factory config is the "t1" router preset: every front port a /31
+  from the bottom of the RFC 1918 10/8 space, BGP peers named
+  `ARISTA01T2`…. Those overlap a home LAN on the same range, so no
+  front-panel NIC may touch the LAN bridge until the L2 preset is in. With the L2 preset in, one front-panel NIC on the
+  LAN bridge is loop-free; a second one on the same bridge is a Layer 2
+  loop (no STP on either side by default).
+- A front-panel port binds to its VM NIC when `syncd` starts: add the NIC,
+  then reboot the guest (hot-plug alone leaves the port down). On the VS
+  `show interfaces status` reports a nonsense speed (`4294967.3G`) for a
+  linked port -- do not parse the CLI, read the Redis tables.
+- `pmon` and `lldp` start about a minute after boot; `show lldp table`
+  stays empty because a Linux bridge does not forward LLDP frames and the
+  nodes announce on their bond only. LLDP neighbours need a second guest on
+  the same bridge, or the hardware.
+- The default `admin` password is the image's; change it before the guest
+  stays on a reachable network.
+
+**Still open**
+
 - Whether `sonic-installer` on `20181130.77` accepts a `202505` image, or
   B3 goes straight to ONIE. The VS rehearsal cannot answer this; only the
   unit can.
+- Whether the guest stays as a permanent lab switch after the DX010 is
+  adopted.
 
 ## Sources
 
