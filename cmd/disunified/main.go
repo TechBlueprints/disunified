@@ -341,6 +341,13 @@ func runOne(ctx context.Context, o options) error {
 		}
 		if o.ip == "" {
 			o.ip = hostOf(o.deviceURL, o.deviceSSH)
+			// A driver that follows the device's address (an address move
+			// the bridge applied earlier) reports where it reaches it now.
+			if ar, ok := sw.(devicemodel.AddressReporter); ok {
+				if a := ar.CurrentAddress(); net.ParseIP(a) != nil {
+					o.ip = a
+				}
+			}
 			// A device dialled by name reports the address the name resolved
 			// to (the driver puts it first in Addresses), so a lease-backed
 			// DNS name can be followed without an operator naming the address.

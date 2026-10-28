@@ -2,7 +2,7 @@
 
 A bridge that makes a non-UniFi device appear as a real, adopted UniFi
 device inside the UniFi Network controller — ports, stats, topology, and
-control. What it supports today: physical and virtual switches (an Arista,
+control. What it supports today: physical and virtual switches (an Arista, a SONiC switch,
 Proxmox nodes, a Podman host), a rack PDU and two kinds of UPS; the inform, adoption
 and control machinery underneath carries no vendor or device-type
 assumptions.
@@ -26,6 +26,7 @@ control (the controller's config applied back to the device).
 | Podman host (containers as ports) | `podman` | `UDC48X6` ("USW Leaf") | Podman 5.8.2, AlmaLinux 10.2 |
 | APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
 | APC Back-UPS Pro network model (its NMC's web pages) | `apc-backups` | `USPDA2B` ("UPS 2U Pro") | BG500, UPS 05.3, NMC AOS 6.0.1 |
+| Community SONiC switch (Redis tables + `config` CLI over SSH) | `sonic` | `USWF07D` ("ECS Core") | the SONiC virtual switch, build 202505.1238524, as SKU `Seastone-DX010` (no hardware yet) |
 
 "Verified on" means exactly that one device. What each driver has and has
 not been tried on, and what a pull request needs to extend it (a PVE 8 node,
@@ -68,6 +69,12 @@ What each driver does today:
   the client behind its port; one on a Podman bridge network (NAT) is a
   port that counts traffic and, honestly, no client. Read over SSH;
   read-only ([`docs/drivers/podman.md`](docs/drivers/podman.md)).
+- **`sonic`** — a community SONiC switch: its Redis databases read in one
+  SSH exec per poll, and the controller's port, VLAN, LAG, mirror, storm,
+  jumbo, NTP, SSH-key, reboot and address settings written through SONiC's
+  own `config` CLI. Verified on the SONiC virtual switch (build
+  202505.1238524) only; hardware is pending
+  ([`docs/drivers/sonic.md`](docs/drivers/sonic.md)).
 - **`apc-ups`** — an APC Smart-UPS read over Modbus TCP from its own
   SmartConnect port (enabled at the LCD; no network card, no cable): the
   controller gets the battery pipeline (charge, runtime, on-battery, low
@@ -113,7 +120,7 @@ running it against anything you care about.
   the bridge from the device it manages. A wrong
   click in the UniFi UI, a controller bug, or a bug here can cut off the
   device, the hosts behind it, or the bridge itself.
-- **Verified on very little hardware:** the six drivers above, against UniFi
+- **Verified on very little hardware:** the seven drivers above (one of them on a virtual switch only), against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
   never verified live in [`docs/feature-map.md`](docs/feature-map.md).
@@ -136,7 +143,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
 
 - [`internal/devicemodel`](internal/devicemodel) — the vendor-neutral model of a device and the
   driver contract.
-- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `apc-pdu`, `apc-ups`, `apc-backups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `sonic`, `apc-pdu`, `apc-ups`, `apc-backups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - [`internal/device`](internal/device) — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - [`internal/unificfg`](internal/unificfg) — parses the controller's `system_cfg` pushes.
@@ -147,7 +154,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
   after the device itself on first provision, and seeds the controller's
   port/outlet overrides from the device's live state so the first push
   changes nothing.
-- [`internal/sshrun`](internal/sshrun) — the SSH transport the host drivers (Proxmox, Podman)
+- [`internal/sshrun`](internal/sshrun) — the SSH transport the host drivers (Proxmox, Podman, SONiC)
   share; [`internal/nutd`](internal/nutd) — the NUT server a UPS's "NUT Server" switch turns on.
 
 ## Install

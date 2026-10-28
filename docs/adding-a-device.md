@@ -9,6 +9,14 @@ shape for a virtual switch read over SSH with one script per poll, and
 for a driver whose "ports" are not fixed hardware; the Podman driver
 ([`internal/drivers/podman`](../internal/drivers/podman), [`docs/drivers/podman.md`](drivers/podman.md)) is the
 smallest complete example of that shape (read-only, ~700 lines with tests).
+For a network OS that keeps its state in a database and has a config CLI --
+SONiC's Redis tables and `config` commands -- the SONiC driver
+([`internal/drivers/sonic`](../internal/drivers/sonic), [`docs/drivers/sonic.md`](drivers/sonic.md))
+is the pattern: one SSH exec of an embedded script that reads only the
+tables it needs (secrets never leave the box), writes as one `bash -s`
+batch of CLI commands diffed against a copy of the config database, a
+FixtureRunner that applies each write to the capture and refuses what the
+OS refuses, and `--help` checks at `Start` for every sub-command used.
 For a power device -- outlets instead of ports, a battery instead of PSUs --
 the APC PDU ([`docs/drivers/apc-pdu.md`](drivers/apc-pdu.md)) and UPS
 ([`docs/drivers/apc-ups.md`](drivers/apc-ups.md)) drivers are the references.

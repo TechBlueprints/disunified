@@ -1,11 +1,15 @@
-# SONiC driver -- plan (hardware on order, nothing built yet)
+# SONiC driver (`sonic`)
 
-Status 2026-10-27: a Celestica Seastone DX010 (32x QSFP28, Broadcom
-BCM56960 Tomahawk, Intel Atom C2538, ONIE) is ordered and some weeks out.
-This file is the plan for building `internal/drivers/sonic` before it
-arrives, on a SONiC virtual switch, and for what happens the day it lands.
-When the driver exists this file becomes its write-up, like the others in
-this directory.
+Status 2026-10-27: `internal/drivers/sonic` is built and every control
+feature is verified live on the SONiC virtual switch, build
+`202505.1238524-ff3c0c9f6`, as hardware SKU `Seastone-DX010`, adopted as
+`USWF07D` (§6.6); STP is feature-gated (no daemon in community images) and
+the hardware-only parts wait for the unit. The hardware -- a Celestica
+Seastone DX010 (32x QSFP28, Broadcom BCM56960 Tomahawk, Intel Atom C2538,
+ONIE) -- is ordered and some weeks out. This file began as the plan for
+building the driver on a virtual switch first (§2) and for the day the
+unit lands (§3); §5 and §6 are the driver's specification, and the
+write-up as it stands.
 
 The driver targets **community SONiC**, not the DX010: SONiC is Debian
 with the switch state in Redis, and every SONiC switch exposes the same

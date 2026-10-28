@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -832,7 +833,24 @@ func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now takes its address from DHCP; the address this bridge is configured with is now stale -- update it once the lease is known", l.desc.MAC)
 	} else {
 		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now has %s/%d via %s", l.desc.MAC, d.IP, d.PrefixLen, d.Gateway)
+		l.setDeviceIP(d.IP, "the controller's IP Settings were applied")
 	}
+}
+
+// setDeviceIP makes the informs report ip as the device's address (`ip`,
+// `connect_request_ip`, if_table, netmask) when it is an IP literal and
+// differs from what they report now. The descriptor's address is set once
+// at start from the configured target; without this, a device whose
+// address moved under the bridge kept the stale one in the controller.
+func (l *Loop) setDeviceIP(ip, why string) {
+	if net.ParseIP(ip) == nil || ip == l.session.IP() {
+		return
+	}
+	old := l.session.IP()
+	l.session.SetIP(ip)
+	l.desc.IP = ip
+	l.cfg.DeviceHost = ip
+	l.cfg.Logger.Printf("[%s] reporting the device's address as %s (was %s): %s", l.desc.MAC, ip, old, why)
 }
 
 // addressIntent turns the controller's IP Settings into an address to apply,
@@ -1133,6 +1151,9 @@ func (l *Loop) collect(ctx context.Context) {
 	}
 	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
+	if ar, ok := l.cfg.Collector.(devicemodel.AddressReporter); ok {
+		l.setDeviceIP(ar.CurrentAddress(), "the driver now reaches the device there")
+	}
 	if up := snap.UplinkPort(); up > 0 && up != l.uplinkPort {
 		if l.uplinkPort != 0 {
 			l.cfg.Logger.Printf("[%s] uplink is now port %d (was %d)", l.desc.MAC, up, l.uplinkPort)

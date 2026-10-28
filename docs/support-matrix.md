@@ -177,7 +177,7 @@ the issue which outlet is safe to switch.
 
 ---
 
-## `sonic` — community SONiC switch (virtual switch; port control verified live, device control built)
+## `sonic` — community SONiC switch (every control feature verified live on the virtual switch, build 202505.1238524; hardware pending)
 
 Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6).
 
@@ -190,33 +190,45 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
 | Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
-| **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off (the first push set MTU 1500 on 31 ports); the controller's SSH keys in the managed authorized_keys block (the operator's lines untouched); NTP servers applied. Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live run found the PortChannel MTU rule and the apply budget; both are fixed and fixture-tested since. |
+| **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off and on (1500 and the pushed 9216 on 31 ports); NTP servers (hostnames pinned); the controller's SSH keys in the managed authorized_keys block (the operator's lines untouched); Manage → Restart (`sudo reboot`, back in ~2 min, reconnected); IP Settings → Static, a move within the subnet with the runner and the persisted dial target following. Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live runs found the PortChannel MTU rule, the apply budget, the NTP churn, the `_type: reboot` reply, `promote_secondaries`, the agent key order and the stale reported address; each is fixed and tested since. |
 
 ### Built, untested live — PRs welcome
 
 | Gap | What the PR needs |
 |---|---|
-| Jumbo on/off flipped from the UI, with and without a LAG present (the PortChannel's MTU moves first) | the flip on the guest, the commands logged, the zero-change reconcile |
-| NTP hostname pinning (NTP itself applied live; a pool name churned every cycle before the pin) | a push with a pool hostname and several cycles with no `ntp` write after the first |
-| Syslog hosts (bridge-owned entries only) | set and changed from the UI; an operator's own entry left alone |
+| Jumbo flipped with a LAG present (the PortChannel's MTU moves first) | the flip on the guest with an aggregate, the commands logged, the zero-change reconcile |
+| Syslog hosts (bridge-owned entries only) | a site syslog host set and changed from the UI (on site it is off, so the push is `syslog.status=disabled` and nothing is written); an operator's own entry left alone |
 | SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
-| Reboot | `control.reboot` and a Restart from the UI |
-| IP Settings → Static (add, dial, remove the old address) | an address change with the new address in known_hosts, and one that does not answer (undone) |
+| The reported address following a move (`ip`, `connect_request_ip`) | the controller's device list showing the new address one inform after a move, without a bridge restart |
+| A move whose new address does not answer (the new address and route removed again) | a move to an address the bridge cannot reach |
+
+### Hardware only (the DX010) — PRs welcome
+
+Fans, PSUs and temperatures (pmon), optics and DOM (xcvrd), real speeds and
+FEC, `supported_speeds`, dynamic port breakout (needs the platform's
+`platform.json`; the write is not built), PCS/FEC codeword counters, LLDP
+neighbours from real cables. The parser reads each table when present; none
+has seen real data.
+
+### STP
+
+Feature-gated: the driver claims STP, BPDU guard and port cost only when
+`FEATURE|stp` exists. Community images ship without the STP daemon
+(`INCLUDE_STP=y` is off in the build), so on build 1238524 every STP setting
+is refused with a log and not claimed; untested with the daemon.
 
 ### Refused (logged, not claimed)
 
 IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping (community
 SONiC has none of them); breakout until hardware with a `platform.json`;
-STP and the per-port STP settings on an image without the STP daemon (every
-community image: the driver claims STP only when `FEATURE|stp` exists).
+STP and the per-port STP settings on an image without the STP daemon.
 
 ### Untested — expected to work — PRs welcome
 
 | Gap | Why it should work | What the PR needs |
 |---|---|---|
-| **Real hardware** (the DX010 first) | the same Redis tables; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them when present | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
-| **LLDP neighbours, STP, breakout** | parsed from `LLDP_ENTRY_TABLE` and `STP*`; a split cage folds by `index` (tested by re-indexing a port in the capture) | a capture with each configured |
-| **Other SONiC branches** (`202411`, master) | `swsscommon` and the table names are stable across branches | a capture per branch |
+| **Real hardware** (the DX010 first) | the same Redis tables and `config` CLI; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them when present | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
+| **Other SONiC branches** (`202411`, master) and other hardware SKUs | `swsscommon`, the table names and the `config` groups `Start` checks are stable across branches | a capture per branch; `Start`'s `--help` checks pass |
 
 ### Known limits (by design)
 
@@ -226,6 +238,13 @@ community image: the driver claims STP only when `FEATURE|stp` exists).
 - **SSH to a stock SONiC** needs `rsa-sha2-*` host-key signatures (its only
   host key is RSA, SHA-1 `ssh-rsa` is refused); `internal/sshrun` offers
   them for an `ssh-rsa` known_hosts entry.
+- **The bridge user needs passwordless sudo** (`config` needs root even for
+  `--help`); the image's `admin` has it.
+- **An address move needs the switch's host key in known_hosts under the new
+  address** before the change: the bridge dials it with the same known_hosts.
+- **Writes are many ~250 ms CLI calls**: a first full push on 31 ports is
+  ~16 s; `control.apply_timeout` (default 90 s) bounds a write apart from the
+  20 s collect.
 
 ---
 

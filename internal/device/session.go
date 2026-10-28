@@ -643,6 +643,14 @@ func anonID(mac string) string {
 // SetGatewayIP sets the gateway/controller address reported as gateway_ip.
 func (s *Session) SetGatewayIP(ip string) { s.mu.Lock(); s.gatewayIP = ip; s.mu.Unlock() }
 
+// SetIP changes the device address the informs report (`ip`,
+// `connect_request_ip`, and the `if_table` entry and netmask derived from
+// it), after the device's address moved under the bridge.
+func (s *Session) SetIP(ip string) { s.mu.Lock(); s.desc.IP = ip; s.mu.Unlock() }
+
+// IP is the device address the informs report.
+func (s *Session) IP() string { s.mu.Lock(); defer s.mu.Unlock(); return s.desc.IP }
+
 // uptimeStr renders seconds the way UniFi devices do ("21h25m23s").
 func uptimeStr(secs int64) string {
 	d := secs / 86400

@@ -291,13 +291,13 @@ would do it inside the same commit-timer session, confirming once the lease is f
 
 ## Switches — `sonic` (community SONiC 202505.1238524-ff3c0c9f6, virtual switch as `Seastone-DX010`, over SSH)
 
-Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build 1238524, driven from the controller UI; each push reached the switch within one inform cycle and the next reconcile reported zero changes).
+Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build 1238524, driven from the controller UI; each push reached the switch within one inform cycle and the next reconcile reported zero changes). "Verified live" below means on that build, on the virtual switch; everything hardware-only (pmon, optics, real speeds/FEC, breakout) waits for the DX010.
 
 | Feature | Wire | Status |
 |---|---|---|
 | Identity (system MAC, hwsku, build id as firmware), health, eth0 as the OOB port | device fields, `if_table`, `uplink` | done; adopted as `USWF07D` on the VS and placed behind its node's port |
-| 32 QSFP28 cages from CONFIG_DB `PORT`, named by alias (`Eth1`…), admin/oper state, speed, MTU, flap count, SAI counters | `port_table` | built, fixture-tested |
-| VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | built: an untagged member of `Vlan<native_vlan>` (default 4094) is UniFi's VLAN 1, and the VLAN list shows 1 in its place (the lab guest: all 32 ports untagged in 4094) |
+| 32 QSFP28 cages from CONFIG_DB `PORT`, named by alias (`Eth1`…), admin/oper state, speed, MTU, flap count, SAI counters | `port_table` | done (the adopted VS's port table in the UI) |
+| VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | done: an untagged member of `Vlan<native_vlan>` (default 4094) is UniFi's VLAN 1, and the VLAN list shows 1 in its place |
 | MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | done (`Vlan<native_vlan>` reported as VLAN 1) |
 | LLDP neighbours, breakout folding, pmon (fans/PSUs/temperatures), optics | `lldp_table`, `port_table`, `fan_table`, `psu_table` | parsed when present; empty on the VS, untested on hardware |
 | Port state (Active/Disabled) and name | `switch.port.N.enable`, `.name` → `config interface startup/shutdown`, `sonic-db-cli … hset 'PORT\|<p>' description` (clear: `hset ''` then `hdel`) | **done, verified live** |
@@ -305,13 +305,14 @@ Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build
 | Aggregation (`PortChannel<lag>`), incl. removal | `opmode aggregate` → `config portchannel add`, `hset 'PORTCHANNEL\|PortChannel<n>' mtu <members'>`, member add/del, the PortChannel's VLANs, `portchannel del` when emptied | **done, verified live** (the PortChannel MTU step was added after the live run found the mismatch refusal; fixture-tested since) |
 | Mirroring (`dui<dst>`), incl. removal | `opmode mirror` → destination stripped of VLANs, `config mirror_session span add … both`; `remove`, VLANs restored | **done, verified live** |
 | Forced speed, FEC, storm control (percent ↔ kbps of the configured speed) | `speed`, `fec`, `stormctrl.*` → `config interface speed/fec`, `storm-control add/del` | **done, verified live** (100G forced, RS-FEC, broadcast 5 % / multicast 1 %) |
-| Jumbo (port MTU: the pushed `switch.mtu`, 9216, when on; 1500 when off; a PortChannel moves first) | `switch.jumboframes`, `switch.mtu` → `config interface mtu`, `hset 'PORTCHANNEL\|…' mtu` | jumbo off verified live (the first push set 1500 on 31 ports); the on/off flip from the UI and the flip with a LAG present: built, fixture-tested |
+| Jumbo (port MTU: the pushed `switch.mtu`, 9216, when on; 1500 when off; a PortChannel moves first) | `switch.jumboframes`, `switch.mtu` → `config interface mtu`, `hset 'PORTCHANNEL\|…' mtu` | **done, verified live** both ways (1500 on 31 ports; on: 9216 on 31 ports, port 1 untouched, ~9 s); the flip with a LAG present: fixture-tested |
 | BPDU guard, STP-disabled port, STP mode/priority | `stp.*`, `switch.stp.*` → `config spanning-tree [interface] …` (PVST only) | feature-gated on `FEATURE\|stp`; community images have no STP daemon, so refused with a log and not claimed |
-| NTP | `ntpclient.*` → `config ntp add/del <ip>` | applied live; a hostname is resolved once and pinned (`sonic-managed.json`) since the live run showed a pool name churning every cycle -- the pin is fixture-tested; the bridge removes only what it added |
-| Syslog | `syslog.*` → `config syslog add <ip> --port <n>` / `del` | built, fixture-tested, untested live (same ownership and hostname pin as NTP) |
+| NTP | `ntpclient.*` → `config ntp add/del <ip>` | **done, verified live** (chrony lists the pushed servers); a hostname is resolved once and pinned (`sonic-managed.json`) -- a pool name churned an add + del every cycle before the pin, quiet after; the bridge removes only what it added |
+| Syslog | `syslog.*` → `config syslog add <ip> --port <n>` / `del` | built, fixture-tested; live only as the no-op it is with no site host set (`syslog.status=disabled`) |
 | SNMP community | `switch.snmp.*` → `config snmp community add RO/del` | built, fixture-tested, untested live: the controller pushes `switch.snmp.*` only with the site-wide SNMP setting on (Settings -> CyberSecure), off on site; device location/contact is never pushed in any capture, so `config snmp location/contact` is not mapped |
-| SSH keys | `sshd.auth.key.*` → a marked block in authorized_keys | **verified live** (4 keys in the managed block, the operator's 5 lines untouched) |
-| Reboot | `reboot` → `sudo reboot` | built, fixture-tested, untested live |
-| IP Settings (static) | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.*` → `config interface ip add`, dial, `ip remove`, `config route`, `config dns nameserver` | built, success and no-answer paths tested, untested live; DHCP declined |
+| SSH keys | `sshd.auth.key.*` → a marked block in authorized_keys | **done, verified live** (4 keys in the managed block, the operator's 5 lines untouched) |
+| Reboot (`cmd: reboot`, and Manage → Restart's `_type: reboot` reply) | → `sudo reboot` with `control.reboot`, emulated otherwise | **done, verified live** (guest back in ~2 min, bridge reconnected) |
+| IP Settings (static) | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.*` → `config interface ip add`, dial the new address, then over it `promote_secondaries` on, `ip remove <old>`, verify the new address, `config route`, `config save`; `config dns nameserver` | **done, verified live** (a move within the subnet, runner and persisted dial target followed, reconcile 0); DHCP declined |
+| The reported address (`ip`, `connect_request_ip`) | descriptor IP → the applied address, and the driver's live dial target (`devicemodel.AddressReporter`) | built, loop- and driver-tested: follows an applied move (the controller kept showing the old address before) |
 | IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping | -- | refused with a log, not claimed (community SONiC has none of them) |
 | Breakout (a lane speed on a 4-lane cage) | `switch.port.N.speed` | refused with a log until hardware: no `platform.json` on the VS, and the write is not built |

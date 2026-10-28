@@ -1,9 +1,11 @@
 # sonic — facts that cost time
 
 Read `internal/drivers/CLAUDE.md` first. Specification and plan:
-`docs/drivers/sonic.md` (§5 is the contract). Built 2026-10-27 on the podman
-driver's pattern, read-only, against the SONiC virtual switch (`202505.1238524-ff3c0c9f6`,
-hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
+`docs/drivers/sonic.md` (§5 the read side, §6 the control side, §6.6 the
+live results). Built 2026-10-27 on the podman driver's pattern against the
+SONiC virtual switch (`202505.1238524-ff3c0c9f6`, hardware SKU
+`Seastone-DX010`, L2 preset), adopted as `USWF07D`; every control feature
+verified live on that build; no hardware yet.
 
 - **One exec per poll: `python3 -` with `collect.py` on stdin**, reading
   Redis through `swsscommon.SonicV2Connector(use_unix_socket_path=True)` as
@@ -121,6 +123,23 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   `collect.py` prints only that block, never the operator's lines. A pushed
   key that is not `<type> <base64>` is refused (the controller fixture's
   `<pubkey>` placeholders are).
+- **Manage → Restart arrives as a reply `_type: reboot`** (`reboot_type:
+  soft`), not as a `cmd` (10.6.106, build 1238524, 2026-10-27); the session
+  handles it like the reboot cmd: `sudo reboot` with `control.reboot`
+  (verified live: back in ~2 min, the bridge reconnected), emulated
+  otherwise.
+- **The reported address follows the dial target.** The informs' `ip` /
+  `connect_request_ip` came from the configured target at start and stayed
+  stale after a move (the controller showed the old address). The loop now
+  sets them from an applied static address, and after every collect from
+  `devicemodel.AddressReporter`, which this Collector implements as its
+  live dial target (`CurrentAddress`); `main` uses it at start too, so a
+  restart after a move reports the persisted address.
+- **SSH identity: a `.pub` in `ssh_key` selects one agent key.** The Mac's
+  1Password agent holds an employer key first; `sshrun` offered it and Go
+  gave up on every key when it refused to sign. `sshrun` now tries agent
+  keys one handshake at a time, and `ssh_key: <file>.pub` offers only that
+  agent identity (verified live: "authenticated with … Personal key").
 - **Address (§6.4), `address.go`:** static only; add the new address (and
   route/DNS), dial it with `Redial` (same user, key, known_hosts) and run
   `true`; on no answer the new address (and route) are removed again.

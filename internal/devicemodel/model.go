@@ -155,6 +155,15 @@ type AddressDesired struct {
 	DNS       []string
 }
 
+// AddressReporter is an optional capability of a Collector: the address
+// the driver currently manages the device through, which can move under
+// the bridge (an applied IP Settings change, a fallback to another known
+// address). The loop reports it to the controller as the device's address
+// when it is an IP literal; "" = unknown.
+type AddressReporter interface {
+	CurrentAddress() string
+}
+
 // AddressController applies the controller's IP Settings to the device
 // itself, so the controller owns the device's address the way it owns
 // everything else. Optional. Implementations must be idempotent and must

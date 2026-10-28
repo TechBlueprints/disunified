@@ -17,6 +17,16 @@ import (
 // is adopted. Without this a half-done move left the bridge dialling a dead
 // address forever (live, 2026-10-27).
 
+// CurrentAddress implements devicemodel.AddressReporter: the address the
+// driver reaches the switch at now -- the configured one, or the one an
+// address move (or a fallback) adopted. The loop reports it to the
+// controller as the device's address.
+func (c *Collector) CurrentAddress() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Dial
+}
+
 // setPendingDial records the address a move is about to switch to.
 func (c *Collector) setPendingDial(ip string) {
 	c.mu.Lock()

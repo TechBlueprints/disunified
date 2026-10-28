@@ -16,7 +16,14 @@ UUIDs and object ids. system_cfg / mgmt_cfg text inside payloads is scrubbed
 line by line the same way. cfgversion values are kept (not secret; tests
 assert on them).
 
+SSH key comments (sshd.auth.key.N.comment: an owner's e-mail address or
+machine name) become key-N, numbered by first appearance within a file.
+
 Usage: scripts/sanitize-controller.py <file>...   (writes the file back)
+       scripts/sanitize-controller.py --comments-only <file>...
+           rewrites only the SSH key comments, any format (.ndjson, .json,
+           system_cfg .txt), every other byte untouched -- for fixtures
+           scrubbed before comments were
 """
 import json, re, sys, ipaddress
 
@@ -80,6 +87,25 @@ def map_id(s):
         ids[s] = f'{len(ids)+1:032x}'
     return ids[s]
 
+# SSH key comments (sshd.auth.key.N.comment) carry the key owner's e-mail
+# address or machine name: key-N, numbered by first appearance in a file.
+comments = {}
+
+def map_comment(s):
+    if not s:
+        return s
+    if s not in comments:
+        comments[s] = f'key-{len(comments)+1}'
+    return comments[s]
+
+COMMENT_RE = re.compile(r'(sshd\.auth\.key\.\d+\.comment=)([^\\\n"]*)')
+
+def scrub_comments_only(raw):
+    """Rewrite only the SSH key comments, in any file format (ndjson, json,
+    plain system_cfg text), leaving every other byte as it is -- for
+    re-scrubbing a fixture that was scrubbed before comments were."""
+    return COMMENT_RE.sub(lambda m: m.group(1) + map_comment(m.group(2)), raw)
+
 def scrub_cfg_text(text):
     out = []
     for line in text.splitlines():
@@ -92,6 +118,8 @@ def scrub_cfg_text(text):
             v = '<hash>'
         elif re.match(r'sshd\.auth\.key\.\d+\.value$', k):
             v = '<pubkey>'
+        elif re.match(r'sshd\.auth\.key\.\d+\.comment$', k):
+            v = map_comment(v)   # e-mail addresses and machine names
         elif k in ID_KEYS or k.startswith('unifi.anonymous') or k.endswith('id'):
             v = map_id(v) if (UUID_RE.fullmatch(v) or HEX24_RE.fullmatch(v)) else v
         elif '.community.' in k and k.endswith('.name'):
@@ -137,8 +165,16 @@ def scrub(o, key=None):
         return scrub_plain(o)
     return o
 
-for path in sys.argv[1:]:
+args = sys.argv[1:]
+comments_only = bool(args) and args[0] == '--comments-only'
+if comments_only:
+    args = args[1:]
+for path in args:
+    comments.clear()   # key-N numbering is per file
     raw = open(path).read()
+    if comments_only:
+        open(path, 'w').write(scrub_comments_only(raw))
+        continue
     if path.endswith('.ndjson'):
         lines = []
         for line in raw.splitlines():
@@ -151,4 +187,7 @@ for path in sys.argv[1:]:
         with open(path, 'w') as f:
             json.dump(scrub(data), f, indent=2, sort_keys=True)
             f.write('\n')
-print(f'scrubbed {len(sys.argv)-1} files: {len(macs)} MACs, {len(ips)} IPv4, {len(ip6s)} IPv6, {len(hosts)} names, {len(ids)} ids/secrets')
+if comments_only:
+    print(f'rewrote SSH key comments in {len(args)} files')
+else:
+    print(f'scrubbed {len(args)} files: {len(macs)} MACs, {len(ips)} IPv4, {len(ip6s)} IPv6, {len(hosts)} names, {len(ids)} ids/secrets')
