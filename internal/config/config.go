@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -93,6 +94,12 @@ type Control struct {
 	// (default: held until the controller's config matches the switch — the
 	// bridge seeds it from the switch when api_url is set).
 	AllowInitialChanges bool `yaml:"allow_initial_changes"`
+	// ApplyTimeout bounds one write to the device (a port/VLAN/device apply,
+	// SSH keys, the address, a reboot), separately from the collect budget:
+	// a Go duration, e.g. "90s" or "2m". Default 90s. A SONiC switch writes
+	// through ~250 ms CLI calls, and a first push can be dozens of them; an
+	// apply cut short is finished by the next reconcile.
+	ApplyTimeout string `yaml:"apply_timeout"`
 	// NoSeed skips seeding the controller's port config from the switch on
 	// adoption (default: seed when api_url is set).
 	NoSeed bool `yaml:"no_seed"`
@@ -157,6 +164,11 @@ func Load(path string) (*File, error) {
 		}
 		if s.Model == "" {
 			s.Model = "auto"
+		}
+		if s.Control.ApplyTimeout != "" {
+			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {
+				return nil, fmt.Errorf("%s: device %q: control.apply_timeout %q is not a positive duration (e.g. \"90s\")", path, s.Name, s.Control.ApplyTimeout)
+			}
 		}
 		if s.UDAPIVersion == "" {
 			s.UDAPIVersion = "1.0.0"

@@ -291,20 +291,24 @@ would do it inside the same commit-timer session, confirming once the lease is f
 
 ## Switches — `sonic` (community SONiC 202505.1238524-ff3c0c9f6, virtual switch as `Seastone-DX010`, over SSH)
 
+Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build 1238524, driven from the controller UI; each push reached the switch within one inform cycle and the next reconcile reported zero changes).
+
 | Feature | Wire | Status |
 |---|---|---|
-| Identity (system MAC, hwsku, build id as firmware), health, eth0 as the OOB port | device fields, `if_table`, `uplink` | built, fixture-tested, contract-tested as `USWF07D`; not adopted |
+| Identity (system MAC, hwsku, build id as firmware), health, eth0 as the OOB port | device fields, `if_table`, `uplink` | done; adopted as `USWF07D` on the VS and placed behind its node's port |
 | 32 QSFP28 cages from CONFIG_DB `PORT`, named by alias (`Eth1`…), admin/oper state, speed, MTU, flap count, SAI counters | `port_table` | built, fixture-tested |
 | VLAN membership (untagged = native, tagged = allowed) | -- (read into the model for the control side's diff; UniFi owns VLANs) | built: an untagged member of `Vlan<native_vlan>` (default 4094) is UniFi's VLAN 1, and the VLAN list shows 1 in its place (the lab guest: all 32 ports untagged in 4094) |
-| MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | built, fixture-tested (141 learned on port 1; `Vlan<native_vlan>` reported as VLAN 1) |
-| LLDP neighbours, LAGs, mirror sessions, STP, breakout folding, pmon (fans/PSUs/temperatures), optics | `lldp_table`, `port_table`, `fan_table`, `psu_table` | parsed when present; empty on the VS, untested on hardware |
-| Port state, name, speed (forced; never autoneg on a QSFP cage), FEC, jumbo (port MTU 9100/1500) | `switch.port.N.*`, `switch.jumboframes` → `config interface startup/shutdown/speed/autoneg/fec/mtu`, `sonic-db-cli … hset/hdel PORT\|<p> description` | built, fixture- and replay-tested; not yet verified live |
-| VLANs with the native mapping (UniFi 1 = `Vlan<native_vlan>` untagged; Allow All = tagged in every controller VLAN; Block All = native only) | `switch.vlan.*` → `config vlan add -m`, `config vlan member add [-u]/del`, `-m` lists and `-e -m <native>` for Allow All (one command per port) | built, fixture- and replay-tested; not yet verified live; a controller network on `native_vlan` is refused |
-| LAG (`PortChannel<lag>`), mirror (`dui<dst>`), storm control (percent ↔ kbps) | `opmode aggregate/mirror`, `stormctrl.*` → `config portchannel …`, `config mirror_session span add/remove`, `config interface storm-control add/del` | built, fixture-tested (members and destinations stripped of VLANs first, restored after); not yet verified live |
-| BPDU guard, STP-disabled port | `stp.bpdu_guard`, `stp.port_mode` → `config spanning-tree interface …` | only with `FEATURE\|stp` (community images: refused with a log, not claimed) |
-| Breakout (a lane speed on a 4-lane cage) | `switch.port.N.speed` | refused with a log: no `platform.json` on the VS; not written on hardware yet either |
-| STP mode/priority | `switch.stp.*` → `config spanning-tree enable/disable pvst`, `priority` | only with `FEATURE\|stp` (PVST; mstp refused); community images: refused with a log |
-| NTP, syslog, SNMP community | `ntpclient.*`, `syslog.*`, `switch.snmp.*` → `config ntp`, `config syslog add --port`, `config snmp community add RO/del` | built, fixture- and replay-tested; the bridge removes only what it added (`sonic-managed.json`); not yet verified live |
-| IGMP / DHCP snooping | -- | refused with a log, not claimed |
-| SSH keys, reboot | `sshd.auth.key.*`, `reboot` → a marked block in authorized_keys, `sudo reboot` | built, fixture-tested; not yet verified live |
-| IP Settings (static) | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.*` → `config interface ip add`, dial, `ip remove`, `config route`, `config dns nameserver` | built, success and no-answer paths tested; DHCP declined; not yet verified live |
+| MAC table from STATE_DB `FDB_TABLE` | `port_table[].mac_table` | done (`Vlan<native_vlan>` reported as VLAN 1) |
+| LLDP neighbours, breakout folding, pmon (fans/PSUs/temperatures), optics | `lldp_table`, `port_table`, `fan_table`, `psu_table` | parsed when present; empty on the VS, untested on hardware |
+| Port state (Active/Disabled) and name | `switch.port.N.enable`, `.name` → `config interface startup/shutdown`, `sonic-db-cli … hset 'PORT\|<p>' description` (clear: `hset ''` then `hdel`) | **done, verified live** |
+| Allow All, Block All, a custom tagged set, native VLAN 1 = `Vlan<native_vlan>` untagged | `switch.vlan.*` → `config vlan add -m`, `config vlan member add -e -m <native>` / `del -e -m <native>` / `add -m 2,69` | **done, verified live**; a controller network on `native_vlan` is refused |
+| Aggregation (`PortChannel<lag>`), incl. removal | `opmode aggregate` → `config portchannel add`, `hset 'PORTCHANNEL\|PortChannel<n>' mtu <members'>`, member add/del, the PortChannel's VLANs, `portchannel del` when emptied | **done, verified live** (the PortChannel MTU step was added after the live run found the mismatch refusal; fixture-tested since) |
+| Mirroring (`dui<dst>`), incl. removal | `opmode mirror` → destination stripped of VLANs, `config mirror_session span add … both`; `remove`, VLANs restored | **done, verified live** |
+| Forced speed, FEC, storm control (percent ↔ kbps of the configured speed) | `speed`, `fec`, `stormctrl.*` → `config interface speed/fec`, `storm-control add/del` | **done, verified live** (100G forced, RS-FEC, broadcast 5 % / multicast 1 %) |
+| Jumbo (port MTU 9100/1500; a PortChannel moves first) | `switch.jumboframes` → `config interface mtu`, `hset 'PORTCHANNEL\|…' mtu` | jumbo off verified live (the first push set 1500 on 31 ports); the on/off flip from the UI and the flip with a LAG present: built, fixture-tested |
+| BPDU guard, STP-disabled port, STP mode/priority | `stp.*`, `switch.stp.*` → `config spanning-tree [interface] …` (PVST only) | feature-gated on `FEATURE\|stp`; community images have no STP daemon, so refused with a log and not claimed |
+| NTP, syslog, SNMP community | `ntpclient.*`, `syslog.*`, `switch.snmp.*` → `config ntp`, `config syslog add --port`, `config snmp community add RO/del` | built, fixture- and replay-tested, untested live; the bridge removes only what it added (`sonic-managed.json`) |
+| SSH keys, reboot | `sshd.auth.key.*`, `reboot` → a marked block in authorized_keys, `sudo reboot` | built, fixture-tested, untested live |
+| IP Settings (static) | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.*` → `config interface ip add`, dial, `ip remove`, `config route`, `config dns nameserver` | built, success and no-answer paths tested, untested live; DHCP declined |
+| IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping | -- | refused with a log, not claimed (community SONiC has none of them) |
+| Breakout (a lane speed on a 4-lane cage) | `switch.port.N.speed` | refused with a log until hardware: no `platform.json` on the VS, and the write is not built |

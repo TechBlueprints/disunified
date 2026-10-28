@@ -200,6 +200,25 @@ func (f *FixtureRunner) lagOf(iface string) string {
 	return ""
 }
 
+// lagMTU is a PortChannel's MTU (SONiC's default 9100 when unset).
+func (f *FixtureRunner) lagMTU(pc string) string {
+	if m := f.table("cfg_lag")["PORTCHANNEL|"+pc]["mtu"]; m != "" {
+		return m
+	}
+	return "9100"
+}
+
+// portMTU is a port's MTU: CONFIG_DB's, else APPL_DB's (the L2 preset sets none).
+func (f *FixtureRunner) portMTU(p string) string {
+	if m := f.table("cfg_port")["PORT|"+p]["mtu"]; m != "" {
+		return m
+	}
+	if m := f.table("appl_port")["PORT_TABLE:"+p]["mtu"]; m != "" {
+		return m
+	}
+	return "9100"
+}
+
 func (f *FixtureRunner) isMirrorDst(iface string) bool {
 	for _, v := range f.table("cfg_mirror") {
 		if v["dst_port"] == iface {
@@ -235,6 +254,19 @@ func (f *FixtureRunner) apply(line string) error {
 
 	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (w[2] == "hset" || w[2] == "hdel"):
 		key := w[3]
+		if pc, ok := strings.CutPrefix(key, "PORTCHANNEL|"); ok {
+			// The probed way to set a PortChannel's MTU.
+			if w[2] != "hset" || w[4] != "mtu" {
+				return fmt.Errorf("unmodelled PORTCHANNEL write")
+			}
+			return f.update("cfg_lag", func(t table) error {
+				if t[key] == nil {
+					return fmt.Errorf("%s does not exist", pc)
+				}
+				t[key]["mtu"] = at(5)
+				return nil
+			})
+		}
 		if !strings.HasPrefix(key, "PORT|") || !f.hasPort(strings.TrimPrefix(key, "PORT|")) {
 			return fmt.Errorf("unexpected key %q", key)
 		}
@@ -256,8 +288,11 @@ func (f *FixtureRunner) apply(line string) error {
 	case cmd == "config interface autoneg":
 		return f.portField(at(3), "autoneg", map[string]string{"enabled": "on", "disabled": "off"}[at(4)])
 	case cmd == "config interface mtu":
-		if f.lagOf(at(3)) != "" {
-			return fmt.Errorf("Interface %s is a portchannel member", at(3))
+		if strings.HasPrefix(at(3), "PortChannel") {
+			return fmt.Errorf("Invalid port %s", at(3)) // probed: the PortChannel's MTU is a CONFIG_DB write
+		}
+		if pc := f.lagOf(at(3)); pc != "" && at(4) != f.lagMTU(pc) {
+			return fmt.Errorf("Port MTU of %s is different than the %s MTU size", at(3), pc)
 		}
 		return f.portField(at(3), "mtu", at(4))
 
@@ -316,6 +351,9 @@ func (f *FixtureRunner) apply(line string) error {
 			}
 			if cur := f.lagOf(p); cur != "" {
 				return fmt.Errorf("%s is already a member of %s", p, cur)
+			}
+			if f.portMTU(p) != f.lagMTU(pc) {
+				return fmt.Errorf("Port MTU of %s is different than the %s MTU size", p, pc) // seen live, 2026-10-27
 			}
 			return f.update("cfg_lag_member", func(t table) error { t[k] = map[string]string{"NULL": "NULL"}; return nil })
 		case "del":

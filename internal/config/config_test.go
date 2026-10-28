@@ -76,6 +76,22 @@ func TestURLWithAuthNoneNeedsNoCredentials(t *testing.T) {
 	}
 }
 
+func TestApplyTimeout(t *testing.T) {
+	load := func(v string) (*File, error) {
+		p := filepath.Join(t.TempDir(), "c.yaml")
+		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: sonic\n    ssh: admin@192.0.2.40\n    control:\n      ports: all\n      apply_timeout: \""+v+"\"\n"), 0o644)
+		return Load(p)
+	}
+	if f, err := load("2m"); err != nil || f.Devices[0].Control.ApplyTimeout != "2m" {
+		t.Errorf("apply_timeout 2m: %v", err)
+	}
+	for _, bad := range []string{"abc", "-5s", "0s", "90"} {
+		if _, err := load(bad); err == nil {
+			t.Errorf("apply_timeout %q accepted", bad)
+		}
+	}
+}
+
 func TestAuthRejectsUnknownValues(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.yaml")
 	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: u\n    driver: apc-ups\n    url: 192.0.2.30\n    auth: maybe\n"), 0o644)

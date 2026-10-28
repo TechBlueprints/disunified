@@ -115,6 +115,12 @@ func buildPorts(db map[string]table, native int) []cagePort {
 			}
 			lp := lanePort(idx, name, cfg[name], appl[name], state[name], counters[oids[name]], vl, lags[name], stpPort[name])
 			lp.StormCtrl = stormSpec(storm[name], atoi(cfg[name]["speed"]))
+			// A member runs at its PortChannel's MTU.
+			if lag := lags[name]; lag != "" {
+				if m := atoi(db["cfg_lag"]["PORTCHANNEL|"+lag]["mtu"]); m > 0 {
+					lp.MTU = m
+				}
+			}
 			cageLanes += laneCount(cfg[name]["lanes"])
 			caps = mergeSpeeds(caps, speedList(state[name]["supported_speeds"]))
 			if n := lldp[name]; len(n) > 0 && lp.Neighbor == nil {

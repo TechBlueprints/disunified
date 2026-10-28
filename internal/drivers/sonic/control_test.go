@@ -314,6 +314,89 @@ func TestApplyLAG(t *testing.T) {
 	})
 }
 
+// A PortChannel's MTU follows its members (seen live: SONiC refuses a member
+// whose MTU differs, a new PortChannel is 9100, and `config interface mtu
+// PortChannel<n>` is "Invalid port"): set in CONFIG_DB right after the
+// PortChannel is made, and moved first when jumbo flips.
+func TestLAGMTUFollowsTheMembers(t *testing.T) {
+	r := newRig(t, nil)
+	off, on := false, true
+	lag := func(jumbo *bool) []devicemodel.PortDesired {
+		var ds []devicemodel.PortDesired
+		for _, d := range r.baseline() {
+			if d.Index == 3 || d.Index == 4 {
+				d.LAG, d.Jumbo = 3, jumbo
+				ds = append(ds, d)
+			}
+		}
+		return ds
+	}
+	snap := r.expect("LAG with jumbo off", lag(&off), []string{
+		"sudo config interface mtu Ethernet8 1500",
+		"sudo config interface mtu Ethernet12 1500",
+		"sudo config portchannel add PortChannel3",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
+		"sudo config vlan member del 4094 Ethernet8",
+		"sudo config portchannel member add PortChannel3 Ethernet8",
+		"sudo config vlan member del 4094 Ethernet12",
+		"sudo config portchannel member add PortChannel3 Ethernet12",
+		"sudo config vlan member add -u 4094 PortChannel3",
+		save,
+	})
+	for _, idx := range []int{3, 4} {
+		if p := port(snap, idx); p.MTU != 1500 || p.LAGID != 3 {
+			t.Errorf("port %d read back: MTU %d LAG %d", idx, p.MTU, p.LAGID)
+		}
+	}
+	snap = r.expect("jumbo on with the LAG", lag(&on), []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 9100",
+		"sudo config interface mtu Ethernet8 9100",
+		"sudo config interface mtu Ethernet12 9100",
+		save,
+	})
+	for _, idx := range []int{3, 4} {
+		if p := port(snap, idx); p.MTU != 9100 {
+			t.Errorf("port %d MTU after jumbo on = %d", idx, p.MTU)
+		}
+	}
+	r.expect("jumbo off again", lag(&off), []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
+		"sudo config interface mtu Ethernet8 1500",
+		"sudo config interface mtu Ethernet12 1500",
+		save,
+	})
+
+	// Members already at the PortChannel's default 9100: no MTU write at all.
+	r9100 := newRig(t, nil)
+	var ds []devicemodel.PortDesired
+	for _, d := range r9100.baseline() {
+		if d.Index == 3 || d.Index == 4 {
+			d.LAG, d.Jumbo = 3, &on
+			ds = append(ds, d)
+		}
+	}
+	got, _ := r9100.apply(ds)
+	for _, c := range got {
+		if strings.Contains(c, "mtu") {
+			t.Errorf("9100 members wrote %q", c)
+		}
+	}
+	// The runner refuses a member whose MTU differs, as SONiC did live.
+	fr := r9100.fr
+	ctx := context.Background()
+	for _, c := range []string{"sudo config portchannel add PortChannel9", "sudo config interface mtu Ethernet28 1500", "sudo config vlan member del 4094 Ethernet28"} {
+		if _, err := fr.Run(ctx, c, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fr.Run(ctx, "sudo config portchannel member add PortChannel9 Ethernet28", ""); err == nil || !strings.Contains(err.Error(), "is different than the PortChannel9 MTU size") {
+		t.Errorf("an MTU mismatch must be refused: %v", err)
+	}
+	if _, err := fr.Run(ctx, "sudo config interface mtu PortChannel9 1500", ""); err == nil || !strings.Contains(err.Error(), "Invalid port") {
+		t.Errorf("config interface mtu on a PortChannel must be refused: %v", err)
+	}
+}
+
 // (d) a mirror: the destination is stripped of its VLANs before the session
 // (SONiC refuses a destination with VLAN config) and gets them back after.
 func TestApplyMirror(t *testing.T) {

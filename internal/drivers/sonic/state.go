@@ -15,6 +15,7 @@ type swState struct {
 	vlans   map[int]bool                 // SONiC VLAN ids
 	members map[string]map[int]bool      // interface or PortChannel -> SONiC VLAN id -> tagged
 	lags    map[string]map[string]bool   // PortChannel -> member interfaces
+	lagMTU  map[string]string            // PortChannel -> its CONFIG_DB mtu
 	mirrors map[string]map[string]string // MIRROR_SESSION name -> fields
 	storm   map[string]map[string]int    // interface -> storm type -> kbps
 	stp     map[string]map[string]string // STP_PORT by interface
@@ -61,11 +62,13 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			s.setMember(parts[2], id, f["tagging_mode"] == "tagged")
 		}
 	}
-	for k := range db["cfg_lag"] {
+	s.lagMTU = map[string]string{}
+	for k, f := range db["cfg_lag"] {
 		_, n, _ := strings.Cut(k, "|")
 		if s.lags[n] == nil {
 			s.lags[n] = map[string]bool{}
 		}
+		s.lagMTU[n] = f["mtu"]
 	}
 	for k := range db["cfg_lag_member"] {
 		parts := strings.Split(k, "|")
@@ -164,6 +167,10 @@ func (s *swState) clone() *swState {
 			m[p] = true
 		}
 		c.lags[k] = m
+	}
+	c.lagMTU = map[string]string{}
+	for k, v := range s.lagMTU {
+		c.lagMTU[k] = v
 	}
 	for k, v := range s.mirrors {
 		c.mirrors[k] = copyFields(v)
