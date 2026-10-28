@@ -232,12 +232,28 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 				if pl.sim.lags[pc][lane] {
 					continue
 				}
+				ln := lane
+				laneMTU := pl.sim.field(ln, "mtu")
 				if _, exists := pl.sim.lags[pc]; !exists {
-					pl.add(d.Index, "config portchannel add "+pc, func(s *swState) { s.lags[pc] = map[string]bool{} })
+					// A new PortChannel is 9100; `config interface mtu` refuses
+					// a PortChannel ("Invalid port"), so its MTU is set in
+					// CONFIG_DB (APPL_DB LAG_TABLE follows) before anyone joins.
+					pl.add(d.Index, "config portchannel add "+pc, func(s *swState) {
+						s.lags[pc] = map[string]bool{}
+						s.lagMTU[pc] = strconv.Itoa(jumboMTU)
+					})
+				}
+				// SONiC refuses a member whose MTU differs from the PortChannel's.
+				switch {
+				case laneMTU == "" || laneMTU == pl.sim.lagMTU[pc]:
+				case len(pl.sim.lags[pc]) == 0:
+					pl.setLAGMTU(d.Index, pc, laneMTU)
+				default:
+					m := pl.sim.lagMTU[pc]
+					pl.add(d.Index, fmt.Sprintf("config interface mtu %s %s", ln, m), func(s *swState) { s.setField(ln, "mtu", m) })
 				}
 				// SONiC refuses a member with VLAN config.
 				pl.stripVLANs(d.Index, lane)
-				ln := lane
 				pl.add(d.Index, fmt.Sprintf("config portchannel member add %s %s", pc, ln), func(s *swState) { s.lags[pc][ln] = true })
 			}
 		}
@@ -261,8 +277,18 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	for _, pc := range pcs {
 		name := pc
 		pl.stripVLANs(0, name)
-		pl.add(0, "config portchannel del "+name, func(s *swState) { delete(s.lags, name); delete(s.members, name) })
+		pl.add(0, "config portchannel del "+name, func(s *swState) { delete(s.lags, name); delete(s.members, name); delete(s.lagMTU, name) })
 	}
+}
+
+// setLAGMTU sets a PortChannel's MTU in CONFIG_DB (probed: APPL_DB
+// LAG_TABLE follows; `config interface mtu PortChannel<n>` is "Invalid
+// port").
+func (pl *plan) setLAGMTU(idx int, pc, mtu string) {
+	if pl.sim.lagMTU[pc] == mtu {
+		return
+	}
+	pl.add(idx, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORTCHANNEL|"+pc)+" mtu "+mtu, func(s *swState) { s.lagMTU[pc] = mtu })
 }
 
 // emptiedHere: a member del for pc is among the planned writes.
@@ -461,14 +487,18 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 			}
 		}
 		// Jumbo is switch-wide in UniFi and a port MTU on SONiC. A LAG
-		// member takes its PortChannel's MTU and refuses its own.
-		if d.Jumbo != nil && d.LAG == 0 && pl.sim.lagOf(ln) == "" {
+		// member's MTU must equal its PortChannel's (SONiC refuses a member
+		// that differs), so the PortChannel moves first, then the member.
+		if d.Jumbo != nil {
 			want := normalMTU
 			if *d.Jumbo {
 				want = jumboMTU
 			}
+			m := strconv.Itoa(want)
+			if pc := pl.sim.lagOf(ln); pc != "" {
+				pl.setLAGMTU(d.Index, pc, m)
+			}
 			if atoi(pl.sim.field(ln, "mtu")) != want {
-				m := strconv.Itoa(want)
 				pl.add(d.Index, fmt.Sprintf("config interface mtu %s %s", ln, m), func(s *swState) { s.setField(ln, "mtu", m) })
 			}
 		}

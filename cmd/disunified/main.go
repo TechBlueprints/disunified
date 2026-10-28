@@ -188,6 +188,7 @@ type options struct {
 	controlReboot, controlSSH, controlSNMP     bool
 	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
+	applyTimeout                               time.Duration // 0 = the loop's default
 	unifiURL, unifiSite, unifiKey              string
 	provision                                  bool
 	collectOnce                                bool
@@ -213,7 +214,8 @@ func runConfig(ctx context.Context, f *config.File) {
 			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP, controlNUT: sw.Control.NUT,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
-			unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
+			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
+			unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
 		}
 		if strings.EqualFold(o.controlPorts, "off") {
@@ -545,12 +547,13 @@ func runOne(ctx context.Context, o options) error {
 
 	// --- Loop ---
 	loopCfg := informloop.Config{
-		Logger:     log,
-		NUT:        nutApplier(nut),
-		Interval:   o.interval,
-		RecordDir:  o.recordDir,
-		DeviceHost: hostOf(o.deviceURL, o.deviceSSH),
-		GatewayIP:  o.controller,
+		Logger:       log,
+		NUT:          nutApplier(nut),
+		Interval:     o.interval,
+		ApplyTimeout: o.applyTimeout,
+		RecordDir:    o.recordDir,
+		DeviceHost:   hostOf(o.deviceURL, o.deviceSSH),
+		GatewayIP:    o.controller,
 		OnLayoutChange: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)
@@ -660,6 +663,16 @@ func defaultPortNames(ports []inform.Port, snap *devicemodel.Snapshot, namer dev
 
 // hostOf extracts an IP literal from a switch URL or user@host target; ""
 // when the host is a name (the operator then passes -ip).
+// parseApplyTimeout reads control.apply_timeout (validated by config.Load);
+// "" leaves the loop's default.
+func parseApplyTimeout(s string) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
 func hostOf(deviceURL, deviceSSH string) string {
 	host := ""
 	if deviceURL != "" {

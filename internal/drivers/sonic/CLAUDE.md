@@ -82,15 +82,26 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   and allows one untagged VLAN per port: members and destinations are
   stripped first and restored after; a native change is `del` then `add
   -u`. The FixtureRunner models these refusals, so a wrong order fails a
-  test. A LAG member reports its PortChannel's VLANs; an emptied
-  PortChannel is stripped and deleted. A LAG member's MTU is its
-  PortChannel's (`config interface mtu` on a member is not sent).
+  test. A LAG member reports its PortChannel's VLANs (and MTU); an emptied
+  PortChannel is stripped and deleted.
+- **A PortChannel's MTU must equal its members'** (seen live: "Port MTU of
+  Ethernet16 is different than the PortChannel1 MTU size"). A new
+  PortChannel is 9100 and `config interface mtu PortChannel<n>` is
+  "Invalid port", so right after `config portchannel add` the driver runs
+  `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel<n>' mtu <members'
+  MTU>` (APPL_DB `LAG_TABLE` follows), then the members join. When jumbo
+  flips, the PortChannel's hset goes first and the members' `config
+  interface mtu` after it. The FixtureRunner refuses a mismatched member.
 - **Multi-VLAN forms** (probed): `config vlan member add|del -m a,b <port>`
   (a VLAN list for ONE port; a port list is rejected) and `-e -m <list>`
-  ("every existing VLAN except these"); `config vlan add -m a,b`. A config
-  call costs 200-250 ms, so Allow All is one `add -e -m <native_vlan>
-  <port>` per port (31 ports ~ 8 s, inside the loop's 20 s), never one call
-  per membership. `-e` takes whatever VLANs exist at that moment: it is
+  ("every existing VLAN except these"); `config vlan add -m a,b`. Measured
+  on the VS: a config call costs ~250 ms, a 31-port Allow All is ~8 s, and
+  the first full push (31 MTUs + 31 VLAN commands) ~16 s -- which the
+  loop's old shared 20 s budget cut short live. Writes now have their own
+  budget (`informloop.Config.ApplyTimeout`, config `control.apply_timeout`,
+  default 90 s); a collect keeps 20 s. Allow All is one `add -e -m
+  <native_vlan> <port>` per port, never one call per membership. `-e`
+  takes whatever VLANs exist at that moment: it is
   used only when the switch holds no VLAN outside the controller's list
   (EnsureVLANs runs first); otherwise the explicit `-m` list.
   `EnsureVLANs` refuses a list holding `native_vlan` whole; `ApplyPorts`

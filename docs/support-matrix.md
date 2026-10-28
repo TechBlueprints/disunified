@@ -177,7 +177,7 @@ the issue which outlet is safe to switch.
 
 ---
 
-## `sonic` — community SONiC switch (read side; control built, not yet verified live)
+## `sonic` — community SONiC switch (virtual switch; port control verified live, device control built)
 
 Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6).
 
@@ -190,15 +190,30 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
 | Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
+| **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off (the first push set MTU 1500 on 31 ports). Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live run found the PortChannel MTU rule and the apply budget; both are fixed and fixture-tested since. |
 
-Adopted read-only as `USWF07D` ([`drivers/sonic.md`](drivers/sonic.md) §2 A3); the control side has not run against the guest yet.
+### Built, untested live — PRs welcome
+
+| Gap | What the PR needs |
+|---|---|
+| Jumbo on/off flipped from the UI, with and without a LAG present (the PortChannel's MTU moves first) | the flip on the guest, the commands logged, the zero-change reconcile |
+| NTP servers, syslog hosts, SNMP community (bridge-owned entries only) | each set and changed from the UI; an operator's own entry left alone |
+| SSH keys, reboot | site keys in the marked authorized_keys block; `control.reboot` and a Restart from the UI |
+| IP Settings → Static (add, dial, remove the old address) | an address change with the new address in known_hosts, and one that does not answer (undone) |
+
+### Refused (logged, not claimed)
+
+IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping (community
+SONiC has none of them); breakout until hardware with a `platform.json`;
+STP and the per-port STP settings on an image without the STP daemon (every
+community image: the driver claims STP only when `FEATURE|stp` exists).
 
 ### Untested — expected to work — PRs welcome
 
 | Gap | Why it should work | What the PR needs |
 |---|---|---|
 | **Real hardware** (the DX010 first) | the same Redis tables; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them when present | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
-| **LLDP neighbours, LAGs, mirror sessions, STP, breakout** | parsed from `LLDP_ENTRY_TABLE`, `PORTCHANNEL*`, `MIRROR_SESSION`, `STP*`; a split cage folds by `index` (tested by re-indexing a port in the capture) | a capture with each configured |
+| **LLDP neighbours, STP, breakout** | parsed from `LLDP_ENTRY_TABLE` and `STP*`; a split cage folds by `index` (tested by re-indexing a port in the capture) | a capture with each configured |
 | **Other SONiC branches** (`202411`, master) | `swsscommon` and the table names are stable across branches | a capture per branch |
 
 ### Known limits (by design)

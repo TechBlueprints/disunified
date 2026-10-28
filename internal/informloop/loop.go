@@ -53,13 +53,23 @@ func (s State) String() string {
 	return fmt.Sprintf("State(%d)", int(s))
 }
 
+// DefaultApplyTimeout is Config.ApplyTimeout when unset.
+const DefaultApplyTimeout = 90 * time.Second
+
 // Config is everything the loop needs beyond the session.
 type Config struct {
 	Interval       time.Duration         // initial inform cadence; the controller may change it
 	RecordDir      string                // "" disables reply recording
 	Collector      devicemodel.Collector // nil = report the model's synthetic table
 	CollectTimeout time.Duration
-	Logger         *log.Logger
+	// ApplyTimeout bounds one write to the device -- a port/VLAN/device
+	// apply, the SSH keys, the address, a port cycle, a reboot -- apart
+	// from the collect budget: a driver whose writes are many CLI calls
+	// (SONiC: ~250 ms per `config` call, a first push of dozens of them)
+	// needs far longer than a 60 ms read. Default 90 s. An apply cut short
+	// is finished by the next reconcile (applies are diffs).
+	ApplyTimeout time.Duration
+	Logger       *log.Logger
 
 	// Controller applies controller-pushed port config to the switch. nil =
 	// read-only: pushes are accepted (cfgversion echoed) but never written.
@@ -201,6 +211,9 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	}
 	if cfg.CollectTimeout <= 0 {
 		cfg.CollectTimeout = 20 * time.Second
+	}
+	if cfg.ApplyTimeout <= 0 {
+		cfg.ApplyTimeout = DefaultApplyTimeout
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
@@ -436,7 +449,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	l.cycleOutlets(ctx, outlets)
 	if reboot {
 		if rb, ok := l.cfg.Controller.(devicemodel.Rebooter); ok {
-			cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+			cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 			err := rb.Reboot(cctx)
 			cancel()
 			if err != nil {
@@ -455,7 +468,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 		return
 	}
 	for _, idx := range queue {
-		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		err := pc.CyclePort(cctx, idx)
 		cancel()
 		if err != nil {
@@ -481,7 +494,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 		// Read-only for ports and outlets, but the device-level settings a
 		// driver does honour (its own address, the NUT server) still follow
 		// the controller's last push.
-		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		defer cancel()
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text)
@@ -490,7 +503,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	if !l.reconciledOnce && l.cfg.OnSystemCfg != nil {
 		l.cfg.OnSystemCfg(unificfg.Parse(text))
 	}
-	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+	cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 	defer cancel()
 	if l.cfg.Controller == nil {
 		l.applyAddress(cctx, "", text)
@@ -553,7 +566,7 @@ func (l *Loop) cycleOutlets(ctx context.Context, queue []int) {
 			l.cfg.Logger.Printf("[%s] relayctl outlet %d: not under control; ignored", l.desc.MAC, idx)
 			continue
 		}
-		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		err := oc.CycleOutlet(cctx, own)
 		cancel()
 		if err != nil {
@@ -912,7 +925,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		// No port or outlet control; the device-level settings a driver
 		// honours (address, NUT server) are still applied before the push
 		// is marked as followed.
-		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text)
 		cancel()
@@ -933,7 +946,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	// stop, rather than running the port, VLAN and STP machinery against a
 	// device that has none of it.
 	if l.cfg.Controller == nil {
-		cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		defer cancel()
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
@@ -964,7 +977,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		return true
 	}
 	desired = l.withholdFreshPorts(desired)
-	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
+	cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 	defer cancel()
 	l.ensureVLANs(cctx, text)
 	l.applyDeviceSettings(cctx, text)
