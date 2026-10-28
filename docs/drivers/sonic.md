@@ -774,6 +774,24 @@ before members join, and follow the jumbo setting afterwards.
 | IP Settings → Static .200 (back, pass 5) | `ip add <new>`; dial new; over the new session: `echo 1 \| sudo tee /proc/sys/net/ipv4/conf/Vlan4094/promote_secondaries`, `ip remove <old>`, `ip -4 -o addr show … \| grep -q ' <new>/16 '`, `config save -y`; runner switched, target persisted | guest on the new address only, default route kept, bridge continued, reconcile 0 changes |
 | SSH agent | the Mac's 1Password agent holds the employer's key first; `sshrun` offered it and Go aborted on its refusal ("failed to sign challenge") -- pass 6: agent keys one at a time, and `ssh_key: <file>.pub` selects one identity | `authenticated with ssh-rsa SHA256:… Personal key` in the log |
 
+**Controller version:** the reply log of these live tests says
+`unifi.version=10.6.109`; the controller had moved on from the 10.6.106
+the rest of this repo was verified against. Nothing in the protocol
+differed, and the replay fixture `replies-sonic.ndjson` sits under the
+10.6.106 directory with that note.
+
+**After the review-fix and feature passes (same evening, build bfbbfe1 →
+e5bfa83):** the first push after a restart applied `config clock timezone
+MST7MDT` (from the pushed POSIX rule) and `config hostname
+SONiCSeastone-DX010` (with `control.hostname`), both verified on the guest;
+`set-locate` through the API reached the driver, which tried the platform
+LED, logged that the VS has none, and reported `locating`. The jumbo toggle
+with an aggregate present -- the review's high finding -- is covered by the
+replay of the real aggregate push through the loop with the probed refusal
+modelled; its live run waits on a UI session (the API rejects
+`aggregate_num_ports` on this record, so the aggregate can only be made
+from the UI).
+
 Left open after this: the address the bridge **reports** to the controller
 (`ip`, `connect_request_ip`) is the configured target from start-up, so the
 controller kept showing the old address after a move until a restart -- a
