@@ -784,6 +784,61 @@ DX010 will not run spanning tree until an image is built with
 202505 branch; only the flag is off). That is a build decision for later,
 not a driver gap: the driver claims STP when the feature is present.
 
+## 7. Feature evaluation against the SONiC source (2026-10-27)
+
+Clint asked whether the source offers UniFi features the driver still
+lacks. Repositories cloned locally for this (branch `202505`, the
+switch's own): `sonic-utilities` (the whole `config`/`show` command tree,
+7511bf2), `sonic-swss` (the Redis schema, e9dcd50) and the DX010 parts of
+`sonic-buildimage` (ff3c0c9, sparse: the Seastone platform directory,
+build rules, templates). Method: every `config` command group and its
+sub-commands were listed from the source, the controller's pushed keys in
+the recorded fixtures were listed, and the two were matched; the DX010
+platform API and the YANG models on the guest filled in what the CLI
+does not expose.
+
+### 7.1 Pushed by the controller, implementable, not yet done → **implement**
+
+| UniFi push / action | SONiC has | Decision |
+|---|---|---|
+| `system.timezone` / `locale.timezone` (in every push, 6 captures) | `config clock timezone <name>` (`DEVICE_METADATA timezone`; the guest runs `UTC`) | implement: `DeviceDesired.Timezone`, written when it differs; the Arista left it "todo (safe)" and can follow |
+| `resolv.host.1.name` (the UniFi name without spaces, in every push) | `config hostname <name>` ("without impacting the traffic") | implement behind a new `control.hostname` flag (opt-in like the other writes); the queued repo-wide feature's other half, a static DNS record for a static-address device, stays queued |
+| `set-locate` / `unset-locate` | the DX010 platform API: `Chassis.set_status_led('green'\|'off')` on `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`; no port LED control, no blink primitive; the VS platform API raises | implement an optional `devicemodel.Locator` (`SetLocate(ctx, on)`): the driver blinks the system LED by toggling green/off once a second while locating and restores green after; a platform whose API fails logs once and reports `locating` only. **Hardware-untested** until the DX010 |
+| breakout (speed on lane 1 of a cage) | `config interface breakout [-y] [-f] [-l] <port> <mode>` with the modes from the SKU's `platform.json`: `1x100G[40G]`, `2x50G`, `4x25G[10G]` on the DX010; child ports `Ethernet<n+1..>` keep the parent's `index` | implement the mapping now (100000/40000 → `1x100G[40G]`, 50000 → `2x50G`, 25000/10000 → `4x25G[10G]`, lane speed then set on each child), fixture-tested with the DX010's `platform.json` interfaces block from the source tree (public, not site data); refused with a log where `platform.json` is absent (the VS). **Hardware-untested** |
+
+### 7.2 Pushed, but SONiC cannot do it → stays refused or report-only (unchanged)
+
+| UniFi push | Why not |
+|---|---|
+| `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); refused, unclaimed |
+| `switch.port.N.lldpmed.opmode` / `topology_notify` | `LLDP_PORT` has `enabled`/`mode`/TLV flags, no LLDP-MED; report-only like the Arista |
+| `switch.port.N.ld_mode` (loop detection) | nothing in SONiC; a real STP daemon would be the answer (see 7.4) |
+| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking; `dhcp_relay` is L3; unclaimed |
+| isolation, 802.1X, port security (`port_security_mac_address`) | none in community SONiC (`sonic-acl.yang` exists, so an ACL-based emulation of isolation and MAC allow-lists is possible later; not now) |
+| egress/ingress rate limits | the controller pushed no rate-limit key in any capture, so nothing to act on; SONiC could shape per port through `SCHEDULER`/`PORT_QOS_MAP` (YANG present) if a push ever carries it |
+| `snmp.*` location/contact | not pushed unless the site-wide SNMP is on; `config snmp location\|contact` exist and are a one-line mapping once a capture exists |
+
+### 7.3 Controller actions with no capture → not implemented (repo rule: capture first)
+
+- **Reset Stats** (Port Manager): the control stays disabled for this device
+  in the UI, with or without a port selected, so no command was observed;
+  `sonic-clear counters` is the obvious implementation if one ever is.
+- **ping / traceroute / speed-test** cmds: the host has `ping` and
+  `traceroute`; the reply format for results was never captured (the
+  Arista lists them "nice to have").
+- **cable-test**: no TDR on SONiC.
+
+### 7.4 Not a driver matter
+
+- **STP**: `config spanning-tree` writes everything, but community images
+  ship no daemon (`INCLUDE_STP` unset). An image built with
+  `INCLUDE_STP=y` (the `sonic-stp` source and `docker-stp` rules are on
+  `202505`) would make the driver's STP path, loop protection and BPDU
+  guard real on the DX010. A build task for Clint, not code.
+- **`switchport mode`**: `config switchport mode access\|trunk\|routed`
+  exists on 202505 and would make the native/tagged model more explicit;
+  the membership-based writes already behave correctly, so no change.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
