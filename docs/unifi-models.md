@@ -163,3 +163,14 @@ has no such class; RJ45 is `standard`), and UDC48X6 is the only shipping
 54-port model with six QSFP28 cages. With the device's media report the
 front ports draw as RJ45. Alternatives considered: `USWF007` (48 copper +
 4 SFP28 + 2 QSFP28, internal code) and `US648P` (48 copper + 6 SFP+, PoE).
+
+## The ECS line runs SONiC
+
+Read from a UniFi ECS Aggregation (`USWF066`) over SSH, 2026-10-28: Ubiquiti's
+own SONiC build (`4.0.1`, branch `202106`, Debian 10) on a **Marvell** ASIC
+(`docker-syncd-mrvl`, platform `x86_64-ubiquiti_pcom_p701gt-r0`), with the
+enterprise daemons community images lack (`l2mcd` IGMP snooping, `stp` as
+mstpd, `teamd`, FRR) and Ubiquiti's own glue (`ubnt-lnxcfgd` writes the
+controller's pushes into CONFIG_DB). The ECS Core shares that firmware line,
+so its ASIC is almost certainly Marvell as well. `docs/drivers/sonic.md` §8.5
+has the detail that matters for a SONiC driver.

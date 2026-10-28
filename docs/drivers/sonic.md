@@ -1011,6 +1011,52 @@ The decision is Clint's. The cheaper-first order is: build host and STP
 image (step 1, useful regardless), then step 2 while waiting for the
 hardware, then step 4 on arrival.
 
+### 8.5 A reference implementation is already on the LAN (found 2026-10-28)
+
+Clint asked whether the ECS line runs SONiC. It does. Read over SSH from the
+site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
+
+| | |
+|---|---|
+| OS | SONiC, Ubiquiti build `4.0.1`, `release: 202106`, Debian 10.13, kernel 4.19, `asic_type: marvell`, built 2026-09-08 by `ubnt` |
+| Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
+| Containers | `swss` (orchagent **with the L2MC orch** and `l2mcmgrd`), `l2mcd`, `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
+| The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB; there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). `ubnt_cfg.json` toggles `macsnooping`, `stpmgrd`, `dhcpsnpmgrd`, `lldpmgrd`, `fanctrl`, … |
+
+**`CFG_L2MC_TABLE|Vlan1` on that switch**, which is UniFi's per-VLAN IGMP
+settings landed in SONiC: `enabled true`, `querier true`,
+`querier-address <gateway>`, `version 2`, `query-interval 30`,
+`query-max-response-time 10`, `group-membership-time 260`,
+`last-member-query-interval 1000`, `query-timeout 65`, `fast-leave false`,
+`unknown-multicast-flood true`. Those are the HLD's fields with Ubiquiti's
+additions, and they are UniFi's `switch.vlan.N.igmp_*` keys one for one
+(`igmp_groupmembership=260`, `igmp_maxresponse=10`, `igmp_querier` address,
+`igmp_fastleave`, `igmp_supression`). The mapping the driver would need (§8.2)
+is therefore not a guess: it is what Ubiquiti's own glue writes, and the
+switch's APPL_DB (`APP_L2MC_MEMBER_TABLE:Vlan:0.0.0.0:group:port`, 49 entries)
+is a live reference to compare a DX010 build against.
+
+**Ubiquiti floods the discovery protocols on purpose.** 21
+`CFG_L2MC_STATIC_GROUP_TABLE` entries per switch (`RSVD_MCAST_ADDR_SSDP`,
+`_NTP`, `_SLP_*`, `_H323`, `_PTP`, …) carry every port as a static member, so
+SSDP (239.255.255.250), NTP (224.0.1.1) and the rest flood to **all ports** on
+a UniFi switch with snooping on. Only the remaining groups are pruned
+dynamically: UniFi's own discovery `233.89.188.1` goes to the ports with
+UniFi devices behind them, the controller's `239.254.127.63` and HP's
+`224.0.1.60` toward the gateway's LAG only. So the SSDP chatter measured in
+§8.4 already reaches every port of every UniFi switch by design; a DX010
+without snooping changes nothing for those groups.
+
+**What this does to the assessment.** The daemon is not experimental: it
+runs in every ECS switch Ubiquiti sells and has run in this rack for months,
+on a Marvell SAI. Micas runs the modern source of the same daemon on
+Broadcom. The steps in §8.3 stand; the "draft vendor code" risk in §8.4 is
+smaller than it read, and the SAI question in step 4 now has two vendors'
+worth of precedent. The one thing the ECS build cannot lend the DX010 is a
+binary: its `l2mcd` and orchagent are 202106 and link that branch's
+`libswsscommon`; the Micas source on 202511 is the path.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
