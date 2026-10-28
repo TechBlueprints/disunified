@@ -129,4 +129,5 @@ var (
 	_ devicemodel.SSHKeyInstaller   = (*Collector)(nil)
 	_ devicemodel.Rebooter          = (*Collector)(nil)
 	_ devicemodel.AddressController = (*Collector)(nil)
+	_ devicemodel.AddressReporter   = (*Collector)(nil)
 )

@@ -232,7 +232,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
-	sys := buildSystem(db, sec, addrs, routes, neigh, dialAddrs(c.Dial))
+	sys := buildSystem(db, sec, addrs, routes, neigh, dialAddrs(c.CurrentAddress()))
 	sys.MACTableUsed = len(macs)
 	cpu := parseCPUTimes(sec["stat"])
 	c.mu.Lock()

@@ -29,7 +29,21 @@ the loop's read-only branch now applies address and NUT blocks too. A sixth,
 `apc-backups`, presents Clint's APC Back-UPS Pro 500 (BG500, embedded NMC)
 through the card's web pages as a `USPDA2B` -- built and adopted 2026-09-27
 (`docs/drivers/apc-backups.md`); SNMP tells nothing about that family, the
-usp IP Settings push carries no gateway (`options.gateway`).
+usp IP Settings push carries no gateway (`options.gateway`). A seventh,
+`sonic`, presents a community SONiC switch as a `USWF07D` "ECS Core": built
+2026-10-27 on a SONiC virtual-switch guest (build 202505.1238524, hardware
+SKU `Seastone-DX010`) ahead of Clint's Celestica DX010, its Redis tables
+read through swsscommon in one SSH exec per poll and the controller's
+config written through SONiC's `config` CLI; every control feature
+(ports, VLANs with the `native_vlan` stand-in for VLAN 1, LAG, mirror,
+storm control, jumbo, NTP, SSH keys, reboot, a static address move) was
+verified live against that build (`docs/drivers/sonic.md` §6.6); STP is
+feature-gated (no daemon in community images), hardware-only parts wait
+for the unit. The live runs also produced generic fixes: a write budget
+separate from the collect one (`control.apply_timeout`), `sshrun` offering
+agent keys one at a time (a `.pub` selects one), the `_type: reboot`
+reply, and the reported address following an applied move
+(`devicemodel.AddressReporter`).
 
 ## 2. Map
 
@@ -168,8 +182,11 @@ stay stopped** (one bridge per adopted key).
 
 Per driver, next to its code: `internal/drivers/arista-eos/CLAUDE.md`
 (EOS 4.26.14M is the last train for the 7160; verify every command against
-it) and `internal/drivers/proxmox/CLAUDE.md` (the node is the switch, ports
-from guest tags, adoption guards). Rules common to every driver:
+it), `internal/drivers/proxmox/CLAUDE.md` (the node is the switch, ports
+from guest tags, adoption guards) and `internal/drivers/sonic/CLAUDE.md`
+(Redis tables, the `config` CLI's refusals and multi-VLAN forms, the native
+VLAN stand-in, `promote_secondaries` on an address move; build 202505.1238524).
+Rules common to every driver:
 `internal/drivers/CLAUDE.md`. Full write-ups: `docs/drivers/<driver>.md`.
 
 ## 7. Done / open (2026-09-19 end of day)
