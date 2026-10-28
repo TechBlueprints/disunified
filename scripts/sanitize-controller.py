@@ -128,6 +128,8 @@ def scrub_cfg_text(text):
             v = map_host(v)
         elif re.match(r'sshd\.auth\.key\.\d+\.name$', k):
             v = map_host(v)   # key comments carry the owner's machine name
+        elif k in ('system.timezone', 'locale.timezone', 'unifi.version'):
+            pass   # a POSIX TZ rule (M3.2.0) and a version look like FQDNs; neither identifies anything
         else:
             v = scrub_plain(v)
         out.append(f'{k}={v}')

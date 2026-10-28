@@ -666,6 +666,8 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
   emulates otherwise.
 - **Locate:** no LED command on SONiC (nothing for a port or chassis
   LED in `config`); the session reports `locating` as every driver does.
+  (Superseded by §7.5: the driver now blinks the status LED through the
+  platform API.)
 - **`AddressController.ApplyAddress`:** static only; DHCP is declined
   (a VLAN interface on SONiC has no DHCP client, and a lease could not be
   confirmed anyway). The target is the interface carrying the address the

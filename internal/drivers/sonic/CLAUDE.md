@@ -4,8 +4,11 @@ Read `internal/drivers/CLAUDE.md` first. Specification and plan:
 `docs/drivers/sonic.md` (§5 the read side, §6 the control side, §6.6 the
 live results). Built 2026-10-27 on the podman driver's pattern against the
 SONiC virtual switch (`202505.1238524-ff3c0c9f6`, hardware SKU
-`Seastone-DX010`, L2 preset), adopted as `USWF07D`; every control feature
-verified live on that build; no hardware yet.
+`Seastone-DX010`, L2 preset), adopted as `USWF07D`; the control features
+verified live on that build except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live), syslog (live only as the no-op with no site host) and SNMP (not pushed with the site's SNMP off); §7.5's four are fixture-tested
+only; no hardware yet. The lab session's real pushes are
+`docs/fixtures/controller-10.6.106/replies-sonic.ndjson`, replayed with
+control on in `TestReplaySonicLabSession`.
 
 - **One exec per poll: `python3 -` with `collect.py` on stdin**, reading
   Redis through `swsscommon.SonicV2Connector(use_unix_socket_path=True)` as
@@ -39,9 +42,10 @@ verified live on that build; no hardware yet.
   2..4094, anything else refused in `Open`) names the stand-in: an
   *untagged* member of `Vlan<native_vlan>` reports native VLAN 1, an
   address learned in it is on VLAN 1, and `Snapshot.VLANs` shows 1 in its
-  place. A *tagged* membership of that id is reported as the id itself
-  (the hazard §5.2a names: it would collide with a real UniFi VLAN of that
-  number). A port in no VLAN at all is a routed port on SONiC and reports
+  place. A *tagged* membership of that id reads as tagged VLAN 1 too (the
+  stand-in never reaches the controller); the control side never writes
+  one, and a push that tags VLAN 1 on a port whose native VLAN is another
+  is refused with a log (SONiC carries UniFi's VLAN 1 only untagged). A port in no VLAN at all is a routed port on SONiC and reports
   an empty `PortVLAN` (native 0). The lab guest runs every port untagged in
   `Vlan4094`. The control side must map the other way (VLAN 1 -> untagged
   in `Vlan<native_vlan>`).
@@ -166,7 +170,23 @@ verified live on that build; no hardware yet.
   on (9216 on every recorded push; SONiC accepts it, probed, APPL_DB
   follows) and 1500 when off. PortChannels follow the same value. The
   driver implements `devicemodel.JumboSwitcher`, so the loop's "always
-  forwards jumbo" note is not printed for it.
+  forwards jumbo" note is not printed for it. **A LAG member's MTU is never
+  `config interface mtu`**: SONiC refuses it on a member whatever the value
+  ("Error: 'interface_name' is in portchannel!", probed 2026-10-27), and
+  under `set -e` that killed every later batch until the LAG went. The
+  PortChannel moves by `hset 'PORTCHANNEL|…' mtu` and each member's own
+  `hset 'PORT|<member>' mtu` with it (APPL_DB follows, probed); a member
+  whose PortChannel already runs the wanted MTU is satisfied.
+- **Address-move guards:** the dialled address must be static, in-band
+  (Vlan/Ethernet/PortChannel/Loopback) and in CONFIG_DB (VLAN_INTERFACE,
+  INTERFACE, PORTCHANNEL_INTERFACE -- added to `cfg_mgmt` -- or
+  LOOPBACK_INTERFACE); a DHCP lease and eth0 (MGMT_INTERFACE: one entry,
+  an add replaces it, its own `gwaddr`) are declined with the reason.
+  **SONiC holds at most three nameservers** ("The maximum number (3) of
+  nameservers exceeded", probed): removals go before adds.
+- **Write budget:** the driver implements `devicemodel.ApplyBudget` (90 s);
+  other drivers get the collect budget unless `control.apply_timeout` is
+  set.
 - **NTP/syslog hostnames are pinned.** SONiC takes addresses only, and a
   pool answers a different one on every lookup: re-resolving each push
   churned `ntp add <new>; ntp del <old>` every cycle (live). The first
