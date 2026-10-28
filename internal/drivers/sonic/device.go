@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -28,6 +29,12 @@ type managedSet struct {
 	NTP    []string `json:"ntp,omitempty"`
 	Syslog []string `json:"syslog,omitempty"`
 	SNMP   string   `json:"snmp,omitempty"`
+	// Pinned is each NTP/syslog hostname's resolution, keyed "ntp|<host>"
+	// or "syslog|<host>": a pool answers a different address on every
+	// lookup, and re-resolving each push churned the switch's NTP list
+	// forever (seen live). Kept while the hostname stays in the push and
+	// its address stays configured on the switch.
+	Pinned map[string]string `json:"pinned,omitempty"`
 }
 
 func (c *Collector) loadManaged() error {
@@ -54,12 +61,15 @@ func (c *Collector) loadManaged() error {
 		c.managedSyslog[s] = true
 	}
 	c.managedSNMP = m.SNMP
+	for k, v := range m.Pinned {
+		c.pinned[k] = v
+	}
 	return nil
 }
 
 func (c *Collector) saveManaged() error {
 	c.mu.Lock()
-	m := managedSet{NTP: sortedSet(c.managedNTP), Syslog: sortedSet(c.managedSyslog), SNMP: c.managedSNMP}
+	m := c.managedLocked()
 	dir := c.StateDir
 	c.mu.Unlock()
 	if dir == "" {
@@ -91,6 +101,59 @@ func copySet(m map[string]bool) map[string]bool {
 		out[k] = true
 	}
 	return out
+}
+
+// managedLocked is what the driver owns, as stored (c.mu held).
+func (c *Collector) managedLocked() managedSet {
+	m := managedSet{NTP: sortedSet(c.managedNTP), Syslog: sortedSet(c.managedSyslog), SNMP: c.managedSNMP}
+	if len(c.pinned) > 0 {
+		m.Pinned = copyPins(c.pinned)
+	}
+	return m
+}
+
+func copyPins(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// pinnedIP is the address an NTP/syslog server is configured by: itself
+// for an IP; for a hostname, the address it resolved to when it first
+// appeared in the push, kept while that address is still configured on
+// the switch. Re-resolved only when the pinned address is gone from the
+// switch (removed by hand, or absent at a bridge start) or when the
+// hostname had left the push and came back (its pin was dropped then).
+func (c *Collector) pinnedIP(kind, host string, pins map[string]string, configured func(string) bool) (string, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String(), nil
+	}
+	key := kind + "|" + host
+	if ip, ok := pins[key]; ok && configured(ip) {
+		return ip, nil
+	}
+	ip, err := c.resolve(host)
+	if err != nil {
+		delete(pins, key)
+		return "", err
+	}
+	pins[key] = ip
+	return ip, nil
+}
+
+// dropPins forgets the pins of hostnames no longer in the push.
+func dropPins(kind string, hosts []string, pins map[string]string) {
+	in := map[string]bool{}
+	for _, h := range hosts {
+		in[kind+"|"+h] = true
+	}
+	for k := range pins {
+		if strings.HasPrefix(k, kind+"|") && !in[k] {
+			delete(pins, k)
+		}
+	}
 }
 
 // resolve uses the Resolve hook (tests) or resolveIP.
@@ -131,6 +194,8 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	c.mu.Lock()
 	st := c.state
 	mNTP, mSyslog, mSNMP := copySet(c.managedNTP), copySet(c.managedSyslog), c.managedSNMP
+	pins := copyPins(c.pinned)
+	before := c.managedLocked()
 	c.mu.Unlock()
 	if st == nil {
 		return 0, fmt.Errorf("sonic apply switch: no snapshot yet")
@@ -189,9 +254,9 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if d.ManageNTP {
 		want := map[string]bool{}
 		for _, h := range d.NTPServers {
-			ip, err := c.resolve(h)
+			ip, err := c.pinnedIP("ntp", h, pins, func(ip string) bool { return sim.ntp[ip] })
 			if err != nil {
-				note("NTP server %s", err)
+				note("NTP server %s; skipped", err)
 				continue
 			}
 			want[ip] = true
@@ -211,17 +276,20 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			}
 			delete(mNTP, ip)
 		}
+		dropPins("ntp", d.NTPServers, pins)
 	}
 	if d.ManageSyslog {
 		want := map[string]bool{}
+		var hosts []string
 		for _, h := range d.SyslogHosts {
 			host, port := h, "514"
 			if hh, pp, err := net.SplitHostPort(h); err == nil {
 				host, port = hh, pp
 			}
-			ip, err := c.resolve(host)
+			hosts = append(hosts, host)
+			ip, err := c.pinnedIP("syslog", host, pins, func(ip string) bool { _, ok := sim.syslog[ip]; return ok })
 			if err != nil {
-				note("syslog host %s", err)
+				note("syslog host %s; skipped", err)
 				continue
 			}
 			want[ip] = true
@@ -249,6 +317,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			}
 			delete(mSyslog, ip)
 		}
+		dropPins("syslog", hosts, pins)
 	}
 
 	// SNMP: one managed read-only community; the previous managed one is
@@ -271,16 +340,18 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	}
 	commitManaged := func() {
 		c.mu.Lock()
-		c.managedNTP, c.managedSyslog, c.managedSNMP = mNTP, mSyslog, mSNMP
+		c.managedNTP, c.managedSyslog, c.managedSNMP, c.pinned = mNTP, mSyslog, mSNMP, pins
+		after := c.managedLocked()
 		c.mu.Unlock()
+		if reflect.DeepEqual(before, after) {
+			return
+		}
 		if err := c.saveManaged(); err != nil {
 			c.Log.Printf("sonic: keeping %s: %v (the bridge's NTP/syslog/SNMP ownership is held in memory)", managedFile, err)
 		}
 	}
 	if len(ops) == 0 {
-		if !equalSets(mNTP, c.managedNTPCopy()) || !equalSets(mSyslog, c.managedSyslogCopy()) || mSNMP != c.managedSNMPValue() {
-			commitManaged()
-		}
+		commitManaged()
 		return 0, nil
 	}
 	cmds := make([]string, 0, len(ops)+1)
@@ -300,24 +371,6 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	c.mu.Unlock()
 	commitManaged()
 	return len(ops), nil
-}
-
-func (c *Collector) managedNTPCopy() map[string]bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return copySet(c.managedNTP)
-}
-
-func (c *Collector) managedSyslogCopy() map[string]bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return copySet(c.managedSyslog)
-}
-
-func (c *Collector) managedSNMPValue() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.managedSNMP
 }
 
 func equalSets(a, b map[string]bool) bool {

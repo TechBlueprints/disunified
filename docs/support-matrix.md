@@ -190,15 +190,17 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
 | Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
-| **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off (the first push set MTU 1500 on 31 ports). Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live run found the PortChannel MTU rule and the apply budget; both are fixed and fixture-tested since. |
+| **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off (the first push set MTU 1500 on 31 ports); the controller's SSH keys in the managed authorized_keys block (the operator's lines untouched); NTP servers applied. Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live run found the PortChannel MTU rule and the apply budget; both are fixed and fixture-tested since. |
 
 ### Built, untested live — PRs welcome
 
 | Gap | What the PR needs |
 |---|---|
 | Jumbo on/off flipped from the UI, with and without a LAG present (the PortChannel's MTU moves first) | the flip on the guest, the commands logged, the zero-change reconcile |
-| NTP servers, syslog hosts, SNMP community (bridge-owned entries only) | each set and changed from the UI; an operator's own entry left alone |
-| SSH keys, reboot | site keys in the marked authorized_keys block; `control.reboot` and a Restart from the UI |
+| NTP hostname pinning (NTP itself applied live; a pool name churned every cycle before the pin) | a push with a pool hostname and several cycles with no `ntp` write after the first |
+| Syslog hosts (bridge-owned entries only) | set and changed from the UI; an operator's own entry left alone |
+| SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
+| Reboot | `control.reboot` and a Restart from the UI |
 | IP Settings → Static (add, dial, remove the old address) | an address change with the new address in known_hosts, and one that does not answer (undone) |
 
 ### Refused (logged, not claimed)

@@ -320,18 +320,18 @@ func TestApplyLAG(t *testing.T) {
 // PortChannel is made, and moved first when jumbo flips.
 func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	r := newRig(t, nil)
-	off, on := false, true
-	lag := func(jumbo *bool) []devicemodel.PortDesired {
+	off, on := 1500, 9216 // jumbo off; jumbo on with the controller's switch.mtu=9216
+	lag := func(mtu int) []devicemodel.PortDesired {
 		var ds []devicemodel.PortDesired
 		for _, d := range r.baseline() {
 			if d.Index == 3 || d.Index == 4 {
-				d.LAG, d.Jumbo = 3, jumbo
+				d.LAG, d.MTU = 3, mtu
 				ds = append(ds, d)
 			}
 		}
 		return ds
 	}
-	snap := r.expect("LAG with jumbo off", lag(&off), []string{
+	snap := r.expect("LAG with jumbo off", lag(off), []string{
 		"sudo config interface mtu Ethernet8 1500",
 		"sudo config interface mtu Ethernet12 1500",
 		"sudo config portchannel add PortChannel3",
@@ -348,18 +348,18 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 			t.Errorf("port %d read back: MTU %d LAG %d", idx, p.MTU, p.LAGID)
 		}
 	}
-	snap = r.expect("jumbo on with the LAG", lag(&on), []string{
-		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 9100",
-		"sudo config interface mtu Ethernet8 9100",
-		"sudo config interface mtu Ethernet12 9100",
+	snap = r.expect("jumbo on with the LAG", lag(on), []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 9216",
+		"sudo config interface mtu Ethernet8 9216",
+		"sudo config interface mtu Ethernet12 9216",
 		save,
 	})
 	for _, idx := range []int{3, 4} {
-		if p := port(snap, idx); p.MTU != 9100 {
+		if p := port(snap, idx); p.MTU != 9216 {
 			t.Errorf("port %d MTU after jumbo on = %d", idx, p.MTU)
 		}
 	}
-	r.expect("jumbo off again", lag(&off), []string{
+	r.expect("jumbo off again", lag(off), []string{
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
 		"sudo config interface mtu Ethernet8 1500",
 		"sudo config interface mtu Ethernet12 1500",
@@ -371,7 +371,7 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	var ds []devicemodel.PortDesired
 	for _, d := range r9100.baseline() {
 		if d.Index == 3 || d.Index == 4 {
-			d.LAG, d.Jumbo = 3, &on
+			d.LAG = 3 // no jumbo key in the push: MTUs stay at SONiC's 9100
 			ds = append(ds, d)
 		}
 	}
@@ -483,15 +483,15 @@ func TestApplyFECAndJumbo(t *testing.T) {
 	r.expect("fec none", edit(base, 2, func(d *devicemodel.PortDesired) { d.FEC = &none }), []string{
 		"sudo config interface fec Ethernet4 none", save,
 	})
-	off, on := false, true
-	jumbo := func(v *bool) []devicemodel.PortDesired {
+	off, on := 1500, 9216
+	jumbo := func(v int) []devicemodel.PortDesired {
 		ds := append([]devicemodel.PortDesired(nil), base[:3]...)
 		for i := range ds {
-			ds[i].Jumbo = v
+			ds[i].MTU = v
 		}
 		return ds
 	}
-	snap = r.expect("jumbo off", jumbo(&off), []string{
+	snap = r.expect("jumbo off", jumbo(off), []string{
 		"sudo config interface mtu Ethernet0 1500",
 		"sudo config interface mtu Ethernet4 1500",
 		"sudo config interface mtu Ethernet8 1500",
@@ -500,10 +500,10 @@ func TestApplyFECAndJumbo(t *testing.T) {
 	if p := port(snap, 1); p.MTU != 1500 {
 		t.Errorf("read back MTU = %d", p.MTU)
 	}
-	r.expect("jumbo on", jumbo(&on), []string{
-		"sudo config interface mtu Ethernet0 9100",
-		"sudo config interface mtu Ethernet4 9100",
-		"sudo config interface mtu Ethernet8 9100",
+	r.expect("jumbo on", jumbo(on), []string{
+		"sudo config interface mtu Ethernet0 9216",
+		"sudo config interface mtu Ethernet4 9216",
+		"sudo config interface mtu Ethernet8 9216",
 		save,
 	})
 	if !r.c.SwitchesJumbo() {

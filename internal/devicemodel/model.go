@@ -49,15 +49,15 @@ type PortDesired struct {
 	LAG          int // >0: member of link aggregation group LAG (every lane of a cage joins)
 	MirrorSource int // >0: this port is a mirror destination receiving a copy of port MirrorSource's traffic
 
-	// Jumbo is the controller's switch-wide jumbo-frames setting
-	// (switch.jumboframes), carried per port for a driver that sets it as a
-	// port MTU; nil = not in the push, leave the MTU alone. Only a
-	// JumboSwitcher reads it.
-	Jumbo *bool
+	// MTU is the controller's switch-wide jumbo-frames setting as a port
+	// MTU: switch.mtu (9216 when absent) with switch.jumboframes enabled,
+	// 1500 with it disabled; 0 = not in the push, leave the MTU alone. Only
+	// a JumboSwitcher reads it.
+	MTU int
 }
 
 // JumboSwitcher is an optional Controller capability: the driver honours
-// PortDesired.Jumbo (it can turn jumbo frames off). Without it the loop
+// PortDesired.MTU (it can turn jumbo frames off). Without it the loop
 // notes that the switch forwards jumbo frames unconditionally.
 type JumboSwitcher interface {
 	SwitchesJumbo() bool

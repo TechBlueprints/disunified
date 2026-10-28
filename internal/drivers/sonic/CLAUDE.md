@@ -128,10 +128,32 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   carry the switch's key under the new address. Default route lives in
   `STATIC_ROUTE|default|0.0.0.0/0` (`cfg_route`), DNS in `DNS_NAMESERVER`
   (`cfg_dns`).
-- **Jumbo** is switch-wide in UniFi (`switch.jumboframes`) and a port MTU on
-  SONiC: `PortDesired.Jumbo` (set by the loop when the key is in the push)
-  -> 9100 or 1500; the driver implements `devicemodel.JumboSwitcher`, so the
-  loop's "always forwards jumbo" note is not printed for it.
+- **Jumbo** is switch-wide in UniFi (`switch.jumboframes` + `switch.mtu`)
+  and a port MTU on SONiC: `PortDesired.MTU` (set by the loop when the key
+  is in the push; 0 = leave alone) is the pushed `switch.mtu` when jumbo is
+  on (9216 on every recorded push; SONiC accepts it, probed, APPL_DB
+  follows) and 1500 when off. PortChannels follow the same value. The
+  driver implements `devicemodel.JumboSwitcher`, so the loop's "always
+  forwards jumbo" note is not printed for it.
+- **NTP/syslog hostnames are pinned.** SONiC takes addresses only, and a
+  pool answers a different one on every lookup: re-resolving each push
+  churned `ntp add <new>; ntp del <old>` every cycle (live). The first
+  resolution is kept in `sonic-managed.json` (`pinned`, keyed `ntp|<host>`
+  / `syslog|<host>`) while the hostname stays in the push and the address
+  stays configured; it is re-resolved when the address is gone from the
+  switch (by hand, or at a bridge start) or the hostname left and came back.
+  A name that does not resolve is logged once and skipped.
+- **SNMP needs the site's SNMP setting on to be pushed.** Enabling SNMP on
+  the device (location/contact) only stores `snmp_location`/`snmp_contact`
+  on the device record; the controller pushes `switch.snmp.*` in
+  system_cfg only when the site-wide SNMP setting (Settings -> CyberSecure)
+  is on. It was off on site, so the community path is built and
+  fixture-tested but unverified live. No recorded push carries
+  location/contact keys (none of the controller captures has any
+  `switch.snmp.*` key), so `config snmp location|contact` (both exist on
+  202505, diffed against `SNMP|LOCATION` / `SNMP|CONTACT`; the VS default
+  is `SNMP|LOCATION {Location: public}`) is not mapped yet -- capture a push
+  with the site's SNMP on first.
 - **STP port settings only with `FEATURE|stp`**; breakout (a lane speed on a
   4-lane cage, or a cage speed on a split one) is refused with a log
   (no `platform.json` on the VS, and the breakout write is not built).

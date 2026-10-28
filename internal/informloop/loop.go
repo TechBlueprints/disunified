@@ -659,8 +659,15 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 			d.StormCtrl = spec
 		}
 		if cfg.JumboSet {
-			j := cfg.JumboFrames
-			d.Jumbo = &j
+			// Jumbo on is the pushed switch.mtu (UniFi's 9216 when absent),
+			// off is standard frames.
+			d.MTU = 1500
+			if cfg.JumboFrames {
+				d.MTU = cfg.MTU
+				if d.MTU <= 0 {
+					d.MTU = 9216
+				}
+			}
 		}
 		d.BPDUGuard = p.BPDUGuard
 		d.STPEdge = !p.STPPortMode
