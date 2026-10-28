@@ -754,9 +754,25 @@ and a full push is dozens of them, while a collect is 60 ms); and a new
 PortChannel's MTU must be set to its members' MTU through CONFIG_DB
 before members join, and follow the jumbo setting afterwards.
 
-Not yet exercised live: jumbo on/off from the UI, the device-level
-settings (NTP, syslog, SNMP, SSH keys, reboot, IP Settings → Static),
-and STP (no daemon on this image).
+**Device level, same evening (builds 9c7cada → bfe12f7), driven from the UI:**
+
+| Controller action | Commands / outcome | Verified |
+|---|---|---|
+| Jumbo Frames on (device setting, Global Switch Settings off) | `config interface mtu <p> 9100` × 31 at first; after pass 4 the pushed `switch.mtu`: `… 9216` × 31 | 31 ports, port 1 untouched, ~9 s |
+| site NTP servers (hostnames + one IP, in every push) | `config ntp add <ip>` ×2; **churned one add + one del per cycle** because a pool hostname resolves differently each time -- pinned per hostname in pass 4 (one add at start since, then quiet) | chrony lists the pushed servers |
+| site SSH keys (4, in every push) | one `bash -s` rewriting the managed block | 4 keys inside the block, the operator's 5 lines outside untouched |
+| syslog | no site host set → `syslog.status=disabled` → nothing written | no-op, as the Arista |
+| SNMP enabled on the device (location/contact) | **nothing pushed**: the controller sends no `snmp.*` keys unless the site-wide SNMP setting is on | not exercisable without a site-wide change |
+| Manage → Restart | arrived as a reply **`_type: reboot`, `reboot_type: soft`**, not a `cmd`; logged `UNHANDLED` and ignored until pass 6; then `sudo reboot` ("requested COLD shutdown"), guest back in ~2 min, stale `eth0` lease gone, bridge reconnected | uptime reset |
+| IP Settings → Static .201 (from .200, same interface and subnet) | pass-2 sequence: `ip add`, `dns nameserver add`, dial new, `ip remove <old>`, save → **the interface lost both addresses** (`promote_secondaries` = 0: a subnet's secondaries go with its primary); recovered over the serial console with `config reload -y`; the bridge kept dialling the dead address | failure, fixed in pass 5 |
+| IP Settings → Static .200 (back, pass 5) | `ip add <new>`; dial new; over the new session: `echo 1 \| sudo tee /proc/sys/net/ipv4/conf/Vlan4094/promote_secondaries`, `ip remove <old>`, `ip -4 -o addr show … \| grep -q ' <new>/16 '`, `config save -y`; runner switched, target persisted | guest on the new address only, default route kept, bridge continued, reconcile 0 changes |
+| SSH agent | the Mac's 1Password agent holds the employer's key first; `sshrun` offered it and Go aborted on its refusal ("failed to sign challenge") -- pass 6: agent keys one at a time, and `ssh_key: <file>.pub` selects one identity | `authenticated with ssh-rsa SHA256:… Personal key` in the log |
+
+Left open after this: the address the bridge **reports** to the controller
+(`ip`, `connect_request_ip`) is the configured target from start-up, so the
+controller kept showing the old address after a move until a restart -- a
+real switch reports its current address (pass 7). STP remains untested (no
+daemon on this image).
 
 **STP on the real switch:** a community image has no STP daemon, so the
 DX010 will not run spanning tree until an image is built with
