@@ -184,6 +184,15 @@ type AddressReporter interface {
 	CurrentAddress() string
 }
 
+// ApplyBudget is optional: a driver whose writes take long (SONiC: ~250 ms
+// per CLI call, dozens per push) asks for this much time per write --
+// apply, SSH keys, address, port or outlet cycle, reboot. Without it a
+// write gets the collect budget; the operator's control.apply_timeout
+// overrides both.
+type ApplyBudget interface {
+	ApplyTimeout() time.Duration
+}
+
 // AddressController applies the controller's IP Settings to the device
 // itself, so the controller owns the device's address the way it owns
 // everything else. Optional. Implementations must be idempotent and must

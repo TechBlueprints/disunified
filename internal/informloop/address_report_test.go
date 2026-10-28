@@ -111,3 +111,46 @@ func TestDriverReportedAddressIsFollowed(t *testing.T) {
 		t.Errorf("an unchanged address must not be logged again (%d)", n)
 	}
 }
+
+// An address set explicitly (`ip:`/-ip) is not overridden by the driver's
+// unchanged target on every collect; only a move the driver made is
+// followed.
+func TestExplicitAddressIsKeptUntilTheDriverMoves(t *testing.T) {
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238524-ff3c0c9f6", "collect.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	logger := log.New(&buf, "", 0)
+	coll := sonic.NewCollector(fr)
+	coll.Log = logger
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range snap.System.Addresses {
+		if a.Iface == "Vlan4094" {
+			coll.Dial = a.IP
+		}
+	}
+	coll.Redial = fr.Dial
+	const explicit = "192.0.2.77"
+	desc := inform.Descriptor{MAC: snap.System.MAC, IP: explicit}
+	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", device.State{Adopted: true}, nil, time.Now())
+	l, err := New(desc, sess, Config{Logger: logger, Collector: coll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.collect(context.Background())
+	l.collect(context.Background())
+	if ip, _ := reported(t, sess); ip != explicit {
+		t.Errorf("the explicit address was overridden: ip %q", ip)
+	}
+	if _, err := coll.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.200", PrefixLen: 16}); err != nil {
+		t.Fatal(err)
+	}
+	l.collect(context.Background())
+	if ip, _ := reported(t, sess); ip != "192.0.2.200" {
+		t.Errorf("after the driver moved: ip %q, want 192.0.2.200", ip)
+	}
+}

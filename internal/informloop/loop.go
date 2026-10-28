@@ -54,9 +54,6 @@ func (s State) String() string {
 	return fmt.Sprintf("State(%d)", int(s))
 }
 
-// DefaultApplyTimeout is Config.ApplyTimeout when unset.
-const DefaultApplyTimeout = 90 * time.Second
-
 // Config is everything the loop needs beyond the session.
 type Config struct {
 	Interval       time.Duration         // initial inform cadence; the controller may change it
@@ -67,8 +64,9 @@ type Config struct {
 	// apply, the SSH keys, the address, a port cycle, a reboot -- apart
 	// from the collect budget: a driver whose writes are many CLI calls
 	// (SONiC: ~250 ms per `config` call, a first push of dozens of them)
-	// needs far longer than a 60 ms read. Default 90 s. An apply cut short
-	// is finished by the next reconcile (applies are diffs).
+	// needs far longer than a 60 ms read. Unset: what the driver asks for
+	// (devicemodel.ApplyBudget; sonic: 90 s), else the collect budget. An
+	// apply cut short is finished by the next reconcile (applies are diffs).
 	ApplyTimeout time.Duration
 	Logger       *log.Logger
 
@@ -183,6 +181,10 @@ type Loop struct {
 	// driver that implements devicemodel.Locator, run after the reply is
 	// handled; "" = none.
 	pendingLocate string
+	// driverAddr is the address the driver (devicemodel.AddressReporter)
+	// last reported, from start-up on: the device's reported address
+	// follows it only when it changes.
+	driverAddr    string
 	warnedVersion string
 	oobWarned     string // last out-of-band warning state, to log on change only
 	uplinkPort    int    // the port last marked as uplink from the snapshot
@@ -222,7 +224,13 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 		cfg.CollectTimeout = 20 * time.Second
 	}
 	if cfg.ApplyTimeout <= 0 {
-		cfg.ApplyTimeout = DefaultApplyTimeout
+		cfg.ApplyTimeout = cfg.CollectTimeout
+		for _, dev := range []any{cfg.Collector, cfg.Controller, cfg.OutletController, cfg.AddressController} {
+			if b, ok := dev.(devicemodel.ApplyBudget); ok && b.ApplyTimeout() > 0 {
+				cfg.ApplyTimeout = b.ApplyTimeout()
+				break
+			}
+		}
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
@@ -237,6 +245,9 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	}
 	if sess.Adopted() {
 		l.state = StateConnected
+	}
+	if ar, ok := cfg.Collector.(devicemodel.AddressReporter); ok {
+		l.driverAddr = ar.CurrentAddress()
 	}
 	if _, _, ok := sess.Applied(); ok {
 		l.everApplied = true
@@ -1180,8 +1191,15 @@ func (l *Loop) collect(ctx context.Context) {
 	}
 	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
+	// Follow the driver's address only when it moved since start-up (or
+	// since it last moved): the address the device is reported at may have
+	// been set explicitly (`ip:`/-ip), and an unchanged driver target says
+	// nothing against it.
 	if ar, ok := l.cfg.Collector.(devicemodel.AddressReporter); ok {
-		l.setDeviceIP(ar.CurrentAddress(), "the driver now reaches the device there")
+		if a := ar.CurrentAddress(); a != l.driverAddr {
+			l.driverAddr = a
+			l.setDeviceIP(a, "the driver now reaches the device there")
+		}
 	}
 	if up := snap.UplinkPort(); up > 0 && up != l.uplinkPort {
 		if l.uplinkPort != 0 {

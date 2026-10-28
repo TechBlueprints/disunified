@@ -368,8 +368,8 @@ func (f *FixtureRunner) apply(line string) error {
 		if strings.HasPrefix(at(3), "PortChannel") {
 			return fmt.Errorf("Invalid port %s", at(3)) // probed: the PortChannel's MTU is a CONFIG_DB write
 		}
-		if pc := f.lagOf(at(3)); pc != "" && at(4) != f.lagMTU(pc) {
-			return fmt.Errorf("Port MTU of %s is different than the %s MTU size", at(3), pc)
+		if f.lagOf(at(3)) != "" {
+			return fmt.Errorf("Error: 'interface_name' is in portchannel!") // probed: any value, any member
 		}
 		return f.portField(at(3), "mtu", at(4))
 

@@ -96,6 +96,12 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired) (*plan, error) {
 			pl.note("port %d: VLAN %d is this switch's native_vlan (UniFi's VLAN 1 is Vlan%d here); port not written -- set options.native_vlan to an id no UniFi network uses", d.Index, bad, pl.native)
 			continue
 		}
+		if d.VLANSet && d.NativeVLAN != 1 && containsInt(d.TaggedVLANs, 1) {
+			// VLAN 1 is Vlan<native_vlan> as an untagged member; tagging it
+			// would put the stand-in id on the wire.
+			pl.note("port %d: VLAN 1 tagged (native VLAN %d) cannot be expressed on SONiC, where UniFi's VLAN 1 is Vlan%d untagged; the port's VLANs are left as they are", d.Index, d.NativeVLAN, pl.native)
+			d.VLANSet = false
+		}
 		ds = append(ds, d)
 	}
 
@@ -287,6 +293,19 @@ func (pl *plan) setLAGMTU(idx int, pc, mtu string) {
 		return
 	}
 	pl.add(idx, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORTCHANNEL|"+pc)+" mtu "+mtu, func(s *swState) { s.lagMTU[pc] = mtu })
+}
+
+// memberMTUWritten: this plan moved pc's MTU to m, so every member's own
+// MTU follows it (the second member of a LAG sees the PortChannel already
+// moved by the first).
+func (pl *plan) memberMTUWritten(pc, m string) bool {
+	want := "sonic-db-cli CONFIG_DB hset " + sshrun.ShellQuote("PORTCHANNEL|"+pc) + " mtu " + m
+	for _, o := range pl.ops {
+		if strings.HasSuffix(o.cmd, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // emptiedHere: a member del for pc is among the planned writes.
@@ -488,15 +507,25 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 		}
 		// Jumbo is switch-wide in UniFi and a port MTU on SONiC: the pushed
 		// switch.mtu (9216, accepted by SONiC) when on, 1500 when off. A LAG
-		// member's MTU must equal its PortChannel's (SONiC refuses a member
-		// that differs), so the PortChannel moves first, then the member.
+		// member runs at its PortChannel's MTU, and SONiC refuses `config
+		// interface mtu` on a member whatever the value ("Error:
+		// 'interface_name' is in portchannel!", probed): the PortChannel moves
+		// through CONFIG_DB and the member's own PORT mtu with it, by hset
+		// too (APPL_DB follows, probed). A member whose PortChannel already
+		// runs the wanted MTU is satisfied.
 		if d.MTU > 0 {
 			want := d.MTU
 			m := strconv.Itoa(want)
 			if pc := pl.sim.lagOf(ln); pc != "" {
-				pl.setLAGMTU(d.Index, pc, m)
-			}
-			if atoi(pl.sim.field(ln, "mtu")) != want {
+				if atoi(pl.sim.lagMTU[pc]) != want {
+					pl.setLAGMTU(d.Index, pc, m)
+					if atoi(pl.sim.field(ln, "mtu")) != want {
+						pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORT|"+ln)+" mtu "+m, func(s *swState) { s.setField(ln, "mtu", m) })
+					}
+				} else if pl.memberMTUWritten(pc, m) && atoi(pl.sim.field(ln, "mtu")) != want {
+					pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORT|"+ln)+" mtu "+m, func(s *swState) { s.setField(ln, "mtu", m) })
+				}
+			} else if atoi(pl.sim.field(ln, "mtu")) != want {
 				pl.add(d.Index, fmt.Sprintf("config interface mtu %s %s", ln, m), func(s *swState) { s.setField(ln, "mtu", m) })
 			}
 		}
