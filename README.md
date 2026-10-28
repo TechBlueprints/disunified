@@ -72,7 +72,10 @@ What each driver does today:
 - **`sonic`** — a community SONiC switch: its Redis databases read in one
   SSH exec per poll, and the controller's port, VLAN, LAG, mirror, storm,
   jumbo, NTP, SSH-key, reboot and address settings written through SONiC's
-  own `config` CLI. Verified on the SONiC virtual switch (build
+  own `config` CLI. Like UniFi's own SONiC switches, it takes the UniFi
+  name as its hostname (`control.hostname`, on by default for this driver
+  only; `hostname: false` keeps the switch's) and runs its aggregates with
+  LACP fast rate and min-links 1. Verified on the SONiC virtual switch (build
   202505.1238524) only; hardware is pending
   ([`docs/drivers/sonic.md`](docs/drivers/sonic.md)).
 - **`apc-ups`** — an APC Smart-UPS read over Modbus TCP from its own
@@ -112,7 +115,8 @@ running it against anything you care about.
   the controller pushes: it replaces the device's VLAN configuration,
   disables and re-enables ports, switches outlets and UPS outlet groups,
   changes speeds and breakouts, STP, LACP, storm control, NTP and syslog,
-  and reboots the device when the controller asks; a UPS driver option
+  and reboots the device when the controller asks; a SONiC switch is
+  renamed to its UniFi name by default; a UPS driver option
   writes a load-shed policy into the unit. With the opt-in `control.address`
   it will even set the device's own management address from the
   controller's IP Settings (a switch's config, a PDU card's config.ini, a

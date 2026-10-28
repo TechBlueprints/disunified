@@ -16,6 +16,7 @@ type swState struct {
 	members map[string]map[int]bool      // interface or PortChannel -> SONiC VLAN id -> tagged
 	lags    map[string]map[string]bool   // PortChannel -> member interfaces
 	lagMTU  map[string]string            // PortChannel -> its CONFIG_DB mtu
+	lagLACP map[string]lacp              // PortChannel -> its CONFIG_DB fast_rate and min_links
 	mirrors map[string]map[string]string // MIRROR_SESSION name -> fields
 	storm   map[string]map[string]int    // interface -> storm type -> kbps
 	stp     map[string]map[string]string // STP_PORT by interface
@@ -42,6 +43,9 @@ type swState struct {
 	platform map[string]platformPort
 	brkout   map[string]string // BREAKOUT_CFG: parent port -> brkout_mode
 }
+
+// lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
+type lacp struct{ fastRate, minLinks string }
 
 func newState(db map[string]table, sec map[string]string) *swState {
 	s := &swState{
@@ -72,13 +76,14 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			s.setMember(parts[2], id, f["tagging_mode"] == "tagged")
 		}
 	}
-	s.lagMTU = map[string]string{}
+	s.lagMTU, s.lagLACP = map[string]string{}, map[string]lacp{}
 	for k, f := range db["cfg_lag"] {
 		_, n, _ := strings.Cut(k, "|")
 		if s.lags[n] == nil {
 			s.lags[n] = map[string]bool{}
 		}
 		s.lagMTU[n] = f["mtu"]
+		s.lagLACP[n] = lacp{fastRate: f["fast_rate"], minLinks: f["min_links"]}
 	}
 	for k := range db["cfg_lag_member"] {
 		parts := strings.Split(k, "|")
@@ -198,9 +203,12 @@ func (s *swState) clone() *swState {
 		}
 		c.lags[k] = m
 	}
-	c.lagMTU = map[string]string{}
+	c.lagMTU, c.lagLACP = map[string]string{}, map[string]lacp{}
 	for k, v := range s.lagMTU {
 		c.lagMTU[k] = v
+	}
+	for k, v := range s.lagLACP {
+		c.lagLACP[k] = v
 	}
 	for k, v := range s.mirrors {
 		c.mirrors[k] = copyFields(v)

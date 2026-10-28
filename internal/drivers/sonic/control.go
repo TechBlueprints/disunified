@@ -23,6 +23,12 @@ import (
 // defaultMTU is SONiC's own port and PortChannel MTU.
 const defaultMTU = 9100
 
+// lacpWanted is the LACP setting of every PortChannel the driver manages:
+// fast rate (1 s LACPDUs) and min-links 1, as UniFi's own SONiC switches
+// run theirs (docs/drivers/sonic.md §9). `config portchannel add` defaults
+// to slow rate.
+var lacpWanted = lacp{fastRate: "true", minLinks: "1"}
+
 // op is one planned write: the command, the port it belongs to (0 = none),
 // and its effect on CONFIG_DB, applied to the plan's copy as it is planned
 // and to the collector's state once the batch has run.
@@ -242,9 +248,10 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 					// A new PortChannel is 9100; `config interface mtu` refuses
 					// a PortChannel ("Invalid port"), so its MTU is set in
 					// CONFIG_DB (APPL_DB LAG_TABLE follows) before anyone joins.
-					pl.add(d.Index, "config portchannel add "+pc, func(s *swState) {
+					pl.add(d.Index, "config portchannel add "+pc+" --fast-rate "+lacpWanted.fastRate+" --min-links "+lacpWanted.minLinks, func(s *swState) {
 						s.lags[pc] = map[string]bool{}
 						s.lagMTU[pc] = strconv.Itoa(defaultMTU)
+						s.lagLACP[pc] = lacpWanted
 					})
 				}
 				// SONiC refuses a member whose MTU differs from the PortChannel's.
@@ -261,8 +268,9 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 				pl.add(d.Index, fmt.Sprintf("config portchannel member add %s %s", pc, ln), func(s *swState) { s.lags[pc][ln] = true })
 			}
 		}
-		// The PortChannel carries its members' VLAN intent (the first's).
 		if _, exists := pl.sim.lags[pc]; exists {
+			pl.setLAGLACP(members[0].Index, pc)
+			// The PortChannel carries its members' VLAN intent (the first's).
 			pl.syncVLANs(members[0].Index, pc, members[0])
 		}
 	}
@@ -281,7 +289,12 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	for _, pc := range pcs {
 		name := pc
 		pl.stripVLANs(0, name)
-		pl.add(0, "config portchannel del "+name, func(s *swState) { delete(s.lags, name); delete(s.members, name); delete(s.lagMTU, name) })
+		pl.add(0, "config portchannel del "+name, func(s *swState) {
+			delete(s.lags, name)
+			delete(s.members, name)
+			delete(s.lagMTU, name)
+			delete(s.lagLACP, name)
+		})
 	}
 }
 
@@ -293,6 +306,19 @@ func (pl *plan) setLAGMTU(idx int, pc, mtu string) {
 		return
 	}
 	pl.add(idx, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORTCHANNEL|"+pc)+" mtu "+mtu, func(s *swState) { s.lagMTU[pc] = mtu })
+}
+
+// setLAGLACP brings a PortChannel made without lacpWanted (by hand, or by
+// the driver before it passed the options) in line, once, in CONFIG_DB.
+// teammgrd reads fast_rate and min_links only when it creates the team, so
+// the running LAG takes them at its next start (reboot, `config reload`,
+// teamd restart); the saved config holds them from now on.
+func (pl *plan) setLAGLACP(idx int, pc string) {
+	if pl.sim.lagLACP[pc] == lacpWanted {
+		return
+	}
+	pl.add(idx, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORTCHANNEL|"+pc)+" fast_rate "+lacpWanted.fastRate+" min_links "+lacpWanted.minLinks,
+		func(s *swState) { s.lagLACP[pc] = lacpWanted })
 }
 
 // memberMTUWritten: this plan moved pc's MTU to m, so every member's own

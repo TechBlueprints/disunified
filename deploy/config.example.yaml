@@ -33,7 +33,8 @@ devices:                             # "switches:" is still accepted (the pre-re
       ntp: true                      # NTP servers follow UniFi
       syslog: true                   # remote syslog host follows UniFi
       # hostname: true               # the UniFi name (spaces removed) becomes the device's hostname
-      #                              # (off by default; only drivers that can set one: sonic)
+      #                              # (only drivers that can set one: sonic, where it is on by default,
+      #                              # as UniFi's own SONiC switches do; hostname: false turns it off)
       reboot: true                   # the controller's Restart really reloads the switch
       ssh_keys: true                 # the controller's SSH keys are installed on the switch user
       snmp: true                     # UniFi's SNMP v1/v2c community is configured on the switch (read-only)

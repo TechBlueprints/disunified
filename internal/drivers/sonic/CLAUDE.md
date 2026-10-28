@@ -98,6 +98,20 @@ control on in `TestReplaySonicLabSession`.
   MTU>` (APPL_DB `LAG_TABLE` follows), then the members join. When jumbo
   flips, the PortChannel's hset goes first and the members' `config
   interface mtu` after it. The FixtureRunner refuses a mismatched member.
+- **LACP fast rate and min-links 1** on every PortChannel the push names, as
+  UniFi's own SONiC switches run theirs (`docs/drivers/sonic.md` §9,
+  2026-10-28): the create is `config portchannel add PortChannel<n>
+  --fast-rate true --min-links 1` (202505's `add_portchannel`: `--fast-rate`
+  true|false, default false; `--min-links` 1..1024, default 1; both written
+  to `PORTCHANNEL`). One that holds anything else (made by hand, or by the
+  driver before that day) gets `sonic-db-cli CONFIG_DB hset
+  'PORTCHANNEL|PortChannel<n>' fast_rate true min_links 1` once. **teammgrd
+  reads `fast_rate` and `min_links` only when it creates the team**
+  (sonic-swss 202505 `cfgmgr/teammgr.cpp`, "cannot be changed after the LAG
+  is created"), so the hset reaches a running LAG at its next start
+  (reboot, `config reload`); the saved config holds it at once. Untested
+  live; no capture holds a PortChannel (`cfg_lag` already prints every
+  field, so a recapture with one on hardware needs no collector change).
 - **Multi-VLAN forms** (probed): `config vlan member add|del -m a,b <port>`
   (a VLAN list for ONE port; a port list is rejected) and `-e -m <list>`
   ("every existing VLAN except these"); `config vlan add -m a,b`. Measured
@@ -240,9 +254,14 @@ control on in `TestReplaySonicLabSession`.
   first match; a current zone with the same rule (America/Denver) is kept.
   A zone name in the push is taken as is. `DEVICE_METADATA timezone` is the
   read side (`System.Timezone`; `UTC` on the VS). Verify live.
-- **Hostname** with `control.hostname` only: `config hostname <name>` then
+- **Hostname** with `control.hostname` -- **on by default for sonic** (unset
+  in the config, or `-control-hostname`/`DUI_CONTROL_HOSTNAME` unset; off
+  for every other driver; `hostname: false` turns it off), because UniFi's
+  own SONiC switches always take the UniFi name as their hostname (§9,
+  2026-10-28): `config hostname <name>` then
   `config save -y` (hostcfgd sets the Linux hostname). SONiC's YANG caps
-  the whole name at 63 characters, not per label. Verify live.
+  the whole name at 63 characters, not per label. Verified live on the VS
+  (`docs/drivers/sonic.md` §6.6); the default is config-tested.
 - **Locate (`locate.go`) -- HARDWARE-UNTESTED.** No LED in the `config`
   CLI; the platform API's `Chassis.set_status_led("off"|"green")` (DX010:
   `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`) returns False

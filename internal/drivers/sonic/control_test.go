@@ -283,7 +283,7 @@ func TestApplyLAG(t *testing.T) {
 		t.Errorf("ApplyPorts changed %d ports, want 2 (as planned)", changed)
 	}
 	want := []string{
-		"sudo config portchannel add PortChannel3",
+		"sudo config portchannel add PortChannel3 --fast-rate true --min-links 1",
 		"sudo config vlan member del 4094 Ethernet8",
 		"sudo config portchannel member add PortChannel3 Ethernet8",
 		"sudo config vlan member del 4094 Ethernet12",
@@ -334,7 +334,7 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	snap := r.expect("LAG with jumbo off", lag(off), []string{
 		"sudo config interface mtu Ethernet8 1500",
 		"sudo config interface mtu Ethernet12 1500",
-		"sudo config portchannel add PortChannel3",
+		"sudo config portchannel add PortChannel3 --fast-rate true --min-links 1",
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
 		"sudo config vlan member del 4094 Ethernet8",
 		"sudo config portchannel member add PortChannel3 Ethernet8",
@@ -402,6 +402,61 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	}
 	if _, err := fr.Run(ctx, "sudo config interface mtu PortChannel9 1500", ""); err == nil || !strings.Contains(err.Error(), "Invalid port") {
 		t.Errorf("config interface mtu on a PortChannel must be refused: %v", err)
+	}
+}
+
+// A PortChannel the driver creates runs LACP fast rate and min-links 1, as
+// UniFi's own SONiC switches do (docs/drivers/sonic.md §9). One made
+// without them -- by hand, or by the driver before it passed the options
+// (`config portchannel add PortChannel<n>` writes fast_rate false) -- is
+// brought in line once in CONFIG_DB; a PortChannel the push does not name
+// is left alone.
+func TestLAGLACPFastRateAndMinLinks(t *testing.T) {
+	r := newRig(t, nil)
+	ctx := context.Background()
+	for _, c := range []string{
+		"sudo config portchannel add PortChannel3", // the driver's create before 2026-10-28
+		"sudo config portchannel add PortChannel9", // not the controller's
+		"sudo config vlan member del 4094 Ethernet8", "sudo config portchannel member add PortChannel3 Ethernet8",
+		"sudo config vlan member del 4094 Ethernet12", "sudo config portchannel member add PortChannel3 Ethernet12",
+	} {
+		if _, err := r.fr.Run(ctx, c, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f := r.fr.table("cfg_lag")["PORTCHANNEL|PortChannel3"]; f["fast_rate"] != "false" || f["min_links"] != "1" {
+		t.Fatalf("add_portchannel's defaults: %v", f)
+	}
+	ds := edit(r.baseline(), 3, func(d *devicemodel.PortDesired) { d.LAG = 3 })
+	ds = edit(ds, 4, func(d *devicemodel.PortDesired) { d.LAG = 3 })
+	r.expect("existing LAG on slow rate", ds, []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' fast_rate true min_links 1",
+		"sudo config vlan member add -u 4094 PortChannel3",
+		save,
+	})
+	if f := r.fr.table("cfg_lag")["PORTCHANNEL|PortChannel3"]; f["fast_rate"] != "true" || f["min_links"] != "1" || f["mtu"] != "9100" {
+		t.Errorf("PortChannel3 after the reconcile: %v", f)
+	}
+	if f := r.fr.table("cfg_lag")["PORTCHANNEL|PortChannel9"]; f["fast_rate"] != "false" {
+		t.Errorf("a PortChannel the push does not name was written: %v", f)
+	}
+
+	// The driver's own create writes both, so nothing follows it.
+	r2 := newRig(t, nil)
+	r2.apply(edit(edit(r2.baseline(), 5, func(d *devicemodel.PortDesired) { d.LAG = 5 }), 6, func(d *devicemodel.PortDesired) { d.LAG = 5 }))
+	if f := r2.fr.table("cfg_lag")["PORTCHANNEL|PortChannel5"]; f["fast_rate"] != "true" || f["min_links"] != "1" {
+		t.Errorf("PortChannel5 as created: %v", f)
+	}
+	for _, c := range r2.fr.Commands {
+		if strings.Contains(c, "fast_rate") {
+			t.Errorf("a new PortChannel was reconciled: %q", c)
+		}
+	}
+	// The runner takes add_portchannel's options as 202505 does.
+	for _, bad := range []string{"sudo config portchannel add PortChannel7 --fast-rate yes", "sudo config portchannel add PortChannel7 --min-links 0", "sudo config portchannel add PortChannel7 --fast_rate true"} {
+		if _, err := r2.fr.Run(ctx, bad, ""); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }
 

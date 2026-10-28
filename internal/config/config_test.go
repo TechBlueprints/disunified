@@ -99,3 +99,30 @@ func TestAuthRejectsUnknownValues(t *testing.T) {
 		t.Error("an unknown auth value must be rejected")
 	}
 }
+
+// control.hostname unset is the driver's default: on for sonic (UniFi's own
+// SONiC switches take the UniFi name as their hostname), off for the others;
+// an explicit value wins either way.
+func TestHostnameDefaultsOnForSonic(t *testing.T) {
+	for _, c := range []struct {
+		driver, hostname string
+		want             bool
+	}{
+		{"sonic", "", true},
+		{"sonic", "      hostname: false\n", false},
+		{"sonic", "      hostname: true\n", true},
+		{"arista-eos", "", false},
+		{"arista-eos", "      hostname: true\n", true},
+		{"proxmox", "      hostname: false\n", false},
+	} {
+		p := filepath.Join(t.TempDir(), "c.yaml")
+		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: "+c.driver+"\n    ssh: admin@192.0.2.40\n    control:\n      ports: all\n"+c.hostname), 0o644)
+		f, err := Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := f.Devices[0].Control.HostnameOn(f.Devices[0].Driver); got != c.want {
+			t.Errorf("driver %s, %q: hostname on = %v, want %v", c.driver, c.hostname, got, c.want)
+		}
+	}
+}
