@@ -780,6 +780,6 @@ func (c *Collector) SwitchesJumbo() bool { return true }
 const batchCommand = "bash -s"
 
 func (c *Collector) runBatch(ctx context.Context, cmds []string) error {
-	_, err := c.runner().Run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\n")
+	_, err := c.run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\n")
 	return err
 }

@@ -123,11 +123,24 @@ hardware SKU `Seastone-DX010`, L2 preset); no hardware yet.
   `<pubkey>` placeholders are).
 - **Address (§6.4), `address.go`:** static only; add the new address (and
   route/DNS), dial it with `Redial` (same user, key, known_hosts) and run
-  `true`, then remove the old one through the new runner and save; on no
-  answer the new address (and route) are removed again. known_hosts must
-  carry the switch's key under the new address. Default route lives in
-  `STATIC_ROUTE|default|0.0.0.0/0` (`cfg_route`), DNS in `DNS_NAMESERVER`
-  (`cfg_dns`).
+  `true`; on no answer the new address (and route) are removed again.
+  known_hosts must carry the switch's key under the new address. Default
+  route lives in `STATIC_ROUTE|default|0.0.0.0/0` (`cfg_route`), DNS in
+  `DNS_NAMESERVER` (`cfg_dns`).
+- **`promote_secondaries` is 0 on SONiC** (`/proc/sys/net/ipv4/conf/<iface>/promote_secondaries`):
+  deleting a subnet's primary address deletes its secondaries, and a new
+  address in the same subnet is a secondary. A live move removed the old
+  address and lost the new one with it -- no IPv4 on Vlan4094, switch
+  unreachable. The move's batch over the new address is now `echo 1 | sudo
+  tee …/promote_secondaries` (no `sysctl` on admin's PATH), `config
+  interface ip remove <old>`, `ip -4 -o addr show dev <iface> | grep -q '
+  <new> '` (fails the batch before save), stale route del, `config save
+  -y`; only then the runner switches and `dial` is persisted in
+  `sonic-managed.json`. A failed dial falls back once to the pending /
+  persisted / config-file address (`dial.go`). The FixtureRunner models
+  the sysctl (`IgnorePromote` for the failure path).
+- On the VS a `config reload` logs "eth1: mtu greater than device maximum"
+  for a port MTU of 9100/9216: a virtio artifact, not an error to SONiC.
 - **Jumbo** is switch-wide in UniFi (`switch.jumboframes` + `switch.mtu`)
   and a port MTU on SONiC: `PortDesired.MTU` (set by the loop when the key
   is in the push; 0 = leave alone) is the pushed `switch.mtu` when jumbo is

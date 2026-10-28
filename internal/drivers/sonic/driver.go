@@ -83,8 +83,14 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		return r
 	}
 	c.StateDir = strings.TrimSpace(cfg.Options["state_dir"])
+	c.configHost = c.Dial
 	if err := c.loadManaged(); err != nil {
 		return nil, err
+	}
+	// An address move adopted another address: dial that one (the config
+	// file's stays a fallback target).
+	if c.savedDial != "" && c.savedDial != c.Dial {
+		c.r, c.Dial = c.Redial(c.savedDial), c.savedDial
 	}
 	return c, nil
 }

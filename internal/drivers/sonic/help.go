@@ -46,7 +46,7 @@ func (c *Collector) verifyCommands(ctx context.Context) error {
 		if chk.stp && !stp {
 			continue
 		}
-		out, err := c.runner().Run(ctx, helpCommand(chk.group), "")
+		out, err := c.run(ctx, helpCommand(chk.group), "")
 		if err != nil {
 			return fmt.Errorf("sonic: `config %s --help` failed (the bridge user needs passwordless sudo for config): %w", chk.group, err)
 		}

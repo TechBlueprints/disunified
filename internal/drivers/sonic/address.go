@@ -17,9 +17,13 @@ import (
 // before it is proven: add the new address, the static default route when
 // the gateway changes and the DNS servers; dial the switch at the new
 // address with a fresh SSH runner (same user, key and known_hosts) and run
-// `true`; only then remove the old address and the stale default route,
-// save, and move the runner over. If the new address does not answer, it is
-// removed again (with the route it brought) and the old one never went.
+// `true`. Then, over the new address: turn on promote_secondaries for the
+// interface, remove the old address, verify the new one survived, remove
+// the stale default route, save -- and only then move the runner and the
+// dial target over (persisted, so a restart keeps it). If the new address
+// does not answer, it is removed again (with the route it brought) and the
+// old one never went. If the finish batch fails, nothing is saved and the
+// new address stays a pending dial target the runner falls back to.
 //
 // known_hosts: sshrun checks the host key by address, so the operator's
 // known_hosts must carry the switch's key under the new address too (the
@@ -95,15 +99,11 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	for _, s := range dnsDel {
 		first = append(first, "sudo config dns nameserver del "+s)
 	}
-	var stale []string
-	if !sameIP {
-		stale = append(stale, fmt.Sprintf("sudo config interface ip remove %s %s", cur.Iface, oldAddr))
-	}
-	if gwChange && oldGW != "" {
-		stale = append(stale, "sudo config route del prefix 0.0.0.0/0 nexthop "+oldGW)
-	}
-
 	if sameIP {
+		var stale []string
+		if gwChange && oldGW != "" {
+			stale = append(stale, "sudo config route del prefix 0.0.0.0/0 nexthop "+oldGW)
+		}
 		// The bridge's own address stays: one batch through the runner it has.
 		cmds := append(append(first, stale...), "sudo config save -y")
 		c.Log.Printf("sonic address: %s", strings.Join(cmds, " ; "))
@@ -126,20 +126,40 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 		_ = nr.Close()
 		return false, c.undoAddress(ctx, cur.Iface, newAddr, d.Gateway, gwChange, fmt.Errorf("the switch does not answer at %s (%v; is its host key in known_hosts for that address?)", d.IP, err))
 	}
-	// Proven: finish through the new address.
-	finish := append(stale, "sudo config save -y")
+	// Proven: finish through the new address. From here on a lost
+	// connection must not strand the bridge on the old address, so the new
+	// one is recorded as a pending dial target first.
+	c.setPendingDial(d.IP)
+	finish := moveFinish(cur.Iface, oldAddr, newAddr)
+	if gwChange && oldGW != "" {
+		finish = append(finish, "sudo config route del prefix 0.0.0.0/0 nexthop "+oldGW)
+	}
+	finish = append(finish, "sudo config save -y")
 	c.Log.Printf("sonic address (via %s): %s", d.IP, strings.Join(finish, " ; "))
 	if _, err := nr.Run(ctx, batchCommand, "set -e\n"+strings.Join(finish, "\n")+"\n"); err != nil {
 		_ = nr.Close()
-		return false, fmt.Errorf("sonic: the switch answers at %s, but removing %s failed (%w); it carries both addresses until the next push", d.IP, oldAddr, err)
+		return false, fmt.Errorf("sonic: the switch answers at %s, but removing %s did not leave %s on %s (%w); nothing was saved -- the bridge keeps %s and tries %s if that stops answering", d.IP, oldAddr, newAddr, cur.Iface, err, dial, d.IP)
 	}
-	c.mu.Lock()
-	old := c.r
-	c.r, c.Dial = nr, d.IP
-	c.mu.Unlock()
-	_ = old.Close()
+	c.adoptDial(d.IP, nr)
 	c.noteAddress(cur, d, oldGW, dnsAdd, dnsDel)
 	return true, nil
+}
+
+// moveFinish is the start of the batch run over the new address once it
+// answers. Linux's promote_secondaries is 0 on SONiC, so deleting the
+// primary address of a subnet deletes its secondaries too -- and the new
+// address, added second in the same subnet, is a secondary: removing the
+// old one took both, and the switch off the network (live, 2026-10-27).
+// The sysctl is turned on for the interface first (sysctl is not on the
+// admin user's PATH; the /proc file is written through sudo tee), and the
+// new address is verified to have survived the removal before anything is
+// saved; set -e stops the batch there if it did not.
+func moveFinish(iface, oldAddr, newAddr string) []string {
+	return []string{
+		fmt.Sprintf("echo 1 | sudo tee /proc/sys/net/ipv4/conf/%s/promote_secondaries >/dev/null", iface),
+		fmt.Sprintf("sudo config interface ip remove %s %s", iface, oldAddr),
+		fmt.Sprintf("ip -4 -o addr show dev %s | grep -q ' %s '", iface, newAddr),
+	}
 }
 
 // undoAddress removes the new address (and the route it brought) through

@@ -74,6 +74,9 @@ type Collector struct {
 	Resolve func(host string) (string, error)
 
 	pinned        map[string]string // NTP/syslog hostname -> the address it was first resolved to
+	configHost    string            // the address the config file names (a fallback dial target)
+	savedDial     string            // the dial target an address move adopted (persisted)
+	pendingDial   string            // the address a move was switching to when it was cut short
 	managedNTP    map[string]bool
 	managedSyslog map[string]bool
 	managedSNMP   string
@@ -149,7 +152,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 
 // Collect runs collect.py and builds the snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
-	out, err := c.runner().Run(ctx, collectCommand, collectScript)
+	out, err := c.run(ctx, collectCommand, collectScript)
 	if err != nil {
 		return nil, fmt.Errorf("sonic: collect: %w", err)
 	}

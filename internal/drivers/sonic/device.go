@@ -35,6 +35,11 @@ type managedSet struct {
 	// forever (seen live). Kept while the hostname stays in the push and
 	// its address stays configured on the switch.
 	Pinned map[string]string `json:"pinned,omitempty"`
+	// Dial is the address an address move adopted (the bridge dials it after
+	// a restart even if the config file still names the old one);
+	// PendingDial the address a move was switching to when it was cut short.
+	Dial        string `json:"dial,omitempty"`
+	PendingDial string `json:"pending_dial,omitempty"`
 }
 
 func (c *Collector) loadManaged() error {
@@ -64,6 +69,7 @@ func (c *Collector) loadManaged() error {
 	for k, v := range m.Pinned {
 		c.pinned[k] = v
 	}
+	c.savedDial, c.pendingDial = m.Dial, m.PendingDial
 	return nil
 }
 
@@ -105,7 +111,7 @@ func copySet(m map[string]bool) map[string]bool {
 
 // managedLocked is what the driver owns, as stored (c.mu held).
 func (c *Collector) managedLocked() managedSet {
-	m := managedSet{NTP: sortedSet(c.managedNTP), Syslog: sortedSet(c.managedSyslog), SNMP: c.managedSNMP}
+	m := managedSet{NTP: sortedSet(c.managedNTP), Syslog: sortedSet(c.managedSyslog), SNMP: c.managedSNMP, Dial: c.savedDial, PendingDial: c.pendingDial}
 	if len(c.pinned) > 0 {
 		m.Pinned = copyPins(c.pinned)
 	}
@@ -450,7 +456,7 @@ func (c *Collector) InstallSSHKeys(ctx context.Context, keys []devicemodel.SSHKe
 	if equalSets(have, want) {
 		return 0, nil
 	}
-	if _, err := c.runner().Run(ctx, keysCommand, keysScript(lines)); err != nil {
+	if _, err := c.run(ctx, keysCommand, keysScript(lines)); err != nil {
 		return 0, fmt.Errorf("sonic install ssh keys: %w", err)
 	}
 	c.mu.Lock()
@@ -499,6 +505,6 @@ func keysScript(lines []string) string {
 // Reboot implements devicemodel.Rebooter (only with control.reboot).
 func (c *Collector) Reboot(ctx context.Context) error {
 	c.Log.Printf("sonic: rebooting the switch at the controller's request")
-	_, err := c.runner().Run(ctx, "sudo reboot", "")
+	_, err := c.run(ctx, "sudo reboot", "")
 	return err
 }

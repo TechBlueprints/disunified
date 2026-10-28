@@ -271,11 +271,31 @@ func (f *FixtureRunner) kernelAddress(iface, ip string, plen int, add bool) erro
 			continue
 		}
 		infos, _ := l["addr_info"].([]any)
+		// promote_secondaries=0 (SONiC's default): removing a subnet's
+		// primary address -- the first one added in it -- removes the
+		// secondaries in that subnet too.
+		_, removed, _ := net.ParseCIDR(fmt.Sprintf("%s/%d", ip, plen))
+		primary := false
+		if !add && !f.promote[iface] {
+			for _, a := range infos {
+				m, _ := a.(map[string]any)
+				if m["family"] != "inet" {
+					continue
+				}
+				if s, ok := m["local"].(string); ok && removed.Contains(net.ParseIP(s)) {
+					primary = s == ip
+					break
+				}
+			}
+		}
 		var kept []any
 		for _, a := range infos {
 			m, _ := a.(map[string]any)
 			if m["family"] == "inet" && m["local"] == ip {
 				continue
+			}
+			if s, ok := m["local"].(string); ok && primary && m["family"] == "inet" && removed.Contains(net.ParseIP(s)) {
+				continue // a secondary going with its primary
 			}
 			kept = append(kept, a)
 		}
@@ -290,6 +310,27 @@ func (f *FixtureRunner) kernelAddress(iface, ip string, plen int, add bool) erro
 	}
 	f.setSection("addr", string(b))
 	return nil
+}
+
+// hasKernelAddress: the capture's `ip -j addr` shows ip/plen on iface.
+func (f *FixtureRunner) hasKernelAddress(iface, ip, plen string) bool {
+	var links []map[string]any
+	if json.Unmarshal([]byte(strings.TrimSpace(f.section("addr"))), &links) != nil {
+		return false
+	}
+	for _, l := range links {
+		if l["ifname"] != iface {
+			continue
+		}
+		infos, _ := l["addr_info"].([]any)
+		for _, a := range infos {
+			m, _ := a.(map[string]any)
+			if m["family"] == "inet" && m["local"] == ip && fmt.Sprint(m["prefixlen"]) == plen {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // syncKernelDefault points the capture's FRR-installed default route at the
