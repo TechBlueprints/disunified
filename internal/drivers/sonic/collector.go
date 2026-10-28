@@ -80,6 +80,13 @@ type Collector struct {
 	managedNTP    map[string]bool
 	managedSyslog map[string]bool
 	managedSNMP   string
+
+	zones []zone // the switch's time zones and their POSIX rules, read once per run (zones.go)
+
+	// Locate (locate.go): the status LED blink.
+	BlinkInterval time.Duration // between LED toggles; default 1 s
+	blinkStop     func()        // stops the running blink and waits for it; nil when none
+	noLED         bool          // the platform API could not set the status LED: report only
 }
 
 // NewCollector wraps a runner.
@@ -132,7 +139,11 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	return snap, nil
 }
 
-func (c *Collector) Close() error { return c.runner().Close() }
+// Close stops a locate blink and drops the connection.
+func (c *Collector) Close() error {
+	c.stopBlink()
+	return c.runner().Close()
+}
 
 // Capabilities are computed from the switch (§6.1): FEC, jumbo, LACP,
 // storm control and SNMP always; one mirror session and eight aggregates
@@ -207,7 +218,8 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
-	ports := buildPorts(db, c.NativeVLAN)
+	_, plat := parsePlatform(sec["platform_json"])
+	ports := buildPorts(db, c.NativeVLAN, plat)
 	if len(ports) == 0 {
 		return nil, fmt.Errorf("sonic: CONFIG_DB PORT is empty")
 	}

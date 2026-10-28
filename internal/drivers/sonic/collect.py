@@ -147,11 +147,20 @@ section("chassis", "STATE_DB", "CHASSIS_INFO|*")
 section("asic_temp", "STATE_DB", "ASIC_TEMPERATURE_INFO")
 
 # --- Linux ---
-# Dynamic port breakout needs the platform's platform.json (absent on the VS).
+# Dynamic port breakout needs the platform's platform.json (absent on the
+# VS): "no", or its interfaces block reduced to what breakout needs -- each
+# parent port's index, lanes and breakout modes (mode -> child aliases) --
+# one port per line like the Redis sections.
 s("platform_json")
 try:
     _plat = (DB.get_all("CONFIG_DB", "DEVICE_METADATA|localhost") or {}).get("platform", "")
-    sys.stdout.write(("yes" if _plat and os.path.exists("/usr/share/sonic/device/%s/platform.json" % _plat) else "no") + "\n")
+    _path = "/usr/share/sonic/device/%s/platform.json" % _plat
+    if not _plat or not os.path.exists(_path):
+        raise IOError("no platform.json")
+    with open(_path) as _f:
+        _intf = json.load(_f).get("interfaces") or {}
+    dump({n: {"index": str(v.get("index", "")), "lanes": str(v.get("lanes", "")), "breakout_modes": v.get("breakout_modes") or {}}
+          for n, v in _intf.items() if isinstance(v, dict)})
 except Exception:
     sys.stdout.write("no\n")
 # The bridge's own block in the login user's authorized_keys -- only the

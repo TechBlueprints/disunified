@@ -98,6 +98,10 @@ type Config struct {
 	// servers the switch had that the controller does not list).
 	ControlNTP    bool
 	ControlSyslog bool
+	// ControlHostname: the controller's resolv.host.1.name (the device's
+	// UniFi name without spaces) becomes the device's own hostname (off by
+	// default: it renames the device).
+	ControlHostname bool
 	// JumboAlwaysOn: the switch forwards jumbo frames unconditionally, so a
 	// controller asking for jumbo off is logged rather than applied.
 	JumboAlwaysOn bool
@@ -175,11 +179,15 @@ type Loop struct {
 	// numbering, until the driver runs them after the inform.
 	pendingOutletCycles []int
 	pendingReboot       bool
-	warnedVersion       string
-	oobWarned           string // last out-of-band warning state, to log on change only
-	uplinkPort          int    // the port last marked as uplink from the snapshot
-	everApplied         bool   // a system_cfg has been applied to this device (this run or a previous one)
-	heldVersion         string // the first push being held, to log once
+	// pendingLocate is the last set-locate/unset-locate ("on"/"off") for a
+	// driver that implements devicemodel.Locator, run after the reply is
+	// handled; "" = none.
+	pendingLocate string
+	warnedVersion string
+	oobWarned     string // last out-of-band warning state, to log on change only
+	uplinkPort    int    // the port last marked as uplink from the snapshot
+	everApplied   bool   // a system_cfg has been applied to this device (this run or a previous one)
+	heldVersion   string // the first push being held, to log once
 	// heldOutletVersion / everOutletApplied: the outlet counterpart of the
 	// ports' hold, per process rather than from state (see holdInitialOutletPush).
 	heldOutletVersion string
@@ -398,7 +406,12 @@ func (l *Loop) informOnce(ctx context.Context) {
 		case device.EffectSystemCfg:
 			lines = append(lines, fmt.Sprintf("system_cfg received, cfgversion %s, pending apply", e.Text))
 		case device.EffectLocate:
-			lines = append(lines, fmt.Sprintf("locate %s (reported as locating; this switch has no LED control)", e.Text))
+			if _, ok := l.cfg.Controller.(devicemodel.Locator); ok {
+				lines = append(lines, fmt.Sprintf("locate %s (reported as locating; the driver drives the device's LED)", e.Text))
+				l.pendingLocate = e.Text
+			} else {
+				lines = append(lines, fmt.Sprintf("locate %s (reported as locating; this switch has no LED control)", e.Text))
+			}
 		case device.EffectPortCycle:
 			lines = append(lines, fmt.Sprintf("port-cycle requested for port %s", e.Text))
 			if idx, err := strconv.Atoi(e.Text); err == nil {
@@ -446,7 +459,19 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	l.pendingOutletCycles = nil
 	reboot := l.pendingReboot
 	l.pendingReboot = false
+	locate := l.pendingLocate
+	l.pendingLocate = ""
 	l.mu.Unlock()
+	if locate != "" {
+		if lc, ok := l.cfg.Controller.(devicemodel.Locator); ok {
+			cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
+			err := lc.SetLocate(cctx, locate == "on")
+			cancel()
+			if err != nil {
+				l.cfg.Logger.Printf("[%s] locate %s: %v (still reported as locating=%v)", l.desc.MAC, locate, err, locate == "on")
+			}
+		}
+	}
 	l.cycleOutlets(ctx, outlets)
 	if reboot {
 		if rb, ok := l.cfg.Controller.(devicemodel.Rebooter); ok {
@@ -728,6 +753,10 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		ManageNTP: l.cfg.ControlNTP, NTPServers: cfg.NTPServers,
 		ManageSyslog: l.cfg.ControlSyslog, SyslogHosts: cfg.SyslogHosts,
 		DHCPSnooping: cfg.DHCPSnoop,
+		Timezone:     cfg.Timezone,
+	}
+	if l.cfg.ControlHostname {
+		d.Hostname = cfg.Hostname
 	}
 	if cfg.SNMP != nil && l.cfg.ControlSNMP {
 		d.SNMPSet = true
@@ -802,7 +831,7 @@ func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
 		return
 	}
 	if n > 0 {
-		l.cfg.Logger.Printf("[%s] applied %d switch-level settings (STP/IGMP/NTP/syslog/SNMP)", l.desc.MAC, n)
+		l.cfg.Logger.Printf("[%s] applied %d switch-level settings (STP/IGMP/NTP/syslog/SNMP/timezone/hostname)", l.desc.MAC, n)
 	}
 }
 

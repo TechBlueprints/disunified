@@ -33,8 +33,9 @@ import (
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (virtual switch, hardware SKU
 // Seastone-DX010). Control (docs/drivers/sonic.md §6: ports, VLANs, STP,
-// NTP, syslog, SNMP, SSH keys, reboot, the static address) writes `sudo
-// config …` commands, so the login user needs passwordless sudo (the admin
+// NTP, syslog, SNMP, SSH keys, reboot, the static address; §7.5: time
+// zone, hostname, locate via the status LED, dynamic port breakout -- the
+// last two hardware-untested) writes `sudo config …` commands, so the login user needs passwordless sudo (the admin
 // user has it). The managed NTP/syslog/SNMP entries are remembered in
 // <state_dir>/sonic-managed.json (state_dir is set by the bridge, next to
 // device.json). An address change dials the new address with the same
@@ -130,4 +131,5 @@ var (
 	_ devicemodel.Rebooter          = (*Collector)(nil)
 	_ devicemodel.AddressController = (*Collector)(nil)
 	_ devicemodel.AddressReporter   = (*Collector)(nil)
+	_ devicemodel.Locator           = (*Collector)(nil)
 )

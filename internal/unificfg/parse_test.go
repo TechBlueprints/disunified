@@ -3,6 +3,7 @@ package unificfg
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -90,5 +91,42 @@ func TestParsePort54FeatureCapture(t *testing.T) {
 	}
 	if len(c.IGMPSnooping) != 3 || !c.IGMPSnooping[1] || !c.IGMPSnooping[2] || !c.IGMPSnooping[69] {
 		t.Errorf("igmp = %v", c.IGMPSnooping)
+	}
+}
+
+// Every recorded push carries system.timezone and locale.timezone (a POSIX
+// TZ string on 10.6.106) and resolv.host.1.name (the UniFi name without
+// spaces).
+func TestParseTimezoneAndHostname(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	c := Parse(read("system_cfg.txt"))
+	if c.Timezone != "MST7MDT,M3.2.0,M11.1.0" {
+		t.Errorf("timezone = %q", c.Timezone)
+	}
+	pdu := Parse(read("system_cfg-pdu-outlets.txt"))
+	if pdu.Hostname != "APCAP7931" || pdu.Timezone != "MST7MDT,M3.2.0,M11.1.0" {
+		t.Errorf("pdu push: hostname %q timezone %q", pdu.Hostname, pdu.Timezone)
+	}
+	// system.timezone wins; locale.timezone fills in when it is absent.
+	var lines []string
+	for _, l := range strings.Split(read("system_cfg.txt"), "\n") {
+		if !strings.HasPrefix(l, "system.timezone=") {
+			lines = append(lines, l)
+		}
+	}
+	if got := Parse(strings.Join(lines, "\n")).Timezone; got != "MST7MDT,M3.2.0,M11.1.0" {
+		t.Errorf("locale.timezone fallback = %q", got)
+	}
+	if got := Parse(strings.Join(lines, "\n") + "\nsystem.timezone=UTC0\n").Timezone; got != "UTC0" {
+		t.Errorf("system.timezone must win, got %q", got)
+	}
+	if got := Parse("switch.port.1.name=x\n"); got.Timezone != "" || got.Hostname != "" {
+		t.Errorf("absent keys: %+v", got)
 	}
 }

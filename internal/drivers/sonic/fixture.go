@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/TechBlueprints/disunified/internal/sshrun"
 )
@@ -41,11 +42,32 @@ type FixtureRunner struct {
 	// for the path where the switch loses the new address anyway.
 	promote       map[string]bool
 	IgnorePromote bool
+
+	// Zones answers zonesCommand: the switch's zone list with each zone's
+	// POSIX rule (zones.txt beside the capture, through sanitize-sonic.py).
+	Zones     string
+	ZoneReads int // how often the zone list was read
+	// LEDWorks models a platform whose API sets the chassis status LED (the
+	// DX010); otherwise LED writes fail as on the VS, whose platform API
+	// raises FileNotFoundError for its chassis metadata. LED is the colour
+	// last set.
+	LEDWorks bool
+	LED      string
+
+	mu sync.Mutex // Run may be called from the locate blink's goroutine
+}
+
+// Recorded is a copy of Commands, safe while a blink is running.
+func (f *FixtureRunner) Recorded() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.Commands...)
 }
 
 var (
 	promoteRe = regexp.MustCompile(`^echo 1 \| sudo tee /proc/sys/net/ipv4/conf/(\S+)/promote_secondaries >/dev/null$`)
 	verifyRe  = regexp.MustCompile(`^ip -4 -o addr show dev (\S+) \| grep -q ' (\S+)/(\d+) '$`)
+	ledRe     = regexp.MustCompile(`^sudo python3 -c 'import sys; from sonic_platform\.platform import Platform; sys\.exit\(0 if Platform\(\)\.get_chassis\(\)\.set_status_led\("(green|off)"\) else 1\)'$`)
 )
 
 // Dial is the fixture's Collector.Redial: a runner for the switch at host,
@@ -85,14 +107,25 @@ func NewFixtureRunner(path string) (*FixtureRunner, error) {
 			f.Help[name] = body
 		}
 	}
+	if z, err := os.ReadFile(filepath.Join(filepath.Dir(path), "zones.txt")); err == nil {
+		f.Zones = string(z)
+	}
 	return f, nil
 }
 
 // Run implements sshrun.Runner.
 func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	switch {
 	case command == collectCommand:
 		return f.Fixture, nil
+	case command == zonesCommand:
+		f.ZoneReads++
+		if f.Zones == "" {
+			return "", fmt.Errorf("timedatectl: no zones")
+		}
+		return f.Zones, nil
 	case strings.HasPrefix(command, "sudo config ") && strings.HasSuffix(command, " --help"):
 		f.Helps = append(f.Helps, command)
 		body, ok := f.Help[strings.TrimPrefix(command, "sudo ")]
@@ -253,6 +286,13 @@ func (f *FixtureRunner) apply(line string) error {
 		}
 		return nil
 	}
+	if m := ledRe.FindStringSubmatch(line); m != nil {
+		if !f.LEDWorks {
+			return fmt.Errorf("exit status 1: Traceback (most recent call last): ... FileNotFoundError: Metadata file /etc/sonic/vs_chassis_metadata.json not found")
+		}
+		f.LED = m[1]
+		return nil
+	}
 	if m := verifyRe.FindStringSubmatch(line); m != nil {
 		if !f.hasKernelAddress(m[1], m[2], m[3]) {
 			return fmt.Errorf("exit status 1") // grep -q found nothing
@@ -310,7 +350,16 @@ func (f *FixtureRunner) apply(line string) error {
 	case cmd == "config interface startup" || cmd == "config interface shutdown":
 		return f.portField(at(3), "admin_status", map[string]string{"startup": "up", "shutdown": "down"}[w[2]])
 	case cmd == "config interface speed":
+		if err := f.laneSpeedOK(at(3), at(4)); err != nil {
+			return err
+		}
 		return f.portField(at(3), "speed", at(4))
+	case cmd == "config interface breakout":
+		return f.breakout(w[3:])
+	case cmd == "config clock timezone":
+		return f.timezone(at(3))
+	case len(w) == 3 && w[0] == "config" && w[1] == "hostname":
+		return f.hostname(w[2])
 	case cmd == "config interface fec":
 		return f.portField(at(3), "fec", at(4))
 	case cmd == "config interface autoneg":

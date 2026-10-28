@@ -190,6 +190,7 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
 | Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
+| §7.1 features against the capture: the pushed time zone mapped onto a zone (the switch's zone list captured as `zones.txt`), the hostname (`control.hostname`), locate (the LED toggled, stopped, the VS's failure logged once), breakout split/lane-speed/join on the DX010's `platform.json` (`dx010-platform.json`, `dx010-hwsku.json` beside the capture, upstream files) | `internal/drivers/sonic/features_test.go` + `internal/informloop/replay_sonic_locate_test.go` (the recorded set-locate/unset-locate through the loop) + the time zone in `TestReplaySonicPort2NameSpeedVLANs` |
 | **Live, from the controller UI** on the VS guest (build 1238524, adopted as `USWF07D`, `control.ports: 2-32`): port state and name; Allow All, Block All, a custom tagged set; aggregation and its removal; mirroring and its removal; forced 100G, RS-FEC, storm control; jumbo off and on (1500 and the pushed 9216 on 31 ports); NTP servers (hostnames pinned); the controller's SSH keys in the managed authorized_keys block (the operator's lines untouched); Manage → Restart (`sudo reboot`, back in ~2 min, reconnected); IP Settings → Static, a move within the subnet with the runner and the persisted dial target following. Each push reached the switch within one inform cycle and the next reconcile reported zero changes. | [`drivers/sonic.md`](drivers/sonic.md) §6.6, 2026-10-27. The live runs found the PortChannel MTU rule, the apply budget, the NTP churn, the `_type: reboot` reply, `promote_secondaries`, the agent key order and the stale reported address; each is fixed and tested since. |
 
 ### Built, untested live — PRs welcome
@@ -201,14 +202,23 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
 | The reported address following a move (`ip`, `connect_request_ip`) | the controller's device list showing the new address one inform after a move, without a bridge restart |
 | A move whose new address does not answer (the new address and route removed again) | a move to an address the bridge cannot reach |
+| Time zone (`system.timezone`, a POSIX rule, mapped onto the switch's zone with that rule: `config clock timezone MST7MDT`) | the push applied on the guest, `show clock` in the new zone, the zero-change reconcile; an operator's zone with the same rule (America/Denver) left alone |
+| Hostname (`control.hostname`: `config hostname <resolv.host.1.name>`, `config save`) | the flag on, the hostname changed on the guest (prompt, `DEVICE_METADATA`), the bridge's log prefix following on the next collect |
 
 ### Hardware only (the DX010) — PRs welcome
 
 Fans, PSUs and temperatures (pmon), optics and DOM (xcvrd), real speeds and
-FEC, `supported_speeds`, dynamic port breakout (needs the platform's
-`platform.json`; the write is not built), PCS/FEC codeword counters, LLDP
-neighbours from real cables. The parser reads each table when present; none
-has seen real data.
+FEC, `supported_speeds`, PCS/FEC codeword counters, LLDP neighbours from
+real cables. The parser reads each table when present; none has seen real
+data.
+
+Built and fixture-tested against the DX010's upstream `platform.json`, never
+run on hardware:
+
+| Gap | What the PR needs |
+|---|---|
+| Dynamic port breakout (split 1x100G → 4x25G / 2x50G, lane speed 25G → 10G, join back) | on an empty cage with a 4x25G DAC: each step from the UI, the logged commands, the children in `show interfaces status`, the cage's VLANs/MTU/state on every child, the zero-change reconcile; whether the breakout prompts for tables without YANG (stdin is `/dev/null`, so it would abort the batch) |
+| Locate (the status LED toggled off/green once a second through the platform API, green after) | the LED blinking from the UI's Locate and green after; whether pmon's system-health daemon fights the blink |
 
 ### STP
 
@@ -220,8 +230,11 @@ is refused with a log and not claimed; untested with the daemon.
 ### Refused (logged, not claimed)
 
 IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping (community
-SONiC has none of them); breakout until hardware with a `platform.json`;
-STP and the per-port STP settings on an image without the STP daemon.
+SONiC has none of them); breakout on a platform without `platform.json`
+(the VS), a speed no breakout mode runs, and a breakout of a cage in an
+aggregate or mirror session; a pushed time zone no zone on the switch
+matches; a hostname that is not a DNS name of at most 63 characters; STP
+and the per-port STP settings on an image without the STP daemon.
 
 ### Untested — expected to work — PRs welcome
 

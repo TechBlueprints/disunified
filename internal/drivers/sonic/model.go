@@ -40,8 +40,15 @@ func ifNum(name string) int {
 // PORT entry sharing an `index`: one entry for an unsplit cage, the child
 // ports (Ethernet0..3) of a broken-out one, folded the way the Arista driver
 // folds lanes. An untagged membership of Vlan<native> is UniFi's native
-// VLAN 1 (SONiC has no VLAN 1); every other membership keeps its id.
-func buildPorts(db map[string]table, native int) []cagePort {
+// VLAN 1 (SONiC has no VLAN 1); every other membership keeps its id. plat
+// is platform.json's interfaces block (nil where absent): a cage it lists
+// claims every speed of its breakout modes, so the controller offers the
+// split and the join.
+func buildPorts(db map[string]table, native int, plat map[string]platformPort) []cagePort {
+	platCaps := map[int][]int{}
+	for _, pp := range plat {
+		platCaps[pp.cageIndex()] = pp.speeds()
+	}
 	cfg := db["cfg_port"].byName("|")
 	appl := db["appl_port"].byName(":")
 	state := db["state_port"].byName("|")
@@ -127,7 +134,7 @@ func buildPorts(db map[string]table, native int) []cagePort {
 				lp.Neighbor = neighborOf(n)
 			}
 			if i == 0 {
-				cage = cagePort{Port: lp, alias: cfg[name]["alias"]}
+				cage = cagePort{Port: lp, alias: cageAlias(cfg[name]["alias"], len(names) > 1)}
 				continue
 			}
 			p := &cage.Port
@@ -156,6 +163,7 @@ func buildPorts(db map[string]table, native int) []cagePort {
 		p := &cage.Port
 		p.Lanes = len(names)
 		firstCfg := cfg[names[0]]
+		caps = mergeSpeeds(caps, platCaps[idx])
 		if len(caps) == 0 {
 			// No capability data (the VS): the SKU's configured speed only.
 			if s := atoi(firstCfg["speed"]); s > 0 {
@@ -476,6 +484,7 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 		Vendor:   vendorOf(meta["hwsku"], meta["platform"]),
 		Model:    meta["hwsku"],
 		Hostname: meta["hostname"],
+		Timezone: meta["timezone"],
 		Version:  yamlValue(sec["version"], "build_version"),
 	}
 	if sys.Hostname == "" {

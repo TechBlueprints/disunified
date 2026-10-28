@@ -29,8 +29,14 @@ type swState struct {
 	routes    map[string]map[string]string // STATIC_ROUTE by "<vrf>|<prefix>"
 	keys      []string                     // the bridge's block in authorized_keys, one key per line
 
+	meta map[string]string // DEVICE_METADATA|localhost (hostname, timezone)
+
 	stpFeature   bool // FEATURE|stp exists: the image has the STP daemon
 	platformJSON bool // the platform has a platform.json: dynamic port breakout
+	// platform is platform.json's interfaces block (parent port -> index,
+	// lanes, breakout modes), nil where absent; read-only, shared by clones.
+	platform map[string]platformPort
+	brkout   map[string]string // BREAKOUT_CFG: parent port -> brkout_mode
 }
 
 func newState(db map[string]table, sec map[string]string) *swState {
@@ -124,7 +130,14 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	_, s.stpFeature = db["cfg_feature"]["FEATURE|stp"]
-	s.platformJSON = strings.TrimSpace(sec["platform_json"]) == "yes"
+	s.platformJSON, s.platform = parsePlatform(sec["platform_json"])
+	s.brkout = map[string]string{}
+	for k, f := range db["cfg_breakout"] {
+		if n, ok := strings.CutPrefix(k, "BREAKOUT_CFG|"); ok {
+			s.brkout[n] = f["brkout_mode"]
+		}
+	}
+	s.meta = copyFields(db["metadata"].first())
 	return s
 }
 
@@ -146,7 +159,11 @@ func (s *swState) clone() *swState {
 		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
-		stpFeature: s.stpFeature, platformJSON: s.platformJSON,
+		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
+		meta: copyFields(s.meta), brkout: map[string]string{},
+	}
+	for k, v := range s.brkout {
+		c.brkout[k] = v
 	}
 	for k, v := range s.port {
 		c.port[k] = copyFields(v)

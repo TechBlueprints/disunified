@@ -186,11 +186,51 @@ verified live on that build; no hardware yet.
   202505, diffed against `SNMP|LOCATION` / `SNMP|CONTACT`; the VS default
   is `SNMP|LOCATION {Location: public}`) is not mapped yet -- capture a push
   with the site's SNMP on first.
-- **STP port settings only with `FEATURE|stp`**; breakout (a lane speed on a
-  4-lane cage, or a cage speed on a split one) is refused with a log
-  (no `platform.json` on the VS, and the breakout write is not built).
-  `collect.py` prints `platform_json` (yes/no) and `cfg_storm`
-  (`PORT_STORM_CONTROL`).
+- **STP port settings only with `FEATURE|stp`.** `collect.py` prints
+  `cfg_storm` (`PORT_STORM_CONTROL`) and `platform_json`: `no`, or
+  platform.json's `interfaces` block reduced to each parent's `index`,
+  `lanes` and `breakout_modes` (older captures say `yes`).
+- **Breakout (`breakout.go`) -- built 2026-10-27, HARDWARE-UNTESTED.** A
+  cage speed its current `BREAKOUT_CFG` mode does not run picks the mode
+  that runs it (its default speed preferred): DX010 100G/40G `1x100G[40G]`,
+  50G `2x50G`, 25G/10G `4x25G[10G]`; a speed the mode runs is a lane-speed
+  change on every lane. The write is `config interface breakout -f -y
+  <parent> '<mode>' </dev/null`: `-f` because every port here has a VLAN
+  membership (without it SONiC refuses with the dependency list), **no
+  `-l`**: it loads `/etc/sonic/port_breakout_config_db.json`, which no
+  SONiC build generates (absent on the VS) and whose absence fails the
+  breakout; `/dev/null` because the breakout can still `click.confirm`
+  about tables without YANG, and inside the `bash -s` batch that prompt
+  would read the rest of the batch. The mode is quoted (`[` globs). The
+  children (portconfig.py `get_config`: `Ethernet<n+laneoffset>`, the
+  parent's index, the mode's default speed, no `admin_status` = down, RS-FEC
+  at 50G+ per lane) get the cage's whole intent from the same plan (state,
+  name, MTU, VLANs, storm control). Refused with a log on the VS, for a
+  speed no mode runs, and for a cage in an aggregate or a mirror session
+  (`-f` would drop them). A split cage's default name stays the parent's
+  alias (`Eth2/1` -> `Eth2`); every mode's speeds are claimed. The tests
+  build the DX010 variant from the VS capture plus the upstream
+  `dx010-platform.json` / `dx010-hwsku.json` beside it.
+- **Time zone (`zones.go`).** The controller pushes a POSIX rule
+  (`system.timezone=MST7MDT,M3.2.0,M11.1.0`), and `config clock timezone`
+  accepts only names from `timedatectl list-timezones`. The driver reads
+  the switch's zone list with each zone's rule (`tail -n 1` of its TZif
+  file; ~0.7 s, once per run, `zones.txt` is that capture) and writes the
+  zone named like the rule (`MST7MDT`), else by its abbreviation, else the
+  first match; a current zone with the same rule (America/Denver) is kept.
+  A zone name in the push is taken as is. `DEVICE_METADATA timezone` is the
+  read side (`System.Timezone`; `UTC` on the VS). Verify live.
+- **Hostname** with `control.hostname` only: `config hostname <name>` then
+  `config save -y` (hostcfgd sets the Linux hostname). SONiC's YANG caps
+  the whole name at 63 characters, not per label. Verify live.
+- **Locate (`locate.go`) -- HARDWARE-UNTESTED.** No LED in the `config`
+  CLI; the platform API's `Chassis.set_status_led("off"|"green")` (DX010:
+  `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`) returns False
+  on failure, so the command exits on its result. Toggled once a second
+  while locating, green after; the VS's platform API raises
+  `FileNotFoundError` (no `/etc/sonic/vs_chassis_metadata.json`): logged
+  once per run, then report-only. pmon's system-health may set the LED
+  too. `Start` also checks `config clock timezone` and `config hostname`.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). The FDB keys put a MAC
   right after `Vlan4094:`; the MAC pattern must not refuse a preceding `:`.

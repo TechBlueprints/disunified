@@ -82,9 +82,14 @@ type Control struct {
 	IGMP    bool `yaml:"igmp"`
 	NTP     bool `yaml:"ntp"`
 	Syslog  bool `yaml:"syslog"`
-	Reboot  bool `yaml:"reboot"`
-	SSHKeys bool `yaml:"ssh_keys"`
-	SNMP    bool `yaml:"snmp"`
+	// Hostname lets the controller's name for the device (resolv.host.1.name:
+	// the UniFi name with spaces removed) become the device's own hostname.
+	// Off by default: it renames the device. Drivers that cannot set a
+	// hostname ignore it (sonic: `config hostname`).
+	Hostname bool `yaml:"hostname"`
+	Reboot   bool `yaml:"reboot"`
+	SSHKeys  bool `yaml:"ssh_keys"`
+	SNMP     bool `yaml:"snmp"`
 	// NUT is accepted for compatibility and no longer needed: every UPS
 	// claims the NUT-server capability (the controller's UI cannot save a
 	// UPS's settings otherwise), and the controller's "NUT Server" switch

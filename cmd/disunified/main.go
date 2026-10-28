@@ -86,6 +86,7 @@ func main() {
 		controlAddress = flag.Bool("control-address", envChain("", "DUI_CONTROL_ADDRESS", "STU_CONTROL_ADDRESS") == "1", "let the controller's IP Settings for the device set the device's own management address (off by default)")
 		controlIGMP    = flag.Bool("control-igmp", envChain("", "DUI_CONTROL_IGMP", "STU_CONTROL_IGMP") == "1", "let the controller's per-network IGMP snooping setting drive the device (off by default)")
 		controlNTP     = flag.Bool("control-ntp", envChain("", "DUI_CONTROL_NTP", "STU_CONTROL_NTP") == "1", "let the controller's NTP servers replace the device's (off by default)")
+		controlHost    = flag.Bool("control-hostname", envChain("", "DUI_CONTROL_HOSTNAME") == "1", "the controller's name for the device (resolv.host.1.name) becomes its hostname (off by default; sonic only)")
 		controlSyslog  = flag.Bool("control-syslog", envChain("", "DUI_CONTROL_SYSLOG", "STU_CONTROL_SYSLOG") == "1", "let the controller's remote syslog host replace the device's (off by default)")
 		controlReboot  = flag.Bool("control-reboot", envChain("", "DUI_CONTROL_REBOOT", "STU_CONTROL_REBOOT") == "1", "the controller's Restart really reloads the device (off by default: emulated)")
 		controlSSH     = flag.Bool("control-ssh-keys", envChain("", "DUI_CONTROL_SSH_KEYS", "STU_CONTROL_SSH_KEYS") == "1", "install the SSH keys the controller pushes on the device's bridge user (off by default)")
@@ -161,7 +162,7 @@ func main() {
 		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
-		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog,
+		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog, controlHostname: *controlHost,
 		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP, controlNUT: *controlNUT,
 		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
@@ -185,6 +186,7 @@ type options struct {
 	controlOutlets                             string
 	controlAddress                             bool
 	controlIGMP, controlNTP, controlSyslog     bool
+	controlHostname                            bool
 	controlReboot, controlSSH, controlSNMP     bool
 	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
@@ -211,7 +213,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
 			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog,
+			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog, controlHostname: sw.Control.Hostname,
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP, controlNUT: sw.Control.NUT,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
@@ -619,6 +621,7 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.ControlIGMP = o.controlIGMP
 		loopCfg.ControlNTP = o.controlNTP
 		loopCfg.ControlSyslog = o.controlSyslog
+		loopCfg.ControlHostname = o.controlHostname
 		loopCfg.ControlReboot = o.controlReboot
 		loopCfg.ControlSSHKeys = o.controlSSH
 		loopCfg.ControlSNMP = o.controlSNMP
