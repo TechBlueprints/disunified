@@ -1057,6 +1057,40 @@ worth of precedent. The one thing the ECS build cannot lend the DX010 is a
 binary: its `l2mcd` and orchagent are 202106 and link that branch's
 `libswsscommon`; the Micas source on 202511 is the path.
 
+## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
+
+The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is
+the only first-party answer to "how does UniFi lay its config out in SONiC".
+Table by table against what this driver writes on the DX010:
+
+| UniFi concept | Ubiquiti's SONiC (ECS, 202106, Marvell) | This driver (202505, Broadcom) | Verdict |
+|---|---|---|---|
+| Port name | `PORT\|EthernetN description = "<UniFi name>"` (`SFP28 1`, `QSFP28 3`) | the same `description` | same |
+| Allow All | every site VLAN **tagged** on every port (490 tagged `VLAN_MEMBER`s for 11 VLANs); native 1 untagged | the same shape | same |
+| VLAN 1 (native LAN) | **`VLAN\|Vlan1` exists**, 52 untagged members, kernel PVID 1, `MGMT_VLAN\|Vlan1`; written straight into CONFIG_DB by `ubnt-lnxcfgd`, bypassing the CLI | `Vlan<native_vlan>` (default 4094) stands in for 1 | **keep the substitute.** Community 202505 cannot take VLAN 1: `config vlan add 1` fails "is default VLAN", the YANG model's `vlanid` range is `2..4094`, `vlanmgrd` strips VID 1 from the bridge and every port at start, and `orchagent` empties the SAI **default VLAN, which is 1 on the Broadcom SAI**, at init -- creating a second VLAN object with that id is not something the community orchagent is written to do. Ubiquiti's orchagent and Marvell SAI are their own. Revisit only with an orchagent change (the same image work as §8). |
+| Aggregate | `PORTCHANNEL\|PortChannelN {admin_status up, **fast_rate true**, lacp_key auto, **min_links 1**, mtu}`; members in `PORTCHANNEL_MEMBER` | `config portchannel add PortChannelN` with the defaults (fast_rate false, min_links 0) | **adopt**: `config portchannel add PortChannelN --fast-rate true --min-links 1` (202505's `add_portchannel` takes both). UniFi's LACP runs fast timers (1 s) end to end; a slow-rate DX010 on the core LAG would be the odd partner (LACP tolerates mixed rates, but failover detection on our side would be 90 s instead of 3 s). |
+| Hostname | `DEVICE_METADATA\|localhost hostname = <UniFi name>` (`aggregation`) | `config hostname <resolv.host.1.name>` only with `control.hostname` on (off by default) | **consider defaulting `control.hostname` on** for sonic: it is what UniFi's own switch does. Clint's call; a one-line default. |
+| NTP | `NTP_SERVER\|<ip>` for the IP only; the site's pool **hostname is dropped** (SONiC takes addresses) | both: the hostname resolved once and pinned (`sonic-managed.json`) | keep ours (a pinned pool member beats no second server). |
+| Jumbo | `PORT mtu 1500` with the site's jumbo off | the pushed `switch.mtu` (9216) when on, 1500 when off | same semantics. |
+| Speed / FEC on optics | an **`AUTO_DETECT` table per port** (speed, adv_speeds, fec, interface_type from the module) kept by Ubiquiti's `autodetectd`; the UniFi UI's "auto" means "what the optic says" | speed/FEC only as pushed; "auto" leaves the switch's setting | **hardware-day item**: on the DX010, when UniFi says auto and the cage holds a module, choose FEC from `TRANSCEIVER_INFO` (RS for 100G DAC/SR4/CWDM4, none for 40G) the way `autodetectd` does. Not provable on the VS. |
+| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| DHCP guard / snooping | `ACL_TABLE\|global_ip_acl` (L3) and `global_mac_acl` (ANY) bound to every port, no rules while the site feature is off; `dhcpsnpmgrd` in the glue | refused with a log | an ACL-based path exists in community SONiC too (`sonic-acl.yang`); same shape as Ubiquiti's. Later, if wanted. |
+| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| Features | `l2mcd`, `stp`, `teamd`, `bgp` (FRR), `dhcp_relay`, `radv`, `mgmt-framework`, `snmp` enabled; `macsec`, `nat`, `sflow` present but off | community image: no `l2mcd`, no `stp` | §8. |
+
+(ECS configuration excerpt removed from history, 2026-11-01)
+(ECS configuration excerpt removed from history, 2026-11-01)
+(ECS configuration excerpt removed from history, 2026-11-01)
+(ECS configuration excerpt removed from history, 2026-11-01)
+(ECS configuration excerpt removed from history, 2026-11-01)
+
+**To do from this (small, driver-side):** LACP fast rate and min-links on
+the aggregates the driver creates; the `control.hostname` default; the
+MAC-move guard as the `ld_mode` implementation; FEC-from-module on
+hardware. The VLAN 1 question is closed for the community image.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
