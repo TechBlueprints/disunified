@@ -37,14 +37,122 @@ type Runner interface {
 // file, host key from known_hosts, one multiplexed connection reused across
 // polls (redialled when it drops).
 type SSH struct {
-	Addr       string // host:port
-	User       string
-	KeyFile    string // "" = agent, then ~/.ssh/id_ed25519, id_rsa
+	Addr string // host:port
+	User string
+	// KeyFile picks the identity:
+	//   ""            every ssh-agent key, one at a time in agent order, then
+	//                 ~/.ssh/id_ed25519 and id_rsa
+	//   a public key  (".pub", or an authorized_keys line) the agent key with
+	//                 that public key and no other (OpenSSH's IdentitiesOnly);
+	//                 an error if the agent does not hold it
+	//   a private key that key (unencrypted), without the agent
+	KeyFile    string
 	KnownHosts string // "" = ~/.ssh/known_hosts
 	Timeout    time.Duration
+	// Logf, if set, is told once per dial which key authenticated.
+	Logf func(format string, args ...any)
+	// Identity is the key the current connection authenticated with
+	// ("<type> <SHA256 fingerprint> <comment>"), "" before the first dial.
+	Identity string
 
 	mu     sync.Mutex
 	client *ssh.Client
+	// agentKeys lists the agent's identities; nil = the agent at
+	// SSH_AUTH_SOCK (tests substitute their own).
+	agentKeys func() ([]identity, error)
+}
+
+// identity is one key the dial may authenticate with.
+type identity struct {
+	name   string
+	signer ssh.Signer
+}
+
+func keyName(pub ssh.PublicKey, comment string) string {
+	return strings.TrimSpace(pub.Type() + " " + ssh.FingerprintSHA256(pub) + " " + comment)
+}
+
+// sockAgentKeys lists the identities of the agent at SSH_AUTH_SOCK, in
+// agent order, named with their comments; nil when there is no agent.
+func sockAgentKeys() ([]identity, error) {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil, nil
+	}
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil, nil
+	}
+	ag := agent.NewClient(conn)
+	signers, err := ag.Signers()
+	if err != nil {
+		return nil, fmt.Errorf("ssh agent: %w", err)
+	}
+	comments := map[string]string{}
+	if keys, err := ag.List(); err == nil {
+		for _, k := range keys {
+			comments[string(k.Blob)] = k.Comment
+		}
+	}
+	out := make([]identity, 0, len(signers))
+	for _, s := range signers {
+		out = append(out, identity{name: keyName(s.PublicKey(), comments[string(s.PublicKey().Marshal())]), signer: s})
+	}
+	return out, nil
+}
+
+// identities are the keys to try, each in a handshake of its own: Go's
+// client gives up on every remaining key once one agent key fails to sign
+// ("agent: client error: EOF" from an agent that refuses it), and it
+// treats a second publickey method in the same handshake as already
+// tried, so one key per handshake is the only way past a key that fails.
+func (t *SSH) identities(home string) ([]identity, error) {
+	listAgent := t.agentKeys
+	if listAgent == nil {
+		listAgent = sockAgentKeys
+	}
+	if t.KeyFile != "" {
+		b, err := os.ReadFile(t.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("ssh key %s: %w", t.KeyFile, err)
+		}
+		if pub, comment, _, _, err := ssh.ParseAuthorizedKey(b); err == nil {
+			// A public key selects the agent identity that holds it.
+			keys, err := listAgent()
+			if err != nil {
+				return nil, err
+			}
+			for _, k := range keys {
+				if string(k.signer.PublicKey().Marshal()) == string(pub.Marshal()) {
+					return []identity{k}, nil
+				}
+			}
+			return nil, fmt.Errorf("ssh key %s (%s): the ssh agent (SSH_AUTH_SOCK) does not hold it", t.KeyFile, keyName(pub, comment))
+		} else if strings.HasSuffix(t.KeyFile, ".pub") {
+			return nil, fmt.Errorf("ssh key %s: not a public key line: %w", t.KeyFile, err)
+		}
+		signer, err := ssh.ParsePrivateKey(b)
+		if err != nil {
+			return nil, fmt.Errorf("ssh key %s: %w", t.KeyFile, err)
+		}
+		return []identity{{name: keyName(signer.PublicKey(), t.KeyFile), signer: signer}}, nil
+	}
+	keys, err := listAgent()
+	if err != nil {
+		return nil, err
+	}
+	for _, kf := range []string{filepath.Join(home, ".ssh", "id_ed25519"), filepath.Join(home, ".ssh", "id_rsa")} {
+		pem, err := os.ReadFile(kf)
+		if err != nil {
+			continue
+		}
+		signer, err := ssh.ParsePrivateKey(pem)
+		if err != nil {
+			continue
+		}
+		keys = append(keys, identity{name: keyName(signer.PublicKey(), kf), signer: signer})
+	}
+	return keys, nil
 }
 
 // NewSSH builds an SSH runner; addr may omit the port (22).
@@ -68,31 +176,14 @@ func (t *SSH) dial(ctx context.Context) (*ssh.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("known_hosts %s: %w", kh, err)
 	}
-	var auths []ssh.AuthMethod
-	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" && t.KeyFile == "" {
-		if conn, err := net.Dial("unix", sock); err == nil {
-			auths = append(auths, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
-		}
+	ids, err := t.identities(home)
+	if err != nil {
+		return nil, err
 	}
-	keyFiles := []string{t.KeyFile}
-	if t.KeyFile == "" {
-		keyFiles = []string{filepath.Join(home, ".ssh", "id_ed25519"), filepath.Join(home, ".ssh", "id_rsa")}
-	}
-	for _, kf := range keyFiles {
-		pem, err := os.ReadFile(kf)
-		if err != nil {
-			continue
-		}
-		signer, err := ssh.ParsePrivateKey(pem)
-		if err != nil {
-			continue
-		}
-		auths = append(auths, ssh.PublicKeys(signer))
-	}
-	if len(auths) == 0 {
+	if len(ids) == 0 {
 		return nil, errors.New("ssh: no usable key (no agent, no readable unencrypted key file)")
 	}
-	cfg := &ssh.ClientConfig{User: t.User, Auth: auths, HostKeyCallback: hostKey, Timeout: t.Timeout}
+	cfg := &ssh.ClientConfig{User: t.User, HostKeyCallback: hostKey, Timeout: t.Timeout}
 	// Offer only the key types known_hosts has for this host, as OpenSSH
 	// does: otherwise the server may present a key of another type and the
 	// known_hosts check fails with "key mismatch" even though the host is known.
@@ -107,17 +198,32 @@ func (t *SSH) dial(ctx context.Context) (*ssh.Client, error) {
 		cfg.HostKeyAlgorithms = offer
 	}
 	d := net.Dialer{Timeout: t.Timeout}
-	conn, err := d.DialContext(ctx, "tcp", t.Addr)
-	if err != nil {
-		return nil, fmt.Errorf("ssh dial %s: %w", t.Addr, err)
+	var fails []string
+	for _, id := range ids {
+		conn, err := d.DialContext(ctx, "tcp", t.Addr)
+		if err != nil {
+			return nil, fmt.Errorf("ssh dial %s: %w", t.Addr, err)
+		}
+		try := *cfg
+		try.Auth = []ssh.AuthMethod{ssh.PublicKeys(id.signer)}
+		c, chans, reqs, err := ssh.NewClientConn(conn, t.Addr, &try)
+		if err != nil {
+			conn.Close()
+			fails = append(fails, fmt.Sprintf("%s: %v", id.name, err))
+			var ke *knownhosts.KeyError
+			if errors.As(err, &ke) {
+				break // the host itself is wrong; no key will fix that
+			}
+			continue
+		}
+		t.client = ssh.NewClient(c, chans, reqs)
+		t.Identity = id.name
+		if t.Logf != nil {
+			t.Logf("ssh %s@%s: authenticated with %s", t.User, t.Addr, id.name)
+		}
+		return t.client, nil
 	}
-	c, chans, reqs, err := ssh.NewClientConn(conn, t.Addr, cfg)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("ssh handshake %s@%s: %w", t.User, t.Addr, err)
-	}
-	t.client = ssh.NewClient(c, chans, reqs)
-	return t.client, nil
+	return nil, fmt.Errorf("ssh handshake %s@%s: %s", t.User, t.Addr, strings.Join(fails, "; "))
 }
 
 // Run executes command with stdin on the node and returns stdout.

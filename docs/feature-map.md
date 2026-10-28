@@ -142,7 +142,7 @@ source of the same per-port intent.
 | cmd | Meaning | Arista | Arista status | Proxmox |
 |---|---|---|---|---|
 | `set-adopt`, `setdefault` | adoption lifecycle | session | done | done |
-| `reboot` | reboot the device | emulated by default; `-control-reboot` → `write memory` + `reload now` | done | emulated only |
+| `reboot` | reboot the device; the UI's Manage → Restart also arrives as a top-level reply `{"_type": "reboot", "reboot_type": "soft", "device_id", "time", …}` rather than a `cmd` (observed 2026-10-27 on 10.6.106 for a usw device; handled identically, recorded at the tail of `replies.ndjson`) | emulated by default; `-control-reboot` → `write memory` + `reload now` | done | emulated only |
 | `upgrade`, `upgrade2` | firmware | emulated: accept, report the requested version from then on (persisted in `State.Firmware`, with the switch's version at that moment in `FirmwareBase`; when the switch is really upgraded afterwards the emulated version is dropped and the truth reported again). On a model with no firmware releases (the Leaf, `docs/unifi-models.md`) a vendor version is recorded with `upgradable: false` and no prompt; on a model the controller has firmware for (`USWF07D`) it does prompt, and accepting one hides the real version until the switch moves | done | emulated |
 | `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed | reports `locating` |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) | todo |

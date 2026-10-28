@@ -28,7 +28,9 @@ import (
 //	bridge        the bridge to present (default vmbr0)
 //	ports         total ports to present (default 54, the USW Leaf's); the
 //	              node's physical NICs take the top ones, guests the rest
-//	ssh_key       private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
+//	ssh_key       private key file, or a .pub that selects that one ssh-agent
+//	              key (default: every agent key one at a time, then
+//	              ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts   known_hosts file (default ~/.ssh/known_hosts)
 //	numbering     "cluster" (default: every guest in the cluster has the same
 //	              port on every node; 48 guest NICs cluster-wide) or "node"
@@ -62,6 +64,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	t.KeyFile = cfg.Options["ssh_key"]
 	t.KnownHosts = cfg.Options["known_hosts"]
 	c := NewCollector(t)
+	t.Logf = func(f string, a ...any) { c.Log.Printf(f, a...) }
 	if b := cfg.Options["bridge"]; b != "" {
 		c.Bridge = b
 	}

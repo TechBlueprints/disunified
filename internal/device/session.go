@@ -468,6 +468,12 @@ func (s *Session) Apply(now time.Time, body []byte) []inform.Effect {
 		effects = s.applySetparam(r)
 	case "setstate":
 		effects = s.applySetstate(body, r.Cfgversion)
+	case "reboot":
+		// The UI's Manage -> Restart arrives as a top-level reply of its own,
+		// not as a cmd: {"_type":"reboot","reboot_type":"soft",...}
+		// (observed 2026-10-27 on 10.6.106 for a usw device). Same effect as
+		// the reboot cmd.
+		effects = s.applyCmd(now, informResponse{Type: "cmd", Cmd: "reboot"})
 	case "noop":
 		if r.Interval > 0 {
 			effects = []inform.Effect{{Kind: inform.EffectInterval, Interval: time.Duration(r.Interval) * time.Second}}
