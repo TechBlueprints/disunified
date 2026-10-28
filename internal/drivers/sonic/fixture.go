@@ -323,15 +323,24 @@ func (f *FixtureRunner) apply(line string) error {
 	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (w[2] == "hset" || w[2] == "hdel"):
 		key := w[3]
 		if pc, ok := strings.CutPrefix(key, "PORTCHANNEL|"); ok {
-			// The probed way to set a PortChannel's MTU.
-			if w[2] != "hset" || w[4] != "mtu" {
+			// The probed way to set a PortChannel's MTU, and the LACP fields
+			// the driver brings in line on a PortChannel made without them.
+			fv := w[4:]
+			if w[2] != "hset" || len(fv)%2 != 0 {
 				return fmt.Errorf("unmodelled PORTCHANNEL write")
+			}
+			for i := 0; i < len(fv); i += 2 {
+				if fv[i] != "mtu" && fv[i] != "fast_rate" && fv[i] != "min_links" {
+					return fmt.Errorf("unmodelled PORTCHANNEL field %s", fv[i])
+				}
 			}
 			return f.update("cfg_lag", func(t table) error {
 				if t[key] == nil {
 					return fmt.Errorf("%s does not exist", pc)
 				}
-				t[key]["mtu"] = at(5)
+				for i := 0; i < len(fv); i += 2 {
+					t[key][fv[i]] = fv[i+1]
+				}
 				return nil
 			})
 		}
@@ -393,12 +402,34 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.vlanMember(w[3:])
 
 	case cmd == "config portchannel add":
+		// sonic-utilities 202505 add_portchannel: --min-links defaults to
+		// 1 (range 1..1024), --fast-rate to false (true|false), both written.
+		fields := map[string]string{"admin_status": "up", "lacp_key": "auto", "fast_rate": "false", "min_links": "1", "mtu": "9100"}
+		for rest := w[4:]; len(rest) > 0; rest = rest[2:] {
+			if len(rest) < 2 {
+				return fmt.Errorf("option %s requires an argument", rest[0])
+			}
+			switch v := rest[1]; rest[0] {
+			case "--fast-rate":
+				if v = strings.ToLower(v); v != "true" && v != "false" {
+					return fmt.Errorf("invalid value for --fast-rate: %s", rest[1])
+				}
+				fields["fast_rate"] = v
+			case "--min-links":
+				if n := atoi(v); n < 1 || n > 1024 {
+					return fmt.Errorf("invalid value for --min-links: %s", v)
+				}
+				fields["min_links"] = v
+			default:
+				return fmt.Errorf("no such option: %s", rest[0])
+			}
+		}
 		return f.update("cfg_lag", func(t table) error {
 			k := "PORTCHANNEL|" + at(3)
 			if _, ok := t[k]; ok {
 				return fmt.Errorf("%s already exists", at(3))
 			}
-			t[k] = map[string]string{"admin_status": "up", "lacp_key": "auto", "min_links": "1", "mtu": "9100"}
+			t[k] = fields
 			return nil
 		})
 	case cmd == "config portchannel del":

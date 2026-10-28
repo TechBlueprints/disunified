@@ -86,7 +86,7 @@ func main() {
 		controlAddress = flag.Bool("control-address", envChain("", "DUI_CONTROL_ADDRESS", "STU_CONTROL_ADDRESS") == "1", "let the controller's IP Settings for the device set the device's own management address (off by default)")
 		controlIGMP    = flag.Bool("control-igmp", envChain("", "DUI_CONTROL_IGMP", "STU_CONTROL_IGMP") == "1", "let the controller's per-network IGMP snooping setting drive the device (off by default)")
 		controlNTP     = flag.Bool("control-ntp", envChain("", "DUI_CONTROL_NTP", "STU_CONTROL_NTP") == "1", "let the controller's NTP servers replace the device's (off by default)")
-		controlHost    = flag.Bool("control-hostname", envChain("", "DUI_CONTROL_HOSTNAME") == "1", "the controller's name for the device (resolv.host.1.name) becomes its hostname (off by default; sonic only)")
+		controlHost    = flag.Bool("control-hostname", envChain("", "DUI_CONTROL_HOSTNAME") == "1", "the controller's name for the device (resolv.host.1.name) becomes its hostname (default: on for sonic, off otherwise; sonic only)")
 		controlSyslog  = flag.Bool("control-syslog", envChain("", "DUI_CONTROL_SYSLOG", "STU_CONTROL_SYSLOG") == "1", "let the controller's remote syslog host replace the device's (off by default)")
 		controlReboot  = flag.Bool("control-reboot", envChain("", "DUI_CONTROL_REBOOT", "STU_CONTROL_REBOOT") == "1", "the controller's Restart really reloads the device (off by default: emulated)")
 		controlSSH     = flag.Bool("control-ssh-keys", envChain("", "DUI_CONTROL_SSH_KEYS", "STU_CONTROL_SSH_KEYS") == "1", "install the SSH keys the controller pushes on the device's bridge user (off by default)")
@@ -155,6 +155,12 @@ func main() {
 		return
 	}
 
+	// -control-hostname unset (flag and env) takes the driver's default.
+	controlHostname := *controlHost
+	if !flagGiven("control-hostname") && os.Getenv("DUI_CONTROL_HOSTNAME") == "" {
+		controlHostname = config.HostnameDefault(*driverName)
+	}
+
 	o := options{
 		controller: *controller, informURL: *informURL, model: *model, udapiVersion: *udapiVer,
 		interval: *interval, recordDir: *recordDir, stateFile: *stateFile,
@@ -162,7 +168,7 @@ func main() {
 		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
-		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog, controlHostname: *controlHost,
+		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog, controlHostname: controlHostname,
 		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP, controlNUT: *controlNUT,
 		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
@@ -213,7 +219,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
 			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog, controlHostname: sw.Control.Hostname,
+			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog, controlHostname: sw.Control.HostnameOn(sw.Driver),
 			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP, controlNUT: sw.Control.NUT,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
@@ -776,6 +782,13 @@ func envOr(key, def string) string {
 // order, else def. Used to prefer the current DUI_ names while still reading
 // the pre-rename STU_ (and older STU_EOS_) names, so existing env files keep
 // working.
+// flagGiven reports whether the named flag was set on the command line.
+func flagGiven(name string) bool {
+	given := false
+	flag.Visit(func(f *flag.Flag) { given = given || f.Name == name })
+	return given
+}
+
 func envChain(def string, keys ...string) string {
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {

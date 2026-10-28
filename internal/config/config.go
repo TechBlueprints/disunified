@@ -84,12 +84,14 @@ type Control struct {
 	Syslog  bool `yaml:"syslog"`
 	// Hostname lets the controller's name for the device (resolv.host.1.name:
 	// the UniFi name with spaces removed) become the device's own hostname.
-	// Off by default: it renames the device. Drivers that cannot set a
-	// hostname ignore it (sonic: `config hostname`).
-	Hostname bool `yaml:"hostname"`
-	Reboot   bool `yaml:"reboot"`
-	SSHKeys  bool `yaml:"ssh_keys"`
-	SNMP     bool `yaml:"snmp"`
+	// Unset means the driver's default (HostnameOn): on for sonic, because
+	// UniFi's own SONiC switches always take the UniFi name as their
+	// hostname; off elsewhere, since it renames the device. Drivers that
+	// cannot set a hostname ignore it (sonic: `config hostname`).
+	Hostname *bool `yaml:"hostname"`
+	Reboot   bool  `yaml:"reboot"`
+	SSHKeys  bool  `yaml:"ssh_keys"`
+	SNMP     bool  `yaml:"snmp"`
 	// NUT is accepted for compatibility and no longer needed: every UPS
 	// claims the NUT-server capability (the controller's UI cannot save a
 	// UPS's settings otherwise), and the controller's "NUT Server" switch
@@ -110,6 +112,20 @@ type Control struct {
 	// adoption (default: seed when api_url is set).
 	NoSeed bool `yaml:"no_seed"`
 }
+
+// HostnameOn is control.hostname for a device run by driver: as set, else
+// HostnameDefault.
+func (c Control) HostnameOn(driver string) bool {
+	if c.Hostname != nil {
+		return *c.Hostname
+	}
+	return HostnameDefault(driver)
+}
+
+// HostnameDefault is control.hostname when nothing sets it: on for sonic
+// (UniFi's own SONiC switches set the hostname to the UniFi name,
+// docs/drivers/sonic.md §9), off for every other driver.
+func HostnameDefault(driver string) bool { return driver == "sonic" }
 
 // Load reads and validates a config file.
 func Load(path string) (*File, error) {

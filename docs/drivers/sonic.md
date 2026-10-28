@@ -249,7 +249,11 @@ Check UPS headroom first: the unit adds 150--200 W.
 **B6. Prove it live**, in the order of [`docs/adding-a-device.md`](../adding-a-device.md) §4:
 `-collect-once`; read-only adoption with the address decided first;
 `-control-ports <one empty cage>` for disable/enable, name, speed, VLANs,
-then `all` with a zero-change reconcile; record each push as a scrubbed
+then `all` with a zero-change reconcile; an aggregate to a real LACP
+partner, checked with `teamdctl PortChannel<n> state` (fast rate, min
+ports 1) and on the partner's side (its LACP shows our fast timeout), and
+a recapture with that PortChannel so `cfg_lag` holds `fast_rate` /
+`min_links` from a real switch; record each push as a scrubbed
 `system_cfg-*.txt`; update [`docs/feature-map.md`](../feature-map.md) and
 [`docs/support-matrix.md`](../support-matrix.md). Deploy into the one
 container on the Podman host like the others.
@@ -521,6 +525,11 @@ wrong, now the rule:
   with `link_down`, reports `Up: false`. `Addresses` keeps every
   configured address including one on a down interface; `OOBInterfaces`
   carries the carrier state the loop warns from.
+- **LACP fields (2026-10-28):** `cfg_lag` prints every `PORTCHANNEL`
+  field already, so the control side's `fast_rate` / `min_links` (§6.2,
+  §9) needed no collector change and the capture format is unchanged. No
+  capture holds a PortChannel yet (the VS sections are `{}`); a recapture
+  with one on hardware is a B6 item.
 
 **A1 and A2 done 2026-10-27**: fixture
 `docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect.txt` (138 MACs,
@@ -614,7 +623,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | jumbo (`switch.jumboframes`/`switch.mtu`, device-level in UniFi) | `config interface mtu <p> 9100\|1500` on every front port | `PORT\|<p> mtu` | SONiC's default is 9100; "jumbo off" = 1500; reported `Jumbo` capability true |
 | VLANs (`VLANSet`, `NativeVLAN`, `TaggedAll`, `TaggedVLANs`) | native: `config vlan member add -u <nat> <p>`; tagged: `config vlan member add <id> <p>`; removals: `config vlan member del <id> <p>` | `VLAN_MEMBER\|Vlan<id>\|<p> tagging_mode` | **UniFi VLAN 1 ↔ `Vlan<native_vlan>`** (§5.2a). "Allow All" = untagged native + tagged member of **every VLAN the controller lists** (SONiC has no "all" trunk; `EnsureVLANs` gives the list, the driver remembers it). "Block All" = native only. A port can be untagged in one VLAN only: change native by `del` then `add -u`. |
 | `EnsureVLANs(ids)` | `config vlan add <id>` for missing ids; never deletes | `VLAN\|Vlan<id>` | **collision check:** if `ids` contains `native_vlan`, return an error naming it and write nothing; `ApplyPorts` likewise refuses any desired port that lists `native_vlan` as a tagged VLAN. This is how the §5.2a loop rule is met without UniFi knowledge in the driver. |
-| `LAG` | `config portchannel add PortChannel<lag>` (once), member: `config vlan member del` every membership of the port first, then `config portchannel member add PortChannel<lag> <p>`; leave: `member del`, then the port's own VLAN intent; `config portchannel del` when empty | `PORTCHANNEL\|PortChannel<n>`, `PORTCHANNEL_MEMBER\|…\|<p>`, `LAG_TABLE` | SONiC refuses a member with VLAN config ("Interface configured as VLAN_MEMBER"). The PortChannel carries the VLAN config of its members' intent (`config vlan member add [-u] <id> PortChannel<n>`), reported back on each member port as the Arista does. `lag` is the UniFi id (lowest member index). LACP active is SONiC's default. |
+| `LAG` | `config portchannel add PortChannel<lag> --fast-rate true --min-links 1` (once; since 2026-10-28, §9), member: `config vlan member del` every membership of the port first, then `config portchannel member add PortChannel<lag> <p>`; leave: `member del`, then the port's own VLAN intent; `config portchannel del` when empty | `PORTCHANNEL\|PortChannel<n>`, `PORTCHANNEL_MEMBER\|…\|<p>`, `LAG_TABLE` | SONiC refuses a member with VLAN config ("Interface configured as VLAN_MEMBER"). The PortChannel carries the VLAN config of its members' intent (`config vlan member add [-u] <id> PortChannel<n>`), reported back on each member port as the Arista does. `lag` is the UniFi id (lowest member index). LACP active is SONiC's default; fast rate (1 s) and min-links 1 are what UniFi's own SONiC switches run (§9). A PortChannel the push names that holds anything else (one made by hand, or by the driver before 2026-10-28: `add` defaults to `fast_rate false`) is brought in line once with `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL\|PortChannel<n>' fast_rate true min_links 1`; **teammgrd reads both only when it creates the team** (sonic-swss 202505 `teammgr.cpp`), so the running LAG takes them at its next start (reboot, `config reload`, teamd restart) -- the saved config holds them at once. Fixture- and replay-tested, **untested live**. |
 | `MirrorSource` (this port is the destination) | session name `dui<dst>`: `config vlan member del` every membership of the destination, `config mirror_session span add dui<dst> <dst> <src> both`; removal: `config mirror_session remove dui<dst>` then the destination's VLAN intent | `MIRROR_SESSION\|dui<dst> {type SPAN, dst_port, src_port, direction BOTH}`; `STATE_DB MIRROR_SESSION_TABLE\|dui<dst> status active` | SONiC refuses a destination with VLAN config ("Destination Interface … has vlan config"); the driver strips it and restores it when the session goes. Report `MirrorFrom` from `MIRROR_SESSION`. |
 | storm control (`StormCtrl`, percent) | `config interface storm-control add <p> broadcast\|unknown-multicast\|unknown-unicast <kbps>`; `del` to clear | `PORT_STORM_CONTROL\|<p>\|<type> kbps` | kbps = pct/100 × port speed (Mbps) × 1000, rounded; report back as a percent of the configured speed; UniFi's multicast = `unknown-multicast` |
 | `BPDUGuard`, `STPEdge`, `STPPathCost` | `config spanning-tree interface bpdu_guard enable\|disable <p>`, `portfast enable\|disable <p>`, `cost <p> <n>`; "STP disabled on the port" (`STPEdge`) = `portfast enable` **and** `config spanning-tree interface disable <p>` | `STP_PORT\|<p> {bpdu_guard, portfast, enabled, path_cost}` | **only when `FEATURE\|stp` exists**; otherwise refuse with a log (not claimed, so not pushed) |
@@ -704,7 +713,9 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
   Follows the podman/Arista guards in `internal/drivers/CLAUDE.md`.
 - **Hostname (`resolv.host.1.name`):** queued repo-wide; SONiC's
   `config hostname <name>` exists and is the obvious implementation when
-  the feature is turned on for every driver. Not part of A4.
+  the feature is turned on for every driver. Not part of A4. (Built in
+  §7.5 behind `control.hostname`; **on by default for sonic since
+  2026-10-28**, §9.)
 - **Firmware, fault reporting:** generic in `internal/device`; nothing
   driver-side beyond fans/PSUs/temperatures on hardware (§5).
 
@@ -795,7 +806,10 @@ interface mtu <p> 1500` on 29 ports, `hset 'PORTCHANNEL|PortChannel1' mtu
 1500`, `hset 'PORT|Ethernet16' mtu 1500`, `hset 'PORT|Ethernet20' mtu
 1500`, 31 of 31 ports changed, APPL_DB LAG mtu 1500; then on again with
 9216 the same way; then the aggregate dissolved with both members back in
-the native VLAN. The review's high finding is closed live.
+the native VLAN. The review's high finding is closed live. (Since
+2026-10-28 the create is `config portchannel add PortChannel1 --fast-rate
+true --min-links 1`, §9; that form and the reconcile `hset … fast_rate
+true min_links 1` are fixture- and replay-tested, **untested live**.)
 
 Left open after this: the address the bridge **reports** to the controller
 (`ip`, `connect_request_ip`) is the configured target from start-up, so the
@@ -827,7 +841,7 @@ does not expose.
 | UniFi push / action | SONiC has | Decision |
 |---|---|---|
 | `system.timezone` / `locale.timezone` (in every push, 6 captures) | `config clock timezone <name>` (`DEVICE_METADATA timezone`; the guest runs `UTC`) | implement: `DeviceDesired.Timezone`, written when it differs; the Arista left it "todo (safe)" and can follow |
-| `resolv.host.1.name` (the UniFi name without spaces, in every push) | `config hostname <name>` ("without impacting the traffic") | implement behind a new `control.hostname` flag (opt-in like the other writes); the queued repo-wide feature's other half, a static DNS record for a static-address device, stays queued |
+| `resolv.host.1.name` (the UniFi name without spaces, in every push) | `config hostname <name>` ("without impacting the traffic") | implement behind a new `control.hostname` flag (opt-in like the other writes; **on by default for sonic since 2026-10-28**, §9); the queued repo-wide feature's other half, a static DNS record for a static-address device, stays queued |
 | `set-locate` / `unset-locate` | the DX010 platform API: `Chassis.set_status_led('green'\|'off')` on `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`; no port LED control, no blink primitive; the VS platform API raises | implement an optional `devicemodel.Locator` (`SetLocate(ctx, on)`): the driver blinks the system LED by toggling green/off once a second while locating and restores green after; a platform whose API fails logs once and reports `locating` only. **Hardware-untested** until the DX010 |
 | breakout (speed on lane 1 of a cage) | `config interface breakout [-y] [-f] [-l] <port> <mode>` with the modes from the SKU's `platform.json`: `1x100G[40G]`, `2x50G`, `4x25G[10G]` on the DX010; child ports `Ethernet<n+1..>` keep the parent's `index` | implement the mapping now (100000/40000 → `1x100G[40G]`, 50000 → `2x50G`, 25000/10000 → `4x25G[10G]`, lane speed then set on each child), fixture-tested with the DX010's `platform.json` interfaces block from the source tree (public, not site data); refused with a log where `platform.json` is absent (the VS). **Hardware-untested** |
 
@@ -873,7 +887,7 @@ What each emits (from the tests), and where the build differs from 7.1:
 | Feature | Commands | Notes |
 |---|---|---|
 | Time zone (always, with `control.ports`) | `sudo config clock timezone MST7MDT` ; `sudo config save -y` | The push carries a **POSIX rule** (`system.timezone=MST7MDT,M3.2.0,M11.1.0`), not a zone name, and `config clock timezone` takes only `timedatectl list-timezones` names. The driver reads the switch's zone list with each zone's rule (`bash -s -- disunified-zones`: `tail -n 1` of every TZif file, once per run; `zones.txt` in the fixture dir is that capture) and picks the zone named like the rule, else by its abbreviation, else the first match; the current zone is kept when its rule matches (America/Denver stays). Unmatched: refused with a log. `System.Timezone` reads `DEVICE_METADATA timezone`. |
-| Hostname (`control.hostname`, off by default; `-control-hostname` / `DUI_CONTROL_HOSTNAME`) | `sudo config hostname <resolv.host.1.name>` ; `sudo config save -y` | RFC 1123 labels and at most 63 characters in all (SONiC's YANG `stypes:hostname`); otherwise refused with a log. The log prefix and `System.Hostname` follow on the next collect. |
+| Hostname (`control.hostname`: **on by default for sonic** since 2026-10-28, because UniFi's own SONiC switches always take the UniFi name as their hostname (§9); `hostname: false` turns it off; off by default for every other driver; `-control-hostname` / `DUI_CONTROL_HOSTNAME`, unset = the driver's default, `0`/`1` explicit) | `sudo config hostname <resolv.host.1.name>` ; `sudo config save -y` | RFC 1123 labels and at most 63 characters in all (SONiC's YANG `stypes:hostname`); otherwise refused with a log. The log prefix and `System.Hostname` follow on the next collect. |
 | Locate (`devicemodel.Locator`) | on: `sudo python3 -c 'import sys; from sonic_platform.platform import Platform; sys.exit(0 if Platform().get_chassis().set_status_led("off") else 1)'`, then `…("green")`, `…("off")` … once a second; off: the blink stops, `…("green")` once | The API returns False on a failed write, so the command exits on its result (7.1's bare call would exit 0). The VS raises `FileNotFoundError` (no `/etc/sonic/vs_chassis_metadata.json`, probed read-only): logged once per run, report-only after. The loop hands `set-locate`/`unset-locate` to a driver with `Locator`; others keep "reported as locating". The blink stops on `Close` and restarts on a second locate-on. |
 | Breakout, cage 2 (`Ethernet4`) | split to 25G: `sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null`, then per child `Ethernet4..7` `config interface startup` (and the name), `config vlan member add -u 4094 <child>` (and the tagged VLANs), `config save -y`; lanes to 10G: `sudo config interface speed Ethernet4 10000` … `Ethernet7`, save; join: `sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null`, `config interface startup Ethernet4`, the name, `config vlan member add -u 4094 Ethernet4`, save; 50G: `… '2x50G'` with children `Ethernet4`, `Ethernet6` | **No `-l`** (7.1 asked for `-f -l -y`): `-l` loads `/etc/sonic/port_breakout_config_db.json`, which nothing in the SONiC source generates and which is absent on the VS; `config_mgmt.py` fails the breakout without it. The children are written the cage's intent by the same plan instead (state, name, MTU, VLANs, storm control, FEC), which is what the Arista does for lanes. `-f` removes the old ports' VLAN memberships (without it the breakout refuses); `</dev/null` keeps a possible "tables without YANG" prompt from reading the rest of the `bash -s` batch. Children per `portconfig.py get_config`: in 4x25G they are `Ethernet<n>..<n+3>`, in 2x50G `Ethernet<n>` and `<n+2>`, all on the parent's index, no `admin_status` (down). The mode is chosen from platform.json for the speed (its default speed preferred), not a fixed table. Refused for a cage in an aggregate or a mirror session. A split cage keeps the parent's alias as its name (`Eth2`) and claims every mode's speeds. |
 
@@ -1068,8 +1082,8 @@ Table by table against what this driver writes on the DX010:
 | Port name | `PORT\|EthernetN description = "<UniFi name>"` (`SFP28 1`, `QSFP28 3`) | the same `description` | same |
 | Allow All | every site VLAN **tagged** on every port (490 tagged `VLAN_MEMBER`s for 11 VLANs); native 1 untagged | the same shape | same |
 | VLAN 1 (native LAN) | **`VLAN\|Vlan1` exists**, 52 untagged members, kernel PVID 1, `MGMT_VLAN\|Vlan1`; written straight into CONFIG_DB by `ubnt-lnxcfgd`, bypassing the CLI | `Vlan<native_vlan>` (default 4094) stands in for 1 | **keep the substitute.** Community 202505 cannot take VLAN 1: `config vlan add 1` fails "is default VLAN", the YANG model's `vlanid` range is `2..4094`, `vlanmgrd` strips VID 1 from the bridge and every port at start, and `orchagent` empties the SAI **default VLAN, which is 1 on the Broadcom SAI**, at init -- creating a second VLAN object with that id is not something the community orchagent is written to do. Ubiquiti's orchagent and Marvell SAI are their own. Revisit only with an orchagent change (the same image work as §8). |
-| Aggregate | `PORTCHANNEL\|PortChannelN {admin_status up, **fast_rate true**, lacp_key auto, **min_links 1**, mtu}`; members in `PORTCHANNEL_MEMBER` | `config portchannel add PortChannelN` with the defaults (fast_rate false, min_links 0) | **adopt**: `config portchannel add PortChannelN --fast-rate true --min-links 1` (202505's `add_portchannel` takes both). UniFi's LACP runs fast timers (1 s) end to end; a slow-rate DX010 on the core LAG would be the odd partner (LACP tolerates mixed rates, but failover detection on our side would be 90 s instead of 3 s). |
-| Hostname | `DEVICE_METADATA\|localhost hostname = <UniFi name>` (`aggregation`) | `config hostname <resolv.host.1.name>` only with `control.hostname` on (off by default) | **consider defaulting `control.hostname` on** for sonic: it is what UniFi's own switch does. Clint's call; a one-line default. |
+| Aggregate | `PORTCHANNEL\|PortChannelN {admin_status up, **fast_rate true**, lacp_key auto, **min_links 1**, mtu}`; members in `PORTCHANNEL_MEMBER` | `config portchannel add PortChannelN` with the defaults (fast_rate false; min_links 1 on 202505, whose `--min-links` is `IntRange(1,1024)` defaulting to 1) | **adopted 2026-10-28, untested live**: `config portchannel add PortChannelN --fast-rate true --min-links 1` (202505's `add_portchannel` takes both); a managed PortChannel holding anything else gets `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL\|PortChannelN' fast_rate true min_links 1` once, which teamd applies at its next start only (teammgrd reads both at team creation, §6.2). UniFi's LACP runs fast timers (1 s) end to end; a slow-rate DX010 on the core LAG would be the odd partner (LACP tolerates mixed rates, but failover detection on our side would be 90 s instead of 3 s). |
+| Hostname | `DEVICE_METADATA\|localhost hostname = <UniFi name>` (`aggregation`) | `config hostname <resolv.host.1.name>` with `control.hostname` on | **adopted 2026-10-28**: `control.hostname` unset is on for sonic (`hostname: false` turns it off), off for every other driver; config-tested. The command itself was verified live on the VS (§6.6). |
 | NTP | `NTP_SERVER\|<ip>` for the IP only; the site's pool **hostname is dropped** (SONiC takes addresses) | both: the hostname resolved once and pinned (`sonic-managed.json`) | keep ours (a pinned pool member beats no second server). |
 | Jumbo | `PORT mtu 1500` with the site's jumbo off | the pushed `switch.mtu` (9216) when on, 1500 when off | same semantics. |
 | Speed / FEC on optics | an **`AUTO_DETECT` table per port** (speed, adv_speeds, fec, interface_type from the module) kept by Ubiquiti's `autodetectd`; the UniFi UI's "auto" means "what the optic says" | speed/FEC only as pushed; "auto" leaves the switch's setting | **hardware-day item**: on the DX010, when UniFi says auto and the cage holds a module, choose FEC from `TRANSCEIVER_INFO` (RS for 100G DAC/SR4/CWDM4, none for 40G) the way `autodetectd` does. Not provable on the VS. |
@@ -1086,10 +1100,11 @@ Ubiquiti's ONIE (`ubiquiti_pcom_p701gt`). `PORT` carries Marvell-only fields
 (`switching_mode ct`, `ct_untagged`) that have no Broadcom counterpart in the
 community schema.
 
-**To do from this (small, driver-side):** LACP fast rate and min-links on
-the aggregates the driver creates; the `control.hostname` default; the
-MAC-move guard as the `ld_mode` implementation; FEC-from-module on
-hardware. The VLAN 1 question is closed for the community image.
+**To do from this (small, driver-side):** the MAC-move guard as the
+`ld_mode` implementation; FEC-from-module on hardware. Done 2026-10-28:
+LACP fast rate and min-links 1 on the aggregates the driver creates (and
+brought in line on one that lacks them), and `control.hostname` on by
+default for sonic. The VLAN 1 question is closed for the community image.
 
 ## Sources
 

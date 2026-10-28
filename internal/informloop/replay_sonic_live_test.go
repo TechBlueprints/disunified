@@ -78,7 +78,7 @@ func TestReplaySonicLabSession(t *testing.T) {
 			"sudo config interface startup Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet12", save},
 		102: {"sudo config vlan member del -e -m 4094 Ethernet4", save},
 		103: {"sudo config vlan member add -m 2,69 Ethernet8", save},
-		104: {"sudo config portchannel add PortChannel1", "sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel1' mtu 1500",
+		104: {"sudo config portchannel add PortChannel1 --fast-rate true --min-links 1", "sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel1' mtu 1500",
 			"sudo config vlan member del 4094 Ethernet16", "sudo config portchannel member add PortChannel1 Ethernet16",
 			"sudo config vlan member del 4094 Ethernet20", "sudo config portchannel member add PortChannel1 Ethernet20",
 			"sudo config vlan member add -u 4094 PortChannel1", save},
@@ -156,7 +156,9 @@ func replyKind(r replayRecord) string {
 // switch.jumboframes set each way: SONiC refuses `config interface mtu` on
 // a member ("'interface_name' is in portchannel!", probed), so the
 // PortChannel and each member's PORT mtu move by hset; every other port by
-// `config interface mtu`; the reconcile after each writes nothing.
+// `config interface mtu`; the reconcile after each writes nothing, and the
+// PortChannel's LACP setting (fast rate, min-links 1, set by the create) is
+// not written again.
 func TestReplaySonicJumboFlipWithLAG(t *testing.T) {
 	recs := loadReplies(t, "replies-sonic.ndjson")
 	var agg map[string]any
@@ -204,6 +206,9 @@ func TestReplaySonicJumboFlipWithLAG(t *testing.T) {
 		for _, c := range cmds {
 			if member.MatchString(c) {
 				t.Errorf("jumbo %v: `config interface mtu` on a LAG member: %q", on, c)
+			}
+			if strings.Contains(c, "fast_rate") {
+				t.Errorf("jumbo %v: the LACP setting the create wrote was written again: %q", on, c)
 			}
 		}
 		for _, w := range []string{
