@@ -109,6 +109,9 @@ func (f *FixtureRunner) applyDevice(w []string) error {
 				if ok {
 					return fmt.Errorf("nameserver %s already exists", at(4))
 				}
+				if len(t) >= 3 {
+					return fmt.Errorf("Error: The maximum number (3) of nameservers exceeded.") // probed
+				}
 				t[k] = map[string]string{}
 			case "del":
 				if !ok {

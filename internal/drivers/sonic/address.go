@@ -80,6 +80,10 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if sameIP && cur.PrefixLen == d.PrefixLen && !gwChange && len(dnsAdd) == 0 && len(dnsDel) == 0 {
 		return false, nil
 	}
+	if why := addressMovable(snap.System, st, cur); why != "" {
+		c.warnOnce("address: "+why, "IP Settings not applied: %s", why)
+		return false, fmt.Errorf("sonic: IP Settings not applied: %s", why)
+	}
 	if sameIP && cur.PrefixLen != d.PrefixLen {
 		return false, fmt.Errorf("sonic: changing the prefix length of the address the bridge dials (%s/%d to /%d) would drop it; change the address instead", cur.IP, cur.PrefixLen, d.PrefixLen)
 	}
@@ -93,11 +97,14 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if gwChange {
 		first = append(first, "sudo config route add prefix 0.0.0.0/0 nexthop "+d.Gateway)
 	}
-	for _, s := range dnsAdd {
-		first = append(first, "sudo config dns nameserver add "+s)
-	}
+	// Removals first: SONiC holds at most three nameservers ("The maximum
+	// number (3) of nameservers exceeded", probed), so a replacement on a
+	// full list must make room before it adds.
 	for _, s := range dnsDel {
 		first = append(first, "sudo config dns nameserver del "+s)
+	}
+	for _, s := range dnsAdd {
+		first = append(first, "sudo config dns nameserver add "+s)
 	}
 	if sameIP {
 		var stale []string
@@ -143,6 +150,33 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	c.adoptDial(d.IP, nr)
 	c.noteAddress(cur, d, oldGW, dnsAdd, dnsDel)
 	return true, nil
+}
+
+// addressMovable says why the address the bridge dials cannot be moved by
+// this driver, "" if it can: it must be a static in-band address that
+// CONFIG_DB carries on a VLAN, front-panel, PortChannel or loopback
+// interface. A DHCP lease cannot be replaced before the bridge has proven
+// the new address (and SONiC's VLAN interfaces have no DHCP client to hand
+// it back to); eth0 is MGMT_INTERFACE, which holds one entry per address
+// family -- an add replaces the dialled address instead of standing beside
+// it -- and keeps its gateway in its own gwaddr field, not STATIC_ROUTE.
+func addressMovable(sys devicemodel.System, st *swState, cur devicemodel.IfAddress) string {
+	if sys.DHCP {
+		return fmt.Sprintf("the bridge dials %s, a DHCP lease on %s; a lease cannot be replaced before the new address is proven -- give the switch a static in-band address (a Vlan interface) first", cur.IP, cur.Iface)
+	}
+	inband := false
+	for _, p := range []string{"Vlan", "Ethernet", "PortChannel", "Loopback"} {
+		if strings.HasPrefix(cur.Iface, p) {
+			inband = true
+		}
+	}
+	if !inband {
+		return fmt.Sprintf("the bridge dials %s on %s, the management port (MGMT_INTERFACE holds one address, which an add replaces, and its own gateway); the driver moves in-band addresses only", cur.IP, cur.Iface)
+	}
+	if key := fmt.Sprintf("%s|%s/%d", cur.Iface, cur.IP, cur.PrefixLen); !st.ifaddrs[key] {
+		return fmt.Sprintf("%s/%d on %s is not in CONFIG_DB (VLAN_INTERFACE, INTERFACE, PORTCHANNEL_INTERFACE, LOOPBACK_INTERFACE); not changing an address SONiC does not own", cur.IP, cur.PrefixLen, cur.Iface)
+	}
+	return ""
 }
 
 // moveFinish is the start of the batch run over the new address once it
@@ -205,6 +239,8 @@ func (c *Collector) noteAddress(cur devicemodel.IfAddress, d devicemodel.Address
 		for _, s := range dnsDel {
 			delete(next.dns, s)
 		}
+		delete(next.ifaddrs, fmt.Sprintf("%s|%s/%d", cur.Iface, cur.IP, cur.PrefixLen))
+		next.ifaddrs[fmt.Sprintf("%s|%s/%d", cur.Iface, d.IP, d.PrefixLen)] = true
 		c.state = next
 	}
 }

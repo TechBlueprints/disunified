@@ -339,3 +339,10 @@ func lagPorts(db map[string]table, byIfname map[string]int) map[string]int {
 	}
 	return out
 }
+
+// applyBudget is the time one write batch gets (devicemodel.ApplyBudget): a
+// `config` call is ~250 ms on the VS and a first push dozens of them (§6.6).
+const applyBudget = 90 * time.Second
+
+// ApplyTimeout implements devicemodel.ApplyBudget.
+func (c *Collector) ApplyTimeout() time.Duration { return applyBudget }

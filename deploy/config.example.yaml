@@ -58,7 +58,7 @@ devices:                             # "switches:" is still accepted (the pre-re
       ports: all                     # port state and VLANs -> qm/pct set; on adoption the controller is seeded from the guests' VLANs
       # allow_initial_changes: true  # let the first push after adoption change ports (default: held until it matches)
       # no_seed: true                # do not write the switch's port state into the controller on adoption
-      # apply_timeout: 90s           # budget for one write to the device (default 90s; collects keep their own 20s)
+      # apply_timeout: 90s           # budget for one write to the device (default: the driver's own, 90s for sonic, else the 20s collect budget)
       igmp: false                    # bridge-wide multicast_snooping follows UniFi
       ntp: false                     # chrony sources follow UniFi
 

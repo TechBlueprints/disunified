@@ -350,8 +350,8 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	}
 	snap = r.expect("jumbo on with the LAG", lag(on), []string{
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 9216",
-		"sudo config interface mtu Ethernet8 9216",
-		"sudo config interface mtu Ethernet12 9216",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet8' mtu 9216",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet12' mtu 9216",
 		save,
 	})
 	for _, idx := range []int{3, 4} {
@@ -361,8 +361,8 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	}
 	r.expect("jumbo off again", lag(off), []string{
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
-		"sudo config interface mtu Ethernet8 1500",
-		"sudo config interface mtu Ethernet12 1500",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet8' mtu 1500",
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet12' mtu 1500",
 		save,
 	})
 
@@ -391,6 +391,14 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 	}
 	if _, err := fr.Run(ctx, "sudo config portchannel member add PortChannel9 Ethernet28", ""); err == nil || !strings.Contains(err.Error(), "is different than the PortChannel9 MTU size") {
 		t.Errorf("an MTU mismatch must be refused: %v", err)
+	}
+	// SONiC refuses `config interface mtu` on a LAG member whatever the
+	// value (probed on the guest); the member's own MTU moves by hset.
+	if _, err := r.fr.Run(ctx, "sudo config interface mtu Ethernet8 1500", ""); err == nil || !strings.Contains(err.Error(), "'interface_name' is in portchannel!") {
+		t.Errorf("config interface mtu on a LAG member must be refused: %v", err)
+	}
+	if _, err := r.fr.Run(ctx, "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet8' mtu 1500", ""); err != nil {
+		t.Errorf("the member's MTU by hset must be accepted: %v", err)
 	}
 	if _, err := fr.Run(ctx, "sudo config interface mtu PortChannel9 1500", ""); err == nil || !strings.Contains(err.Error(), "Invalid port") {
 		t.Errorf("config interface mtu on a PortChannel must be refused: %v", err)
@@ -639,5 +647,37 @@ func TestStartChecksClockAndHostname(t *testing.T) {
 		if _, err := col.Start(context.Background()); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: Start = %v, want %q", c.section, err, c.want)
 		}
+	}
+}
+
+// A tagged membership of Vlan<native_vlan> reads as tagged VLAN 1 (the
+// stand-in id never reaches the controller), and a push that tags VLAN 1
+// on a port whose native VLAN is another is refused with a log: SONiC can
+// carry UniFi's VLAN 1 only untagged.
+func TestNativeVLANTaggedStandIn(t *testing.T) {
+	r := newRig(t, nil)
+	ctx := context.Background()
+	for _, c := range []string{"sudo config vlan add 10", "sudo config vlan member del 4094 Ethernet8", "sudo config vlan member add -u 10 Ethernet8", "sudo config vlan member add 4094 Ethernet8"} {
+		if _, err := r.fr.Run(ctx, c, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := r.c.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := port(snap, 3).VLAN; v.Mode != "trunk" || v.NativeVLAN != 10 || !reflect.DeepEqual(v.Allowed, []int{1, 10}) {
+		t.Errorf("port 3 VLAN = %+v, want trunk native 10 allowed [1 10]", v)
+	}
+	ds := edit(r.baseline(), 3, func(d *devicemodel.PortDesired) { d.NativeVLAN, d.TaggedVLANs = 10, []int{1} })
+	ds = edit(ds, 4, func(d *devicemodel.PortDesired) { d.NativeVLAN, d.TaggedVLANs = 10, []int{1} })
+	got, _ := r.apply(ds)
+	for _, c := range got {
+		if strings.Contains(c, "Ethernet12") || strings.Contains(c, "Ethernet8") {
+			t.Errorf("a port tagging VLAN 1 was written: %q", c)
+		}
+	}
+	if !strings.Contains(r.log.String(), "VLAN 1 tagged (native VLAN 10) cannot be expressed on SONiC") {
+		t.Errorf("the refusal must be logged: %s", r.log.String())
 	}
 }

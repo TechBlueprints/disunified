@@ -5,7 +5,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -188,3 +190,53 @@ func TestAllKeysRefused(t *testing.T) {
 		t.Errorf("Run = %v", err)
 	}
 }
+
+// A locked agent (SSH_AUTH_SOCK set, the agent erroring) is logged and the
+// key files are tried after it; with no key file either, the agent's error
+// is what the dial reports.
+func TestAgentErrorFallsThroughToKeyFiles(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "id_ed25519"), pemEncode(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	srv := startServer(t, signer.PublicKey())
+	r := New(srv.addr, "admin")
+	r.KnownHosts = srv.knownHost
+	var logged []string
+	r.Logf = func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) }
+	r.agentKeys = func() ([]identity, error) { return nil, errors.New("ssh agent: agent refused operation") }
+	if _, err := r.Run(context.Background(), "true", ""); err != nil {
+		t.Fatalf("Run with a locked agent and a key file = %v", err)
+	}
+	if !strings.Contains(strings.Join(logged, "\n"), "agent refused operation; trying the key files") {
+		t.Errorf("the agent's error must be logged: %q", logged)
+	}
+	// No key file: the agent's error is the answer.
+	if err := os.Remove(filepath.Join(home, ".ssh", "id_ed25519")); err != nil {
+		t.Fatal(err)
+	}
+	r2 := New(srv.addr, "admin")
+	r2.KnownHosts = srv.knownHost
+	r2.agentKeys = r.agentKeys
+	if _, err := r2.Run(context.Background(), "true", ""); err == nil || !strings.Contains(err.Error(), "agent refused operation") {
+		t.Errorf("Run with a locked agent and no key file = %v", err)
+	}
+}
+
+func pemEncode(b *pem.Block) []byte { return pem.EncodeToMemory(b) }

@@ -137,9 +137,14 @@ func (t *SSH) identities(home string) ([]identity, error) {
 		}
 		return []identity{{name: keyName(signer.PublicKey(), t.KeyFile), signer: signer}}, nil
 	}
-	keys, err := listAgent()
-	if err != nil {
-		return nil, err
+	// An agent that is there but fails (a locked one) is not the end: the
+	// key files are tried after it, as OpenSSH does.
+	keys, agentErr := listAgent()
+	if agentErr != nil {
+		keys = nil
+		if t.Logf != nil {
+			t.Logf("ssh %s@%s: %v; trying the key files", t.User, t.Addr, agentErr)
+		}
 	}
 	for _, kf := range []string{filepath.Join(home, ".ssh", "id_ed25519"), filepath.Join(home, ".ssh", "id_rsa")} {
 		pem, err := os.ReadFile(kf)
@@ -151,6 +156,9 @@ func (t *SSH) identities(home string) ([]identity, error) {
 			continue
 		}
 		keys = append(keys, identity{name: keyName(signer.PublicKey(), kf), signer: signer})
+	}
+	if len(keys) == 0 && agentErr != nil {
+		return nil, agentErr
 	}
 	return keys, nil
 }

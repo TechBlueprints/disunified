@@ -28,6 +28,10 @@ type swState struct {
 	dns       map[string]bool              // DNS_NAMESERVER addresses
 	routes    map[string]map[string]string // STATIC_ROUTE by "<vrf>|<prefix>"
 	keys      []string                     // the bridge's block in authorized_keys, one key per line
+	// ifaddrs are the in-band addresses CONFIG_DB carries, "<iface>|<ip>/<len>"
+	// from VLAN_INTERFACE, INTERFACE, PORTCHANNEL_INTERFACE and
+	// LOOPBACK_INTERFACE (MGMT_INTERFACE, eth0's, is not among them).
+	ifaddrs map[string]bool
 
 	meta map[string]string // DEVICE_METADATA|localhost (hostname, timezone)
 
@@ -122,6 +126,15 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	for k, f := range db["cfg_route"] {
 		if n, ok := strings.CutPrefix(k, "STATIC_ROUTE|"); ok {
 			s.routes[n] = copyFields(f)
+		}
+	}
+	s.ifaddrs = map[string]bool{}
+	for k := range db["cfg_mgmt"] {
+		parts := strings.Split(k, "|")
+		switch {
+		case len(parts) != 3:
+		case parts[0] == "VLAN_INTERFACE", parts[0] == "INTERFACE", parts[0] == "PORTCHANNEL_INTERFACE", parts[0] == "LOOPBACK_INTERFACE":
+			s.ifaddrs[parts[1]+"|"+parts[2]] = true
 		}
 	}
 	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
@@ -222,6 +235,10 @@ func (s *swState) clone() *swState {
 		c.routes[k] = copyFields(v)
 	}
 	c.keys = append([]string(nil), s.keys...)
+	c.ifaddrs = map[string]bool{}
+	for k := range s.ifaddrs {
+		c.ifaddrs[k] = true
+	}
 	return c
 }
 

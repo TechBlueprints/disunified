@@ -95,6 +95,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	// An address move adopted another address: dial that one (the config
 	// file's stays a fallback target).
 	if c.savedDial != "" && c.savedDial != c.Dial {
+		c.Log.Printf("sonic: dialling %s, the address an earlier move adopted (%s/%s), not the configured %s (which stays a fallback)", c.savedDial, c.StateDir, managedFile, c.Dial)
 		c.r, c.Dial = c.Redial(c.savedDial), c.savedDial
 	}
 	return c, nil
@@ -132,4 +133,5 @@ var (
 	_ devicemodel.AddressController = (*Collector)(nil)
 	_ devicemodel.AddressReporter   = (*Collector)(nil)
 	_ devicemodel.Locator           = (*Collector)(nil)
+	_ devicemodel.ApplyBudget       = (*Collector)(nil)
 )

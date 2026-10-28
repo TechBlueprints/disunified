@@ -433,3 +433,90 @@ func TestApplyAddressDeclinesDHCP(t *testing.T) {
 		t.Errorf("DHCP = %v", err)
 	}
 }
+
+// SONiC holds at most three nameservers: replacing one of three removes
+// before it adds, or the add is refused (probed on the guest).
+func TestApplyAddressDNSReplaceOnAFullList(t *testing.T) {
+	r := newRig(t, nil)
+	r.c.Dial = ifaceAddr(t, r.fr.Fixture, "Vlan4094")
+	r.c.Redial = r.fr.Dial
+	ctx := context.Background()
+	for _, s := range []string{"192.0.2.51", "192.0.2.52", "192.0.2.53"} {
+		if _, err := r.fr.Run(ctx, "sudo config dns nameserver add "+s, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.fr.Run(ctx, "sudo config dns nameserver add 192.0.2.54", ""); err == nil || !strings.Contains(err.Error(), "maximum number (3)") {
+		t.Fatalf("a fourth nameserver must be refused: %v", err)
+	}
+	sys := r.system()
+	cur := sys.Addresses[0]
+	n := len(r.fr.Commands)
+	d := devicemodel.AddressDesired{IP: cur.IP, PrefixLen: cur.PrefixLen, Gateway: sys.Gateway, DNS: []string{"192.0.2.51", "192.0.2.52", "192.0.2.54"}}
+	if changed, err := r.c.ApplyAddress(ctx, d); !changed || err != nil {
+		t.Fatalf("ApplyAddress = %v, %v", changed, err)
+	}
+	if got, want := r.fr.Commands[n:], []string{"sudo config dns nameserver del 192.0.2.53", "sudo config dns nameserver add 192.0.2.54", save}; !reflect.DeepEqual(got, want) {
+		t.Errorf("commands\n  got  %q\n  want %q", got, want)
+	}
+	r.system()
+	n = len(r.fr.Commands)
+	if changed, err := r.c.ApplyAddress(ctx, d); changed || err != nil || len(r.fr.Commands) != n {
+		t.Errorf("a second apply: %v %v %q", changed, err, r.fr.Commands[n:])
+	}
+}
+
+// The address the bridge dials must be a static in-band one CONFIG_DB
+// carries: a DHCP lease on eth0 (the earlier capture) is declined, and so
+// is a static eth0 address (MGMT_INTERFACE: one entry, an add replaces it,
+// its own gateway), each with the reason, and nothing is written.
+func TestApplyAddressRefusesEth0AndLeases(t *testing.T) {
+	const old = "../../../docs/fixtures/sonic-202505.1238524-ff3c0c9f6/collect-eth0-dhcp.txt"
+	c, fr, snap := startFixtureAt(t, old, "eth0")
+	lease := snap.System.Addresses[0]
+	if !snap.System.DHCP || lease.Iface != "eth0" {
+		t.Fatalf("capture: DHCP %v, dialled %+v", snap.System.DHCP, lease)
+	}
+	d := devicemodel.AddressDesired{IP: "192.0.2.200", PrefixLen: lease.PrefixLen, Gateway: snap.System.Gateway}
+	n := len(fr.Commands)
+	if _, err := c.ApplyAddress(context.Background(), d); err == nil || !strings.Contains(err.Error(), "DHCP lease on eth0") {
+		t.Errorf("a lease: err = %v", err)
+	}
+	// The same address made static on eth0 (MGMT_INTERFACE, no lease).
+	cidr := fmt.Sprintf("%s/%d", lease.IP, lease.PrefixLen)
+	fr.Fixture = strings.Replace(fr.Fixture, "@@@ cfg_mgmt\n{}\n", "@@@ cfg_mgmt\n{\n\"MGMT_INTERFACE|eth0|"+cidr+"\": {\"gwaddr\": \""+snap.System.Gateway+"\"}\n}\n", 1)
+	fr.Fixture = strings.ReplaceAll(fr.Fixture, `"dynamic":true,`, ``)
+	snap, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.System.DHCP {
+		t.Fatal("the edited capture still reads as DHCP")
+	}
+	if _, err := c.ApplyAddress(context.Background(), d); err == nil || !strings.Contains(err.Error(), "on eth0, the management port") {
+		t.Errorf("static eth0: err = %v", err)
+	}
+	if got := fr.Commands[n:]; len(got) != 0 {
+		t.Errorf("a declined move wrote %q", got)
+	}
+}
+
+// Open says so when the persisted dial target of an earlier move overrides
+// the config file's ssh target.
+func TestOpenLogsThePersistedDialTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, managedFile), []byte(`{"dial": "192.0.2.200"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+	dev, err := (Driver{}).Open(context.Background(), devicemodel.DriverConfig{SSH: "admin@192.0.2.1", Options: map[string]string{"state_dir": dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := dev.(*Collector); c.Dial != "192.0.2.200" || !strings.Contains(buf.String(), "dialling 192.0.2.200, the address an earlier move adopted") || !strings.Contains(buf.String(), "not the configured 192.0.2.1") {
+		t.Errorf("dial %q; log %q", c.Dial, buf.String())
+	}
+}

@@ -101,9 +101,10 @@ type Control struct {
 	AllowInitialChanges bool `yaml:"allow_initial_changes"`
 	// ApplyTimeout bounds one write to the device (a port/VLAN/device apply,
 	// SSH keys, the address, a reboot), separately from the collect budget:
-	// a Go duration, e.g. "90s" or "2m". Default 90s. A SONiC switch writes
-	// through ~250 ms CLI calls, and a first push can be dozens of them; an
-	// apply cut short is finished by the next reconcile.
+	// a Go duration, e.g. "90s" or "2m". Default: what the driver asks for
+	// (sonic: 90s, since a SONiC switch writes through ~250 ms CLI calls and
+	// a first push can be dozens of them), else the collect budget (20s).
+	// An apply cut short is finished by the next reconcile.
 	ApplyTimeout string `yaml:"apply_timeout"`
 	// NoSeed skips seeding the controller's port config from the switch on
 	// adoption (default: seed when api_url is set).

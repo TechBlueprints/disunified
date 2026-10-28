@@ -69,7 +69,11 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 			continue
 		}
 		tagged := f["tagging_mode"] == "tagged"
-		if !tagged && vid == native {
+		// Vlan<native> is UniFi's VLAN 1 however the port is in it (the MAC
+		// table and the VLAN list map it the same way): the stand-in id
+		// never reaches the controller. A tagged membership of it reads as
+		// tagged VLAN 1, which the control side never writes.
+		if vid == native {
 			vid = 1
 		}
 		vlans[parts[2]] = append(vlans[parts[2]], membership{vid: vid, tagged: tagged})
