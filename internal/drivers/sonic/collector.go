@@ -73,6 +73,7 @@ type Collector struct {
 	// system resolver); tests set their own.
 	Resolve func(host string) (string, error)
 
+	pinned        map[string]string // NTP/syslog hostname -> the address it was first resolved to
 	managedNTP    map[string]bool
 	managedSyslog map[string]bool
 	managedSNMP   string
@@ -81,7 +82,7 @@ type Collector struct {
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
 	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{},
-		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}}
+		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}, pinned: map[string]string{}}
 }
 
 // runner is the current transport (the address controller may swap it).

@@ -20,10 +20,8 @@ import (
 // Order within one apply: mirror removals, LAG leaves, per-port state, VLAN
 // membership, LAG joins and the LAG's own membership, mirror adds, save.
 
-const (
-	jumboMTU  = 9100 // SONiC's default and its jumbo
-	normalMTU = 1500 // "jumbo off"
-)
+// defaultMTU is SONiC's own port and PortChannel MTU.
+const defaultMTU = 9100
 
 // op is one planned write: the command, the port it belongs to (0 = none),
 // and its effect on CONFIG_DB, applied to the plan's copy as it is planned
@@ -240,7 +238,7 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 					// CONFIG_DB (APPL_DB LAG_TABLE follows) before anyone joins.
 					pl.add(d.Index, "config portchannel add "+pc, func(s *swState) {
 						s.lags[pc] = map[string]bool{}
-						s.lagMTU[pc] = strconv.Itoa(jumboMTU)
+						s.lagMTU[pc] = strconv.Itoa(defaultMTU)
 					})
 				}
 				// SONiC refuses a member whose MTU differs from the PortChannel's.
@@ -486,14 +484,12 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 				pl.add(d.Index, fmt.Sprintf("config interface fec %s %s", ln, kw), func(s *swState) { s.setField(ln, "fec", kw) })
 			}
 		}
-		// Jumbo is switch-wide in UniFi and a port MTU on SONiC. A LAG
+		// Jumbo is switch-wide in UniFi and a port MTU on SONiC: the pushed
+		// switch.mtu (9216, accepted by SONiC) when on, 1500 when off. A LAG
 		// member's MTU must equal its PortChannel's (SONiC refuses a member
 		// that differs), so the PortChannel moves first, then the member.
-		if d.Jumbo != nil {
-			want := normalMTU
-			if *d.Jumbo {
-				want = jumboMTU
-			}
+		if d.MTU > 0 {
+			want := d.MTU
 			m := strconv.Itoa(want)
 			if pc := pl.sim.lagOf(ln); pc != "" {
 				pl.setLAGMTU(d.Index, pc, m)

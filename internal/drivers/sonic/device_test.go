@@ -2,7 +2,9 @@ package sonic
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -83,6 +85,56 @@ func TestApplyNTPOwnership(t *testing.T) {
 		return resolveIP(h)
 	}
 	r2.device("by name", devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"ntp.example.net"}}, []string{"sudo config ntp add 192.0.2.12", save})
+}
+
+// A pool hostname answers a different address on every lookup; the driver
+// pins the first answer and keeps it while the hostname stays in the push
+// and the address stays on the switch (live, re-resolving on every push
+// churned `ntp add <new>; ntp del <old>` each cycle).
+func TestNTPHostnamePinned(t *testing.T) {
+	r := newRig(t, nil)
+	dir := t.TempDir()
+	r.c.StateDir = dir
+	n := 0
+	pool := func(h string) (string, error) {
+		switch h {
+		case "pool.example.net":
+			n++
+			return "192.0.2." + strconv.Itoa(100+n), nil
+		case "nowhere.example.net":
+			return "", fmt.Errorf("cannot resolve %q: no such host", h)
+		}
+		return h, nil
+	}
+	r.c.Resolve = pool
+	push := devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"pool.example.net", "192.0.2.1", "nowhere.example.net"}}
+	// device() applies twice: the second lookup answers .102, and nothing is written.
+	r.device("pool + IP", push, []string{"sudo config ntp add 192.0.2.101", "sudo config ntp add 192.0.2.1", save})
+	if n < 1 || strings.Count(r.log.String(), "nowhere.example.net") != 1 {
+		t.Errorf("an unresolvable name is logged once and skipped: %q", r.log.String())
+	}
+	// Across a restart: the pin is in the state dir.
+	c2 := NewCollector(r.fr)
+	c2.Log, c2.StateDir, c2.Resolve = r.c.Log, dir, pool
+	if err := c2.loadManaged(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c2.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r2 := &controlRig{t: t, c: c2, fr: r.fr, log: r.log}
+	r2.device("after a restart", push, nil)
+	// Removed from the switch by hand: resolved again.
+	if _, err := r.fr.Run(context.Background(), "sudo config ntp del 192.0.2.101", ""); err != nil {
+		t.Fatal(err)
+	}
+	r2.system()
+	before := n
+	r2.device("pinned address gone", push, []string{"sudo config ntp add 192.0.2." + strconv.Itoa(101+before), save})
+	// The hostname leaves (its address goes) and comes back (resolved again).
+	r2.device("hostname left", devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1"}}, []string{"sudo config ntp del 192.0.2." + strconv.Itoa(101+before), save})
+	before = n
+	r2.device("hostname back", push, []string{"sudo config ntp add 192.0.2." + strconv.Itoa(101+before), save})
 }
 
 func TestApplySyslog(t *testing.T) {
