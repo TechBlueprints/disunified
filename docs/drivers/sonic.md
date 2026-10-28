@@ -785,12 +785,17 @@ e5bfa83):** the first push after a restart applied `config clock timezone
 MST7MDT` (from the pushed POSIX rule) and `config hostname
 SONiCSeastone-DX010` (with `control.hostname`), both verified on the guest;
 `set-locate` through the API reached the driver, which tried the platform
-LED, logged that the VS has none, and reported `locating`. The jumbo toggle
-with an aggregate present -- the review's high finding -- is covered by the
-replay of the real aggregate push through the loop with the probed refusal
-modelled; its live run waits on a UI session (the API rejects
-`aggregate_num_ports` on this record, so the aggregate can only be made
-from the UI).
+LED, logged that the VS has none, and reported `locating`. **Jumbo with an aggregate present, live (20:14--20:24, build e5bfa83):**
+aggregate 5+6 created entirely through the driver this time
+(`config portchannel add PortChannel1`; `sonic-db-cli … hset
+'PORTCHANNEL|PortChannel1' mtu 9216`; members out of their VLAN and into
+the channel; the channel into the native VLAN; save) -- the sequence that
+failed live before the MTU rule was known. Then Jumbo Frames off: `config
+interface mtu <p> 1500` on 29 ports, `hset 'PORTCHANNEL|PortChannel1' mtu
+1500`, `hset 'PORT|Ethernet16' mtu 1500`, `hset 'PORT|Ethernet20' mtu
+1500`, 31 of 31 ports changed, APPL_DB LAG mtu 1500; then on again with
+9216 the same way; then the aggregate dissolved with both members back in
+the native VLAN. The review's high finding is closed live.
 
 Left open after this: the address the bridge **reports** to the controller
 (`ip`, `connect_request_ip`) is the configured target from start-up, so the
