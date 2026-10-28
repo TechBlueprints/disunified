@@ -98,6 +98,11 @@ func TestReplaySonicLabSession(t *testing.T) {
 		181: {"sudo config interface ip add Vlan4094 192.0.2.1/16",
 			"echo 1 | sudo tee /proc/sys/net/ipv4/conf/Vlan4094/promote_secondaries >/dev/null",
 			"sudo config interface ip remove Vlan4094 192.0.2.201/16", "ip -4 -o addr show dev Vlan4094 | grep -q ' 192.0.2.1/16 '", save},
+		// Settings -> System -> remote logging switched on (the site's syslog
+		// host, 2026-10-27, appended after the session): the host arrives as
+		// syslog.remote.ip/port/status; the parser knew only syslog.ip until
+		// this capture, so no driver had ever received a host.
+		273: {"sudo config syslog add 192.0.2.40 --port 514", save},
 	}
 	got := map[int]string{}
 	runReplay(t, replayDriver{
@@ -122,8 +127,8 @@ func TestReplaySonicLabSession(t *testing.T) {
 		},
 	})
 	recs := loadReplies(t, "replies-sonic.ndjson")
-	if len(recs) != 273 {
-		t.Errorf("%d records in replies-sonic.ndjson, want 273", len(recs))
+	if len(recs) != 274 {
+		t.Errorf("%d records in replies-sonic.ndjson, want 274", len(recs))
 	}
 	for i := range recs {
 		w, ok := want[i]

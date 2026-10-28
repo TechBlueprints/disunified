@@ -37,7 +37,7 @@ read through swsscommon in one SSH exec per poll and the controller's
 config written through SONiC's `config` CLI; the control features (ports,
 VLANs with the `native_vlan` stand-in for VLAN 1, LAG, mirror, storm
 control, jumbo, NTP, SSH keys, reboot, a static address move) were
-verified live against that build (`docs/drivers/sonic.md` §6.6) except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live), syslog (live only as the no-op with no site host) and SNMP (not pushed with the site's SNMP off);
+verified live against that build (`docs/drivers/sonic.md` §6.6) except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live) and SNMP (not pushed with the site's SNMP off); syslog was verified live the same evening once the site's remote logging was switched on;
 the lab session's own pushes are replayed in
 `internal/informloop/replay_sonic_live_test.go`. STP is feature-gated (no
 daemon in community images), hardware-only parts wait for the unit, and
@@ -177,6 +177,14 @@ stay stopped** (one bridge per adopted key).
   address from it alone leaves the device without a gateway
   (`apc-backups`, 2026-09-27: `options.gateway` fills it). Same gap for any
   future `usp` address control.
+- **The syslog host is pushed as `syslog.remote.ip` / `syslog.remote.port` /
+  `syslog.remote.status`** (Settings -> System -> remote logging, captured
+  2026-10-27: `docs/fixtures/controller-10.6.106/system_cfg-syslog-remote.txt`).
+  `syslog.status=enabled` and `syslog.level=7` are in every push, remote logging
+  on or off, and are the device's own logging, not a host. The parser knew only
+  `syslog.ip`/`syslog.port` (unifi-emu's notes, never captured) until that day,
+  so no driver had ever received a host; the deployed Arista bridge still runs
+  that parser until the next deploy.
 - **Topology parent = the upstream switch seeing the device's MAC on a port.**
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not

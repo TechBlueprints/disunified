@@ -38,7 +38,7 @@ type Config struct {
 	SSHKeys     []SSHKey // sshd.auth.key.N.*, enabled ones, in order
 	Users       []User   // users.N.*: the device login the UniFi terminal uses (password is an MD5-crypt hash)
 	NTPServers  []string // ntpclient.N.server, in order, only enabled ones
-	SyslogHosts []string // syslog.ip[:port] when syslog.status=enabled and an ip is set
+	SyslogHosts []string // syslog.remote.ip[:port] when syslog.remote.status=enabled (Settings -> System -> remote logging; captured 2026-10-27)
 	JumboFrames bool     // switch.jumboframes=enabled
 	JumboSet    bool     // switch.jumboframes is present at all
 	DHCPSnoop   *bool    // switch.dhcp_snoop.status, nil if absent
@@ -411,11 +411,11 @@ func Parse(text string) *Config {
 			localeTZ = strings.TrimSpace(v)
 		case "resolv.host.1.name":
 			c.Hostname = strings.TrimSpace(v)
-		case "syslog.status":
+		case "syslog.remote.status": // syslog.status/syslog.level are the device's own logging, pushed enabled/7 even with remote logging off
 			syslogEnabled = v == "enabled"
-		case "syslog.ip":
+		case "syslog.remote.ip":
 			syslogIP = v
-		case "syslog.port":
+		case "syslog.remote.port":
 			syslogPort = v
 		case "switch.jumboframes":
 			c.JumboFrames = v == "enabled"

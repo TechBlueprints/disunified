@@ -5,7 +5,7 @@ Read `internal/drivers/CLAUDE.md` first. Specification and plan:
 live results). Built 2026-10-27 on the podman driver's pattern against the
 SONiC virtual switch (`202505.1238524-ff3c0c9f6`, hardware SKU
 `Seastone-DX010`, L2 preset), adopted as `USWF07D`; the control features
-verified live on that build except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live), syslog (live only as the no-op with no site host) and SNMP (not pushed with the site's SNMP off); §7.5's four are fixture-tested
+verified live on that build except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live) and SNMP (not pushed with the site's SNMP off); syslog verified live once the site's remote logging was switched on (`syslog.remote.*`, 2026-10-27); §7.5's four are fixture-tested
 only; no hardware yet. The lab session's real pushes are
 `docs/fixtures/controller-10.6.106/replies-sonic.ndjson`, replayed with
 control on in `TestReplaySonicLabSession`.

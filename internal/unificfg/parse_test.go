@@ -130,3 +130,25 @@ func TestParseTimezoneAndHostname(t *testing.T) {
 		t.Errorf("absent keys: %+v", got)
 	}
 }
+
+// Remote logging switched on in Settings -> System (10.6.109, 2026-10-27): the
+// host arrives as syslog.remote.ip/port/status, not the syslog.ip/port unifi-emu's
+// notes guessed. syslog.status=enabled and syslog.level=7 are in every push,
+// remote logging on or off, and are the device's own logging, not a host.
+func TestParseSyslogRemote(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106/system_cfg-syslog-remote.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if len(c.SyslogHosts) != 1 || c.SyslogHosts[0] != "192.0.2.40" {
+		t.Errorf("syslog hosts = %v, want [192.0.2.40] (port 514 is the default and stays implicit)", c.SyslogHosts)
+	}
+	if c.Raw["syslog.remote.port"] != "514" || c.Raw["syslog.status"] != "enabled" {
+		t.Errorf("raw syslog keys: %q %q", c.Raw["syslog.remote.port"], c.Raw["syslog.status"])
+	}
+	off := Parse(strings.Replace(string(b), "syslog.remote.status=enabled", "syslog.remote.status=disabled", 1))
+	if len(off.SyslogHosts) != 0 {
+		t.Errorf("remote logging off must leave no host, got %v", off.SyslogHosts)
+	}
+}
