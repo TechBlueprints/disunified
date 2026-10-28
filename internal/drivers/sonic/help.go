@@ -31,11 +31,18 @@ var commandChecks = []struct {
 	{group: "interface ip", subs: []string{"add", "remove"}},
 	{group: "route", subs: []string{"add", "del"}},
 	{group: "dns nameserver", subs: []string{"add", "del"}},
+	{group: "clock", subs: []string{"timezone"}},
+	{group: "", subs: []string{"hostname"}},
 }
 
 // helpCommand is how a group's help is read: `config` needs root even for
 // --help.
-func helpCommand(group string) string { return "sudo config " + group + " --help" }
+func helpCommand(group string) string {
+	if group == "" {
+		return "sudo config --help"
+	}
+	return "sudo config " + group + " --help"
+}
 
 // verifyCommands checks every sub-command the driver uses exists.
 func (c *Collector) verifyCommands(ctx context.Context) error {
@@ -48,7 +55,7 @@ func (c *Collector) verifyCommands(ctx context.Context) error {
 		}
 		out, err := c.run(ctx, helpCommand(chk.group), "")
 		if err != nil {
-			return fmt.Errorf("sonic: `config %s --help` failed (the bridge user needs passwordless sudo for config): %w", chk.group, err)
+			return fmt.Errorf("sonic: `%s` failed (the bridge user needs passwordless sudo for config): %w", strings.TrimPrefix(helpCommand(chk.group), "sudo "), err)
 		}
 		have := helpSubcommands(out)
 		var missing []string
@@ -58,7 +65,7 @@ func (c *Collector) verifyCommands(ctx context.Context) error {
 			}
 		}
 		if len(missing) > 0 {
-			return fmt.Errorf("sonic: `config %s` lacks %s on this image; the driver needs them (docs/drivers/sonic.md §6)", chk.group, strings.Join(missing, ", "))
+			return fmt.Errorf("sonic: `%s` lacks %s on this image; the driver needs them (docs/drivers/sonic.md §6)", strings.TrimSpace("config "+chk.group), strings.Join(missing, ", "))
 		}
 	}
 	return nil

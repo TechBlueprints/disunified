@@ -458,8 +458,10 @@ func (pl *plan) stripVLANs(idx int, iface string) {
 
 func (pl *plan) portState(d devicemodel.PortDesired) {
 	p := pl.ports[d.Index]
-	lanes := lanesOf(p)
-	pl.speed(p, d, lanes)
+	pl.speed(p, d, lanesOf(p))
+	// A breakout replaced the cage's interfaces: the rest of its intent goes
+	// on the new ones (admin state, name, FEC, MTU, storm control, STP).
+	lanes := lanesOf(pl.ports[d.Index])
 	for _, lane := range lanes {
 		ln := lane
 		if enabled := pl.sim.field(ln, "admin_status") == "up"; enabled != d.Enabled {
@@ -526,7 +528,7 @@ func isCopper(m devicemodel.Media) bool {
 // speed: an explicit speed is forced (autoneg off, then the speed) on every
 // lane; "auto" is autoneg on a copper port only -- a QSFP cage is set to its
 // native (highest) speed instead. A speed that would split or join a cage
-// is a breakout, which needs the platform's platform.json.
+// is a breakout (breakout.go), which needs the platform's platform.json.
 func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []string) {
 	want := d.SpeedMbps
 	split := len(lanes) > 1
@@ -552,6 +554,10 @@ func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []str
 			return
 		}
 	}
+	if parent, pp, ok := pl.sim.platformCage(p.Index); ok && len(pp.BreakoutModes) > 0 {
+		pl.breakoutSpeed(p, d, want, parent, pp)
+		return
+	}
 	serdes := 0
 	for _, lane := range lanes {
 		serdes += laneCount(pl.sim.field(lane, "lanes"))
@@ -560,7 +566,7 @@ func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []str
 		if !pl.sim.platformJSON {
 			pl.note("port %d: %d Mb/s needs a breakout (split or join of the cage), and this platform has no platform.json (dynamic port breakout unavailable); speed not written", d.Index, want)
 		} else {
-			pl.note("port %d: %d Mb/s needs a breakout, which this driver does not write yet; speed not written", d.Index, want)
+			pl.note("port %d: %d Mb/s needs a breakout, and platform.json lists no breakout modes for this cage; speed not written", d.Index, want)
 		}
 		return
 	}

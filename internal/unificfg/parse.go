@@ -47,6 +47,16 @@ type Config struct {
 	// UPS, pushed only to a device claiming smart_power_caps bit 1. Nil if
 	// the block is absent (the switch off, or the capability unclaimed).
 	NUTServer *NUTServer
+
+	// Timezone is system.timezone, or locale.timezone when that is absent
+	// (every recorded push carries both, equal). Network 10.6.106 sends a
+	// POSIX TZ string ("MST7MDT,M3.2.0,M11.1.0"), not a zone name. "" when
+	// neither key is present.
+	Timezone string
+	// Hostname is resolv.host.1.name: the device's UniFi name with the
+	// spaces removed, in every push. A real UniFi device takes it as its
+	// hostname (and sends it as its DHCP hostname). "" when absent.
+	Hostname string
 }
 
 // NUTServer is nutserver.* as captured on Network 10.6.106
@@ -217,6 +227,7 @@ func Parse(text string) *Config {
 	sshKeys := map[int]*SSHKey{}
 	users := map[int]*User{}
 	syslogEnabled, syslogIP, syslogPort := false, "", ""
+	localeTZ := ""
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -394,6 +405,12 @@ func Parse(text string) *Config {
 			continue
 		}
 		switch k {
+		case "system.timezone":
+			c.Timezone = strings.TrimSpace(v)
+		case "locale.timezone":
+			localeTZ = strings.TrimSpace(v)
+		case "resolv.host.1.name":
+			c.Hostname = strings.TrimSpace(v)
 		case "syslog.status":
 			syslogEnabled = v == "enabled"
 		case "syslog.ip":
@@ -517,6 +534,9 @@ func Parse(text string) *Config {
 			h += ":" + syslogPort
 		}
 		c.SyslogHosts = []string{h}
+	}
+	if c.Timezone == "" {
+		c.Timezone = localeTZ
 	}
 	if c.Address != nil {
 		for n, gw := range routeGW {

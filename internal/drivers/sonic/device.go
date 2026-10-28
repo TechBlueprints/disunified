@@ -341,6 +341,42 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		mSNMP = want
 	}
 
+	// Time zone: the pushed POSIX rule mapped onto a zone the switch lists
+	// (zones.go); `config clock timezone` takes zone names only.
+	if tz := strings.TrimSpace(d.Timezone); tz != "" {
+		cur := sim.meta["timezone"]
+		if cur == "" {
+			cur = "UTC" // SONiC's default when DEVICE_METADATA has none
+		}
+		if tz != cur {
+			zs, err := c.zoneTable(ctx)
+			target, ok, why := "", false, ""
+			if err == nil {
+				target, ok, why = zoneFor(tz, cur, zs)
+			} else {
+				why = err.Error()
+			}
+			switch {
+			case !ok:
+				note("time zone %q: %s; not written", tz, why)
+			case !zoneNameRe.MatchString(target):
+				note("time zone %q maps to %q, which is not a plain zone name; not written", tz, target)
+			case target != cur:
+				z := target
+				add("config clock timezone "+z, "", func(s *swState) { s.meta["timezone"] = z })
+			}
+		}
+	}
+	// Hostname (control.hostname): the controller's resolv.host.1.name.
+	if h := strings.TrimSpace(d.Hostname); h != "" {
+		if why := badHostname(h); why != "" {
+			note("hostname %q from the controller %s; not written", h, why)
+		} else if h != sim.meta["hostname"] {
+			name := h
+			add("config hostname "+name, "", func(s *swState) { s.meta["hostname"] = name })
+		}
+	}
+
 	for _, n := range notes {
 		c.warnOnce("device: "+n, "%s", n)
 	}
@@ -377,6 +413,30 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	c.mu.Unlock()
 	commitManaged()
 	return len(ops), nil
+}
+
+// badHostname says why a name cannot be the switch's hostname, "" if it
+// can: RFC 1123 labels (letters, digits, inner hyphens, 1-63 each), and at
+// most 63 characters in all -- SONiC's YANG (stypes:hostname) caps the
+// whole name there.
+func badHostname(h string) string {
+	if len(h) > 63 {
+		return "is longer than SONiC's 63 characters"
+	}
+	for _, label := range strings.Split(h, ".") {
+		if label == "" || len(label) > 63 {
+			return "has an empty or over-long label"
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return "has a label that starts or ends with a hyphen"
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+				return "is not a DNS name (RFC 1123: letters, digits, hyphens)"
+			}
+		}
+	}
+	return ""
 }
 
 func equalSets(a, b map[string]bool) bool {

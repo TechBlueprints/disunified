@@ -91,6 +91,26 @@ type DeviceDesired struct {
 	// SNMPCommunity: v1/v2c read-only community to configure; "" with SNMPSet = remove the managed one.
 	SNMPSet       bool
 	SNMPCommunity string
+
+	// Timezone is the controller's system.timezone (locale.timezone when
+	// that is absent): on Network 10.6.106 a POSIX TZ string such as
+	// "MST7MDT,M3.2.0,M11.1.0", not a zone name. "" = not in the push, leave
+	// the device alone. A driver maps it onto what its device takes.
+	Timezone string
+
+	// Hostname is the controller's resolv.host.1.name (the device's UniFi
+	// name without spaces), set only when the operator opted in
+	// (control.hostname); "" = leave the device's hostname alone.
+	Hostname string
+}
+
+// Locator is an optional capability: the device can show where it is (the
+// controller's set-locate / unset-locate, "Locate" in the UI) by its own
+// LEDs. Without it the session only reports `locating`. SetLocate must
+// return promptly; a blink that needs time runs in the background until
+// SetLocate(ctx, false) or the device is closed.
+type Locator interface {
+	SetLocate(ctx context.Context, on bool) error
 }
 
 // PortCycler bounces a port (shutdown, wait, no shutdown): the controller's
@@ -266,6 +286,7 @@ type System struct {
 	DHCP       bool              // the device takes its management address from DHCP (vs a manual one)
 	Version    string            // vendor's own version string, e.g. "4.26.14M"
 	Hostname   string
+	Timezone   string // the device's configured time zone name, "" if unknown
 	Uptime     time.Duration
 
 	CPUPercent  float64 // 0-100, whole system

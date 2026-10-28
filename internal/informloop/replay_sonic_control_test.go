@@ -160,9 +160,15 @@ func TestReplaySonicPort2NameSpeedVLANs(t *testing.T) {
 	if !contains(cmds, "sudo config vlan member add -m 2,10 Ethernet4") {
 		t.Error("port 2 not tagged in exactly 2 and 10")
 	}
-	// The whole push: VLANs + save, then 32 MTUs, 1 name, 32 memberships + save.
-	if len(cmds) != 2+32+1+32+1 {
-		t.Errorf("%d commands in all, want %d", len(cmds), 2+32+1+32+1)
+	// The push's time zone, a POSIX rule (system.timezone=MST7MDT,M3.2.0,
+	// M11.1.0), maps onto the zone of that name on the switch (it runs UTC).
+	if !contains(cmds, "sudo config clock timezone MST7MDT") {
+		t.Error("the pushed time zone was not written")
+	}
+	// The whole push: VLANs + save, the time zone + save, then 32 MTUs, 1
+	// name, 32 memberships + save.
+	if want := 2 + 2 + 32 + 1 + 32 + 1; len(cmds) != want {
+		t.Errorf("%d commands in all, want %d", len(cmds), want)
 	}
 	if cmds[len(cmds)-1] != "sudo config save -y" {
 		t.Errorf("the batch must end with config save, ends with %q", cmds[len(cmds)-1])

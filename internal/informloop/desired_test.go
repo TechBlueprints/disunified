@@ -48,3 +48,17 @@ func TestDesiredPortsSpeedAndVLANs(t *testing.T) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
+
+// The push's time zone always reaches the driver; its hostname
+// (resolv.host.1.name) only with control.hostname.
+func TestDesiredDeviceTimezoneAndHostname(t *testing.T) {
+	cfg := readSystemCfg(t, "system_cfg-pdu-outlets.txt") // a recorded push carrying both
+	off := (&Loop{cfg: Config{}}).desiredDevice(cfg)
+	if off.Timezone != "MST7MDT,M3.2.0,M11.1.0" || off.Hostname != "" {
+		t.Errorf("control.hostname off: timezone %q hostname %q", off.Timezone, off.Hostname)
+	}
+	on := (&Loop{cfg: Config{ControlHostname: true}}).desiredDevice(cfg)
+	if on.Hostname != "APCAP7931" {
+		t.Errorf("control.hostname on: hostname %q", on.Hostname)
+	}
+}

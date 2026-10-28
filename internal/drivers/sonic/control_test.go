@@ -622,3 +622,22 @@ func TestStartChecksTheConfigCommands(t *testing.T) {
 		t.Errorf("helpSubcommands = %v", got)
 	}
 }
+
+// Start also checks `config clock timezone` and `config hostname` (§7.1).
+func TestStartChecksClockAndHostname(t *testing.T) {
+	for _, c := range []struct{ section, from, to, want string }{
+		{"config clock --help", "  timezone ", "  tz ", "`config clock` lacks timezone"},
+		{"config --help", "  hostname ", "  hostnam ", "`config` lacks hostname"},
+	} {
+		fr, err := NewFixtureRunner(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fr.Help[c.section] = strings.Replace(fr.Help[c.section], c.from, c.to, 1)
+		col := NewCollector(fr)
+		col.Log = log.New(testWriter{t}, "", 0)
+		if _, err := col.Start(context.Background()); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: Start = %v, want %q", c.section, err, c.want)
+		}
+	}
+}

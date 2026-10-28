@@ -213,4 +213,112 @@ Options:
 Commands:
   add  Add static DNS nameserver entry
   del  Delete static DNS nameserver entry
+@@@ config clock --help
+Usage: config clock [OPTIONS] COMMAND [ARGS]...
+
+  Configuring system clock
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  date      Set system date and time
+  timezone  Set system timezone
+@@@ config --help
+Usage: config [OPTIONS] COMMAND [ARGS]...
+
+  SONiC command line - 'config' command
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  aaa                       AAA command line
+  acl                       ACL-related configuration tasks
+  apply-patch               Apply given patch of updates to Config.
+  asic-sdk-health-event     Configuring asic-sdk-health-event
+  auto-techsupport          AUTO_TECHSUPPORT part of config_db.json
+  auto-techsupport-feature  AUTO_TECHSUPPORT_FEATURE part of config_db.json
+  banner                    Configuring system banner messages
+  bgp                       BGP-related configuration tasks
+  bmp                       BMP-related configuration
+  buffer                    Configure buffer_profile
+  cbf                       CBF-related configuration tasks
+  chassis                   Configure chassis commands group
+  checkpoint                Take a checkpoint of the whole current config...
+  clock                     Configuring system clock
+  console                   Console-related configuration tasks
+  delete-checkpoint         Delete a checkpoint with the specified...
+  dhcp_relay                config DHCP_Relay information
+  dns                       Static DNS configuration
+  dropcounters              Drop counter related configuration tasks
+  ecn                       ECN-related configuration tasks
+  fabric                    FABRIC-related configuration tasks
+  feature                   Configure features
+  fg-nhg                    FG_NHG part of config_db.json
+  fg-nhg-member             FG_NHG_MEMBER part of config_db.json
+  fg-nhg-prefix             FG_NHG_PREFIX part of config_db.json
+  flowcnt-route             Route flow counter related configuration tasks
+  hostname                  Change device hostname without impacting the...
+  interface                 Interface-related configuration tasks
+  interface_naming_mode     Modify interface naming mode for interacting...
+  ipv6                      IPv6 configuration
+  kdump                     Configure the KDUMP mechanism
+  kubernetes                kubernetes command line
+  ldap
+  ldap-server
+  list-checkpoints          List the config checkpoints available.
+  load                      Import a previous saved config DB dump file.
+  load_mgmt_config          Reconfigure hostname and mgmt interface based
+                            on...
+  load_minigraph            Reconfigure based on minigraph.
+  loopback                  Loopback-related configuration tasks
+  macsec                    MACsec-related configuration tasks
+  mclag
+  member
+  mirror_session
+  mmu                       mmuconfig configuration tasks
+  muxcable                  Show muxcable information
+  nat                       NAT-related configuration tasks
+  ntp                       NTP server configuration tasks
+  nvgre-tunnel              NVGRE_TUNNEL part of config_db.json
+  nvgre-tunnel-map          NVGRE_TUNNEL_MAP part of config_db.json
+  override-config-table     Override current configDB with input config.
+  passw-hardening           PASSWORD HARDENING part of config_db.json
+  pbh                       Configure PBH (Policy based hashing) feature
+  pfcwd                     Configure pfc watchdog
+  platform                  Platform-related configuration tasks
+  portchannel
+  qos                       QoS-related configuration tasks
+  radius                    RADIUS server configuration
+  rate                      Set port rates configuration.
+  reload                    Clear current configuration and import a...
+  replace                   Replace the whole config with the specified...
+  rollback                  Rollback the whole config to the specified...
+  route                     route-related configuration tasks
+  save                      Export current config DB to a file on disk.
+  serial_console            Configuring system serial-console behavior
+  sflow                     sFlow-related configuration tasks
+  snmp                      SNMP configuration tasks
+  snmpagentaddress          SNMP agent listening IP address, port, vrf...
+  snmptrap                  SNMP Trap server configuration to send traps
+  spanning-tree             STP command line
+  ssh                       Configuring system ssh behavior
+  subinterface              subinterface-related configuration tasks
+  suppress-fib-pending      Enable or disable pending FIB suppression.
+  switch-hash               Configure switch hash feature
+  switch-trimming           Configure switch trimming feature
+  switchport                Switchport mode configuration tasks
+  synchronous_mode          Enable or disable synchronous mode between...
+  syslog                    Configure syslog server
+  tacacs                    TACACS+ server configuration
+  unique-ip                 Configure Unique IP on MCLAG Vlan interface
+  vlan                      VLAN-related configuration tasks
+  vnet                      VNET-related configuration tasks
+  vrf                       VRF-related configuration tasks
+  vxlan
+  warm_restart              warm_restart-related configuration tasks
+  watermark                 Configure watermark
+  yang_config_validation
+  ztp                       Configure Zero Touch Provisioning
 @@@ end
