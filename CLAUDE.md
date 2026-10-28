@@ -183,8 +183,8 @@ stay stopped** (one bridge per adopted key).
   `syslog.status=enabled` and `syslog.level=7` are in every push, remote logging
   on or off, and are the device's own logging, not a host. The parser knew only
   `syslog.ip`/`syslog.port` (unifi-emu's notes, never captured) until that day,
-  so no driver had ever received a host; the deployed Arista bridge still runs
-  that parser until the next deploy.
+  so no driver had ever received a host. Deployed the same evening: the Arista
+  shows `Logging to '<host>' port 514` on the first push after the restart.
 - **Topology parent = the upstream switch seeing the device's MAC on a port.**
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not
@@ -488,6 +488,12 @@ UniFi OS Server (10.6.106). Provisioning waited on an answer to the controller's
 `wg-genkeypair` cmd, sent back as an inform notification (`inform_as_notif`).
 That is their finding, not verified here; the detail is in `docs/gateways.md`
 under "Since then".
+
+**SONiC driver merged and deployed 2026-10-27 (branch `sonic`, 30 commits,
+fast-forwarded into main).** Built and verified on a SONiC virtual-switch guest
+(`docs/drivers/sonic.md`); the guest is **shut down** until the DX010 arrives (no
+bridge runs for it; its device record stays in the controller, offline). The
+arrival-day steps are `docs/drivers/sonic.md` §3.
 
 **What has gone upstream, and the fact that none of it has been reviewed, is
 `docs/prior-art.md` §6** (issues #2 and #6–#9; PRs #3–#5, the stacked series
