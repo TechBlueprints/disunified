@@ -23,6 +23,8 @@ jobs:
       - run: go test ./...
       - name: No secrets or site identifiers in tracked files
         run: ./scripts/check-site-info.sh
+      - name: The checker's own rules (e-mail addresses, SSH key comments)
+        run: ./scripts/check-site-info_test.sh
 
   image:
     runs-on: ubuntu-latest

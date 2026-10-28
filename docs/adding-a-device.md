@@ -103,6 +103,10 @@ The controller side is captured too, and the same scrub rule applies:
   loop with your driver on its fixtures, and asserts the device commands each
   push produces. When you verify a feature live (§4), the reply that carried
   it is in the log: add it to the fixture with the expected commands.
+- SSH key comments in a push (`sshd.auth.key.N.comment`, an owner's e-mail
+  address or machine name) become `key-N` under `sanitize-controller.py` by
+  default, and `scripts/check-site-info.sh` refuses any other comment value
+  and any e-mail address outside example.com/.net/.org.
 
 ## 2. Write the driver
 
