@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,7 +34,19 @@ type FixtureRunner struct {
 	// switch that does not answer at the new address would.
 	DialFails bool
 	Dials     []string // the addresses Dial was asked for
+
+	// promote is net.ipv4.conf.<iface>.promote_secondaries as written by the
+	// driver (0 on SONiC by default: removing a subnet's primary address
+	// removes its secondaries too). IgnorePromote makes the write a no-op,
+	// for the path where the switch loses the new address anyway.
+	promote       map[string]bool
+	IgnorePromote bool
 }
+
+var (
+	promoteRe = regexp.MustCompile(`^echo 1 \| sudo tee /proc/sys/net/ipv4/conf/(\S+)/promote_secondaries >/dev/null$`)
+	verifyRe  = regexp.MustCompile(`^ip -4 -o addr show dev (\S+) \| grep -q ' (\S+)/(\d+) '$`)
+)
 
 // Dial is the fixture's Collector.Redial: a runner for the switch at host,
 // sharing this capture (it is the same switch).
@@ -231,6 +244,21 @@ func (f *FixtureRunner) isMirrorDst(iface string) bool {
 // apply records one write and applies it to the capture.
 func (f *FixtureRunner) apply(line string) error {
 	f.Commands = append(f.Commands, line)
+	if m := promoteRe.FindStringSubmatch(line); m != nil {
+		if !f.IgnorePromote {
+			if f.promote == nil {
+				f.promote = map[string]bool{}
+			}
+			f.promote[m[1]] = true
+		}
+		return nil
+	}
+	if m := verifyRe.FindStringSubmatch(line); m != nil {
+		if !f.hasKernelAddress(m[1], m[2], m[3]) {
+			return fmt.Errorf("exit status 1") // grep -q found nothing
+		}
+		return nil
+	}
 	w := shellWords(line)
 	if len(w) > 0 && w[0] == "sudo" {
 		w = w[1:]

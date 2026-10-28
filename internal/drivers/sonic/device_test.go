@@ -3,6 +3,9 @@ package sonic
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -258,6 +261,8 @@ func TestApplyAddressSuccess(t *testing.T) {
 	r := newRig(t, nil)
 	r.c.Dial = ifaceAddr(t, r.fr.Fixture, "Vlan4094")
 	r.c.Redial = r.fr.Dial
+	dir := t.TempDir()
+	r.c.StateDir = dir
 	sys := r.system()
 	old, gw := sys.Addresses[0], sys.Gateway
 	if old.Iface != "Vlan4094" {
@@ -269,10 +274,14 @@ func TestApplyAddressSuccess(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("ApplyAddress = %v, %v", changed, err)
 	}
+	// The new address is a secondary in the old one's subnet: with SONiC's
+	// promote_secondaries=0 removing the old one would take it too (live).
 	want := []string{
 		"sudo config interface ip add Vlan4094 192.0.2.200/16",
 		"sudo config dns nameserver add 192.0.2.53",
+		"echo 1 | sudo tee /proc/sys/net/ipv4/conf/Vlan4094/promote_secondaries >/dev/null",
 		"sudo config interface ip remove Vlan4094 " + old.IP + "/16",
+		"ip -4 -o addr show dev Vlan4094 | grep -q ' 192.0.2.200/16 '",
 		save,
 	}
 	if got := r.fr.Commands[n:]; !reflect.DeepEqual(got, want) {
@@ -280,6 +289,12 @@ func TestApplyAddressSuccess(t *testing.T) {
 	}
 	if !reflect.DeepEqual(r.fr.Dials, []string{"192.0.2.200"}) || r.c.Dial != "192.0.2.200" {
 		t.Errorf("dialled %v, now on %q", r.fr.Dials, r.c.Dial)
+	}
+	// The dial target is persisted for a restart.
+	c2 := NewCollector(r.fr)
+	c2.StateDir = dir
+	if err := c2.loadManaged(); err != nil || c2.savedDial != "192.0.2.200" || c2.pendingDial != "" {
+		t.Errorf("persisted dial = %q pending %q (%v)", c2.savedDial, c2.pendingDial, err)
 	}
 	sys = r.system()
 	if sys.Addresses[0].IP != "192.0.2.200" || sys.Addresses[0].Iface != "Vlan4094" || sys.DHCP {
@@ -332,6 +347,83 @@ func TestApplyAddressDialFails(t *testing.T) {
 	sys := r.system()
 	if r.c.Dial != dialled || sys.Addresses[0].IP != dialled || sys.Gateway != gw {
 		t.Errorf("after a failed change: dial %q, addresses %v, gateway %q", r.c.Dial, sys.Addresses, sys.Gateway)
+	}
+}
+
+// The live failure: promote_secondaries not in effect, so removing the old
+// primary takes the new secondary with it. The verification stops the
+// batch before save; the runner stays on the old target and the new address
+// is left as a pending dial target.
+func TestApplyAddressLosesTheNewAddress(t *testing.T) {
+	r := newRig(t, nil)
+	dialled := ifaceAddr(t, r.fr.Fixture, "Vlan4094")
+	r.c.Dial = dialled
+	r.c.Redial = r.fr.Dial
+	r.c.StateDir = t.TempDir()
+	r.fr.IgnorePromote = true
+	gw := r.system().Gateway
+	n := len(r.fr.Commands)
+	_, err := r.c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.200", PrefixLen: 16, Gateway: gw})
+	if err == nil || !strings.Contains(err.Error(), "nothing was saved") {
+		t.Fatalf("ApplyAddress = %v", err)
+	}
+	got := r.fr.Commands[n:]
+	if last := got[len(got)-1]; last != "ip -4 -o addr show dev Vlan4094 | grep -q ' 192.0.2.200/16 '" {
+		t.Errorf("the batch must stop at the verification, last command %q", last)
+	}
+	for _, c := range got {
+		if c == save {
+			t.Error("nothing may be saved when the new address did not survive")
+		}
+	}
+	if r.c.Dial != dialled || r.c.pendingDial != "192.0.2.200" || r.c.savedDial != "" {
+		t.Errorf("after the failure: dial %q pending %q saved %q", r.c.Dial, r.c.pendingDial, r.c.savedDial)
+	}
+}
+
+// deadRunner is a switch address that no longer answers.
+type deadRunner struct{ host string }
+
+func (d deadRunner) Run(context.Context, string, string) (string, error) {
+	return "", fmt.Errorf("ssh dial %s:22: connect: host is down", d.host)
+}
+func (deadRunner) Close() error { return nil }
+
+// After a move -- or a move cut short -- the old address is dead: the
+// collector tries the other known address once, adopts it, and goes on.
+func TestRestartReconnectsThroughTheNewAddress(t *testing.T) {
+	fr, err := NewFixtureRunner(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, tc := range []struct{ name, state string }{
+		{"adopted dial", `{"dial": "192.0.2.200"}`},
+		{"pending dial", `{"pending_dial": "192.0.2.200"}`},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, managedFile), []byte(tc.state), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var buf strings.Builder
+		c := NewCollector(deadRunner{"192.0.2.1"})
+		c.Log = log.New(&buf, "", 0)
+		c.Dial, c.configHost, c.StateDir, c.Redial = "192.0.2.1", "192.0.2.1", dir, fr.Dial
+		if err := c.loadManaged(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Start(context.Background()); err != nil {
+			t.Fatalf("%s: Start through the dead address: %v", tc.name, err)
+		}
+		if c.Dial != "192.0.2.200" || c.savedDial != "192.0.2.200" || c.pendingDial != "" || !strings.Contains(buf.String(), "answers at 192.0.2.200") {
+			t.Errorf("%s: dial %q saved %q pending %q; log %q", tc.name, c.Dial, c.savedDial, c.pendingDial, buf.String())
+		}
+	}
+	// No other address known: the failure stands.
+	c := NewCollector(deadRunner{"192.0.2.1"})
+	c.Log = log.New(&strings.Builder{}, "", 0)
+	c.Dial, c.configHost, c.Redial = "192.0.2.1", "192.0.2.1", fr.Dial
+	if _, err := c.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "host is down") {
+		t.Errorf("without a candidate: %v", err)
 	}
 }
 

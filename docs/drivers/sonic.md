@@ -668,15 +668,34 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
   bridge dials (`Vlan<native_vlan>` on a switch set up as §3 B3 says).
   Sequence: `config interface ip add <iface> <new>/<len>` (SONiC keeps
   both addresses), `config route add prefix 0.0.0.0/0 nexthop <gw>` when
-  the gateway changes (`STATIC_ROUTE\|default\|0.0.0.0/0`), dial the
-  switch at the new address and run a trivial command; only then
-  `config interface ip remove <iface> <old>/<len>`, remove a stale default
-  route, `config save -y`, and switch the runner's target. If the new
-  address does not answer within the dial timeout, remove it again and
-  return an error: the old address never went away. DNS servers: SONiC
-  has `config dns nameserver add\|del`; written when present in the push,
-  diffed against `DNS_NAMESERVER\|*`. Follows the podman/Arista guards
-  in `internal/drivers/CLAUDE.md`.
+  the gateway changes (`STATIC_ROUTE\|default\|0.0.0.0/0`), DNS (below);
+  dial the switch at the new address and run `true`. If it does not
+  answer, remove the new address (and the route it brought) again and
+  return an error: the old address never went away. If it answers, record
+  the new address as a pending dial target (`sonic-managed.json`) and run
+  one batch **over the new address**:
+  `echo 1 | sudo tee /proc/sys/net/ipv4/conf/<iface>/promote_secondaries >/dev/null`;
+  `config interface ip remove <iface> <old>/<len>`;
+  `ip -4 -o addr show dev <iface> | grep -q ' <new>/<len> '`;
+  the stale default route's `config route del`; `config save -y`.
+  **Why the sysctl (corrected 2026-10-27, after a live move cut the switch
+  off):** Linux's `promote_secondaries` is 0 on SONiC, so deleting a
+  subnet's primary address deletes its secondaries too, and the new
+  address, added second in the same subnet, is a secondary -- removing
+  the old one left the interface with no IPv4 address at all. With the
+  sysctl at 1 the secondary survives and keeps the FRR default route
+  (probed both ways); `sysctl` is not on the admin user's PATH, hence the
+  `/proc` write through `sudo tee`. The `grep` makes the batch fail
+  (`set -e`) before anything is saved if the new address did not survive.
+  Only when the batch succeeds does the runner switch, and the new address
+  is persisted as the dial target (`dial`), so a restart keeps using it
+  even if the config file still names the old one. When the current
+  target cannot be dialled, the other known addresses (pending, persisted,
+  the config file's) are tried once each and the first that answers is
+  adopted -- a half-done move no longer leaves the bridge dialling a dead
+  address. DNS servers: SONiC has `config dns nameserver add\|del`;
+  written when present in the push, diffed against `DNS_NAMESERVER\|*`.
+  Follows the podman/Arista guards in `internal/drivers/CLAUDE.md`.
 - **Hostname (`resolv.host.1.name`):** queued repo-wide; SONiC's
   `config hostname <name>` exists and is the obvious implementation when
   the feature is turned on for every driver. Not part of A4.
