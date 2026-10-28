@@ -18,12 +18,12 @@ import (
 )
 
 // The UI's Manage -> Restart, recorded from the SONiC lab switch
-// (replies.ndjson's tail: {"_type":"reboot","reboot_type":"soft",...}),
+// (replies-sonic.ndjson: {"_type":"reboot","reboot_type":"soft",...}),
 // served to an adopted bridge running the sonic driver against the VS
 // capture: with control.reboot it runs `sudo reboot` on the switch, without
 // it the reboot is emulated and nothing is written.
 func TestReplaySonicRebootReply(t *testing.T) {
-	replies := loadReplies(t, "replies.ndjson")
+	replies := loadReplies(t, "replies-sonic.ndjson")
 	var reboot replayRecord
 	for _, r := range replies {
 		var p map[string]any

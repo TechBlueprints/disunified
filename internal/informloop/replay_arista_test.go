@@ -64,7 +64,7 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			9:  {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
 			10: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
 			11: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
-			// 12: set-locate, 13: unset-locate, 16: _type reboot (Manage -> Restart)
+			// 12: set-locate, 13: unset-locate
 			// 14-15: Global Switch Settings -> Rogue DHCP Server Detection on, then off
 			// (site-wide; pushed only because the device claimed DHCP snooping at the
 			// time). EOS 4.26 cannot honour it, so neither push writes snooping.
@@ -103,13 +103,6 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			case 14:
 				if !strings.Contains(logText, "UNSUPPORTED by this switch: DHCP snooping") {
 					t.Errorf("reply %d: enabling rogue DHCP detection must be logged as unsupported", i)
-				}
-			case 16:
-				// Manage -> Restart arrives as {"_type":"reboot","reboot_type":"soft"}
-				// (recorded 2026-10-27 from the SONiC lab switch on 10.6.106), not
-				// as a cmd: handled like the reboot cmd, emulated here.
-				if typ != "reboot" || !strings.Contains(logText, "reboot requested (emulated") || strings.Contains(logText, `UNHANDLED _type "reboot"`) {
-					t.Errorf("reply %d (_type %q): the reboot reply must be handled like the reboot cmd; log:\n%s", i, typ, logText)
 				}
 			}
 			if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logText, `UNHANDLED cmd "build-ssh-session"`) {

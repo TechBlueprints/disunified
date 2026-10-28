@@ -34,13 +34,17 @@ usp IP Settings push carries no gateway (`options.gateway`). A seventh,
 2026-10-27 on a SONiC virtual-switch guest (build 202505.1238524, hardware
 SKU `Seastone-DX010`) ahead of Clint's Celestica DX010, its Redis tables
 read through swsscommon in one SSH exec per poll and the controller's
-config written through SONiC's `config` CLI; every control feature
-(ports, VLANs with the `native_vlan` stand-in for VLAN 1, LAG, mirror,
-storm control, jumbo, NTP, SSH keys, reboot, a static address move) was
-verified live against that build (`docs/drivers/sonic.md` §6.6); STP is
-feature-gated (no daemon in community images), hardware-only parts wait
-for the unit. The live runs also produced generic fixes: a write budget
-separate from the collect one (`control.apply_timeout`), `sshrun` offering
+config written through SONiC's `config` CLI; the control features (ports,
+VLANs with the `native_vlan` stand-in for VLAN 1, LAG, mirror, storm
+control, jumbo, NTP, SSH keys, reboot, a static address move) were
+verified live against that build (`docs/drivers/sonic.md` §6.6) except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live), syslog (live only as the no-op with no site host) and SNMP (not pushed with the site's SNMP off);
+the lab session's own pushes are replayed in
+`internal/informloop/replay_sonic_live_test.go`. STP is feature-gated (no
+daemon in community images), hardware-only parts wait for the unit, and
+time zone, hostname, locate and breakout (§7.5) are fixture-tested only.
+The live runs also produced generic fixes: a write budget separate from
+the collect one (`control.apply_timeout`, or the driver's own through
+`devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering
 agent keys one at a time (a `.pub` selects one), the `_type: reboot`
 reply, and the reported address following an applied move
 (`devicemodel.AddressReporter`).

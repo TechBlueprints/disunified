@@ -12,12 +12,13 @@ import (
 	"github.com/TechBlueprints/disunified/internal/drivers/sonic"
 )
 
-// The SONiC replay: no controller has spoken to a SONiC bridge yet, so the
-// recorded replies are the ECS Core's own (replies-proxmox.ndjson: the
-// controller adopting a USWF07D-shaped node, then pushing port config). They
-// drive the real driver, read-only, against the real VS capture: the device
-// must adopt, connect and report every applied cfgversion, and the switch
-// must receive nothing -- the read side has no Controller.
+// The ECS Core's recorded replies (replies-proxmox.ndjson: the controller
+// adopting a USWF07D-shaped node, then pushing port config) drive the sonic
+// driver read-only against the real VS capture: the device must adopt,
+// connect and report every applied cfgversion, and the switch must receive
+// nothing -- without a Controller nothing is written. The SONiC lab
+// session's own replies, with control on, are TestReplaySonicLabSession
+// (replies-sonic.ndjson).
 func TestReplayControllerRepliesSonic(t *testing.T) {
 	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238524-ff3c0c9f6", "collect.txt"))
 	if err != nil {
