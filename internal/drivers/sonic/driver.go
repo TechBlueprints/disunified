@@ -20,7 +20,9 @@ import (
 // login user needs no sudo: collect.py reads Redis through swsscommon.
 // Options:
 //
-//	ssh_key      private key file (default: agent, ~/.ssh/id_ed25519, id_rsa)
+//	ssh_key      private key file, or a .pub that selects that one ssh-agent
+//	             key (default: every agent key one at a time, then
+//	             ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts  known_hosts file (default ~/.ssh/known_hosts)
 //	native_vlan  the SONiC VLAN that is UniFi's untagged Default network,
 //	             2..4094 (default 4094). SONiC refuses to create VLAN 1, so
@@ -66,6 +68,8 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	t.KeyFile = cfg.Options["ssh_key"]
 	t.KnownHosts = cfg.Options["known_hosts"]
 	c := NewCollector(t)
+	logf := func(f string, a ...any) { c.Log.Printf(f, a...) }
+	t.Logf = logf
 	c.NativeVLAN = native
 	c.Dial = host
 	port := ""
@@ -79,7 +83,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 			addr = net.JoinHostPort(h, port)
 		}
 		r := sshrun.New(addr, user)
-		r.KeyFile, r.KnownHosts = keyFile, knownHosts
+		r.KeyFile, r.KnownHosts, r.Logf = keyFile, knownHosts, logf
 		return r
 	}
 	c.StateDir = strings.TrimSpace(cfg.Options["state_dir"])
