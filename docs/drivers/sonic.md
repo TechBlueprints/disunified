@@ -835,7 +835,7 @@ does not expose.
 
 | UniFi push | Why not |
 |---|---|
-| `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); refused, unclaimed |
+| `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); logged, unclaimed. **An unmerged upstream implementation exists; what building it takes is §8** |
 | `switch.port.N.lldpmed.opmode` / `topology_notify` | `LLDP_PORT` has `enabled`/`mode`/TLV flags, no LLDP-MED; report-only like the Arista |
 | `switch.port.N.ld_mode` (loop detection) | nothing in SONiC; a real STP daemon would be the answer (see 7.4) |
 | `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking; `dhcp_relay` is L3; unclaimed |
@@ -881,6 +881,135 @@ What each emits (from the tests), and where the build differs from 7.1:
 `index`, `lanes`, `breakout_modes`) instead of `yes`; `Start` also checks
 `config clock timezone` and `config hostname` (`config-help.txt` gained
 both captured helps).
+
+## 8. IGMP snooping: what building it takes (assessed 2026-10-27)
+
+Community SONiC 202505 has no IGMP snooping (§7). This section is the honest
+account of what it would take to have it on the DX010, from the sources, so
+the decision can be made on facts.
+
+### 8.1 What exists today
+
+**An implementation is in flight upstream, unmerged.** Jasper Hou of Micas
+Networks opened a complete set of draft pull requests on 2025-10-23, all
+against the **202511** branch, all still open, "draft", `mergeable_state:
+blocked`, last touched 2026-09-10:
+
+| Piece | Where | Size | State |
+|---|---|---|---|
+| `l2mcorch` (orchagent) + `l2mcmgrd` (cfgmgr): CONFIG_DB → APPL_DB → SAI | [sonic-swss #3950](https://github.com/sonic-net/sonic-swss/pull/3950) | 4,084 lines, 16 files (`l2mcmgr.cpp` 2,023, `l2mcorch.cpp` 1,573) | 30 review comments, nearly all answered "will further revise"; a real memory-safety bug (`memcpy` of short IP strings past `c_str()`) found 2026-08-12 and acknowledged, not yet fixed; CI runs approved by maintainers |
+| `docker-l2mcd` container, `INCLUDE_L2MCD`, YANG models (`sonic-igmp-snooping.yang`, `sonic-mld-snooping.yang`), CoPP trap group for IGMP/MLD to the CPU, rsyslog, feature table | [sonic-buildimage #24327](https://github.com/sonic-net/sonic-buildimage/pull/24327) | 772 lines, 22 files | draft; **its submodule points at `sonic-net/sonic-l2mcd`, which does not exist** -- the build cannot resolve it as submitted |
+| `config ip igmp snooping …` / `show ip igmp snooping …` | [sonic-utilities #4100](https://github.com/sonic-net/sonic-utilities/pull/4100) | 1,944 lines | draft |
+| gNMI/translib for it | sonic-buildimage #24328 | 285 lines | closed, not merged |
+| **The daemon itself (`l2mcd`)**: IGMPv1/2/3 and MLD state machines, querier, fast-leave, mrouter ports, timers, a `l2mcd_sync.cpp` bridge to swss-common | [`jasper-hou-micas/sonic-l2mcd-micas`](https://github.com/jasper-hou-micas/sonic-l2mcd-micas), branches `dev` / `l2mcd-pre` (master holds only LICENSE/NOTICE) | 62 files, 1.09 MB of C (`igmp.c` 113 KB, `igmp_fsm.c` 98 KB, `l2mcd_mld_port.c` 133 KB, …), autotools + `debian/`, depends on libswsscommon and libevent | last commit 2026-08-14; Apache-2.0, NOTICE says it derives from Microsoft's original (the 2020 Broadcom L2MCD lineage -- [buildimage #4213](https://github.com/sonic-net/sonic-buildimage/pull/4213), whose own source repo `Azure/sonic-l2mcd` was never populated) |
+| Design | [SONiC HLD #426](https://github.com/sonic-net/SONiC/pull/426), `doc/l2mc/IGMP_Snooping_HLD.md`, 701 lines | closed 2025-01-29 **unmerged**; not in the SONiC doc tree |
+
+So: roughly **7,900 lines of new C/C++/Python plus a 1 MB C daemon**, written by one vendor engineer, reviewed but not accepted, with the daemon's source published only on a personal fork and a known memory bug. It is real and runs on their hardware; it is not something anyone has shipped from the community tree.
+
+**What 202505/202511 already provide that the design builds on.** `portsorch`
+already creates a per-VLAN SAI L2MC group (for VXLAN flooding), so the
+L2MC group API is exercised on Broadcom today. `intfsorch` already sets
+`SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE`. The CoPP trap types
+`igmp_query`/`igmp_leave`/`igmp_v{1,2,3}_report` exist in `copporch`; the
+202505 `copp_cfg.j2` just never enables them (the PR adds an `l2mcd` trap
+group, cir/cbs 600 pps, queue 3). The attributes the orch programs are all
+in the **public** SAI headers (`inc/saivlan.h`, `sail2mc.h`, `sail2mcgroup.h`):
+`SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE` (standard despite the name;
+Mellanox implements it too), `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`
+and the link-local variant, `SAI_L2MC_ENTRY_TYPE_XG/SG` with an output
+group of `L2MC_GROUP_MEMBER`s. The virtual switch's SAI (`vslib`,
+`SwitchBCM56850`) knows the L2MC object types, so the control path can be
+proven on the VS guest; forwarding cannot.
+
+**Images.** The Azure pipeline publishes nightly `sonic-broadcom.bin` for
+`202511` (§1's URL with `branchName=202511`) and the DX010 platform
+(`x86_64-cel_seastone-r0`) is on that branch. The PRs are against 202511, so a
+custom image is a 202511 build, not 202505; the driver's fixtures would be
+recaptured on a 202511 VS (`Start`'s `--help` checks are built for that drift).
+
+### 8.2 How it fits together
+
+```
+UniFi switch.vlan.N.igmp_*  --driver-->  config ip igmp snooping … (CLI, #4100)
+                                               |
+                                      CONFIG_DB L2MC|VlanN {enabled, querier, fast-leave,
+                                                query-interval, query-max-response-time, …}
+                                               |
+                 l2mcmgrd (cfgmgr) -----> APPL_DB L2MC_VLAN / _MEMBER / _MROUTER
+                 l2mcd container: IGMP packets trapped to the CPU (CoPP), joins/leaves/
+                 queries parsed, group->ports learned, querier sends queries, timers;
+                 writes members to APPL_DB
+                                               |
+                 l2mcorch (orchagent) --SAI--> VLAN igmp-snooping-enable, unknown-mcast
+                                               output group, one L2MC entry per
+                                               (VLAN, group) with its member ports
+                                               |
+                                      Tomahawk L2MC table: a group floods only to members
+```
+
+UniFi's eight per-VLAN keys (`igmp_snooping`, `igmp_querier_status`,
+`igmp_querier` address, `igmp_fastleave`, `igmp_maxresponse` 10,
+`igmp_groupmembership` 260, `igmp_mcrtrexpiretime` 180, `igmp_supression`)
+map onto the `L2MC` table's `enabled`, `querier`, `fast-leave`,
+`query-max-response-time`, `query-interval` (derived: group membership = 2 x
+query interval + max response, so 125 s for UniFi's 260/10) and the
+`L2MC_SUPPRESS` table; the querier address and the mrouter expiry have no
+field and are logged. That driver side is the small part: the usual
+captures, `control.go` mapping, tests -- a day or two in the established
+pattern, once the switch has the commands.
+
+### 8.3 The plan, if it is wanted
+
+1. **Build host** (needed for the STP image too, §7.4): a Proxmox guest with
+   8 vCPU, 16 GB, ~150 GB disk (the build tree is ~60 GB; NFS works, it is
+   just slower), Docker, `sonic-buildimage` at `202511`. First build of an
+   unmodified `sonic-vs.img.gz` and `sonic-broadcom.bin` to prove the
+   pipeline: 3-6 hours each, the first one longer for the slave container.
+   This also yields the `INCLUDE_STP=y` images on the same tree.
+2. **Integrate the three PRs** on a fork of 202511: #24327 with the
+   submodule pointed at `jasper-hou-micas/sonic-l2mcd-micas@dev` (or a fork
+   of it under TechBlueprints, so the build does not depend on a personal
+   branch), #3950 into `src/sonic-swss`, #4100 into `src/sonic-utilities`;
+   fix the `memcpy` bug and read the 30 review comments for anything else
+   that matters on our path (IPv4 only; no MCLAG; no warm boot).
+3. **Prove the control path on the VS guest**: enable on `Vlan4094`, static
+   group, `show ip igmp snooping groups`, APPL_DB and ASIC_DB entries, a
+   real IGMP join from a second guest on the same bridge (the VS's Linux
+   bridge forwards; the ASIC_DB entry is the proof, not traffic).
+4. **Hardware (the DX010, 202511 custom image)**: the one thing nothing
+   above can check is whether the **Broadcom SAI for Tomahawk** in 202511
+   accepts `SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE` and L2MC entries. The
+   L2MC *group* API is known to work (VXLAN uses it); the entry and the VLAN
+   attribute are what Enterprise-class images rely on, and Micas tests on
+   Broadcom, so the odds are good -- but if the SAI returns
+   `SAI_STATUS_NOT_SUPPORTED`, snooping cannot be done in this ASIC's SAI
+   and the whole thing stops there. Test: two receivers on one VLAN, one
+   joined; multicast source; port counters show the unjoined port quiet.
+5. **Driver**: map the keys (§8.2), claim the capability so the UI's
+   per-VLAN IGMP controls apply, captures and tests, feature map.
+
+### 8.4 Cost and risk, plainly
+
+- **Steps 1-3** are a build-and-debug project on draft code: a day to set up
+  the host, build time measured in hours per iteration, and an unknown
+  number of iterations to get 7,900 lines of unreviewed vendor code to
+  build and run on 202511 -- days at best, a couple of weeks if the daemon
+  misbehaves. The memory bug is known; there may be others.
+- **Step 4** cannot start before the switch arrives and carries the one
+  hard unknown (SAI support on this ASIC's vendor library).
+- **Ownership**: until upstream merges it, every SONiC upgrade on the DX010
+  is a rebuild of this image with the patches re-applied. Upstream is
+  active (CI runs approved through September 2026), so a merge in a 2026 or
+  2027 branch is plausible, at which point a stock image replaces the custom
+  one and the driver side carries over unchanged.
+- **What it buys**: multicast confined to subscribed ports on the DX010 and
+  UniFi's per-VLAN IGMP settings meaning something on it. Without it,
+  multicast within a VLAN floods to every DX010 port in that VLAN; the UniFi
+  switches downstream still snoop on their own access ports.
+
+The decision is Clint's. The cheaper-first order is: build host and STP
+image (step 1, useful regardless), then step 2 while waiting for the
+hardware, then step 4 on arrival.
 
 ## Sources
 
