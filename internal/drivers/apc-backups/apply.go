@@ -178,6 +178,21 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	return true, nil
 }
 
+// ApplySyslog points the card's syslog at the controller's remote syslog
+// host (nil: syslog off) through a partial syslog section in config.ini,
+// as the apc-pdu driver does. Only keys the card's own section has are
+// written: the committed fixture keeps four sections and no syslog one, so
+// the AOS 6.0.1 spelling is taken from the card at Start (and logged there)
+// rather than assumed; a card whose section is missing or spelled otherwise
+// is left alone with one log line.
+func (c *Collector) ApplySyslog(ctx context.Context, hosts []string) (bool, error) {
+	changed, err := c.syslog.Apply(ctx, hosts)
+	if err != nil {
+		return false, fmt.Errorf("apc-backups: %w", err)
+	}
+	return changed, nil
+}
+
 // tcpipConfig renders the [NetworkTCP/IP] partial; mask and gateway are
 // omitted when empty (a DHCP switch needs neither).
 func tcpipConfig(mac, mode, ip, mask, gw string) []byte {

@@ -202,6 +202,18 @@ type AddressController interface {
 	ApplyAddress(ctx context.Context, desired AddressDesired) (changed bool, err error)
 }
 
+// SyslogController gives the controller's remote syslog host to a device
+// without port control -- a power device whose management card keeps its own
+// list of syslog servers -- so the controller owns where it logs, as it does
+// for a switch (which takes the host with the rest of DeviceDesired). hosts
+// is the push's list, "ip" or "ip:port" with 514 left out; nil means remote
+// logging is off in UniFi, and the device stops sending. Optional.
+// Implementations must be idempotent: a device that already logs to exactly
+// hosts is not written.
+type SyslogController interface {
+	ApplySyslog(ctx context.Context, hosts []string) (changed bool, err error)
+}
+
 // OutletController switches and names outlets on a power device. It is
 // optional and discovered with a type assertion, like the other write-side
 // interfaces, so a read-only PDU driver is a valid first step.

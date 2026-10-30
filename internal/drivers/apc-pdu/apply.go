@@ -175,6 +175,21 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	return true, nil
 }
 
+// ApplySyslog points the card's syslog at the controller's remote syslog
+// host (nil: syslog off), through a partial [NetworkSYSLOG] section in the
+// same config file. A diff against the section read at Start; an upload is
+// read back about a minute later and the card's own file logged. The card
+// decides per event what goes to syslog (its event actions, left alone): on
+// AOS 3.9.2 the outlet, load, power-supply, cold/warm start and
+// unauthorised-access events do, logins and configuration changes do not.
+func (c *Collector) ApplySyslog(ctx context.Context, hosts []string) (bool, error) {
+	changed, err := c.syslog.Apply(ctx, hosts)
+	if err != nil {
+		return false, fmt.Errorf("apc-pdu: %w", err)
+	}
+	return changed, nil
+}
+
 // tcpipConfig renders the [NetworkTCP/IP] partial. mask and gateway are
 // omitted when empty (a DHCP switch needs neither).
 func tcpipConfig(mac, mode, ip, mask, gw string) []byte {

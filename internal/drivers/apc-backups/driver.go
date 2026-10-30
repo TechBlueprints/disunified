@@ -85,4 +85,5 @@ var (
 	_ devicemodel.OutletCycler      = (*Collector)(nil)
 	_ devicemodel.OutletPlanner     = (*Collector)(nil)
 	_ devicemodel.AddressController = (*Collector)(nil)
+	_ devicemodel.SyslogController  = (*Collector)(nil)
 )

@@ -6,6 +6,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // FixtureRunner replays recorded snmpwalk output instead of talking to a PDU,
@@ -120,7 +122,12 @@ func (f *FixtureRunner) SetInt(_ context.Context, oid string, v int) error {
 	return nil
 }
 
+// PutConfig records the upload and merges it into the served config.ini, as
+// the card applies it, so a read back sees the change.
 func (f *FixtureRunner) PutConfig(_ context.Context, body []byte) error {
 	f.Configs = append(f.Configs, string(body))
+	if f.Config != nil {
+		f.Config = apcnmc.Merge(f.Config, body)
+	}
 	return nil
 }

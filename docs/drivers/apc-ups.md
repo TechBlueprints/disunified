@@ -348,6 +348,13 @@ address the device reports.
 - There is no per-outlet or per-group metering in the map: output power is
   the whole load. "Which outlet is unused" cannot be read; it has to be known.
 - The map has no charging bit; charging is "on mains below 100 %".
+- **The unit cannot send syslog.** The SmartConnect port is not a
+  management card: it talks to APC's cloud and, once enabled, Modbus, and
+  has no syslog client, event log or web page. The controller's remote
+  logging host (`syslog.remote.*`) has nowhere to go, and `control.syslog`
+  is logged at start as having no effect for this driver. The unit's events (on battery,
+  transfer cause, self-test) are in its registers, so a log line for them
+  would have to come from the bridge itself.
 
 ## 10. Deploying
 

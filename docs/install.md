@@ -137,6 +137,11 @@ and `control.nut` (claim the NUT-server capability: the UI's **NUT Server**
 switch then runs a NUT server in the bridge, which needs its port reachable --
 `3493:3493` published, or the container on a macvlan network with its own
 address; [`docs/drivers/apc-ups.md`](drivers/apc-ups.md) §12).
+On the APC cards (`apc-pdu`, `apc-backups`) `control.syslog` writes the
+controller's remote logging host (Settings → System) into the card's own
+syslog servers, replacing whatever server the card had; on a switch it
+rides with `control.ports`. Anywhere else it is logged as having no effect
+(`apc-ups`: the SmartConnect port has no syslog client).
 
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list

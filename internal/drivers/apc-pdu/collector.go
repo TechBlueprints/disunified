@@ -3,6 +3,7 @@ package apcpdu
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // The PowerNet OIDs this driver reads and writes. The two outlet tables are
@@ -84,11 +86,18 @@ type Collector struct {
 	// Start (it is not in the MIB) and kept current by ApplyAddress.
 	dhcp     bool
 	dhcpRead bool
+	// syslog keeps the card's syslog servers on the controller's remote
+	// syslog host, through the same config file.
+	syslog *apcnmc.SyslogApplier
 }
 
 // NewCollector builds a collector over a runner.
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, warned: map[string]bool{}}
+	return &Collector{r: r, warned: map[string]bool{}, syslog: &apcnmc.SyslogApplier{
+		Get:  r.GetConfig,
+		Put:  r.PutConfig,
+		Logf: func(format string, args ...any) { log.Printf("apc-pdu: "+format, args...) },
+	}}
 }
 
 // Start runs every read the driver will ever do, once, so a wrong community
@@ -100,6 +109,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		c.mu.Lock()
 		c.dhcp, c.dhcpRead = configBootMode(b)
 		c.mu.Unlock()
+		c.syslog.Load(b)
 	}
 	snap, err := c.Collect(ctx)
 	if err != nil {

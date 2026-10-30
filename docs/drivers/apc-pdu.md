@@ -258,6 +258,42 @@ tests), and a different static address produces one `[NetworkTCP/IP]` upload
 with the Override line (the replay). After a move to DHCP the bridge's own
 `url:` is stale until the new lease is known; the log says so.
 
+### And where it logs: `control.syslog`
+
+With remote logging switched on in UniFi (Settings → System), every push --
+the power path's included -- carries `syslog.remote.ip`, `.port` and
+`.status=enabled` (captured from this PDU on Network 10.6.109). With
+`control: {syslog: true}` the driver writes that host into the card's own
+syslog servers through the same config file:
+
+```
+[NetworkSYSLOG]
+Syslog=enabled
+Server1=192.0.2.40
+Port1=514
+```
+
+Any other slot that holds a server is emptied (`ServerN=0.0.0.0`): the
+controller's host replaces the card's, as `control.syslog` does on a
+switch. Remote logging switched off in UniFi uploads `Syslog=disabled` and
+leaves the slots alone. The facility and the severity mapping are never
+written. The section is read from the card's `config.ini` at Start and
+logged; an upload is a diff against it, and about a minute later (the card
+applies an upload a little after the transfer) the whole file is read
+back and logged, so the log shows what the card holds, not what was sent.
+A card that does not take it is written three times and then left alone
+until the controller's host changes.
+
+What reaches the log host is the card's decision: each event's actions in
+`[EventActionConfig]` say whether it goes to syslog (`ES`) or only to the
+card's own event log (`E`). On AOS 3.9.2 out of the box, outlet on/off,
+bank and phase load thresholds, the internal power supplies, cold and warm
+start and unauthorised access (SNMP, web, console, FTP) go to syslog;
+logins, logouts and configuration changes do not, so the bridge's own FTP
+sessions add nothing. A quick end-to-end test that switches nothing is an
+SNMP read with a wrong community: the card logs it as an unauthorised SNMP
+access and sends that line.
+
 ## 11. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the

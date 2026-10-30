@@ -613,6 +613,19 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.AddressController = ac
 		log.Printf("control: the controller's IP Settings set the device's own address")
 	}
+	if o.controlSyslog && o.controlPorts == "" {
+		// A switch takes the syslog host with its other device settings,
+		// under port control; a power device has no ports to control. A
+		// device that can do neither keeps running: the flag was a no-op
+		// here before power devices took it, and one that cannot log at all
+		// (the Smart-UPS's SmartConnect port) is no reason to stop a bridge.
+		if sc, ok := sw.(devicemodel.SyslogController); sw != nil && ok {
+			loopCfg.SyslogController = sc
+			log.Printf("control: the controller's remote syslog host is written to the device")
+		} else {
+			log.Printf("control: -control-syslog has no effect: without -control-ports only a driver that sets its device's own syslog host (apc-pdu, apc-backups) takes it")
+		}
+	}
 	if o.controlPorts != "" {
 		ctl, ok := sw.(devicemodel.Controller)
 		if sw == nil || !ok {
