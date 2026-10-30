@@ -294,6 +294,17 @@ sessions add nothing. A quick end-to-end test that switches nothing is an
 SNMP read with a wrong community: the card logs it as an unauthorised SNMP
 access and sends that line.
 
+Verified live 2026-10-30 (the card already listed the site's log host, so
+the bridge wrote nothing): the line arrives as RFC 3164 with the card's
+**IP address as HOSTNAME** (no name), tag `System:`, facility user,
+severity informational, and the event code at the end
+(`Detected an unauthorized user attempting to access the SNMP interface
+from <addr>. 0x0004`). Its timestamp is the card's local time with no
+zone: this card runs NTP at `NTPTimeZone=-07:00` with
+`DSTConfiguration=Disabled` (`[SystemDate/Time]`), so from March to
+November its lines are stamped an hour behind. The controller's
+`system.timezone` and `ntpclient.*` are not applied to the card.
+
 ## 11. Things that will bite
 
 - `hw_caps` bit 128 is load-bearing. Without it the controller accepts the
