@@ -175,13 +175,15 @@ Each needs the same proof as above: a scrubbed capture under
 and the live check in the PR. For anything that switches an outlet, say in
 the issue which outlet is safe to switch.
 
-**Built, untested live (2026-10-30):** `control.syslog` on `apc-pdu` and
-`apc-backups` -- the controller's remote logging host written to the card's
-syslog section in `config.ini`. Closing it takes the bridge log's read-back
-line (`the card's config.ini now reads [NetworkSYSLOG] Syslog=enabled, ...`)
-and one of the card's events arriving at the log host; for `apc-backups`
-also the card's AOS 6.0.1 syslog section, scrubbed, added to its
-`config.ini` fixture with a test over it.
+**Verified live (2026-10-30):** `control.syslog` on `apc-pdu` (AOS 3.9.2) and
+`apc-backups` (AOS 6.0.1) -- the controller's remote logging host in the
+card's syslog section in `config.ini`, read back from the card, and the
+card's own event (a wrong-community SNMP read) at the log host. **Untested:**
+remote logging switched off in UniFi (`Syslog=disabled` is fixture-tested
+only) and a host on a port other than 514. **Not done:** the controller's
+time zone and NTP server on the cards -- both cards run NTP at a fixed
+`-07:00` with daylight saving disabled, so from March to November their
+syslog lines are stamped an hour behind.
 
 ---
 

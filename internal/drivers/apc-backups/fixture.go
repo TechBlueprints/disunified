@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // FixtureRunner serves captured pages (docs/fixtures/apc-backups-*/
@@ -116,8 +118,8 @@ func (f *FixtureRunner) setSOGState(n int, state string) {
 	})
 }
 
-// PutConfig implements Runner: records the body and applies a BootMode
-// change to the fixture's config, as the card would.
+// PutConfig implements Runner: records the body and merges it into the
+// fixture's config, as the card applies an upload.
 func (f *FixtureRunner) PutConfig(_ context.Context, body []byte) error {
 	if f.FailNext != nil {
 		err := f.FailNext
@@ -125,15 +127,7 @@ func (f *FixtureRunner) PutConfig(_ context.Context, body []byte) error {
 		return err
 	}
 	f.Puts = append(f.Puts, string(body))
-	for _, line := range strings.Split(string(body), "\n") {
-		line = strings.TrimSpace(line)
-		for _, key := range []string{"BootMode=", "DefaultGateway=", "SystemIP=", "SubnetMask="} {
-			if strings.HasPrefix(line, key) {
-				re := regexp.MustCompile(`(?m)^` + key + `.*$`)
-				f.Config = re.ReplaceAllString(f.Config, line)
-			}
-		}
-	}
+	f.Config = string(apcnmc.Merge([]byte(f.Config), body))
 	return nil
 }
 

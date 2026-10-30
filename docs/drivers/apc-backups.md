@@ -84,7 +84,14 @@ held one across restarts would run into that limit.
   first read, so AOS 6.0.1's syslog section has no capture yet: the driver
   reads it from the card at Start, logs it, and writes only keys it found
   there. A card whose section is missing or spelled differently is left
-  alone with one log line. Built 2026-10-30; not yet verified live.
+  alone with one log line. **Verified live 2026-10-30**: AOS 6.0.1 spells
+  the section `[NetworkSYSLOG]` like AOS 3.9.2, adds `Protocol1..4` (`0`)
+  and `Language1..4` (`enUs`), and shipped with syslog on and every server
+  `0.0.0.0` -- on, sending nowhere. One upload, the card's file read back
+  90 s later, and a wrong-community SNMP read reached the log host: HOSTNAME
+  is the card's IP, the message carries **no `System:` tag** (a parser takes
+  "Detected" as the app name), and the time is an hour behind during
+  daylight saving, as on the PDU.
 
 ## 4. Configuration
 

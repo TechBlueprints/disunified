@@ -13,8 +13,8 @@ import (
 // section is enabled with one server in slot 1.
 const pduConfig = "../../../docs/fixtures/apc-aos-3.9.2/config.ini"
 
-// The Back-UPS card's (AOS 6.0.1) as committed: the four sections that
-// driver reads, no syslog section.
+// The Back-UPS card's (AOS 6.0.1): syslog on, every server slot empty, and
+// Protocol/Language slots beside the PDU's keys.
 const backupsConfig = "../../../docs/fixtures/apc-backups-05.3/config.ini"
 
 func readFixture(t *testing.T, path string) []byte {
@@ -37,8 +37,12 @@ func TestParseSyslogReadsTheCardsServers(t *testing.T) {
 	if s.slots() != 4 {
 		t.Errorf("slots = %d, want 4", s.slots())
 	}
-	if _, ok := ParseSyslog(readFixture(t, backupsConfig)); ok {
-		t.Error("the Back-UPS fixture has no syslog section, but one was found")
+	b, ok := ParseSyslog(readFixture(t, backupsConfig))
+	if !ok || b.Section != "NetworkSYSLOG" || b.slots() != 4 || b.Hosts() != nil {
+		t.Errorf("Back-UPS: ParseSyslog = %q, %v, %d slots, hosts %v; want the section, 4 empty slots", b.Section, ok, b.slots(), b.Hosts())
+	}
+	if got, _ := b.Render([]string{"192.0.2.40"}); string(got) != "[NetworkSYSLOG]\r\nSyslog=enabled\r\nServer1=192.0.2.40\r\nPort1=514\r\n" {
+		t.Errorf("Back-UPS: Render = %q", got)
 	}
 }
 
@@ -168,11 +172,13 @@ func TestApplierGivesUpOnACardThatDoesNotTakeIt(t *testing.T) {
 	}
 }
 
-// The Back-UPS fixture has no syslog section: nothing is written, and the
-// refusal is logged once however often the loop asks.
+// A card whose file has no syslog section (the PDU's capture with that
+// section's header renamed): nothing is written, and the refusal is logged
+// once however often the loop asks.
 func TestApplierLeavesACardWithoutTheSectionAlone(t *testing.T) {
 	ctx := context.Background()
-	c := &card{cfg: readFixture(t, backupsConfig), take: true}
+	cfg := []byte(strings.Replace(string(readFixture(t, pduConfig)), "[NetworkSYSLOG]", "[NetworkSyslogElsewhere]", 1))
+	c := &card{cfg: cfg, take: true}
 	now, logs := time.Unix(0, 0), []string{}
 	a := c.applier(&now, &logs)
 	if a.Load(c.cfg) {

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // Switching a switched group: one two-step form post carrying the change,
@@ -127,18 +129,31 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	}
 }
 
-// The committed config.ini keeps no syslog section (the fixture holds only
-// the four sections the driver read when it was written), so the driver has
-// no spelling to write and leaves the card alone rather than guess at AOS
-// 6.0.1's keys.
-func TestApplySyslogLeavesACardWithoutASyslogSectionAlone(t *testing.T) {
+// The card's AOS 6.0.1 syslog section (Server1..4, Port1..4 plus Protocol
+// and Language slots the PDU's card lacks): one upload carrying only the
+// keys the controller's host changes, the card's file read back once it has
+// had time to apply it, and nothing more while it matches.
+func TestApplySyslogWritesTheCardsSectionAndReadsItBack(t *testing.T) {
 	c, fr, _ := startFixture(t)
-	for i := 0; i < 2; i++ {
-		if changed, err := c.ApplySyslog(context.Background(), []string{"192.0.2.40"}); changed || err != nil {
-			t.Fatalf("ApplySyslog = %v, %v; want nothing written", changed, err)
+	now := time.Unix(0, 0)
+	c.syslog.Now = func() time.Time { return now }
+	hosts := []string{"192.0.2.40"}
+	if changed, err := c.ApplySyslog(context.Background(), hosts); !changed || err != nil {
+		t.Fatalf("ApplySyslog = %v, %v; want an upload", changed, err)
+	}
+	if want := "[NetworkSYSLOG]\r\nSyslog=enabled\r\nServer1=192.0.2.40\r\nPort1=514\r\n"; len(fr.Puts) != 1 || fr.Puts[0] != want {
+		t.Fatalf("uploads = %q, want %q", fr.Puts, want)
+	}
+	for _, step := range []time.Duration{0, apcnmc.DefaultSettle, time.Hour} {
+		now = now.Add(step)
+		if changed, err := c.ApplySyslog(context.Background(), hosts); changed || err != nil {
+			t.Errorf("ApplySyslog after %v = %v, %v; want nothing to do", step, changed, err)
 		}
 	}
-	if len(fr.Puts) != 0 {
-		t.Errorf("uploads = %q, want none", fr.Puts)
+	if len(fr.Puts) != 1 {
+		t.Errorf("uploads = %d, want 1", len(fr.Puts))
+	}
+	if s, _ := apcnmc.ParseSyslog([]byte(fr.Config)); len(s.Hosts()) != 1 || s.Hosts()[0] != "192.0.2.40" {
+		t.Errorf("the fixture card now sends to %v", s.Hosts())
 	}
 }

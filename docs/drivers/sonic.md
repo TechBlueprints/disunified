@@ -256,7 +256,13 @@ a recapture with that PortChannel so `cfg_lag` holds `fast_rate` /
 `min_links` from a real switch; record each push as a scrubbed
 `system_cfg-*.txt`; update [`docs/feature-map.md`](../feature-map.md) and
 [`docs/support-matrix.md`](../support-matrix.md). Deploy into the one
-container on the Podman host like the others.
+container on the Podman host like the others, with the device-level
+controls in its `control:` block as the Arista has them -- `ntp`,
+`syslog`, `ssh_keys`, `snmp`, `igmp` are each off unless listed (only
+`hostname` defaults on for this driver), and a switch that is never given
+`syslog: true` never receives the site's log host however long remote
+logging is on in UniFi (the APC cards sat silent for that reason until
+2026-10-30).
 
 ## 4. Phase A log
 
