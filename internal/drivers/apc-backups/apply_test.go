@@ -126,3 +126,19 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 		t.Error("without the card's MAC the section would be ignored; must be refused")
 	}
 }
+
+// The committed config.ini keeps no syslog section (the fixture holds only
+// the four sections the driver read when it was written), so the driver has
+// no spelling to write and leaves the card alone rather than guess at AOS
+// 6.0.1's keys.
+func TestApplySyslogLeavesACardWithoutASyslogSectionAlone(t *testing.T) {
+	c, fr, _ := startFixture(t)
+	for i := 0; i < 2; i++ {
+		if changed, err := c.ApplySyslog(context.Background(), []string{"192.0.2.40"}); changed || err != nil {
+			t.Fatalf("ApplySyslog = %v, %v; want nothing written", changed, err)
+		}
+	}
+	if len(fr.Puts) != 0 {
+		t.Errorf("uploads = %q, want none", fr.Puts)
+	}
+}

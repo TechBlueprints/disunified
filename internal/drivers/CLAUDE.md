@@ -54,6 +54,11 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   lacks is reported present-but-off with no relay. A configuration written
   to the unit (a load-shed policy) sits behind an explicit driver option,
   is idempotent, and is read back before it is logged.
+- **`apcnmc` is not a driver**: it registers nothing and holds what the
+  APC drivers share about the management card itself -- its `config.ini`
+  (section parsing, the fixture runners' `Merge`) and the syslog section
+  (`SyslogApplier`, behind `devicemodel.SyslogController` for a device
+  without port control). A key it writes must exist in the card's own file.
 - **A device's own address (`AddressController`)** is applied only when the
   driver can verify it will still reach the device afterwards; DHCP is
   declined by a driver that cannot predict the lease. Adopting a device

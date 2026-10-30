@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // Collector reads the card's pages and builds the neutral snapshot.
@@ -42,11 +43,18 @@ type Collector struct {
 	rows     []outletRow // the last poll's rows, in snapshot order
 	resolved string
 	warned   map[string]bool
+	syslog   *apcnmc.SyslogApplier // the card's syslog servers, through config.ini
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, Log: log.Default(), warned: map[string]bool{}}
+	c := &Collector{r: r, Log: log.Default(), warned: map[string]bool{}}
+	c.syslog = &apcnmc.SyslogApplier{
+		Get:  r.GetConfig,
+		Put:  r.PutConfig,
+		Logf: func(format string, args ...any) { c.Log.Printf("apc-backups: "+format, args...) },
+	}
+	return c
 }
 
 // Start reads the identity pages and the card's config once, then polls.
@@ -73,6 +81,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		c.cardGW = ""
 	}
 	c.mu.Unlock()
+	c.syslog.Load(cfg)
 	snap, err := c.build(ctx, pages)
 	if err != nil {
 		return nil, err

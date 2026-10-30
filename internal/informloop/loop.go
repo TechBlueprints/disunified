@@ -86,6 +86,11 @@ type Config struct {
 	// AddressController applies the controller's IP Settings to the device
 	// itself. nil = the device keeps whatever address it has.
 	AddressController devicemodel.AddressController
+	// SyslogController applies the controller's remote syslog host to a
+	// device without port control (a switch takes it through
+	// DeviceController with ControlSyslog). nil = the device's own syslog
+	// settings are left alone.
+	SyslogController devicemodel.SyslogController
 	// ControlIGMP lets the controller's per-network IGMP snooping setting
 	// drive the switch. Off by default: UniFi defaults snooping off per
 	// network while EOS defaults it on, so the first apply would turn
@@ -529,12 +534,13 @@ func (l *Loop) reconcile(ctx context.Context) {
 	}
 	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
 		// Read-only for ports and outlets, but the device-level settings a
-		// driver does honour (its own address, the NUT server) still follow
-		// the controller's last push.
+		// driver does honour (its own address, the NUT server, its syslog
+		// host) still follow the controller's last push.
 		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		defer cancel()
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text)
+		l.applySyslog(cctx, text)
 		return
 	}
 	if !l.reconciledOnce && l.cfg.OnSystemCfg != nil {
@@ -545,6 +551,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	if l.cfg.Controller == nil {
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
+		l.applySyslog(cctx, text)
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return
@@ -877,6 +884,29 @@ func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 	}
 }
 
+// applySyslog hands the controller's remote syslog host to a driver that can
+// set it on a device without port control. Remote logging switched off in
+// UniFi arrives as no host at all. Errors are reported, not fatal.
+func (l *Loop) applySyslog(ctx context.Context, text string) {
+	if l.cfg.SyslogController == nil {
+		return
+	}
+	hosts := unificfg.Parse(text).SyslogHosts
+	changed, err := l.cfg.SyslogController.ApplySyslog(ctx, hosts)
+	if err != nil {
+		l.cfg.Logger.Printf("[%s] apply syslog host: %v", l.desc.MAC, err)
+		return
+	}
+	if !changed {
+		return
+	}
+	if len(hosts) == 0 {
+		l.cfg.Logger.Printf("[%s] applied syslog: remote logging is off in the controller; the device's syslog was switched off", l.desc.MAC)
+	} else {
+		l.cfg.Logger.Printf("[%s] applied syslog: the device was given %s as its syslog host", l.desc.MAC, strings.Join(hosts, ", "))
+	}
+}
+
 // setDeviceIP makes the informs report ip as the device's address (`ip`,
 // `connect_request_ip`, if_table, netmask) when it is an IP literal and
 // differs from what they report now. The descriptor's address is set once
@@ -988,11 +1018,12 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	_, prevText, _ := l.session.Applied() // what the device was following before this push
 	if l.cfg.Controller == nil && l.cfg.OutletController == nil {
 		// No port or outlet control; the device-level settings a driver
-		// honours (address, NUT server) are still applied before the push
-		// is marked as followed.
+		// honours (address, NUT server, syslog host) are still applied
+		// before the push is marked as followed.
 		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text)
+		l.applySyslog(cctx, text)
 		cancel()
 		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
@@ -1015,6 +1046,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		defer cancel()
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
+		l.applySyslog(cctx, text)
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return true

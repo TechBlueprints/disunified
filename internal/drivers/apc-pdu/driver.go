@@ -107,13 +107,15 @@ func stripScheme(s string) string {
 	return s
 }
 
-// Compile-time checks: the PDU is a read/collect device that controls outlets
-// and nothing else. It deliberately does not implement devicemodel.Controller
-// (it has no switch ports to configure).
+// Compile-time checks: the PDU is a read/collect device that controls its
+// outlets, its own address and its syslog host. It deliberately does not
+// implement devicemodel.Controller (it has no switch ports to configure).
 var (
-	_ devicemodel.Driver           = Driver{}
-	_ devicemodel.Device           = (*Collector)(nil)
-	_ devicemodel.OutletController = (*Collector)(nil)
-	_ devicemodel.OutletCycler     = (*Collector)(nil)
-	_ devicemodel.Capable          = (*Collector)(nil)
+	_ devicemodel.Driver            = Driver{}
+	_ devicemodel.Device            = (*Collector)(nil)
+	_ devicemodel.OutletController  = (*Collector)(nil)
+	_ devicemodel.OutletCycler      = (*Collector)(nil)
+	_ devicemodel.Capable           = (*Collector)(nil)
+	_ devicemodel.AddressController = (*Collector)(nil)
+	_ devicemodel.SyslogController  = (*Collector)(nil)
 )

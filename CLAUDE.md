@@ -185,6 +185,12 @@ stay stopped** (one bridge per adopted key).
   `syslog.ip`/`syslog.port` (unifi-emu's notes, never captured) until that day,
   so no driver had ever received a host. Deployed the same evening: the Arista
   shows `Logging to '<host>' port 514` on the first push after the restart.
+  The power path's (`usp`) push carries the same keys (captured from the PDU,
+  already on Network **10.6.109**: `docs/fixtures/controller-10.6.109/`), but
+  the loop handed them only to switches until 2026-10-30, so no APC card ever
+  logged anywhere; `control.syslog` without `control.ports` now writes them
+  into the card's `config.ini` (`apc-pdu`, `apc-backups`; the Smart-UPS's
+  SmartConnect port has no syslog at all).
 - **Topology parent = the upstream switch seeing the device's MAC on a port.**
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not

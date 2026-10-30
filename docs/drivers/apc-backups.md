@@ -77,6 +77,14 @@ held one across restarts would run into that limit.
   writes `options.gateway`, or failing that keeps the card's current one,
   and treats the gateway as part of the diff. Found live: the first static
   write left the card at `DefaultGateway=0.0.0.0` until the option existed.
+- **Syslog host** (`control.syslog`): the controller's remote logging host
+  into the card's syslog servers, the apc-pdu write
+  ([`apc-pdu.md`](apc-pdu.md) §10, shared code in `internal/drivers/apcnmc`).
+  The committed `config.ini` fixture keeps only the four sections the driver
+  first read, so AOS 6.0.1's syslog section has no capture yet: the driver
+  reads it from the card at Start, logs it, and writes only keys it found
+  there. A card whose section is missing or spelled differently is left
+  alone with one log line. Built 2026-10-30; not yet verified live.
 
 ## 4. Configuration
 

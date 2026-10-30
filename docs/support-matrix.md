@@ -175,6 +175,14 @@ Each needs the same proof as above: a scrubbed capture under
 and the live check in the PR. For anything that switches an outlet, say in
 the issue which outlet is safe to switch.
 
+**Built, untested live (2026-10-30):** `control.syslog` on `apc-pdu` and
+`apc-backups` -- the controller's remote logging host written to the card's
+syslog section in `config.ini`. Closing it takes the bridge log's read-back
+line (`the card's config.ini now reads [NetworkSYSLOG] Syslog=enabled, ...`)
+and one of the card's events arriving at the log host; for `apc-backups`
+also the card's AOS 6.0.1 syslog section, scrubbed, added to its
+`config.ini` fixture with a test over it.
+
 ---
 
 ## `sonic` — community SONiC switch (control verified live on the virtual switch, build 202505.1238524, with the exceptions below; hardware pending)

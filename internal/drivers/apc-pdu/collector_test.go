@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 const fixtureDir = "../../../docs/fixtures/apc-aos-3.9.2"
@@ -391,5 +393,37 @@ func TestMaskFromPrefix(t *testing.T) {
 		if got := maskFromPrefix(n); got != want {
 			t.Errorf("maskFromPrefix(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+// The controller's remote syslog host replaces the card's server in one
+// [NetworkSYSLOG] upload; the card's file is read back once it has had time
+// to apply it, and a card that already sends there is not written again.
+func TestApplySyslogUploadsTheSectionOnceAndReadsItBack(t *testing.T) {
+	c, r := newTestCollector(t)
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	now := time.Unix(0, 0)
+	c.syslog.Now = func() time.Time { return now }
+	hosts := []string{"192.0.2.40"}
+	changed, err := c.ApplySyslog(context.Background(), hosts)
+	if err != nil || !changed {
+		t.Fatalf("ApplySyslog = %v, %v; want an upload", changed, err)
+	}
+	if want := "[NetworkSYSLOG]\r\nSyslog=enabled\r\nServer1=192.0.2.40\r\nPort1=514\r\n"; len(r.Configs) != 1 || r.Configs[0] != want {
+		t.Fatalf("uploads = %q, want %q", r.Configs, want)
+	}
+	for _, step := range []time.Duration{0, apcnmc.DefaultSettle, time.Hour} {
+		now = now.Add(step)
+		if changed, err := c.ApplySyslog(context.Background(), hosts); changed || err != nil {
+			t.Errorf("ApplySyslog after %v = %v, %v; want nothing to do", step, changed, err)
+		}
+	}
+	if len(r.Configs) != 1 {
+		t.Errorf("uploads = %d, want 1", len(r.Configs))
+	}
+	if s, _ := apcnmc.ParseSyslog(r.Config); len(s.Hosts()) != 1 || s.Hosts()[0] != "192.0.2.40" {
+		t.Errorf("the fixture card now sends to %v", s.Hosts())
 	}
 }
