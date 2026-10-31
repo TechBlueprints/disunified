@@ -73,8 +73,7 @@ What each driver does today:
   SSH exec per poll, and the controller's port, VLAN, LAG, mirror, storm,
   jumbo, NTP, SSH-key, reboot and address settings written through SONiC's
   own `config` CLI. Like UniFi's own SONiC switches, it takes the UniFi
-  name as its hostname (`control.hostname`, on by default for this driver
-  only; `hostname: false` keeps the switch's) and runs its aggregates with
+  name as its hostname and runs its aggregates with
   LACP fast rate and min-links 1. Verified on the SONiC virtual switch (build
   202505.1238524) only; hardware is pending
   ([`docs/drivers/sonic.md`](docs/drivers/sonic.md)).
@@ -117,8 +116,7 @@ running it against anything you care about.
   changes speeds and breakouts, STP, LACP, storm control, NTP and syslog,
   and reboots the device when the controller asks; a SONiC switch is
   renamed to its UniFi name by default; a UPS driver option
-  writes a load-shed policy into the unit. With the opt-in `control.address`
-  it will even set the device's own management address from the
+  writes a load-shed policy into the unit. It will even set the device's own management address from the
   controller's IP Settings (a switch's config, a PDU card's config.ini, a
   Podman host's NetworkManager profile) — the one setting that can strand
   the bridge from the device it manages. A wrong

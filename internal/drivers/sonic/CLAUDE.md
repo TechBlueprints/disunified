@@ -131,8 +131,10 @@ control on in `TestReplaySonicLabSession`.
   from CONFIG_DB only.
 - **Device level (§6.3), `device.go`.** STP is PVST only and only with
   `FEATURE|stp`; IGMP and DHCP snooping are refused with a log. NTP and
-  syslog: add the controller's, remove only what the bridge added
-  (`<state_dir>/sonic-managed.json`, with the managed SNMP community);
+  syslog: the controller's list is the switch's -- add what it names,
+  remove every other server, a hand-added one too (2026-10-31; until then
+  only what the bridge had added). `<state_dir>/sonic-managed.json` still
+  records them, with the managed SNMP community and the pins;
   hostnames are resolved by the bridge (`Resolve` hook in tests). The SNMP
   community is a credential: commands are logged with `<community>`.
 - **SSH keys** go in a marked block of the login user's authorized_keys
@@ -143,9 +145,8 @@ control on in `TestReplaySonicLabSession`.
   `<pubkey>` placeholders are).
 - **Manage → Restart arrives as a reply `_type: reboot`** (`reboot_type:
   soft`), not as a `cmd` (10.6.106, build 1238524, 2026-10-27); the session
-  handles it like the reboot cmd: `sudo reboot` with `control.reboot`
-  (verified live: back in ~2 min, the bridge reconnected), emulated
-  otherwise.
+  handles it like the reboot cmd: `sudo reboot` (verified live: back in
+  ~2 min, the bridge reconnected); UniFi's Restart is never emulated.
 - **The reported address follows the dial target.** The informs' `ip` /
   `connect_request_ip` came from the configured target at start and stayed
   stale after a move (the controller showed the old address). The loop now
@@ -254,14 +255,13 @@ control on in `TestReplaySonicLabSession`.
   first match; a current zone with the same rule (America/Denver) is kept.
   A zone name in the push is taken as is. `DEVICE_METADATA timezone` is the
   read side (`System.Timezone`; `UTC` on the VS). Verify live.
-- **Hostname** with `control.hostname` -- **on by default for sonic** (unset
-  in the config, or `-control-hostname`/`DUI_CONTROL_HOSTNAME` unset; off
-  for every other driver; `hostname: false` turns it off), because UniFi's
-  own SONiC switches always take the UniFi name as their hostname (§9,
+- **Hostname** from UniFi, no opt-in (2026-10-31; before that
+  `control.hostname`, on by default for sonic only), because UniFi's own
+  SONiC switches always take the UniFi name as their hostname (§9,
   2026-10-28): `config hostname <name>` then
   `config save -y` (hostcfgd sets the Linux hostname). SONiC's YANG caps
   the whole name at 63 characters, not per label. Verified live on the VS
-  (`docs/drivers/sonic.md` §6.6); the default is config-tested.
+  (`docs/drivers/sonic.md` §6.6).
 - **Locate (`locate.go`) -- HARDWARE-UNTESTED.** No LED in the `config`
   CLI; the platform API's `Chassis.set_status_led("off"|"green")` (DX010:
   `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`) returns False

@@ -15,8 +15,8 @@ a VLAN-aware bridge. **Limits to know before you start:** with the default
 cluster-wide numbering there are **48 guest ports across the whole
 cluster** (the 54-port model minus the node's NICs); a bigger cluster needs
 `numbering: node`, which has not run live. The driver writes
-`/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and, with
-`control.ntp`, `/etc/chrony/sources.d/disunified.sources`; nothing else on
+`/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and, under
+port control, `/etc/chrony/sources.d/disunified.sources`; nothing else on
 the node. Only PVE 9.1 has run it: PVE 8, a standalone node, a second bridge,
 an LACP bond, `numbering: node` and UI-driven LACP (§3b) are each listed
 with what a PR needs in [`docs/support-matrix.md`](../support-matrix.md) --
@@ -214,14 +214,17 @@ so until the two agree. What is *not* covered: a tag changed by
 hand on a node after adoption — UniFi is the source of truth from then on
 and the reconcile puts the controller's value back (change it in UniFi).
 
-Switch-wide: IGMP snooping (`control.igmp`) toggles the bridge's
-`multicast_snooping` (bridge-wide: on when UniFi enables it on VLAN 1, else
-on any managed VLAN); NTP (`control.ntp`) writes
-`/etc/chrony/sources.d/disunified.sources` and `chronyc reload sources`.
-STP requests are logged once (a Proxmox bridge runs `bridge-stp off` by
-design), syslog is logged (journald has no remote target), reboot is never
-real (`Rebooter` is not implemented: the controller's Restart is emulated
-whatever `control.reboot` says), SSH keys are not installed.
+Switch-wide, from the controller whether or not ports are written (no
+per-setting opt-in since 2026-10-31):
+IGMP snooping toggles the bridge's `multicast_snooping` (bridge-wide: on
+when UniFi enables it on VLAN 1, else on any managed VLAN); NTP writes
+`/etc/chrony/sources.d/disunified.sources` and `chronyc reload sources` --
+beside the node's own `pool` line in `chrony.conf`, which the driver does
+not edit, so the node still uses both. STP requests are logged once (a
+Proxmox bridge runs `bridge-stp off` by design), syslog is logged (journald
+has no remote target), reboot is never real (`Rebooter` is not
+implemented: the controller's Restart is emulated), SSH keys are not
+installed.
 
 Capabilities claimed (`switch_caps`): IGMP snooping and link aggregation
 (one aggregate session, for §3b), plus STP, BPDU guard and port cost only
@@ -344,7 +347,6 @@ devices:
       # known_hosts: /etc/disunified/known_hosts
     control:
       ports: all                # port state and VLANs -> qm/pct set; see §3 before "all"
-      igmp: false
 ```
 
 In a container ([`deploy/compose.yaml`](../../deploy/compose.yaml)), mount the private key and a

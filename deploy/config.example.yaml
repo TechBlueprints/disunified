@@ -28,16 +28,11 @@ devices:                             # "switches:" is still accepted (the pre-re
     #                                # UniFi cannot upgrade a bridged switch: an upgrade it requests
     #                                # is emulated and the requested version reported from then on.
     control:                         # what the UniFi controller owns on this switch
-      ports: all                     # "off" (read-only), "all", or a list like "2,5-8"
-      igmp: true                     # per-network IGMP snooping follows UniFi
-      ntp: true                      # NTP servers follow UniFi
-      syslog: true                   # remote syslog host follows UniFi
-      # hostname: true               # the UniFi name (spaces removed) becomes the device's hostname
-      #                              # (only drivers that can set one: sonic, where it is on by default,
-      #                              # as UniFi's own SONiC switches do; hostname: false turns it off)
-      reboot: true                   # the controller's Restart really reloads the switch
-      ssh_keys: true                 # the controller's SSH keys are installed on the switch user
-      snmp: true                     # UniFi's SNMP v1/v2c community is configured on the switch (read-only)
+      ports: all                     # "off" (read-only), "all", or a list like "2,5-8". Once on, UniFi
+      #                              # also owns everything else it configures on its own switches: IGMP
+      #                              # snooping, NTP, the remote syslog host, the hostname, SSH keys,
+      #                              # SNMP and Restart (a real reload) -- the device's own settings for
+      #                              # them are replaced. A driver applies what its device can take.
 
 
   # A Proxmox VE node: its bridge is the switch, its guests are the ports
@@ -60,8 +55,7 @@ devices:                             # "switches:" is still accepted (the pre-re
       # allow_initial_changes: true  # let the first push after adoption change ports (default: held until it matches)
       # no_seed: true                # do not write the switch's port state into the controller on adoption
       # apply_timeout: 90s           # budget for one write to the device (default: the driver's own, 90s for sonic, else the 20s collect budget)
-      igmp: false                    # bridge-wide multicast_snooping follows UniFi
-      ntp: false                     # chrony sources follow UniFi
+      #                              # (IGMP snooping -> the bridge's multicast_snooping, NTP -> a chrony sources file)
 
   - name: pdu-1                      # an APC switched rack PDU, presented as a USP-PDU-Pro
     driver: apc-pdu                  # SNMPv1 for reads and switching, the card's config.ini over FTP for the rest
@@ -74,7 +68,8 @@ devices:                             # "switches:" is still accepted (the pre-re
       write_community: private       # its access-control entry must be type Write+, not Write, or SETs vanish
     control:
       outlets: all                   # "all", or "2,5-8"; empty = read-only. An outlet is real load.
-      address: true                  # the controller's IP Settings set the card's address (static only; the DHCP default is never applied)
+      #                              # The card's address (static IP Settings; the DHCP default is never
+      #                              # applied) and syslog host follow UniFi with no key.
 
   - name: ups-1                      # an APC Smart-UPS, presented as a UniFi UPS 2U Pro
     driver: apc-ups                  # Modbus TCP on the unit's own SmartConnect port (enable it at the LCD)
@@ -100,8 +95,8 @@ devices:                             # "switches:" is still accepted (the pre-re
       known_hosts: /etc/disunified/ssh/known_hosts
       # uplink: enp6s18              # default: the NIC carrying the default route
       # slots_file: /var/lib/disunified/podman-slots.json   # endpoint -> port map, kept on the host
-    control:
-      address: true                  # IP Settings -> the uplink's NetworkManager profile (static only, same address)
+    # No control block: containers are read-only ports; the host's address follows UniFi's
+    # IP Settings (the uplink's NetworkManager profile; static only, same address).
 
   - name: ups-2                      # an APC Back-UPS Pro network model (BG500/1000/1500) behind its embedded NMC
     driver: apc-backups              # the card's web pages (nothing over SNMP for this family); config.ini over FTP for the address
@@ -117,4 +112,3 @@ devices:                             # "switches:" is still accepted (the pre-re
       gateway: 192.0.2.1             # written with a static address: the controller's push for a UPS carries no route
     control:
       outlets: "3,4"                 # the switched groups (rows 3-4); the main groups (1-2) are refused regardless
-      address: true

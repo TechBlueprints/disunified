@@ -83,14 +83,6 @@ func main() {
 		switchSSHFlag  = flag.String("switch-ssh", "", "pre-rename alias for -device-ssh")
 		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\", or a list like \"2,5-8\"; empty = read-only")
 		controlOutlets = flag.String("control-outlets", envChain("", "DUI_CONTROL_OUTLETS", "STU_CONTROL_OUTLETS"), "switch and name a power device's outlets from the controller: \"all\", or a list like \"2,5-8\"; empty = read-only")
-		controlAddress = flag.Bool("control-address", envChain("", "DUI_CONTROL_ADDRESS", "STU_CONTROL_ADDRESS") == "1", "let the controller's IP Settings for the device set the device's own management address (off by default)")
-		controlIGMP    = flag.Bool("control-igmp", envChain("", "DUI_CONTROL_IGMP", "STU_CONTROL_IGMP") == "1", "let the controller's per-network IGMP snooping setting drive the device (off by default)")
-		controlNTP     = flag.Bool("control-ntp", envChain("", "DUI_CONTROL_NTP", "STU_CONTROL_NTP") == "1", "let the controller's NTP servers replace the device's (off by default)")
-		controlHost    = flag.Bool("control-hostname", envChain("", "DUI_CONTROL_HOSTNAME") == "1", "the controller's name for the device (resolv.host.1.name) becomes its hostname (default: on for sonic, off otherwise; sonic only)")
-		controlSyslog  = flag.Bool("control-syslog", envChain("", "DUI_CONTROL_SYSLOG", "STU_CONTROL_SYSLOG") == "1", "let the controller's remote syslog host replace the device's (off by default)")
-		controlReboot  = flag.Bool("control-reboot", envChain("", "DUI_CONTROL_REBOOT", "STU_CONTROL_REBOOT") == "1", "the controller's Restart really reloads the device (off by default: emulated)")
-		controlSSH     = flag.Bool("control-ssh-keys", envChain("", "DUI_CONTROL_SSH_KEYS", "STU_CONTROL_SSH_KEYS") == "1", "install the SSH keys the controller pushes on the device's bridge user (off by default)")
-		controlSNMP    = flag.Bool("control-snmp", envChain("", "DUI_CONTROL_SNMP", "STU_CONTROL_SNMP") == "1", "the controller's SNMP v1/v2c community is configured on the device (off by default)")
 		controlNUT     = flag.Bool("control-nut", envChain("", "DUI_CONTROL_NUT") == "1", "power devices: claim the NUT-server capability so the controller's NUT Server switch runs a NUT server in the bridge (off by default)")
 
 		// Controller REST API (names)
@@ -104,6 +96,14 @@ func main() {
 		showBuild   = flag.Bool("build-version", false, "print this bridge's own build version and exit (-version is the firmware version reported to the controller)")
 		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the device, print it as JSON with the suggested model, and exit")
 	)
+	// Retired: UniFi owns the device's address (IP Settings), IGMP
+	// snooping, NTP, the hostname, the syslog host, Restart, SSH keys and
+	// SNMP, as it does on its own switches; a driver applies whatever of it
+	// the device can take. The flags are accepted and ignored so existing
+	// command lines keep working.
+	for _, name := range []string{"control-address", "control-igmp", "control-ntp", "control-hostname", "control-syslog", "control-reboot", "control-ssh-keys", "control-snmp"} {
+		flag.Bool(name, false, "ignored: the controller's setting applies whenever the driver can apply it")
+	}
 	flag.Parse()
 
 	// Reconcile the pre-rename -switch-url/-switch-ssh aliases with the
@@ -155,12 +155,6 @@ func main() {
 		return
 	}
 
-	// -control-hostname unset (flag and env) takes the driver's default.
-	controlHostname := *controlHost
-	if !flagGiven("control-hostname") && os.Getenv("DUI_CONTROL_HOSTNAME") == "" {
-		controlHostname = config.HostnameDefault(*driverName)
-	}
-
 	o := options{
 		controller: *controller, informURL: *informURL, model: *model, udapiVersion: *udapiVer,
 		interval: *interval, recordDir: *recordDir, stateFile: *stateFile,
@@ -168,8 +162,7 @@ func main() {
 		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
-		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlAddress: *controlAddress, controlIGMP: *controlIGMP, controlNTP: *controlNTP, controlSyslog: *controlSyslog, controlHostname: controlHostname,
-		controlReboot: *controlReboot, controlSSH: *controlSSH, controlSNMP: *controlSNMP, controlNUT: *controlNUT,
+		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlNUT: *controlNUT,
 		unifiURL: *unifiURL, unifiSite: *unifiSite, unifiKey: envChain("", "DUI_UNIFI_API_KEY", "STU_UNIFI_API_KEY"), provision: *provision,
 		collectOnce: *collectOnce, logger: log.Default(),
 	}
@@ -190,10 +183,6 @@ type options struct {
 	driverOptions                              map[string]string
 	controlPorts                               string
 	controlOutlets                             string
-	controlAddress                             bool
-	controlIGMP, controlNTP, controlSyslog     bool
-	controlHostname                            bool
-	controlReboot, controlSSH, controlSNMP     bool
 	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
 	applyTimeout                               time.Duration // 0 = the loop's default
@@ -220,8 +209,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
 			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlAddress: sw.Control.Address, controlIGMP: sw.Control.IGMP, controlNTP: sw.Control.NTP, controlSyslog: sw.Control.Syslog, controlHostname: sw.Control.HostnameOn(sw.Driver),
-			controlReboot: sw.Control.Reboot, controlSSH: sw.Control.SSHKeys, controlSNMP: sw.Control.SNMP, controlNUT: sw.Control.NUT,
+			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
 			unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
@@ -607,27 +595,22 @@ func runOne(ctx context.Context, o options) error {
 			log.Printf("control: switching and naming outlets %s from the controller", o.controlOutlets)
 		}
 	}
-	if o.controlAddress {
-		ac, ok := sw.(devicemodel.AddressController)
-		if sw == nil || !ok {
-			return errors.New("-control-address needs a device connection whose driver can set its device's address")
-		}
+	// What UniFi owns on the device follows the controller whenever the
+	// driver can apply it: the device's own address (static IP Settings;
+	// the DHCP default is never applied), a power device's syslog host, and
+	// -- through the device's DeviceController, whether or not its ports are
+	// written -- STP, IGMP, NTP, syslog, SNMP, the hostname, SSH keys and
+	// Restart.
+	if ac, ok := sw.(devicemodel.AddressController); sw != nil && ok {
 		loopCfg.AddressController = ac
 		log.Printf("control: the controller's IP Settings set the device's own address")
 	}
-	if o.controlSyslog && o.controlPorts == "" {
-		// A switch takes the syslog host with its other device settings,
-		// under port control; a power device has no ports to control. A
-		// device that can do neither keeps running: the flag was a no-op
-		// here before power devices took it, and one that cannot log at all
-		// (the Smart-UPS's SmartConnect port) is no reason to stop a bridge.
-		if sc, ok := sw.(devicemodel.SyslogController); sw != nil && ok {
-			loopCfg.SyslogController = sc
-			log.Printf("control: the controller's remote syslog host is written to the device")
-		} else {
-			log.Printf("control: -control-syslog has no effect: without -control-ports only a driver that sets its device's own syslog host (apc-pdu, apc-backups) takes it")
-		}
+	if sc, ok := sw.(devicemodel.SyslogController); sw != nil && ok {
+		loopCfg.SyslogController = sc
+		log.Printf("control: the controller's remote syslog host is written to the device")
 	}
+	loopCfg.ControlIGMP, loopCfg.ControlNTP, loopCfg.ControlSyslog, loopCfg.ControlHostname = true, true, true, true
+	loopCfg.ControlReboot, loopCfg.ControlSSHKeys, loopCfg.ControlSNMP = true, true, true
 	if o.controlPorts != "" {
 		ctl, ok := sw.(devicemodel.Controller)
 		if sw == nil || !ok {
@@ -639,13 +622,6 @@ func runOne(ctx context.Context, o options) error {
 		}
 		loopCfg.Controller = ctl
 		loopCfg.ControlPorts = allow
-		loopCfg.ControlIGMP = o.controlIGMP
-		loopCfg.ControlNTP = o.controlNTP
-		loopCfg.ControlSyslog = o.controlSyslog
-		loopCfg.ControlHostname = o.controlHostname
-		loopCfg.ControlReboot = o.controlReboot
-		loopCfg.ControlSSHKeys = o.controlSSH
-		loopCfg.ControlSNMP = o.controlSNMP
 		loopCfg.AllowInitialChanges = o.allowInitialChanges
 		// EOS 7160 and Linux bridges forward jumbo at L2 unconditionally; a
 		// driver that can turn it off (SONiC, by port MTU) says so.
@@ -654,9 +630,9 @@ func runOne(ctx context.Context, o options) error {
 		}
 		loopCfg.DefaultPortNames = defaults
 		if allow == nil {
-			log.Printf("control: writing controller config to ALL ports (igmp=%v)", o.controlIGMP)
+			log.Printf("control: writing controller config to ALL ports, and the device-wide settings the driver takes")
 		} else {
-			log.Printf("control: writing controller config to ports %s (igmp=%v)", o.controlPorts, o.controlIGMP)
+			log.Printf("control: writing controller config to ports %s, and the device-wide settings the driver takes", o.controlPorts)
 		}
 	} else if o.controlOutlets == "" {
 		log.Printf("control: read-only (no -control-ports); controller pushes are accepted but not written")

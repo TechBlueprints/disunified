@@ -169,7 +169,7 @@ parsing, idempotence and the wire-contract/replay suites.
 Model `USWF07D`. The VS has a real VM MAC, so it is placed behind its
 Proxmox node's port the way the Podman host is. Decide the address before
 adopting (adoption deletes the client record and any reservation, every
-driver has hit this): static on the guest first, then `control.address`.
+driver has hit this): static on the guest first, then UniFi's IP Settings.
 Walk the UI: port table, speed pickers, LLDP neighbours behind the linked
 ports, topology. Forget the device when done, or keep it as the lab unit.
 
@@ -256,13 +256,11 @@ a recapture with that PortChannel so `cfg_lag` holds `fast_rate` /
 `min_links` from a real switch; record each push as a scrubbed
 `system_cfg-*.txt`; update [`docs/feature-map.md`](../feature-map.md) and
 [`docs/support-matrix.md`](../support-matrix.md). Deploy into the one
-container on the Podman host like the others, with the device-level
-controls in its `control:` block as the Arista has them -- `ntp`,
-`syslog`, `ssh_keys`, `snmp`, `igmp` are each off unless listed (only
-`hostname` defaults on for this driver), and a switch that is never given
-`syslog: true` never receives the site's log host however long remote
-logging is on in UniFi (the APC cards sat silent for that reason until
-2026-10-30).
+container on the Podman host like the others. `ports: all` is the whole
+`control:` block: the address, NTP, syslog, SSH keys, SNMP, the time zone,
+the hostname and Restart follow UniFi from the first push, ports written or
+not (no per-setting opt-ins since 2026-10-31), and UniFi's NTP and syslog
+lists replace whatever the factory image carries.
 
 ## 4. Phase A log
 
@@ -677,8 +675,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
   outside the block (the operator's own key, the bridge's own key) are
   never touched. Compare by `<type> <value>`. All keys, not the Arista's
   two. Written with one `bash -s` that rewrites the file atomically.
-- **`Rebooter`:** `sudo reboot`. Only with `control.reboot`; the loop
-  emulates otherwise.
+- **`Rebooter`:** `sudo reboot` whenever the controller asks.
 - **Locate:** no LED command on SONiC (nothing for a port or chassis
   LED in `config`); the session reports `locating` as every driver does.
   (Superseded by §7.5: the driver now blinks the status LED through the
@@ -720,8 +717,8 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 - **Hostname (`resolv.host.1.name`):** queued repo-wide; SONiC's
   `config hostname <name>` exists and is the obvious implementation when
   the feature is turned on for every driver. Not part of A4. (Built in
-  §7.5 behind `control.hostname`; **on by default for sonic since
-  2026-10-28**, §9.)
+  §7.5, from the controller -- `control.hostname` until 2026-10-31, on by
+  default for sonic from 2026-10-28, §9.)
 - **Firmware, fault reporting:** generic in `internal/device`; nothing
   driver-side beyond fans/PSUs/temperatures on hardware (§5).
 
@@ -800,7 +797,7 @@ differed, and the replay fixture `replies-sonic.ndjson` sits under the
 **After the review-fix and feature passes (same evening, build bfbbfe1 →
 e5bfa83):** the first push after a restart applied `config clock timezone
 MST7MDT` (from the pushed POSIX rule) and `config hostname
-SONiCSeastone-DX010` (with `control.hostname`), both verified on the guest;
+SONiCSeastone-DX010`, both verified on the guest;
 `set-locate` through the API reached the driver, which tried the platform
 LED, logged that the VS has none, and reported `locating`. **Jumbo with an aggregate present, live (20:14--20:24, build e5bfa83):**
 aggregate 5+6 created entirely through the driver this time
@@ -1109,8 +1106,7 @@ community schema.
 **To do from this (small, driver-side):** the MAC-move guard as the
 `ld_mode` implementation; FEC-from-module on hardware. Done 2026-10-28:
 LACP fast rate and min-links 1 on the aggregates the driver creates (and
-brought in line on one that lacks them), and `control.hostname` on by
-default for sonic. The VLAN 1 question is closed for the community image.
+brought in line on one that lacks them), and the hostname from UniFi. The VLAN 1 question is closed for the community image.
 
 ## Sources
 

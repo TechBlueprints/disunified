@@ -60,12 +60,13 @@ func TestApplyNTPOwnership(t *testing.T) {
 	r.device("one server", devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.10"}}, []string{
 		"sudo config ntp del 192.0.2.11", save,
 	})
-	// An operator's own server is never removed.
+	// A server someone added by hand goes too: the controller's list is the
+	// switch's, as on UniFi's own switches.
 	if _, err := r.fr.Run(context.Background(), "sudo config ntp add 192.0.2.20", ""); err != nil {
 		t.Fatal(err)
 	}
 	r.system()
-	// A fresh collector on the same state dir knows what the bridge owns.
+	// A fresh collector on the same state dir.
 	c2 := NewCollector(r.fr)
 	c2.Log = r.c.Log
 	c2.StateDir = dir
@@ -76,9 +77,9 @@ func TestApplyNTPOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	r2 := &controlRig{t: t, c: c2, fr: r.fr, log: r.log}
-	r2.device("none", devicemodel.DeviceDesired{ManageNTP: true}, []string{"sudo config ntp del 192.0.2.10", save})
-	if got := r2.system().NTPServers; !reflect.DeepEqual(got, []string{"192.0.2.20"}) {
-		t.Errorf("the operator's server must stay: %v", got)
+	r2.device("none", devicemodel.DeviceDesired{ManageNTP: true}, []string{"sudo config ntp del 192.0.2.10", "sudo config ntp del 192.0.2.20", save})
+	if got := r2.system().NTPServers; len(got) != 0 {
+		t.Errorf("no NTP server in the push must leave none on the switch: %v", got)
 	}
 	// A hostname is resolved by the bridge; one that does not resolve is logged.
 	r2.c.Resolve = func(h string) (string, error) {
@@ -151,6 +152,21 @@ func TestApplySyslog(t *testing.T) {
 	r.device("port change, one gone", devicemodel.DeviceDesired{ManageSyslog: true, SyslogHosts: []string{"192.0.2.31:6514"}}, []string{
 		"sudo config syslog del 192.0.2.31", "sudo config syslog add 192.0.2.31 --port 6514", "sudo config syslog del 192.0.2.30", save,
 	})
+	// A server added by hand is removed like any other the controller does
+	// not name, and remote logging off in UniFi (no host) leaves none.
+	if _, err := r.fr.Run(context.Background(), "sudo config syslog add 192.0.2.32 --port 514", ""); err != nil {
+		t.Fatal(err)
+	}
+	r.system()
+	r.device("hand-added", devicemodel.DeviceDesired{ManageSyslog: true, SyslogHosts: []string{"192.0.2.31:6514"}}, []string{
+		"sudo config syslog del 192.0.2.32", save,
+	})
+	r.device("remote logging off", devicemodel.DeviceDesired{ManageSyslog: true}, []string{
+		"sudo config syslog del 192.0.2.31", save,
+	})
+	if got := r.system().SyslogHosts; len(got) != 0 {
+		t.Errorf("syslog servers left = %v", got)
+	}
 }
 
 // (c) SNMP: the managed community is replaced; the image's own (the

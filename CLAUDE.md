@@ -99,7 +99,19 @@ reply, and the reported address following an applied move
   `local-information/site.md` (an unused copper port and a down QSFP cage).
   Never touch a port that carries a live link.
 - UniFi is the source of truth for port config and VLANs (he OK'd replacing
-  the Arista's VLAN config). IGMP snooping too (`-control-igmp`).
+  the Arista's VLAN config). IGMP snooping too, and everything else UniFi
+  configures on its own switches: **no per-setting opt-ins** (Clint,
+  2026-10-31: "unifi is in control, not some mishmash of control with what's
+  already on the switches"; "nearly everything should come from the
+  controller"). Whenever a driver can apply it -- ports written or not --
+  the controller's address (static IP Settings), STP, IGMP snooping, NTP
+  servers, time zone, syslog host, hostname, SSH keys, SNMP and Restart
+  apply, and its list replaces the device's: a server set by hand goes.
+  `control.ports`/`outlets` only scope port and outlet writes (`off` = none).
+  The old `control.address/igmp/ntp/syslog/hostname/reboot/ssh_keys/snmp`
+  keys and `-control-*` flags load and are ignored. A per-device setting is
+  for what UniFi cannot express (breakout handling, the bridge's own
+  credentials and reachability, a driver's identity options).
 - MIT license, same as unifi-emu; credit James Braid.
 - **Tests use real captures, never hand-written protocol samples.** Every
   fixture is output captured from a real switch or a real controller, with
@@ -188,8 +200,7 @@ stay stopped** (one bridge per adopted key).
   The power path's (`usp`) push carries the same keys (captured from the PDU,
   already on Network **10.6.109**: `docs/fixtures/controller-10.6.109/`), but
   the loop handed them only to switches until 2026-10-30, so no APC card ever
-  logged anywhere; `control.syslog` without `control.ports` now writes them
-  into the card's `config.ini` (`apc-pdu`, `apc-backups`; verified live the
+  logged anywhere; the loop now writes them into the card's `config.ini` (`apc-pdu`, `apc-backups`; verified live the
   same day; the Smart-UPS's SmartConnect port has no syslog at all). The
   Back-UPS card shipped with syslog on and no server; the PDU already listed
   the log host and was simply quiet (it syslogs outlet, load, PSU, restart
@@ -321,7 +332,7 @@ registers every adopted device at the IP its inform reports; it does not --
 see the hostname note above, corrected 2026-09-29.)
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
-`switch.snmp.*`; `control.snmp: true` in the deployed config).
+`switch.snmp.*`; follows the controller, no flag since 2026-10-31).
 
 **SSH gateway parked on branch `ssh-gateway` (2026-09-19).** It was built,
 deployed (macvlan with its own DHCP reservation, since deleted) and verified

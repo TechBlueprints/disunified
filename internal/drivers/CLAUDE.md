@@ -57,8 +57,7 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
 - **`apcnmc` is not a driver**: it registers nothing and holds what the
   APC drivers share about the management card itself -- its `config.ini`
   (section parsing, the fixture runners' `Merge`) and the syslog section
-  (`SyslogApplier`, behind `devicemodel.SyslogController` for a device
-  without port control). A key it writes must exist in the card's own file.
+  (`SyslogApplier`, behind `devicemodel.SyslogController`). A key it writes must exist in the card's own file.
 - **A device's own address (`AddressController`)** is applied only when the
   driver can verify it will still reach the device afterwards; DHCP is
   declined by a driver that cannot predict the lease. Adopting a device

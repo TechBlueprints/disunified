@@ -200,10 +200,10 @@ every other commit ("another session … is pending commit timer") — abort it
 with `configure session X` + `abort`. eAPI over the old address times out
 once the address moves; that is expected.
 
-## The switch's own address: `control.address`
+## The switch's own address
 
-The controller pushes the device's IP Settings in every system_cfg, and with
-`control: {address: true}` the driver applies a **static** setting to the
+The controller pushes the device's IP Settings in every system_cfg, and the
+driver applies a **static** setting (no key since 2026-10-31) to the
 interface that carries the address the bridge itself connects to (Vlan1 on
 this switch, in-band; see §2c). "Using DHCP" is declined on this driver with a
 logged reason: a move is confirmed by dialling the new address, and a lease

@@ -36,7 +36,7 @@ Write-up: [`drivers/proxmox.md`](drivers/proxmox.md). Fixture: [`fixtures/proxmo
   if you want spanning tree ([`drivers/proxmox.md` §4b](drivers/proxmox.md)).
 
 The driver writes two files on the node: `/etc/lldpd.d/disunified.conf`
-(unless `manage_lldpd: "false"`) and, only with `control.ntp`,
+(unless `manage_lldpd: "false"`) and, from the controller's NTP servers,
 `/etc/chrony/sources.d/disunified.sources`. It never edits
 `/etc/network/interfaces`; when the site's VLANs are outside the bridge's
 `bridge-vids` it warns and leaves the file to you.
@@ -98,7 +98,7 @@ Write-up: [`drivers/podman.md`](drivers/podman.md). Fixture: [`fixtures/podman-5
   installs). The older **CNI** backend's `inspect` output is shaped
   differently and has not been seen.
 - `iproute2`, `ethtool`, `nsenter` (util-linux) — stock on every host tried.
-- **NetworkManager only for `control.address`.** Reading works without it
+- **NetworkManager only for the address.** Reading works without it
   (the `nmcli` calls are guarded); on a netplan / systemd-networkd host the
   driver is read-only for the address and says so.
 
@@ -175,7 +175,7 @@ Each needs the same proof as above: a scrubbed capture under
 and the live check in the PR. For anything that switches an outlet, say in
 the issue which outlet is safe to switch.
 
-**Verified live (2026-10-30):** `control.syslog` on `apc-pdu` (AOS 3.9.2) and
+**Verified live (2026-10-30):** the syslog host on `apc-pdu` (AOS 3.9.2) and
 `apc-backups` (AOS 6.0.1) -- the controller's remote logging host in the
 card's syslog section in `config.ini`, read back from the card, and the
 card's own event (a wrong-community SNMP read) at the log host. **Untested:**

@@ -247,7 +247,7 @@ which takes a name and outlet overrides but rejects port overrides.
    device's address:** adoption deletes the client record the device had,
    with its fixed-IP reservation and client DNS name (every driver so far
    hit this). Either make the address static on the device first, or adopt
-   and then set IP Settings → Static in the UI with `control.address` on.
+   and then set IP Settings → Static in the UI (the driver applies it).
    The parent edge appears only when the device's real MAC is seen on an
    upstream port ([`docs/topology-placement.md`](topology-placement.md)).
 3. `-control-ports <one unused port>`: disable/enable, rename, set a

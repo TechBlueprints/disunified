@@ -18,8 +18,8 @@ invisible to root's `podman ps`); **`python3`** (`collect.sh` reduces
 `podman inspect` on the host with it so container environments never leave
 the box -- a host without it, Fedora CoreOS for one, reports no containers);
 the **netavark** backend (CNI's `inspect` shape has not been seen);
-`iproute2`, `ethtool`, `nsenter`. NetworkManager is needed only for
-`control.address` (§7); reading works without it.
+`iproute2`, `ethtool`, `nsenter`. NetworkManager is needed only for the
+address (§7); reading works without it.
 
 Only that one host has run it. Other distributions with `python3`, a
 bare-metal host, ipvlan networks, several NICs, and the hosts that are
@@ -158,7 +158,7 @@ container and network names other than the bridge's own, DMI/machine ids).
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
 priority; the uplink's FEC).
 
-## 7. Address control (`control.address`)
+## 7. Address control (from the controller's IP Settings, no key)
 
 The controller's IP Settings for the device are applied to the host's
 uplink through NetworkManager: `nmcli con mod <profile> ipv4.method manual
