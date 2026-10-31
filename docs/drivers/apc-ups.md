@@ -92,6 +92,8 @@ devices:
       netmask: 255.255.255.0     # the unit's network, and
       gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it (ip neigh), not its listed device MAC
       # shed_on_battery_after: 30s  # hold every switched group to "shed after 30 s on battery" (written to the unit at start if it differs)
+      # low_runtime: 2m           # power-event log: runtime below this is low_battery (§13); the unit's own warning counts too
+      # load_alarm_w: 1200        # power-event log: output at or above this is overload (default: the rating)
     # control:
     #   outlets: "2"              # switch Outlet Group 1 (row 2) from the controller; absent = read-only
     #   nut: true                 # run a NUT server in the bridge when the controller's NUT Server switch is on (§12); publish its port
@@ -353,8 +355,8 @@ address the device reports.
   has no syslog client, event log or web page. The controller's remote
   logging host (`syslog.remote.*`) has nowhere to go, and `control.syslog`
   is logged at start as having no effect for this driver. The unit's events (on battery,
-  transfer cause, self-test) are in its registers, so a log line for them
-  would have to come from the bridge itself.
+  transfer cause, self-test) are in its registers, so the bridge writes the
+  log lines itself: one `power-event` line per transition (§13).
 
 ## 10. Deploying
 
@@ -518,3 +520,54 @@ the NUT address; on a bridge network the port has to be published
 user/password when the credential switch is off). Nothing here shuts the
 UPS down: a NUT client that reaches `LB` shuts *itself* down, which is the
 point.
+
+## 13. Power events -- the log line the unit cannot send (2026-10-30)
+
+The SmartConnect port has no syslog client (§9), so an outage on this UPS
+left no line in any log: the APC cards next to it syslog their own events,
+this unit had only the bridge's poll. The driver now asks the loop for
+power-event lines (`devicemodel.PowerEventSource`), and `internal/powerevent`
+turns the polls into **one line per transition**, written by the bridge's
+own logger, so it lands wherever the container's output goes:
+
+```
+[ups] 2026/10/30 12:01:10.000000 power-event level=error device=ups name=example-ups model=SMTL1500RM3UC event=on_battery power=battery output=on charge=100 runtime_s=376 load_w=1067 load_pct=79 input_v=0 cause=...
+```
+
+| Field | From |
+|---|---|
+| `level` | `error` for the alarms, `info` for the recoveries, `warning` for an abnormal initial state and a refused/aborted self-test. First on the line, so a shipper that reads `level=X` near the start of a line stores it |
+| `device` | the config entry's `name:` |
+| `name` | the controller's name for the device, `resolv.host.1.name` from the last applied push (the UniFi name with spaces removed; persisted, so known on the first cycle after a restart; omitted before the first push). It need not match the unit's DHCP/DNS name |
+| `model` | the unit's SKU (register 548), else its model string |
+| `power` `output` `charge` `runtime_s` `load_w` `load_pct` `input_v` | the reading that showed the change; `input_v=0` = no input reading (on battery the unit reports the input as not applicable) |
+| `cause` | `UPSStatusChangeCause` (register 2) on `initial_state`, `on_battery`, `ac_restored` |
+
+| Event | Level | When |
+|---|---|---|
+| `initial_state` | info, warning if any alarm is already active | the first reading after a start: the baseline, never logged as transitions; `active=` names what is on (`none`, or e.g. `on_battery,overload`), `test=` the last self-test outcome when the unit holds one |
+| `on_battery` / `ac_restored` | error / info | status bit 2; `ac_restored` carries `on_battery_s` |
+| `low_battery` / `battery_ok` | error / info | shutdown-imminent (register 18), the unit's own low-runtime warning (the Main group's `OutletStatus_BF` bit 14, against the threshold set at its display), or runtime below `low_runtime` (default 2 min); `reason=` says which. Clears at 20 % above the threshold; `low_s` |
+| `overload` / `overload_cleared` | error / info | status bit 21, or output at or above `load_alarm_w` (default: the 1350 W rating); clears 5 % below; `overload_s` |
+| `output_off` / `output_on` | error / info | status bit 4; `off_s` |
+| `self_test` | info passed, error failed, warning refused/aborted | `ReplaceBatteryTestStatus_BF` (register 23) changing to a final outcome; `result=` |
+| `comm_lost` / `comm_restored` | error / info | 3 failed polls in a row (`failures`, `since_s`, `error="..."`, the last good readings) / the first success after (`failures`, `lost_s`); a change that happened in the gap is logged right after |
+
+**Debounce.** An alarm is logged on the first poll that shows it; its
+recovery only after two polls in a row agree, so an input that flaps between
+two polls is one outage with its whole length. Durations run from the first
+poll that showed the alarm to the first of the two that showed it gone.
+
+**What the poll cannot see.** The loop polls once per inform interval (65-80
+s here): an outage shorter than that can fall between two polls and leave no
+line, and an `on_battery` line can be up to one interval late. The unit
+holds only its last self-test outcome, so a test that ends the way the
+previous one did, between two polls, is not seen. None of this was
+exercised against a real outage: the transitions are unit-tested against
+the captured registers with the status bits changed (`powerevent_test.go`),
+and the live check was the `initial_state` line.
+
+The two APC cards (`apc-pdu`, `apc-backups`) do not ask for these lines:
+they syslog their own events (`control.syslog`, `docs/drivers/apc-pdu.md`, `apc-backups.md`), and the
+bridge would only duplicate them.
+

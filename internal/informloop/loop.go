@@ -29,6 +29,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/powerevent"
 	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
@@ -163,6 +164,10 @@ type Config struct {
 	// last applied one at startup): the SSH gateway takes its credentials
 	// from it.
 	OnSystemCfg func(cfg *unificfg.Config)
+
+	// DeviceName is the bridge's name for the device (its config entry),
+	// written as device= on power-event lines; "" = its MAC.
+	DeviceName string
 }
 
 // Loop is one device's inform loop.
@@ -207,6 +212,9 @@ type Loop struct {
 	freshWarned  map[int]bool
 	layoutByPort map[int]string
 	faultSig     string
+	// power logs a power device's transitions when its driver asks for it
+	// (devicemodel.PowerEventSource); nil otherwise.
+	power *powerevent.Tracker
 
 	mu         sync.Mutex
 	state      State
@@ -256,6 +264,13 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	}
 	if _, _, ok := sess.Applied(); ok {
 		l.everApplied = true
+	}
+	if ps, ok := cfg.Collector.(devicemodel.PowerEventSource); ok {
+		name := cfg.DeviceName
+		if name == "" {
+			name = desc.MAC
+		}
+		l.power = &powerevent.Tracker{Device: name, Name: l.controllerName, Settings: ps.PowerEvents(), Logf: cfg.Logger.Printf}
 	}
 	if cfg.RecordDir != "" {
 		r, err := newRecorder(cfg.RecordDir, desc.MAC)
@@ -1206,6 +1221,13 @@ func (l *Loop) collect(ctx context.Context) {
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.CollectTimeout)
 	defer cancel()
 	snap, err := l.cfg.Collector.Collect(cctx)
+	if l.power != nil {
+		if err != nil {
+			l.power.Failed(time.Now(), err)
+		} else {
+			l.power.Observe(time.Now(), snap)
+		}
+	}
 	if err != nil {
 		l.collectFailures++
 		if l.collectFailures == 1 || l.collectFailures%10 == 0 {
@@ -1289,6 +1311,18 @@ func (l *Loop) collect(ctx context.Context) {
 		}
 		l.layoutByPort = byPort
 	}
+}
+
+// controllerName is the device's UniFi name as the controller last pushed
+// it (resolv.host.1.name: the name with spaces removed), from the applied
+// system_cfg, which is persisted, so it is known from the first cycle after
+// a restart; "" before the first push.
+func (l *Loop) controllerName() string {
+	_, text, ok := l.session.Applied()
+	if !ok {
+		return ""
+	}
+	return unificfg.Parse(text).Hostname
 }
 
 func layoutSignature(snap *devicemodel.Snapshot) string {

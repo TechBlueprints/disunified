@@ -50,6 +50,11 @@ import (
 //	         (LoadShedConfigSetting_BF + LoadShedTimeOnBatterySetting),
 //	         read back, and logged. Absent = the unit's policy is left as it
 //	         is. The Main group is never shed.
+//	low_runtime   a duration: the power-event log calls runtime remaining
+//	         below this a low battery even before the unit signals one
+//	         (default 2m; the unit's own low-runtime warning counts as well)
+//	load_alarm_w  watts: output power at or above this is logged as an
+//	         overload even before the unit signals one (default: the rating)
 //	unit_id  Modbus unit id (default 1)
 //	timeout  per-request response timeout (default 3s)
 //
@@ -106,6 +111,20 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		}
 		c.ShedOnBatteryAfter = d.Round(time.Second)
 	}
+	if v := cfg.Options["low_runtime"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("apc-ups: low_runtime must be a positive duration, got %q", v)
+		}
+		c.PowerEventSettings.LowRuntime = d
+	}
+	if v := cfg.Options["load_alarm_w"]; v != "" {
+		w, err := strconv.ParseFloat(v, 64)
+		if err != nil || w <= 0 {
+			return nil, fmt.Errorf("apc-ups: load_alarm_w must be a positive number of watts, got %q", v)
+		}
+		c.PowerEventSettings.LoadAlarmW = w
+	}
 	return c, nil
 }
 
@@ -132,4 +151,5 @@ var (
 	_ devicemodel.OutletController = (*Collector)(nil)
 	_ devicemodel.OutletCycler     = (*Collector)(nil)
 	_ devicemodel.OutletPlanner    = (*Collector)(nil)
+	_ devicemodel.PowerEventSource = (*Collector)(nil)
 )
