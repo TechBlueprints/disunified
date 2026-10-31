@@ -328,17 +328,21 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		dropPins("syslog", hosts, pins)
 	}
 
-	// SNMP: one managed read-only community; the previous managed one is
-	// replaced, any other (the image's `public`) is left alone.
+	// SNMP: UniFi's one read-only community is the switch's only one --
+	// the image's own (`public`) and any other go, and the site's SNMP off
+	// (no community) leaves none.
 	if d.SNMPSet {
 		want := d.SNMPCommunity
 		if want != "" && !sim.snmp[want] {
 			w := want
 			add("config snmp community add "+sshrun.ShellQuote(w)+" RO", "config snmp community add <community> RO", func(s *swState) { s.snmp[w] = true })
 		}
-		if mSNMP != "" && mSNMP != want && sim.snmp[mSNMP] {
-			old := mSNMP
-			add("config snmp community del "+sshrun.ShellQuote(old), "config snmp community del <community>", func(s *swState) { delete(s.snmp, old) })
+		for _, old := range sortedSet(sim.snmp) {
+			if old == want {
+				continue
+			}
+			o := old
+			add("config snmp community del "+sshrun.ShellQuote(o), "config snmp community del <community>", func(s *swState) { delete(s.snmp, o) })
 		}
 		mSNMP = want
 	}

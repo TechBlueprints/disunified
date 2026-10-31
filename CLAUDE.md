@@ -107,7 +107,12 @@ reply, and the reported address following an applied move
   the controller's address (static IP Settings), STP, IGMP snooping, NTP
   servers, time zone, syslog host, hostname, SSH keys, SNMP and Restart
   apply, and its list replaces the device's: a server set by hand goes.
-  `control.ports`/`outlets` only scope port and outlet writes (`off` = none).
+  `control.ports`/`outlets` only scope port and outlet writes: unset = all
+  the driver can write, `off` = none. Adoption takes the device as it is
+  (Clint: "a good feature"): the controller is seeded from the device's
+  ports and the first push is held while it would change one -- the Arista
+  plans pushes too since 2026-10-31. SNMP off (no `switch.snmp.*` in the
+  push) means no community; Proxmox comments out chrony.conf's own pool.
   The old `control.address/igmp/ntp/syslog/hostname/reboot/ssh_keys/snmp`
   keys and `-control-*` flags load and are ignored. A per-device setting is
   for what UniFi cannot express (breakout handling, the bridge's own

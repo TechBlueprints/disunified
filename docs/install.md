@@ -93,9 +93,9 @@ still read, so an existing deployment keeps working unchanged.
 Copy [`deploy/config.example.yaml`](../deploy/config.example.yaml) to `config.yaml` and [`deploy/env.example`](../deploy/env.example)
 to `env`; fill in the controller address, the device address, and the
 environment variable names. Devices go under `devices:` (the pre-rename
-`switches:` key is still accepted). Start with `control.ports: "off"`: the
-bridge then writes none of the device's ports, but the device-wide settings
-UniFi owns follow the controller from the first push (§5).
+`switches:` key is still accepted). No `control` block is needed: UniFi
+owns the device from adoption (§5). Set `control.ports: "off"` only if you
+want to look around in the UI before the bridge writes any port.
 
 ## 4. First run and adoption
 
@@ -110,9 +110,17 @@ shows `authkey adopted` then `adoption handshake complete -> CONNECTED`, and
 the device page shows live ports. The adopted key is now in
 `state/<name>/device.json` — keep that file; one bridge per device.
 
-## 5. Turn on control
+## 5. UniFi in control
 
-Set `control.ports: all` and restart. **Check:** the log shows `reconciled ... 0 of N ports changed` (or
+Unset, `control.ports` and `control.outlets` mean every port or outlet the
+driver can write (`all`); `"off"` writes none, and a list such as `"2,5-8"`
+tries a few first. Adoption takes the device as it is: with `api_url` and an
+API key set, the bridge seeds the controller's port settings from the
+device's live state, and the loop holds the first push while it would still
+change a port or switch an outlet, until the controller agrees with the
+device (every switch driver plans its pushes; without `api_url`, set the
+ports in UniFi to match, or `allow_initial_changes: true` to take UniFi's
+defaults). **Check:** the log shows `reconciled ... 0 of N ports changed` (or
 the changes it made to bring the device in line with the controller). From
 now on the UniFi UI is the device's configuration: names, port state,
 speed, VLANs, FEC, storm control, STP, aggregation, mirroring, and on a power

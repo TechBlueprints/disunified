@@ -47,6 +47,7 @@ type Collector struct {
 	knownNames  map[int][]string    // labels a slot has carried (for renames)
 	bridgeVIDs  []int               // bridge-vids from /etc/network/interfaces
 	ntpManaged  string              // contents of the managed chrony sources file
+	ntpOwn      []string            // chrony.conf's own live server/pool lines (the distribution's pool)
 	snooping    bool                // bridge multicast_snooping
 	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
@@ -479,6 +480,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.keyOf = keyOf
 	c.bridgeVIDs = parseVLANRanges(strings.ReplaceAll(strings.TrimSpace(bridge["vids"]), " ", ";"))
 	c.ntpManaged = strings.TrimSpace(sec["ntpunifi"])
+	c.ntpOwn = ntpServers(sec["chrony"])
 	c.snooping = snoop
 	c.stpOn = stpOn
 	c.mstpd = strings.TrimSpace(sec["mstpctl"]) == "present"

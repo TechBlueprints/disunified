@@ -520,10 +520,14 @@ func TestApplySwitch(t *testing.T) {
 	if n != 0 {
 		t.Errorf("igmp not idempotent")
 	}
-	// NTP under UniFi's control.
+	// NTP under UniFi's control: its servers in the driver's sources file,
+	// and the capture's own `pool 2.debian.pool.ntp.org` in chrony.conf
+	// commented out (with a restart: a reload keeps a chrony.conf pool), so
+	// UniFi's list is the node's.
 	n, err = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
-	if err != nil || n != 1 || !strings.HasPrefix(r.Commands[len(r.Commands)-1], "install -m 644 /dev/stdin /etc/chrony/sources.d/") {
-		t.Fatalf("ntp: n=%d err=%v cmds=%v", n, err, r.Commands)
+	want := "install -m 644 /dev/stdin /etc/chrony/sources.d/disunified.sources && sed -i -E 's/^((server|pool) )/#disunified: \\1/' /etc/chrony/chrony.conf && systemctl restart chrony"
+	if err != nil || n != 1 || r.Commands[len(r.Commands)-1] != want {
+		t.Fatalf("ntp: n=%d err=%v cmds=%q", n, err, r.Commands)
 	}
 	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{ManageNTP: true, NTPServers: []string{"192.0.2.1", "time.example.net"}})
 	if n != 0 {

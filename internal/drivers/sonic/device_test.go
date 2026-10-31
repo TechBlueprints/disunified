@@ -169,22 +169,24 @@ func TestApplySyslog(t *testing.T) {
 	}
 }
 
-// (c) SNMP: the managed community is replaced; the image's own (the
-// capture's community-1, `public` before the scrub) is left alone.
+// (c) SNMP: UniFi's community is the switch's only one -- the image's own
+// (the capture's community-1, `public` before the scrub) goes with the
+// first push, a changed one replaces it, and the site's SNMP off leaves
+// none.
 func TestApplySNMPCommunity(t *testing.T) {
 	r := newRig(t, nil)
 	r.device("set", devicemodel.DeviceDesired{SNMPSet: true, SNMPCommunity: "lab-ro"}, []string{
-		"sudo config snmp community add 'lab-ro' RO", save,
+		"sudo config snmp community add 'lab-ro' RO", "sudo config snmp community del 'community-1'", save,
 	})
 	r.device("change", devicemodel.DeviceDesired{SNMPSet: true, SNMPCommunity: "lab-ro2"}, []string{
 		"sudo config snmp community add 'lab-ro2' RO", "sudo config snmp community del 'lab-ro'", save,
 	})
-	if got := r.system().SNMPCommunities; !reflect.DeepEqual(got, []string{"community-1", "lab-ro2"}) {
+	if got := r.system().SNMPCommunities; !reflect.DeepEqual(got, []string{"lab-ro2"}) {
 		t.Errorf("read back communities = %v", got)
 	}
 	r.device("off", devicemodel.DeviceDesired{SNMPSet: true}, []string{"sudo config snmp community del 'lab-ro2'", save})
-	if got := r.system().SNMPCommunities; !reflect.DeepEqual(got, []string{"community-1"}) {
-		t.Errorf("the image's community must stay: %v", got)
+	if got := r.system().SNMPCommunities; len(got) != 0 {
+		t.Errorf("the site's SNMP off must leave no community: %v", got)
 	}
 	if strings.Contains(r.log.String(), "lab-ro") {
 		t.Error("a community is a credential and must not be logged")

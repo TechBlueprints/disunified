@@ -13,6 +13,7 @@ import (
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	"github.com/jamesbraid/unifi-emu/inform"
 )
 
 // The Arista replay: the controller's replies to the DCS-7160
@@ -51,6 +52,11 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 		Loop: func(c *Config) {
 			c.ControlIGMP, c.ControlNTP, c.ControlSyslog, c.ControlSNMP = true, true, true, true
 			c.OnConnected = func(*devicemodel.Snapshot) { connected++ }
+			// The recording's first push applied live (the driver could not
+			// plan a push then); the fixture transport is stateless, so a
+			// held push could never converge here. The hold has its own
+			// test below.
+			c.AllowInitialChanges = true
 		},
 		// What each recorded push must do to the switch, as a diff against
 		// the captured switch state (the fixture transport is stateless, so
@@ -110,4 +116,63 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			}
 		},
 	})
+}
+
+// On a fresh adoption the bridge seeds the controller's port config from
+// the switch, and the loop holds the first push while it would still change
+// a port, so an adoption never resets the switch. The Arista can be held
+// since it plans a push (devicemodel.Planner): the recorded push that
+// disables port 2, arriving as the first push of an adoption, is held and
+// stays pending; the switch's own state planned back changes nothing.
+func TestAristaFirstPushAfterAdoptionIsHeld(t *testing.T) {
+	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
+	coll := aristaeos.NewCollector(ft)
+	coll.Log = log.New(os.Stderr, "", 0)
+	if _, err := coll.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(loadReplies(t, "replies.ndjson")[5].Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	push, _ := p["system_cfg"].(string)
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: push}
+	desc := inform.Descriptor{MAC: "02:00:00:00:00:01", Model: "UDC48X6"}
+	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	var buf strings.Builder
+	l, err := New(desc, sess, Config{Logger: log.New(&buf, "", 0), Collector: coll, Controller: coll, ApplyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.applyPending(context.Background())
+	if len(ft.Configured) != 0 {
+		t.Errorf("the first push wrote %v", ft.Configured)
+	}
+	if _, _, ok := sess.Pending(); !ok {
+		t.Error("the held push must stay pending so the controller keeps re-sending")
+	}
+	if !strings.Contains(buf.String(), "HOLDING the first push") {
+		t.Errorf("log = %q", buf.String())
+	}
+	// The plan is the apply's own diff: it names port 2, and once the push
+	// is written there is nothing left to plan.
+	desired := l.desiredPorts(push)
+	if planned := coll.PlanPorts(desired); !containsInt(planned, 2) {
+		t.Errorf("the push's plan %v does not name port 2", planned)
+	}
+	if _, err := coll.ApplyPorts(context.Background(), desired); err != nil {
+		t.Fatal(err)
+	}
+	if planned := coll.PlanPorts(desired); len(planned) != 0 {
+		t.Errorf("after the apply the same push still plans changes to %v", planned)
+	}
+}
+
+func containsInt(xs []int, x int) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
 }

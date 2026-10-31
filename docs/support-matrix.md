@@ -37,8 +37,9 @@ Write-up: [`drivers/proxmox.md`](drivers/proxmox.md). Fixture: [`fixtures/proxmo
 
 The driver writes two files on the node: `/etc/lldpd.d/disunified.conf`
 (unless `manage_lldpd: "false"`) and, from the controller's NTP servers,
-`/etc/chrony/sources.d/disunified.sources`. It never edits
-`/etc/network/interfaces`; when the site's VLANs are outside the bridge's
+`/etc/chrony/sources.d/disunified.sources`, and comments out the `pool`/
+`server` lines in `/etc/chrony/chrony.conf` so the node uses only UniFi's
+servers. It never edits `/etc/network/interfaces`; when the site's VLANs are outside the bridge's
 `bridge-vids` it warns and leaves the file to you.
 
 ### Verified

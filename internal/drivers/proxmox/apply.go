@@ -235,13 +235,15 @@ func (c *Collector) CyclePort(ctx context.Context, idx int) error {
 }
 
 // ApplyDevice honours IGMP snooping (bridge-wide: on when any managed VLAN
-// wants it) and, when the operator lets UniFi own NTP, chrony's server
-// list. STP and syslog requests are logged once and left alone: a Proxmox
+// wants it) and chrony's server list, which is the controller's alone: its
+// servers go in a sources file the driver owns, and chrony.conf's own
+// server/pool lines (the distribution's pool) are commented out, marked
+// "#disunified:", so the node keeps no source UniFi does not list. STP and syslog requests are logged once and left alone: a Proxmox
 // bridge runs with bridge-stp off by design, and journald has no remote
 // target to set.
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
 	c.mu.Lock()
-	snoop, ntpManaged := c.snooping, c.ntpManaged
+	snoop, ntpManaged, ntpOwn := c.snooping, c.ntpManaged, c.ntpOwn
 	stpManaged, stpVersion := c.stpManaged, c.stpVersion
 	c.mu.Unlock()
 	changed := 0
@@ -304,17 +306,32 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		if len(d.NTPServers) == 0 {
 			want = ""
 		}
+		var cmds []string
 		if want != ntpManaged {
-			cmd := "install -m 644 /dev/stdin /etc/chrony/sources.d/disunified.sources && chronyc reload sources"
 			if want == "" {
-				cmd = "rm -f /etc/chrony/sources.d/disunified.sources && chronyc reload sources"
+				cmds = append(cmds, "rm -f /etc/chrony/sources.d/disunified.sources")
+			} else {
+				cmds = append(cmds, "install -m 644 /dev/stdin /etc/chrony/sources.d/disunified.sources")
 			}
-			c.Log.Printf("proxmox %s: NTP servers -> %v", c.node, d.NTPServers)
-			if _, err := c.r.Run(ctx, cmd, want+"\n"); err != nil {
+		}
+		if len(ntpOwn) > 0 {
+			// A pool from chrony.conf stays until chronyd restarts; a
+			// reload re-reads only the sources directories.
+			cmds = append(cmds, `sed -i -E 's/^((server|pool) )/#disunified: \1/' /etc/chrony/chrony.conf`, "systemctl restart chrony")
+		} else if len(cmds) > 0 {
+			cmds = append(cmds, "chronyc reload sources")
+		}
+		if len(cmds) > 0 {
+			if len(ntpOwn) > 0 {
+				c.Log.Printf("proxmox %s: NTP servers -> %v; chrony.conf's own %v commented out", c.node, d.NTPServers, ntpOwn)
+			} else {
+				c.Log.Printf("proxmox %s: NTP servers -> %v", c.node, d.NTPServers)
+			}
+			if _, err := c.r.Run(ctx, strings.Join(cmds, " && "), want+"\n"); err != nil {
 				return changed, err
 			}
 			c.mu.Lock()
-			c.ntpManaged = want
+			c.ntpManaged, c.ntpOwn = want, nil
 			c.mu.Unlock()
 			changed++
 		}

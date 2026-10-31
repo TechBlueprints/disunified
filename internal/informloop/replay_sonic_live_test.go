@@ -72,10 +72,11 @@ func TestReplaySonicLabSession(t *testing.T) {
 	save := "sudo config save -y"
 	want := map[int][]string{
 		// Device-wide settings follow UniFi without port control: the
-		// first push after adoption brings its NTP servers and time zone,
-		// the push after naming its hostname. (Live, before 2026-10-31,
+		// first push after adoption brings its NTP servers and time zone
+		// and, the site's SNMP being off, removes the image's community;
+		// the push after naming brings the hostname. (Live, before 2026-10-31,
 		// they waited for port control at record 95.)
-		2:  {"sudo config ntp add 192.0.2.10", "sudo config ntp add 192.0.2.123", "sudo config clock timezone MST7MDT", save},
+		2:  {"sudo config ntp add 192.0.2.10", "sudo config ntp add 192.0.2.123", "sudo config snmp community del 'community-1'", "sudo config clock timezone MST7MDT", save},
 		3:  {"sudo config hostname SONiCSeastone-DX010", save},
 		95: append(jumbo("1500"), save),
 		99: {"sudo config interface shutdown Ethernet4", "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet4' description 'lab-2'", save},

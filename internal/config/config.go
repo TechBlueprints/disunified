@@ -68,17 +68,19 @@ type Device struct {
 }
 
 // Control says which of the device's ports and outlets the bridge writes
-// from the controller. Ports "" or "off" = no port writes. Everything else
+// from the controller: unset = every one the driver can write (a fresh
+// adoption is seeded from the device and its first push held until it
+// matches), "off" = none, or a list such as "2,5-8". Everything else
 // UniFi configures on its own devices -- the device's address (static IP
 // Settings), IGMP snooping, NTP, the remote syslog host, the hostname, SSH
 // keys, SNMP, Restart -- follows the controller whenever the driver can
 // apply it, with no per-setting opt-in. The retired keys (address, igmp,
 // ntp, syslog, hostname, reboot, ssh_keys, snmp) still load and are ignored.
 type Control struct {
-	Ports string `yaml:"ports"` // "all", or "2,5-8"
-	// Outlets is the power-device equivalent of Ports: "all", or "2,5-8".
-	// An outlet carries real load, so it is off by default like everything
-	// else that writes.
+	Ports string `yaml:"ports"` // unset/"all", "off", or "2,5-8"
+	// Outlets is the power-device equivalent of Ports. An outlet carries
+	// real load: the first outlet push of a run that would switch one is
+	// held until the controller agrees with the device.
 	Outlets string `yaml:"outlets"`
 	// NUT is accepted for compatibility and no longer needed: every UPS
 	// claims the NUT-server capability (the controller's UI cannot save a

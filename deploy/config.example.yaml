@@ -28,7 +28,7 @@ devices:                             # "switches:" is still accepted (the pre-re
     #                                # UniFi cannot upgrade a bridged switch: an upgrade it requests
     #                                # is emulated and the requested version reported from then on.
     control:                         # what the UniFi controller owns on this switch
-      ports: all                     # "off" (read-only), "all", or a list like "2,5-8". Once on, UniFi
+      ports: all                     # the default (unset = all); "off", or a list like "2,5-8". UniFi
       #                              # also owns everything else it configures on its own switches: IGMP
       #                              # snooping, NTP, the remote syslog host, the hostname, SSH keys,
       #                              # SNMP and Restart (a real reload) -- the device's own settings for
@@ -67,7 +67,8 @@ devices:                             # "switches:" is still accepted (the pre-re
       read_community: public
       write_community: private       # its access-control entry must be type Write+, not Write, or SETs vanish
     control:
-      outlets: all                   # "all", or "2,5-8"; empty = read-only. An outlet is real load.
+      outlets: all                   # the default (unset = all); "off", or "2,5-8". An outlet is real load:
+      #                              # a first push that would switch one is held until UniFi agrees.
       #                              # The card's address (static IP Settings; the DHCP default is never
       #                              # applied) and syslog host follow UniFi with no key.
 

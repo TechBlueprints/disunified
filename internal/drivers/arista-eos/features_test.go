@@ -175,3 +175,32 @@ func TestApplyDHCPSnoopingIsIgnored(t *testing.T) {
 		}
 	}
 }
+
+// SNMP: UniFi's one read-only community is the switch's only one. The
+// captured switch has none (as the live one has, 2026-10-31); a community
+// from the controller is added, a changed one replaces it, and the site's
+// SNMP off (the push carries no switch.snmp.*) removes it.
+func TestApplySNMPCommunityIsTheSwitchsOnly(t *testing.T) {
+	c, ft := startedCollector(t)
+	if n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{SNMPSet: true}); err != nil || n != 0 {
+		t.Fatalf("SNMP off on a switch with none: n=%d err=%v cmds=%v", n, err, ft.configured)
+	}
+	for _, step := range []struct {
+		community, want string
+	}{
+		{"lab-ro", "snmp-server community lab-ro ro"},
+		{"lab-ro2", "no snmp-server community lab-ro\nsnmp-server community lab-ro2 ro"},
+		{"", "no snmp-server community lab-ro2"},
+	} {
+		before := len(ft.configured)
+		if _, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{SNMPSet: true, SNMPCommunity: step.community}); err != nil {
+			t.Fatal(err)
+		}
+		if len(ft.configured) != before+1 {
+			t.Fatalf("community %q: %d batches, want one", step.community, len(ft.configured)-before)
+		}
+		if got := strings.Join(ft.configured[before], "\n"); got != "enable\nconfigure\n"+step.want+"\nend\nwrite memory" {
+			t.Errorf("community %q: cmds:\n%s", step.community, got)
+		}
+	}
+}
