@@ -1069,7 +1069,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		l.applyDeviceSettings(cctx, text)
 		l.installSSHKeys(cctx, text)
 		cancel()
-		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
+		l.cfg.Logger.Printf("[%s] system_cfg %s followed: no port or outlet writes; the device-wide settings the driver takes are applied", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
 			l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
 		}
