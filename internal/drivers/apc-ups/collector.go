@@ -38,6 +38,7 @@ const (
 	regChangeCause    = 2   // UPSStatusChangeCause
 	regOutletGroup0   = 3   // OutletStatus_BF for group 0, 2 registers; group i at 3+3i
 	regSimpleSignal   = 18  // SimpleSignalingStatus_BF
+	regBatteryTest    = 23  // ReplaceBatteryTestStatus_BF: the last self-test's outcome
 	regRuntimeCal     = 24  // RunTimeCalibrationStatus_BF
 	regRuntime        = 128 // seconds, 2 registers
 	regCharge         = 130 // %, 9 bits
@@ -53,6 +54,7 @@ const (
 	regEfficiency     = 154 // %, signed, 7 bits; negative = a reason, not a value
 	regFirmware       = 516 // 8 registers, ASCII
 	regModel          = 532 // 16 registers, ASCII
+	regSKU            = 548 // 8 registers, ASCII: the order code (SMTL1500RM3UC)
 	regSerial         = 564 // 8 registers, ASCII
 	regApparentRating = 588 // VA
 	regRealRating     = 589 // W
@@ -162,7 +164,8 @@ const (
 	statusECO       = 1 << 13
 	statusOverload  = 1 << 21
 
-	outletGroupOn = 1 << 0 // OutletStatus_BF
+	outletGroupOn         = 1 << 0  // OutletStatus_BF
+	outletGroupLowRuntime = 1 << 14 // OutletStatus_BF: runtime below the unit's own low-runtime setting
 
 	simpleShutdownImminent = 1 << 1 // SimpleSignalingStatus_BF
 	calibrationInProgress  = 1 << 1 // RunTimeCalibrationStatus_BF
@@ -171,6 +174,33 @@ const (
 
 	sogGroupPresent = 1 << 0 // SOGRelayConfigSetting_BF: bit i = group i present
 )
+
+// testResults names ReplaceBatteryTestStatus_BF's outcome bits (APC
+// 990-9840A; RunTimeCalibrationStatus_BF has the same layout, which is
+// where calibrationInProgress comes from). The source and modifier bits
+// above them say who asked and why a test was refused; they are not read.
+var testResults = []struct {
+	bit  uint16
+	name string
+}{
+	{1 << 3, "failed"},
+	{1 << 4, "refused"},
+	{1 << 5, "aborted"},
+	{1 << 2, "passed"},
+	{1 << 1, "in_progress"},
+	{1 << 0, "pending"},
+}
+
+// testResult decodes the last self-test's outcome; "" when the unit
+// records none (the captured unit reads 0).
+func testResult(raw uint16) string {
+	for _, r := range testResults {
+		if raw&r.bit != 0 {
+			return r.name
+		}
+	}
+	return ""
+}
 
 // changeCause names the values of UPSStatusChangeCause that have been seen
 // on a live unit; anything else is reported by number.
@@ -203,6 +233,10 @@ type Collector struct {
 	last     *devicemodel.Snapshot
 	resolved string // last address the name resolved to, for change logging
 	warned   map[string]bool
+	// PowerEventSettings are the thresholds for the bridge's power-event
+	// lines (options low_runtime, load_alarm_w): the unit has no log of
+	// its own, so the loop logs its transitions.
+	PowerEventSettings devicemodel.PowerEventSettings
 	// ShedOnBatteryAfter, when set, is the load-shed policy every switched
 	// group is held to: shed after this long on battery, immediate, automatic
 	// return. Start writes it to the unit if the unit's policy differs.
@@ -321,6 +355,11 @@ func (c *Collector) Sheds() []LoadShed {
 
 func (c *Collector) Close() error { return nil }
 
+// PowerEvents asks the loop to log the unit's power transitions: the
+// SmartConnect port has no syslog client, event log or web page, so a log
+// line for an outage can only come from the bridge (docs/drivers/apc-ups.md §9).
+func (c *Collector) PowerEvents() devicemodel.PowerEventSettings { return c.PowerEventSettings }
+
 // Collect reads the four register blocks and builds the snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
 	status, err := c.r.ReadRegisters(ctx, blockStatus, blockStatusLen)
@@ -381,6 +420,7 @@ func (c *Collector) system(static []uint16) devicemodel.System {
 	sys := devicemodel.System{
 		Vendor:  "APC",
 		Model:   regString(static, regModel-blockStatic, 16),
+		SKU:     regString(static, regSKU-blockStatic, 8),
 		Serial:  regString(static, regSerial-blockStatic, 8),
 		Version: strings.TrimPrefix(regString(static, regFirmware-blockStatic, 8), "UPS "),
 		MAC:     c.MAC,
@@ -408,6 +448,10 @@ func (c *Collector) battery(status, dyn, static, cfg []uint16) *devicemodel.Batt
 	b.ECOMode = st&statusECO != 0
 	b.Overload = st&statusOverload != 0
 	b.LowBattery = status[regSimpleSignal]&simpleShutdownImminent != 0
+	// The Main group's LowRuntime bit is the unit's own low-runtime warning,
+	// against the threshold set at its display.
+	b.LowRuntime = status[regOutletGroup0+1]&outletGroupLowRuntime != 0
+	b.TestResult = testResult(status[regBatteryTest])
 	b.Calibrating = status[regRuntimeCal]&calibrationInProgress != 0
 	if name, ok := changeCause[status[regChangeCause]]; ok {
 		b.TransferCause = name

@@ -24,6 +24,9 @@ type FixtureRunner struct {
 	Writes []string
 	// FailWrite makes the next WriteRegisters fail, for the refusal paths.
 	FailWrite error
+	// FailReads makes every ReadRegisters fail while set: the unit gone
+	// from the network, for the lost-contact paths.
+	FailReads error
 }
 
 // NewFixtureRunner loads registers.txt from dir.
@@ -61,6 +64,9 @@ func NewFixtureRunner(dir string) (*FixtureRunner, error) {
 // way the device answers an unmapped address, with an exception.
 func (f *FixtureRunner) ReadRegisters(_ context.Context, start, count int) ([]uint16, error) {
 	f.Reads = append(f.Reads, fmt.Sprintf("%d,%d", start, count))
+	if f.FailReads != nil {
+		return nil, f.FailReads
+	}
 	out := make([]uint16, count)
 	for i := range out {
 		v, ok := f.Regs[start+i]

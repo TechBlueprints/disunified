@@ -267,7 +267,8 @@ would do it inside the same commit-timer session, confirming once the lease is f
 | Outlet on/off from the controller | `outlet.2.relay_state` → command word at register 1538 (`0x0204`/`0x0202`) | **built, unit-tested byte-exact to NUT, not exercised on the unit** (Clint); `control.outlets: "2"` enabled 2026-09-26 evening, no command sent yet |
 | Outlet power cycle | `relayctl` → reboot word (`0x0210`) | built, not exercised; the Main group is refused |
 | First outlet push guard | loop hold via `OutletPlanner`, per process | done, tested: a first push that would switch a group is held until the UI matches the device |
-| Remote syslog host | `syslog.remote.*` | **not possible**: the SmartConnect port has no syslog client and there is no management card; `control.syslog` is logged as having no effect |
+| Remote syslog host | `syslog.remote.*` | **not possible**: the SmartConnect port has no syslog client and there is no management card; `control.syslog` is logged as having no effect ; **the bridge logs the unit's power events instead** (next row) |
+| Power-event log lines (on battery, AC restored, low battery, overload, output off/on, self-test, lost/regained contact) | none on the wire: one `power-event level=<error/info/warning> device=… name=… model=… event=…` line per transition in the bridge's log (`internal/powerevent`, `docs/drivers/apc-ups.md` §13) | **done** 2026-10-30, unit-tested against the captured registers (seeding, flapping, comm loss); deployed, `initial_state` seen at the log host; **no real outage exercised** (that needs mains pulled) |
 | Battery temperature | `general_temperature` | not sent: it is the pack's, not a chassis sensor |
 | Topology parent | `uplink`, `uplink_mac` | **absent with the synthetic MAC** (the controller places by MAC on a switch port); operator-declared uplink is the untested candidate |
 

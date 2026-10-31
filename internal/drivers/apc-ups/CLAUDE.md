@@ -143,3 +143,11 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   hands every push's block to it. Publish 3493 on the container. The claim
   is a session setting, not a driver capability -- the server is the
   bridge's.
+- **Power-event lines (2026-10-30).** The unit cannot syslog, so the
+  collector implements `devicemodel.PowerEventSource` and the loop logs one
+  `power-event level=… event=…` line per transition (`internal/powerevent`,
+  `docs/drivers/apc-ups.md` §13). Register 23 is
+  `ReplaceBatteryTestStatus_BF` (self-test outcome, 0 on the captured unit),
+  the Main group's `OutletStatus_BF` bit 14 the unit's own low-runtime
+  warning, register 548 the SKU (`System.SKU`). Never test it by pulling
+  mains, running a self-test or switching a group.

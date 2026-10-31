@@ -202,6 +202,7 @@ type options struct {
 	collectOnce                                bool
 	logger                                     *log.Logger
 	stateDir                                   string
+	name                                       string // the config entry's name; "" from flags
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
@@ -224,7 +225,7 @@ func runConfig(ctx context.Context, f *config.File) {
 			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
 			unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
-			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name),
+			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
 		}
 		if strings.EqualFold(o.controlPorts, "off") {
 			o.controlPorts = ""
@@ -563,6 +564,7 @@ func runOne(ctx context.Context, o options) error {
 	// --- Loop ---
 	loopCfg := informloop.Config{
 		Logger:       log,
+		DeviceName:   o.name,
 		NUT:          nutApplier(nut),
 		Interval:     o.interval,
 		ApplyTimeout: o.applyTimeout,

@@ -193,6 +193,27 @@ type ApplyBudget interface {
 	ApplyTimeout() time.Duration
 }
 
+// PowerEventSource is optional: a power device with no event log of its
+// own (no management card, so no syslog) asks the loop to log its power
+// transitions -- on battery, AC restored, low battery, overload, output
+// off, self-test results, losing contact with it -- as one power-event
+// line each (internal/powerevent). A device whose card already logs its
+// own events does not implement it, so nothing is logged twice.
+type PowerEventSource interface {
+	PowerEvents() PowerEventSettings
+}
+
+// PowerEventSettings are a device's thresholds for its power-event lines.
+// Zero values take the tracker's defaults.
+type PowerEventSettings struct {
+	// LowRuntime: runtime remaining below this is a low battery even
+	// when the device does not signal one itself.
+	LowRuntime time.Duration
+	// LoadAlarmW: output power at or above this is an overload even
+	// when the device does not signal one itself; 0 = the device's rating.
+	LoadAlarmW float64
+}
+
 // AddressController applies the controller's IP Settings to the device
 // itself, so the controller owns the device's address the way it owns
 // everything else. Optional. Implementations must be idempotent and must
@@ -285,6 +306,7 @@ func (s *Snapshot) UplinkPort() int {
 type System struct {
 	Vendor  string
 	Model   string
+	SKU     string // the vendor's order code when the device reports one apart from Model (an APC unit: "Smart-UPS 1500" / SMTL1500RM3UC)
 	Serial  string
 	MAC     string // primary/system MAC, lower-case colon form
 	MgmtMAC string // the out-of-band management interface's own MAC, "" if none/unknown (UniFi's "service" interface)
@@ -526,6 +548,12 @@ type Battery struct {
 	Trim        bool // AVR is trimming a high line
 	Fault       bool // the device reports a general fault
 	InputBad    bool // the device reports its input as not acceptable
+	LowRuntime  bool // runtime remaining is below the device's own low-runtime warning threshold
+
+	// TestResult is the outcome of the last self-test as the device holds
+	// it: "passed", "failed", "refused", "aborted", "in_progress",
+	// "pending", or "" when it records none.
+	TestResult string
 
 	ChargePct int           // state of charge, 0-100
 	Runtime   time.Duration // estimated runtime remaining at the present load
