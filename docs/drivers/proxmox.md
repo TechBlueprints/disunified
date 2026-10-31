@@ -15,8 +15,9 @@ a VLAN-aware bridge. **Limits to know before you start:** with the default
 cluster-wide numbering there are **48 guest ports across the whole
 cluster** (the 54-port model minus the node's NICs); a bigger cluster needs
 `numbering: node`, which has not run live. The driver writes
-`/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and, under
-port control, `/etc/chrony/sources.d/disunified.sources`; nothing else on
+`/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and
+`/etc/chrony/sources.d/disunified.sources` (the controller's NTP servers),
+and comments out `chrony.conf`'s own `pool`/`server` lines; nothing else on
 the node. Only PVE 9.1 has run it: PVE 8, a standalone node, a second bridge,
 an LACP bond, `numbering: node` and UI-driven LACP (§3b) are each listed
 with what a PR needs in [`docs/support-matrix.md`](../support-matrix.md) --
@@ -218,9 +219,11 @@ Switch-wide, from the controller whether or not ports are written (no
 per-setting opt-in since 2026-10-31):
 IGMP snooping toggles the bridge's `multicast_snooping` (bridge-wide: on
 when UniFi enables it on VLAN 1, else on any managed VLAN); NTP writes
-`/etc/chrony/sources.d/disunified.sources` and `chronyc reload sources` --
-beside the node's own `pool` line in `chrony.conf`, which the driver does
-not edit, so the node still uses both. STP requests are logged once (a
+`/etc/chrony/sources.d/disunified.sources` and comments out the node's own
+`pool`/`server` lines in `chrony.conf` (marked `#disunified:`; chrony is
+restarted, since a reload keeps a `chrony.conf` pool), so UniFi's list is
+the node's (2026-10-31). The next chrony package upgrade sees a modified
+conffile and asks; keep the local version. STP requests are logged once (a
 Proxmox bridge runs `bridge-stp off` by design), syslog is logged (journald
 has no remote target), reboot is never real (`Rebooter` is not
 implemented: the controller's Restart is emulated), SSH keys are not

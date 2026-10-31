@@ -81,8 +81,8 @@ func main() {
 		deviceSSHFlag  = flag.String("device-ssh", envChain("", "DUI_DEVICE_SSH", "STU_SWITCH_SSH", "STU_EOS_SSH"), "device SSH target user@host[:port] (key auth), used when -device-url is empty")
 		switchURLFlag  = flag.String("switch-url", "", "pre-rename alias for -device-url")
 		switchSSHFlag  = flag.String("switch-ssh", "", "pre-rename alias for -device-ssh")
-		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\", or a list like \"2,5-8\"; empty = read-only")
-		controlOutlets = flag.String("control-outlets", envChain("", "DUI_CONTROL_OUTLETS", "STU_CONTROL_OUTLETS"), "switch and name a power device's outlets from the controller: \"all\", or a list like \"2,5-8\"; empty = read-only")
+		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\" (the default when the driver can), \"off\", or a list like \"2,5-8\"")
+		controlOutlets = flag.String("control-outlets", envChain("", "DUI_CONTROL_OUTLETS", "STU_CONTROL_OUTLETS"), "switch and name a power device's outlets from the controller: \"all\" (the default when the driver can), \"off\", or a list like \"2,5-8\"")
 		controlNUT     = flag.Bool("control-nut", envChain("", "DUI_CONTROL_NUT") == "1", "power devices: claim the NUT-server capability so the controller's NUT Server switch runs a NUT server in the bridge (off by default)")
 
 		// Controller REST API (names)
@@ -215,12 +215,6 @@ func runConfig(ctx context.Context, f *config.File) {
 			unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
 		}
-		if strings.EqualFold(o.controlPorts, "off") {
-			o.controlPorts = ""
-		}
-		if strings.EqualFold(o.controlOutlets, "off") {
-			o.controlOutlets = ""
-		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -247,6 +241,28 @@ func openAndStart(ctx context.Context, drv devicemodel.Driver, cfg devicemodel.D
 	}
 	_ = started
 	return sw, snap, nil
+}
+
+// controlScope resolves control.ports / control.outlets: unset means "all"
+// when the driver can write them, "off" means none, anything else is kept
+// (a list such as "2,5-8" for trying a few ports first).
+func controlScope(v string, writable bool) string {
+	switch {
+	case strings.EqualFold(v, "off"):
+		return ""
+	case v == "" && writable:
+		return "all"
+	}
+	return v
+}
+
+// isA reports whether the device implements T (false for no device).
+func isA[T any](sw devicemodel.Device) bool {
+	if sw == nil {
+		return false
+	}
+	_, ok := sw.(T)
+	return ok
 }
 
 // runOne bridges one switch until ctx is cancelled.
@@ -324,6 +340,14 @@ func runOne(ctx context.Context, o options) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
+
+	// Unset, the controller writes every port or outlet the driver can
+	// write, as it does on its own devices; "off" writes none. A fresh
+	// adoption is still safe: the controller is seeded from the device and
+	// a first push that would change ports or outlets is held until it
+	// matches.
+	o.controlPorts = controlScope(o.controlPorts, isA[devicemodel.Controller](sw))
+	o.controlOutlets = controlScope(o.controlOutlets, isA[devicemodel.OutletController](sw))
 
 	// --- Identity ---
 	if snap != nil {

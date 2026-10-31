@@ -796,9 +796,11 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 	if l.cfg.ControlHostname {
 		d.Hostname = cfg.Hostname
 	}
-	if cfg.SNMP != nil && l.cfg.ControlSNMP {
+	if l.cfg.ControlSNMP {
+		// UniFi pushes switch.snmp.* only while the site's SNMP is on, so a
+		// push without the block is SNMP off: no community on the device.
 		d.SNMPSet = true
-		if cfg.SNMP.Enabled && strings.HasPrefix(cfg.SNMP.Version, "1") {
+		if cfg.SNMP != nil && cfg.SNMP.Enabled && strings.HasPrefix(cfg.SNMP.Version, "1") {
 			d.SNMPCommunity = cfg.SNMP.Community
 		}
 	}

@@ -134,7 +134,7 @@ devices:
       read_community: public
       write_community: private # must be access type Write+ on the card
     control:
-      outlets: all             # "all", or "2,5-8"; empty = read-only
+      outlets: all             # the default; "off", or "2,5-8"
 ```
 
 `control.outlets` is the power-device equivalent of `control.ports`. It is off

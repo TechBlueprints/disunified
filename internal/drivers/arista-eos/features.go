@@ -316,19 +316,19 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	// (verified live 2026-09-20). The capability is not claimed and the
 	// loop logs the key as unsupported if a controller pushes it anyway.
 	if d.SNMPSet {
-		// UniFi manages one read-only community; other communities on the
-		// switch are left alone, the previously managed one is replaced.
-		want := []string{}
-		if d.SNMPCommunity != "" {
-			want = append(want, d.SNMPCommunity+" ro")
-		}
-		have := []string{}
+		// UniFi's one read-only community is the switch's only one: every
+		// other is removed, and the site's SNMP off (no community) leaves
+		// none. `no snmp-server community NAME` and `snmp-server community
+		// NAME ro` both checked on 4.26.14M in an aborted config session
+		// (2026-10-31).
 		for _, cmty := range snap.System.SNMPCommunities {
-			if cmty == d.SNMPCommunity || cmty == c.managedSNMP {
-				have = append(have, cmty+" ro")
+			if cmty != d.SNMPCommunity {
+				cmds = append(cmds, "no snmp-server community "+cmty)
 			}
 		}
-		cmds = append(cmds, listDiff("snmp-server community ", have, want)...)
+		if d.SNMPCommunity != "" && !containsString(snap.System.SNMPCommunities, d.SNMPCommunity) {
+			cmds = append(cmds, "snmp-server community "+d.SNMPCommunity+" ro")
+		}
 	}
 	if d.ManageNTP {
 		cmds = append(cmds, listDiff("ntp server ", snap.System.NTPServers, d.NTPServers)...)
@@ -366,16 +366,10 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		}
 		if d.SNMPSet {
 			c.managedSNMP = d.SNMPCommunity
-			var keep []string
-			for _, cmty := range snap.System.SNMPCommunities {
-				if cmty != d.SNMPCommunity {
-					keep = append(keep, cmty)
-				}
-			}
+			updated.System.SNMPCommunities = nil
 			if d.SNMPCommunity != "" {
-				keep = append(keep, d.SNMPCommunity)
+				updated.System.SNMPCommunities = []string{d.SNMPCommunity}
 			}
-			updated.System.SNMPCommunities = keep
 		}
 		if d.ManageNTP {
 			updated.System.NTPServers = append([]string(nil), d.NTPServers...)
@@ -658,4 +652,13 @@ func laneNames(p devicemodel.Port) []string {
 		return p.Interfaces
 	}
 	return []string{p.IfName}
+}
+
+func containsString(xs []string, x string) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
 }

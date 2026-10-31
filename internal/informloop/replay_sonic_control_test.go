@@ -238,8 +238,13 @@ func TestReplaySonicDeviceLevel(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if n := count(cmds, regexp.MustCompile(`authorized-keys|interface ip|route|dns|syslog|snmp`)); n != 0 {
-		t.Errorf("%d key/address/syslog/SNMP writes; none are in this push in a form to apply", n)
+	if n := count(cmds, regexp.MustCompile(`authorized-keys|interface ip|route|dns|syslog`)); n != 0 {
+		t.Errorf("%d key/address/syslog writes; none are in this push in a form to apply", n)
+	}
+	// The push carries no switch.snmp.* (the site's SNMP is off), so the
+	// image's own community goes and none is added.
+	if snmp := count(cmds, regexp.MustCompile(`snmp`)); snmp != 1 || !contains(cmds, "sudo config snmp community del 'community-1'") {
+		t.Errorf("SNMP writes = %d; want only the image's community-1 removed", snmp)
 	}
 	if !strings.Contains(r.log.String(), "not a public key line") {
 		t.Error("the placeholder keys must be refused with a log")
