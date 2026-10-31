@@ -353,8 +353,7 @@ address the device reports.
 - **The unit cannot send syslog.** The SmartConnect port is not a
   management card: it talks to APC's cloud and, once enabled, Modbus, and
   has no syslog client, event log or web page. The controller's remote
-  logging host (`syslog.remote.*`) has nowhere to go, and `control.syslog`
-  is logged at start as having no effect for this driver. The unit's events (on battery,
+  logging host (`syslog.remote.*`) has nowhere to go. The unit's events (on battery,
   transfer cause, self-test) are in its registers, so the bridge writes the
   log lines itself: one `power-event` line per transition (§13).
 
@@ -568,6 +567,6 @@ the captured registers with the status bits changed (`powerevent_test.go`),
 and the live check was the `initial_state` line.
 
 The two APC cards (`apc-pdu`, `apc-backups`) do not ask for these lines:
-they syslog their own events (`control.syslog`, `docs/drivers/apc-pdu.md`, `apc-backups.md`), and the
+they syslog their own events (`docs/drivers/apc-pdu.md`, `apc-backups.md`), and the
 bridge would only duplicate them.
 

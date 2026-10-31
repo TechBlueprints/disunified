@@ -24,8 +24,10 @@ import (
 // NTP/DNS server, 192.0.2.201 the address the controller moved the switch
 // to and back from.
 //
-// The bridge ran read-only for the adoption and naming pushes (records
-// 0..94), as it did live, and with control on from record 95: the seeded
+// The bridge wrote no ports for the adoption and naming pushes (records
+// 0..94), as it did live -- the device-wide settings UniFi owns follow it
+// from the first push, as the bridge runs them now -- and with port control
+// on from record 95: the seeded
 // push, port 2 disabled and renamed, Allow All, Block All, a custom tagged
 // set, an aggregate of ports 5+6, a mirror 8 <- 7, port 9 forced 100G with
 // RS-FEC and storm control, the mirror and the aggregate removed, jumbo
@@ -69,10 +71,13 @@ func TestReplaySonicLabSession(t *testing.T) {
 	}
 	save := "sudo config save -y"
 	want := map[int][]string{
-		95: append([]string{
-			"sudo config ntp add 192.0.2.10", "sudo config ntp add 192.0.2.123",
-			"sudo config clock timezone MST7MDT", "sudo config hostname SONiCSeastone-DX010", save,
-		}, append(jumbo("1500"), save)...),
+		// Device-wide settings follow UniFi without port control: the
+		// first push after adoption brings its NTP servers and time zone,
+		// the push after naming its hostname. (Live, before 2026-10-31,
+		// they waited for port control at record 95.)
+		2:  {"sudo config ntp add 192.0.2.10", "sudo config ntp add 192.0.2.123", "sudo config clock timezone MST7MDT", save},
+		3:  {"sudo config hostname SONiCSeastone-DX010", save},
+		95: append(jumbo("1500"), save),
 		99: {"sudo config interface shutdown Ethernet4", "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet4' description 'lab-2'", save},
 		101: {"sudo config vlan add -m 2,8,9,10,69,1000,2000,3000,4000,4010", save,
 			"sudo config interface startup Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet12", save},
@@ -109,15 +114,21 @@ func TestReplaySonicLabSession(t *testing.T) {
 		Name: "sonic-lab", Replies: "replies-sonic.ndjson", Model: "USWF07D",
 		Collector: coll, Snapshot: snap,
 		Written: written,
-		Loop:    func(c *Config) { c.Controller = nil }, // read-only until record 95, as live
+		// No port control until record 95, as live; the device-wide settings
+		// UniFi owns and the address follow the controller from the start,
+		// as the bridge runs them now.
+		Loop: func(c *Config) {
+			c.Controller, c.AddressController = nil, coll
+			c.ControlIGMP, c.ControlNTP, c.ControlSyslog, c.ControlHostname = true, true, true, true
+			c.ControlReboot, c.ControlSSHKeys, c.ControlSNMP = true, true, true
+		},
 		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
 			got[i] = last
 			if i == 94 {
 				// Control switched on (live: a bridge restart with the control
 				// block; the read-only pushes had been applied, so the first
 				// push with control is not held).
-				l.cfg.Controller, l.cfg.ControlPorts, l.cfg.AddressController = coll, ports, coll
-				l.cfg.ControlNTP, l.cfg.ControlSyslog, l.cfg.ControlSNMP, l.cfg.ControlReboot, l.cfg.ControlHostname = true, true, true, true, true
+				l.cfg.Controller, l.cfg.ControlPorts = coll, ports
 				l.everApplied = true
 				l.cfg.DefaultPortNames = map[int][]string{}
 				for _, p := range snap.Ports {

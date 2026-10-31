@@ -93,7 +93,9 @@ still read, so an existing deployment keeps working unchanged.
 Copy [`deploy/config.example.yaml`](../deploy/config.example.yaml) to `config.yaml` and [`deploy/env.example`](../deploy/env.example)
 to `env`; fill in the controller address, the device address, and the
 environment variable names. Devices go under `devices:` (the pre-rename
-`switches:` key is still accepted). Start with `control.ports: "off"` (read-only).
+`switches:` key is still accepted). Start with `control.ports: "off"`: the
+bridge then writes none of the device's ports, but the device-wide settings
+UniFi owns follow the controller from the first push (§5).
 
 ## 4. First run and adoption
 
@@ -110,26 +112,26 @@ the device page shows live ports. The adopted key is now in
 
 ## 5. Turn on control
 
-Set `control.ports: all` (and the other `control` flags you want) and
-restart. **Check:** the log shows `reconciled ... 0 of N ports changed` (or
+Set `control.ports: all` and restart. **Check:** the log shows `reconciled ... 0 of N ports changed` (or
 the changes it made to bring the device in line with the controller). From
 now on the UniFi UI is the device's configuration: names, port state,
 speed, VLANs, FEC, storm control, STP, aggregation, mirroring, and on a power
 device the outlets (`control.outlets`).
 
-One control flag is off by default and deserves its own decision:
-`control.address` lets the controller's **IP Settings** set the device's own
-management address. A static setting is applied; DHCP only when it replaces a
-static setting you chose, never as the controller's default — and `arista-eos`
-and `podman` decline DHCP outright, because they cannot confirm a lease
-(`podman` also applies a static address only if the host already carries it:
-"make the lease permanent", never "move the host"). It is the answer to a
-fact every adoption meets: adopting a device deletes the client record it had,
-with its fixed-IP reservation and DNS name. It is the setting most likely to cut the bridge
-off from the device it manages: the Arista makes the change inside a config
-session with a commit timer that reverts unless the switch answers at the new
-address, but a device without that safety net simply takes it. Turn it on only
-when you have another way in.
+The device's own management address follows the controller's **IP
+Settings** too, with no key, for every driver that can write it. A static
+setting is applied; DHCP only when it replaces a static setting you chose,
+never as the controller's default (so a fresh adoption moves nothing) — and
+`arista-eos` and `podman` decline DHCP outright, because they cannot confirm
+a lease (`podman` also applies a static address only if the host already
+carries it: "make the lease permanent", never "move the host"). It is the
+answer to a fact every adoption meets: adopting a device deletes the client
+record it had, with its fixed-IP reservation and DNS name. It is also the
+setting most likely to cut the bridge off from the device it manages: the
+Arista makes the change inside a config session with a commit timer that
+reverts unless the switch answers at the new address, but a device without
+that safety net simply takes it, so have another way in before you change a
+device's IP Settings in UniFi.
 
 Two more UPS-only switches live in the same block: `control.outlets`
 (switch outlet groups from the UI; off by default, an outlet is real load)
@@ -137,16 +139,24 @@ and `control.nut` (claim the NUT-server capability: the UI's **NUT Server**
 switch then runs a NUT server in the bridge, which needs its port reachable --
 `3493:3493` published, or the container on a macvlan network with its own
 address; [`docs/drivers/apc-ups.md`](drivers/apc-ups.md) §12).
-On the APC cards (`apc-pdu`, `apc-backups`) `control.syslog` writes the
-controller's remote logging host (Settings → System) into the card's own
-syslog servers, replacing whatever server the card had; on a switch it
-rides with `control.ports`. Anywhere else it is logged as having no effect
-(`apc-ups`: the SmartConnect port has no syslog client).
+There is no per-setting opt-in for anything else UniFi configures on its
+own devices: whenever the driver can apply it, ports written or not, the
+controller's STP, IGMP snooping, NTP servers, time zone, remote logging host
+(Settings → System), hostname, SSH keys, SNMP community and Restart (a real
+reload) apply, and its lists **replace** the device's -- a server set on the device by hand is
+removed, and remote logging switched off in UniFi leaves the device logging
+nowhere, as a UniFi switch would. A driver applies what its device can take
+and logs the rest ([`docs/feature-map.md`](feature-map.md)). On the APC
+cards (`apc-pdu`, `apc-backups`) that is the syslog host, written into the
+card's own syslog servers; `apc-ups` has none (the SmartConnect port has
+no syslog client). Older configs' `address`, `igmp`, `ntp`, `syslog`,
+`hostname`, `reboot`, `ssh_keys` and `snmp` keys are ignored.
 
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list
-is extended with the site's VLANs; with `igmp: true` snooping follows
-UniFi's per-network setting (UniFi defaults it off). Read
+is extended with the site's VLANs; IGMP snooping follows UniFi's
+per-network setting (UniFi defaults it off, EOS on: the first push turns it
+off on every network not enabled in UniFi). Read
 [`docs/feature-map.md`](feature-map.md) for what each feature maps to on your driver.
 
 ## 6. Run it for good
@@ -204,7 +214,7 @@ one inform interval.
   devices as much as bridged ones.
 - The device lost its reserved address / DNS name after adoption: expected
   (the client record went with the adoption). Use the device's own IP
-  Settings with `control.address`, or make the address static on the device,
+  Settings (applied when static), or make the address static on the device,
   and recreate the name as a static DNS entry (Settings → Routing → DNS):
   the gateway publishes no name for an adopted device, whatever its
   `hostname` or `name`.

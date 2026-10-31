@@ -88,29 +88,28 @@ type Config struct {
 	// itself. nil = the device keeps whatever address it has.
 	AddressController devicemodel.AddressController
 	// SyslogController applies the controller's remote syslog host to a
-	// device without port control (a switch takes it through
+	// power device the bridge controls (a switch takes it through
 	// DeviceController with ControlSyslog). nil = the device's own syslog
 	// settings are left alone.
 	SyslogController devicemodel.SyslogController
-	// ControlIGMP lets the controller's per-network IGMP snooping setting
-	// drive the switch. Off by default: UniFi defaults snooping off per
-	// network while EOS defaults it on, so the first apply would turn
-	// snooping off on every VLAN not enabled in UniFi.
-	ControlIGMP bool
-	// ControlNTP / ControlSyslog let the controller's NTP servers and
-	// remote syslog host replace the switch's (off by default: they remove
-	// servers the switch had that the controller does not list).
-	ControlNTP    bool
-	ControlSyslog bool
-	// ControlHostname: the controller's resolv.host.1.name (the device's
-	// UniFi name without spaces) becomes the device's own hostname (off by
-	// default: it renames the device).
+	// ControlIGMP, ControlNTP, ControlSyslog, ControlHostname, ControlReboot,
+	// ControlSNMP and ControlSSHKeys hand the device-wide settings UniFi owns
+	// to the driver. The bridge sets them all whenever it controls the
+	// switch's ports -- UniFi is the device's configuration, as on its own
+	// switches, so the controller's IGMP snooping per network, NTP servers,
+	// syslog host, name (resolv.host.1.name, the UniFi name without spaces),
+	// Restart, SNMP community and SSH keys replace the device's -- and they
+	// stay separate here only so tests can drive each one. Off, a setting is
+	// left as the device has it (a reboot is emulated).
+	ControlIGMP     bool
+	ControlNTP      bool
+	ControlSyslog   bool
 	ControlHostname bool
 	// JumboAlwaysOn: the switch forwards jumbo frames unconditionally, so a
 	// controller asking for jumbo off is logged rather than applied.
 	JumboAlwaysOn bool
 	// ControlReboot: the controller's reboot command really reloads the
-	// switch (off by default: it is emulated).
+	// switch (see ControlIGMP; off, it is emulated).
 	ControlReboot bool
 	// NUT, when set, receives the controller's nutserver block on every
 	// applied and reconciled push (a push without the block means "off").
@@ -123,9 +122,11 @@ type Config struct {
 	// minutes at the controller's interval); -1 = never withhold.
 	StaleAfter int
 	// ControlSNMP: the controller's SNMP v1/v2c community is configured on
-	// the switch (read-only) and removed when UniFi turns SNMP off.
+	// the switch (read-only) and removed when UniFi turns SNMP off (see
+	// ControlIGMP).
 	ControlSNMP bool
-	// ControlSSHKeys: install the SSH keys the controller pushes on the switch.
+	// ControlSSHKeys: install the SSH keys the controller pushes on the
+	// switch (see ControlIGMP).
 	ControlSSHKeys bool
 	// AllowInitialChanges lets the first push after adoption change ports.
 	// Off by default: a freshly adopted device has no port config in the
@@ -410,11 +411,11 @@ func (l *Loop) informOnce(ctx context.Context) {
 			l.state = StatePending
 			lines = append(lines, "setdefault received, factory reset, back to PENDING")
 		case inform.EffectRebooted:
-			if l.cfg.ControlReboot {
+			if _, ok := deviceAs[devicemodel.Rebooter](l); ok && l.cfg.ControlReboot {
 				lines = append(lines, "reboot requested: reloading the switch")
 				l.pendingReboot = true
 			} else {
-				lines = append(lines, "reboot requested (emulated; -control-reboot to really reload)")
+				lines = append(lines, "reboot requested (emulated: this driver cannot reload its device)")
 			}
 		case inform.EffectUpgraded:
 			lines = append(lines, fmt.Sprintf("upgrade to %q requested (emulated reboot)", e.Text))
@@ -437,7 +438,7 @@ func (l *Loop) informOnce(ctx context.Context) {
 		case device.EffectSystemCfg:
 			lines = append(lines, fmt.Sprintf("system_cfg received, cfgversion %s, pending apply", e.Text))
 		case device.EffectLocate:
-			if _, ok := l.cfg.Controller.(devicemodel.Locator); ok {
+			if _, ok := deviceAs[devicemodel.Locator](l); ok {
 				lines = append(lines, fmt.Sprintf("locate %s (reported as locating; the driver drives the device's LED)", e.Text))
 				l.pendingLocate = e.Text
 			} else {
@@ -494,7 +495,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	l.pendingLocate = ""
 	l.mu.Unlock()
 	if locate != "" {
-		if lc, ok := l.cfg.Controller.(devicemodel.Locator); ok {
+		if lc, ok := deviceAs[devicemodel.Locator](l); ok {
 			cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 			err := lc.SetLocate(cctx, locate == "on")
 			cancel()
@@ -505,7 +506,7 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	}
 	l.cycleOutlets(ctx, outlets)
 	if reboot {
-		if rb, ok := l.cfg.Controller.(devicemodel.Rebooter); ok {
+		if rb, ok := deviceAs[devicemodel.Rebooter](l); ok {
 			cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 			err := rb.Reboot(cctx)
 			cancel()
@@ -556,6 +557,8 @@ func (l *Loop) reconcile(ctx context.Context) {
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text)
 		l.applySyslog(cctx, text)
+		l.applyDeviceSettings(cctx, text)
+		l.installSSHKeys(cctx, text)
 		return
 	}
 	if !l.reconciledOnce && l.cfg.OnSystemCfg != nil {
@@ -567,6 +570,8 @@ func (l *Loop) reconcile(ctx context.Context) {
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		l.applySyslog(cctx, text)
+		l.applyDeviceSettings(cctx, text)
+		l.installSSHKeys(cctx, text)
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return
@@ -814,7 +819,7 @@ func (l *Loop) installSSHKeys(ctx context.Context, text string) {
 	if !l.cfg.ControlSSHKeys {
 		return
 	}
-	inst, ok := l.cfg.Controller.(devicemodel.SSHKeyInstaller)
+	inst, ok := deviceAs[devicemodel.SSHKeyInstaller](l)
 	if !ok {
 		return
 	}
@@ -851,10 +856,30 @@ func (l *Loop) applyNUT(text string) {
 	}
 }
 
-// applyDeviceSettings writes STP/IGMP settings; errors are logged, and the
-// port apply still proceeds (they are independent).
+// deviceAs finds a write capability on the driver: on the port or outlet
+// controller, else on the device itself. The device-wide settings UniFi
+// owns (STP, IGMP, NTP, syslog, SNMP, the hostname, SSH keys, Restart)
+// follow the controller whenever the driver can apply them, whether or not
+// the bridge writes the device's ports.
+func deviceAs[T any](l *Loop) (T, bool) {
+	if v, ok := l.cfg.Controller.(T); ok {
+		return v, true
+	}
+	if v, ok := l.cfg.OutletController.(T); ok {
+		return v, true
+	}
+	if v, ok := l.cfg.Collector.(T); ok {
+		return v, true
+	}
+	var zero T
+	return zero, false
+}
+
+// applyDeviceSettings writes the device-wide settings (STP, IGMP, NTP,
+// syslog, SNMP, time zone, hostname); errors are logged, and the port apply
+// still proceeds (they are independent).
 func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
-	sc, ok := l.cfg.Controller.(devicemodel.DeviceController)
+	sc, ok := deviceAs[devicemodel.DeviceController](l)
 	if !ok {
 		return
 	}
@@ -1039,6 +1064,8 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text)
 		l.applySyslog(cctx, text)
+		l.applyDeviceSettings(cctx, text)
+		l.installSSHKeys(cctx, text)
 		cancel()
 		l.cfg.Logger.Printf("[%s] system_cfg %s accepted without applying (read-only mode)", l.desc.MAC, ver)
 		if err := l.session.MarkApplied(ver); err != nil {
@@ -1062,6 +1089,8 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		l.applySyslog(cctx, text)
+		l.applyDeviceSettings(cctx, text)
+		l.installSSHKeys(cctx, text)
 		outlets := l.desiredOutlets(text)
 		if l.holdInitialOutletPush(ver, outlets) {
 			return true

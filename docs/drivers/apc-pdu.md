@@ -232,10 +232,10 @@ with no reboot.
 The bridge now retries a device that does not answer at startup (15 s
 doubling to a 5-minute cap) rather than dropping it until a restart.
 
-### Or let UniFi own the address: `control.address`
+### Or let UniFi own the address (the default)
 
 The controller pushes the device's own IP Settings in every system_cfg, and
-with `control: {address: true}` the driver applies them to the card, so the
+the driver applies them to the card (no key since 2026-10-31), so the
 address is set where everything else is -- in UniFi -- instead of by hand on
 the card. Both forms were captured on 10.6.106:
 
@@ -258,13 +258,13 @@ tests), and a different static address produces one `[NetworkTCP/IP]` upload
 with the Override line (the replay). After a move to DHCP the bridge's own
 `url:` is stale until the new lease is known; the log says so.
 
-### And where it logs: `control.syslog`
+### And where it logs: the controller's syslog host
 
 With remote logging switched on in UniFi (Settings → System), every push --
 the power path's included -- carries `syslog.remote.ip`, `.port` and
-`.status=enabled` (captured from this PDU on Network 10.6.109). With
-`control: {syslog: true}` the driver writes that host into the card's own
-syslog servers through the same config file:
+`.status=enabled` (captured from this PDU on Network 10.6.109), and the
+driver writes that host into the card's own syslog servers through the same
+config file (no key):
 
 ```
 [NetworkSYSLOG]
@@ -274,8 +274,7 @@ Port1=514
 ```
 
 Any other slot that holds a server is emptied (`ServerN=0.0.0.0`): the
-controller's host replaces the card's, as `control.syslog` does on a
-switch. Remote logging switched off in UniFi uploads `Syslog=disabled` and
+controller's host replaces the card's, as it does on a switch. Remote logging switched off in UniFi uploads `Syslog=disabled` and
 leaves the slots alone. The facility and the severity mapping are never
 written. The section is read from the card's `config.ini` at Start and
 logged; an upload is a diff against it, and about a minute later (the card

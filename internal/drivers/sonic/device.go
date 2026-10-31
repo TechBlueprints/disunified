@@ -255,8 +255,10 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		note("DHCP snooping requested; community SONiC has none; not written")
 	}
 
-	// NTP and syslog: add the controller's, remove only what the bridge
-	// added earlier, leave the rest.
+	// NTP and syslog: the controller's list is the switch's, as on UniFi's
+	// own switches -- add what it names, remove every other server,
+	// whoever configured it. The managed sets record what the controller
+	// last set.
 	if d.ManageNTP {
 		want := map[string]bool{}
 		for _, h := range d.NTPServers {
@@ -272,16 +274,14 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 				mNTP[a] = true
 			}
 		}
-		for _, ip := range sortedSet(mNTP) {
+		for _, ip := range sortedSet(sim.ntp) {
 			if want[ip] {
 				continue
 			}
-			if sim.ntp[ip] {
-				a := ip
-				add("config ntp del "+a, "", func(s *swState) { delete(s.ntp, a) })
-			}
-			delete(mNTP, ip)
+			a := ip
+			add("config ntp del "+a, "", func(s *swState) { delete(s.ntp, a) })
 		}
+		mNTP = want
 		dropPins("ntp", d.NTPServers, pins)
 	}
 	if d.ManageSyslog {
@@ -313,16 +313,18 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			add("config syslog add "+a+" --port "+p, "", func(s *swState) { s.syslog[a] = p })
 			mSyslog[a] = true
 		}
-		for _, ip := range sortedSet(mSyslog) {
+		on := map[string]bool{}
+		for ip := range sim.syslog {
+			on[ip] = true
+		}
+		for _, ip := range sortedSet(on) {
 			if want[ip] {
 				continue
 			}
-			if _, ok := sim.syslog[ip]; ok {
-				a := ip
-				add("config syslog del "+a, "", func(s *swState) { delete(s.syslog, a) })
-			}
-			delete(mSyslog, ip)
+			a := ip
+			add("config syslog del "+a, "", func(s *swState) { delete(s.syslog, a) })
 		}
+		mSyslog = want
 		dropPins("syslog", hosts, pins)
 	}
 

@@ -68,7 +68,7 @@ held one across restarts would run into that limit.
 - **The UPS itself is never turned off or rebooted** (the card's
   `ulctrl1` form is not posted), and outlet names are not written: the
   controller pushes none.
-- **IP Settings** (`control.address`): a partial `config.ini` over FTP with
+- **IP Settings** (no key): a partial `config.ini` over FTP with
   `Override=<card MAC>` (the card ignores the section otherwise),
   `BootMode=Manual` + address/mask/gateway or `BootMode=DHCP Only` -- the
   apc-pdu path, and the same rule that DHCP is applied only when it
@@ -77,7 +77,7 @@ held one across restarts would run into that limit.
   writes `options.gateway`, or failing that keeps the card's current one,
   and treats the gateway as part of the diff. Found live: the first static
   write left the card at `DefaultGateway=0.0.0.0` until the option existed.
-- **Syslog host** (`control.syslog`): the controller's remote logging host
+- **Syslog host** (no key): the controller's remote logging host
   into the card's syslog servers, the apc-pdu write
   ([`apc-pdu.md`](apc-pdu.md) §10, shared code in `internal/drivers/apcnmc`).
   The committed `config.ini` fixture keeps only the four sections the driver
@@ -111,7 +111,6 @@ devices:
       gateway: 192.0.2.1              # written with a static address (the usp push has no route)
     control:
       outlets: "3,4"                  # the switched groups; 1-2 are main groups and refused regardless
-      address: true
 ```
 
 Adopt by address, not by the name the client record gave the card: adoption

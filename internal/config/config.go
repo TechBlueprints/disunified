@@ -67,31 +67,19 @@ type Device struct {
 	Control Control `yaml:"control"`
 }
 
-// Control says what UniFi owns on this switch. Ports "" or "off" = read-only.
+// Control says which of the device's ports and outlets the bridge writes
+// from the controller. Ports "" or "off" = no port writes. Everything else
+// UniFi configures on its own devices -- the device's address (static IP
+// Settings), IGMP snooping, NTP, the remote syslog host, the hostname, SSH
+// keys, SNMP, Restart -- follows the controller whenever the driver can
+// apply it, with no per-setting opt-in. The retired keys (address, igmp,
+// ntp, syslog, hostname, reboot, ssh_keys, snmp) still load and are ignored.
 type Control struct {
 	Ports string `yaml:"ports"` // "all", or "2,5-8"
 	// Outlets is the power-device equivalent of Ports: "all", or "2,5-8".
 	// An outlet carries real load, so it is off by default like everything
 	// else that writes.
 	Outlets string `yaml:"outlets"`
-	// Address lets the controller's IP Settings for the device set the
-	// device's own management address (static or DHCP). Off by default: a
-	// wrong address takes the device off the network, and only a driver that
-	// can write its device's TCP/IP config honours it.
-	Address bool `yaml:"address"`
-	IGMP    bool `yaml:"igmp"`
-	NTP     bool `yaml:"ntp"`
-	Syslog  bool `yaml:"syslog"`
-	// Hostname lets the controller's name for the device (resolv.host.1.name:
-	// the UniFi name with spaces removed) become the device's own hostname.
-	// Unset means the driver's default (HostnameOn): on for sonic, because
-	// UniFi's own SONiC switches always take the UniFi name as their
-	// hostname; off elsewhere, since it renames the device. Drivers that
-	// cannot set a hostname ignore it (sonic: `config hostname`).
-	Hostname *bool `yaml:"hostname"`
-	Reboot   bool  `yaml:"reboot"`
-	SSHKeys  bool  `yaml:"ssh_keys"`
-	SNMP     bool  `yaml:"snmp"`
 	// NUT is accepted for compatibility and no longer needed: every UPS
 	// claims the NUT-server capability (the controller's UI cannot save a
 	// UPS's settings otherwise), and the controller's "NUT Server" switch
@@ -112,20 +100,6 @@ type Control struct {
 	// adoption (default: seed when api_url is set).
 	NoSeed bool `yaml:"no_seed"`
 }
-
-// HostnameOn is control.hostname for a device run by driver: as set, else
-// HostnameDefault.
-func (c Control) HostnameOn(driver string) bool {
-	if c.Hostname != nil {
-		return *c.Hostname
-	}
-	return HostnameDefault(driver)
-}
-
-// HostnameDefault is control.hostname when nothing sets it: on for sonic
-// (UniFi's own SONiC switches set the hostname to the UniFi name,
-// docs/drivers/sonic.md §9), off for every other driver.
-func HostnameDefault(driver string) bool { return driver == "sonic" }
 
 // Load reads and validates a config file.
 func Load(path string) (*File, error) {

@@ -18,14 +18,14 @@ func TestLoadExample(t *testing.T) {
 	if f.Controller.Host != "192.0.2.1" || f.Controller.APIKeyEnv != "DUI_UNIFI_API_KEY" || f.Controller.Site != "default" {
 		t.Errorf("controller = %+v", f.Controller)
 	}
-	if len(f.Devices) != 6 || f.Devices[5].Driver != "apc-backups" || f.Devices[3].Driver != "apc-ups" || f.Devices[3].Auth != "none" || f.Devices[4].Driver != "podman" || !f.Devices[4].Control.Address || f.Devices[1].Driver != "proxmox" || f.Devices[1].SSH == "" || f.Devices[0].Name != "arista" || f.Devices[0].Driver != "arista-eos" || f.Devices[0].Username != "stu" || f.Devices[0].Password != "x" {
+	if len(f.Devices) != 6 || f.Devices[5].Driver != "apc-backups" || f.Devices[3].Driver != "apc-ups" || f.Devices[3].Auth != "none" || f.Devices[4].Driver != "podman" || f.Devices[1].Driver != "proxmox" || f.Devices[1].SSH == "" || f.Devices[0].Name != "arista" || f.Devices[0].Driver != "arista-eos" || f.Devices[0].Username != "stu" || f.Devices[0].Password != "x" {
 		t.Errorf("devices = %+v", f.Devices)
 	}
-	if f.Devices[0].Model != "auto" || f.Devices[0].UDAPIVersion != "1.0.0" || f.Devices[0].Control.Ports != "all" || !f.Devices[0].Control.IGMP {
+	if f.Devices[0].Model != "auto" || f.Devices[0].UDAPIVersion != "1.0.0" || f.Devices[0].Control.Ports != "all" {
 		t.Errorf("device defaults = %+v", f.Devices[0])
 	}
 	pdu := f.Devices[2]
-	if pdu.Driver != "apc-pdu" || pdu.URL != "192.0.2.20" || pdu.Control.Outlets != "all" || !pdu.Control.Address || pdu.Username != "apc" {
+	if pdu.Driver != "apc-pdu" || pdu.URL != "192.0.2.20" || pdu.Control.Outlets != "all" || pdu.Username != "apc" {
 		t.Errorf("pdu-1 = %+v", pdu)
 	}
 }
@@ -100,29 +100,17 @@ func TestAuthRejectsUnknownValues(t *testing.T) {
 	}
 }
 
-// control.hostname unset is the driver's default: on for sonic (UniFi's own
-// SONiC switches take the UniFi name as their hostname), off for the others;
-// an explicit value wins either way.
-func TestHostnameDefaultsOnForSonic(t *testing.T) {
-	for _, c := range []struct {
-		driver, hostname string
-		want             bool
-	}{
-		{"sonic", "", true},
-		{"sonic", "      hostname: false\n", false},
-		{"sonic", "      hostname: true\n", true},
-		{"arista-eos", "", false},
-		{"arista-eos", "      hostname: true\n", true},
-		{"proxmox", "      hostname: false\n", false},
-	} {
-		p := filepath.Join(t.TempDir(), "c.yaml")
-		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: "+c.driver+"\n    ssh: admin@192.0.2.40\n    control:\n      ports: all\n"+c.hostname), 0o644)
-		f, err := Load(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := f.Devices[0].Control.HostnameOn(f.Devices[0].Driver); got != c.want {
-			t.Errorf("driver %s, %q: hostname on = %v, want %v", c.driver, c.hostname, got, c.want)
-		}
+// A config written when IGMP, NTP, syslog, the hostname, Restart, SSH keys
+// and SNMP each had an opt-in still loads: those keys are ignored now that
+// UniFi owns all of them on a device it controls.
+func TestRetiredControlKeysStillLoad(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: sonic\n    ssh: admin@192.0.2.40\n    control:\n      ports: all\n      address: true\n      igmp: true\n      ntp: false\n      syslog: true\n      hostname: false\n      reboot: true\n      ssh_keys: true\n      snmp: false\n"), 0o644)
+	f, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Devices[0].Control.Ports != "all" {
+		t.Errorf("control = %+v", f.Devices[0].Control)
 	}
 }
