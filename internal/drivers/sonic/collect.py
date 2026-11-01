@@ -295,6 +295,12 @@ try:
 except Exception:
     pass
 dump(_h)
+# The SSH connection this run came in on, as the switch sees it: the
+# client's address and the switch address it dialled -- the path the IP
+# ACL rules must not cut (acl.go). Empty outside an SSH session.
+s("ssh")
+_ssh = (os.environ.get("SSH_CONNECTION") or "").split()
+sys.stdout.write((_ssh[0] + " " + _ssh[2] + "\n") if len(_ssh) == 4 else "\n")
 text("hostname", ["hostname"])
 text("version", path="/etc/sonic/sonic_version.yml")
 text("uptime", path="/proc/uptime")

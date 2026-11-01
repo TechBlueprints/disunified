@@ -2002,14 +2002,38 @@ rule naming two destination ports was pushed as two IP groups (`-1`, `-2`).
 | `switch.acl.mac.N.src.mac` / `.src.mask` | `02:00:00:00:00:01`/`ff:ff:ff:ff:ff:ff`; `02:00:00:00:00:00`/`ff:ff:ff:ff:ff:00` (UI netmask 40) | one side; the UI's Any is `any` with mask `00:00:00:00:00:00` |
 | `switch.acl.mac.N.dst.mac` / `.dst.mask` | as above, `any`/`00:00:00:00:00:00` | |
 | `switch.acl.ip.N.action` | `permit`, `deny` | |
-| `switch.acl.ip.N.type` | `ip` (protocol All), `tcp` | `udp` expected for UDP, not captured; TCP/UDP not captured |
-| `switch.acl.ip.N.src.ip` / `.dst.ip` | CIDR | the key is absent for Any (not captured: every captured rule named both sides) |
-| `switch.acl.ip.N.dst.port` | `9`, `1001` | one port per group |
-| `switch.acl.ip.N.src.port_range` | `1-65535` | on a TCP rule, the side with no port; absent on an `ip` rule |
+| `switch.acl.ip.N.type` | `ip` (protocol All), `tcp`, `udp` | the UI's TCP/UDP is two groups, `-1` tcp and `-2` udp (DX010 capture, below) |
+| `switch.acl.ip.N.src.ip` / `.dst.ip` | CIDR; `any` | `any` is the UI's Any (DX010 capture); a Network side is a CIDR too |
+| `switch.acl.ip.N.src.port` / `.dst.port` | `9`, `1001` | one port per group; the source port from the DX010 capture |
+| `switch.acl.ip.N.src.port_range` / `.dst.port_range` | `1-65535` | on a TCP or UDP rule, the side with no port; absent on an `ip` rule |
 
-IP rules carry no VLAN. A Network as source or destination (`network_ids` in
-the rule object) was not captured. The UI's Device side of a MAC rule was
-not captured either.
+IP rules carry no VLAN.
+
+**The shapes the ECS round left out, captured on the DX010 (2026-11-01).**
+Once the DX010 claimed `max_custom_ip_acls` 128 (§11.7.6), five Block rules
+were saved scoped to it alone, documentation addresses throughout, one per
+shape; each save reached the DX010 as its own push within ~25 s, the driver
+held the set and wrote nothing, and the rules were removed seven minutes
+later (the controller's rule list `[]` again, the DX010's next push equal to
+the one before apart from the two lines its new claims add). The last push is
+`docs/fixtures/controller-10.6.109/system_cfg-dx010-acl.txt`:
+
+- **UDP** is `type=udp`, shaped as `tcp`.
+- **TCP/UDP** is two groups, `<name>-1` of type `tcp` and `<name>-2` of type
+  `udp`, the rest identical. There is no TCP/UDP type on the wire.
+- **Any** is `<side>.ip=any`, a literal value, not an absent key.
+- **A source port** is `src.port=<n>`, the other side `port_range=1-65535`.
+- **A Network side** is pushed as a CIDR like an IP side, the network's
+  gateway address with its prefix length (host bits set). The network
+  picked, a VLAN-only network with no subnet, was pushed as the gateway
+  address of the controller's default LAN (a private /24), not anything of
+  that network's. A rule naming a VLAN-only network therefore matches an address
+  range the network does not have; that is UniFi's push, and the driver
+  follows it.
+- **A MAC rule cannot target the DX010**: with `max_custom_mac_acls` 0 the
+  UI lists the switch under "ACL Rules are not applied to" for type MAC and
+  greys it out in the Specific picker. The UI's Device side of a MAC rule
+  stays uncaptured.
 
 **What reached the DX010.** The snooping save gave every switch a new
 cfgversion. The DX010's push was otherwise byte-identical, with no
@@ -2153,12 +2177,13 @@ below keeps the controller from sending one.
   holds (start at 128; CRM's per-table entry counters on the switch are the
   authority once the table exists), and `max_custom_mac_acls` 0 on the
   stock image.
-- **Not yet known.** Which of those numbers the controller gates the push
-  on, and what `max_global_acls` and `max_acl_port_range` mean, is
-  unknown. The first build therefore claims, gets deployed (the
-  coordinating session's approval), saves one harmless rule scoped to the
-  DX010, and records its push from the reply log before the write path
-  is relied on.
+- **The gate (captured 2026-11-01).** `max_custom_ip_acls` alone (128,
+  with `max_custom_mac_acls` 0 and no `max_global_acls` or
+  `max_acl_port_range`) makes the UI offer the switch for IP rules and the
+  controller push them; `max_custom_mac_acls` 0 keeps MAC rules away (the
+  switch is greyed out in the picker). What `max_global_acls` and
+  `max_acl_port_range` change is still unknown. The claim alone produced no
+  push; the next rule save did.
 
 **Hardware checks before claiming** (documentation-range rules, under §11.3's
 dead-man timer):
@@ -2192,14 +2217,27 @@ details the spec left open:
 - **Shapes not captured are held, not guessed.** `unificfg` records every
   line of an ACL group it does not model and an action other than
   permit/deny (`Unmodelled`), and `IPACL.Uncaptured()` /
-  `MACACL.Uncaptured()` name what no capture shows: an IP rule of a type
-  other than `ip`/`tcp` (UDP, TCP/UDP), a side without an address (the UI's
-  Any), a source port, a port on an `ip` rule, a range other than
-  `1-65535`, and a MAC side that is neither a MAC under a mask nor `any`. One
-  such rule holds **every rule of its kind** (`IPACLSet` false: the switch
-  keeps what it has), because the rules are ordered and leaving one out
-  changes what the others match; the loop logs the held rules when they
-  change.
+  `MACACL.Uncaptured()` name what no capture shows: a type other than
+  `ip`/`tcp`/`udp`, a side without an `ip` line, an `ip` that is neither an
+  IPv4 prefix nor `any`, a port on an `ip` rule, a range other than
+  `1-65535`, a port and a range on one side, and a MAC side that is neither
+  a MAC under a mask nor `any`. (Until the DX010 capture UDP, TCP/UDP, Any
+  and a source port were held too.) One such rule holds **every rule of its
+  kind** (`IPACLSet` false: the switch keeps what it has), because the
+  rules are ordered and leaving one out changes what the others match; the
+  loop logs the held rules when they change. The loop writes `any` as no
+  address and every prefix as its network address (a Network side arrives
+  with host bits set).
+- **The rules never cut the bridge off.** They bind to the uplink too, so a
+  Block matching the bridge's TCP to the address it dials (port 22) would
+  isolate the switch from the push that removes it again -- the DX010 has
+  one link and no console (§11.3). `collect.py` reads `SSH_CONNECTION` (the
+  `ssh` section: the bridge's address and the switch address it dialled,
+  as the switch sees them), and such a set is held with a log unless an
+  earlier Allow lets that traffic through. A rule from a prefix that does
+  not hold the bridge, of another protocol or port, or naming a source
+  port (the bridge's is ephemeral) passes. Without the section every
+  source counts.
 - **Guard priorities are constant**: every FORWARD at 9000, every DROP at
   8000. Rules of one priority never overlap (one VLAN, one server each), and
   a server added or removed then writes one rule, not a renumbering. Rule
@@ -2228,8 +2266,8 @@ details the spec left open:
 - **Claims**: `feature_caps` 128, `max_custom_ip_acls` 128,
   `max_custom_mac_acls` 0, wherever the collector reads the ACL sections
   (and Start then checks `config acl add|remove table`). `max_global_acls`
-  and `max_acl_port_range` are not claimed until the capture below shows
-  what gates the push.
+  and `max_acl_port_range` are not claimed: the capture showed the IP count
+  alone gates the push (§11.7.5).
 - **More rules than claimed** (128) hold the IP set with a log.
 - **Fixtures** (read-only on the DX010, scrubbed):
   `sonic-202505.1238526-ff3c0c9f6/collect-acl.txt` (no DUI table yet, CRM
@@ -2241,13 +2279,17 @@ details the spec left open:
   verdict (`Active`, `Inactive`, or none while the table is missing).
   Tests: `acl_test.go` (the ECS's two pushes; guards on Vlan4094/2/69 and
   off, the IP rules, a deleted first rule, the aggregate and breakout
-  rebind, the verdict), `internal/informloop/acl_test.go` (translation,
-  holds, and the DX010's own push with the ECS's lines end to end),
-  `unificfg` `TestACLUncaptured`, `device` `TestSwitchCapsACLCounts`.
-- **Untested live** until the steps of §11.7.5 run: which count gates the
-  push, the uncaptured shapes, `VLAN_ID` on the native stand-in, guard drop
-  versus ACL forward, the entry capacity, a rebind on a live breakout or
-  aggregate.
+  rebind, the verdict, the DX010's shapes, the management guard),
+  `internal/informloop/acl_test.go` (translation, holds),
+  `replay_sonic_acl_test.go` (the DX010's own push with the ECS's lines,
+  and its own ACL push, end to end), `unificfg` `TestACLUncaptured` and
+  `TestParseDX010ACLRules`, `device` `TestSwitchCapsACLCounts`.
+- **Captured live** (2026-11-01): the gate and the shapes above
+  (`TestParseDX010ACLRules`, `TestDesiredDeviceDX010ACLShapes`,
+  `TestIPRulesDX010Shapes`, `TestReplaySonicDX010ACLPush`).
+- **Untested live:** the driver's writes (every rule of the capture was
+  held), `VLAN_ID` on the native stand-in, guard drop versus ACL forward,
+  the entry capacity, a rebind on a live breakout or aggregate.
 
 ## Sources
 

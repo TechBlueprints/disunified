@@ -107,6 +107,10 @@ type Collector struct {
 	// (logged by the next collect).
 	acl        aclWant
 	aclWritten bool
+	// sshFrom / sshTo are the last collect's SSH connection as the switch
+	// saw it (collect.py's ssh section): the bridge's address and the
+	// switch address it dialled; "" when not reported.
+	sshFrom, sshTo string
 }
 
 // NewCollector wraps a runner.
@@ -301,6 +305,10 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.prevCPU = cpu
 	c.host = sys.Hostname
 	c.state = newState(db, sec)
+	c.sshFrom, c.sshTo = "", ""
+	if f := strings.Fields(sec["ssh"]); len(f) == 2 {
+		c.sshFrom, c.sshTo = f[0], f[1]
+	}
 	for _, p := range ports {
 		c.aliases[p.Index] = p.alias
 		c.ifnames[p.Index] = append([]string(nil), p.Interfaces...)

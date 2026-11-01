@@ -290,17 +290,16 @@ DX010 capture read for it (`acl_test.go`, `informloop/acl_test.go`); claims
 
 | Gap | What the PR needs |
 |---|---|
-| The push to a claiming community switch | a harmless rule set scoped to the switch from the UI, its `system_cfg` from the reply log (which `switch_caps` count gates it), scrubbed into a fixture |
-| IP rule shapes no capture shows: UDP, TCP/UDP, Any as a side, a Network as a side, a source port | that push carrying each shape; until then a rule of that shape holds the IP rules (logged) |
+| The driver's writes on the switch (captured 2026-11-01: `max_custom_ip_acls` gates the push; UDP, TCP/UDP, Any, a source port and a Network side reached the DX010, held by the build of the day) | a rule set applied to a DX010 and read back: `show acl table` / `show acl rule`, STATE_DB `Active`, the bridge's tally |
 | The hardware: `VLAN_ID` on the native-VLAN stand-in (untagged), a guard drop against an ACL forward, the table's entry capacity | documentation-range rules under the dead-man timer of §11.3, CRM's per-table counters |
 | MAC rules | an orchagent patch (an `L2` table type, `SRC_MAC`/`DST_MAC`) in the custom image series (§8, §11.7.5) |
 
 ### Refused (logged, not claimed)
 
 IGMP snooping, port isolation, 802.1X, LLDP-MED off (community SONiC has none
-of them); MAC ACL rules (no L2 table type in the stock orchagent); IP ACL rule
-shapes no capture shows (UDP, TCP/UDP, Any, a source port: the rules of that
-kind are held); breakout on a platform without `platform.json`
+of them); MAC ACL rules (no L2 table type in the stock orchagent); an IP ACL rule shape
+no capture shows, or a set that would block the bridge's own SSH to the
+switch (the rules of that kind are held); breakout on a platform without `platform.json`
 (the VS), a speed no breakout mode runs, and a breakout of a cage in an
 aggregate or mirror session; a pushed time zone no zone on the switch
 matches; a hostname that is not a DNS name of at most 63 characters; STP,

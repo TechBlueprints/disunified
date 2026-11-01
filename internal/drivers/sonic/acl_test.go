@@ -391,3 +391,88 @@ func TestACLVerdictIsLogged(t *testing.T) {
 		}
 	}
 }
+
+// The shapes the DX010's own push carries (controller-10.6.109/
+// system_cfg-dx010-acl.txt, translated by the loop as
+// TestDesiredDeviceDX010ACLShapes holds them): UDP, TCP/UDP as a tcp and a
+// udp rule, Any as no address, a source port, a Network side as its prefix.
+func TestIPRulesDX010Shapes(t *testing.T) {
+	src := devicemodel.IPACLEnd{CIDR: "203.0.113.0/24"}
+	dst9 := devicemodel.IPACLEnd{CIDR: "192.0.2.0/24", Port: 9}
+	acls := []devicemodel.IPACL{
+		{Name: "dui-test-udp-1", Protocol: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-1", Protocol: "tcp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-2", Protocol: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-any-1", Dst: devicemodel.IPACLEnd{CIDR: "198.51.100.0/24"}},
+		{Name: "dui-test-srcport-1", Protocol: "tcp", Src: devicemodel.IPACLEnd{CIDR: "203.0.113.0/24", Port: 9}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24"}},
+		{Name: "dui-test-network-1", Src: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24"}, Dst: devicemodel.IPACLEnd{CIDR: "198.51.100.0/24"}},
+	}
+	rules, why := ipRules(acls)
+	if why != "" {
+		t.Fatal(why)
+	}
+	m := func(kv ...string) map[string]string {
+		out := map[string]string{}
+		for i := 0; i < len(kv); i += 2 {
+			out[kv[i]] = kv[i+1]
+		}
+		return out
+	}
+	want := map[string]map[string]string{
+		"RULE_1": m("PRIORITY", "9998", "PACKET_ACTION", "DROP", "IP_PROTOCOL", "17", "SRC_IP", "203.0.113.0/24", "DST_IP", "192.0.2.0/24", "L4_DST_PORT", "9"),
+		"RULE_2": m("PRIORITY", "9997", "PACKET_ACTION", "DROP", "IP_PROTOCOL", "6", "SRC_IP", "203.0.113.0/24", "DST_IP", "192.0.2.0/24", "L4_DST_PORT", "9"),
+		"RULE_3": m("PRIORITY", "9996", "PACKET_ACTION", "DROP", "IP_PROTOCOL", "17", "SRC_IP", "203.0.113.0/24", "DST_IP", "192.0.2.0/24", "L4_DST_PORT", "9"),
+		"RULE_4": m("PRIORITY", "9995", "PACKET_ACTION", "DROP", "IP_TYPE", "IPV4ANY", "DST_IP", "198.51.100.0/24"),
+		"RULE_5": m("PRIORITY", "9994", "PACKET_ACTION", "DROP", "IP_PROTOCOL", "6", "SRC_IP", "203.0.113.0/24", "L4_SRC_PORT", "9", "DST_IP", "192.0.2.0/24"),
+		"RULE_6": m("PRIORITY", "9993", "PACKET_ACTION", "DROP", "IP_TYPE", "IPV4ANY", "SRC_IP", "192.0.2.0/24", "DST_IP", "198.51.100.0/24"),
+	}
+	if !reflect.DeepEqual(rules, want) {
+		t.Errorf("rules:\n got  %v\n want %v", rules, want)
+	}
+	for r, f := range rules {
+		if !validL3Rule(f) {
+			t.Errorf("%s would be Inactive in orchagent: %v", r, f)
+		}
+	}
+}
+
+// A Block that matches the bridge's own SSH to the switch (collect-acl.txt:
+// the bridge 192.0.2.6 dials the switch on 192.0.2.1) holds the IP set:
+// bound to the uplink too, it would cut the switch off from the push that
+// removes it. Rules that spare that path go through.
+func TestIPRulesNeverCutTheBridge(t *testing.T) {
+	r := newACLRig(t, nil)
+	if r.c.sshFrom != "192.0.2.6" || r.c.sshTo != "192.0.2.1" {
+		t.Fatalf("capture changed: ssh %q -> %q", r.c.sshFrom, r.c.sshTo)
+	}
+	block := func(name, proto string, src, dst devicemodel.IPACLEnd) devicemodel.IPACL {
+		return devicemodel.IPACL{Name: name, Protocol: proto, Src: src, Dst: dst}
+	}
+	sw := devicemodel.IPACLEnd{CIDR: "192.0.2.0/16"}
+	cases := []struct {
+		name string
+		acls []devicemodel.IPACL
+		held bool
+	}{
+		{"all to the switch's subnet", []devicemodel.IPACL{block("a", "", devicemodel.IPACLEnd{}, sw)}, true},
+		{"tcp/22 to the switch", []devicemodel.IPACL{block("b", "tcp", devicemodel.IPACLEnd{}, devicemodel.IPACLEnd{CIDR: "192.0.2.1/32", Port: 22})}, true},
+		{"from a prefix holding the bridge", []devicemodel.IPACL{block("c", "", devicemodel.IPACLEnd{CIDR: "192.0.2.0/29"}, sw)}, true},
+		{"from a prefix without the bridge", []devicemodel.IPACL{block("d", "", devicemodel.IPACLEnd{CIDR: "203.0.113.0/24"}, sw)}, false},
+		{"udp only", []devicemodel.IPACL{block("e", "udp", devicemodel.IPACLEnd{}, sw)}, false},
+		{"another port", []devicemodel.IPACL{block("f", "tcp", devicemodel.IPACLEnd{}, devicemodel.IPACLEnd{CIDR: "192.0.2.1/32", Port: 443})}, false},
+		{"a source port", []devicemodel.IPACL{block("g", "tcp", devicemodel.IPACLEnd{Port: 9}, sw)}, false},
+		{"an Allow first", []devicemodel.IPACL{{Name: "h", Permit: true, Protocol: "tcp", Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.1/32", Port: 22}}, block("i", "", devicemodel.IPACLEnd{}, sw)}, false},
+	}
+	for _, tc := range cases {
+		r.log.Reset()
+		got := r.deviceCmds(devicemodel.DeviceDesired{IPACLSet: true, IPACLs: tc.acls})
+		held := strings.Contains(r.log.String(), "would block the bridge's SSH")
+		if held != tc.held || held && len(got) != 0 {
+			t.Errorf("%s: held %v (want %v), wrote %q, log %s", tc.name, held, tc.held, got, r.log.String())
+		}
+		r.deviceCmds(devicemodel.DeviceDesired{IPACLSet: true}) // clear for the next case
+		if _, err := r.c.Collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

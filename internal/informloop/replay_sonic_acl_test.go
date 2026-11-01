@@ -96,3 +96,74 @@ func TestReplaySonicDHCPGuardAndACL(t *testing.T) {
 		t.Errorf("reconcile wrote %q", got)
 	}
 }
+
+// The DX010's own push with the six test rules (2026-11-01, one of each
+// shape the ECS round did not cover) through the loop into the driver:
+// DUI_IP_ACL with RULE_1..6, no guard table (the site's snooping off), and
+// a reconcile that writes nothing.
+func TestReplaySonicDX010ACLPush(t *testing.T) {
+	text := readECSPush(t, "system_cfg-dx010-acl.txt")
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238526-ff3c0c9f6", "collect-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	logger := log.New(&buf, "", 0)
+	coll := sonic.NewCollector(fr)
+	coll.Log = logger
+	coll.L2 = false
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults := map[int][]string{}
+	for _, p := range snap.Ports {
+		defaults[p.Index] = coll.DefaultPortNames(p)
+	}
+	desc := inform.Descriptor{MAC: snap.System.MAC}
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: text}
+	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if !l.applyPending(ctx) {
+		t.Fatal("the push was not consumed")
+	}
+	var acl []string
+	for _, c := range fr.Recorded() {
+		if strings.Contains(c, "acl") || strings.Contains(c, "ACL_") {
+			acl = append(acl, c)
+		}
+	}
+	if len(acl) != 7 || !strings.HasPrefix(acl[0], "sudo config acl add table DUI_IP_ACL L3 -p Ethernet0,") {
+		t.Fatalf("want the table and six rules, got %q\nlog:\n%s", acl, buf.String())
+	}
+	for i, want := range []string{
+		"'ACL_RULE|DUI_IP_ACL|RULE_1' DST_IP '192.0.2.0/24' IP_PROTOCOL '17' L4_DST_PORT '9' PACKET_ACTION 'DROP' PRIORITY '9998' SRC_IP '203.0.113.0/24'",
+		"'ACL_RULE|DUI_IP_ACL|RULE_2' DST_IP '192.0.2.0/24' IP_PROTOCOL '6' L4_DST_PORT '9' PACKET_ACTION 'DROP' PRIORITY '9997' SRC_IP '203.0.113.0/24'",
+		"'ACL_RULE|DUI_IP_ACL|RULE_3' DST_IP '192.0.2.0/24' IP_PROTOCOL '17' L4_DST_PORT '9' PACKET_ACTION 'DROP' PRIORITY '9996' SRC_IP '203.0.113.0/24'",
+		"'ACL_RULE|DUI_IP_ACL|RULE_4' DST_IP '198.51.100.0/24' IP_TYPE 'IPV4ANY' PACKET_ACTION 'DROP' PRIORITY '9995'",
+		"'ACL_RULE|DUI_IP_ACL|RULE_5' DST_IP '192.0.2.0/24' IP_PROTOCOL '6' L4_SRC_PORT '9' PACKET_ACTION 'DROP' PRIORITY '9994' SRC_IP '203.0.113.0/24'",
+		"'ACL_RULE|DUI_IP_ACL|RULE_6' DST_IP '198.51.100.0/24' IP_TYPE 'IPV4ANY' PACKET_ACTION 'DROP' PRIORITY '9993' SRC_IP '192.0.2.0/24'",
+	} {
+		if !strings.HasSuffix(acl[i+1], want) {
+			t.Errorf("rule %d:\n got  %s\n want ...%s", i+1, acl[i+1], want)
+		}
+	}
+	if strings.Contains(buf.String(), "HELD") || strings.Contains(buf.String(), "DUI_DHCP_GUARD") {
+		t.Errorf("nothing is held and no guard table is made with the site's snooping off:\n%s", buf.String())
+	}
+	if _, err := coll.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "DUI_IP_ACL 6 of 6 rules active") {
+		t.Errorf("verdict not logged:\n%s", buf.String())
+	}
+	n := len(fr.Recorded())
+	l.reconcile(ctx)
+	if got := fr.Recorded()[n:]; len(got) != 0 {
+		t.Errorf("reconcile wrote %q", got)
+	}
+}

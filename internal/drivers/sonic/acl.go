@@ -87,7 +87,18 @@ func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
 		}
 	}
 	if d.IPACLSet {
-		if rules, why := ipRules(d.IPACLs); why != "" {
+		rules, why := ipRules(d.IPACLs)
+		if why == "" {
+			c.mu.Lock()
+			from, to := c.sshFrom, c.sshTo
+			c.mu.Unlock()
+			dial := []string{to}
+			if to == "" {
+				dial = dialAddrs(c.CurrentAddress())
+			}
+			why = cutsManagement(d.IPACLs, from, dial)
+		}
+		if why != "" {
 			note("IP ACL rules: %s; the switch's rules are left as they are", why)
 		} else {
 			want[ipACLTable] = rules
@@ -221,6 +232,64 @@ func ipRules(acls []devicemodel.IPACL) (map[string]map[string]string, string) {
 		rules["RULE_"+strconv.Itoa(n)] = r
 	}
 	return rules, ""
+}
+
+// mgmtPort is the port the bridge reaches the switch on (SSH).
+const mgmtPort = 22
+
+// cutsManagement says which rule would drop the bridge's own SSH to the
+// switch, "" if none would. The rules bind ingress to every port, the
+// uplink included, so a Block that matches the bridge's TCP to the address
+// it dials would cut the switch off from the bridge -- and from the push
+// that would remove the rule again (the DX010 has one link and no console,
+// docs/drivers/sonic.md §11.3). from is the bridge's address as the switch
+// sees it ("" = unknown: every source counts). Such a set is held, like an
+// untranslatable one; an earlier Allow that covers the traffic makes a
+// later Block harmless.
+func cutsManagement(acls []devicemodel.IPACL, from string, dial []string) string {
+	bridge := net.ParseIP(from).To4()
+	covers := func(e devicemodel.IPACLEnd, port int, ip net.IP) bool {
+		if e.CIDR != "" {
+			_, n, err := net.ParseCIDR(e.CIDR)
+			if err != nil || !n.Contains(ip) {
+				return false
+			}
+		}
+		switch {
+		case e.Port != 0:
+			return e.Port == port
+		case e.PortMin != 0 || e.PortMax != 0:
+			return e.PortMin <= port && port <= e.PortMax
+		}
+		return true
+	}
+	for _, addr := range dial {
+		ip := net.ParseIP(addr).To4()
+		if ip == nil {
+			continue
+		}
+		for i, a := range acls {
+			if a.Protocol != "" && a.Protocol != "tcp" {
+				continue
+			}
+			// The bridge's source port is ephemeral: a rule naming one
+			// source port is taken not to match it.
+			if a.Src.Port != 0 || !covers(a.Dst, mgmtPort, ip) {
+				continue
+			}
+			if bridge != nil && !covers(devicemodel.IPACLEnd{CIDR: a.Src.CIDR}, 0, bridge) {
+				continue
+			}
+			if a.Permit {
+				if bridge != nil || a.Src.CIDR == "" {
+					break // the first match decides: this Allow lets the bridge in
+				}
+				continue // it may not cover the bridge, whose address is unknown
+			}
+			return fmt.Sprintf("rule %d (%q) would block the bridge's SSH to this switch (%s, TCP %d) on every port, the uplink included", i+1, a.Name, ip, mgmtPort)
+		}
+	}
+	return ""
 }
 
 // aclPorts are the interfaces an ACL table binds to, as the CLI allows them

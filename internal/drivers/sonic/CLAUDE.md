@@ -443,8 +443,15 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `collect.py` reads only `DUI_*` and CRM's ACL counters; the DX010 has
   three free ingress tables per PORT and LAG bind point. MAC rules are
   refused (no L2 table type, no outer-MAC match on 202505 or 202511).
-  Fixtures: `collect-acl.txt`, and the DX010's own `config-help.txt` beside
-  it (the older DX010 captures' rigs still borrow the VS's).
+  **A set that would block the bridge's own SSH to the switch is held**
+  (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
+  other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
+  and server address. The push, captured on the DX010 2026-11-01
+  (`controller-10.6.109/system_cfg-dx010-acl.txt`): `max_custom_ip_acls`
+  alone gates it; Any is `ip=any`, TCP/UDP two groups, a Network side a
+  gateway/prefix CIDR. Fixtures: `collect-acl.txt` (with the `ssh`
+  section), and the DX010's own `config-help.txt` beside it (the older
+  DX010 captures' rigs still borrow the VS's).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name
