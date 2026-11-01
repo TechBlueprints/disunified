@@ -424,6 +424,27 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   off the ECS itself is kept in the tree (Clint, 2026-11-01: no text or code
   copied from it). teamd's records in the tests are upstream SONiC's own
   test data (`docs/fixtures/sonic-utilities-202505/`, Apache-2.0).
+- **DHCP guarding and IP ACL rules (`acl.go`, `docs/drivers/sonic.md`
+  §11.7.6, built 2026-11-01, untested live).** Two L3 tables of the driver's
+  own, `DUI_DHCP_GUARD` and `DUI_IP_ACL`, bound ingress to every port that is
+  not a PortChannel member and every PortChannel with members (the CLI's
+  `get_acl_bound_ports`; orchagent refuses a member). **Never `config acl
+  update`**: acl-loader adds a DROP-all-IPv4 `DEFAULT_RULE` to every ingress
+  L3 table it loads. Tables: `config acl add table <t> L3 -p <list> -s
+  ingress` (also the rebind: the CLI replaces the entry, orchagent updates
+  the ports) and `config acl remove table` (leaves the rules in CONFIG_DB, so
+  they go first). Rules: `sonic-db-cli CONFIG_DB hset|del 'ACL_RULE|DUI_…'`,
+  a changed one `del` then `hset` (orchagent re-creates a rule from the whole
+  hash). The list field is `ports@` and is in Python set order: compare as a
+  set. STATE_DB `ACL_TABLE_TABLE|<t>` / `ACL_RULE_TABLE|<t>|<r>` hold
+  `Active`, `Inactive`, `Pending creation`, `Pending removal`; a rule whose
+  table is missing gets no status (orchagent waits). `ApplyPorts` re-runs
+  the ACL apply after its batch (breakout children, a new PortChannel).
+  `collect.py` reads only `DUI_*` and CRM's ACL counters; the DX010 has
+  three free ingress tables per PORT and LAG bind point. MAC rules are
+  refused (no L2 table type, no outer-MAC match on 202505 or 202511).
+  Fixtures: `collect-acl.txt`, and the DX010's own `config-help.txt` beside
+  it (the older DX010 captures' rigs still borrow the VS's).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

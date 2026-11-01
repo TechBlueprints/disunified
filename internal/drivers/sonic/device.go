@@ -195,7 +195,9 @@ type deviceOp struct {
 	effect      func(*swState)
 }
 
-// ApplyDevice implements devicemodel.DeviceController.
+// ApplyDevice implements devicemodel.DeviceController: the switch-wide
+// settings, spanning tree through disunified-l2d (l2.go), then DHCP
+// guarding and the ACL rules (acl.go).
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
 	n, err := c.applyDevice(ctx, d)
 	if err != nil {
@@ -207,7 +209,18 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if st != nil && !st.stpFeature {
 		c.l2SetSTP(d)
 		m, err := c.applyL2(ctx)
-		return n + m, err
+		n += m
+		if err != nil {
+			return n, err
+		}
+	}
+	if st != nil {
+		c.aclSet(d, st)
+		m, err := c.applyACL(ctx)
+		n += m
+		if err != nil {
+			return n, err
+		}
 	}
 	return n, nil
 }
@@ -265,10 +278,6 @@ func (c *Collector) applyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			break
 		}
 	}
-	if d.DHCPSnooping != nil && *d.DHCPSnooping {
-		note("DHCP snooping requested; community SONiC has none; not written")
-	}
-
 	// NTP and syslog: the controller's list is the switch's, as on UniFi's
 	// own switches -- add what it names, remove every other server,
 	// whoever configured it. The managed sets record what the controller

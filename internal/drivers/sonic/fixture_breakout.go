@@ -110,6 +110,16 @@ func (f *FixtureRunner) breakout(args []string) error {
 			parts := strings.Split(k, "|")
 			return len(parts) == 3 && gone[parts[1]]
 		}),
+		// An ACL table's ports@ list names ports (a YANG leafref): -f
+		// takes the port out of the list (below), the table stays.
+		"cfg_acl_table": refs("cfg_acl_table", func(_ string, v map[string]string) bool {
+			for _, p := range strings.Split(v["ports@"], ",") {
+				if gone[p] {
+					return true
+				}
+			}
+			return false
+		}),
 		"cfg_mirror": refs("cfg_mirror", func(_ string, v map[string]string) bool {
 			if gone[v["dst_port"]] {
 				return true
@@ -136,12 +146,25 @@ func (f *FixtureRunner) breakout(args []string) error {
 		}
 		if err := f.update(sec, func(t table) error {
 			for _, k := range ks {
+				if sec == "cfg_acl_table" {
+					var keep []string
+					for _, p := range strings.Split(t[k]["ports@"], ",") {
+						if !gone[p] {
+							keep = append(keep, p)
+						}
+					}
+					t[k]["ports@"] = strings.Join(keep, ",")
+					continue
+				}
 				delete(t, k)
 			}
 			return nil
 		}); err != nil {
 			return err
 		}
+	}
+	if len(deps["cfg_acl_table"]) > 0 {
+		defer f.orchACL()
 	}
 	if err := f.update("cfg_port", func(t table) error {
 		for n := range gone {

@@ -294,7 +294,10 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	if len(fr.Commands) != 0 {
 		t.Errorf("collecting wrote %v", fr.Commands)
 	}
-	if len(fr.Helps) != len(commandChecks)-2 { // the two spanning-tree groups are checked only with FEATURE|stp
+	// The two spanning-tree groups are checked only with FEATURE|stp, the
+	// three acl groups only when the collector reads the ACL tables (this
+	// capture predates them).
+	if len(fr.Helps) != len(commandChecks)-5 {
 		t.Errorf("Start read %d help texts: %v", len(fr.Helps), fr.Helps)
 	}
 }

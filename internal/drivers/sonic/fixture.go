@@ -382,6 +382,13 @@ func (f *FixtureRunner) apply(line string) error {
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
 		return f.applyDevice(w)
 
+	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_RULE|"):
+		return f.aclRuleWrite(w)
+	case cmd == "config acl add" && at(3) == "table":
+		return f.aclAddTable(w[4:])
+	case cmd == "config acl remove" && at(3) == "table":
+		return f.aclRemoveTable(w[4:])
+
 	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (w[2] == "hset" || w[2] == "hdel"):
 		key := w[3]
 		if key == "NTP|global" {

@@ -847,6 +847,11 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 			return n, err
 		}
 	}
+	// The ACL tables bind to every port and PortChannel: a breakout or an
+	// aggregate this batch made changes that list (acl.go).
+	if _, err := c.applyACL(ctx); err != nil {
+		return n, err
+	}
 	return n, nil
 }
 

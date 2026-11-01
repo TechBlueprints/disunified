@@ -715,7 +715,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | NTP (`ManageNTP`, `NTPServers`) | `config ntp add\|del <ip>` (restarts chrony) | `NTP_SERVER\|<ip>` | manage the set as the Arista does: add the controller's, remove the ones the bridge added earlier (remembered per run + persisted in the state dir), leave others. Hostnames: SONiC accepts IPs; a hostname is resolved by the bridge first or logged. |
 | syslog (`ManageSyslog`, `SyslogHosts`) | `config syslog add <ip> --port <n>` / `del` (restarts rsyslog) | `SYSLOG_SERVER\|<ip> {port}` | same ownership rule |
 | SNMP (`SNMPSet`, `SNMPCommunity`) | `config snmp community add <name> RO` / `del` (restarts snmp) | `SNMP_COMMUNITY\|<name> {TYPE RO}` | UniFi's community is the only one: the image's `public` and any other are removed, and the site's SNMP off leaves none (2026-10-31; until then only the previously managed one was replaced); `public` from the image is left alone unless it is the managed one |
-| DHCP snooping | — | — | refused with a log; not claimed |
+| DHCP snooping (`DHCPSnooping`, `DHCPGuards`) and the switch ACL rules (`IPACLs`, `MACACLs`) | `config acl add table` / `remove table`, `sonic-db-cli CONFIG_DB hset\|del 'ACL_RULE\|DUI_…'` | the driver's own `ACL_TABLE\|DUI_DHCP_GUARD`, `ACL_TABLE\|DUI_IP_ACL` and their rules | built 2026-11-01 (§11.7.6); MAC rules refused with a log (no L2 table type in the stock orchagent) |
 | timezone | not written (as the Arista) | | |
 
 ### 6.4 Other interfaces
@@ -1495,12 +1495,12 @@ feature the DX010 does not claim:
 | STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | no, 0 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
 | Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
 | IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | no | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
-| DHCP snooping (128) | yes | no | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
+| DHCP snooping (128) | yes | yes since the 2026-11-01 build (§11.7.6) | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
 | Port isolation (4), port security (512) | yes | no | `switch.port.N.port-security` (isolation keys only when set) |
 | LLDP-MED (16) | yes | no | `switch.port.N.lldpmed.opmode/topology_notify` |
 | Egress rate limit (32) | yes | no | none while unset |
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | no | `switch.routing_enabled` only while no L3 network is on the switch |
-| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | no | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
+| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
 
@@ -1525,7 +1525,7 @@ changes nothing that breaks the system_cfg path.
 | **Loop protection** | Ubiquiti's `MAC_MOVE_GUARD` semantics (threshold 10 moves in 5 s → errdisable for 150 s) on the switch, from FDB move events, driven by `ld_mode`; `ld_status` reported. With RSTP in place this is the second line of defence, as on the ECS. **Built 2026-11-01 in disunified-l2d, driven by `switch.port.N.keepalive` (not `ld_mode`); verified live by hand that night: §11.5.** | stock | medium |
 | **LACP state** | teamd's per-member state, which tlm_teamd copies out of `teamdctl <pc> state dump` into STATE_DB `LAG_MEMBER_TABLE` → `lag_member`, and on the aggregate's lowest member `aggregate_num_ports`, `lacp_state[]`, `partner_system_id`. `aggregate_members`, `lag_idx` and `link_aggregation_groups[]` are the controller's own (from its port overrides; the ECS's inform carries none of them). Needed for the planned two-cable aggregate from the core. | stock | **built 2026-11-01** (§11.4), held to the ECS's own inform on the ECS's own tables; live on the DX010 once the second cable is in |
 | **Hardware tables** | PSU, fan, MAC-table capacity, IPv6 and firmware fields from pmon's STATE_DB tables, `crm`, the kernel. | stock | **built 2026-11-01** (§11.4), fixture- and contract-tested on a second DX010 capture |
-| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. | stock (MAC rules: custom) | medium each |
+| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. **The guard and the IP rules built 2026-11-01 (§11.7.6).** | stock (MAC rules: custom) | medium each |
 | **LLDP-MED** | SONiC's `lldpd` speaks LLDP-MED (`configure med ...`); the `lldp` container's config is the write path. | stock | small |
 | **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` (YANG present, §7.2); capture the push first. | stock | small |
 | **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
@@ -1931,8 +1931,8 @@ documentation addresses (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`)
 and test MACs (`02:00:00:00:00:0x`), on one unused VLAN, scoped to the ECS
 alone. After each restore the ECS's push was byte-identical to the one before,
 and the controller objects matched the before-state. No switch rebooted, and
-every DHCP request in the window got its ACK. This is spec only: no driver
-code was written.
+every DHCP request in the window got its ACK. The capture session wrote no
+driver code; the build that followed it is §11.7.6.
 
 #### 11.7.1 Where UniFi keeps them
 
@@ -2177,6 +2177,77 @@ dead-man timer):
   model is address-based too).
 - Anything for DHCPv6 or router advertisements: the push carries no v6 guard
   keys.
+
+#### 11.7.6 As built (2026-11-01)
+
+`internal/drivers/sonic/acl.go`, on the mapping above. Departures and
+details the spec left open:
+
+- **Model.** `DeviceDesired.DHCPGuards` (UniFi VLAN, server), `IPACLs` and
+  `MACACLs` with `IPACLSet`/`MACACLSet`; `Capabilities.IPACLs`/`MACACLs`
+  render `max_custom_ip_acls`/`max_custom_mac_acls` (only from a driver that
+  claims a count, so no other payload changes). The loop
+  (`internal/informloop/acl.go`) translates from `unificfg`; the driver
+  never sees a `system_cfg` key.
+- **Shapes not captured are held, not guessed.** `unificfg` records every
+  line of an ACL group it does not model and an action other than
+  permit/deny (`Unmodelled`), and `IPACL.Uncaptured()` /
+  `MACACL.Uncaptured()` name what no capture shows: an IP rule of a type
+  other than `ip`/`tcp` (UDP, TCP/UDP), a side without an address (the UI's
+  Any), a source port, a port on an `ip` rule, a range other than
+  `1-65535`, and a MAC side that is neither a MAC under a mask nor `any`. One
+  such rule holds **every rule of its kind** (`IPACLSet` false: the switch
+  keeps what it has), because the rules are ordered and leaving one out
+  changes what the others match; the loop logs the held rules when they
+  change.
+- **Guard priorities are constant**: every FORWARD at 9000, every DROP at
+  8000. Rules of one priority never overlap (one VLAN, one server each), and
+  a server added or removed then writes one rule, not a renumbering. Rule
+  names as specified (`V<v>_S<k>`, `V<v>_DROP`, v UniFi's VLAN).
+- **The bound ports** are the CLI's own rule (`get_acl_bound_ports`): every
+  port that is not a PortChannel member, and every PortChannel with members;
+  orchagent refuses to bind a member. The list is compared as a set (the CLI
+  stores it in Python set order) and rewritten with `config acl add table`
+  (the CLI's `set_entry` replaces the entry; orchagent updates a table whose
+  type and stage are unchanged, `updateAclTablePorts`). `ApplyPorts` re-runs
+  the ACL apply after its own batch, so a breakout's children and a new
+  PortChannel are bound in the same push. A breakout's `-f` takes the parent
+  out of the list first (the leafref is a DPB dependency).
+- **Write order.** A table that goes loses its rules first (lowest priority
+  first), then `config acl remove table` (which leaves rules in CONFIG_DB).
+  A table that stays is bound before its rules change; stale rules go
+  lowest priority first and new ones are written highest first, so a
+  guard's FORWARD never trails its DROP. A changed rule is `del` then `hset`
+  of the whole hash (orchagent re-creates a rule from the hash on every
+  SET). One `bash -s` batch, then `config save -y`.
+- **Verification.** `collect.py` reads `ACL_TABLE|DUI_*`, `ACL_RULE|DUI_*`,
+  STATE_DB `ACL_TABLE_TABLE|DUI_*` / `ACL_RULE_TABLE|DUI_*` and CRM's
+  `CRM:ACL_STATS:INGRESS:*` / `CRM:ACL_TABLE_STATS:*`. A table or rule not
+  `Active` is logged once per status; the first collect after a write logs
+  the tally and CRM's counters (the entry capacity once a table exists).
+- **Claims**: `feature_caps` 128, `max_custom_ip_acls` 128,
+  `max_custom_mac_acls` 0, wherever the collector reads the ACL sections
+  (and Start then checks `config acl add|remove table`). `max_global_acls`
+  and `max_acl_port_range` are not claimed until the capture below shows
+  what gates the push.
+- **More rules than claimed** (128) hold the IP set with a log.
+- **Fixtures** (read-only on the DX010, scrubbed):
+  `sonic-202505.1238526-ff3c0c9f6/collect-acl.txt` (no DUI table yet, CRM
+  three free ingress tables per PORT and LAG bind point) and the DX010's own
+  `config-help.txt` (every group the driver checks, `config acl` included;
+  the same commands as the VS's, the help flags in another order). The
+  FixtureRunner models `config acl add|remove table` with the CLI's port
+  check, the raw rule writes, the breakout dependency, and orchagent's
+  verdict (`Active`, `Inactive`, or none while the table is missing).
+  Tests: `acl_test.go` (the ECS's two pushes; guards on Vlan4094/2/69 and
+  off, the IP rules, a deleted first rule, the aggregate and breakout
+  rebind, the verdict), `internal/informloop/acl_test.go` (translation,
+  holds, and the DX010's own push with the ECS's lines end to end),
+  `unificfg` `TestACLUncaptured`, `device` `TestSwitchCapsACLCounts`.
+- **Untested live** until the steps of §11.7.5 run: which count gates the
+  push, the uncaptured shapes, `VLAN_ID` on the native stand-in, guard drop
+  versus ACL forward, the entry capacity, a rebind on a live breakout or
+  aggregate.
 
 ## Sources
 

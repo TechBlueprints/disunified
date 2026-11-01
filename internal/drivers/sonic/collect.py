@@ -157,6 +157,15 @@ section("l2_port", "STATE_DB", "DUI_STP_PORT_TABLE|*")
 section("l2_guard", "STATE_DB", "DUI_LOOP_GUARD_TABLE|*")
 # orchagent's resource counters: the FDB's used and available entries.
 section("crm", "COUNTERS_DB", "CRM:STATS")
+# The bridge's own ACL tables (docs/drivers/sonic.md 11.7.5) -- DHCP
+# guarding and the controller's IP rules, all named DUI_*; nothing else in
+# ACL_TABLE or ACL_RULE is read. orchagent's verdict on each is in STATE_DB;
+# CRM counts the ingress ACL tables left per bind point and each table's
+# entries.
+section("cfg_acl_table", "CONFIG_DB", "ACL_TABLE|DUI_*")
+section("cfg_acl_rule", "CONFIG_DB", "ACL_RULE|DUI_*")
+section("state_acl", "STATE_DB", "ACL_TABLE_TABLE|DUI_*", "ACL_RULE_TABLE|DUI_*")
+section("crm_acl", "COUNTERS_DB", "CRM:ACL_STATS:INGRESS:*", "CRM:ACL_TABLE_STATS:*")
 
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the

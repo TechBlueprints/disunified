@@ -62,6 +62,18 @@ type swState struct {
 	// l2 is disunified-l2d's installation and config (collect.py's l2d
 	// section; §11.5).
 	l2 l2Inst
+
+	// The bridge's own ACL tables and rules (acl.go, §11.7.5): ACL_TABLE
+	// and ACL_RULE entries named DUI_*, read only when the collector has
+	// the sections (aclKnown; captures before 2026-11-01 lack them).
+	aclKnown  bool
+	aclTables map[string]aclTable          // table name -> its CONFIG_DB entry
+	aclRules  map[string]map[string]string // "<table>|<rule>" -> fields
+	// aclStatus is orchagent's verdict from STATE_DB ("<table>" and
+	// "<table>|<rule>" -> Active, Inactive, Pending creation, ...) and
+	// aclCRM the CRM ACL counters: read-only, shared by clones.
+	aclStatus map[string]string
+	aclCRM    table
 }
 
 // lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
@@ -190,6 +202,28 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	s.meta = copyFields(db["metadata"].first())
+	s.aclTables, s.aclRules, s.aclStatus = map[string]aclTable{}, map[string]map[string]string{}, map[string]string{}
+	if _, ok := sec["cfg_acl_table"]; ok {
+		s.aclKnown = true
+		for k, f := range db["cfg_acl_table"] {
+			if n, ok := strings.CutPrefix(k, "ACL_TABLE|"); ok {
+				s.aclTables[n] = parseACLTable(f)
+			}
+		}
+		for k, f := range db["cfg_acl_rule"] {
+			if n, ok := strings.CutPrefix(k, "ACL_RULE|"); ok {
+				s.aclRules[n] = copyFields(f)
+			}
+		}
+		for k, f := range db["state_acl"] {
+			for _, pre := range []string{"ACL_TABLE_TABLE|", "ACL_RULE_TABLE|"} {
+				if n, ok := strings.CutPrefix(k, pre); ok {
+					s.aclStatus[n] = f["status"]
+				}
+			}
+		}
+		s.aclCRM = db["crm_acl"]
+	}
 	s.fecs = map[string]map[string]bool{}
 	for name, f := range db["state_port"].byName("|") {
 		for _, m := range strings.Split(f["supported_fecs"], ",") {
@@ -224,7 +258,15 @@ func (s *swState) clone() *swState {
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
 		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs,
-		l2: s.l2,
+		l2:       s.l2,
+		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
+		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
+	}
+	for k, v := range s.aclTables {
+		c.aclTables[k] = v.clone()
+	}
+	for k, v := range s.aclRules {
+		c.aclRules[k] = copyFields(v)
 	}
 	c.l2.Files = map[string]string{}
 	for k, v := range s.l2.Files {

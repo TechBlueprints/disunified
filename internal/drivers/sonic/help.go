@@ -14,6 +14,7 @@ var commandChecks = []struct {
 	group string
 	subs  []string
 	stp   bool // checked only when the image has the STP daemon
+	acl   bool // checked only when the collector reads the ACL tables (acl.go)
 }{
 	{group: "interface", subs: []string{"startup", "shutdown", "speed", "autoneg", "fec", "mtu", "storm-control", "breakout", "ip"}},
 	{group: "vlan", subs: []string{"add", "member"}},
@@ -33,6 +34,9 @@ var commandChecks = []struct {
 	{group: "dns nameserver", subs: []string{"add", "del"}},
 	{group: "clock", subs: []string{"timezone"}},
 	{group: "", subs: []string{"hostname"}},
+	{group: "acl", subs: []string{"add", "remove"}, acl: true},
+	{group: "acl add", subs: []string{"table"}, acl: true},
+	{group: "acl remove", subs: []string{"table"}, acl: true},
 }
 
 // helpCommand is how a group's help is read: `config` needs root even for
@@ -48,9 +52,10 @@ func helpCommand(group string) string {
 func (c *Collector) verifyCommands(ctx context.Context) error {
 	c.mu.Lock()
 	stp := c.state != nil && c.state.stpFeature
+	acl := c.state != nil && c.state.aclKnown
 	c.mu.Unlock()
 	for _, chk := range commandChecks {
-		if chk.stp && !stp {
+		if chk.stp && !stp || chk.acl && !acl {
 			continue
 		}
 		out, err := c.run(ctx, helpCommand(chk.group), "")

@@ -101,6 +101,12 @@ type Collector struct {
 	// L2Wait is the pause before each check that a first STP enable left
 	// the switch reachable (default 5 s; tests set 0).
 	L2Wait *time.Duration
+
+	// DHCP guarding and the IP ACL rules (acl.go): the tables and rules the
+	// last push asks for, and whether a write awaits orchagent's verdict
+	// (logged by the next collect).
+	acl        aclWant
+	aclWritten bool
 }
 
 // NewCollector wraps a runner.
@@ -165,8 +171,10 @@ func (c *Collector) Close() error {
 // daemon where it has one (FEATURE|stp, PVST); otherwise RSTP, BPDU guard,
 // auto edge, port cost and loop protection through disunified-l2d, where
 // the switch can run it (mstpd installed, or docker to build it; §11.5).
-// IGMP snooping, LLDP-MED, DHCP snooping and isolation never: community
-// SONiC has none of them.
+// DHCP snooping (as hardware DHCP guarding) and IP ACL rules through the
+// driver's own ACL tables wherever the collector reads them (§11.7.5); MAC
+// ACL rules never (no L2 table type in the stock orchagent). IGMP
+// snooping, LLDP-MED and isolation never: community SONiC has none of them.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	caps := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
 	c.mu.Lock()
@@ -178,6 +186,9 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
 	case c.L2 && st.l2.canRun():
 		caps.STP, caps.BPDUGuard, caps.STPAutoEdge, caps.STPPortCost, caps.LoopProtection = true, true, true, true, true
+	}
+	if st != nil && st.aclKnown {
+		caps.DHCPSnooping, caps.IPACLs = true, ipACLRules
 	}
 	return caps
 }
@@ -194,7 +205,9 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	}
 	c.mu.Lock()
 	c.last = snap
+	st := c.state
 	c.mu.Unlock()
+	c.verifyACL(st)
 	return snap, nil
 }
 
@@ -210,9 +223,10 @@ var redisSections = []string{
 }
 
 // laterSections joined collect.py on 2026-11-01 (docs/drivers/sonic.md
-// §11.4, the hardware tables; §11.5, disunified-l2d's tables); the captures
-// before that lack them, which reads as empty.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard"}
+// §11.4, the hardware tables; §11.5, disunified-l2d's tables; §11.7.5, the
+// driver's ACL tables); the captures before that lack them, which reads as
+// empty.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)

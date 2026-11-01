@@ -622,7 +622,7 @@ func TestSTPPortSettingsAreFeatureGated(t *testing.T) {
 	if caps := withSTP.c.Capabilities(); !caps.STP || !caps.BPDUGuard || !caps.STPPortCost {
 		t.Errorf("capabilities with FEATURE|stp = %+v", caps)
 	}
-	if len(withSTP.fr.Helps) != len(commandChecks) {
+	if len(withSTP.fr.Helps) != len(commandChecks)-3 { // the acl groups: this capture predates the ACL sections
 		t.Errorf("with FEATURE|stp Start must check spanning-tree too: %v", withSTP.fr.Helps)
 	}
 	base = withSTP.baseline()

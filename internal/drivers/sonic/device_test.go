@@ -195,14 +195,16 @@ func TestApplySNMPCommunity(t *testing.T) {
 	}
 }
 
-// STP and the snooping features: refused with a log on a community image;
-// with FEATURE|stp, PVST is written (UniFi stp/rstp -> pvst, mstp refused).
+// STP and the snooping features: refused with a log on a community image
+// (DHCP guarding needs the collector's ACL sections, which this capture
+// predates); with FEATURE|stp, PVST is written (UniFi stp/rstp -> pvst,
+// mstp refused).
 func TestApplySTPIsFeatureGated(t *testing.T) {
 	r := newRig(t, nil)
 	on := true
 	r.device("refused", devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 4096,
-		IGMPSnooping: map[int]bool{1: true}, DHCPSnooping: &on}, nil)
-	for _, want := range []string{"no STP daemon", "IGMP snooping requested", "DHCP snooping requested"} {
+		IGMPSnooping: map[int]bool{1: true}, DHCPSnooping: &on, DHCPGuards: []devicemodel.DHCPGuard{{VLAN: 1, Server: "192.0.2.1"}}}, nil)
+	for _, want := range []string{"no STP daemon", "IGMP snooping requested", "DHCP guarding or ACL rules requested"} {
 		if !strings.Contains(r.log.String(), want) {
 			t.Errorf("log lacks %q: %s", want, r.log.String())
 		}

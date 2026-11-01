@@ -47,6 +47,10 @@ orchagent's StpOrch, one STP instance per VLAN; `docs/drivers/sonic.md`
 through the deployed driver; on by default (`options.l2d: off` opts out);
 hardware-only parts wait for the unit, and
 time zone, hostname, locate and breakout (§7.5) are fixture-tested only.
+UniFi's DHCP guarding (Rogue DHCP Server Detection) and switch IP ACL rules
+are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
+2026-11-01 from the ECS's captured pushes, §11.7.6; never `config acl
+update`); MAC ACL rules need an orchagent patch and are refused.
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering
