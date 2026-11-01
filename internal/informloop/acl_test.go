@@ -66,11 +66,12 @@ func TestDesiredDeviceGuardsAndACLs(t *testing.T) {
 		t.Errorf("captured shapes logged: %s", buf.String())
 	}
 
-	// A shape no capture shows (UDP) holds the IP rules, logged once until
-	// it changes; the MAC rules are unaffected.
-	udp := strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=udp", 1)
+	// A shape no capture shows (a protocol other than ip, tcp and udp) holds
+	// the IP rules, logged once until it changes; the MAC rules are
+	// unaffected.
+	odd := strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=tcp_udp", 1)
 	for i := 0; i < 2; i++ {
-		h := l.desiredDevice(udp)
+		h := l.desiredDevice(odd)
 		if h.IPACLSet || h.IPACLs != nil || !h.MACACLSet || len(h.MACACLs) != 2 {
 			t.Errorf("held: ip %v %v, mac %v %d", h.IPACLSet, h.IPACLs, h.MACACLSet, len(h.MACACLs))
 		}
@@ -78,11 +79,36 @@ func TestDesiredDeviceGuardsAndACLs(t *testing.T) {
 	if n := strings.Count(buf.String(), "switch ACL rules HELD"); n != 1 {
 		t.Errorf("held rules logged %d times, want once:\n%s", n, buf.String())
 	}
-	if !strings.Contains(buf.String(), `IP rule "dui-test-block-ip-1": protocol "udp"`) {
+	if !strings.Contains(buf.String(), `IP rule "dui-test-block-ip-1": protocol "tcp_udp"`) {
 		t.Errorf("the log names the rule and the shape:\n%s", buf.String())
 	}
 	l.desiredDevice(text)
 	if !strings.Contains(buf.String(), "every rule in the push is translated again") {
 		t.Errorf("the hold's end is logged:\n%s", buf.String())
+	}
+}
+
+// The DX010's own push (2026-11-01): UDP, TCP/UDP as a tcp and a udp rule,
+// Any as no address, a source port, and the Network side's gateway/prefix
+// as its network.
+func TestDesiredDeviceDX010ACLShapes(t *testing.T) {
+	var buf strings.Builder
+	l := &Loop{cfg: Config{Logger: log.New(&buf, "", 0)}}
+	d := l.desiredDevice(readECSPush(t, "system_cfg-dx010-acl.txt"))
+	src := devicemodel.IPACLEnd{CIDR: "203.0.113.0/24"}
+	dst9 := devicemodel.IPACLEnd{CIDR: "192.0.2.0/24", Port: 9}
+	want := []devicemodel.IPACL{
+		{Name: "dui-test-udp-1", Protocol: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-1", Protocol: "tcp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-2", Protocol: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-any-1", Dst: devicemodel.IPACLEnd{CIDR: "198.51.100.0/24"}},
+		{Name: "dui-test-srcport-1", Protocol: "tcp", Src: devicemodel.IPACLEnd{CIDR: "203.0.113.0/24", Port: 9}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24"}},
+		{Name: "dui-test-network-1", Src: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24"}, Dst: devicemodel.IPACLEnd{CIDR: "198.51.100.0/24"}},
+	}
+	if !d.IPACLSet || !reflect.DeepEqual(d.IPACLs, want) {
+		t.Errorf("ip rules %v:\n got  %+v\n want %+v", d.IPACLSet, d.IPACLs, want)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("every shape in this push is captured, nothing is held: %s", buf.String())
 	}
 }

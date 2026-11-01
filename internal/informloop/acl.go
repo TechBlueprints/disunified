@@ -2,6 +2,7 @@ package informloop
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -62,10 +63,19 @@ func desiredACLs(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (held []str
 	return held
 }
 
-// ipEnd is one side of a captured IP rule: port_range 1-65535 is the UI's
-// "no port", so it matches any port.
+// ipEnd is one side of a captured IP rule: ip=any is the UI's Any, and
+// port_range 1-65535 its "no port". A prefix is written as its network
+// address: a UI Network side arrives as the network's gateway address with
+// the prefix length (host bits set), which some devices refuse or match
+// literally.
 func ipEnd(m unificfg.IPMatch) devicemodel.IPACLEnd {
-	e := devicemodel.IPACLEnd{CIDR: m.IP, Port: m.Port}
+	e := devicemodel.IPACLEnd{Port: m.Port}
+	if m.IP != unificfg.AnyIP {
+		e.CIDR = m.IP
+		if _, n, err := net.ParseCIDR(m.IP); err == nil {
+			e.CIDR = n.String()
+		}
+	}
 	if lo, hi, ok := strings.Cut(m.PortRange, "-"); ok && m.PortRange != unificfg.AnyPort {
 		e.PortMin, _ = strconv.Atoi(lo)
 		e.PortMax, _ = strconv.Atoi(hi)

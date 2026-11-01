@@ -313,11 +313,11 @@ func TestACLUncaptured(t *testing.T) {
 		return e.IPACLs[1]
 	}
 	cases := map[string]string{
-		"protocol \"udp\"":        strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=udp", 1),
 		"protocol \"tcp_udp\"":    strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=tcp_udp", 1),
-		"no address":              strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24\n", "", 1),
-		"a source port":           strings.Replace(text, "switch.acl.ip.2.src.port_range=1-65535", "switch.acl.ip.2.src.port=53", 1),
+		"no ip line":              strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24\n", "", 1),
+		"neither an IPv4 prefix":  strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24", "switch.acl.ip.2.src.ip=2001:db8::/32", 1),
 		"a port range other than": strings.Replace(text, "switch.acl.ip.2.src.port_range=1-65535", "switch.acl.ip.2.src.port_range=1-1024", 1),
+		"a port and a port range": strings.Replace(text, "switch.acl.ip.2.src.port_range=1-65535", "switch.acl.ip.2.src.port_range=1-65535\nswitch.acl.ip.2.src.port=53", 1),
 		"src.network_id=":         strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24", "switch.acl.ip.2.src.ip=203.0.113.0/24\nswitch.acl.ip.2.src.network_id=x", 1),
 		"action=redirect":         strings.Replace(text, "switch.acl.ip.2.action=deny", "switch.acl.ip.2.action=redirect", 1),
 	}
@@ -332,5 +332,40 @@ func TestACLUncaptured(t *testing.T) {
 	mac := Parse(strings.Replace(text, "switch.acl.mac.2.dst.mac=any", "switch.acl.mac.2.dst.device=x", 1)).MACACLs[1]
 	if why := mac.Uncaptured(); !strings.Contains(why, "dst.device=x") {
 		t.Errorf("a MAC rule's unknown side: %q", why)
+	}
+}
+
+// The DX010's own push with one rule of each shape the ECS round did not
+// cover (2026-11-01, scoped to the DX010): UDP, TCP/UDP (two groups), Any
+// (ip=any), a source port, and a Network side (a CIDR with host bits set).
+func TestParseDX010ACLRules(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	src := IPMatch{IP: "203.0.113.0/24", PortRange: AnyPort}
+	dst9 := IPMatch{IP: "192.0.2.0/24", Port: 9}
+	want := []IPACL{
+		{Name: "dui-test-udp-1", Type: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-1", Type: "tcp", Src: src, Dst: dst9},
+		{Name: "dui-test-tcpudp-2", Type: "udp", Src: src, Dst: dst9},
+		{Name: "dui-test-any-1", Type: "ip", Src: IPMatch{IP: AnyIP}, Dst: IPMatch{IP: "198.51.100.0/24"}},
+		{Name: "dui-test-srcport-1", Type: "tcp", Src: IPMatch{IP: "203.0.113.0/24", Port: 9}, Dst: IPMatch{IP: "192.0.2.0/24", PortRange: AnyPort}},
+		{Name: "dui-test-network-1", Type: "ip", Src: IPMatch{IP: "192.0.2.4/24"}, Dst: IPMatch{IP: "198.51.100.0/24"}},
+	}
+	if !reflect.DeepEqual(c.IPACLs, want) {
+		t.Errorf("ip acls:\n got  %+v\n want %+v", c.IPACLs, want)
+	}
+	for _, a := range c.IPACLs {
+		if why := a.Uncaptured(); why != "" {
+			t.Errorf("captured rule %s: %s", a.Name, why)
+		}
+	}
+	if c.MACACLs != nil {
+		t.Errorf("no MAC rule can target a switch claiming max_custom_mac_acls 0: %+v", c.MACACLs)
+	}
+	if c.DHCPSnoop == nil || *c.DHCPSnoop {
+		t.Errorf("a switch claiming DHCP snooping gets the site's setting (off): %v", c.DHCPSnoop)
 	}
 }

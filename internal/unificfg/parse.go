@@ -145,9 +145,11 @@ type MACMatch struct {
 }
 
 // IPACL is one switch.acl.ip.N.* group (a UI "IPv4" ACL rule). Type is the
-// UI's protocol: "ip" (All) or "tcp" as captured; "udp" for UDP is
-// expected but not captured. A UI rule naming several destination ports is
-// pushed as one group per port, named "<rule>-1", "<rule>-2", ...
+// UI's protocol: "ip" (All), "tcp" or "udp"; the UI's TCP/UDP is pushed as
+// two groups, a tcp one and a udp one (captured on the DX010, 2026-11-01,
+// docs/fixtures/controller-10.6.109/system_cfg-dx010-acl.txt). A UI rule
+// naming several destination ports is pushed as one group per port, named
+// "<rule>-1", "<rule>-2", ...
 type IPACL struct {
 	Name     string
 	Permit   bool // action=permit; "deny" => false
@@ -157,18 +159,24 @@ type IPACL struct {
 	Unmodelled []string
 }
 
-// IPMatch is one side of an IP ACL. IP is a CIDR, "" when the key is
-// absent (expected for the UI's Any; every captured rule named both
-// sides). On a TCP rule a side with no port is pushed as
-// port_range=1-65535; a port the UI named is port=<n>.
+// IPMatch is one side of an IP ACL. IP is a CIDR, AnyIP for the UI's Any,
+// "" when the key is absent (never seen: every captured group names both
+// sides). A UI Network side is pushed as a CIDR like an IP side -- the
+// network's gateway address with its prefix length, host bits set. On a
+// TCP or UDP rule a side with no port is pushed as port_range=1-65535; a
+// port the UI named is port=<n>, on either side.
 type IPMatch struct {
 	IP        string
 	Port      int    // .port, 0 when absent
 	PortRange string // .port_range as pushed ("1-65535"), "" when absent
 }
 
-// AnyPort is the port_range a side with no port is pushed with.
-const AnyPort = "1-65535"
+// AnyPort is the port_range a side with no port is pushed with; AnyIP the
+// ip of the UI's Any side.
+const (
+	AnyPort = "1-65535"
+	AnyIP   = "any"
+)
 
 // Uncaptured says which part of the rule no capture has shown (the shapes
 // recorded are in docs/drivers/sonic.md §11.7.2), "" when every part has
@@ -179,20 +187,29 @@ func (a IPACL) Uncaptured() string {
 	switch {
 	case len(a.Unmodelled) > 0:
 		return "lines never captured: " + strings.Join(a.Unmodelled, ", ")
-	case a.Type != "ip" && a.Type != "tcp":
-		return fmt.Sprintf("protocol %q (only All and TCP are captured)", a.Type)
+	case a.Type != "ip" && a.Type != "tcp" && a.Type != "udp":
+		return fmt.Sprintf("protocol %q (All, TCP and UDP are captured)", a.Type)
 	case a.Src.IP == "" || a.Dst.IP == "":
-		return "a side with no address (the UI's Any is not captured)"
-	case a.Src.Port != 0:
-		return "a source port (not captured)"
-	case a.Type == "ip" && (a.Dst.Port != 0 || a.Src.PortRange != "" || a.Dst.PortRange != ""):
+		return "a side with no ip line (Any is pushed as ip=any)"
+	case !ipOrAny(a.Src.IP) || !ipOrAny(a.Dst.IP):
+		return "an ip that is neither an IPv4 prefix nor any"
+	case a.Type == "ip" && (a.Src.Port != 0 || a.Dst.Port != 0 || a.Src.PortRange != "" || a.Dst.PortRange != ""):
 		return "a port on a protocol-All rule (not captured)"
 	case a.Src.PortRange != "" && a.Src.PortRange != AnyPort, a.Dst.PortRange != "" && a.Dst.PortRange != AnyPort:
 		return "a port range other than " + AnyPort + " (the UI refuses ranges)"
-	case a.Dst.Port != 0 && a.Dst.PortRange != "":
+	case a.Src.Port != 0 && a.Src.PortRange != "", a.Dst.Port != 0 && a.Dst.PortRange != "":
 		return "a port and a port range on one side (not captured)"
 	}
 	return ""
+}
+
+// ipOrAny: an IPv4 prefix (a.b.c.d/n) or the Any side.
+func ipOrAny(s string) bool {
+	if s == AnyIP {
+		return true
+	}
+	ip, _, err := net.ParseCIDR(s)
+	return err == nil && ip.To4() != nil
 }
 
 // Uncaptured is IPACL.Uncaptured for a MAC rule. A side is a MAC under a
