@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -83,6 +84,61 @@ type aclState struct {
 type aclWant struct {
 	guard, rules         []string
 	keepGuard, keepRules bool
+}
+
+// aclWantFrom translates the controller's DHCP guards and IP rules into the
+// driver's blocks. A block the controller did not send (snooping not
+// pushed, IP rules held by the loop) is kept as the switch has it, and so
+// is one this driver cannot write in full: a partial rule list could let
+// through what a later Block meant to stop. Guards on a VLAN the switch
+// does not carry are skipped. MAC rules are refused (§8.2).
+func aclWantFrom(d devicemodel.DeviceDesired, vlans []int) (aclWant, error) {
+	w := aclWant{keepGuard: d.DHCPSnooping == nil, keepRules: !d.IPACLSet}
+	var errs []error
+	if d.DHCPSnooping != nil && *d.DHCPSnooping {
+		carried := map[int]bool{}
+		for _, v := range vlans {
+			carried[v] = true
+		}
+		servers := map[int][]string{}
+		var order []int
+		for _, g := range d.DHCPGuards {
+			if !carried[g.VLAN] {
+				continue
+			}
+			if _, ok := servers[g.VLAN]; !ok {
+				order = append(order, g.VLAN)
+			}
+			servers[g.VLAN] = append(servers[g.VLAN], g.Server)
+		}
+		sort.Ints(order)
+		for _, v := range order {
+			lines, err := guardLines(v, servers[v])
+			if err != nil {
+				errs = append(errs, fmt.Errorf("arista-eos: DHCP guard left as the switch has it: %w", err))
+				w.guard, w.keepGuard = nil, true
+				break
+			}
+			w.guard = append(w.guard, lines...)
+		}
+	}
+	if d.IPACLSet {
+		for _, r := range d.IPACLs {
+			line, err := ipRuleLine(r.Permit, r.Protocol,
+				ipSide{CIDR: r.Src.CIDR, Port: r.Src.Port, PortMin: r.Src.PortMin, PortMax: r.Src.PortMax},
+				ipSide{CIDR: r.Dst.CIDR, Port: r.Dst.Port, PortMin: r.Dst.PortMin, PortMax: r.Dst.PortMax})
+			if err != nil {
+				errs = append(errs, fmt.Errorf("arista-eos: IP rules left as the switch has them: rule %q: %w", r.Name, err))
+				w.rules, w.keepRules = nil, true
+				break
+			}
+			w.rules = append(w.rules, line)
+		}
+	}
+	if d.MACACLSet && len(d.MACACLs) > 0 {
+		errs = append(errs, fmt.Errorf("arista-eos: %d MAC rules not applied: the 7160 is not yet shown to bind a MAC ACL to a switchport, scope it to a VLAN and apply it to IP packets (docs/drivers/arista-eos.md §8.2)", len(d.MACACLs)))
+	}
+	return w, errors.Join(errs...)
 }
 
 // aclFromRunningConfig reads the driver's ACL and every interface's inbound

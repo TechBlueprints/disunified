@@ -30,19 +30,21 @@ func (Driver) Name() string { return "arista-eos" }
 
 // Capabilities is what EOS 4.26 on the 7160 honours: STP (priority, path
 // cost, BPDU guard), jumbo, FEC, LACP, storm control (percent), IGMP
-// snooping, LLDP-MED, SNMP. Not claimed: DHCP snooping (below), port isolation
-// (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror and
-// aggregate session counts mirror what real switches report (the ECS
-// reports them) so the UI offers both.
+// snooping, LLDP-MED, SNMP. Not claimed: DHCP snooping and switch ACLs
+// (below), port isolation (no protected-port equivalent), L3, dot1x,
+// MC-LAG, PTP. Mirror and aggregate session counts mirror what real
+// switches report (the ECS reports them) so the UI offers both.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	return devicemodel.Capabilities{
 		STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
 		StormControl: true, IGMPSnooping: true, LLDPMED: true, SNMP: true,
-		// Not DHCPSnooping: UniFi's "Rogue DHCP Server Detection" blocks DHCP
-		// servers on non-uplink ports, and EOS 4.26 has no trusted-port model
-		// (`ip dhcp snooping trust` is invalid); its snooping is Option-82
-		// insertion only. Unclaimed, the controller never pushes the key
-		// (verified 2026-09-20); if it does, ApplyDevice logs and ignores it.
+		// Not yet DHCPSnooping, IPACLs or MACACLs. EOS 4.26's own DHCP
+		// snooping is Option-82 insertion with no trusted-port model, so
+		// the guard and the IP rules are an ingress ACL (acl.go,
+		// docs/drivers/arista-eos.md §8), claimed once they have run on the
+		// switch and the rule count is sized from its ACL tables (§8.4).
+		// Unclaimed, the controller pushes neither (verified 2026-09-20 for
+		// snooping).
 		MirrorSessions: 1, AggregateSessions: 8,
 	}
 }

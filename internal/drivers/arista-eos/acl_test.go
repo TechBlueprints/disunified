@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // The captured switch has an IPv4 ACL of its own (mDNS-block, bound
@@ -308,5 +311,138 @@ func TestApplyACLAbortsARejectedSession(t *testing.T) {
 	}
 	if c.aclHeld != "" {
 		t.Error("a rejected batch is not a reason to hold the rules")
+	}
+}
+
+// capturedSnoopGuards and capturedIPRules are the controller's real pushes to
+// the ECS Aggregation (docs/fixtures/controller-10.6.109/system_cfg-ecs-dhcp-snoop.txt
+// and system_cfg-ecs-acl.txt) as the loop hands them over; informloop's
+// TestDesiredDeviceGuardsAndACLs checks that translation against the pushes.
+var (
+	capturedSnoopGuards = []devicemodel.DHCPGuard{
+		{VLAN: 1, Server: "192.0.2.1"}, {VLAN: 69, Server: "192.0.2.5"}, {VLAN: 69, Server: "192.0.2.1"},
+		{VLAN: 2, Server: "192.0.2.6"}, {VLAN: 2, Server: "192.0.2.1"}, {VLAN: 2, Server: "192.0.2.7"},
+	}
+	capturedIPRules = []devicemodel.IPACL{
+		{Name: "dui-test-allow-ip-1", Permit: true, Src: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24"}, Dst: devicemodel.IPACLEnd{CIDR: "198.51.100.0/24"}},
+		{Name: "dui-test-block-ip-1", Protocol: "tcp", Src: devicemodel.IPACLEnd{CIDR: "203.0.113.0/24"}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24", Port: 9}},
+		{Name: "dui-test-block-ip-2", Protocol: "tcp", Src: devicemodel.IPACLEnd{CIDR: "203.0.113.0/24"}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24", Port: 1001}},
+	}
+	capturedMACRules = []devicemodel.MACACL{
+		{Name: "dui-test-allow-mac-1", Permit: true, VLAN: 4010,
+			Src: devicemodel.MACACLEnd{MAC: "02:00:00:00:00:01", Mask: "ff:ff:ff:ff:ff:ff"}, Dst: devicemodel.MACACLEnd{MAC: "02:00:00:00:00:02", Mask: "ff:ff:ff:ff:ff:ff"}},
+	}
+)
+
+// Both captured pushes at once on the captured switch: the guard for the
+// VLANs it carries (1 and 2; it has no VLAN 69), servers in push order, then
+// the IP rules, in one timed session.
+func TestApplyDeviceWritesTheCapturedGuardsAndRules(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	on := true
+	before := len(ft.Configured)
+	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		DHCPSnooping: &on, DHCPGuards: capturedSnoopGuards, IPACLSet: true, IPACLs: capturedIPRules, MACACLSet: true,
+	})
+	if err != nil || n == 0 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	got := ft.Configured[before:]
+	if len(got) != 2 {
+		t.Fatalf("batches %d, want the session and its confirm", len(got))
+	}
+	guard := []string{
+		"permit vlan 1 0xfff udp host 192.0.2.1 eq 67 any eq 68",
+		"deny vlan 1 0xfff udp any eq 67 any eq 68",
+		"permit vlan 2 0xfff udp host 192.0.2.6 eq 67 any eq 68",
+		"permit vlan 2 0xfff udp host 192.0.2.1 eq 67 any eq 68",
+		"permit vlan 2 0xfff udp host 192.0.2.7 eq 67 any eq 68",
+		"deny vlan 2 0xfff udp any eq 67 any eq 68",
+	}
+	rules := []string{
+		"permit ip 192.0.2.0/24 198.51.100.0/24",
+		"deny tcp 203.0.113.0/24 192.0.2.0/24 eq 9",
+		"deny tcp 203.0.113.0/24 192.0.2.0/24 eq 1001",
+	}
+	list := []string{"enable", "configure session " + aclSession, "ip access-list " + ipACLName,
+		"10 remark disunified dhcp-guard " + blockHash(guard)}
+	seq := 20
+	for _, l := range guard {
+		list = append(list, strconv.Itoa(seq)+" "+l)
+		seq += 10
+	}
+	list = append(list, strconv.Itoa(seq)+" remark disunified ip-rules "+blockHash(rules))
+	seq += 10
+	for _, l := range rules {
+		list = append(list, strconv.Itoa(seq)+" "+l)
+		seq += 10
+	}
+	list = append(list, strconv.Itoa(seq)+" remark disunified default", strconv.Itoa(seq+10)+" permit ip any any", "exit")
+	if s := strings.Join(got[0][:len(list)], "\n"); s != strings.Join(list, "\n") {
+		t.Errorf("session:\n%s\nwant:\n%s", s, strings.Join(list, "\n"))
+	}
+	if got[0][len(got[0])-1] != "commit timer "+commitTimer {
+		t.Errorf("session ends %q", got[0][len(got[0])-1])
+	}
+	again, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		DHCPSnooping: &on, DHCPGuards: capturedSnoopGuards, IPACLSet: true, IPACLs: capturedIPRules, MACACLSet: true,
+	})
+	if again != 0 || err != nil || len(ft.Configured) != before+2 {
+		t.Errorf("second apply: n=%d err=%v (want idempotent)", again, err)
+	}
+}
+
+// What every push to this driver carries while nothing is claimed --
+// snooping absent, no rules of either kind -- writes nothing on a switch
+// without the driver's ACL. Snooping off, as the captured ECS push sends
+// it, writes nothing either.
+func TestApplyDeviceWritesNoACLWithoutRules(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	off := false
+	for _, d := range []devicemodel.DeviceDesired{
+		{IPACLSet: true, MACACLSet: true},
+		{DHCPSnooping: &off, IPACLSet: true, MACACLSet: true},
+		{DHCPSnooping: &off}, // rules held by the loop
+	} {
+		before := len(ft.Configured)
+		if n, err := c.ApplyDevice(context.Background(), d); n != 0 || err != nil || len(ft.Configured) != before {
+			t.Errorf("%+v: n=%d err=%v batches %v", d, n, err, ft.Configured[before:])
+		}
+	}
+}
+
+// MAC rules are refused with the reason; the IP rules in the same push still
+// go in.
+func TestApplyDeviceRefusesMACRules(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	before := len(ft.Configured)
+	_, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		IPACLSet: true, IPACLs: capturedIPRules, MACACLSet: true, MACACLs: capturedMACRules,
+	})
+	if err == nil || !strings.Contains(err.Error(), "1 MAC rules not applied") {
+		t.Errorf("err = %v", err)
+	}
+	if len(ft.Configured) != before+2 || strings.Contains(strings.Join(ft.Configured[before], "\n"), "mac access") {
+		t.Errorf("batches: %v", ft.Configured[before:])
+	}
+}
+
+// A rule EOS cannot write holds every IP rule, as the loop does for a shape
+// it has not seen: the switch keeps its list, the guard is still written.
+func TestApplyDeviceHoldsIPRulesWhenOneCannotBeWritten(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	on := true
+	bad := append([]devicemodel.IPACL(nil), capturedIPRules...)
+	bad = append(bad, devicemodel.IPACL{Name: "all-with-port", Dst: devicemodel.IPACLEnd{Port: 53}})
+	before := len(ft.Configured)
+	_, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		DHCPSnooping: &on, DHCPGuards: capturedSnoopGuards[:1], IPACLSet: true, IPACLs: bad,
+	})
+	if err == nil || !strings.Contains(err.Error(), `rule "all-with-port"`) {
+		t.Errorf("err = %v", err)
+	}
+	session := strings.Join(ft.Configured[before], "\n")
+	if !strings.Contains(session, "remark disunified dhcp-guard") || strings.Contains(session, "ip-rules") {
+		t.Errorf("session:\n%s", session)
 	}
 }
