@@ -42,6 +42,15 @@ const ipACLName = "DUI_IP_ACL"
 // so a rule that blocks the bridge's own traffic reverts by itself.
 const aclSession = "dui-acl"
 
+// applyBudget is the time the driver asks the loop for per write: an ACL
+// change is the session batch, the settle wait, a fresh dial and the
+// confirm, which the collect budget (20 s by default) may not hold. It
+// stays well inside commitTimer, so a confirm never races the revert.
+const applyBudget = 60 * time.Second
+
+// ApplyTimeout implements devicemodel.ApplyBudget.
+func (c *Collector) ApplyTimeout() time.Duration { return applyBudget }
+
 // aclSettleDefault is how long the driver waits after a timed commit before
 // dialling the switch to confirm it: the ACL is programmed into the hardware
 // after the commit returns, and a check made before that would pass whatever
@@ -466,6 +475,10 @@ func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable b
 		defer check.Close()
 	}
 	if _, err := check.Run(ctx, []string{"enable", "show version"}); err != nil {
+		if ctx.Err() != nil {
+			// The write budget ran out, which says nothing about the rules.
+			return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", aclSession, ctx.Err(), commitTimer)
+		}
 		return true, fmt.Errorf("arista-eos: the switch does not answer a new connection after the ACL change (%v); leaving session %s to revert in %s", err, aclSession, commitTimer)
 	}
 	confirm := []string{"enable", "configure session " + aclSession + " commit", "write memory"}

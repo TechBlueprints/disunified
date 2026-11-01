@@ -137,4 +137,5 @@ func replaceHost(rawURL, host string) string {
 }
 
 var _ devicemodel.AddressController = (*Collector)(nil)
+var _ devicemodel.ApplyBudget = (*Collector)(nil)
 var _ devicemodel.Planner = (*Collector)(nil)

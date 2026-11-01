@@ -476,6 +476,11 @@ bound to. Every ACL change is therefore made like an address move (§7):
 4. Only if that answers, confirm the session (`configure session dui-acl
    commit`) and `write memory`.
 
+The driver asks the loop for a 60-second write budget (`devicemodel.ApplyBudget`)
+so that all of this fits, which is still well inside the timer. If the budget
+runs out first, the change is not confirmed and reverts; that is not taken to
+mean that the rules cut the bridge off.
+
 If the switch does not answer, the driver reports it and leaves the timer to
 revert. It also **holds that change**: it does not send the same one again
 on the next cycle, which would cut the bridge off for another two minutes,

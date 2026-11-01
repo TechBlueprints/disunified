@@ -2,11 +2,13 @@ package aristaeos
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
@@ -444,5 +446,34 @@ func TestApplyDeviceHoldsIPRulesWhenOneCannotBeWritten(t *testing.T) {
 	session := strings.Join(ft.Configured[before], "\n")
 	if !strings.Contains(session, "remark disunified dhcp-guard") || strings.Contains(session, "ip-rules") {
 		t.Errorf("session:\n%s", session)
+	}
+}
+
+// timingOut stands in for a dial that outlives the write budget.
+type timingOut struct {
+	*FixtureTransport
+	cancel context.CancelFunc
+}
+
+func (s *timingOut) Run(ctx context.Context, _ []string) ([]json.RawMessage, error) {
+	s.cancel()
+	return nil, ctx.Err()
+}
+
+// A confirm the write budget cut short says nothing about the rules: the
+// timer reverts, and the same rules are tried again, not held.
+func TestApplyACLDoesNotHoldWhenTheBudgetRunsOut(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	slow := &timingOut{NewFixtureTransport(filepath.Join("..", "..", "..", "docs", "fixtures", "arista-eos-4.26.14M")), cancel}
+	c, _ := aclCollector(t, func(string) Transport { return slow })
+	if _, err := c.applyACL(ctx, c.last, sampleWant(t)); err == nil || !strings.Contains(err.Error(), "reverts") {
+		t.Fatalf("err = %v", err)
+	}
+	if c.aclHeld != "" {
+		t.Error("held after a budget timeout")
+	}
+	if got := c.ApplyTimeout(); got <= 0 || got >= 2*time.Minute {
+		t.Errorf("write budget %v: it must hold an ACL confirm and end inside the 2-minute commit timer", got)
 	}
 }
