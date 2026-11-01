@@ -1140,7 +1140,7 @@ outside this repo, beside the SONiC source clones: `series/` (the patches, one
 directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 `build.sh` (unattended, for the build host), `dry-run.sh` and a README.
 
-**The series** (21 patches), each applying with `git am` on the **current
+**The series** (22 patches), each applying with `git am` on the **current
 202511 head** of its repository -- which is also the commit sonic-buildimage
 202511 pins for that submodule:
 
@@ -1151,7 +1151,7 @@ directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 | sonic-swss-common | `e59457c6da43` (2026-07-21) | 0001 the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it); 0002 upstream's port to libyang 3 (`1431c3d`, §8.12) |
 | sonic-mgmt-common | `b5f84b0644d9` (2025-12-05) | upstream's port to libyang 3 (#157, `cdb612e`; §8.12) |
 | sonic-utilities | `73f8c019ff7c` (2026-10-20) | #4100 squashed |
-| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0006 the packet parsers (§8.13) |
+| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0007 the receive path: packet parsers and a socket leak (§8.13) |
 
 **Conflicts: none textual.** Each PR, squashed, three-way merged onto its base
 cleanly (the PR merge bases are 7-154 commits behind). The semantic checks
@@ -1512,13 +1512,14 @@ suite (`run.sh regress`).
 | MLDv2 report walk | each record advanced by the running total of all record sizes, so a well-formed three-record report overruns; aux data ignored |
 | Group state machine | `i <= src_cnt` reads one source past every record's list -- past the packet for the last record of any well-formed report with sources |
 | VLAN-tagged MLD frames | the IPv6 header taken from the 19th receive buffer, not this one |
+| Port updates (found on the VS, §8.14) | every resend of the port list and every link change opened another IGMP receive socket on the port -- the "already open" test read a field nothing sets -- and each copy parsed and forwarded every packet: after a few VLAN membership changes one report reached the mrouter port a dozen times |
 
 The MLD findings are unreachable in this image (0006 traps IGMP only) and are fixed
 anyway. On a switch the receive buffer is a 1 MB static ring (500 slots of 2 KB), so
 most over-reads land in other packets' bytes rather than faulting; the in-place
 source conversion can write past the ring.
 
-**Fixed in sonic-l2mcd 0002-0006** (the build kit's series; nothing posted
+**Fixed in sonic-l2mcd 0002-0007** (the build kit's series; nothing posted
 upstream, a register item for the daemon's author once the image has run on the
 hardware):
 
@@ -1535,21 +1536,25 @@ hardware):
   -- RFC 2710 and RFC 3810 send every MLD message with a router alert there, and the
   handlers parse at those fixed offsets; bad checksums and down ports dropped.
 - 0006: the state machine's loop.
+- 0007: one IGMP receive socket per port (the field the socket is stored in).
 
 The daemon's own validators keep their advisory verdict: the IGMP one rejects a
 whole report for one 224.0.0.x record, which Linux hosts send by default, so
 honouring it would drop real joins. gcc `-Wall` reports nothing new.
 
-**Results.** Unfixed (`651a13b` + 0001): 20 of the 24 cases overrun with the debug
-log off, 22 with it on. Fixed: all 24 clean either way, LeakSanitizer included; the
-malformed ones counted as drops, the valid ones still forwarded to the router port.
+**Results.** Unfixed (`651a13b` + 0001): 21 of the 25 cases overrun or leak with the
+debug log off, 23 with it on. Fixed: all 25 clean either way, LeakSanitizer included;
+the malformed ones counted as drops, the valid ones still forwarded to the router
+port. (The harness configures the daemon's event priorities and AF_PACKET receive
+sockets as its init does; without them every per-port socket failed to register,
+which is why the socket leak only showed on the VS first.)
 
 **Fuzzing.** libFuzzer with ASan and UBSan, one target per family whose input is a
 whole IPv4 or IPv6 packet (the checksum made valid wherever the header chain lets the
 harness find it), seeded with the regression cases, the debug log's arguments
 evaluated. Its first minute on the fixed tree found the IGMPv1 read above (case
 `igmp-v1-query-group`, fixed in 0003). Then 4 hours with 4 workers per family on
-the fixed tree, at the lowest priority beside the image build: **71.0 million IGMP
+the fixed tree (before 0007, which changes socket bookkeeping, not parsing), at the lowest priority beside the image build: **71.0 million IGMP
 and 49.3 million MLD packets, about 1,100 and 1,160 code edges reached, no crash, no
 leak, no undefined behaviour**. Two inputs were saved as slow (10 s, once each) and
 replay in under 10 ms: the harness never runs the daemon's timers, so its group
@@ -1585,8 +1590,10 @@ records the l2mcd commits). Debian 13.7, kernel 6.12.41.
   "Run 'docker run --help'") -- `arm` now carries the switch's own static `mstpd`
   and `mstpctl` into the new image, so the bridge only reinstalls l2d.
 - **Disk:** the 202511 vs image takes 6.8 GB installed (5.8 GB for 202505), plus
-  the installer (2.1 GB) while it installs. Measure the Broadcom image the same way
-  before H0; the installer can be left in `/tmp` (RAM) instead of `/host`.
+  the installer (2.1 GB) while it installs. `/tmp` is no way round that: on SONiC it
+  is the running image's overlay on `/host`, not memory. Delete the installer once
+  `arm` has installed it, before the reboot. Measure the Broadcom image the same way
+  before H0.
 
 **§8.9 V1-V7, all passed.** The guest has a NIC behind Ethernet0 only, so the
 other front-panel ports are down and l2mcd programs nothing on them. The build
@@ -1629,8 +1636,26 @@ objects in ASIC_DB, two quiet reconciles after.
   at start, pmon's missing `sonic_platform`, and the system-health and
   watchdog-control units failing on the VS platform's missing chassis metadata.
 
-The same checks on the image rebuilt with the parser fixes, and l2mcd's own packet
-injection for an end-to-end look at them, follow when that build finishes.
+**The image rebuilt with the l2mcd fixes** (0002-0006; 0007 came out of this run),
+installed the way H0 will run it: from 202505, with mstpd in 202505's overlay as on
+the DX010. `arm` from 202505 (the installer, then deleted), boot, `confirm`: the host
+key and mstpd carried. One more script fix: `confirm | head -n 1` stopped `confirm`
+halfway (the image the default, the state file not marked) -- SIGPIPE is now ignored
+and sonic-installer's output goes to `/host/sonic-upgrade.log`. Then:
+
+- **V1-V7 all passed again** (l2mcd not running at boot; V2-V7 as above).
+- **The parser fixes end to end**, through the daemon's real socket path: test host
+  h1 sent the regression cases' packets (§8.13) as tagged frames into a snooping
+  VLAN on Ethernet8. All eight malformed ones were dropped and counted
+  (`malformed-igmp` in l2mcd's dump), the six well-formed ones processed, and l2mcd
+  ran on under the same pid. Each drop was counted 6-9 times, and a valid report sent
+  once reached the mrouter port a dozen times: l2mcd held 14 receive sockets on
+  Ethernet8 against 3 on an untouched port. That is the socket leak in §8.13's table,
+  fixed in 0007, which the Broadcom image carries.
+- **The bridge on the fixed image:** the same recorded pushes, all applied with quiet
+  reconciles. 202505's stale lab nameserver came over with the config, so building
+  mstpd would have failed; the carried binaries meant the push installed and enabled
+  l2d at once, RSTP up under its dead-man in six seconds.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
