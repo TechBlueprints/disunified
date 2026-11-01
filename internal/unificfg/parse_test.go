@@ -3,6 +3,7 @@ package unificfg
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -255,7 +256,7 @@ func TestParseECSACLRules(t *testing.T) {
 		t.Fatalf("mac acls = %+v", c.MACACLs)
 	}
 	for i := range wantMAC {
-		if c.MACACLs[i] != wantMAC[i] {
+		if !reflect.DeepEqual(c.MACACLs[i], wantMAC[i]) {
 			t.Errorf("mac acl %d = %+v, want %+v", i+1, c.MACACLs[i], wantMAC[i])
 		}
 	}
@@ -272,7 +273,7 @@ func TestParseECSACLRules(t *testing.T) {
 		t.Fatalf("ip acls = %+v", c.IPACLs)
 	}
 	for i := range wantIP {
-		if c.IPACLs[i] != wantIP[i] {
+		if !reflect.DeepEqual(c.IPACLs[i], wantIP[i]) {
 			t.Errorf("ip acl %d = %+v, want %+v", i+1, c.IPACLs[i], wantIP[i])
 		}
 	}
@@ -281,5 +282,55 @@ func TestParseECSACLRules(t *testing.T) {
 	}
 	if o := Parse(strings.ReplaceAll(string(b), "switch.acl.", "x.")); o.MACACLs != nil || o.IPACLs != nil {
 		t.Error("ACLs parsed from lines that are not switch.acl.*")
+	}
+}
+
+// Every rule shape in the ACL capture has been seen; shapes it does not
+// show -- each an edit of a captured line -- are reported, never guessed.
+func TestACLUncaptured(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	c := Parse(text)
+	for _, a := range c.IPACLs {
+		if why := a.Uncaptured(); why != "" {
+			t.Errorf("captured IP rule %s: %s", a.Name, why)
+		}
+	}
+	for _, a := range c.MACACLs {
+		if why := a.Uncaptured(); why != "" {
+			t.Errorf("captured MAC rule %s: %s", a.Name, why)
+		}
+	}
+	ip := func(edited string) IPACL {
+		t.Helper()
+		e := Parse(edited)
+		if len(e.IPACLs) != 3 {
+			t.Fatalf("edit lost a rule: %+v", e.IPACLs)
+		}
+		return e.IPACLs[1]
+	}
+	cases := map[string]string{
+		"protocol \"udp\"":        strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=udp", 1),
+		"protocol \"tcp_udp\"":    strings.Replace(text, "switch.acl.ip.2.type=tcp", "switch.acl.ip.2.type=tcp_udp", 1),
+		"no address":              strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24\n", "", 1),
+		"a source port":           strings.Replace(text, "switch.acl.ip.2.src.port_range=1-65535", "switch.acl.ip.2.src.port=53", 1),
+		"a port range other than": strings.Replace(text, "switch.acl.ip.2.src.port_range=1-65535", "switch.acl.ip.2.src.port_range=1-1024", 1),
+		"src.network_id=":         strings.Replace(text, "switch.acl.ip.2.src.ip=203.0.113.0/24", "switch.acl.ip.2.src.ip=203.0.113.0/24\nswitch.acl.ip.2.src.network_id=x", 1),
+		"action=redirect":         strings.Replace(text, "switch.acl.ip.2.action=deny", "switch.acl.ip.2.action=redirect", 1),
+	}
+	for want, edited := range cases {
+		if why := ip(edited).Uncaptured(); !strings.Contains(why, want) {
+			t.Errorf("%s: Uncaptured() = %q", want, why)
+		}
+	}
+	if why := Parse(strings.Replace(text, "switch.acl.ip.1.type=ip", "switch.acl.ip.1.type=ip\nswitch.acl.ip.1.dst.port=9", 1)).IPACLs[0].Uncaptured(); !strings.Contains(why, "protocol-All") {
+		t.Errorf("a port on an All rule: %q", why)
+	}
+	mac := Parse(strings.Replace(text, "switch.acl.mac.2.dst.mac=any", "switch.acl.mac.2.dst.device=x", 1)).MACACLs[1]
+	if why := mac.Uncaptured(); !strings.Contains(why, "dst.device=x") {
+		t.Errorf("a MAC rule's unknown side: %q", why)
 	}
 }

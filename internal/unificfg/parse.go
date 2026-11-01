@@ -8,6 +8,7 @@ package unificfg
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
 	"strconv"
@@ -129,6 +130,10 @@ type MACACL struct {
 	Permit   bool // action=permit; "deny" => false
 	VLAN     int
 	Src, Dst MACMatch
+	// Unmodelled are the group's lines this parser does not know
+	// ("<key>=<value>", the key after switch.acl.mac.N.), and an action
+	// other than permit or deny: a shape no capture has shown.
+	Unmodelled []string
 }
 
 // MACMatch is one side of a MAC ACL: src.mac/src.mask or dst.mac/dst.mask.
@@ -148,6 +153,8 @@ type IPACL struct {
 	Permit   bool // action=permit; "deny" => false
 	Type     string
 	Src, Dst IPMatch
+	// Unmodelled: as MACACL's (the key after switch.acl.ip.N.).
+	Unmodelled []string
 }
 
 // IPMatch is one side of an IP ACL. IP is a CIDR, "" when the key is
@@ -158,6 +165,54 @@ type IPMatch struct {
 	IP        string
 	Port      int    // .port, 0 when absent
 	PortRange string // .port_range as pushed ("1-65535"), "" when absent
+}
+
+// AnyPort is the port_range a side with no port is pushed with.
+const AnyPort = "1-65535"
+
+// Uncaptured says which part of the rule no capture has shown (the shapes
+// recorded are in docs/drivers/sonic.md §11.7.2), "" when every part has
+// been seen. A rule shape is translated only once a push of it has been
+// recorded: a guess that matches more than the UI rule does is a silent
+// hole, one that matches less a silent block.
+func (a IPACL) Uncaptured() string {
+	switch {
+	case len(a.Unmodelled) > 0:
+		return "lines never captured: " + strings.Join(a.Unmodelled, ", ")
+	case a.Type != "ip" && a.Type != "tcp":
+		return fmt.Sprintf("protocol %q (only All and TCP are captured)", a.Type)
+	case a.Src.IP == "" || a.Dst.IP == "":
+		return "a side with no address (the UI's Any is not captured)"
+	case a.Src.Port != 0:
+		return "a source port (not captured)"
+	case a.Type == "ip" && (a.Dst.Port != 0 || a.Src.PortRange != "" || a.Dst.PortRange != ""):
+		return "a port on a protocol-All rule (not captured)"
+	case a.Src.PortRange != "" && a.Src.PortRange != AnyPort, a.Dst.PortRange != "" && a.Dst.PortRange != AnyPort:
+		return "a port range other than " + AnyPort + " (the UI refuses ranges)"
+	case a.Dst.Port != 0 && a.Dst.PortRange != "":
+		return "a port and a port range on one side (not captured)"
+	}
+	return ""
+}
+
+// Uncaptured is IPACL.Uncaptured for a MAC rule. A side is a MAC under a
+// mask, or "any" under the zero mask.
+func (a MACACL) Uncaptured() string {
+	if len(a.Unmodelled) > 0 {
+		return "lines never captured: " + strings.Join(a.Unmodelled, ", ")
+	}
+	if a.VLAN < 1 || a.VLAN > 4094 {
+		return fmt.Sprintf("VLAN %d", a.VLAN)
+	}
+	for _, m := range []MACMatch{a.Src, a.Dst} {
+		isAny := m.MAC == "any" && m.Mask == "00:00:00:00:00:00"
+		_, errMAC := net.ParseMAC(m.MAC)
+		_, errMask := net.ParseMAC(m.Mask)
+		if !isAny && (errMAC != nil || errMask != nil) {
+			return fmt.Sprintf("a side %q/%q that is neither a MAC under a mask nor any (not captured)", m.MAC, m.Mask)
+		}
+	}
+	return ""
 }
 
 // SNMP is switch.snmp.*: status, version ("1_2c", "3"), and the v1/v2c
@@ -394,6 +449,9 @@ func Parse(text string) *Config {
 					a.Name = v
 				case "action":
 					a.Permit = v == "permit"
+					if v != "permit" && v != "deny" {
+						a.Unmodelled = append(a.Unmodelled, m[3]+"="+v)
+					}
 				case "vlan":
 					a.VLAN, _ = strconv.Atoi(v)
 				case "src.mac":
@@ -404,6 +462,8 @@ func Parse(text string) *Config {
 					a.Dst.MAC = v
 				case "dst.mask":
 					a.Dst.Mask = v
+				default:
+					a.Unmodelled = append(a.Unmodelled, m[3]+"="+v)
 				}
 				continue
 			}
@@ -425,6 +485,9 @@ func Parse(text string) *Config {
 				a.Name = v
 			case m[3] == "action":
 				a.Permit = v == "permit"
+				if v != "permit" && v != "deny" {
+					a.Unmodelled = append(a.Unmodelled, m[3]+"="+v)
+				}
 			case m[3] == "type":
 				a.Type = v
 			case end != nil && field == "ip":
@@ -433,6 +496,8 @@ func Parse(text string) *Config {
 				end.Port, _ = strconv.Atoi(v)
 			case end != nil && field == "port_range":
 				end.PortRange = v
+			default:
+				a.Unmodelled = append(a.Unmodelled, m[3]+"="+v)
 			}
 			continue
 		}

@@ -95,6 +95,20 @@ type DeviceDesired struct {
 	ManageSyslog bool
 
 	DHCPSnooping *bool // nil = leave alone; else enable/disable (on every VLAN the switch has)
+	// DHCPGuards are, while DHCPSnooping is on, the DHCP servers trusted on
+	// each VLAN: on a VLAN that has one, only those servers may answer. A
+	// VLAN without one has no server list and is not guarded.
+	DHCPGuards []DHCPGuard
+
+	// IPACLs and MACACLs are the device's switch ACL rules, each kind in
+	// the controller's order (the first rule that matches decides; no rule
+	// = allowed). IPACLSet / MACACLSet false leaves the device's rules of
+	// that kind as they are: the push held a rule that could not be
+	// translated. Set with an empty list = no rules.
+	IPACLSet  bool
+	IPACLs    []IPACL
+	MACACLSet bool
+	MACACLs   []MACACL
 
 	// SNMPCommunity: v1/v2c read-only community to configure; "" with SNMPSet = remove the managed one.
 	SNMPSet       bool
@@ -110,6 +124,44 @@ type DeviceDesired struct {
 	// name without spaces), set only when the operator opted in
 	// (control.hostname); "" = leave the device's hostname alone.
 	Hostname string
+}
+
+// DHCPGuard trusts one DHCP server on one VLAN (UniFi's id: 1 is the
+// untagged Default network).
+type DHCPGuard struct {
+	VLAN   int
+	Server string // IPv4 address
+}
+
+// IPACL is one ACL rule on IPv4 traffic entering the switch. Protocol ""
+// matches every IPv4 packet; otherwise "tcp" or "udp".
+type IPACL struct {
+	Name     string // the operator's name for the rule, for logs only
+	Permit   bool
+	Protocol string
+	Src, Dst IPACLEnd
+}
+
+// IPACLEnd is one side of an IP rule. Every field empty or zero matches
+// anything.
+type IPACLEnd struct {
+	CIDR string // IPv4 prefix ("192.0.2.0/24"), "" = any address
+	Port int    // one L4 port, 0 = any
+	// PortMin..PortMax is an L4 port range (both 0 = none).
+	PortMin, PortMax int
+}
+
+// MACACL is one ACL rule on traffic within one VLAN, by MAC address.
+type MACACL struct {
+	Name     string // the operator's name for the rule, for logs only
+	Permit   bool
+	VLAN     int // UniFi's id
+	Src, Dst MACACLEnd
+}
+
+// MACACLEnd is one side of a MAC rule: MAC under Mask (both "" = any).
+type MACACLEnd struct {
+	MAC, Mask string
 }
 
 // Locator is an optional capability: the device can show where it is (the
@@ -706,9 +758,13 @@ type Capabilities struct {
 	StormControl   bool // per-port storm control in percent
 	IGMPSnooping   bool // IGMP snooping (DeviceController honours IGMPSnooping)
 	LLDPMED        bool
-	DHCPSnooping   bool
+	DHCPSnooping   bool // DeviceController honours DHCPSnooping and DHCPGuards
 	PortIsolation  bool
 	SNMP           bool // DeviceController honours SNMPCommunity
+	// IPACLs / MACACLs are how many switch ACL rules of each kind the
+	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
+	IPACLs  int
+	MACACLs int
 	// MirrorSessions / AggregateSessions are the counts the UI is told; 0
 	// hides the feature.
 	MirrorSessions    int

@@ -197,6 +197,7 @@ type Loop struct {
 	// follows it only when it changes.
 	driverAddr    string
 	warnedVersion string
+	aclHeld       string // the switch ACL rules last logged as held, to log on change only
 	oobWarned     string // last out-of-band warning state, to log on change only
 	uplinkPort    int    // the port last marked as uplink from the snapshot
 	everApplied   bool   // a system_cfg has been applied to this device (this run or a previous one)
@@ -771,6 +772,9 @@ func (l *Loop) warnUnsupported(ver, text string) {
 			feats[k] = v
 		}
 	}
+	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().DHCPSnooping {
+		delete(feats, "switch.dhcp_snoop")
+	}
 	for feature, keys := range cfg.Unsupported(feats) {
 		l.cfg.Logger.Printf("[%s] UNSUPPORTED by this switch: %s requested in system_cfg %s (%s) — the UI setting has no effect", l.desc.MAC, feature, ver, strings.Join(keys, ", "))
 	}
@@ -793,8 +797,10 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		ManageNTP: l.cfg.ControlNTP, NTPServers: cfg.NTPServers,
 		ManageSyslog: l.cfg.ControlSyslog, SyslogHosts: cfg.SyslogHosts,
 		DHCPSnooping: cfg.DHCPSnoop,
+		DHCPGuards:   desiredGuards(cfg),
 		Timezone:     cfg.Timezone,
 	}
+	l.noteHeldACLs(desiredACLs(cfg, &d))
 	if l.cfg.ControlHostname {
 		d.Hostname = cfg.Hostname
 	}

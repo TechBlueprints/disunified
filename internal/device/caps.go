@@ -251,7 +251,7 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	if c.StormControl {
 		storm = stormCapInPercentage
 	}
-	return map[string]any{
+	caps := map[string]any{
 		"feature_caps":           feat,
 		"max_mirror_sessions":    c.MirrorSessions,
 		"max_aggregate_sessions": c.AggregateSessions,
@@ -260,6 +260,16 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 		"storm_control_caps":     storm,
 		"igmp_snoop_caps":        0,
 	}
+	// Custom ACLs have no feature bit: a UniFi switch claims them with
+	// these counts (the ECS Aggregation 512 each, docs/drivers/sonic.md
+	// §11.7.5). Sent only by a driver that honours some, so no other
+	// driver's payload changes. Which count gates the controller's push is
+	// recorded in §11.7.
+	if c.IPACLs > 0 || c.MACACLs > 0 {
+		caps["max_custom_ip_acls"] = c.IPACLs
+		caps["max_custom_mac_acls"] = c.MACACLs
+	}
+	return caps
 }
 
 // FWCapsFor renders fw_caps for a driver's capabilities: the base bits
