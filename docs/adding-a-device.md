@@ -241,7 +241,9 @@ which takes a name and outlet overrides but rejects port overrides.
 ## 4. Prove it live, in this order
 
 1. `-collect-once` shows sane data.
-2. Read-only run (no `-control-ports`): the device appears under Pending
+2. Run it with no `control` block (UniFi owns every port from the first
+   push; the loop holds that push while it would change a port, until the
+   seed from the device makes it a no-op): the device appears under Pending
    Adoption, adopt it, `stat/device` shows live counters, an attached
    client appears behind the right port. **Before adopting, decide the
    device's address:** adoption deletes the client record the device had,
@@ -250,9 +252,10 @@ which takes a name and outlet overrides but rejects port overrides.
    and then set IP Settings → Static in the UI (the driver applies it).
    The parent edge appears only when the device's real MAC is seen on an
    upstream port ([`docs/topology-placement.md`](topology-placement.md)).
-3. `-control-ports <one unused port>`: disable/enable, rename, set a
-   speed, set VLANs in the UI; verify on the device after each. Then
-   `-control-ports all` and confirm the reconcile makes zero changes.
+3. From the UI, on one unused port: disable/enable, rename, set a speed,
+   set VLANs; verify on the device after each. Then confirm the reconcile
+   makes zero changes. (`control.ports` narrows what the bridge may write;
+   it is for an operator who wants that, not a step of this procedure.)
 4. Record what the controller pushed for each feature as
    `docs/fixtures/controller-<version>/system_cfg-*.txt` (scrubbed) and add a parser
    test in [`internal/unificfg`](../internal/unificfg) if a new key appeared.

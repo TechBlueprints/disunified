@@ -203,14 +203,14 @@ angle-bracketed parts:
 
 1. *"Install disunified on the Podman (or Docker) host I have running at
    `<host>`, bridging my `<vendor>` device at `<address>` to the UniFi
-   controller at `<controller>`. Use [`docs/install.md`](docs/install.md); set
-   `control.ports: off` for the first run and stop after adoption so I can
-   check the device in the UniFi UI before it writes ports."*
+   controller at `<controller>`. Use [`docs/install.md`](docs/install.md) and
+   stop after adoption so I can check the device in the UniFi UI. (Nothing is
+   written to a port until the controller's config matches the device: the
+   first push is held until the seed makes it a no-op.)"*
 2. *"My `<vendor>` device is showing in the UniFi controller under Pending
-   Adoption through disunified. Walk me through adoption and then turn on
-   control for one unused port only (port `<N>`), following
-   [`docs/install.md`](docs/install.md) steps 4–5, and confirm the round-trip reaches the
-   device before enabling `ports: all`."*
+   Adoption through disunified. Walk me through adoption, following
+   [`docs/install.md`](docs/install.md) steps 4–5, then change one unused port
+   (port `<N>`) in the UI and confirm the round-trip reaches the device."*
 3. *"disunified is deployed on `<host>` and the UniFi controller was upgraded
    to Network `<version>`. Check the reply log under `inform-log/`, confirm the
    device is still adopted and reporting, and tell me if anything regressed."*

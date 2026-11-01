@@ -247,10 +247,12 @@ to the Arista's spare cage; nothing on the OOB jack but the console cable.
 Check UPS headroom first: the unit adds 150--200 W.
 
 **B6. Prove it live**, in the order of [`docs/adding-a-device.md`](../adding-a-device.md) §4:
-`-collect-once`; read-only adoption with the address decided first;
-`-control-ports <one empty cage>` for disable/enable, name, speed, VLANs,
-then `all` with a zero-change reconcile; an aggregate to a real LACP
-partner, checked with `teamdctl PortChannel<n> state` (fast rate, min
+`-collect-once`; adoption with the address decided first and no `control`
+block (UniFi owns every port from the first push; the loop holds that push
+while it would change a port, until the seed from the switch makes it a
+no-op); then, from the UI on one empty cage, disable/enable, name, speed,
+VLANs, each verified on the switch, and a reconcile that changes nothing;
+an aggregate to a real LACP partner, checked with `teamdctl PortChannel<n> state` (fast rate, min
 ports 1) and on the partner's side (its LACP shows our fast timeout), and
 a recapture with that PortChannel so `cfg_lag` holds `fast_rate` /
 `min_links` from a real switch; record each push as a scrubbed

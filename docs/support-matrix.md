@@ -286,9 +286,10 @@ and the per-port STP settings on an image without the STP daemon.
    `internal/drivers/<driver>/` load the fixture by path
    (`collector_test.go`); add a case for yours beside the existing one so
    both stay covered.
-4. **Run it live** against your controller, read-only first
-   (`control.ports: off`), then one unused port. Record in the PR what you
-   saw: the `-collect-once` snapshot, the adoption log lines, what the UniFi
+4. **Run it live** against your controller with no `control` block (the
+   first push after adoption is held until the controller's seed matches
+   the device), then exercise the controls from the UI on one unused port.
+   Record in the PR what you saw: the `-collect-once` snapshot, the adoption log lines, what the UniFi
    UI showed, and for control the pushed keys and the commands written.
 5. **Move the row** in this file from the gap table to the verified table,
    with the version and the date, and fix the driver write-up where it
