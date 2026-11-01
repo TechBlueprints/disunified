@@ -182,7 +182,9 @@ The firmware string the controller sees is digits and dots, as a real device's i
   therefore does not claim the capability, and the controller then never sends the key
   (verified 2026-09-20: it sent `enabled`/`disabled` only while the claim was in place). The
   controller also sends one site-wide flag with no per-VLAN keys, so an all-VLAN application
-  would have reached the L2-only DMZ VLANs too.
+  would have reached the L2-only DMZ VLANs too. (Since 2026-11-01 the trusted servers are known
+  to come per VLAN with the flag, as `switch.dhcp_guard.N.*`, and the guard is built as an
+  ingress ACL instead -- §9. It is not claimed until it has been verified on the switch.)
 
 ## 7. In-band management (2026-09-20)
 
@@ -328,3 +330,203 @@ with `scripts/sanitize-arista-eos.py`, commit it under
 7. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
    idempotent) and mark the feature verified in this section, the support
    matrix and the feature map.
+
+## 9. DHCP guarding and switch ACLs (built 2026-11-01; not yet run on the switch)
+
+The controller's pushes for both features were captured on Network 10.6.109
+from an ECS Aggregation, which claims them: `switch.dhcp_snoop.status` with
+one `switch.dhcp_guard.N.*` group (VLAN, server) per trusted DHCP server of
+each guarded network, and the switch ACL rules as `switch.acl.ip.N.*` and
+`switch.acl.mac.N.*`. The keys, what each UI setting sends and the scrubbed
+fixtures are in [`sonic.md`](sonic.md) §11.7.2. This section is the EOS half;
+the DX010's is §11.7.5 there. The code is `acl.go`. **The switch was unreachable
+when it was written** (2026-11-01), so everything below that says "verify" is
+open, nothing is claimed, and the controller sends neither feature to this
+driver yet.
+
+### 9.1 What EOS has for it
+
+From the EOS manual's ACL chapter (the 4.36 edition online; the 4.26 manual
+was not read, so every line here is to be checked on 4.26.14M):
+
+- **Port ACLs.** IPv4 and MAC ACLs bind per interface and direction
+  (`ip access-group NAME in`, `mac access-group NAME in`) on Ethernet and
+  Port-Channel interfaces, **one per type per direction**. Ethernet and
+  Port-Channel interfaces carry none by default.
+- **IPv4 rules**: `[seq] permit|deny [vlan ID MASK] PROTOCOL SRC [PORTS] DST
+  [PORTS]`. SRC and DST are `any`, `host A.B.C.D` or a prefix. PORTS is
+  `eq` with up to ten ports, `neq`, `gt`, `lt` or `range A B`. The VLAN
+  qualifier's mask selects the bits compared: `0xfff` is an exact VLAN, `0x0`
+  any. The manual's own example is `permit vlan 100 0xfff ip any any`.
+- **MAC rules**: `[seq] permit|deny SRC DST [ETHERTYPE]`, each side `any` or
+  `MAC MASK` in dotted form. The mask is a **wildcard**: a 0 bit must match,
+  a 1 bit is ignored. That is the inverse of UniFi's mask: UniFi's
+  `ff:ff:ff:ff:ff:00` (the first 40 bits compared) is an EOS mask with only
+  the last octet's bits set. The manual shows no VLAN qualifier on a MAC
+  rule.
+- **Every ACL ends in an implicit deny**: a packet that matches no rule is
+  dropped.
+- ACL modes are group-change modes: a list's edits take effect on `exit`
+  (`abort` discards them). `remark TEXT` adds a comment line with a sequence
+  number of its own, and `no SEQ` removes a line.
+- **No hitless update on the 7160.** `hardware access-list update
+  default-result permit`, which keeps traffic flowing while an applied ACL
+  is reprogrammed, is listed for the 7050X, 7060X, 7150, 7250X, 7280(R),
+  7300X, 7320X and 7500 only. Without it, the manual says, traffic is
+  blocked during an ACL modification. How long that lasts on this switch is
+  not known (verify).
+- **The 7160's ACL pipeline has two profiles** (`platform xp profile`, per
+  Arista's 4.21.1F release notes for the 7160, which need an Arista login
+  to read in full): `algomatch`, a hash-based implementation and the
+  default, and `tcam-acl-ipv4-ingress`, TCAM-based with up to 12K rules,
+  which turns off PBR, IPv6 ingress ACLs, egress ACLs and QoS ACLs. The
+  captured `show hardware capacity` lists the algorithmic layout: ACL
+  tables `MaskGroup0`..`MaskGroup5` at 8192 entries each and
+  `Src/DstIPv4Transform` at 1536 each, all unused. The driver does not
+  change the profile. Which qualifiers algomatch accepts on a switchport
+  (the VLAN qualifier above all) is the first thing to verify.
+
+### 9.2 The mapping
+
+**One IPv4 ACL, `DUI_IP_ACL`, holds the guard and the IP rules.** An
+interface takes one IPv4 ACL inbound, so the two tables the DX010 uses
+become two blocks of one list, in this order:
+
+```
+10 remark disunified dhcp-guard <hash>
+20 permit vlan <v> 0xfff udp host <server> eq 67 any eq 68    (one per trusted server)
+30 deny vlan <v> 0xfff udp any eq 67 any eq 68                (then the next guarded VLAN)
+..
+   remark disunified ip-rules <hash>
+   <the controller's IP rules, in its order>
+   remark disunified default
+   permit ip any any
+```
+
+- **The guard.** For each guarded VLAN `v` that the switch carries, UDP
+  67 -> 68 (a server's reply) is permitted from each trusted server and
+  dropped from anyone else. A VLAN with no guard group gets no lines,
+  because UniFi gives it no server list. Snooping on with no guards writes
+  nothing. The gateway's replies enter at the uplink and pass, while a
+  rogue server's are dropped at its own port.
+- **The guard comes first**, so a reply from an untrusted server is dropped
+  even where a UniFi Allow rule would let it through. That is the outcome
+  the DX010 expects from its two separate tables.
+- **IP rules** map field for field:
+
+  | Model (from the push) | EOS |
+  |---|---|
+  | Permit / Block | `permit` / `deny` |
+  | protocol All / TCP / UDP | `ip` / `tcp` / `udp` |
+  | a side's prefix, none | the prefix (`host A` for a /32), `any` |
+  | one port | `eq N` |
+  | the range `1-65535`, or none | nothing (any port) |
+  | any other range | `range A B` (the UI refuses ranges; never pushed) |
+
+  A port on an All rule cannot be written in EOS and is refused. The loop
+  only hands over shapes a capture has shown: UDP, an Any side, a Network
+  side and a source port are held there until one is recorded.
+- **The closing `permit ip any any`** makes UniFi's default-allow hold over
+  EOS's implicit deny. An IPv4 ACL does not see non-IP traffic such as ARP,
+  or IPv6 (verify on this switch).
+- **Diffing by remark.** Each block's remark carries a hash of the lines
+  the driver rendered. A block is current when its remark's hash and its
+  line count match what the driver would write now. EOS rewrites rules for
+  display (`eq 67` reads back as `eq bootps`), so comparing text would
+  rewrite the list on every cycle. A block the controller leaves alone
+  (snooping not pushed, or a rule the loop holds) is carried over in a
+  rewrite as the switch shows it, with its old remark. A line outside any
+  block, added by hand, makes the driver rewrite the list.
+- **A rewrite** removes every sequence number the list has (`no SEQ`) and
+  writes the new lines at 10, 20, 30, ... inside the ACL mode, then `exit`.
+- **Bound everywhere:** `ip access-group DUI_IP_ACL in` on every Ethernet
+  lane not in an aggregate, and on the Port-Channel of every aggregate. The
+  ECS binds its tables the same way, to every port and aggregate. A lane
+  that joins an aggregate loses its own binding. `Management1` and VLAN
+  interfaces are never bound.
+- **An interface that already carries another IPv4 ACL inbound is left
+  alone and logged.** EOS would take only one, and the driver touches no
+  ACL but its own. (The captured switch has a hand-made `mDNS-block` list,
+  bound nowhere.)
+- **The list exists only while it holds a rule.** With none left it is
+  unbound everywhere, then deleted.
+- **MAC rules are refused for now.** Three things are unknown on the 7160:
+  - whether a MAC ACL binds to a switchport at all;
+  - whether a MAC rule can be limited to a VLAN (the manual shows no
+    qualifier, and UniFi's MAC rules are per VLAN);
+  - whether a MAC ACL still sees IP packets on a port that also carries an
+    IPv4 ACL (on some platforms it filters only non-IP frames, which would
+    let a blocked device's IP traffic through).
+
+  Until those are verified, `max_custom_mac_acls` is 0 and a MAC push is
+  logged and refused. If they hold, the list is `DUI_MAC_ACL`, built the same
+  way, with the mask inverted as in §9.1.
+
+### 9.3 Never cutting off management
+
+The bridge reaches the switch in-band, through the uplink, which the ACL is
+bound to. Every ACL change is therefore made like an address move (§7):
+
+1. Open `configure session dui-acl`, make the changes, then `commit timer
+   00:02:00`. The switch applies the change at once and reverts it by itself
+   unless it is confirmed.
+2. Wait five seconds, because the hardware is programmed after the commit
+   returns.
+3. Dial the switch on a **new** connection and ask for `show version`.
+4. Only if that answers, confirm the session (`configure session dui-acl
+   commit`) and `write memory`.
+
+If the switch does not answer, the driver reports it and leaves the timer to
+revert. It also **holds that change**: it does not send the same one again
+on the next cycle, which would cut the bridge off for another two minutes,
+until the controller's rules differ. A batch EOS rejects is aborted
+(`configure session dui-acl abort`), because a session left half-built
+would be resumed by the next attempt. A held or pending session blocks
+every other commit, and the address session too, until the timer runs out.
+
+### 9.4 Claims
+
+None yet. Once the guard works on the switch, DHCP snooping is claimed
+(`feature_caps` 128) and the controller starts sending the guard groups.
+`max_custom_ip_acls` is sized from the switch's own capacity, which depends
+on two things to be measured: the entries one rule takes in the ACL tables,
+and whether one list bound to every port is stored once or per port. It is
+not copied from the ECS's 512. `max_custom_mac_acls` stays 0 until §9.2's
+MAC questions are answered.
+
+### 9.5 What waits on the switch
+
+The switch was unreachable on 2026-11-01. In order, once it answers:
+
+1. **Read-only.**
+   - Find the command that shows the active ACL profile, and read it.
+   - Capture `show ip access-lists`, `show ip access-lists summary` and `show
+     mac access-lists` (JSON, eAPI) as fixtures, scrubbed with
+     `sanitize-arista-eos.py`, and `show hardware capacity` again.
+   - Use the Command API Explorer for the 4.26.14M schema of each.
+2. **Syntax, in an aborted configuration session** (nothing committed, with
+   approval):
+   - `ip access-list DUI_PROBE` with a `permit vlan 4010 0xfff udp host
+     192.0.2.1 eq 67 any eq 68` rule, a `range` rule and a remark;
+   - `ip access-group DUI_PROBE in` on an unused copper switchport and on a
+     Port-Channel;
+   - `mac access-list` with a masked rule, and with a `vlan` qualifier if EOS
+     takes one;
+   - `configure session dui-acl abort` on a session pending its timer.
+3. **Hardware, on the unused test ports only:**
+   - the guard drops a DHCP reply from an untrusted address on a guarded
+     VLAN, both tagged and untagged (does the VLAN qualifier see the native
+     VLAN on ingress?);
+   - it passes the trusted server;
+   - ARP and IPv6 pass through the closing permit;
+   - how long a rewrite of a bound list drops traffic;
+   - what one rule costs in `show hardware capacity`;
+   - with both a MAC and an IPv4 ACL bound, whether the MAC ACL sees IP
+     packets.
+4. **Read-back.** Once those captures exist, add `show ip access-lists
+   DUI_IP_ACL` to the poll and confirm that the list is active, not only
+   configured, on every bound interface. The driver now confirms
+   reachability only.
+5. **Claim, deploy, capture.** Claim, deploy, save one harmless rule scoped
+   to this switch from the UI, and record its push from the reply log. Then
+   restore the site.

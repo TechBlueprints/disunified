@@ -22,7 +22,15 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - No rogue-DHCP protection on EOS 4.26: `ip dhcp snooping` is Option-82
   insertion only (no `trust`), so `DHCPSnooping` is not claimed and the
   controller's `switch.dhcp_snoop` key is never pushed (verified
-  2026-09-20; see `docs/drivers/arista-eos.md` §6).
+  2026-09-20; see `docs/drivers/arista-eos.md` §6). The guard is built as
+  an ingress IPv4 ACL instead (`acl.go`, §8 there), sharing the driver's
+  one list with UniFi's IP rules; it stays unclaimed until it has run on
+  the switch (§8.5 lists what waits).
+- An interface takes **one IPv4 ACL per direction**, and the 7160 has no
+  hitless ACL update (`hardware access-list update default-result permit`
+  is not offered on it): reprogramming a bound list blocks its interfaces'
+  traffic while it lasts. ACL changes go through a `commit timer` session
+  like an address move, because the list is bound to the uplink too.
 - The firmware version reported to the controller is EOS's own
   (`4.26.14M`), not the UniFi model profile's; `-version` overrides it, and
   an emulated upgrade from the controller masks it until EOS itself moves.
