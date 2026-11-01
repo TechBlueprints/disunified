@@ -42,7 +42,22 @@ type Config struct {
 	JumboFrames bool     // switch.jumboframes=enabled
 	JumboSet    bool     // switch.jumboframes is present at all
 	DHCPSnoop   *bool    // switch.dhcp_snoop.status, nil if absent
-	SNMP        *SNMP    // switch.snmp.*, nil if absent
+	// DHCPGuards is switch.dhcp_guard.N.*, the enabled ones in slot order:
+	// the DHCP servers allowed to answer on a VLAN. Pushed only beside
+	// switch.dhcp_snoop.status=enabled, one group per trusted server of
+	// every network with DHCP Guarding on (captured 2026-11-01 on 10.6.109,
+	// docs/fixtures/controller-10.6.109/system_cfg-ecs-dhcp-snoop.txt). A
+	// VLAN with no group has no server list.
+	DHCPGuards []DHCPGuard
+	// MACACLs and IPACLs are switch.acl.mac.N.* and switch.acl.ip.N.*, in
+	// slot order: the site's switch ACL rules (Policy Table -> ACL Rules)
+	// that apply to this device, pushed only to a device that claims
+	// custom ACLs (captured 2026-11-01 on 10.6.109,
+	// docs/fixtures/controller-10.6.109/system_cfg-ecs-acl.txt). The slot
+	// order is the rule order; nil when no rule applies.
+	MACACLs []MACACL
+	IPACLs  []IPACL
+	SNMP    *SNMP // switch.snmp.*, nil if absent
 	// NUTServer is nutserver.*: the controller's "NUT Server" switch for a
 	// UPS, pushed only to a device claiming smart_power_caps bit 1. Nil if
 	// the block is absent (the switch off, or the capability unclaimed).
@@ -97,6 +112,52 @@ type Address struct {
 	Netmask string
 	Gateway string
 	DNS     []string
+}
+
+// DHCPGuard is one switch.dhcp_guard.N.* group: Server may answer DHCP on
+// VLAN. A network trusting three servers is pushed as three groups.
+type DHCPGuard struct {
+	VLAN   int
+	Server string // IPv4 address
+}
+
+// MACACL is one switch.acl.mac.N.* group (a UI "MAC" ACL rule): traffic
+// within VLAN from Src to Dst is permitted or denied. Name is the UI
+// rule's name with "-<n>" appended.
+type MACACL struct {
+	Name     string
+	Permit   bool // action=permit; "deny" => false
+	VLAN     int
+	Src, Dst MACMatch
+}
+
+// MACMatch is one side of a MAC ACL: src.mac/src.mask or dst.mac/dst.mask.
+// A single address has mask ff:ff:ff:ff:ff:ff, the UI's Any is MAC "any"
+// with an all-zero mask, and the UI's Netmask (a prefix length) is the
+// matching mask, 40 leaving the last octet zero.
+type MACMatch struct {
+	MAC, Mask string
+}
+
+// IPACL is one switch.acl.ip.N.* group (a UI "IPv4" ACL rule). Type is the
+// UI's protocol: "ip" (All) or "tcp" as captured; "udp" for UDP is
+// expected but not captured. A UI rule naming several destination ports is
+// pushed as one group per port, named "<rule>-1", "<rule>-2", ...
+type IPACL struct {
+	Name     string
+	Permit   bool // action=permit; "deny" => false
+	Type     string
+	Src, Dst IPMatch
+}
+
+// IPMatch is one side of an IP ACL. IP is a CIDR, "" when the key is
+// absent (expected for the UI's Any; every captured rule named both
+// sides). On a TCP rule a side with no port is pushed as
+// port_range=1-65535; a port the UI named is port=<n>.
+type IPMatch struct {
+	IP        string
+	Port      int    // .port, 0 when absent
+	PortRange string // .port_range as pushed ("1-65535"), "" when absent
 }
 
 // SNMP is switch.snmp.*: status, version ("1_2c", "3"), and the v1/v2c
@@ -217,6 +278,8 @@ var (
 	vlanRe     = regexp.MustCompile(`^switch\.vlan\.(\d+)\.(\w+)$`)
 	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.mode$`)
 	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
+	guardRe    = regexp.MustCompile(`^switch\.dhcp_guard\.(\d+)\.(\w+)$`)
+	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
 )
 
 // Parse reads system_cfg text. Unknown keys are kept in Raw and ignored.
@@ -236,6 +299,12 @@ func Parse(text string) *Config {
 	ntp := map[int]ntpEntry{}
 	sshKeys := map[int]*SSHKey{}
 	users := map[int]*User{}
+	type guardEntry struct {
+		DHCPGuard
+		enabled bool
+	}
+	guards := map[int]*guardEntry{}
+	macACLs, ipACLs := map[int]*MACACL{}, map[int]*IPACL{}
 	syslogEnabled, syslogIP, syslogPort := false, "", ""
 	localeTZ := ""
 	for _, line := range strings.Split(text, "\n") {
@@ -293,6 +362,78 @@ func Parse(text string) *Config {
 				o.Name = v
 			}
 			c.Outlets[idx] = o
+			continue
+		}
+		if m := guardRe.FindStringSubmatch(k); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			g := guards[n]
+			if g == nil {
+				g = &guardEntry{}
+				guards[n] = g
+			}
+			switch m[2] {
+			case "server":
+				g.Server = v
+			case "vlan":
+				g.VLAN, _ = strconv.Atoi(v)
+			case "status":
+				g.enabled = v == "enabled"
+			}
+			continue
+		}
+		if m := aclRe.FindStringSubmatch(k); m != nil {
+			n, _ := strconv.Atoi(m[2])
+			if m[1] == "mac" {
+				a := macACLs[n]
+				if a == nil {
+					a = &MACACL{}
+					macACLs[n] = a
+				}
+				switch m[3] {
+				case "name":
+					a.Name = v
+				case "action":
+					a.Permit = v == "permit"
+				case "vlan":
+					a.VLAN, _ = strconv.Atoi(v)
+				case "src.mac":
+					a.Src.MAC = v
+				case "src.mask":
+					a.Src.Mask = v
+				case "dst.mac":
+					a.Dst.MAC = v
+				case "dst.mask":
+					a.Dst.Mask = v
+				}
+				continue
+			}
+			a := ipACLs[n]
+			if a == nil {
+				a = &IPACL{}
+				ipACLs[n] = a
+			}
+			side, field, _ := strings.Cut(m[3], ".")
+			var end *IPMatch
+			switch side {
+			case "src":
+				end = &a.Src
+			case "dst":
+				end = &a.Dst
+			}
+			switch {
+			case m[3] == "name":
+				a.Name = v
+			case m[3] == "action":
+				a.Permit = v == "permit"
+			case m[3] == "type":
+				a.Type = v
+			case end != nil && field == "ip":
+				end.IP = v
+			case end != nil && field == "port":
+				end.Port, _ = strconv.Atoi(v)
+			case end != nil && field == "port_range":
+				end.PortRange = v
+			}
 			continue
 		}
 		if m := portRe.FindStringSubmatch(k); m != nil {
@@ -541,6 +682,32 @@ func Parse(text string) *Config {
 		if e := sshKeys[n]; e.Enabled && e.Type != "" && e.Value != "" {
 			c.SSHKeys = append(c.SSHKeys, *e)
 		}
+	}
+	gkeys := make([]int, 0, len(guards))
+	for n := range guards {
+		gkeys = append(gkeys, n)
+	}
+	sort.Ints(gkeys)
+	for _, n := range gkeys {
+		if g := guards[n]; g.enabled && g.Server != "" && g.VLAN > 0 {
+			c.DHCPGuards = append(c.DHCPGuards, g.DHCPGuard)
+		}
+	}
+	mkeys := make([]int, 0, len(macACLs))
+	for n := range macACLs {
+		mkeys = append(mkeys, n)
+	}
+	sort.Ints(mkeys)
+	for _, n := range mkeys {
+		c.MACACLs = append(c.MACACLs, *macACLs[n])
+	}
+	ikeys := make([]int, 0, len(ipACLs))
+	for n := range ipACLs {
+		ikeys = append(ikeys, n)
+	}
+	sort.Ints(ikeys)
+	for _, n := range ikeys {
+		c.IPACLs = append(c.IPACLs, *ipACLs[n])
 	}
 	if syslogEnabled && syslogIP != "" {
 		h := syslogIP

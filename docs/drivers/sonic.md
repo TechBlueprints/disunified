@@ -909,7 +909,7 @@ does not expose.
 | `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); logged, unclaimed. **An unmerged upstream implementation exists; what building it takes is §8** |
 | `switch.port.N.lldpmed.opmode` / `topology_notify` | `LLDP_PORT` has `enabled`/`mode`/TLV flags, no LLDP-MED; report-only like the Arista |
 | `switch.port.N.ld_mode` (loop detection) | nothing in SONiC; a real STP daemon would be the answer (see 7.4) |
-| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking; `dhcp_relay` is L3; unclaimed |
+| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking; `dhcp_relay` is L3; unclaimed. **Superseded 2026-11-01 (§11.7):** the push, captured, is the flag plus per-VLAN trusted-server groups (`switch.dhcp_guard.N.*`), which an L3 ACL table can enforce in hardware |
 | isolation, 802.1X, port security (`port_security_mac_address`) | none in community SONiC (`sonic-acl.yang` exists, so an ACL-based emulation of isolation and MAC allow-lists is possible later; not now) |
 | egress/ingress rate limits | the controller pushed no rate-limit key in any capture, so nothing to act on; SONiC could shape per port through `SCHEDULER`/`PORT_QOS_MAP` (YANG present) if a push ever carries it |
 | `snmp.*` location/contact | not pushed unless the site-wide SNMP is on; `config snmp location\|contact` exist and are a one-line mapping once a capture exists |
@@ -1146,7 +1146,7 @@ Table by table against what this driver writes on the DX010:
 | STP | **RSTP via mstpd 0.0.9** in the `stp` container, driven by Ubiquiti's `ubnt-stpmgrd` from a table of their own (`UBNT_STP`): RSTP switch-wide at priority step 2 (8192), per-VLAN STP off, and an admin-edge flag per port | none on the VS; the community `INCLUDE_STP` image is **PVST only** (`config spanning-tree enable <pvst>` is the only mode in 202505; no RSTP PR in sonic-stp or swss) | the gap is bigger than "build the STP image": a UniFi LAN runs RSTP, and a PVST+ switch in the middle of it interoperates through the IEEE-BPDU-on-VLAN-1 compatibility path only. Ubiquiti solved it by running mstpd with their own glue into the STP orch. Noted for §8's image work: the STP piece should be RSTP, which means mstpd + a manager, not the community `stpd`. |
 | Loop protection (`ld_mode`) | a **MAC-move guard** (`MAC_MOVE_GUARD`, switch-wide and per port): a port whose MACs move 10 times within 5 s is disabled for 150 s -- Ubiquiti's own daemon errdisables a port whose MACs flap | refused with a log | **candidate, bridge-side, no SONiC change**: the collector reads the FDB every cycle already; a MAC seen moving between ports N times in the window → anomaly on the port, and with `ld_mode` pushed, `config interface shutdown` + a timed re-enable. Same semantics as Ubiquiti's, implemented where we can. Worth it on a hub switch with no STP. |
 | Storm control | errdisable on a broadcast storm (`ERROR_DISABLE`), with no automatic recovery | `PORT_STORM_CONTROL` rate limits in kbps from the UI's percentages | different mechanisms; ours matches what the UI's sliders promise. keep. |
-| DHCP guard / snooping | `ACL_TABLE\|global_ip_acl` (L3) and `global_mac_acl` (ANY) bound to every port, no rules while the site feature is off; `dhcpsnpmgrd` in the glue | refused with a log | an ACL-based path exists in community SONiC too (`sonic-acl.yang`); same shape as Ubiquiti's. Later, if wanted. |
+| DHCP guard / snooping | `ACL_TABLE\|global_ip_acl` (L3) and `global_mac_acl` (ANY) bound to every port, no rules while the site feature is off (they hold the custom ACL rules); snooping on adds a table of its own that traps DHCP server replies to the CPU for a snooping daemon (§11.7.3) | refused with a log | captured and specified 2026-11-01 (§11.7): the guard as hardware ACL rules (no trap action in community SONiC), the IP rules as an L3 table; MAC rules need an orchagent patch. |
 | Management address | on a Linux bridge `br0` taking DHCP, in a management table of their own (`UBNT_MGMT_INTERFACE`), with VLAN 1 as the management VLAN | `VLAN_INTERFACE\|Vlan<native>` address, static or DHCP | Ubiquiti's is their own construct; ours is standard SONiC. keep. |
 | Features | `l2mcd`, `stp`, `teamd`, `bgp` (FRR), `dhcp_relay`, `radv`, `mgmt-framework`, `snmp` enabled; `macsec`, `nat`, `sflow` present but off | community image: no `l2mcd`, no `stp` | §8. |
 
@@ -1495,12 +1495,12 @@ feature the DX010 does not claim:
 | STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | no, 0 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
 | Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
 | IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | no | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
-| DHCP snooping (128) | yes | no | `switch.dhcp_snoop.status` |
+| DHCP snooping (128) | yes | no | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
 | Port isolation (4), port security (512) | yes | no | `switch.port.N.port-security` (isolation keys only when set) |
 | LLDP-MED (16) | yes | no | `switch.port.N.lldpmed.opmode/topology_notify` |
 | Egress rate limit (32) | yes | no | none while unset |
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | no | `switch.routing_enabled` only while no L3 network is on the switch |
-| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512) | yes | no | none while no rule exists |
+| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | no | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
 
@@ -1525,7 +1525,7 @@ changes nothing that breaks the system_cfg path.
 | **Loop protection** | Ubiquiti's `MAC_MOVE_GUARD` semantics (threshold 10 moves in 5 s → errdisable for 150 s) on the switch, from FDB move events, driven by `ld_mode`; `ld_status` reported. With RSTP in place this is the second line of defence, as on the ECS. **Built 2026-11-01 in disunified-l2d, driven by `switch.port.N.keepalive` (not `ld_mode`); verified live by hand that night: §11.5.** | stock | medium |
 | **LACP state** | teamd's per-member state, which tlm_teamd copies out of `teamdctl <pc> state dump` into STATE_DB `LAG_MEMBER_TABLE` → `lag_member`, and on the aggregate's lowest member `aggregate_num_ports`, `lacp_state[]`, `partner_system_id`. `aggregate_members`, `lag_idx` and `link_aggregation_groups[]` are the controller's own (from its port overrides; the ECS's inform carries none of them). Needed for the planned two-cable aggregate from the core. | stock | **built 2026-11-01** (§11.4), held to the ECS's own inform on the ECS's own tables; live on the DX010 once the second cable is in |
 | **Hardware tables** | PSU, fan, MAC-table capacity, IPv6 and firmware fields from pmon's STATE_DB tables, `crm`, the kernel. | stock | **built 2026-11-01** (§11.4), fixture- and contract-tested on a second DX010 capture |
-| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. | stock | medium each |
+| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. | stock (MAC rules: custom) | medium each |
 | **LLDP-MED** | SONiC's `lldpd` speaks LLDP-MED (`configure med ...`); the `lldp` container's config is the write path. | stock | small |
 | **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` (YANG present, §7.2); capture the push first. | stock | small |
 | **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
@@ -1919,6 +1919,265 @@ and brought eth0 up had the uplink dropped.
 | Breakout | cage 2 manual 25G | `config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null`; four children `Ethernet4`-`Ethernet7` (aliases `Eth2/1`-`Eth2/4`, lanes 69-72) admin up, MTU 1500, untagged in the native VLAN; no prompt, no swss or syncd restart |
 | Join | cage 2 auto, then manual 100G | auto changed nothing (the deployed build left a split cage split; §10.9 now has auto follow the module); manual 100G: `'1x100G[40G]'` and `config vlan member add -u 4094 Ethernet4` |
 | Restart | the UI's Restart (`cmd/devmgr restart`) | `reboot requested`, the reload issued about 50 s later (SONiC's reboot script stops the services first), SSH back 112 s after the box went down, on the same image with the saved config intact; the bridge logged one failed collect and recovered; the next push wrote nothing. eth0 came back up on DHCP and had to be taken down again (§10.6) |
+
+### 11.7 DHCP snooping and switch ACLs: the captured push and the plan (2026-11-01)
+
+The controller pushes neither feature to the DX010, which claims neither
+(§11.1), so both were captured on the ECS Aggregation. Clint approved two
+site-wide changes for it: Rogue DHCP Server Detection on, and a harmless set
+of ACL rules. Both were saved from the UI on Network 10.6.109 and restored
+within minutes. Snooping was on for about 2.5 minutes. The rules matched only
+documentation addresses (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`)
+and test MACs (`02:00:00:00:00:0x`), on one unused VLAN, scoped to the ECS
+alone. After each restore the ECS's push was byte-identical to the one before,
+and the controller objects matched the before-state. No switch rebooted, and
+every DHCP request in the window got its ACK. This is spec only: no driver
+code was written.
+
+#### 11.7.1 Where UniFi keeps them
+
+- **Rogue DHCP Server Detection** is the 10.x name for DHCP snooping. It is
+  site-wide, under Settings → Networks → Global Switch Settings, stored as
+  `global_switch.dhcp_snoop` and saved by the UI with
+  `POST api/s/<site>/set/setting/global_switch`. The UI's tooltip says it
+  "collects client IP addresses, hostnames, and DHCP guarding information".
+- **The trusted servers are per network.** A network's DHCP Guarding is
+  `networkconf.dhcpguard_enabled` with up to three servers in
+  `dhcpd_ip_1..3`. The site had it on, with servers, for three networks
+  before the capture. Snooping turns those lists into rules. There is no
+  per-port trust setting and no "trusted uplink" concept in the push.
+- **ACL rules** are under Settings → Policy Table → ACL Rules (v2 API
+  `acl-rules`; removal is `acl-rules/batch-delete`). There are two kinds:
+  - **MAC** ("Device Access Control", traffic within one VLAN): needs a VLAN,
+    with source and destination each Any, a Device or a MAC, and an
+    optional netmask prefix length.
+  - **IPv4** ("Network Access Control", "between VLANs"): protocol All,
+    TCP/UDP, TCP or UDP; source and destination each Any, a Network or
+    IPs, plus a port Any or a comma list. The UI refuses a range
+    ("Please enter a valid port between 1 and 65535").
+
+  A rule applies to All switches or to Specific ones (`specific_enforcers`,
+  by MAC). The picker listed only switches that claim ACLs. On every save the
+  controller logged `Switches[...] do not support Switch ACL, but assigned
+  with Switch ACL rule[...]` naming the 29 switches that do not claim them,
+  even though the rule named the ECS alone.
+
+#### 11.7.2 What the controller pushes
+
+Both pushes are scrubbed in `docs/fixtures/controller-10.6.109/`.
+`system_cfg-ecs-dhcp-snoop.txt` and `system_cfg-ecs-acl.txt` are each the
+ECS's ordinary push (`system_cfg-ecs-aggregation.txt`) plus the lines below,
+scrubbed with the same address mapping. The `switch.acl.*` lines are kept as
+captured, because they hold only the values typed for the capture.
+`system_cfg-ecs-acl.txt` is the push after the third rule. The fourth rule (a
+MAC block whose source used the UI's netmask 40) was captured too, but its
+mask, the last octet zero, is outside the site-info checker's MAC
+vocabulary, so that push stays in `local-information/`. The
+parser types are `unificfg.Config.DHCPGuards`, `.MACACLs` and `.IPACLs`
+(`internal/unificfg/parse_test.go`).
+
+**DHCP snooping on.** `switch.dhcp_snoop.status` flips to `enabled`, and one
+`switch.dhcp_guard` group follows for every trusted server of every guarded
+network, slot by slot. A network with three servers is three groups. An
+unguarded network has none, which means no server list for its VLAN. Off is
+the bare `switch.dhcp_snoop.status=disabled` with no groups.
+
+```
+switch.dhcp_snoop.status=enabled
+switch.dhcp_guard.1.server=192.0.2.1      (the gateway; the same address as switch.vlan.1.igmp_querier)
+switch.dhcp_guard.1.vlan=1
+switch.dhcp_guard.1.status=enabled
+switch.dhcp_guard.2.server=192.0.2.5
+switch.dhcp_guard.2.vlan=69
+...                                        (6 groups: VLAN 1 x1, VLAN 69 x2, VLAN 2 x3)
+```
+
+**ACL rules.** MAC rules come first, then IP rules, each numbered from 1 in
+the UI's rule order. Each group's name is the rule's name plus `-<n>`. One UI
+rule naming two destination ports was pushed as two IP groups (`-1`, `-2`).
+
+| Key | Values seen | Meaning |
+|---|---|---|
+| `switch.acl.mac.N.action` | `permit`, `deny` | Allow, Block |
+| `switch.acl.mac.N.vlan` | `4010` | the rule's VLAN (the network's VLAN ID) |
+| `switch.acl.mac.N.src.mac` / `.src.mask` | `02:00:00:00:00:01`/`ff:ff:ff:ff:ff:ff`; the netmask-40 rule `02:00:00:00:00:00` with the last mask octet zero | one side; the UI's Any is `any` with mask `00:00:00:00:00:00` |
+| `switch.acl.mac.N.dst.mac` / `.dst.mask` | as above, `any`/`00:00:00:00:00:00` (fourth rule) | |
+| `switch.acl.ip.N.action` | `permit`, `deny` | |
+| `switch.acl.ip.N.type` | `ip` (protocol All), `tcp` | `udp` expected for UDP, not captured; TCP/UDP not captured |
+| `switch.acl.ip.N.src.ip` / `.dst.ip` | CIDR | the key is absent for Any (not captured: every captured rule named both sides) |
+| `switch.acl.ip.N.dst.port` | `9`, `1001` | one port per group |
+| `switch.acl.ip.N.src.port_range` | `1-65535` | on a TCP rule, the side with no port; absent on an `ip` rule |
+
+IP rules carry no VLAN. A Network as source or destination (`network_ids` in
+the rule object) was not captured. The UI's Device side of a MAC rule was
+not captured either.
+
+**What reached the DX010.** The snooping save gave every switch a new
+cfgversion. The DX010's push was otherwise byte-identical, with no
+`dhcp_*` keys, so the driver's diffed apply wrote nothing. The ACL rules,
+scoped to the ECS, did not reach the DX010 at all.
+
+#### 11.7.3 What Ubiquiti's SONiC does with it (ECS, read-only)
+
+From the ECS's CONFIG_DB and process list during the capture, described
+here and not copied:
+
+- **DHCP snooping is done in software.** With the setting on, the ECS gains
+  one more L3 ACL table bound to every port and aggregate. Its one rule
+  traps UDP 67 → 68 (server replies) to a CPU queue, and a snooping daemon
+  starts. The per-VLAN server lists are then applied on the CPU. With the
+  setting off, the table, the rule and the daemon are gone.
+- **ACL rules map one to one.** Rule N of each kind becomes rule N in a
+  table that exists from boot and stays empty while there are no rules: an
+  L2-capable table for MAC rules and an L3 table for IP rules, both bound
+  ingress to every port and aggregate.
+  - Priority falls from just under 10000 in rule order.
+  - `permit`/`deny` become FORWARD/DROP, and `tcp` becomes protocol 6.
+  - A MAC is written with its mask, and the VLAN becomes a VLAN match.
+  - The any-port range is kept as a range.
+
+#### 11.7.4 What community SONiC 202505 can express on the DX010
+
+Read from `sonic-swss` 202505 (e9dcd50) and from the switch's own STATE_DB,
+read-only (`ACL_STAGE_CAPABILITY_TABLE|INGRESS`, `SWITCH_CAPABILITY|switch`,
+CRM):
+
+- **The L3 table type has every field the IP rules and the DHCP guard
+  need.** It matches ether type, outer VLAN ID, IP type, source and
+  destination IPv4, ICMP, IP protocol, L4 source and destination port and
+  TCP flags. On Broadcom ingress it also takes L4 port ranges. It binds to
+  ports and PortChannels.
+  - Actions on this ASIC: packet action FORWARD, DROP and COPY, plus
+    redirect, mirror and do-not-NAT.
+  - There is **no trap action** (no user trap queue as on the ECS), so a
+    software snooping path would need image work. COPY sends a copy to the
+    CPU while the ASIC still forwards the original.
+- **There is no outer MAC match and no L2 table type in orchagent.** Only
+  the tunnel-inner MACs (`INNER_SRC_MAC`/`INNER_DST_MAC`) are in the match
+  lookup, on 202505 and on the 202511 IGMP tree alike.
+  - `sonic-acl.yang` on the switch already defines an `L2` table type with
+    `SRC_MAC`/`DST_MAC` (`mac-addr-and-mask`), so YANG would accept a MAC
+    rule. orchagent would not create it.
+  - **MAC rules therefore cannot be honoured on a stock image.**
+- **Three ingress ACL tables are free.** CRM shows `acl_table_available 3`
+  for each of the PORT and LAG bind points, none used.
+- **`config acl update full|incremental` must not be used.** It runs
+  `acl-loader`, which adds a `DEFAULT_RULE` dropping all IPv4 at the lowest
+  priority to every ingress L3 table it loads. UniFi's rules are
+  default-allow, so that would black-hole the switch.
+  - Tables: `config acl add table <name> L3 -p <ports> -s ingress` and
+    `config acl remove table <name>` are safe.
+  - Rules: write the `ACL_RULE|<table>|<rule>` hashes into CONFIG_DB
+    directly (`PRIORITY` 0..999999, `VLAN_ID` 1..4094 per the YANG).
+  - orchagent reports its verdict in STATE_DB:
+    `ACL_TABLE_TABLE|<table>` and `ACL_RULE_TABLE|<table>|<rule>`,
+    `status` `Active`/`Inactive`.
+
+#### 11.7.5 The mapping (to build next)
+
+Every table below is the driver's own (a `DUI_` prefix), bound ingress to
+every front-panel port and PortChannel the switch has. The port list is
+recomputed when a breakout or an aggregate changes it. Rules are a diff
+against CONFIG_DB, read each collect from `ACL_RULE` with that prefix,
+and verified through the STATE_DB status. Nothing else in `ACL_*` is
+touched.
+
+**DHCP guard → `DUI_DHCP_GUARD` (L3).** The table exists only while snooping
+is on and at least one guard applies to a VLAN the switch has. For each
+guarded VLAN v, there is one FORWARD rule per trusted server s, then one DROP
+rule below them:
+
+```
+ACL_RULE|DUI_DHCP_GUARD|V<v>_S<k>  PRIORITY 9000-…  PACKET_ACTION FORWARD
+    IP_PROTOCOL 17  L4_SRC_PORT 67  L4_DST_PORT 68  SRC_IP <s>/32  VLAN_ID <v'>
+ACL_RULE|DUI_DHCP_GUARD|V<v>_DROP  (lower)          PACKET_ACTION DROP
+    IP_PROTOCOL 17  L4_SRC_PORT 67  L4_DST_PORT 68  VLAN_ID <v'>
+```
+
+- `v'` is the switch's VLAN. UniFi's VLAN 1 is the `native_vlan` stand-in
+  (§5.2a, 4094 on the DX010). A VLAN the switch does not carry is skipped.
+- A VLAN with no guard group gets no rules, because UniFi has no server list
+  for it.
+- This is the guard done in hardware: a reply from an untrusted address is
+  dropped at the ingress port, while the gateway's replies pass on every
+  port.
+- What it leaves out of Ubiquiti's version is the software part: no binding
+  table and no client IP or hostname learning. The gateway knows both
+  anyway.
+- `DHCPSnooping` with no guards writes nothing.
+- The model needs `DeviceDesired.DHCPGuards` (VLAN, server) beside the
+  existing `DHCPSnooping`, filled by the loop from
+  `unificfg.Config.DHCPGuards`.
+
+**IP rules → `DUI_IP_ACL` (L3).** The table exists only while a rule applies.
+Group N becomes `RULE_N` with `PRIORITY` 9999−N:
+
+| Push | Rule field |
+|---|---|
+| `action` permit/deny | `PACKET_ACTION` FORWARD/DROP |
+| `type` ip / tcp / udp | `IP_TYPE IPV4ANY` / `IP_PROTOCOL 6` / `IP_PROTOCOL 17` |
+| `src.ip` / `dst.ip` | `SRC_IP` / `DST_IP` (absent = any) |
+| `src.port` / `dst.port` | `L4_SRC_PORT` / `L4_DST_PORT` |
+| `*.port_range` `1-65535` | nothing: it means any port, and a range would spend a range checker |
+| any other `*.port_range` | `L4_SRC_PORT_RANGE` / `L4_DST_PORT_RANGE` (not seen; the UI refuses ranges) |
+
+There is no catch-all rule: UniFi's ACLs are default-allow, and an Allow
+matters only above a Block it would otherwise hit.
+
+- **Between VLANs vs within.** The UI says IP rules filter traffic "between
+  VLANs". The ECS's table nonetheless matches every IPv4 packet entering a
+  bound port, bridged or not. The DX010 does the same (§9's rule: follow the
+  ECS).
+- **Model.** The model needs neutral `devicemodel` ACL types (permit, the
+  protocol, both sides' CIDR, port and range; a MAC rule's VLAN, MACs and
+  masks) in `DeviceDesired`. They are filled from `unificfg.Config.IPACLs`
+  and `.MACACLs`, and the driver keeps no `system_cfg` names.
+
+**MAC rules → refused on the stock image.** These need an orchagent patch:
+an `L2` table type (bind PORT/LAG; match `SRC_MAC`, `DST_MAC`,
+`OUTER_VLAN_ID`, ether type) and `SRC_MAC`/`DST_MAC` in the match lookup with
+mac/mask parsing. SAI has the attributes (`SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC`,
+`..._DST_MAC`), and the YANG model is already in place. The patch belongs in
+the custom-image series (§8) and would use the third free ingress table.
+Until then a `switch.acl.mac` push is logged and refused, and the claim
+below keeps the controller from sending one.
+
+**Claims.**
+- **DHCP snooping** is `feature_caps` 128
+  (`UNIFI_SWITCH_CAP_DHCP_SNOOPING`). It is already wired from
+  `Capabilities.DHCPSnooping` in `internal/device/caps.go`, and is claimed
+  once the guard path is built.
+- **Custom ACLs have no feature bit.** The ECS claims them with
+  `switch_caps` numbers: `max_custom_ip_acls` 512, `max_custom_mac_acls`
+  512, `max_global_acls` 512 and `max_acl_port_range` 4.
+- **Claim for the DX010:** `max_custom_ip_acls` at a size the one table
+  holds (start at 128; CRM's per-table entry counters on the switch are the
+  authority once the table exists), and `max_custom_mac_acls` 0 on the
+  stock image.
+- **Not yet known.** Which of those numbers the controller gates the push
+  on, and what `max_global_acls` and `max_acl_port_range` mean, is
+  unknown. The first build therefore claims, gets deployed (the
+  coordinating session's approval), saves one harmless rule scoped to the
+  DX010, and records its push from the reply log before the write path
+  is relied on.
+
+**Hardware checks before claiming** (documentation-range rules, under §11.3's
+dead-man timer):
+- that `VLAN_ID` matches untagged frames in the native-VLAN stand-in, since
+  Broadcom's ingress field processor qualifies the VLAN after VLAN
+  assignment;
+- which wins when a DHCP reply is dropped by `DUI_DHCP_GUARD` and forwarded
+  by a `DUI_IP_ACL` rule, two tables being separate lookups (expected: the
+  drop);
+- the table's entry capacity.
+
+**Cannot be done (stock image):**
+- MAC rules (above).
+- Ubiquiti's software snooping (binding table, client learning).
+- Stopping a rogue server that spoofs a trusted server's address (UniFi's
+  model is address-based too).
+- Anything for DHCPv6 or router advertisements: the push carries no v6 guard
+  keys.
 
 ## Sources
 

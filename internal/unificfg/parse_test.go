@@ -184,3 +184,102 @@ func TestParseECSSpanningTreeAndLoopProtection(t *testing.T) {
 		t.Error("fixture lost its keepalive keys")
 	}
 }
+
+// Rogue DHCP Server Detection on, as the controller pushed it to the ECS
+// Aggregation (2026-11-01): the switch-wide flag plus one switch.dhcp_guard
+// group per trusted server of every network with DHCP Guarding on. The
+// same push with the setting off (system_cfg-ecs-aggregation.txt) carries
+// the flag disabled and no guard groups.
+func TestParseECSDHCPSnooping(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-dhcp-snoop.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if c.DHCPSnoop == nil || !*c.DHCPSnoop {
+		t.Fatalf("dhcp_snoop = %v, want enabled", c.DHCPSnoop)
+	}
+	want := []DHCPGuard{
+		{VLAN: 1, Server: "192.0.2.1"},
+		{VLAN: 69, Server: "192.0.2.5"}, {VLAN: 69, Server: "192.0.2.1"},
+		{VLAN: 2, Server: "192.0.2.6"}, {VLAN: 2, Server: "192.0.2.1"}, {VLAN: 2, Server: "192.0.2.7"},
+	}
+	if len(c.DHCPGuards) != len(want) {
+		t.Fatalf("guards = %+v, want %+v", c.DHCPGuards, want)
+	}
+	for i := range want {
+		if c.DHCPGuards[i] != want[i] {
+			t.Errorf("guard %d = %+v, want %+v", i+1, c.DHCPGuards[i], want[i])
+		}
+	}
+	// The gateway, trusted on every guarded network, is the VLAN 1 querier too.
+	if c.Raw["switch.vlan.1.igmp_querier"] != "192.0.2.1" {
+		t.Errorf("fixture's gateway mapping moved: querier %q", c.Raw["switch.vlan.1.igmp_querier"])
+	}
+	if len(c.MACACLs)+len(c.IPACLs) != 0 {
+		t.Errorf("no ACL rule existed during this capture, parsed %d mac / %d ip", len(c.MACACLs), len(c.IPACLs))
+	}
+
+	off, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-aggregation.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := Parse(string(off)); o.DHCPSnoop == nil || *o.DHCPSnoop || o.DHCPGuards != nil {
+		t.Errorf("setting off: dhcp_snoop %v, guards %v; want disabled and none", o.DHCPSnoop, o.DHCPGuards)
+	}
+	// A disabled group is not a trusted server.
+	d := Parse(strings.Replace(string(b), "switch.dhcp_guard.6.status=enabled", "switch.dhcp_guard.6.status=disabled", 1))
+	if len(d.DHCPGuards) != 5 {
+		t.Errorf("with guard 6 disabled: %d guards, want 5", len(d.DHCPGuards))
+	}
+}
+
+// The site's switch ACL rules as the controller pushed them to the ECS
+// Aggregation (2026-11-01), from three UI rules scoped to that switch: an
+// IPv4 allow (protocol All), a MAC allow on one VLAN, and an IPv4 TCP block
+// to two destination ports. The rule values are the documentation addresses
+// and test MACs typed for the capture. (A fourth rule, a MAC block on a
+// netmask-40 source, was captured too; its mask is not in the site-info
+// checker's MAC vocabulary, so its push stays in local-information.)
+func TestParseECSACLRules(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	wantMAC := []MACACL{
+		{Name: "dui-test-allow-mac-1", Permit: true, VLAN: 4010,
+			Src: MACMatch{"02:00:00:00:00:01", "ff:ff:ff:ff:ff:ff"}, Dst: MACMatch{"02:00:00:00:00:02", "ff:ff:ff:ff:ff:ff"}},
+	}
+	if len(c.MACACLs) != len(wantMAC) {
+		t.Fatalf("mac acls = %+v", c.MACACLs)
+	}
+	for i := range wantMAC {
+		if c.MACACLs[i] != wantMAC[i] {
+			t.Errorf("mac acl %d = %+v, want %+v", i+1, c.MACACLs[i], wantMAC[i])
+		}
+	}
+	// One UI rule with destination ports 9 and 1001 became two groups.
+	wantIP := []IPACL{
+		{Name: "dui-test-allow-ip-1", Permit: true, Type: "ip",
+			Src: IPMatch{IP: "192.0.2.0/24"}, Dst: IPMatch{IP: "198.51.100.0/24"}},
+		{Name: "dui-test-block-ip-1", Permit: false, Type: "tcp",
+			Src: IPMatch{IP: "203.0.113.0/24", PortRange: "1-65535"}, Dst: IPMatch{IP: "192.0.2.0/24", Port: 9}},
+		{Name: "dui-test-block-ip-2", Permit: false, Type: "tcp",
+			Src: IPMatch{IP: "203.0.113.0/24", PortRange: "1-65535"}, Dst: IPMatch{IP: "192.0.2.0/24", Port: 1001}},
+	}
+	if len(c.IPACLs) != len(wantIP) {
+		t.Fatalf("ip acls = %+v", c.IPACLs)
+	}
+	for i := range wantIP {
+		if c.IPACLs[i] != wantIP[i] {
+			t.Errorf("ip acl %d = %+v, want %+v", i+1, c.IPACLs[i], wantIP[i])
+		}
+	}
+	if c.DHCPSnoop == nil || *c.DHCPSnoop || c.DHCPGuards != nil {
+		t.Errorf("rogue DHCP detection was off during this capture: %v %v", c.DHCPSnoop, c.DHCPGuards)
+	}
+	if o := Parse(strings.ReplaceAll(string(b), "switch.acl.", "x.")); o.MACACLs != nil || o.IPACLs != nil {
+		t.Error("ACLs parsed from lines that are not switch.acl.*")
+	}
+}
