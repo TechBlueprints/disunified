@@ -1140,7 +1140,7 @@ outside this repo, beside the SONiC source clones: `series/` (the patches, one
 directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 `build.sh` (unattended, for the build host), `dry-run.sh` and a README.
 
-**The series** (14 patches), each applying with `git am` on the **current
+**The series** (21 patches), each applying with `git am` on the **current
 202511 head** of its repository -- which is also the commit sonic-buildimage
 202511 pins for that submodule:
 
@@ -1148,9 +1148,10 @@ directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 |---|---|---|
 | sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005 and 0007 DX010 platform fixes (§8.7, 0007 being upstream's own); 0006 CoPP as the ECS does it (§8.11); 0008-0010 fixes the first build needed (below) |
 | sonic-swss | `177c7a009f5e` (2026-09-19) | #3950 squashed (`l2mcorch`, `l2mcmgrd`) |
-| sonic-swss-common | `e59457c6da43` (2026-07-21) | the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it) |
+| sonic-swss-common | `e59457c6da43` (2026-07-21) | 0001 the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it); 0002 upstream's port to libyang 3 (`1431c3d`, §8.12) |
+| sonic-mgmt-common | `b5f84b0644d9` (2025-12-05) | upstream's port to libyang 3 (#157, `cdb612e`; §8.12) |
 | sonic-utilities | `73f8c019ff7c` (2026-10-20) | #4100 squashed |
-| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | one fix: the memcpy bug, see below |
+| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0006 the packet parsers (§8.13) |
 
 **Conflicts: none textual.** Each PR, squashed, three-way merged onto its base
 cleanly (the PR merge bases are 7-154 commits behind). The semantic checks
@@ -1203,18 +1204,19 @@ time (swss with l2mcorch and l2mcmgrd, the daemon, the container). Three more
 patches came out of the build itself, none of them snooping logic:
 
 - **0008, 0009: libyang 1 and 3.** 202511 builds most things against libyang 3 but
-  sonic-mgmt-common, sonic-mgmt-framework and sonic-gnmi compile Go validation code
+  sonic-mgmt-common, sonic-mgmt-framework and sonic-gnmi compiled Go validation code
   against libyang 1's headers. The two libyang-dev packages replace each other, and
   which one is installed when those compile depends on build order: "too many
   arguments to function `ly_set_log_clb`", first under parallel jobs, then with the
-  packages built alone. Upstream met the same on clean builds (#26165) and has moved
-  master's mgmt-common to libyang 3. 0008 declares libyang-dev 1 on the two that lacked
-  it (not enough on its own); **0009 leaves the gNMI and management-framework
-  (REST/KLISH) containers out of the image**. Neither is used on a UniFi-managed
-  switch (the driver works through the `config` CLI and Redis; UniFi switches have
-  no gNMI or REST), and with them gone nothing builds against libyang 1. A deviation
-  from the stock image, reverted by dropping 0009 once the libyang 3 move reaches
-  the branch.
+  packages built alone (upstream #26165). The first answer left the gNMI and
+  management-framework containers out of the image; the series now carries the
+  real fix instead, worked out and proven in its own session (§8.12): 0008 builds
+  swss-common, mgmt-common, gNMI and the management framework against libyang 3 (as
+  master and 202605 do), 0009 retires the ordering gate nothing needs any more, and
+  upstream's own libyang 3 ports of swss-common and mgmt-common come with them. The
+  image keeps both containers. (An image built with the earlier 0009, as the first
+  vs run in §8.14 was, needs `gnmi` and `mgmt-framework` disabled after an upgrade
+  from 202505.)
 - **0010: the snooping YANG models.** With #24327's two models installed, 7
   sonic-utilities tests of the generic config updater fail, and those tests run in
   the image build. Bisected in the build slave: any new module that imports
@@ -1423,6 +1425,12 @@ Global keys:
 - `switch.multicast.forward_unk_mcast_router_ports=true` → nothing separate on the
   ECS; read as "unknown multicast always reaches the mrouter ports", which the
   optimised flood above already does. Logged if it is ever false.
+- **The IGMP version: no key, and the driver must write 3.** The CLI's default
+  for a snooping VLAN is version 2, and l2mcd at version 2 ignores IGMPv3 reports
+  -- which is what a Linux host sends until a querier tells it otherwise. On the VS
+  (§8.14) a host's join was never learned until `config igmp-snooping version
+  <vid> 3`; at 3 l2mcd took v3 and v2 joins alike. So every snooping VLAN gets
+  `version 3` with the rest of its row.
 
 Order rules the driver inherits from the CLI: enable snooping before writing
 suppression or static entries; disable snooping (or delete the statics) before
@@ -1476,6 +1484,153 @@ implements §8.10):
 The driver then writes the pushed `igmp_querier`, or, when it is empty, an address
 in 198.18.0.0/15 built from the DX010's own management address, as the ECS does.
 Validation: §8.9 V5, with and without an interface address on the VLAN.
+
+### 8.13 The daemon's packet parsers: checked, fixed, fuzzed (2026-11-01)
+
+A read of l2mcd's receive path said its IGMPv3 and MLDv2 record walks trust the
+counts in the packet. Checked in-process, never on a network: `l2mcd-fuzz/` in the
+build kit compiles the daemon's own C sources with clang's AddressSanitizer and
+UndefinedBehaviorSanitizer, configures it through its own IPC handler as l2mcmgrd
+does (port list; snooping on one VLAN, IGMPv3 and MLDv2; membership), makes one
+port a router port with a general query, and feeds each packet to
+`receive_igmp_packet()` / `receive_mld_packet()` in a heap buffer of exactly the
+received size, built as the socket handlers build it. Only the APPL_DB sync layer is
+stubbed and transmits are counted, not sent; it runs in the bookworm build slave
+with no network and dummy links. One named case per finding (24) is the regression
+suite (`run.sh regress`).
+
+**Every finding was real**, and there were more than reported:
+
+| Where | What a host on a snooping VLAN could do |
+|---|---|
+| IGMPv3 report walk | `num_grps` and each record's `num_srcs` trusted; the sources are converted to host order **in place**, so a report claiming 65535 sources **writes** up to 256 KB past the packet |
+| `NEXT_GRP_REC` | `aux_data_len` (one byte, a count of words) byte-swapped as 16 bits: one aux word moves the walk 1 KB, so even a well-formed RFC 3376 report with aux data overruns |
+| Record types outside 1-6 | type 0 counts at index -1; higher types read past the action-label table (with the VLAN's debug log on) and reach the group state machine, which indexes by type (heap over-read) |
+| Queries | IGMPv3 and MLDv2 source counts read in network order (one source walks 256); a 9-11 byte IGMP query counts at index -1; an 8-byte IGMPv1 query naming a group reads bytes 10-11 (found by the fuzzer after the first round of fixes) |
+| IP lengths, checksums | `tot_len` and `ihl` never compared with the bytes received, and a zero IGMP or ICMPv6 checksum skips the check, so the parse runs over whatever length the header claims. `l2mcd_fwd_pkt()` copies `tot_len` bytes to every router port: a 50-byte report claiming 300 is forwarded as 300 bytes, the rest being whatever an earlier packet left in that receive slot |
+| `receive_mld_packet()` | hop-by-hop length unset without a hop-by-hop header and unchecked with one, `payload_length` unchecked; a bad checksum, a failed validation and a down port logged but the packet processed anyway |
+| MLDv2 report walk | each record advanced by the running total of all record sizes, so a well-formed three-record report overruns; aux data ignored |
+| Group state machine | `i <= src_cnt` reads one source past every record's list -- past the packet for the last record of any well-formed report with sources |
+| VLAN-tagged MLD frames | the IPv6 header taken from the 19th receive buffer, not this one |
+
+The MLD findings are unreachable in this image (0006 traps IGMP only) and are fixed
+anyway. On a switch the receive buffer is a 1 MB static ring (500 slots of 2 KB), so
+most over-reads land in other packets' bytes rather than faulting; the in-place
+source conversion can write past the ring.
+
+**Fixed in sonic-l2mcd 0002-0006** (the build kit's series; nothing posted
+upstream, a register item for the daemon's author once the image has run on the
+hardware):
+
+- 0002: a malformed packet is dropped, counted (`malformed-igmp`/`malformed-mld` in
+  the daemon's debug dump) and logged at most once per family every 10 s with the
+  number dropped since, so a flood of them cannot flood the log.
+- 0003, IGMP: every record, with its sources and aux words, is checked to lie inside
+  the message before anything past the header is read; unknown record types are
+  skipped (RFC 3376 4.2.12); 9-11 byte queries dropped (RFC 3376 7.1); query sources
+  read in host order and checked; the checksum always verified; every record
+  advances the walk (a `continue` used to re-read the same record).
+- 0004: the IPv4 lengths checked against the bytes received; the tagged-MLD offset.
+- 0005, MLD: the same, and an 8-byte hop-by-hop header followed by ICMPv6 required
+  -- RFC 2710 and RFC 3810 send every MLD message with a router alert there, and the
+  handlers parse at those fixed offsets; bad checksums and down ports dropped.
+- 0006: the state machine's loop.
+
+The daemon's own validators keep their advisory verdict: the IGMP one rejects a
+whole report for one 224.0.0.x record, which Linux hosts send by default, so
+honouring it would drop real joins. gcc `-Wall` reports nothing new.
+
+**Results.** Unfixed (`651a13b` + 0001): 20 of the 24 cases overrun with the debug
+log off, 22 with it on. Fixed: all 24 clean either way, LeakSanitizer included; the
+malformed ones counted as drops, the valid ones still forwarded to the router port.
+
+**Fuzzing.** libFuzzer with ASan and UBSan, one target per family whose input is a
+whole IPv4 or IPv6 packet (the checksum made valid wherever the header chain lets the
+harness find it), seeded with the regression cases, the debug log's arguments
+evaluated. Its first minute on the fixed tree found the IGMPv1 read above (case
+`igmp-v1-query-group`, fixed in 0003). Then 4 hours with 4 workers per family on
+the fixed tree, at the lowest priority beside the image build: **71.0 million IGMP
+and 49.3 million MLD packets, about 1,100 and 1,160 code edges reached, no crash, no
+leak, no undefined behaviour**. Two inputs were saved as slow (10 s, once each) and
+replay in under 10 ms: the harness never runs the daemon's timers, so its group
+state only grows over a run (the daemon caps it with its group pool), and the build
+host was at a load near 35.
+
+### 8.14 The image on the virtual switch (2026-11-01)
+
+The vs build of the series ran on the VS guest (§2 A0's guest, 4 vCPU / 8 GB,
+installed beside its 202505 image): first as built before the l2mcd parser fixes
+(build `igmp-202511.20261101-de9675d44`, buildimage = the series without 0007,
+which touches only the Broadcom platform), then rebuilt with them (same build id:
+the version string does not see submodule commits, so the build's MANIFEST
+records the l2mcd commits). Debian 13.7, kernel 6.12.41.
+
+**The install path, rehearsed as §8.9 H0 will run it** (the build kit's
+`sonic-upgrade.sh`):
+
+- `arm` (sha256, `sonic-installer install`, 202505 kept as the default, the new
+  image once): verified by `verify-next-image`; the new image's overlay carried the
+  SSH host key, admin's authorized_keys and password. Booted in under 90 s; the
+  bridge's SSH (strict known_hosts) logged in with no host-key change.
+- **The dead-man rollback (R2):** with an 8-minute timer and no confirm it fired
+  on time and the guest was back on 202505 two minutes later, 202511 still
+  installed. Re-armed with 20 minutes, checked and `confirm`ed: 202511 the
+  default, 202505 kept.
+- Found and fixed in the script: arming an image installed by an earlier arm
+  failed with a misleading message, and re-arming it in place would boot the
+  config it migrated the first time, not today's -- `arm` now refuses and says to
+  `sonic-installer remove -y <image>` first; `status` misreported a confirmed run;
+  and the new image had to rebuild mstpd (docker, DNS and the internet inside the
+  20-minute window -- on the guest a stale lab nameserver made that fail as
+  "Run 'docker run --help'") -- `arm` now carries the switch's own static `mstpd`
+  and `mstpctl` into the new image, so the bridge only reinstalls l2d.
+- **Disk:** the 202511 vs image takes 6.8 GB installed (5.8 GB for 202505), plus
+  the installer (2.1 GB) while it installs. Measure the Broadcom image the same way
+  before H0; the installer can be left in `/tmp` (RAM) instead of `/host`.
+
+**§8.9 V1-V7, all passed.** The guest has a NIC behind Ethernet0 only, so the
+other front-panel ports are down and l2mcd programs nothing on them. The build
+kit's `vs-hosts.sh` gives Ethernet8 and Ethernet12 veth pairs (`eth3`/`eth4`, the
+VS lane map's names) whose far ends are network namespaces h1 and h2 -- two test
+hosts inside the VM, nothing on the LAN -- and `vs-join-test.sh` drives them:
+
+| Step | Result |
+|---|---|
+| V1 | the build id; `l2mcd` shipped disabled, no l2mcd container; no L2MC/IGMP errors |
+| V2 | `config feature state l2mcd enabled`: the container with `l2mcd` and `l2mcmgrd` running; `COPP_TABLE:l2mcd_group` and exactly the five IGMP hostif traps in ASIC_DB; no MLD traps |
+| V3 | `L2MC\|Vlan100`, APPL_DB `L2MC_VLAN_TABLE:Vlan100`, the VLAN's `SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE true` |
+| V4 | h1's IGMPv3 join and h2's IGMPv2 join (the hosts' own kernels, a socket joining 239.1.2.3) learned on their own ports and nowhere else; APPL_DB `L2MC_MEMBER_TABLE:Vlan100:0.0.0.0:239.1.2.3:Ethernet8` (the ECS's key shape); ASIC_DB `L2MC_ENTRY` with one group member per port; both leaves cleared everything within 2 s. **Only at IGMP version 3** (§8.10) |
+| V5 | no queries with the querier off; on (query interval 12 s), h2 saw them from 0.0.0.0 (no address on the VLAN, §8.11); silent again once off |
+| V6 | a static group, an mrouter port and optimised flood: APPL_DB and ASIC_DB entries, `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID` set (with the ports down: stored, not programmed) |
+| V7 | restored after a container restart; `vlan del` and the static member's removal refused by the CLI; disable leaves no L2MC row or ASIC object |
+
+**The bridge on 202511** (G2): the driver's own loop and collector, run from the
+Mac over SSH against the guest, the controller replaced by the recorded pushes.
+`Start` ran every command the driver uses once (none missing from 202511's CLI)
+in 7 s. Then the VS lab session's pushes (§6.6: the first push with port control,
+port state and name, Allow All, Block All, a custom tagged set, the aggregate of
+ports 5+6, the mirror, forced FEC and storm control, the removals, jumbo, syslog)
+each applied, and the reconcile after each wrote nothing; the IP Settings were
+declined with the right reason (the guest is dialled on eth0's lease). Then the
+DX010's own push with the ECS's spanning-tree keys: mstpd built on the switch,
+l2d installed and enabled under its 3-minute dead-man (cancelled over a fresh
+connection), RSTP up at priority 8192, port states in APPL_DB and 352 STP port
+objects in ASIC_DB, two quiet reconciles after.
+
+**What 202511 changed, and what is only the VS:**
+
+- **The earlier 0009's leftovers** (this run's image; the series has since replaced
+  it, §8.6). A 202505 config enables the `gnmi` and `mgmt-framework` features, and
+  an upgrade keeps them: featured fails to start the units the image no longer has,
+  monit's container check reports them every cycle, systemd says "degraded".
+  `config feature state gnmi disabled`, the same for `mgmt-framework`, and `config
+  save -y` clear it (verified).
+- Only the VS, and the same on its 202505: orchagent's `SAI_API_PORT` set failures
+  at start, pmon's missing `sonic_platform`, and the system-health and
+  watchdog-control units failing on the VS platform's missing chassis metadata.
+
+The same checks on the image rebuilt with the parser fixes, and l2mcd's own packet
+injection for an end-to-end look at them, follow when that build finishes.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
