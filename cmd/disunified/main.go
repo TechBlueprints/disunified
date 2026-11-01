@@ -659,7 +659,11 @@ func runOne(ctx context.Context, o options) error {
 			log.Printf("control: writing controller config to ports %s, and the device-wide settings the driver takes", o.controlPorts)
 		}
 	} else if o.controlOutlets == "" {
-		log.Printf("control: no port writes (no -control-ports); the device-wide settings the driver takes still follow the controller")
+		why := "control.ports is off"
+		if !isA[devicemodel.Controller](sw) {
+			why = "the driver does not write ports"
+		}
+		log.Printf("control: no port writes (%s); the device-wide settings the driver takes still follow the controller", why)
 	}
 	loop, err := informloop.New(desc, sess, loopCfg)
 	if err != nil {
