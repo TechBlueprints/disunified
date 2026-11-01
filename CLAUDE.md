@@ -476,7 +476,7 @@ rows (Main without a relay, Group 1 with one, six placeholders for the UPS
 2U's picture), the command word at register 1538 is held byte-exact to
 NUT's encoding by tests, the Main group is refused, and the loop holds the
 first outlet push of a run that would switch anything. `control.outlets: "2"`
-was enabled the same evening (stack rebuilt from 861b3f5); no command has
+was enabled the same evening (stack rebuilt from 8630fe0); no command has
 been sent to the unit yet.
 **The UPS 2U picture (2026-09-26, from the UI bundle):** two multi-cells
 coloured by outlets 1 and 5 alone, override on top of the table; the
@@ -532,7 +532,7 @@ hardware exposed (SNMP communities re-imported from `snmp.yml`, the jumbo hold,
 FEC on a 100G link, eth0 sharing the switch MAC) is the follow-up to that run.
 Parity with a UniFi switch is planned and tracked in `docs/drivers/sonic.md`
 §11 (measured against the ECS Aggregation's own inform, claims and push).
-Merged and deployed 2026-11-01 (main 6803b78): the hardware tables and LACP state as the
+Merged and deployed 2026-11-01 (a local main since squashed into 7616b6c): the hardware tables and LACP state as the
 ECS reports them, speed "auto" following the module, and RSTP with loop
 protection through `disunified-l2d` (mstpd plus glue into the stock StpOrch,
 on by default). Verified live on the DX010 the same night:

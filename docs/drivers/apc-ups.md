@@ -379,7 +379,7 @@ bridge holds a key at a time.
 Clint's call (2026-09-26): the code is in place and covered by synthetic
 tests; no command has been sent to the unit, which carries a whole rack at
 ~80 % load. **Enabled the same evening** (`control: {outlets: "2"}` in the
-deployed config, stack rebuilt from `861b3f5`): the container came up with
+deployed config, stack rebuilt from `8630fe0`): the container came up with
 `control: switching and naming outlets 2`, the startup reconcile applied
 `0 of 0 outlets changed` (the hold cleared trivially -- the controller had
 no stored outlet state to disagree with), and the controller then built its

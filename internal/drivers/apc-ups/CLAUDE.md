@@ -45,7 +45,7 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   hold it byte-exact to NUT's `apc_modbus`. Groups only (one relay per
   switched group); the Main group (row 1) is reported without a relay and
   refused if pushed. **`control.outlets: "2"` is on in the deployed config** since 2026-09-26
-  evening (rebuilt from 861b3f5); no command has been sent yet.
+  evening (rebuilt from 8630fe0); no command has been sent yet.
 - **The loop holds the first outlet push of a run** that would switch
   anything (`OutletPlanner`), per process -- a read-only bridge has an
   applied cfgversion, so the ports' from-state hold would not fire when

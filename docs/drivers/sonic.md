@@ -828,7 +828,7 @@ and a full push is dozens of them, while a collect is 60 ms); and a new
 PortChannel's MTU must be set to its members' MTU through CONFIG_DB
 before members join, and follow the jumbo setting afterwards.
 
-**Device level, same evening (builds 9c7cada → bfe12f7), driven from the UI:**
+**Device level, same evening (builds b173fa0 → 0e89a64), driven from the UI:**
 
 | Controller action | Commands / outcome | Verified |
 |---|---|---|
@@ -848,12 +848,12 @@ the rest of this repo was verified against. Nothing in the protocol
 differed, and the replay fixture `replies-sonic.ndjson` sits under the
 10.6.106 directory with that note.
 
-**After the review-fix and feature passes (same evening, build bfbbfe1 →
-e5bfa83):** the first push after a restart applied `config clock timezone
+**After the review-fix and feature passes (same evening, build 62f1228 →
+f225d13):** the first push after a restart applied `config clock timezone
 MST7MDT` (from the pushed POSIX rule) and `config hostname
 SONiCSeastone-DX010`, both verified on the guest;
 `set-locate` through the API reached the driver, which tried the platform
-LED, logged that the VS has none, and reported `locating`. **Jumbo with an aggregate present, live (20:14--20:24, build e5bfa83):**
+LED, logged that the VS has none, and reported `locating`. **Jumbo with an aggregate present, live (20:14--20:24, build f225d13):**
 aggregate 5+6 created entirely through the driver this time
 (`config portchannel add PortChannel1`; `sonic-db-cli … hset
 'PORTCHANNEL|PortChannel1' mtu 9216`; members out of their VLAN and into
@@ -1884,7 +1884,7 @@ the teardown leaving the running view beside `enabled no` in `DUI_STP_TABLE`
 was left as found: every file, unit, timer and `DUI_*` key removed, the image
 deleted; the saved `config_db.json` never held the trap.
 
-**The driver's own path, live (2026-11-01, main 6803b78 deployed with `l2d:
+**The driver's own path, live (2026-11-01, a local main since squashed into 7616b6c, deployed with `l2d:
 on` for the DX010).** After a force-provision the push carried `switch.stp.*`
 (the device claimed STP, BPDU guard, auto edge and loop protection), and the
 bridge logged `sonic apply l2: building mstpd 0.2.0 on the switch` (12:04:43
@@ -1896,7 +1896,7 @@ and port 1 root, forwarding, 200; no loss. From the UI, priority 61440 and,
 on cage 3 (empty), BPDU guard and loop protection: the config was written
 right and mstpd took the priority, but not the port's BPDU guard -- the lost
 reload above, fixed by the reconciliation. Re-tested from the UI after the
-fix was deployed (main 4eee9d8, 12:39 UTC): the bridge replaced the manager by
+fix was deployed (a local main since squashed into 7616b6c, 12:39 UTC): the bridge replaced the manager by
 checksum (`sonic apply l2: update disunified-l2d`) while mstpd kept running
 (started at boot, no port transition); BPDU guard on cage 3 from the UI was
 logged `settings: Ethernet8 bpdu guard on` and shown by mstpd within one
