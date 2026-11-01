@@ -1140,13 +1140,13 @@ outside this repo, beside the SONiC source clones: `series/` (the patches, one
 directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 `build.sh` (unattended, for the build host), `dry-run.sh` and a README.
 
-**The series** (11 patches), each applying with `git am` on the **current
+**The series** (14 patches), each applying with `git am` on the **current
 202511 head** of its repository -- which is also the commit sonic-buildimage
 202511 pins for that submodule:
 
 | Repository | Base | Patches |
 |---|---|---|
-| sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005 and 0007 DX010 platform fixes (§8.7); 0006 CoPP as the ECS does it (§8.11) |
+| sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005 and 0007 DX010 platform fixes (§8.7, 0007 being upstream's own); 0006 CoPP as the ECS does it (§8.11); 0008-0010 fixes the first build needed (below) |
 | sonic-swss | `177c7a009f5e` (2026-09-19) | #3950 squashed (`l2mcorch`, `l2mcmgrd`) |
 | sonic-swss-common | `e59457c6da43` (2026-07-21) | the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it) |
 | sonic-utilities | `73f8c019ff7c` (2026-10-20) | #4100 squashed |
@@ -1198,6 +1198,34 @@ libswsscommon, l2mcd, swss and docker-l2mcd first in the bookworm slave, so a
 compile error in the series shows within about an hour of the first run instead
 of after the full image.
 
+**What the first build needed (2026-11-01).** The series' own code compiled first
+time (swss with l2mcorch and l2mcmgrd, the daemon, the container). Three more
+patches came out of the build itself, none of them snooping logic:
+
+- **0008, 0009: libyang 1 and 3.** 202511 builds most things against libyang 3 but
+  sonic-mgmt-common, sonic-mgmt-framework and sonic-gnmi compile Go validation code
+  against libyang 1's headers. The two libyang-dev packages replace each other, and
+  which one is installed when those compile depends on build order: "too many
+  arguments to function `ly_set_log_clb`", first under parallel jobs, then with the
+  packages built alone. Upstream met the same on clean builds (#26165) and has moved
+  master's mgmt-common to libyang 3. 0008 declares libyang-dev 1 on the two that lacked
+  it (not enough on its own); **0009 leaves the gNMI and management-framework
+  (REST/KLISH) containers out of the image**. Neither is used on a UniFi-managed
+  switch (the driver works through the `config` CLI and Redis; UniFi switches have
+  no gNMI or REST), and with them gone nothing builds against libyang 1. A deviation
+  from the stock image, reverted by dropping 0009 once the libyang 3 move reaches
+  the branch.
+- **0010: the snooping YANG models.** With #24327's two models installed, 7
+  sonic-utilities tests of the generic config updater fail, and those tests run in
+  the image build. Bisected in the build slave: any new module that imports
+  `sonic-vlan` (one VLAN-name leafref is enough) changes the references the
+  updater's libyang 1 walk reports for existing tables, i.e. how `config
+  apply-patch` orders changes; an unrelated module does not. 0010 makes the models'
+  interface and VLAN-name fields plain strings without those imports: all 214 tests
+  of the two files pass. Lost: the schema's check that a named VLAN or port exists,
+  which nothing here uses (the snooping CLI writes unvalidated, the driver writes
+  rows directly).
+
 **The build host and the time.** Debian 12 x86_64, 16 cores, 64 GB, 400 GB, Docker
 (20.10.10 or newer), `j2`, a non-root user in the docker and kvm groups, `/dev/kvm`
 (nested virtualisation on a Proxmox guest: CPU type host). `build.sh` checks all
@@ -1243,10 +1271,15 @@ support, independently of snooping. Found while preparing the build:
   `sonic_platform` wheel into its device directory -- the file pmon's container
   installs the platform API from at start. Without it every pmon daemon starts with
   no platform. On 202505 this unit reports both drawers and both PSUs from exactly
-  that file (read 2026-11-01). **Series 0007** builds the wheel the way the PDDF
-  platforms build theirs and installs it there again; built and checked in the
-  202511 trixie build slave (18 `sonic_platform` modules, the same size as
-  202505's). H1 below is still where it is proven.
+  that file (read 2026-11-01). **Series 0007** is upstream's own fix, open as
+  [sonic-net/sonic-buildimage#27355](https://github.com/sonic-net/sonic-buildimage/pull/27355)
+  ("Restore Celestica platform API wheels", review required, base master),
+  cherry-picked unchanged from its head `748ad3bb4c40` with its author and title,
+  so this image tests what upstream is reviewing. It applies to 202511 without
+  conflict and builds the wheel with `setup.py bdist_wheel` for every non-PDDF
+  Celestica board; all five build in the 202511 trixie slave, and the DX010's
+  comes out with its 18 `sonic_platform` modules. H1 below is still where it is
+  proven, and any word on the PR waits for that.
 - The host OS under 202511 is Debian trixie with kernel 6.12 (the dockers stay
   bookworm); `platform-modules-cel` was adapted for it on the branch. The driver's
   fixtures are recaptured on the new build (`Start`'s `--help` checks exist for
