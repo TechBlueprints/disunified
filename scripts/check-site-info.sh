@@ -7,6 +7,8 @@
 #
 # Allowed vocabulary: documentation addresses (192.0.2/24, 198.51.100/24,
 # 203.0.113/24, 2001:db8::/32, link-local fe80::N), MACs 02:00:00:xx:xx:xx / aa:bb:cc:dd:ee:ff,
+# MAC masks (contiguous ones then zeros, as an ACL rule's ff:ff:ff:ff:ff:00 --
+# a mask, not an address: no device has one),
 # serial SSJ00000000, authkeys 0123456789abcdef0123456789abcdef and
 # 000...0NN, example.net names, e-mail only at example.com/.net/.org (and
 # the commit trailer's noreply@anthropic.com), SSH key comments only as
@@ -35,7 +37,7 @@ check "authkey-shaped values that are not a documented dummy" \
 check "private (RFC 1918) addresses; use 192.0.2.0/24, 198.51.100.0/24 or 203.0.113.0/24" \
   "$(grep -o -E '(^|[^0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)' "$tmp" | tr -d -c '0-9.\n' | grep -v -E '^10\.6\.[0-9]+$' | sort -u)"
 check "MAC addresses outside the scrub vocabulary (02:00:00:xx:xx:xx, aa:bb:cc:dd:ee:ff)" \
-  "$(grep -o -i -E '(^|[^0-9a-f:.])(([0-9a-f]{2}[:.]){5}[0-9a-f]{2}|[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})([^0-9a-f:.]|$)' "$tmp" | sed -E 's/^[^0-9a-fA-F]//; s/[^0-9a-fA-F]$//' | grep -v -i -E '^02:00:00:|^0200\.0000\.|^00:00:00:00:00:0|^aa:bb:cc:dd:ee:ff$|^aabb\.ccdd\.eeff$|^ff:ff:ff:ff:ff:ff$|^01:80:c2|^01:00:5e|^33:33:|^02:53:54:55' | sort -u)"
+  "$(grep -o -i -E '(^|[^0-9a-f:.])(([0-9a-f]{2}[:.]){5}[0-9a-f]{2}|[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})([^0-9a-f:.]|$)' "$tmp" | sed -E 's/^[^0-9a-fA-F]//; s/[^0-9a-fA-F]$//' | grep -v -i -E '^02:00:00:|^0200\.0000\.|^00:00:00:00:00:0|^aa:bb:cc:dd:ee:ff$|^aabb\.ccdd\.eeff$|^ff:ff:ff:ff:ff:ff$|^(ff:)*(ff|fe|fc|f8|f0|e0|c0|80|00)(:00)*$|^01:80:c2|^01:00:5e|^33:33:|^02:53:54:55' | sort -u)"
 # IPv6: a link-local or SLAAC address carries the interface's real MAC in
 # its EUI-64 half (xxxx:xxff:fexx:xxxx), a global one names the site's
 # prefix. Allowed: 2001:db8::/32, fe80::N, fd00::/8 (Docker's default),

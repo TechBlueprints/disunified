@@ -235,12 +235,10 @@ func TestParseECSDHCPSnooping(t *testing.T) {
 }
 
 // The site's switch ACL rules as the controller pushed them to the ECS
-// Aggregation (2026-11-01), from three UI rules scoped to that switch: an
-// IPv4 allow (protocol All), a MAC allow on one VLAN, and an IPv4 TCP block
-// to two destination ports. The rule values are the documentation addresses
-// and test MACs typed for the capture. (A fourth rule, a MAC block on a
-// netmask-40 source, was captured too; its mask is not in the site-info
-// checker's MAC vocabulary, so its push stays in local-information.)
+// Aggregation (2026-11-01), from four UI rules scoped to that switch: an
+// IPv4 allow (protocol All), a MAC allow on one VLAN, an IPv4 TCP block to
+// two destination ports, and a MAC block on a netmask-40 source. The rule
+// values are the documentation addresses and test MACs typed for the capture.
 func TestParseECSACLRules(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-acl.txt"))
 	if err != nil {
@@ -250,6 +248,8 @@ func TestParseECSACLRules(t *testing.T) {
 	wantMAC := []MACACL{
 		{Name: "dui-test-allow-mac-1", Permit: true, VLAN: 4010,
 			Src: MACMatch{"02:00:00:00:00:01", "ff:ff:ff:ff:ff:ff"}, Dst: MACMatch{"02:00:00:00:00:02", "ff:ff:ff:ff:ff:ff"}},
+		{Name: "dui-test-block-mac-1", Permit: false, VLAN: 4010,
+			Src: MACMatch{"02:00:00:00:00:00", "ff:ff:ff:ff:ff:00"}, Dst: MACMatch{"any", "00:00:00:00:00:00"}},
 	}
 	if len(c.MACACLs) != len(wantMAC) {
 		t.Fatalf("mac acls = %+v", c.MACACLs)

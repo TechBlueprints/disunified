@@ -8,7 +8,8 @@ Handles two formats:
     effects) — inform-log/<mac>.ndjson.
 
 Keeps structure and types intact; rewrites everything that identifies a site,
-a device or a person: MAC addresses (consistent mapping into 02:00:00:xx:xx:xx),
+a device or a person: MAC addresses (consistent mapping into 02:00:00:xx:xx:xx;
+a MAC-shaped mask -- ones then zeros, as in an ACL rule -- is kept),
 IPv4 (192.0.2.0/24, 198.51.100.0/24) and IPv6 (2001:db8::/32; a link-local
 address, whose EUI-64 half is a real MAC, into fe80::N) addresses,
 serials, hostnames/device names, and every secret or id: auth keys, the site
@@ -49,6 +50,11 @@ macs, ips, ip6s, hosts, ids = {}, {}, {}, {}, {}
 
 def map_mac(m):
     key = re.sub(r'[^0-9a-f]', '', m.lower())
+    # A mask (contiguous ones then zeros: an ACL rule's src.mask, the
+    # all-zero mask of "any") is not an address; mapping it would corrupt
+    # the rule.
+    if '01' not in format(int(key, 16), '048b'):
+        return m
     if key not in macs:
         n = len(macs) + 1
         macs[key] = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'

@@ -1968,11 +1968,10 @@ Both pushes are scrubbed in `docs/fixtures/controller-10.6.109/`.
 `system_cfg-ecs-dhcp-snoop.txt` and `system_cfg-ecs-acl.txt` are each the
 ECS's ordinary push (`system_cfg-ecs-aggregation.txt`) plus the lines below,
 scrubbed with the same address mapping. The `switch.acl.*` lines are kept as
-captured, because they hold only the values typed for the capture.
-`system_cfg-ecs-acl.txt` is the push after the third rule. The fourth rule (a
-MAC block whose source used the UI's netmask 40) was captured too, but its
-mask, the last octet zero, is outside the site-info checker's MAC
-vocabulary, so that push stays in `local-information/`. The
+captured, because they hold only the values typed for the capture. The
+scrubber keeps a MAC-shaped mask, and the site-info checker accepts one,
+since no device has an address of ones followed by zeros (both taught on
+2026-11-01). The
 parser types are `unificfg.Config.DHCPGuards`, `.MACACLs` and `.IPACLs`
 (`internal/unificfg/parse_test.go`).
 
@@ -2000,8 +1999,8 @@ rule naming two destination ports was pushed as two IP groups (`-1`, `-2`).
 |---|---|---|
 | `switch.acl.mac.N.action` | `permit`, `deny` | Allow, Block |
 | `switch.acl.mac.N.vlan` | `4010` | the rule's VLAN (the network's VLAN ID) |
-| `switch.acl.mac.N.src.mac` / `.src.mask` | `02:00:00:00:00:01`/`ff:ff:ff:ff:ff:ff`; the netmask-40 rule `02:00:00:00:00:00` with the last mask octet zero | one side; the UI's Any is `any` with mask `00:00:00:00:00:00` |
-| `switch.acl.mac.N.dst.mac` / `.dst.mask` | as above, `any`/`00:00:00:00:00:00` (fourth rule) | |
+| `switch.acl.mac.N.src.mac` / `.src.mask` | `02:00:00:00:00:01`/`ff:ff:ff:ff:ff:ff`; `02:00:00:00:00:00`/`ff:ff:ff:ff:ff:00` (UI netmask 40) | one side; the UI's Any is `any` with mask `00:00:00:00:00:00` |
+| `switch.acl.mac.N.dst.mac` / `.dst.mask` | as above, `any`/`00:00:00:00:00:00` | |
 | `switch.acl.ip.N.action` | `permit`, `deny` | |
 | `switch.acl.ip.N.type` | `ip` (protocol All), `tcp` | `udp` expected for UDP, not captured; TCP/UDP not captured |
 | `switch.acl.ip.N.src.ip` / `.dst.ip` | CIDR | the key is absent for Any (not captured: every captured rule named both sides) |

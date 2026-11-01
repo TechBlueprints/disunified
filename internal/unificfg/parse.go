@@ -132,9 +132,9 @@ type MACACL struct {
 }
 
 // MACMatch is one side of a MAC ACL: src.mac/src.mask or dst.mac/dst.mask.
-// A single address has mask ff:ff:ff:ff:ff:ff, the UI's Any is MAC "any"
-// with an all-zero mask, and the UI's Netmask (a prefix length) is the
-// matching mask, 40 leaving the last octet zero.
+// The UI's "Any" is MAC "any" with mask 00:00:00:00:00:00; a single
+// address has mask ff:ff:ff:ff:ff:ff; the UI's Netmask 40 is
+// ff:ff:ff:ff:ff:00.
 type MACMatch struct {
 	MAC, Mask string
 }
