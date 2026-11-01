@@ -286,12 +286,16 @@ the Policy Table's IPv4 ACL rules, as the driver's own L3 ACL tables
 ([`drivers/sonic.md`](drivers/sonic.md) §11.7.6). Built 2026-11-01 from the
 controller's pushes to the ECS Aggregation, fixture- and replay-tested on a
 DX010 capture read for it (`acl_test.go`, `informloop/acl_test.go`); claims
-`feature_caps` 128 and `max_custom_ip_acls` 128.
+`feature_caps` 128 and `max_custom_ip_acls` 128. **Verified live on the DX010
+2026-11-01** (§11.7.7): the push (the IP count alone gates it; the five shapes
+the ECS round lacked), the guard on the native VLAN dropping an untrusted
+server's replies even under a matching ACL Allow, an IP rule written and
+removed, 512+ entries per table.
 
 | Gap | What the PR needs |
 |---|---|
-| The driver's writes on the switch (captured 2026-11-01: `max_custom_ip_acls` gates the push; UDP, TCP/UDP, Any, a source port and a Network side reached the DX010, held by the build of the day) | a rule set applied to a DX010 and read back: `show acl table` / `show acl rule`, STATE_DB `Active`, the bridge's tally |
-| The hardware: `VLAN_ID` on the native-VLAN stand-in (untagged), a guard drop against an ACL forward, the table's entry capacity | documentation-range rules under the dead-man timer of §11.3, CRM's per-table counters |
+| A rebind on a live breakout or aggregate (the guard and an IP rule were written, enforced and removed live on 2026-11-01, §11.7.7) | a split or a two-member aggregate while a `DUI_` table exists: the logged `config acl add table` with the new list, STATE_DB `Active`, no PortChannel member in `ports@` |
+| A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules | an orchagent patch (an `L2` table type, `SRC_MAC`/`DST_MAC`) in the custom image series (§8, §11.7.5) |
 
 ### Refused (logged, not claimed)

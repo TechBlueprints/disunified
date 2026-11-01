@@ -425,7 +425,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   copied from it). teamd's records in the tests are upstream SONiC's own
   test data (`docs/fixtures/sonic-utilities-202505/`, Apache-2.0).
 - **DHCP guarding and IP ACL rules (`acl.go`, `docs/drivers/sonic.md`
-  §11.7.6, built 2026-11-01, untested live).** Two L3 tables of the driver's
+  §11.7.6, built 2026-11-01, verified live on the DX010 the same evening,
+  §11.7.7: `VLAN_ID 4094` matches the stand-in's untagged frames, the
+  guard's DROP beats a `DUI_IP_ACL` FORWARD, 512+ entries per table, ACL
+  counter polling is off on the image so `aclshow` reads N/A).** Two L3 tables of the driver's
   own, `DUI_DHCP_GUARD` and `DUI_IP_ACL`, bound ingress to every port that is
   not a PortChannel member and every PortChannel with members (the CLI's
   `get_acl_bound_ports`; orchagent refuses a member). **Never `config acl

@@ -1525,7 +1525,7 @@ changes nothing that breaks the system_cfg path.
 | **Loop protection** | Ubiquiti's `MAC_MOVE_GUARD` semantics (threshold 10 moves in 5 s → errdisable for 150 s) on the switch, from FDB move events, driven by `ld_mode`; `ld_status` reported. With RSTP in place this is the second line of defence, as on the ECS. **Built 2026-11-01 in disunified-l2d, driven by `switch.port.N.keepalive` (not `ld_mode`); verified live by hand that night: §11.5.** | stock | medium |
 | **LACP state** | teamd's per-member state, which tlm_teamd copies out of `teamdctl <pc> state dump` into STATE_DB `LAG_MEMBER_TABLE` → `lag_member`, and on the aggregate's lowest member `aggregate_num_ports`, `lacp_state[]`, `partner_system_id`. `aggregate_members`, `lag_idx` and `link_aggregation_groups[]` are the controller's own (from its port overrides; the ECS's inform carries none of them). Needed for the planned two-cable aggregate from the core. | stock | **built 2026-11-01** (§11.4), held to the ECS's own inform on the ECS's own tables; live on the DX010 once the second cable is in |
 | **Hardware tables** | PSU, fan, MAC-table capacity, IPv6 and firmware fields from pmon's STATE_DB tables, `crm`, the kernel. | stock | **built 2026-11-01** (§11.4), fixture- and contract-tested on a second DX010 capture |
-| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. **The guard and the IP rules built 2026-11-01 (§11.7.6).** | stock (MAC rules: custom) | medium each |
+| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. **The guard and the IP rules built 2026-11-01 (§11.7.6) and verified live on the DX010 the same evening (§11.7.7).** | stock (MAC rules: custom) | medium each |
 | **LLDP-MED** | SONiC's `lldpd` speaks LLDP-MED (`configure med ...`); the `lldp` container's config is the write path. | stock | small |
 | **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` (YANG present, §7.2); capture the push first. | stock | small |
 | **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
@@ -2186,7 +2186,7 @@ below keeps the controller from sending one.
   push; the next rule save did.
 
 **Hardware checks before claiming** (documentation-range rules, under §11.3's
-dead-man timer):
+dead-man timer; all three run 2026-11-01, §11.7.7):
 - that `VLAN_ID` matches untagged frames in the native-VLAN stand-in, since
   Broadcom's ingress field processor qualifies the VLAN after VLAN
   assignment;
@@ -2287,9 +2287,40 @@ details the spec left open:
 - **Captured live** (2026-11-01): the gate and the shapes above
   (`TestParseDX010ACLRules`, `TestDesiredDeviceDX010ACLShapes`,
   `TestIPRulesDX010Shapes`, `TestReplaySonicDX010ACLPush`).
-- **Untested live:** the driver's writes (every rule of the capture was
-  held), `VLAN_ID` on the native stand-in, guard drop versus ACL forward,
-  the entry capacity, a rebind on a live breakout or aggregate.
+- **Verified live** (§11.7.7): the guard and an IP rule written, Active,
+  enforced and removed again; `VLAN_ID` on the native stand-in; guard drop
+  over ACL forward; the entry capacity.
+- **Untested live:** a rebind on a live breakout or aggregate (fixture- and
+  replay-tested), a guard on a VLAN other than the native one (the DX010
+  carries only VLAN 1).
+
+#### 11.7.7 Hardware checks on the DX010 (2026-11-01)
+
+Approved by Clint, run on build `33797d8` under §11.3's dead-man timer: a
+300 s transient timer whose script deleted every `ACL_RULE|DUI_*`, removed
+both tables, saved and brought eth0 up, re-armed over a fresh connection
+before each stage and cancelled at the end (it never fired). Test traffic
+was one-off UDP datagrams to the switch's own address from a LAN host, seen
+or not seen by `tcpdump` on `Vlan4094` (the switch's CPU).
+
+| Check | Done | Result |
+|---|---|---|
+| The guard's push | Rogue DHCP Server Detection on for 7 min | The DX010's push carried **one** guard group, VLAN 1 trusting the gateway (the ECS got six for its three guarded VLANs: the controller sends a switch only the guards of VLANs it carries). The bridge wrote `DUI_DHCP_GUARD` 2 s after the push: `V1_S1` (FORWARD from the gateway/32) and `V1_DROP`, `VLAN_ID 4094`, bound to all 32 ports; table and rules `Active`, `show acl rule` lists both. |
+| `VLAN_ID` on the native stand-in | UDP 67 → switch:68 from a host that is not the gateway; control 66 → 68 | The 67s never reached the CPU, the 66s did: **`VLAN_ID 4094` matches untagged frames** of the stand-in (the field processor qualifies after VLAN assignment), and the guard drops an untrusted server's replies. |
+| Guard drop vs ACL forward | Forged 192.0.2.10:67 → switch:68 with the guard alone, then with a `DUI_IP_ACL` Allow (UDP from 192.0.2.0/24 to any port 68) Active; control from port 66 | Dropped both times; the 66s arrived both times: **the guard's DROP wins** over a FORWARD in the other table, as expected. A UniFi Allow cannot open a hole in DHCP guarding. |
+| Entry capacity | CRM `CRM:ACL_TABLE_STATS:<oid>` (polled every 300 s) | `DUI_DHCP_GUARD` 2 used / 766 available while it was the only table; `DUI_IP_ACL` 1 / 511. **At least 512 entries per table**; the claim stays at 128 (a fourfold margin, rules of one UI rule per port included). Ingress tables free before: 3 per PORT and LAG bind point. |
+| Removal | Snooping off; the Allow rule deleted | `DUI_DHCP_GUARD` went in the designed order (DROP, FORWARD, table) 74 s after the save, `DUI_IP_ACL` 23 s after its delete; CONFIG_DB, STATE_DB and `config_db.json` hold no `DUI_` key afterwards. |
+
+Side findings: the image's ACL counter polling is off (`counterpoll` ACL
+disable), so `aclshow` reports N/A per rule; the driver does not need the
+counters and does not turn them on. The Allow rule with destination Any and
+a destination port arrived as `dst.ip=any` plus `dst.port=68`, a shape the
+loop already takes (Any on either side, a port on either side).
+
+The site afterwards: the controller's ACL rules `[]`, Rogue DHCP Server
+Detection off, the three networks' DHCP Guarding as before; the DX010's
+push identical to its push before the checks (with the two lines its
+claims add); no switch rebooted.
 
 ## Sources
 
