@@ -79,6 +79,7 @@ func main() {
 		driverName     = flag.String("driver", envChain(os.Getenv("STU_DRIVER"), "DUI_DRIVER"), "device driver, required with -device-url/-device-ssh (see -list-drivers)")
 		deviceURLFlag  = flag.String("device-url", envChain("", "DUI_DEVICE_URL", "STU_SWITCH_URL", "STU_EOS_URL"), "device API endpoint (driver-specific), with DUI_DEVICE_USER/DUI_DEVICE_PASS")
 		deviceSSHFlag  = flag.String("device-ssh", envChain("", "DUI_DEVICE_SSH", "STU_SWITCH_SSH", "STU_EOS_SSH"), "device SSH target user@host[:port] (key auth), used when -device-url is empty")
+		deviceSSHKey   = flag.String("device-ssh-key", envChain("", "DUI_DEVICE_SSH_KEY"), "-device-ssh's key, as the config file's options.ssh_key: a private key file, or a .pub that selects that one ssh-agent identity (default: every agent key, one at a time)")
 		switchURLFlag  = flag.String("switch-url", "", "pre-rename alias for -device-url")
 		switchSSHFlag  = flag.String("switch-ssh", "", "pre-rename alias for -device-ssh")
 		controlPorts   = flag.String("control-ports", envChain("", "DUI_CONTROL_PORTS", "STU_CONTROL_PORTS"), "write controller port config to the device: \"all\" (the default when the driver can), \"off\", or a list like \"2,5-8\"")
@@ -159,7 +160,7 @@ func main() {
 		controller: *controller, informURL: *informURL, model: *model, udapiVersion: *udapiVer,
 		interval: *interval, recordDir: *recordDir, stateFile: *stateFile,
 		mac: *mac, serial: *serial, ip: *ip, hostname: *hostname, version: *version, uplink: *uplink,
-		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH,
+		driver: *driverName, deviceURL: deviceURL, deviceSSH: deviceSSH, driverOptions: flagDriverOptions(*deviceSSHKey),
 		username:     envChain("", "DUI_DEVICE_USER", "STU_SWITCH_USER", "STU_EOS_USER"),
 		password:     envChain("", "DUI_DEVICE_PASS", "STU_SWITCH_PASS", "STU_EOS_PASS"),
 		controlPorts: *controlPorts, controlOutlets: *controlOutlets, controlNUT: *controlNUT,
@@ -169,6 +170,16 @@ func main() {
 	if err := runOne(ctx, o); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// flagDriverOptions is the driver options a device run from the flags
+// carries: ssh_key from -device-ssh-key, read by every SSH driver as the
+// config file's options.ssh_key is. nil when none is set.
+func flagDriverOptions(sshKey string) map[string]string {
+	if sshKey = strings.TrimSpace(sshKey); sshKey == "" {
+		return nil
+	}
+	return map[string]string{"ssh_key": sshKey}
 }
 
 // options is everything one bridged device needs, from flags or a config entry.

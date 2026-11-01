@@ -3,10 +3,11 @@
 Status 2026-10-27: `internal/drivers/sonic` is built and every control
 feature is verified live on the SONiC virtual switch, build
 `202505.1238524-ff3c0c9f6`, as hardware SKU `Seastone-DX010`, adopted as
-`USWF07D` (§6.6); STP is feature-gated (no daemon in community images) and
-the hardware-only parts wait for the unit. The hardware -- a Celestica
-Seastone DX010 (32x QSFP28, Broadcom BCM56960 Tomahawk, Intel Atom C2538,
-ONIE) -- is ordered and some weeks out. This file began as the plan for
+`USWF07D` (§6.6); STP is feature-gated (no daemon in community images).
+The hardware -- a Celestica Seastone DX010 (32x QSFP28, Broadcom BCM56960
+Tomahawk, Intel Atom C2538, ONIE) -- arrived 2026-10-31, runs build
+`202505.1238526-ff3c0c9f6` and is adopted; §10 is what its first run
+fixed. This file began as the plan for
 building the driver on a virtual switch first (§2) and for the day the
 unit lands (§3); §5 and §6 are the driver's specification, and the
 write-up as it stands.
@@ -117,9 +118,12 @@ What the virtual switch proves and what it cannot:
 3. Boot, log in `admin` / `YourPaSsWoRd` (the image default; change it),
    `show version`, `show platform summary`, `show interfaces status`.
 4. Switch the default config from the router preset (every port a /31 to
-   a fictional Arista fabric) to L2: `sudo sonic-cfggen --preset l2 -p -H
-   | sudo tee /etc/sonic/config_db.json`, `sudo config reload -y`. This is
-   also how the real DX010 will be set up.
+   a fictional Arista fabric) to L2: `sudo sonic-cfggen -k <hwsku> --preset
+   l2 -p -H | sudo tee /etc/sonic/config_db.json`, `sudo config reload -y`.
+   **`-k <hwsku>` is required on a fresh image** (`Seastone-DX010`):
+   without it the preset has no port list and writes an empty config
+   (seen on the DX010, 2026-10-31). This is also how the real DX010 is set
+   up.
 5. Put the bridge's SSH key on the `admin` account (the Proxmox and Podman
    drivers' pattern: [`internal/sshrun`](../../internal/sshrun)).
 
@@ -217,9 +221,12 @@ The factory image stays in its slot after the upgrade.
 
 1. Serve the kept image over plain HTTP from the deployment host
    (`python3 -m http.server` in the images directory) or the Mac.
-2. On the switch: `sudo sonic-installer install http://<host>/sonic-broadcom.bin`,
-   then `sudo reboot`. The 2018 installer may refuse a 2025 image (image
-   format and installer changed over seven years). Then the ONIE path:
+2. On the switch: `sudo sonic_installer install http://<host>/sonic-broadcom.bin`
+   (**the 2018 image spells it `sonic_installer`**, with an underscore;
+   `sonic-installer` came later), then `sudo reboot`. On the DX010
+   (2026-10-31) the 2018 installer took the 202505 image from a local file
+   and kept the factory image in the second GRUB slot. Had it refused
+   (image format and installer changed over seven years), the ONIE path:
    reboot, pick "ONIE: Install OS" in GRUB, in the ONIE shell `ifconfig eth0
    <addr> netmask <mask>`, `ip route add default via <gw>`, `onie-nos-install
    http://<host>/sonic-broadcom.bin`. ONIE wipes the switch; the factory
@@ -230,16 +237,59 @@ The factory image stays in its slot after the upgrade.
    `Celestica-DX010-C32`), `show platform fan`, `psustatus`,
    `temperature`, `syseeprom` -- all must answer, that is the point of the
    floor; `show interfaces status` shows 32 ports at 100G.
-4. First-boot setup: change the `admin` password, add the bridge's SSH
-   key, hostname, the L2 preset (A0 step 4), a VLAN interface on the
-   uplink port for the bridge's in-band address, management `eth0` left
-   for rescue only.
+4. First-boot setup: change the `admin` password (**the factory image's
+   login may not be the documented `YourPaSsWoRd`**: the DX010's was
+   another well-known default), add the bridge's SSH key, hostname, the L2
+   preset with `-k` (A0 step 4), a VLAN interface on the uplink port for
+   the bridge's in-band address with a static default route, and the
+   uplink's FEC by hand if its module needs one (`config interface fec
+   Ethernet0 rs` for a 100G CWDM4/SR4/CR4: the L2 preset sets none and such
+   a link stays down without it; the bridge reaches the switch through that
+   link, and from then on keeps FEC to the module, §10.3), then `config
+   save -y`.
+5. **Management `eth0` for rescue only, and never on the LAN at the same
+   time as the in-band address.** SONiC gives `eth0` the system MAC that
+   every VLAN interface also uses, so with `eth0` cabled to the LAN the
+   upstream switches see the switch's MAC on two ports and the in-band path
+   loses packets (20--40 % on the DX010's 100G uplink). The checklist, in
+   this order:
+   - **Keep `eth0` off the LAN segment**: unplug it, or disable the switch
+     port it is cabled to.
+   - **Give it a static link-local address**: `sudo config interface ip
+     add eth0 169.254.1.1/16`, `sudo config save -y`. That is
+     MGMT_INTERFACE, so SONiC runs no DHCP on `eth0` again, and no lease
+     dhclient recorded can bring back a default route through it; a laptop
+     on the OOB jack (169.254/16) still reaches the switch -- the rescue
+     path. `sudo ip link set eth0 down` alone does not survive a reboot.
+   - **Source NTP from the in-band interface**: `sudo sonic-db-cli
+     CONFIG_DB hset 'NTP|global' src_intf Vlan4094` (202505 has no CLI for
+     it), `sudo config save -y`. The image's default is `eth0`, and chrony
+     binds to it as soon as `eth0` has a configured address. The bridge does
+     this itself with the first push that carries NTP servers (§10.6); by
+     hand it does not wait for adoption.
+   - **After every reboot, check chrony** (`chronyc sources`): a boot hook
+     marks every source offline before the in-band route exists, and
+     nothing marks them online again; `sudo chronyc onoffline` does
+     (`chronyc activity` says how many are offline). The bridge runs it
+     while every source is offline and the in-band interface is up
+     (§10.6); before adoption, type it.
+
+   Why each matters (§10.6, 2026-10-31/11-01): SONiC leaves
+   `ignore_routes_with_linkdown` at 0, so a default route through a dead
+   `eth0` stays in use. Unplugging a live `eth0` with a DHCP lease
+   black-holed the switch's own traffic; and after a reboot with `eth0`
+   cabled to a disabled port, dhclient re-applied its recorded lease a few
+   minutes after boot -- the address as `dynamic` and a `linkdown` default
+   route with no metric, which beat the in-band route's metric 20, so
+   everything off the LAN went dark while the LAN still answered. Bring a
+   live `eth0` down before unplugging it.
 
 **B4. Recapture on hardware.** Re-run A1 on the real unit: the platform
 tables, transceivers with a real DAC in a cage, `platform.json` breakout
 modes, FEC counters at 100G. Replace the VS fixtures for everything in
 the "hardware only" column; keep the VS fixtures for the rest. Pin the
-build id.
+build id. **Done 2026-10-31** (build `202505.1238526-ff3c0c9f6`, §10.7;
+the module in the capture is a 100G CWDM4, not a DAC).
 
 **B5. Install.** Rack it on a metered PDU outlet; a 100G DAC or AOC from a
 QSFP28 cage to the upstream aggregation switch (which has QSFP28 cages) or
@@ -329,9 +379,8 @@ is still to do.
 
 **Still open**
 
-- Whether `sonic-installer` on `20181130.77` accepts a `202505` image, or
-  B3 goes straight to ONIE. The VS rehearsal cannot answer this; only the
-  unit can.
+- ~~Whether `sonic-installer` on `20181130.77` accepts a `202505` image~~:
+  it does, as `sonic_installer` (2026-10-31, §3 B3).
 - Whether the guest stays as a permanent lab switch after the DX010 is
   adopted.
 
@@ -677,7 +726,10 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
   outside the block (the operator's own key, the bridge's own key) are
   never touched. Compare by `<type> <value>`. All keys, not the Arista's
   two. Written with one `bash -s` that rewrites the file atomically.
-- **`Rebooter`:** `sudo reboot` whenever the controller asks.
+- **`Rebooter`:** `sudo reboot` whenever the controller asks. A session
+  that drops once the command was sent -- SONiC's reboot script can take
+  sshd down before the command returns (DX010, 2026-11-01) -- counts as the
+  reload issued, and the dead connection is closed.
 - **Locate:** no LED command on SONiC (nothing for a port or chassis
   LED in `config`); the session reports `locating` as every driver does.
   (Superseded by §7.5: the driver now blinks the status LED through the
@@ -886,7 +938,7 @@ does not expose.
 ### 7.5 Implemented (2026-10-27)
 
 The four 7.1 rows are built and fixture-tested; time zone and hostname
-await a live check on the VS, locate and breakout are hardware-untested.
+await a live check on the VS; locate and the 4x25G breakout with its join were verified on the DX010 on 2026-11-01 (§11.6), 2x50G and lane speeds on a split cage are still hardware-untested.
 What each emits (from the tests), and where the build differs from 7.1:
 
 | Feature | Commands | Notes |
@@ -1041,24 +1093,23 @@ site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
 | Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
 | Containers | `swss` (orchagent **with the L2MC orch** and `l2mcmgrd`), `l2mcd`, `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
 | The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB; there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
 
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
+**UniFi's per-VLAN IGMP settings land in `CFG_L2MC_TABLE`**, one entry per
+VLAN: on that switch the native VLAN has snooping and the querier on, the
+gateway as querier address, IGMP version 2, the query, response,
+membership, last-member and querier-timeout timers at UniFi's defaults, and
+fast-leave and unknown-multicast flooding as switches. That is the HLD's
+field set with a few additions of Ubiquiti's, and each field answers one of
+UniFi's `switch.vlan.N.igmp_*` keys (group membership time, max response
+time, querier address, fast leave, suppression). The mapping the driver would need (§8.2)
 is therefore not a guess: it is what Ubiquiti's own glue writes, and the
 switch's APPL_DB (`APP_L2MC_MEMBER_TABLE:Vlan:0.0.0.0:group:port`, 49 entries)
 is a live reference to compare a DX010 build against.
 
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
+**Ubiquiti floods the discovery protocols on purpose.** 21 reserved-group
+entries in `CFG_L2MC_STATIC_GROUP_TABLE` per switch (SSDP, NTP, SLP, H.323,
+PTP and more) carry every port as a static member, so
 SSDP (239.255.255.250), NTP (224.0.1.1) and the rest flood to **all ports** on
 a UniFi switch with snooping on. Only the remaining groups are pruned
 dynamically: UniFi's own discovery `233.89.188.1` goes to the ports with
@@ -1087,28 +1138,787 @@ Table by table against what this driver writes on the DX010:
 | Port name | `PORT\|EthernetN description = "<UniFi name>"` (`SFP28 1`, `QSFP28 3`) | the same `description` | same |
 | Allow All | every site VLAN **tagged** on every port (490 tagged `VLAN_MEMBER`s for 11 VLANs); native 1 untagged | the same shape | same |
 | VLAN 1 (native LAN) | **`VLAN\|Vlan1` exists**, 52 untagged members, kernel PVID 1, `MGMT_VLAN\|Vlan1`; written straight into CONFIG_DB by `ubnt-lnxcfgd`, bypassing the CLI | `Vlan<native_vlan>` (default 4094) stands in for 1 | **keep the substitute.** Community 202505 cannot take VLAN 1: `config vlan add 1` fails "is default VLAN", the YANG model's `vlanid` range is `2..4094`, `vlanmgrd` strips VID 1 from the bridge and every port at start, and `orchagent` empties the SAI **default VLAN, which is 1 on the Broadcom SAI**, at init -- creating a second VLAN object with that id is not something the community orchagent is written to do. Ubiquiti's orchagent and Marvell SAI are their own. Revisit only with an orchagent change (the same image work as §8). |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| Aggregate | each aggregate a `PORTCHANNEL` entry running LACP at the **fast rate** with a **minimum of one link** (`fast_rate`, `min_links`); members in `PORTCHANNEL_MEMBER` | `config portchannel add PortChannelN` with the defaults (fast_rate false; min_links 1 on 202505, whose `--min-links` is `IntRange(1,1024)` defaulting to 1) | **adopted 2026-10-28, untested live**: `config portchannel add PortChannelN --fast-rate true --min-links 1` (202505's `add_portchannel` takes both); a managed PortChannel holding anything else gets `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL\|PortChannelN' fast_rate true min_links 1` once, which teamd applies at its next start only (teammgrd reads both at team creation, §6.2). UniFi's LACP runs fast timers (1 s) end to end; a slow-rate DX010 on the core LAG would be the odd partner (LACP tolerates mixed rates, but failover detection on our side would be 90 s instead of 3 s). |
 | Hostname | `DEVICE_METADATA\|localhost hostname = <UniFi name>` (`aggregation`) | `config hostname <resolv.host.1.name>` with `control.hostname` on | **adopted 2026-10-28**: `control.hostname` unset is on for sonic (`hostname: false` turns it off), off for every other driver; config-tested. The command itself was verified live on the VS (§6.6). |
 | NTP | `NTP_SERVER\|<ip>` for the IP only; the site's pool **hostname is dropped** (SONiC takes addresses) | both: the hostname resolved once and pinned (`sonic-managed.json`) | keep ours (a pinned pool member beats no second server). |
 | Jumbo | `PORT mtu 1500` with the site's jumbo off | the pushed `switch.mtu` (9216) when on, 1500 when off | same semantics. |
 | Speed / FEC on optics | an **`AUTO_DETECT` table per port** (speed, adv_speeds, fec, interface_type from the module) kept by Ubiquiti's `autodetectd`; the UniFi UI's "auto" means "what the optic says" | speed/FEC only as pushed; "auto" leaves the switch's setting | **hardware-day item**: on the DX010, when UniFi says auto and the cage holds a module, choose FEC from `TRANSCEIVER_INFO` (RS for 100G DAC/SR4/CWDM4, none for 40G) the way `autodetectd` does. Not provable on the VS. |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| STP | **RSTP via mstpd 0.0.9** in the `stp` container, driven by Ubiquiti's `ubnt-stpmgrd` from a table of their own (`UBNT_STP`): RSTP switch-wide at priority step 2 (8192), per-VLAN STP off, and an admin-edge flag per port | none on the VS; the community `INCLUDE_STP` image is **PVST only** (`config spanning-tree enable <pvst>` is the only mode in 202505; no RSTP PR in sonic-stp or swss) | the gap is bigger than "build the STP image": a UniFi LAN runs RSTP, and a PVST+ switch in the middle of it interoperates through the IEEE-BPDU-on-VLAN-1 compatibility path only. Ubiquiti solved it by running mstpd with their own glue into the STP orch. Noted for §8's image work: the STP piece should be RSTP, which means mstpd + a manager, not the community `stpd`. |
+| Loop protection (`ld_mode`) | a **MAC-move guard** (`MAC_MOVE_GUARD`, switch-wide and per port): a port whose MACs move 10 times within 5 s is disabled for 150 s -- Ubiquiti's own daemon errdisables a port whose MACs flap | refused with a log | **candidate, bridge-side, no SONiC change**: the collector reads the FDB every cycle already; a MAC seen moving between ports N times in the window → anomaly on the port, and with `ld_mode` pushed, `config interface shutdown` + a timed re-enable. Same semantics as Ubiquiti's, implemented where we can. Worth it on a hub switch with no STP. |
+| Storm control | errdisable on a broadcast storm (`ERROR_DISABLE`), with no automatic recovery | `PORT_STORM_CONTROL` rate limits in kbps from the UI's percentages | different mechanisms; ours matches what the UI's sliders promise. keep. |
 | DHCP guard / snooping | `ACL_TABLE\|global_ip_acl` (L3) and `global_mac_acl` (ANY) bound to every port, no rules while the site feature is off; `dhcpsnpmgrd` in the glue | refused with a log | an ACL-based path exists in community SONiC too (`sonic-acl.yang`); same shape as Ubiquiti's. Later, if wanted. |
-| (ECS configuration excerpt removed from history, 2026-11-01) | | |
+| Management address | on a Linux bridge `br0` taking DHCP, in a management table of their own (`UBNT_MGMT_INTERFACE`), with VLAN 1 as the management VLAN | `VLAN_INTERFACE\|Vlan<native>` address, static or DHCP | Ubiquiti's is their own construct; ours is standard SONiC. keep. |
 | Features | `l2mcd`, `stp`, `teamd`, `bgp` (FRR), `dhcp_relay`, `radv`, `mgmt-framework`, `snmp` enabled; `macsec`, `nat`, `sflow` present but off | community image: no `l2mcd`, no `stp` | §8. |
 
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
-(ECS configuration excerpt removed from history, 2026-11-01)
+Platform detail: the platform is a Marvell Prestera 98CX8514 reference
+design (`x86_64-marvell_db98cx8514_10cc-r0`, HwSKU `ECSAGG-48x25G6x100G`)
+with Ubiquiti's ONIE (`ubiquiti_pcom_p701gt`). Its `PORT` entries carry
+Marvell-only cut-through fields (`switching_mode`, `ct_untagged`) that have
+no Broadcom counterpart in the community schema.
 
 **To do from this (small, driver-side):** the MAC-move guard as the
 `ld_mode` implementation; FEC-from-module on hardware. Done 2026-10-28:
 LACP fast rate and min-links 1 on the aggregates the driver creates (and
 brought in line on one that lacks them), and the hostname from UniFi. The VLAN 1 question is closed for the community image.
+
+## 10. The first hardware run, and what it fixed (2026-10-31)
+
+The DX010 arrived 2026-10-31 and runs `202505.1238526-ff3c0c9f6` -- the
+VS guest's commit (`ff3c0c9f6`), two builds later -- on the L2 preset,
+adopted as `USWF07D`, uplinked by one 100G port to a UniFi device. The first real-hardware run of the driver showed eight gaps. Each
+is specified here before its code; what is verified live is in
+[`docs/support-matrix.md`](../support-matrix.md). §10.9 is a gap the
+first live speed tests found the next night.
+
+### 10.1 SNMP off never stuck: `/etc/sonic/snmp.yml`
+
+Seen live: the reconcile ran `config snmp community del <community>` and
+`config save -y` every ~80 s, restarting the snmp container each time.
+The container's `start.sh` runs `snmp_yml_to_configdb.py`, which copies
+every community named in `/etc/sonic/snmp.yml` (`snmp_rocommunity`,
+`snmp_rocommunities`, `snmp_rwcommunity`, `snmp_rwcommunities`) into
+CONFIG_DB `SNMP_COMMUNITY` on every container start, adding only, and
+`config snmp community add|del` restart that container -- so the deleted
+community came straight back. Every 202505 image ships the file with
+`snmp_rocommunity: public` and `snmp_location: public` (the importer exits
+1 without a location); `/etc/sonic` survives `sonic_installer`, so the
+factory image's copy came along. `snmpd.conf` itself is rendered from
+CONFIG_DB only.
+
+- **Read.** `collect.py` prints a `snmp_yml` section: the communities the
+  file names under those four keys, names only (`{community: {key}}`,
+  like `cfg_snmp`), `{}` when the file is absent, `error` when it cannot
+  be parsed. The file is `0644 root`; the login user reads it.
+  `System.SNMPCommunities` is CONFIG_DB's set plus the file's: a community
+  in the file is configured, the next snmp start imports it.
+- **Write.** The file's communities minus UniFi's one are dropped from it
+  **before any `config snmp community` call** (each restarts the
+  container, which imports the file): one `bash -s --
+  disunified-snmp-yml` script; if the file exists, `sudo python3 -` loads
+  it with PyYAML (on every SONiC host; the importer needs it), removes the
+  dropped names from the four keys (a scalar key goes, a list keeps the
+  rest, an emptied list goes), and only if that changed anything writes it
+  back atomically (a temporary file in `/etc/sonic`, mode 0644,
+  `os.replace`). Every other key stays (`snmp_location`). The names travel
+  inside the script on stdin, never on a command line; the log says
+  `<community>`. Then the CONFIG_DB diff runs as before. UniFi's own
+  community is never written into the file (CONFIG_DB and `config save`
+  hold it).
+- **Tests.** The FixtureRunner treats the capture's `snmp_yml` section as
+  the file: the script's drop list is applied to it, and every `config
+  snmp community add|del` re-imports it into `cfg_snmp` as `start.sh`
+  does, so deleting before rewriting brings the community back and fails
+  the idempotence test. The factory file's section
+  (`snmp_yml-factory.txt`, produced by `collect.py`'s own code from the
+  unit's backup of the factory file, scrubbed) is the input.
+
+### 10.2 The first-push hold and jumbo
+
+Seen live: the first push carried `switch.jumboframes=disabled` /
+`switch.mtu=9216` (a new device's default) while every port ran SONiC's
+9100 (the L2 preset sets no `mtu`), so `PlanPorts` saw 32 changes and the
+loop held every push; the adoption seed (`internal/unifiapi`) covers port
+overrides, not the device's Jumbo Frames setting. Released on the unit by
+setting 1500 by hand. The choice was (A) seed the device's Jumbo Frames
+setting from the switch at adoption -- a capture of the UI's save first,
+and 9100 counted as UniFi's jumbo or the hold still sticks -- or (B) leave
+MTU out of the hold. **Clint chose B (2026-10-31).** Jumbo is a
+device-wide setting in UniFi, like NTP, syslog and the hostname, which
+follow UniFi from the first push; the hold keeps protecting a port's own
+config (state, VLANs). The loop plans the hold, and the fresh-port
+withholding that has the same sticking problem, on the push with every
+port's MTU left alone (`withoutMTU`); the push itself still carries the
+MTU. On adoption a SONiC switch therefore moves from 9100 to UniFi's value
+(1500 with jumbo off, a new device's default) with its first push. Test:
+the DX010's real seeded push (`controller-10.6.109/system_cfg-dx010-held.txt`,
+held 37 times live) against the switch put back to 9100 goes through --
+1500 on 32 ports, RS on cage 1 from its module -- and the same push with
+one port shut down on the switch is held for that port alone
+(`internal/informloop/hold_sonic_test.go`).
+
+### 10.3 FEC follows the module when UniFi says "auto"
+
+Seen live: Ethernet0 (a 100G CWDM4 module to a UniFi device's 100G
+port) stayed down until `config interface fec Ethernet0 rs`; the L2
+preset writes no `fec`, Broadcom's default is none, and UniFi pushes
+`port.N.fec` only when someone sets it (once in the 274 recorded pushes),
+so the driver never wrote one. UniFi's own SONiC switches keep an
+`AUTO_DETECT` table per port (speed and FEC from the module, §9): on
+UniFi, no FEC setting means "what the optic calls for". The driver now
+does the same:
+
+- When the push has no FEC for a port (`PortDesired.FEC == nil`) and its
+  cage holds a module (`TRANSCEIVER_INFO|<first interface>`), each of the
+  cage's interfaces gets the FEC that module calls for at the interface's
+  configured speed (table below); an explicit `port.N.fec` always wins.
+- Only a mode in STATE_DB's `supported_fecs` when it lists any (the DX010:
+  `none,rs`); `none` against an absent CONFIG_DB `fec` is no change, as for
+  a pushed FEC.
+- An empty cage, or a module or speed the table does not know: nothing is
+  written (logged once), the port keeps what it has.
+- Not counted by `PlanPorts`: the first-push hold and the fresh-port
+  withholding ask whether the controller's config would change a port, and
+  the module's FEC is the driver's reading of UniFi's "auto". (The hold
+  writes nothing at all while it holds, this included.)
+
+The module is named by its SFF-8024 compliance code as xcvrd prints it
+(sonic-platform-common 202505, `sff8024.py` `EXT_SPEC_COMPLIANCE`,
+`sff8636.py` `ETHERNET_10_40G_COMPLIANCE`); the FEC is what the IEEE
+clause or MSA for that module requires of the host:
+
+| Interface speed | Module | FEC |
+|---|---|---|
+| 100G | `100G CWDM4` (**verified live**), `100GBASE-SR4 or 25GBASE-SR`, `100G PSM4 Parallel SMF`, `100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS`, `100G AOC (Active Optical Cable) or 25GAUI C2M AOC` and `100G ACC (Active Copper Cable) or 25GAUI C2M ACC` (BER 5x10^-5), `100G SWDM4`, `100G PAM4 BiDi` | `rs` |
+| 100G | `100GBASE-LR4 or 25GBASE-LR`, `100GBASE-ER4 or 25GBASE-ER`, `100G AOC or 25GAUI C2M AOC` and `100G ACC or 25GAUI C2M ACC` (BER 10^-12) | `none` |
+| 40G, 10G | any | `none` |
+| 25G (a 4x25G child) | `100GBASE-SR4 or 25GBASE-SR`, CA-25G-L, the 5x10^-5 AOC/ACC | `rs` |
+| 25G | `25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R` | `fc` |
+| 25G | `25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC`, 25GBASE-LR/ER, the 10^-12 AOC/ACC | `none` |
+| 50G (a 2x50G child) | codes 11 / 12 / 13 (CR2 with RS / BASE-R / no FEC) | `rs` / `fc` / `none` |
+| anything else | | not written |
+
+`internal/drivers/CLAUDE.md`'s "only write FEC when asked" gains this
+exception for drivers whose platform reads the module.
+
+### 10.4 The optic's media type
+
+xcvrd's `specification_compliance` for an SFF-8636 module is Python's
+`str()` of a dict (`"{'10/40G Ethernet Compliance Code': 'Extended', …,
+'Extended Specification Compliance': '100G CWDM4'}"`), and the read side
+put that whole string in `Optic.MediaType` (the inform's
+`sfp_compliance`). It is now parsed as the Python literal it is: the
+`Extended Specification Compliance` value when the 10/40G code says
+`Extended`, else the 10/40G code (`40GBASE-SR4`); for any other shape (an
+SFP's codes) the first value that is not `Unknown`/`Unspecified`/
+`Extended`; a plain string stays as it is. That is what UniFi's own SONiC
+switch reports: the ECS Aggregation's inform carries `sfp_compliance:
+"100G CWDM4"` for the same module type
+(`docs/fixtures/controller-10.6.106/inform-ecs-aggregation-uswf066.json`).
+
+### 10.5 Naming the SSH key for a flag-run device
+
+`-device-ssh` had no way to name the key, so a run from the flags fell
+back to the agent, which offered the wrong key first. New: `-device-ssh-key`
+/ `DUI_DEVICE_SSH_KEY`, the driver option `ssh_key` for a device run from
+the flags -- a private key file, or a `.pub` that selects that one agent
+identity, exactly as the config file's `options.ssh_key`. Every SSH driver
+that reads `ssh_key` (sonic, podman, proxmox) takes it.
+
+### 10.6 The out-of-band warning for an administratively down eth0
+
+The DX010's `eth0` is cabled but taken down on purpose (§3), and keeps its
+last DHCP address; the loop warned "out-of-band management port eth0
+carries address …" every start. `OOBInterface` gains `AdminDown` (zero:
+not known to be down, so the Arista is unchanged); SONiC sets it for an
+`eth0` without the `UP` flag in `ip -j addr`. The "carries address"
+warning needs the port to be administratively up (it answers on that
+address the moment a cable has link) or to have carrier; the warning for
+a bridge that dials the OOB address is unchanged.
+
+**The trap a reboot set (2026-11-01).** Taking `eth0` down by hand does not
+survive a reboot. After one, with `eth0` cabled to a disabled switch port
+(no carrier), dhclient re-applied its recorded lease a few minutes after
+boot: `eth0` got its old LAN address as `dynamic` and a `default via
+<gateway> dev eth0 linkdown` route **with no metric**, which beat the
+in-band `Vlan4094` default route (`metric 20`), because SONiC leaves
+`ignore_routes_with_linkdown` at 0. Everything off the LAN -- the internet,
+the NTP server -- was black-holed while the LAN still answered. And SONiC's
+`NTP|global` (from `init_cfg.json`) names `src_intf eth0`:
+`chrony.conf.j2` writes `bindacqdevice <src_intf>` only while that
+interface has an address in its CONFIG_DB table (MGMT_INTERFACE for
+`eth0`, VLAN_INTERFACE for `Vlan*`), so once `eth0` had a configured
+address chrony bound to the dead port and every source went unreachable
+(`^?`, Reach 0). Fixed on the unit by hand: `config interface ip add eth0
+169.254.1.1/16` (MGMT_INTERFACE, saved: no DHCP on `eth0` ever again, and a
+laptop on the OOB jack still reaches the switch) and `sonic-db-cli
+CONFIG_DB hset 'NTP|global' src_intf Vlan4094` (202505 has no CLI for it),
+which regenerated chrony.conf with `bindacqdevice Vlan4094`; it synced. The
+arrival checklist is §3 B3 step 5. What the driver does about it:
+
+- **NTP from the in-band interface.** When it applies UniFi's NTP servers
+  it also sets `NTP|global src_intf` to the interface that carries the
+  address the bridge dials, when that is an in-band interface whose
+  address CONFIG_DB holds (`Vlan<native_vlan>` on a switch set up as §3
+  says): `sonic-db-cli CONFIG_DB hset 'NTP|global' src_intf <iface>`, then
+  `config save -y` (hostcfgd regenerates chrony.conf). `collect.py` reads
+  `NTP|global` (`cfg_ntp_global`) and an interface already right is left
+  alone. Nothing is written when the switch has no `NTP|global` (an image
+  without `init_cfg.json`'s entry; a hash with `src_intf` alone is not
+  what hostcfgd expects) or when the bridge dials `eth0` (its default is
+  then right). Tests: the image's `init_cfg.json` entry
+  (`ntp_global-init_cfg.txt`, read from the unit) in place of the live one,
+  the driver and the DX010's real first push through the loop.
+- **No out-of-band warning for a link-local address without carrier.** An
+  `eth0` with `169.254.1.1/16` and no link is the setup above, not a risk;
+  the "carries address" warning now needs a routable address (an IPv4
+  link-local one names nothing on the LAN), and a link-local `eth0` with
+  carrier gets the milder "connected" note an addressless one gets. A
+  routable address on an `eth0` that is up without carrier still warns:
+  that is the trap. Test: the unit's capture after the fix
+  (`collect-20261101.txt`).
+- **chrony left offline by its boot hook (found 2026-11-01, after a UI
+  Restart).** chronyd started, and two seconds later a boot hook ran
+  `chronyc onoffline`, which marks every source with no route to it
+  offline (journal: "Source <address> offline" for both servers): the
+  in-band route did not exist yet -- `Vlan4094` and FRR's static default
+  come up about 30 s later -- and nothing runs it again, because SONiC's
+  `/etc/network/if-up.d/chrony` fires only for ifupdown interfaces and
+  `Vlan4094` is not one. So after every reboot NTP stayed dead (`^?`,
+  Reach 0) until `sudo chronyc onoffline` was typed; it then synced within
+  about two minutes. The driver now does that: `collect.py` reads chrony's
+  view read-only as the login user (`chronyc -n -c sources` as
+  `chrony_sources`, `chronyc -n activity` as `chrony_activity`), and when
+  NTP is managed, servers are configured, the interface chrony sends from
+  (`ntpSource`, the dialled in-band one) has carrier and **`activity`
+  counts no source online and some offline**, it runs `sudo chronyc
+  onoffline` -- idempotent, it only sets online a source that has a route
+  now. The decision is `activity`'s, not `sources`': there an offline
+  source reads `?` with reach 0, exactly like one that is online and has
+  not answered yet -- right after `onoffline` both sources still read so
+  while `activity` already counts them online. At most once per collect (a
+  push and the reconcile in the same cycle nudge once), not in an apply
+  that writes NTP itself (`config ntp` and the `src_intf` hset restart
+  chrony anyway), not counted as a changed setting, and logged once per
+  episode, with a line when they are online again. A source that stays
+  offline (no route) keeps getting the nudge once a cycle, silently.
+  Nothing happens without the `activity` section (older captures; chronyc
+  unable to reach chronyd). Fixtures, all read from the unit and scrubbed:
+  `chrony-synced.txt`; `chrony-offline.txt`, every source offline (set
+  with `sudo chronyc offline`, the state the boot hook leaves);
+  `chrony-after-onoffline.txt`, right after `sudo chronyc onoffline`.
+
+### 10.7 Hardware fixtures
+
+`docs/fixtures/sonic-202505.1238526-ff3c0c9f6/collect.txt` is the DX010's
+collector run (scrubbed: the sanitiser now also rewrites hardware serials,
+the LLDP neighbour's system name and the managed authorized_keys block).
+The hardware-only tables are tested against it -- 10 fan modules and the
+two PSU fans, two PSUs with power and temperature, five temperature
+sensors (the ASIC table reads all zeros on this platform), the CWDM4
+module with DOM, the FEC codeword counters, `supported_speeds`
+`40000,100000` and `supported_fecs` `none,rs`, a real LLDP neighbour (a
+UniFi device announcing bridge + router) as the uplink -- and the VS fixtures stay
+for everything else (the control tests run on them). Both builds are the
+same commit, so `config-help.txt` and `zones.txt` stay with the VS
+capture.
+
+### 10.8 Docs
+
+§3 now records the day's facts: the 2018 image spells the installer
+`sonic_installer`; the L2 preset needs `-k <hwsku>` on a fresh image; the
+factory password may not be the documented one; eth0 shares the system MAC
+with every VLAN interface.
+
+### 10.9 Speed "auto" follows the module (2026-11-01)
+
+Seen live on the DX010: a cage split to 4x25G through UniFi (a 25G speed on
+the port, §7.5) stayed split when UniFi set it back to auto. On auto,
+`speed()` leaves a split cage alone, by design for a cage split by hand, so
+only a manual 100G joined it again. On UniFi's own SONiC switches "auto"
+means what the module says (`AUTO_DETECT`, §9). Verified live the same
+night, by hand: `config interface speed Ethernet8 40000` and back to
+100000, and `config interface breakout -f -y Ethernet4 '4x25G[10G]'` then
+`'1x100G[40G]'`, each without a swss or syncd restart and with Ethernet0
+unaffected.
+
+The rule, the companion of the FEC rule (§10.3):
+
+- When the push carries no manual speed for a port (`autoneg` enabled:
+  `PortDesired.SpeedMbps == 0`) and its cage holds a module the table
+  below knows, the cage's configuration -- the number of ports it is split
+  into and their lane speed -- is checked against what that module runs.
+  A configuration the module runs stays as it is: a cable that can be
+  either a 100G cable or a 4x25G breakout (the CR4 / CA-25G-L code, the
+  AOC/ACC codes, `100GBASE-SR4 or 25GBASE-SR`) keeps a split made for it.
+  Any other configuration becomes the module's native one, through a
+  breakout to the mode with that many ports that runs that speed where
+  platform.json has one (§7.5), else as a lane speed.
+- These writes are the driver's own, like the module's FEC: `PlanPorts`
+  plans without them at all, so the first-push hold and the fresh-port
+  withholding never wait on them -- nor on what a module-driven join leaves
+  to re-apply (a rejoined port is admin down until the plan's own
+  `startup`), which would otherwise count as a change on every cycle. A
+  fresh adoption changes a cage only when its module cannot run what the
+  cage runs.
+- No module (an empty cage), or a module the table does not know (logged
+  once): the rule from before, unchanged -- a split cage stays split, an
+  unsplit one runs its native (highest) speed. So the night's case, an
+  **empty** cage split through UniFi and set back to auto, stays split: no
+  module, no opinion. It joins with a manual 100G, or by itself once a
+  module that cannot run 4x25G is in the cage.
+- A breakout the module asks for is refused, with a log, for a cage in an
+  aggregate or a mirror session, as every breakout is (§7.5).
+
+xcvrd's SFF-8636 info carries no "far end broken out" field, so the
+compliance code is all there is to go on. Ports x lane speed, the native
+configuration first:
+
+| Module (xcvrd compliance name) | Runs | Native |
+|---|---|---|
+| `100G CWDM4`, `100GBASE-LR4 or 25GBASE-LR`, `100GBASE-ER4 or 25GBASE-ER`, `100G SWDM4`, `100G PAM4 BiDi`, `100G CLR4`, `100GBASE-DR`, `100G-FR or 100GBASE-FR1`, `100G-LR or 100GBASE-LR1` | 1x100G | 1x100G |
+| `100GBASE-SR4 or 25GBASE-SR`, `100G PSM4 Parallel SMF` (parallel optics break out over a fan-out), `100G AOC …` and `100G ACC …` (both BER grades) | 1x100G, 4x25G | 1x100G |
+| `100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS` | 1x100G, 4x25G, 2x50G | 1x100G |
+| `25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R`, `25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC` (25G/50G-only codes: in a QSFP28 cage, a breakout cable) | 4x25G, 2x50G | 4x25G |
+| `40GBASE-LR4`, `40GBASE-ER4`, `40G SWDM4` | 1x40G | 1x40G |
+| `40GBASE-SR4`, `40GBASE-CR4`, `40G Active Cable (XLPPI)`, `40G PSM4 Parallel SMF` | 1x40G, 4x10G | 1x40G |
+| `4 x 10GBASE-SR` | 4x10G | 4x10G |
+
+On the DX010 that is `1x100G[40G]` at 100000 or 40000, `4x25G[10G]` at
+25000 or 10000, `2x50G` at 50000. Tests: the capture's CWDM4 in cage 1
+after a split and after a forced 40G (`speed_test.go`), the codes above
+substituted into the capture's own compliance string, and the DX010's real
+first push through the loop with cage 1 at 40G (`hold_sonic_test.go`).
+Untested live: the driver's own join and lane-speed writes, and every
+module but the CWDM4.
+
+## 11. Parity with a UniFi switch (planned 2026-10-31)
+
+Clint, 2026-10-31: keep working on the DX010 until it is on parity with a
+UniFi switch. "Parity" is measured, not guessed, against the one first-party
+SONiC switch on the site, an ECS Aggregation (`USWF066`, Ubiquiti SONiC 4.0.1),
+three ways: its device record in the controller against the DX010's (field by
+field), the capability bits each claims (decoded with unifi-emu's
+`capability_bits.json`), and the `system_cfg` the controller pushes to each
+(key shapes). The raw captures are site data and stay in
+`local-information/ecs-reference/`; anything a test needs goes through
+`scripts/sanitize-controller.py` first.
+
+### 11.1 What the controller withholds, and why
+
+The controller pushes a feature's keys only to a device that claims it. The
+ECS's push carries 44 key shapes the DX010's lacks; apart from the LCD and
+Etherlighting (hardware the DX010 does not have) every one belongs to a
+feature the DX010 does not claim:
+
+| Feature (claim) | ECS claims | DX010 claims | Keys the ECS receives |
+|---|---|---|---|
+| STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | no, 0 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
+| Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
+| IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | no | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
+| DHCP snooping (128) | yes | no | `switch.dhcp_snoop.status` |
+| Port isolation (4), port security (512) | yes | no | `switch.port.N.port-security` (isolation keys only when set) |
+| LLDP-MED (16) | yes | no | `switch.port.N.lldpmed.opmode/topology_notify` |
+| Egress rate limit (32) | yes | no | none while unset |
+| L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | no | `switch.routing_enabled` only while no L3 network is on the switch |
+| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512) | yes | no | none while no rule exists |
+| MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
+| LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
+
+Reported state the ECS carries and the DX010 did not (the LACP and
+hardware items are reported since 2026-11-01, §11.4): `stp_version`,
+`stp_priority`, `root_switch`, per-port `stp_edge_state`,
+`stp_bpdu_guard_enabled`, `stp_pathcost`; `ld_status`;
+`multicast_router_mode`; on an aggregate `lacp_state[]`, `partner_system_id`,
+`aggregate_members`, `lag_idx`, `link_aggregation_groups[]`; `fan_table[].direction`;
+`psu_table[]` detail (fan, temperatures, `psu_caps`, `psu_type`, EEPROM);
+`mac_table_capability` (capacity, count, thresholds); `ipv6[]`;
+`displayable_version`; `sfp_rev`. The ECS's `fw2_caps` carries
+`SONIC_BASED_FIRMWARE` (8192) and `SUPPORT_FILE_UPLOAD` (65536); what the first
+changes in the controller is unknown -- claim it only after a capture shows it
+changes nothing that breaks the system_cfg path.
+
+### 11.2 How each gap closes on the DX010
+
+| Gap | Mechanism | Image | Work |
+|---|---|---|---|
+| **RSTP** | Ubiquiti's own design (§9): **mstpd** on the kernel bridge `Bridge` (`stp_state 2` hands it to mstpd through `/sbin/bridge-stp`), BPDUs to the CPU by a runtime CoPP trap (`COPP_TRAP\|stp`, trap id `stp`, which `copporch` knows), and a **manager** on the switch that mirrors mstpd's port states into the stock `stporch` through APPL_DB (`STP_VLAN_INSTANCE_TABLE` VLAN→instance -- one instance per VLAN as built, §11.5 --, `STP_PORT_STATE_TABLE`, `STP_FASTAGEING_FLUSH_TABLE` on a topology change). Both are compiled into the stock swss; community `stpd` (PVST only) is not used. The driver installs and supervises both (the Proxmox driver keeps files on a node the same way), maps `switch.stp.*` and the per-port keys onto mstpd, and reads mstpd for `root_switch`, roles, states, path costs and edge state. Claims STP, BPDU guard and auto edge only once live-verified. **Built 2026-11-01; the mechanism verified live by hand that night and the driver's own path live after the deploy; on by default (`l2d: off` to opt out): §11.5.** | stock 202505 | large |
+| **Loop protection** | Ubiquiti's `MAC_MOVE_GUARD` semantics (threshold 10 moves in 5 s → errdisable for 150 s) on the switch, from FDB move events, driven by `ld_mode`; `ld_status` reported. With RSTP in place this is the second line of defence, as on the ECS. **Built 2026-11-01 in disunified-l2d, driven by `switch.port.N.keepalive` (not `ld_mode`); verified live by hand that night: §11.5.** | stock | medium |
+| **LACP state** | teamd's per-member state, which tlm_teamd copies out of `teamdctl <pc> state dump` into STATE_DB `LAG_MEMBER_TABLE` → `lag_member`, and on the aggregate's lowest member `aggregate_num_ports`, `lacp_state[]`, `partner_system_id`. `aggregate_members`, `lag_idx` and `link_aggregation_groups[]` are the controller's own (from its port overrides; the ECS's inform carries none of them). Needed for the planned two-cable aggregate from the core. | stock | **built 2026-11-01** (§11.4), held to the ECS's own inform on the ECS's own tables; live on the DX010 once the second cable is in |
+| **Hardware tables** | PSU, fan, MAC-table capacity, IPv6 and firmware fields from pmon's STATE_DB tables, `crm`, the kernel. | stock | **built 2026-11-01** (§11.4), fixture- and contract-tested on a second DX010 capture |
+| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. | stock | medium each |
+| **LLDP-MED** | SONiC's `lldpd` speaks LLDP-MED (`configure med ...`); the `lldp` container's config is the write path. | stock | small |
+| **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` (YANG present, §7.2); capture the push first. | stock | small |
+| **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
+| **IGMP snooping** | §8: the Micas l2mcorch/l2mcd series on a **custom 202511 image**. Needs a build host (sonic-buildimage wants ~200 GB disk, 8+ cores, Docker). | custom | large |
+
+Order: RSTP and loop protection first -- the DX010 is to become the LAN's hub
+with the aggregation switch as the backup path, so it must run spanning tree
+before any second path is cabled. Then LACP state (the core aggregate), then
+the hardware tables, then the ACL family, LLDP-MED and rate limits, then L3,
+and the IGMP image in parallel once a build host exists.
+
+### 11.3 Rules for live work on the DX010
+
+The DX010 has one link and no one on site: Ethernet0 is the only path, eth0 is
+administratively down on purpose (§10.6), and the console is not attached.
+Every step that can stop Ethernet0 forwarding (spanning tree above all) runs
+under a dead-man timer on the switch (`systemd-run --on-active=300`) that
+restores forwarding on Ethernet0, removes what the step added, and brings eth0
+up; the timer is cancelled only after a fresh connection over Ethernet0 and the
+bridge's own collect both succeed. Probes never contain a state-changing
+command, and a wait loop starts only after what it waits for is confirmed
+started. Captures come from the switch with read commands only, or from the
+ECS (`admin@` the aggregation, read-only) for UniFi's own behaviour.
+
+### 11.4 LACP state and the hardware tables (built 2026-11-01)
+
+The reference is the ECS's own inform, printed with `mca-dump` on the
+switch (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`). Where
+each value comes from on the SONiC side was worked out by a read-only look
+at the ECS's tables in the same minute; that look is described here in our
+own words and **nothing read off the ECS is kept in the tree** (Clint,
+2026-11-01: no text or code copied from it that does not come from an open
+source upstream). The DX010 side is a second collector run with the new
+sections (`sonic-202505.1238526-ff3c0c9f6/collect-hwtables.txt`, 0.84 s for
+the whole run).
+
+**New `collect.py` sections** (all read-only, no sudo): `state_lag_member`
+(STATE_DB `LAG_MEMBER_TABLE|*`), `crm` (COUNTERS_DB `CRM:STATS`) and
+`hwmon` (each `/sys/class/hwmon` chip's name, its device -- i2c
+`<bus>-<addr>` for a PMBus supply -- and its `*_input`/`*_label` files).
+Captures from before lack them; they read as empty (`laterSections`).
+
+**LACP.** The ECS's inform puts `lag_member: true` on every member and
+the aggregate on its lowest member: `aggregate_num_ports`, `lacp_state`
+(per member `{active, member_port, speed}`), `partner_system_id`, and an
+empty `service_mac_table` (on every head in both ECS captures, nowhere
+else). No top-level aggregate table: `aggregate_members`, `lag_idx` and
+`link_aggregation_groups` in the controller's record come from its own
+port overrides. The source is teamd: tlm_teamd (sonic-swss, the same code
+in 202106 and 202505) copies each member out of `teamdctl <pc> state dump`
+into STATE_DB `LAG_MEMBER_TABLE|<pc>|<member>` (`link.up`,
+`runner.selected`, `runner.aggregator.selected`,
+`runner.partner_lacpdu_info.{system,state,port}`, ...), so the collector
+needs no `docker exec`. A member is **active** when teamd enables it --
+selected, its aggregator the selected one, the partner's SYNCHRONIZATION
+bit (0x08) set (libteam's `lacp_port_should_be_enabled`) -- and link up.
+The partner is `runner.partner_lacpdu_info.system`; teamd's
+`00:00:00:00:00:00` (no LACPDU yet) is no partner. The member's speed is
+the port's. Tests: the driver's reading of teamd's records against
+upstream SONiC's own test data (`docs/fixtures/sonic-utilities-202505/`,
+from sonic-utilities 202505, Apache-2.0: a bundled member, one without
+link, one defaulted with no partner; `hwtables_test.go`), and the payload
+from the DX010's own capture with its first two cages put in an aggregate
+at the model level -- the core aggregate before its second cable, one
+member bundled with the core as partner, one not -- held to the ECS
+inform's aggregate head key for key, the aggregate keys on its member and
+the `lacp_state` rows' keys and types (`contract_sonic_hw_test.go`,
+`TestWireContractSonicAggregate`). Live on SONiC: never -- the DX010 has
+one cable. The Arista reads the same bundling from `show port-channel summary`
+(`lagMember`, already captured); its partner id needs `show lacp
+neighbor`, which has no capture yet.
+
+**Fans.** The ECS lists one row per fan drawer (`Fan1`..`Fan5` for its
+`Drawer 1..5`), `speed`/`target_speed` the PWM duty in percent, and
+`direction` as SONiC's thermalctld names it (`exhaust`); its supplies'
+fans are in the PSU rows, not here. The DX010's community thermalctld
+gives `speed`/`speed_target` in percent per rotor (two per drawer,
+`drawer_name` `Drawer1..5`) and `direction: intake` (F2B, port side in):
+a drawer is the mean of its present rotors, the highest target, OK only
+while every rotor is present and healthy, `present: false` when none is.
+A fan in no drawer named after a supply (`PSU-1 FAN-1`) belongs to the
+supply.
+
+**Supplies.** The ECS's row: `psu_idx`, `label`, `present`, `online`,
+`power`/`watt` (the supply's **input** power: its PSU_INFO power matches
+the chip's `pin`, not `pout`), `maxwatt`/`power_capacity`, `temp`
+`{"0","1","2"}` (its PSU_INFO `temp_list`, the chip's three sensors),
+`fan` `{"0": <RPM>}`, `psu_caps` 4 (HOT_SWAPPABLE in unifi-emu's
+vocabulary; POWER_METER 2 is not claimed though it meters), `psu_type`
+131072 (an unnamed vocabulary), `psu_eeprom_valid`, and `serial_no`,
+`part_no`, `revision` 0, `datecode`, `invol_type`, `max_invol`,
+`min_invol` sent empty although its STATE_DB knows serial and model.
+The DX010's community psud keeps one temperature and the output power
+(`pout1`, the platform's `get_power`), so the driver reads the supply's
+own PMBus chip as well: the platform's `psu.py` maps `PSU-1`/`PSU-2` to
+i2c `10-005a`/`11-005b` (`psuChips`; hwmon numbers move across boots, the
+device does not). From it: three temperatures, the fan's RPM, the input
+power. The row sends every ECS key but `psu_type`, with the DX010's real
+model and serial, `psu_caps` 4 from `is_replaceable`, `power` the input
+power (78.5 W against psud's 67.5 W output). `total_max_power` is the
+supplies' summed draw, as the ECS sends it (116 beside 54.4 + 62.3 W; a
+PoE switch sends its budget there); it was their capacity (1800 W).
+
+**MAC table.** `mac_table_capability` comes from CRM: capacity = used +
+available (the DX010: 8044 + 152 = 8196 -- Tomahawk's L2 table), count =
+used; the warning/critical thresholds keep the UniFi ratios the
+presentation already used (66 % / 79 %, the ECS's 79000/95000 of
+120000). The ECS reports a fixed 120000 against its CRM's 131072: its
+capacity is Ubiquiti's number, ours is the ASIC's. The VS capture has no
+`crm` section (the omission stays for it).
+
+**Small fields.** `ipv6`: the dialled interface's IPv6 addresses,
+`<address>/<prefix>`, global first (the ECS: its management bridge's
+SLAAC and link-local; the DX010's Vlan4094 has only its link-local).
+`displayable_version`: a UniFi version without its build number (the
+ECS's `4.0.1.995` -> `4.0.1`), any other version as it is (the DX010's
+build id). `sfp_rev`: xcvrd's `vendor_rev`, padding trimmed (`1` on the
+CWDM4), `""` on an empty cage as the ECS sends; every driver now sends
+the key on its optical ports, `""` where it does not read revisions.
+
+**Not claimed, and why.** `psu_type` (vocabulary unknown); `fw2_caps`'s
+`SONIC_BASED_FIRMWARE` (§11.1); `root_switch`/`stp_priority` until
+spanning tree runs (§11.2).
+
+**Seen on the way:** the controller sanitiser's IPv6 pattern could not
+match `fe80::…` (the `::` right after `fe80`), so link-local addresses
+went through unscrubbed; it now matches every IPv6 shape and maps a
+link-local into `fe80::N`. The same gap had let 237 link-local addresses
+(84 of them EUI-64, the low half a real MAC) and one global address with
+the site's prefix into six fixtures committed since 2026-09-20 (the
+10.6.106 informs, the podman and proxmox captures): rewritten in place,
+`sanitize-podman.py`/`sanitize-proxmox.py` fixed the same way, and
+`check-site-info.sh` now refuses any IPv6 outside `2001:db8::/32`,
+`fe80::N` and Docker's `fd00::/8`. Git history still holds the originals.
+`sanitize-sonic.py` now rewrites the DNS
+domain of the switch's own LLDP name (`<hostname>.<domain>` once a DNS
+domain is set).
+
+### 11.5 RSTP and loop protection: the design as built (2026-11-01)
+
+Built on branch `claude/sonic-rstp-66e3ee` against the SONiC 202505 source
+(`sonic-swss` `orchagent/stporch.cpp`, `copporch.cpp`, `portsorch.cpp`,
+`fdborch.cpp`, `cfgmgr/coppmgr.cpp`), mstpd 0.2.0's source, read-only probes of
+the DX010 and a read-only look at the ECS Aggregation's `stp` container. Off
+by default behind the driver option `l2d: on` until the driver's own path
+passed live on the DX010 (2026-11-01, below); **on by default since**, with
+`l2d: off` as the escape for a switch the bridge must install nothing on.
+
+**Pieces on the switch** (installed and kept current by the driver, `l2.go`;
+the binaries in the image's overlay, the config in `/etc/sonic`, which an image
+upgrade keeps):
+
+| Piece | Path | What it is |
+|---|---|---|
+| mstpd, mstpctl 0.2.0 | `/usr/local/sbin/` | built **on the switch** from the upstream release tarball (sha256-pinned) in a throwaway `alpine:3.20` container (digest-pinned), statically linked against musl (`build-mstpd.sh`; ~40 s on the DX010's Atom, 149 KB + 121 KB). Debian 12 has no mstpd (Debian's 0.2.0 needs glibc 2.38; bookworm has 2.36), and building it on the switch means the bridge redistributes no GPL binary. A transient unit (`disunified-mstpd-build`) runs the build so it outlives the SSH session; the next collects read its outcome. With libtool installed, `-static` silently links against musl's loader, which Debian lacks: the build refuses a binary with an `INTERP` header. |
+| `disunified-l2d` | `/usr/local/sbin/disunified-l2d` (`l2d.py`) | the manager, Python with swsscommon, run as root by `disunified-l2d.service` |
+| the kernel hook | `/usr/sbin/bridge-stp` (`bridge-stp.sh`; `/sbin` is `usr/sbin` on Debian 12) | answers 0 to `Bridge start\|stop` and 1 for any other bridge. Without the file the kernel runs its own 802.1D STP on `Bridge` (`br_stp_start`: no helper = kernel STP), so l2d refuses to set `stp_state` unless it exists, and turns it off again if the bridge does not read back `2` |
+| config | `/etc/sonic/disunified/l2.json` | written by the driver: STP on/off, version, priority, per port `enabled`/`edge`/`bpdu_guard`, the loop-protected ports; `deadman` set by the switch when the dead-man fired |
+
+**Kernel side.** `Bridge` (vlanmgrd's, VLAN filtering on, every switched port
+and vlanmgrd's `dummy` a member) runs with `stp_state 0`. l2d writes `1`; the
+kernel calls the hook, which answers 0, so the bridge is in user-space mode
+(`2`) and l2d runs `mstpctl addbridge Bridge`. In user-space mode the kernel
+changes no port state by itself (`br_port_state_selection`), and mstpd sets
+each port's state over netlink. `dummy` is set admin edge with BPDU filter.
+SONiC's ebtables already drops `-d BGA` in `FORWARD`, so the kernel never
+forwards a BPDU between ports, STP on or off. The hostif netdevs report their
+speed (`/sys/class/net/Ethernet0/speed` = 100000), so mstpd's 802.1t path
+costs need no help (200 at 100G, as the ECS's mstpd shows).
+
+**BPDUs.** The image's `/etc/sonic/copp_cfg.json` has no `stp` trap and the
+ASIC lists `stp` in `COPP_TRAP_CAPABILITY_TABLE`; l2d writes
+`COPP_TRAP|stp {trap_ids stp, trap_group queue4_group1, always_enabled true}`
+to CONFIG_DB before mstpd starts (`always_enabled` installs it without
+`FEATURE|stp`, `coppmgr.cpp`; `queue4_group1` is LACP's: trap, not copy, 6000
+pps) and deletes it with STP off, so the switch floods its neighbours' BPDUs
+again and stays transparent to their spanning tree. Probed: no BPDU reaches
+Ethernet0's netdev today (`tcpdump`, 6 s, nothing).
+
+**Into the ASIC: StpOrch, and why each VLAN has its own instance.** The stock
+orchagent always builds `StpOrch` on `STP_VLAN_INSTANCE_TABLE`,
+`STP_PORT_STATE_TABLE` and `STP_FASTAGEING_FLUSH_TABLE` (APPL_DB). Facts from
+`stporch.cpp` that shape everything:
+
+- `STP_PORT_STATE_TABLE:<port>:<instance> {state}` (0 disabled, 1 blocking,
+  2 listening, 3 learning, 4 forwarding; 0-2 are SAI blocking). An instance id
+  maps to a SAI STP object **created on first use** (`m_stpInstToOid`); the
+  switch's default instance is never one of them.
+- `STP_VLAN_INSTANCE_TABLE:Vlan<id> {stp_instance}` moves the VLAN into that
+  object. A port with no state there yet is not forwarding, so l2d writes every
+  bridge port's state into a VLAN's instance first, waits until ASIC_DB holds
+  that many `SAI_OBJECT_TYPE_STP_PORT` objects, and only then maps the VLAN.
+  Mapping Vlan4094 first would have cut the DX010 off.
+- Deleting a VLAN (`portsorch` `removeVlan` → `removeVlanFromStpInstance`)
+  calls `removeStpInstance`, which **removes every port state of that
+  instance**. With one instance for all VLANs, the driver deleting any UniFi
+  network would strip the states the management VLAN depends on. So **each
+  VLAN gets its own instance, id = the VLAN id**, all holding the same
+  (RSTP) port states; a port-state change is one write per VLAN.
+- A port-state key naming a port orchagent does not know makes
+  `doStpPortStateTask` `return` without erasing it: that table's queue stops
+  for good. l2d writes only ports present in APPL_DB `PORT_TABLE`/`LAG_TABLE`
+  and ready in STATE_DB, never `dummy`, and drops the keys of a vanished port
+  or VLAN from APPL_DB directly (a plain `Table` delete, which orchagent never
+  sees: it already removed the objects with the bridge port or the VLAN).
+  `portsorch` removes a port's STP ports with its bridge port.
+- `STP_FASTAGEING_FLUSH_TABLE:Vlan<id> {state true}` flushes the VLAN's dynamic
+  FDB in the ASIC (`flushFdbByVlan`); every write of `true` is a new flush.
+
+The ECS's own glue (`ubnt-stpmgrd`, read for reference, not copied) writes
+instance 0 with no VLAN mapping and per-port flush keys: Ubiquiti's orchagent
+is patched for both. The community one is not, hence the per-VLAN instances.
+
+**Reacting in milliseconds.** l2d listens on rtnetlink (`RTMGRP_LINK`,
+`AF_BRIDGE` messages, `IFLA_PROTINFO/IFLA_BRPORT_STATE`) and writes a changed
+state into every VLAN's instance at once; a full reconcile runs every 2 s
+(a port that joined `Bridge`, a new or deleted VLAN, an orchagent restart --
+fewer STP ports in ASIC_DB than written -- or APPL_DB flushed). mstpd flushes a
+port's kernel FDB on a topology change by writing `brport/flush` in sysfs, and
+the kernel announces every bridge-port sysfs write with an `RTM_NEWLINK`
+(`brport_store` → `br_ifinfo_notify`): a notification whose state did not
+change is taken as that flush and turned, coalesced over 20 ms, into a flush
+of every mapped VLAN in the ASIC. (Over-flushing costs a moment of flooding;
+missing one would black-hole a moved MAC until it ages out.)
+
+**Teardown.** STP off in the config, or `disunified-l2d --teardown`: every
+`STP_VLAN_INSTANCE_TABLE` key deleted through the producer (each VLAN back to
+the default instance, which forwards everywhere; orchagent removes the
+instances), the port keys dropped, mstpd stopped, every kernel bridge port set
+forwarding (the kernel leaves user-space ports as they were when STP stops),
+`stp_state 0`, the trap removed. Stopping the service does **not** tear down
+(`KillMode=process`): mstpd keeps running and the next start adopts it, so a
+restart or an upgrade of l2d never runs the LAN without spanning tree.
+
+**The controller's keys** (the ECS's real push,
+`fixtures/controller-10.6.109/system_cfg-ecs-aggregation.txt`, scrubbed):
+`switch.stp.status/version/priority` → l2d's `mstpctl setforcevers` (stp,
+rstp, mstp) and `settreeprio Bridge 0 <priority/4096>`; per port
+`stp.port_mode=disabled` → BPDU filter + admin edge (the port forwards and
+ignores BPDUs, as `ubnt-stpmgrd` does), `stp.edge` auto/enabled/disabled →
+`setportautoedge`/`setportadminedge`, `stp.bpdu_guard` → `setbpduguard`
+(mstpd shuts the port's netdev on a BPDU; the bridge port goes disabled and
+StpOrch blocks it in the ASIC; the port reports `errdisabled: bpduguard`, the
+UI's BPDU-guard anomaly; a port toggle in UniFi brings it back). A LAG member's
+settings go to its PortChannel, the bridge port. The controller pushes these
+only to a device claiming `feature_caps` STP (64) and `stp_caps` BPDU_GUARD |
+AUTO_EDGE (3).
+
+**Loop protection.** The UI's Loop Protection is `switch.port.N.keepalive`
+(`port_keepalive_enabled` in the device record), pushed only with
+`KEEPALIVE_LOOP_PROTECTION` (1048576) claimed. `ld_mode`, which the brief
+named beside it, is not loop protection: in the ECS's push it appears on
+exactly the 15 ports with a forced speed, always `disabled`, and `ld_status`
+is a port-override field the controller keeps, never in a switch's inform
+(the ECS's own inform, `fixtures/controller-10.6.106/inform-ecs-aggregation-uswf066.json`,
+carries neither). The ECS runs its MAC-move guard (10 moves in 5 s disable
+the port for 150 s) on all 54 ports with every `keepalive` disabled, and
+lists keepalive as an errdisable cause of its own: Ubiquiti's guard is not
+driven by the toggle. Here the toggle decides,
+as everything else follows UniFi: l2d subscribes to STATE_DB `FDB_TABLE`
+(fdborch writes the new port on a MOVE), and a MAC that moves 10 times in 5 s
+takes the protected port it moved to down for 150 s -- APPL_DB `PORT_TABLE
+admin_status down`, so CONFIG_DB, the saved config and the driver's own
+reconcile keep the operator's setting -- never the STP root port nor the port
+the default gateway is learned on (the management path; the other side of the
+loop is taken instead, or nothing, logged). The port reports
+`errdisabled: loop-protect (…)`, the UI's loop anomaly (512). A held port is
+recorded in STATE_DB `DUI_LOOP_GUARD_TABLE` and restored by the next l2d start
+if l2d dies meanwhile.
+
+**Read side.** l2d publishes mstpd's view every 2 s: STATE_DB
+`DUI_STP_TABLE|Bridge` (version, bridge and root ids, root port, topology
+changes and time since the last) and `DUI_STP_PORT_TABLE|<port>` (role, state,
+path cost, admin/auto/oper edge, BPDU guard and its error, BPDU filter,
+counters). `collect.py` reads those tables (`l2_bridge`, `l2_port`,
+`l2_guard`) and its own `l2d` section (installed files' sha256, mstpd's
+version, the units' states, docker, `stp_state`, the config). The model gets
+`stp_version`, the priority (the bridge id's nibble × 4096), `root_switch`,
+the bridge's own topology-change count and the last change's time (as the ECS
+reports `stp_last_topology_change_timestamp`), and per port `stp_state`,
+`stp_role`, `stp_pathcost`, `stp_edge_port` (configured or detected), BPDU
+guard and the faults above. On the wire the ECS line reports `stp_priority`
+as the step, priority/4096 (the ECS Aggregation: 1 at 4096 in its inform of
+2026-09-19, 2 at 8192 on 2026-10-31), so the payload sends the step for
+`USWF066`/`USWF07D` and the priority itself for every other model (the
+USW-XG16 sends 32768; `internal/device` `stpPriorityWire`).
+
+**Settings reach mstpd by reconciliation.** Every 2 s l2d reads mstpd's own
+report (`mstpctl -f json showbridge` and `showportdetail`, which lists every
+bridge port, a down one included), compares the force version, the priority
+nibble and each port's BPDU filter, admin edge, auto edge and BPDU guard with
+the config, sets only what differs, and logs it (`settings: priority 32768 ->
+61440; Ethernet8 bpdu guard on`); a refused `mstpctl` call is retried on the
+next pass. A reload (`systemctl reload`) only wakes the loop. Until
+2026-11-01 the settings were applied on a reload alone, and the flag was
+cleared at the end of the sync it started: the driver writes the config twice
+for one push (the bridge from `ApplyDevice`, the ports from `ApplyPorts`, a
+second apart), the second reload arrived during the first one's sync, and
+Ethernet8's BPDU guard never reached mstpd while the priority did (seen live;
+`l2d_reconcile_test.go` runs the reconcile on the live capture's mstpd state
+with the config the driver writes for that push, through
+`testdata/l2d_reconcile.py`). Whether the ECS's
+`stp_last_topology_change_timestamp` is UTC or local time is unconfirmed (no
+zone in the string, and the two reads of it could not be lined up); the
+payload sends UTC.
+
+**Driver.** `ApplyDevice` records the bridge-level intent and `ApplyPorts` the
+ports' (the loop calls them in that order); the config is written once both
+are known. mstpd missing: the build is started and nothing else is installed
+until it is there (retried every 10 minutes after a failure). Then one
+`bash -s -- disunified-l2` batch installs what differs (by sha256), writes the
+config and restarts or reloads the service. **A first enable runs under a
+180 s dead-man timer** armed in the same batch before the service starts
+(`systemd-run --on-active=180 … disunified-l2d --deadman`: stop, tear down,
+mark `deadman` in the config, start again for loop protection). The driver
+then dials the switch afresh (`Redial`), checks that mstpd runs, and cancels
+the timer through that connection. If the timer fires, the driver does not
+enable again until the controller has turned STP off and on. Claims: STP,
+BPDU guard, auto edge, port cost and loop protection where the switch has
+mstpd or docker, `l2d` not off, and no `FEATURE|stp` (an image with the
+community daemon keeps the PVST path). Tests: `l2_test.go` (capabilities,
+the build, the install and the dead-man's arming and cancelling, port
+settings, STP off, the dead-man path and its re-arming, a failed build) on
+`fixtures/sonic-202505.1238526-ff3c0c9f6/collect-l2.txt` -- the DX010
+collected read-only with this collector before anything was installed -- and
+`internal/informloop/replay_sonic_l2_test.go` (the DX010's real push with the
+ECS's spanning-tree keys through the loop).
+
+**Live status (2026-11-01).** The mechanism was verified by hand on the DX010
+(build 1238526, 04:28-04:44 MST, Clint's approval in the session), each step
+under §11.3's 300 s dead-man timer, cancelled only after a fresh SSH
+connection over Ethernet0 and the bridge's own next collect (its kept SSH
+connection's `lastrcv` in `ss -ti`) both succeeded; the bridge never lost the
+switch:
+
+| Step | Seen |
+|---|---|
+| mstpd built on the switch with `build-mstpd.sh` (twice, by hand) | static, identical BuildIDs, `mstpd -V` 0.2.0; with libtool installed the link went dynamic against musl's loader, hence the `INTERP` check |
+| `COPP_TRAP\|stp` alone | `COPP_TRAP_TABLE\|stp` installed, `queue4_group1` = `bgp,bgpv6,lacp,stp`; the core's RSTP BPDUs (802.1w, every 2 s) on Ethernet0's netdev (tcpdump shows them tagged 4094; mstpd parses them, below) |
+| l2d starts mstpd on `Bridge` | `stp_state` 2; designated root the ECS (`2.000.<its MAC>`, 8192), root port Ethernet0, path cost 200; Ethernet0 blocking → learning → forwarding 1.5 s after start |
+| port states, then the VLAN | after the 6 s settle: a new SAI STP object, 32 `STP_PORT` objects (Ethernet0 FORWARDING, the 31 down ports BLOCKING), Vlan4094's `SAI_VLAN_ATTR_STP_INSTANCE` on it; the FDB stayed full (145 entries), the gateway answered |
+| l2d restarted, mstpd kept (`KillMode=process`) | the same mstpd adopted, no port transition, the mapping re-asserted (a restart that also restarts mstpd cost Ethernet0 0.4 s) |
+| a topology change: a veth port added to `Bridge` (kernel only), non-edge, forwarding after the timers | mstpd's TC count 1 → 2, mstpd flushed Ethernet0, l2d wrote `STP_FASTAGEING_FLUSH_TABLE:Vlan4094`: the ASIC's FDB 150 → 20 entries, 58 six seconds later |
+| BPDU guard on the veth port, one inferior BPDU (root 61440, never a root candidate) injected from its peer | `bpdu guard error yes`, the port shut (admin down); `ip link set up` cleared the error |
+| auto edge on the veth port | edge and forwarding 3 s after link up with no BPDU; one BPDU cleared oper edge; the root never moved |
+| loop protection on the two empty cages Ethernet4/Ethernet8, a test MAC moved between them 12 times in STATE_DB `FDB_TABLE` | the port it moved to went down through APPL_DB (`admin_status down`, CONFIG_DB still `up`), `DUI_LOOP_GUARD_TABLE` recorded the MAC and the peer, restored after the hold (20 s set for the test; ~22 s with the 2 s tick) |
+| a recapture with l2d running and a port held (`collect-l2-running.txt`) | the read side's fixture: `l2_read_test.go`, `internal/device/contract_sonic_stp_test.go` |
+| `disunified-l2d --teardown` (with a port still held) | Vlan4094 back in the default instance, no `STP_PORT` objects, the instance and the APPL_DB keys gone, mstpd stopped, `stp_state` 0, Ethernet0 forwarding, the trap removed, the held port restored at once |
+
+Found live and fixed: the false "ASIC lost STP ports" warning on the first
+sync (fresh writes not yet processed by orchagent are no sign of a restart:
+now only a drop below the count seen at mapping), a "topology change" logged
+while no VLAN was mapped (mstpd flushes every port when it takes the bridge),
+the teardown leaving the running view beside `enabled no` in `DUI_STP_TABLE`
+(a set merges), and `docker rmi name:tag@digest` removing nothing. The switch
+was left as found: every file, unit, timer and `DUI_*` key removed, the image
+deleted; the saved `config_db.json` never held the trap.
+
+**The driver's own path, live (2026-11-01, main 6803b78 deployed with `l2d:
+on` for the DX010).** After a force-provision the push carried `switch.stp.*`
+(the device claimed STP, BPDU guard, auto edge and loop protection), and the
+bridge logged `sonic apply l2: building mstpd 0.2.0 on the switch` (12:04:43
+UTC), `install disunified-l2d … first enable under a 3m0s dead-man timer`
+(12:05:51) and `spanning tree up, the switch answers a fresh connection;
+dead-man timer cancelled` (12:05:58). mstpd: designated root the ECS, root
+port Ethernet0, cost 200, rstp; the controller showed `root_switch` the ECS
+and port 1 root, forwarding, 200; no loss. From the UI, priority 61440 and,
+on cage 3 (empty), BPDU guard and loop protection: the config was written
+right and mstpd took the priority, but not the port's BPDU guard -- the lost
+reload above, fixed by the reconciliation. Re-tested from the UI after the
+fix was deployed (main 4eee9d8, 12:39 UTC): the bridge replaced the manager by
+checksum (`sonic apply l2: update disunified-l2d`) while mstpd kept running
+(started at boot, no port transition); BPDU guard on cage 3 from the UI was
+logged `settings: Ethernet8 bpdu guard on` and shown by mstpd within one
+push, and off again the same way. Two reboots through the UI's Restart
+brought mstpd back with Ethernet0 the root port. With that the option went:
+RSTP is the driver's default.
+
+### 11.6 Live checks on the DX010, 2026-11-01
+
+Run from the controller against the deployed bridge (the 2026-10-31 build),
+on empty cages, every override restored to its pre-test value afterwards
+and a zero-change push confirmed. The uplink stayed up throughout; the
+breakout ran under a dead-man timer that would have joined the cage back
+and brought eth0 up had the uplink dropped.
+
+| Feature | What UniFi sent | What the switch did |
+|---|---|---|
+| Locate | `set-locate`, `unset-locate` | the status LED `dx010:green:stat` toggled about once a second, steady green after |
+| Forced speed | cage 3 manual 40G, then auto | `config interface speed Ethernet8 40000`, then `... 100000` (auto on a QSFP cage is its native speed) |
+| Breakout | cage 2 manual 25G | `config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null`; four children `Ethernet4`-`Ethernet7` (aliases `Eth2/1`-`Eth2/4`, lanes 69-72) admin up, MTU 1500, untagged in the native VLAN; no prompt, no swss or syncd restart |
+| Join | cage 2 auto, then manual 100G | auto changed nothing (the deployed build left a split cage split; §10.9 now has auto follow the module); manual 100G: `'1x100G[40G]'` and `config vlan member add -u 4094 Ethernet4` |
+| Restart | the UI's Restart (`cmd/devmgr restart`) | `reboot requested`, the reload issued about 50 s later (SONiC's reboot script stops the services first), SSH back 112 s after the box went down, on the same image with the saved config intact; the bridge logged one failed collect and recovered; the next push wrote nothing. eth0 came back up on DHCP and had to be taken down again (§10.6) |
 
 ## Sources
 

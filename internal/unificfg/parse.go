@@ -159,6 +159,16 @@ type Port struct {
 	STPPortMode bool  // switch.port.N.stp.port_mode (default enabled)
 	BPDUGuard   bool  // switch.port.N.stp.bpdu_guard
 	LLDPMED     *bool // switch.port.N.lldpmed.opmode, nil if absent
+	// STPEdge is switch.port.N.stp.edge as pushed: "auto", "enabled" or
+	// "disabled" (Edge Port in the UI; the ECS push carries auto and
+	// disabled); "" when absent.
+	STPEdge string
+	// Keepalive is switch.port.N.keepalive == enabled: the UI's Loop
+	// Protection (port_keepalive_enabled in the device record), pushed only
+	// to a device claiming KEEPALIVE_LOOP_PROTECTION. The ld_mode key some
+	// ports carry beside it is not loop protection: on the ECS push it
+	// appears on exactly the ports with a forced speed.
+	Keepalive bool
 }
 
 // StormControl is switch.port.N.stormctrl.*.
@@ -311,6 +321,10 @@ func Parse(text string) *Config {
 				p.STPPortMode = v != "disabled"
 			case "stp.bpdu_guard":
 				p.BPDUGuard = v == "enabled"
+			case "stp.edge":
+				p.STPEdge = v
+			case "keepalive":
+				p.Keepalive = v == "enabled"
 			case "lldpmed.opmode":
 				b := v == "enabled"
 				p.LLDPMED = &b

@@ -60,7 +60,8 @@ type showInterfaceFlowControl struct {
 
 type showPortChannelSummary struct {
 	PortChannels map[string]struct {
-		Ports         map[string]any `json:"ports"` // 4.26.14M: members keyed by interface name
+		Protocol      string         `json:"protocol"` // "lacp" | "static"
+		Ports         map[string]any `json:"ports"`    // 4.26.14M: members keyed by interface name, each with lagMember (bundled)
 		ActivePorts   map[string]any `json:"activePorts"`
 		InactivePorts map[string]any `json:"inactivePorts"`
 	} `json:"portChannels"`
@@ -360,11 +361,22 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	for lag, ch := range pc.PortChannels {
 		id, _ := strconv.Atoi(strings.TrimPrefix(lag, "Port-Channel"))
 		for _, members := range []map[string]any{ch.Ports, ch.ActivePorts, ch.InactivePorts} {
-			for name := range members {
+			for name, v := range members {
 				if slot, _, ok := parseEthName(name); ok {
 					if p := byIndex[slot]; p != nil {
 						p.LAG = lag
 						p.LAGID = id
+						// lagMember: LACP has bundled the interface. The
+						// partner's system id needs `show lacp neighbor`,
+						// which has no capture yet.
+						if m, ok := v.(map[string]any); ok && ch.Protocol == "lacp" {
+							if lm, ok := m["lagMember"].(bool); ok {
+								if p.LACP == nil {
+									p.LACP = &devicemodel.LACP{}
+								}
+								p.LACP.Active = p.LACP.Active || lm // a cage is bundled when a lane is
+							}
+						}
 					}
 				}
 			}

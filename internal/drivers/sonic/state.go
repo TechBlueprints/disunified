@@ -22,10 +22,23 @@ type swState struct {
 	stp     map[string]map[string]string // STP_PORT by interface
 
 	// Device level (§6.3, §6.4).
-	stpGlobal map[string]string            // STP|GLOBAL, nil when STP is not configured
-	ntp       map[string]bool              // NTP_SERVER addresses
-	syslog    map[string]string            // SYSLOG_SERVER address -> port ("" = default)
-	snmp      map[string]bool              // SNMP_COMMUNITY names
+	stpGlobal map[string]string // STP|GLOBAL, nil when STP is not configured
+	ntp       map[string]bool   // NTP_SERVER addresses
+	ntpGlobal map[string]string // NTP|global (src_intf, vrf, …), nil when absent
+	// chrony's sources (chrony_sources), how many are online and offline
+	// (chrony_activity; chronyKnown false without it), and which interfaces
+	// have carrier: read-only, shared by clones (§10.6).
+	chrony                      []chronySource
+	chronyOnline, chronyOffline int
+	chronyKnown                 bool
+	carrier                     map[string]bool
+	syslog                      map[string]string // SYSLOG_SERVER address -> port ("" = default)
+	snmp                        map[string]bool   // SNMP_COMMUNITY names
+	// snmpYml are the communities /etc/sonic/snmp.yml names, which the snmp
+	// container imports into SNMP_COMMUNITY on every start (§10.1);
+	// snmpYmlOK is false when collect.py could not read the file.
+	snmpYml   map[string]bool
+	snmpYmlOK bool
 	dns       map[string]bool              // DNS_NAMESERVER addresses
 	routes    map[string]map[string]string // STATIC_ROUTE by "<vrf>|<prefix>"
 	keys      []string                     // the bridge's block in authorized_keys, one key per line
@@ -42,6 +55,13 @@ type swState struct {
 	// lanes, breakout modes), nil where absent; read-only, shared by clones.
 	platform map[string]platformPort
 	brkout   map[string]string // BREAKOUT_CFG: parent port -> brkout_mode
+	// fecs is STATE_DB's supported_fecs per interface ("none,rs" on the
+	// DX010; absent on the VS); read-only, shared by clones.
+	fecs map[string]map[string]bool
+
+	// l2 is disunified-l2d's installation and config (collect.py's l2d
+	// section; §11.5).
+	l2 l2Inst
 }
 
 // lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
@@ -113,6 +133,18 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			s.ntp[n] = true
 		}
 	}
+	if g, ok := db["cfg_ntp_global"]["NTP|global"]; ok {
+		s.ntpGlobal = copyFields(g)
+	}
+	s.chrony, _ = parseChronySources(sec["chrony_sources"])
+	s.chronyOnline, s.chronyOffline, s.chronyKnown = chronyActivity(sec["chrony_activity"])
+	s.carrier = map[string]bool{}
+	var addrs []ipAddr
+	if decodeJSON("addr", sec["addr"], &addrs) == nil {
+		for _, a := range addrs {
+			s.carrier[a.Ifname] = a.carrier()
+		}
+	}
 	for k, f := range db["cfg_syslog"] {
 		if n, ok := strings.CutPrefix(k, "SYSLOG_SERVER|"); ok {
 			s.syslog[n] = f["port"]
@@ -128,6 +160,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			s.dns[n] = true
 		}
 	}
+	s.snmpYml, s.snmpYmlOK = snmpYmlNames(sec["snmp_yml"])
 	for k, f := range db["cfg_route"] {
 		if n, ok := strings.CutPrefix(k, "STATIC_ROUTE|"); ok {
 			s.routes[n] = copyFields(f)
@@ -148,6 +181,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	_, s.stpFeature = db["cfg_feature"]["FEATURE|stp"]
+	s.l2 = parseL2Inst(sec["l2d"])
 	s.platformJSON, s.platform = parsePlatform(sec["platform_json"])
 	s.brkout = map[string]string{}
 	for k, f := range db["cfg_breakout"] {
@@ -156,6 +190,17 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	s.meta = copyFields(db["metadata"].first())
+	s.fecs = map[string]map[string]bool{}
+	for name, f := range db["state_port"].byName("|") {
+		for _, m := range strings.Split(f["supported_fecs"], ",") {
+			if m = strings.TrimSpace(m); m != "" {
+				if s.fecs[name] == nil {
+					s.fecs[name] = map[string]bool{}
+				}
+				s.fecs[name][m] = true
+			}
+		}
+	}
 	return s
 }
 
@@ -178,7 +223,16 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), brkout: map[string]string{},
+		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs,
+		l2: s.l2,
+	}
+	c.l2.Files = map[string]string{}
+	for k, v := range s.l2.Files {
+		c.l2.Files[k] = v
+	}
+	if s.l2.Conf != nil {
+		cf := *s.l2.Conf
+		c.l2.Conf = &cf
 	}
 	for k, v := range s.brkout {
 		c.brkout[k] = v
@@ -226,6 +280,10 @@ func (s *swState) clone() *swState {
 	if s.stpGlobal != nil {
 		c.stpGlobal = copyFields(s.stpGlobal)
 	}
+	if s.ntpGlobal != nil {
+		c.ntpGlobal = copyFields(s.ntpGlobal)
+	}
+	c.chrony, c.chronyOnline, c.chronyOffline, c.chronyKnown, c.carrier = s.chrony, s.chronyOnline, s.chronyOffline, s.chronyKnown, s.carrier
 	c.ntp, c.syslog, c.snmp, c.dns, c.routes = map[string]bool{}, map[string]string{}, map[string]bool{}, map[string]bool{}, map[string]map[string]string{}
 	for k := range s.ntp {
 		c.ntp[k] = true
@@ -236,6 +294,7 @@ func (s *swState) clone() *swState {
 	for k := range s.snmp {
 		c.snmp[k] = true
 	}
+	c.snmpYml, c.snmpYmlOK = copySet(s.snmpYml), s.snmpYmlOK
 	for k := range s.dns {
 		c.dns[k] = true
 	}

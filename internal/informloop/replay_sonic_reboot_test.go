@@ -21,7 +21,9 @@ import (
 // (replies-sonic.ndjson: {"_type":"reboot","reboot_type":"soft",...}),
 // served to an adopted bridge running the sonic driver against the VS
 // capture: with control.reboot it runs `sudo reboot` on the switch, without
-// it the reboot is emulated and nothing is written.
+// it the reboot is emulated and nothing is written. A reboot whose session
+// drops before the command returns (the DX010, 2026-11-01: the apply
+// deadline) is logged and handled exactly as one that returned.
 func TestReplaySonicRebootReply(t *testing.T) {
 	replies := loadReplies(t, "replies-sonic.ndjson")
 	var reboot replayRecord
@@ -35,10 +37,15 @@ func TestReplaySonicRebootReply(t *testing.T) {
 	if reboot.Payload == nil {
 		t.Fatal("no _type reboot reply in replies.ndjson")
 	}
-	for _, real := range []bool{true, false} {
+	states := map[bool]State{}
+	for _, tc := range []struct{ real, drops bool }{{true, false}, {true, true}, {false, false}} {
+		real := tc.real
 		fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238524-ff3c0c9f6", "collect.txt"))
 		if err != nil {
 			t.Fatal(err)
+		}
+		if tc.drops {
+			fr.RebootErr = context.DeadlineExceeded // what sshrun returns when the session dies with the switch
 		}
 		var buf strings.Builder
 		logger := log.New(&buf, "", 0)
@@ -91,6 +98,16 @@ func TestReplaySonicRebootReply(t *testing.T) {
 			t.Errorf("control.reboot on: want `sudo reboot`; commands %q, log:\n%s", fr.Commands, buf.String())
 		case !real && (rebooted || !strings.Contains(buf.String(), "reboot requested (emulated")):
 			t.Errorf("control.reboot off: want an emulated reboot; commands %q, log:\n%s", fr.Commands, buf.String())
+		case real && (!strings.Contains(buf.String(), "reboot: switch reload issued") || strings.Contains(buf.String(), "reboot: context deadline exceeded")):
+			t.Errorf("control.reboot on (session drops %v): want `reboot: switch reload issued`; log:\n%s", tc.drops, buf.String())
+		case tc.drops && !strings.Contains(buf.String(), "the connection dropped while `sudo reboot` ran"):
+			t.Errorf("the dropped session is not logged:\n%s", buf.String())
 		}
+		if real {
+			states[tc.drops] = l.state
+		}
+	}
+	if states[true] != states[false] {
+		t.Errorf("the loop's state after a dropped reboot session (%v) differs from a clean one (%v)", states[true], states[false])
 	}
 }

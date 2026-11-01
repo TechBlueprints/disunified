@@ -139,6 +139,8 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 		}
 	}
 
+	lags := lagGroups(snap)
+
 	table := make([]map[string]any, 0, len(desc.Ports))
 	for _, pp := range desc.Ports {
 		e := map[string]any{}
@@ -253,6 +255,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			}
 			e["aggregated_by"] = false
 		}
+		lagFields(e, p, lags[p.LAG])
 		if p.FEC != devicemodel.FECUnknown {
 			// Real informs carry `fec` in the 802.3 clause vocabulary; the
 			// controller stores fec_mode only when the device sends it too
@@ -273,7 +276,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			// Real switches send the optic identity keys on every optical
 			// port, empty when no module answers (captured on the ECS
 			// Aggregation: an empty cage has sfp_vendor "").
-			for _, k := range []string{"sfp_vendor", "sfp_part", "sfp_serial", "sfp_compliance"} {
+			for _, k := range []string{"sfp_vendor", "sfp_part", "sfp_serial", "sfp_compliance", "sfp_rev"} {
 				e[k] = ""
 			}
 			if o := p.Optic; o != nil {
@@ -281,6 +284,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 				e["sfp_part"] = o.Part
 				e["sfp_serial"] = o.Serial
 				e["sfp_compliance"] = o.MediaType
+				e["sfp_rev"] = o.Revision
 				if o.HasDOM {
 					e["sfp_temperature"] = round1(o.TempC)
 					e["sfp_voltage"] = round2(o.VoltageV)
@@ -315,7 +319,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			}
 		}
 		setDefault("stp_port_mode", !p.STPEdge)
-		setDefault("stp_edge_port", p.STPEdge)
+		setDefault("stp_edge_port", p.STPEdge || p.STPOperEdge)
 		setDefault("lldpmed_enabled", true)
 		setDefault("port_keepalive_enabled", false)
 		setDefault("isolation", false)
@@ -326,6 +330,60 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 		table = append(table, e)
 	}
 	return table
+}
+
+// lagGroups maps each aggregate to its member ports, lowest index first.
+func lagGroups(snap *devicemodel.Snapshot) map[string][]devicemodel.Port {
+	out := map[string][]devicemodel.Port{}
+	if snap == nil {
+		return out
+	}
+	for _, p := range snap.Ports {
+		if p.LAG != "" {
+			out[p.LAG] = append(out[p.LAG], p)
+		}
+	}
+	for _, m := range out {
+		sort.Slice(m, func(i, j int) bool { return m[i].Index < m[j].Index })
+	}
+	return out
+}
+
+// lagFields are an aggregate member's keys as UniFi's own SONiC switch
+// sends them (the ECS Aggregation's inform, controller-10.6.109): every
+// member says lag_member; the lowest member carries the aggregate --
+// aggregate_num_ports, lacp_state (each member's port, speed and whether it
+// is bundled), the LACP partner's system id, and an empty
+// service_mac_table (on every aggregate's head in both ECS captures; what
+// would fill it is not known). lacp_state goes out only when the driver
+// reads LACP state, the partner only when one answered.
+func lagFields(e map[string]any, p devicemodel.Port, members []devicemodel.Port) {
+	if p.LAG == "" || len(members) == 0 {
+		return
+	}
+	e["lag_member"] = true
+	if members[0].Index != p.Index {
+		return
+	}
+	e["aggregate_num_ports"] = len(members)
+	e["service_mac_table"] = []map[string]any{}
+	var states []map[string]any
+	partner := ""
+	for _, m := range members {
+		if m.LACP != nil && partner == "" {
+			partner = m.LACP.PartnerSystem
+		}
+		states = append(states, map[string]any{"active": m.LACP != nil && m.LACP.Active, "member_port": m.Index, "speed": m.SpeedMbps})
+	}
+	for _, m := range members {
+		if m.LACP != nil {
+			e["lacp_state"] = states
+			break
+		}
+	}
+	if partner != "" {
+		e["partner_system_id"] = partner
+	}
 }
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
@@ -353,6 +411,19 @@ func macEntries(macs []devicemodel.MACEntry, withPort bool, now time.Time) []map
 	return out
 }
 
+// stpPriorityWire is the bridge priority as the claimed model reports it.
+// UniFi's SONiC switches (the ECS line) send its step, priority/4096: the
+// ECS Aggregation sends 1 at 4096 (inform-ecs-aggregation-uswf066.json) and
+// 2 at 8192 (its inform of 2026-10-31); the ECS Core shares that firmware.
+// The other switches send the priority itself (the USW-XG16: 32768).
+func stpPriorityWire(model string, priority int) int {
+	switch model {
+	case "USWF066", "USWF07D":
+		return priority / 4096
+	}
+	return priority
+}
+
 // deviceTables renders the switch-level fields derived from the snapshot.
 func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string]any {
 	m := map[string]any{}
@@ -364,7 +435,7 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 		m["stp_version"] = sys.STPMode
 	}
 	if sys.STPPriority > 0 {
-		m["stp_priority"] = sys.STPPriority // a number, as real switches send it
+		m["stp_priority"] = stpPriorityWire(desc.Model, sys.STPPriority) // a number, as real switches send it
 	}
 	if sys.STPRoot != "" {
 		m["root_switch"] = sys.STPRoot // what UniFi switches report; the topology's STP root marker
@@ -389,27 +460,49 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 				level = f.SpeedPct
 			}
 			fanOK = fanOK && f.OK
-			fans = append(fans, map[string]any{"index": i + 1, "label": f.Label, "present": true, "status": f.OK,
-				"speed": f.SpeedPct, "target_speed": f.SpeedPct, "critical_state": 0, "emergency": false})
+			target := f.TargetPct
+			if target == 0 {
+				target = f.SpeedPct
+			}
+			e := map[string]any{"index": i + 1, "label": f.Label, "present": !f.Missing, "status": f.OK,
+				"speed": f.SpeedPct, "target_speed": target, "critical_state": 0, "emergency": false}
+			if f.Direction != "" {
+				e["direction"] = f.Direction // "intake"/"exhaust", SONiC's words, which the ECS Aggregation sends as they are
+			}
+			fans = append(fans, e)
 		}
 		m["fan_level"] = level
 		m["fan_ok"] = fanOK
 		m["fan_table"] = fans
 	}
 	if len(sys.PSUs) > 0 {
-		var capW, outW float64
+		var outW float64
 		psus := make([]map[string]any, 0, len(sys.PSUs))
 		for i, p := range sys.PSUs {
-			capW += p.CapacityW
-			outW += p.OutputW
+			// The ECS Aggregation reports what a supply draws from the feed
+			// (its PSU_INFO power is the chip's input power); a supply that
+			// reports only its output gives that.
+			w := p.OutputW
+			if p.InputW > 0 {
+				w = p.InputW
+			}
+			outW += w
 			psuOK = psuOK && (!p.Present || p.OK) // an empty slot is not a fault
 			idx := i + 1
 			if n, err := strconv.Atoi(p.Slot); err == nil {
 				idx = n
 			}
+			caps := 0
+			if p.HotSwap {
+				caps |= psuCapHotSwappable
+			}
+			// The ECS's row, key for key, but psu_type (an unnamed
+			// vocabulary: 131072 on its 550 W supply). datecode, revision and
+			// the input-voltage range are what the ECS sends with no value.
 			e := map[string]any{"psu_idx": idx, "label": "Psu" + strconv.Itoa(idx), "present": p.Present, "online": p.OK,
-				"power": round1(p.OutputW), "watt": round1(p.OutputW), "power_capacity": p.CapacityW, "maxwatt": p.CapacityW,
-				"part_no": p.Model, "psu_stat": ""}
+				"power": round1(w), "watt": round1(w), "power_capacity": p.CapacityW, "maxwatt": p.CapacityW,
+				"part_no": p.Model, "serial_no": p.Serial, "psu_stat": "", "psu_caps": caps, "psu_eeprom_valid": p.Model != "" || p.Serial != "",
+				"revision": 0, "datecode": "", "invol_type": "", "max_invol": 0, "min_invol": 0}
 			if len(p.TempsC) > 0 {
 				temps := map[string]any{}
 				for j, t := range p.TempsC {
@@ -417,9 +510,19 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 				}
 				e["temp"] = temps
 			}
+			if len(p.FanRPM) > 0 {
+				fan := map[string]any{}
+				for j, r := range p.FanRPM {
+					fan[strconv.Itoa(j)] = r
+				}
+				e["fan"] = fan // RPM, as the ECS sends its supply's fan
+			}
 			psus = append(psus, e)
 		}
-		m["total_max_power"] = int(capW)
+		// UniFi's own non-PoE SONiC switch sends its supplies' summed draw
+		// here (116 beside 54.4 + 62.3 W; a PoE switch sends its budget),
+		// not their capacity.
+		m["total_max_power"] = int(outW)
 		m["power_consumption"] = round1(outW)
 		m["psu_table"] = psus
 	}
@@ -480,7 +583,14 @@ func deviceTables(desc inform.Descriptor, snap *devicemodel.Snapshot) map[string
 		stpChanges += p.Health.STPChanges
 		macsInUse += len(p.MACs)
 	}
+	if sys.STPTopologyChanges > 0 {
+		stpChanges = sys.STPTopologyChanges // the bridge's own count, where the device keeps one
+	}
 	m["stp_topology_change_count"] = stpChanges
+	if !sys.STPLastTopologyChange.IsZero() {
+		// as the ECS Aggregation reports it (inform-ecs-aggregation-uswf066.json)
+		m["stp_last_topology_change_timestamp"] = sys.STPLastTopologyChange.UTC().Format("2006-01-02T15:04:05")
+	}
 	m["total_mac_in_used"] = macsInUse
 	// A power device reports its outlets the way a switch reports its ports.
 	// hw_caps is load-bearing here: without the outlet bit the controller

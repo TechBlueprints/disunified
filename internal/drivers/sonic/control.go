@@ -45,7 +45,16 @@ type plan struct {
 	site    []int // SONiC VLAN ids "Allow All" tags, from EnsureVLANs
 	ops     []op
 	changed map[int]bool
-	notes   []string // refusals, logged once each by ApplyPorts
+	// own are the ports written only for the driver's own reading of the
+	// push -- the FEC and the speed a module calls for where UniFi says
+	// auto (§10.3, §10.9).
+	own map[int]bool
+	// controllerOnly plans without those writes at all (PlanPorts): the
+	// first-push hold asks whether the controller's config would change a
+	// port, and a module-driven join, planned, would leave the rejoined
+	// port's state to re-apply on every cycle.
+	controllerOnly bool
+	notes          []string // refusals, logged once each by ApplyPorts
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
@@ -56,6 +65,15 @@ func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
 	if idx > 0 {
 		pl.changed[idx] = true
 	}
+}
+
+// addOwn is add for a write the controller did not ask for (plan.own).
+func (pl *plan) addOwn(idx int, cmd string, effect func(*swState)) {
+	pl.ops = append(pl.ops, op{cmd: "sudo " + cmd, idx: idx, effect: effect})
+	if effect != nil {
+		effect(pl.sim)
+	}
+	pl.own[idx] = true
 }
 
 func (pl *plan) note(format string, args ...any) {
@@ -71,15 +89,16 @@ func lanesOf(p devicemodel.Port) []string {
 	return []string{p.IfName}
 }
 
-// newPlan diffs desired against the collector's state without writing.
-func (c *Collector) newPlan(desired []devicemodel.PortDesired) (*plan, error) {
+// newPlan diffs desired against the collector's state without writing;
+// controllerOnly leaves out the module-driven writes (plan.controllerOnly).
+func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
 	c.mu.Unlock()
 	if snap == nil || st == nil {
 		return nil, fmt.Errorf("sonic apply: no snapshot yet")
 	}
-	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}}
+	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly}
 	for _, p := range snap.Ports {
 		pl.ports[p.Index] = p
 	}
@@ -526,9 +545,15 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 				pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+key+" description "+sshrun.ShellQuote(want), func(s *swState) { s.setField(ln, "description", want) })
 			}
 		}
-		if d.FEC != nil && *d.FEC != fecOf(pl.sim.field(ln, "fec")) {
-			if kw := fecKeyword(*d.FEC); kw != "" && !(kw == "none" && pl.sim.field(ln, "fec") == "") {
-				pl.add(d.Index, fmt.Sprintf("config interface fec %s %s", ln, kw), func(s *swState) { s.setField(ln, "fec", kw) })
+		// FEC: as pushed; where UniFi says auto (no port.N.fec), what the
+		// cage's module calls for (§10.3).
+		fec, write := d.FEC, pl.add
+		if fec == nil {
+			fec, write = pl.moduleFEC(d.Index, ln), pl.addOwn
+		}
+		if fec != nil && *fec != fecOf(pl.sim.field(ln, "fec")) {
+			if kw := fecKeyword(*fec); kw != "" && !(kw == "none" && pl.sim.field(ln, "fec") == "") {
+				write(d.Index, fmt.Sprintf("config interface fec %s %s", ln, kw), func(s *swState) { s.setField(ln, "fec", kw) })
 			}
 		}
 		// Jumbo is switch-wide in UniFi and a port MTU on SONiC: the pushed
@@ -560,6 +585,27 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 	}
 }
 
+// moduleFEC is the FEC the module in idx's cage calls for at ln's
+// configured speed (§10.3), nil for an empty cage, a module or speed the
+// table does not know, or a mode STATE_DB's supported_fecs leaves out.
+func (pl *plan) moduleFEC(idx int, ln string) *devicemodel.FEC {
+	o := pl.ports[idx].Optic
+	if o == nil || pl.controllerOnly {
+		return nil
+	}
+	speed := atoi(pl.sim.field(ln, "speed"))
+	f, ok := moduleFEC(o.MediaType, speed)
+	if !ok {
+		pl.note("port %d: no FEC known for the module %q at %d Mb/s on %s; FEC left as it is (set it in the UI to choose one)", idx, o.MediaType, speed, ln)
+		return nil
+	}
+	if sup := pl.sim.fecs[ln]; len(sup) > 0 && !sup[fecKeyword(f)] {
+		pl.note("port %d: the module %q calls for FEC %s, which %s does not support (%s); FEC left as it is", idx, o.MediaType, fecKeyword(f), ln, strings.Join(sortedSet(sup), ","))
+		return nil
+	}
+	return &f
+}
+
 func fecKeyword(f devicemodel.FEC) string {
 	switch f {
 	case devicemodel.FECRS:
@@ -581,9 +627,11 @@ func isCopper(m devicemodel.Media) bool {
 }
 
 // speed: an explicit speed is forced (autoneg off, then the speed) on every
-// lane; "auto" is autoneg on a copper port only -- a QSFP cage is set to its
-// native (highest) speed instead. A speed that would split or join a cage
-// is a breakout (breakout.go), which needs the platform's platform.json.
+// lane; "auto" is autoneg on a copper port only -- a QSFP cage holding a
+// module the table knows runs what the module runs (moduleSpeed), any other
+// is set to its native (highest) speed, or left split. A speed that would
+// split or join a cage is a breakout (breakout.go), which needs the
+// platform's platform.json.
 func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []string) {
 	want := d.SpeedMbps
 	split := len(lanes) > 1
@@ -595,6 +643,9 @@ func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []str
 					pl.add(d.Index, fmt.Sprintf("config interface autoneg %s enabled", ln), func(s *swState) { s.setField(ln, "autoneg", "on") })
 				}
 			}
+			return
+		}
+		if pl.moduleSpeed(p, d, lanes) {
 			return
 		}
 		if split {
@@ -610,7 +661,7 @@ func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []str
 		}
 	}
 	if parent, pp, ok := pl.sim.platformCage(p.Index); ok && len(pp.BreakoutModes) > 0 {
-		pl.breakoutSpeed(p, d, want, parent, pp)
+		pl.breakoutSpeed(p, d, laneCfg{speed: want}, parent, pp, pl.add)
 		return
 	}
 	serdes := 0
@@ -639,6 +690,57 @@ func (pl *plan) speed(p devicemodel.Port, d devicemodel.PortDesired, lanes []str
 			pl.add(d.Index, fmt.Sprintf("config interface speed %s %s", ln, v), func(s *swState) { s.setField(ln, "speed", v) })
 		}
 	}
+}
+
+// moduleSpeed is "auto" on a cage holding a module the table knows
+// (§10.9): a configuration the module runs stays; any other becomes the
+// module's native one, by breakout where platform.json has the mode, else
+// as a lane speed -- the driver's own writes (plan.own), none of them in a
+// controller-only plan. It reports whether the module decided; false for
+// an empty cage or an unknown module, which keep the rule from before.
+func (pl *plan) moduleSpeed(p devicemodel.Port, d devicemodel.PortDesired, lanes []string) bool {
+	if p.Optic == nil {
+		return false
+	}
+	runs, ok := moduleRuns(p.Optic.MediaType)
+	if !ok {
+		pl.note("port %d: speed auto, and the module %q is not in the speed table; the cage is treated as empty", d.Index, p.Optic.MediaType)
+		return false
+	}
+	if pl.controllerOnly {
+		return true
+	}
+	cur := laneCfg{ports: len(lanes), speed: atoi(pl.sim.field(lanes[0], "speed"))}
+	for _, ln := range lanes[1:] {
+		if atoi(pl.sim.field(ln, "speed")) != cur.speed {
+			cur.speed = -1 // lanes apart: nothing a module runs
+		}
+	}
+	for _, r := range runs {
+		if r == cur {
+			return true
+		}
+	}
+	native := runs[0]
+	if parent, pp, ok := pl.sim.platformCage(p.Index); ok && len(pp.BreakoutModes) > 0 {
+		pl.breakoutSpeed(p, d, native, parent, pp, pl.addOwn)
+		return true
+	}
+	if native.ports != len(lanes) || (len(p.SpeedCaps) > 0 && !containsInt(p.SpeedCaps, native.speed)) {
+		pl.note("port %d: the module %q runs %v, which this cage cannot be set to without platform.json (dynamic port breakout); speed not written", d.Index, p.Optic.MediaType, runs)
+		return true
+	}
+	for _, lane := range lanes {
+		ln := lane
+		if isTrue(pl.sim.field(ln, "autoneg")) {
+			pl.addOwn(d.Index, fmt.Sprintf("config interface autoneg %s disabled", ln), func(s *swState) { s.setField(ln, "autoneg", "off") })
+		}
+		if atoi(pl.sim.field(ln, "speed")) != native.speed {
+			v := strconv.Itoa(native.speed)
+			pl.addOwn(d.Index, fmt.Sprintf("config interface speed %s %s", ln, v), func(s *swState) { s.setField(ln, "speed", v) })
+		}
+	}
+	return true
 }
 
 func containsInt(list []int, v int) bool {
@@ -688,8 +790,7 @@ func (pl *plan) stpOps(d devicemodel.PortDesired, ln string) {
 		return
 	}
 	if !pl.sim.stpFeature {
-		pl.note("port %d: BPDU guard / STP-disabled requested, but this image has no STP daemon (no FEATURE|stp); not written", d.Index)
-		return
+		return // disunified-l2d takes the port's STP settings (l2.go)
 	}
 	if bpdu != d.BPDUGuard {
 		v := map[bool]string{true: "enable", false: "disable"}[d.BPDUGuard]
@@ -730,7 +831,27 @@ func sanitizeDescription(s string) string {
 
 // ApplyPorts implements devicemodel.Controller.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
-	pl, err := c.newPlan(desired)
+	n, err := c.applyPorts(ctx, desired)
+	if err != nil {
+		return n, err
+	}
+	// The ports' STP and loop-protection settings go to disunified-l2d
+	// after the ports themselves (an aggregate the batch made is its
+	// bridge port now).
+	c.mu.Lock()
+	st := c.state
+	c.mu.Unlock()
+	if st != nil && !st.stpFeature {
+		c.l2SetPorts(desired, st)
+		if _, err := c.applyL2(ctx); err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+func (c *Collector) applyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	pl, err := c.newPlan(desired, false)
 	if err != nil {
 		return 0, err
 	}
@@ -745,19 +866,28 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		cmds = append(cmds, o.cmd)
 	}
 	cmds = append(cmds, "sudo config save -y")
-	c.Log.Printf("sonic apply (%d ports): %s", len(pl.changed), strings.Join(cmds, " ; "))
+	n := len(pl.changed)
+	for idx := range pl.own {
+		if !pl.changed[idx] {
+			n++
+		}
+	}
+	c.Log.Printf("sonic apply (%d ports): %s", n, strings.Join(cmds, " ; "))
 	if err := c.runBatch(ctx, cmds); err != nil {
-		return 0, fmt.Errorf("sonic apply (%d ports): %w", len(pl.changed), err)
+		return 0, fmt.Errorf("sonic apply (%d ports): %w", n, err)
 	}
 	c.mu.Lock()
 	c.state = pl.sim
 	c.mu.Unlock()
-	return len(pl.changed), nil
+	return n, nil
 }
 
-// PlanPorts implements devicemodel.Planner: the ports ApplyPorts would write.
+// PlanPorts implements devicemodel.Planner: the ports ApplyPorts would
+// write for the controller's config -- planned without the FEC and the
+// speed a module calls for where UniFi says auto (plan.controllerOnly),
+// which no controller setting can match.
 func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
-	pl, err := c.newPlan(desired)
+	pl, err := c.newPlan(desired, true)
 	if err != nil {
 		return nil
 	}

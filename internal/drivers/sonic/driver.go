@@ -30,6 +30,13 @@ import (
 //	             reported with native VLAN 1, an address learned there is on
 //	             VLAN 1, and the VLAN list shows 1 in its place. Pick an id
 //	             no UniFi network uses (docs/drivers/sonic.md §5.2a).
+//	l2d          off: the bridge installs nothing on the switch for spanning
+//	             tree. By default (on) an image without FEATURE|stp gets
+//	             RSTP, BPDU guard, auto edge and loop protection through
+//	             disunified-l2d -- mstpd built on the switch, its port
+//	             states mirrored into orchagent's StpOrch (docs/drivers/
+//	             sonic.md §11.5) -- and claims them, so the controller's
+//	             settings apply as on its own switches.
 //
 // Verified on SONiC 202505.1238524-ff3c0c9f6 (virtual switch, hardware SKU
 // Seastone-DX010). Control (docs/drivers/sonic.md §6: ports, VLANs, STP,
@@ -88,6 +95,13 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		return r
 	}
 	c.StateDir = strings.TrimSpace(cfg.Options["state_dir"])
+	switch v := strings.ToLower(strings.TrimSpace(cfg.Options["l2d"])); v {
+	case "", "on", "true", "yes":
+	case "off", "false", "no":
+		c.L2 = false
+	default:
+		return nil, fmt.Errorf("sonic: l2d must be on or off, got %q", v)
+	}
 	c.configHost = c.Dial
 	if err := c.loadManaged(); err != nil {
 		return nil, err

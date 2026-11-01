@@ -6,9 +6,14 @@ live results). Built 2026-10-27 on the podman driver's pattern against the
 SONiC virtual switch (`202505.1238524-ff3c0c9f6`, hardware SKU
 `Seastone-DX010`, L2 preset), adopted as `USWF07D`; the control features
 verified live on that build except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live) and SNMP (not pushed with the site's SNMP off); syslog verified live once the site's remote logging was switched on (`syslog.remote.*`, 2026-10-27); §7.5's four are fixture-tested
-only; no hardware yet. The lab session's real pushes are
+only. The lab session's real pushes are
 `docs/fixtures/controller-10.6.106/replies-sonic.ndjson`, replayed with
-control on in `TestReplaySonicLabSession`.
+control on in `TestReplaySonicLabSession`. **The DX010 arrived 2026-10-31**
+(build `202505.1238526-ff3c0c9f6`, the VS's commit; adopted, placed);
+`docs/drivers/sonic.md` §10 is what its first run fixed, and
+`docs/fixtures/sonic-202505.1238526-ff3c0c9f6/collect.txt` is its capture
+(`hardware_test.go`; the control tests stay on the VS capture, and the
+DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
 
 - **One exec per poll: `python3 -` with `collect.py` on stdin**, reading
   Redis through `swsscommon.SonicV2Connector(use_unix_socket_path=True)` as
@@ -23,7 +28,11 @@ control on in `TestReplaySonicLabSession`.
 - **Speeds are Mb/s** (`100000` = 100G) in CONFIG and APPL. STATE_DB's
   `speed` is `4294967295` on the VS (and the CLI prints `4294967.3G`): never
   read it. The VS leaves `supported_speeds` empty and `fec` `N/A`, so speed
-  caps fall back to the configured speed and FEC is unknown.
+  caps fall back to the configured speed and FEC is unknown. The DX010
+  fills them: `supported_speeds 40000,100000`, `supported_fecs none,rs`,
+  `fec rs` on a linked port (absent on an empty cage), and the SAI FEC
+  codeword counters. Its `ASIC_TEMPERATURE_INFO` reads all zeros (the
+  board's `TEMPERATURE_INFO` has the ASIC sensor); PSU `max_power` is 900.
 - **The L2 preset's CONFIG_DB PORT has no `mtu`, `fec` or `description`**;
   MTU comes from APPL_DB (9100). A missing CONFIG field is the default, not
   an error.
@@ -58,6 +67,20 @@ control on in `TestReplaySonicLabSession`.
 - **eth0 is the OOB port** (`OOBInterfaces`); with the bridge dialling it the
   loop warns. Its `Up` is **carrier** (`operstate == "UP"` or `LOWER_UP`),
   never the admin `UP` flag: an unplugged port is admin UP, NO-CARRIER.
+  `AdminDown` is the missing `UP` flag: the DX010's eth0 is cabled but taken
+  down on purpose (it shares the system MAC with every Vlan interface, and
+  on the LAN beside the in-band address it cost 20--40 % of the uplink's
+  packets) and keeps its last lease; the loop does not warn about that
+  address (§10.6). **`ip link set eth0 down` does not survive a reboot**:
+  after one, with eth0 cabled to a disabled port, dhclient re-applied its
+  recorded lease minutes after boot -- `dynamic` address plus a `linkdown`
+  default route with no metric that beat Vlan4094's metric 20
+  (`ignore_routes_with_linkdown=0`), black-holing everything off the LAN.
+  The unit now has `config interface ip add eth0 169.254.1.1/16`
+  (MGMT_INTERFACE: no DHCP on eth0 ever), and the loop does not warn about
+  an IPv4 link-local OOB address without carrier (with carrier: the
+  "connected" note). Fixture: `collect-20261101.txt`; the sanitiser keeps
+  169.254/16.
 - **`DHCP` describes the address the bridge dials** (`Collector.Dial`, the
   host of the `ssh` target as given, resolved each poll): true only if that
   address is `dynamic` in `ip -j addr`, or sits on eth0 with no
@@ -147,6 +170,16 @@ control on in `TestReplaySonicLabSession`.
   soft`), not as a `cmd` (10.6.106, build 1238524, 2026-10-27); the session
   handles it like the reboot cmd: `sudo reboot` (verified live: back in
   ~2 min, the bridge reconnected); UniFi's Restart is never emulated.
+  **The reboot can take the SSH session down before `sudo reboot`
+  returns** (DX010, 2026-11-01, with disunified-l2d running: the switch went
+  down 9 s after the request and the call hit the 90 s apply deadline,
+  logged as `reboot: context deadline exceeded`). A session that drops
+  after the command was sent (`sshrun.SessionDropped`: the channel closing
+  without an exit status, a reset or closed connection, the deadline) is
+  the reload under way: logged, reported as `reboot: switch reload
+  issued`, and the dead connection closed so the next collect dials
+  afresh. Dial and session-open errors and a non-zero exit stay errors
+  (the command was never sent, or refused).
 - **The reported address follows the dial target.** The informs' `ip` /
   `connect_request_ip` came from the configured target at start and stayed
   stale after a move (the controller showed the old address). The loop now
@@ -191,7 +224,11 @@ control on in `TestReplaySonicLabSession`.
   under `set -e` that killed every later batch until the LAG went. The
   PortChannel moves by `hset 'PORTCHANNEL|…' mtu` and each member's own
   `hset 'PORT|<member>' mtu` with it (APPL_DB follows, probed); a member
-  whose PortChannel already runs the wanted MTU is satisfied.
+  whose PortChannel already runs the wanted MTU is satisfied. **The loop's
+  first-push hold leaves the MTU out** (`withoutMTU`, Clint 2026-10-31,
+  §10.2): the DX010's ports ran SONiC's 9100 against a new device's jumbo
+  off and the hold never released; jumbo follows UniFi from the first push
+  like NTP and the hostname.
 - **Address-move guards:** the dialled address must be static, in-band
   (Vlan/Ethernet/PortChannel/Loopback) and in CONFIG_DB (VLAN_INTERFACE,
   INTERFACE, PORTCHANNEL_INTERFACE -- added to `cfg_mgmt` -- or
@@ -202,6 +239,32 @@ control on in `TestReplaySonicLabSession`.
 - **Write budget:** the driver implements `devicemodel.ApplyBudget` (90 s);
   other drivers get the collect budget unless `control.apply_timeout` is
   set.
+- **NTP is sourced from the in-band interface (§10.6).** SONiC's
+  `NTP|global src_intf` comes from `init_cfg.json` as `eth0`;
+  `chrony.conf.j2` writes `bindacqdevice <src_intf>` only while that
+  interface has an address in its CONFIG_DB table, so once eth0 had one
+  chrony bound to the dead port (every source `^?`). With NTP managed, the
+  driver sets `sonic-db-cli CONFIG_DB hset 'NTP|global' src_intf <iface>`
+  (no CLI on 202505; hostcfgd regenerates chrony.conf) to the interface
+  carrying the dialled address when its address is in an in-band CONFIG_DB
+  table (`ntpSource`); never when `NTP|global` is absent or the bridge
+  dials eth0. `collect.py` reads it as `cfg_ntp_global` (captures before
+  2026-11-01 lack it; the parser treats that as absent).
+- **chrony's boot hook leaves every source offline (§10.6).** Two seconds
+  after chronyd starts, a hook runs `chronyc onoffline` -- before Vlan4094
+  and FRR's static default exist (~30 s later) -- and nothing runs it
+  again (SONiC's `/etc/network/if-up.d/chrony` fires for ifupdown
+  interfaces only). `collect.py` reads `chronyc -n -c sources` (CSV,
+  reach in octal) and `chronyc -n activity` (the text form: "N sources
+  online/offline"), read-only as admin. **Decide on `activity`**: in
+  `sources` an offline source is `?` with reach 0, the same as an online
+  one not yet polled (right after `onoffline`). With NTP managed and
+  unchanged in that apply, servers configured, the source interface with
+  carrier and 0 online / >0 offline, `chronyNudge` runs `sudo chronyc
+  onoffline` once per collect (guarded by the snapshot pointer), logged
+  once per episode, never counted as a setting. Fixtures, real:
+  `chrony-synced.txt`, `chrony-offline.txt` (`sudo chronyc offline`),
+  `chrony-after-onoffline.txt`.
 - **NTP/syslog hostnames are pinned.** SONiC takes addresses only, and a
   pool answers a different one on every lookup: re-resolving each push
   churned `ntp add <new>; ntp del <old>` every cycle (live). The first
@@ -210,6 +273,19 @@ control on in `TestReplaySonicLabSession`.
   stays configured; it is re-resolved when the address is gone from the
   switch (by hand, or at a bridge start) or the hostname left and came back.
   A name that does not resolve is logged once and skipped.
+- **`/etc/sonic/snmp.yml` re-adds communities (§10.1).** The snmp
+  container's `start.sh` runs `snmp_yml_to_configdb.py`, which adds every
+  community the file names (`snmp_ro|rwcommunity`, `…communities`) to
+  CONFIG_DB on every start, and `config snmp community add|del` restart
+  that container; every image ships `snmp_rocommunity: public` there and
+  `/etc/sonic` survives `sonic_installer`. A CONFIG_DB delete alone came
+  straight back (live on the DX010: del + save every ~80 s). `collect.py`
+  prints the file's names (`snmp_yml`), `System.SNMPCommunities` includes
+  them, and the plan drops the unwanted ones from the file first (`bash -s
+  -- disunified-snmp-yml`: PyYAML, other keys kept -- the importer exits 1
+  without `snmp_location` --, temp file + `os.replace`, names on stdin).
+  The FixtureRunner re-imports the file on every `config snmp community`
+  call (`SNMPStart`), so a wrong order fails the idempotence check.
 - **SNMP needs the site's SNMP setting on to be pushed.** Enabling SNMP on
   the device (location/contact) only stores `snmp_location`/`snmp_contact`
   on the device record; the controller pushes `switch.snmp.*` in
@@ -221,11 +297,70 @@ control on in `TestReplaySonicLabSession`.
   202505, diffed against `SNMP|LOCATION` / `SNMP|CONTACT`; the VS default
   is `SNMP|LOCATION {Location: public}`) is not mapped yet -- capture a push
   with the site's SNMP on first.
-- **STP port settings only with `FEATURE|stp`.** `collect.py` prints
+- **RSTP and loop protection without `FEATURE|stp`: disunified-l2d
+  (`l2.go`, `l2d.py`, `bridge-stp.sh`, `disunified-l2d.service`,
+  `build-mstpd.sh`; `docs/drivers/sonic.md` §11.5) -- built 2026-11-01; the
+  mechanism verified live by hand on the DX010 the same night (root port,
+  ASIC states, flush, BPDU guard, auto edge, loop protection, teardown) and
+  the driver's own path after a deploy; on by default, `options.l2d: off` opts
+  out.** l2d keeps mstpd's settings by reconciling against mstpd's own JSON
+  report every 2 s, never on a reload signal alone: the driver writes the
+  config twice per push (bridge, then ports) and a reload signal during a
+  sync used to be lost (a down port's BPDU guard never reached mstpd, live). Live facts: tcpdump shows the trapped BPDUs tagged 4094 and mstpd
+  parses them anyway; a transient unit holding mstpd in its cgroup cannot be
+  started again under the same name; `docker rmi` needs the `name@digest`
+  form. Facts that shape it, from the 202505 source: StpOrch
+  creates a SAI STP object per instance id on first use and a VLAN mapped into
+  one blocks every port without a state there, so port states go first (ASIC_DB
+  `STP_PORT` count checked) and the VLAN after; deleting a VLAN removes every
+  port state of its instance, so **one instance per VLAN, id = VLAN id**; a
+  port-state key for a port orchagent does not know stops that queue for good
+  (`return`), so only APPL_DB+STATE_DB ports are written and stale keys are
+  dropped with a plain `Table` delete. mstpd is built on the switch in an
+  alpine container (static; no libtool, or `-static` links musl's loader);
+  the kernel hook must exist before `stp_state 1` or the kernel runs its own
+  STP; `COPP_TRAP|stp` (`always_enabled`) traps BPDUs and goes with STP off.
+  A first enable is armed with a 180 s dead-man timer the driver cancels over
+  a fresh connection. Loop protection is `switch.port.N.keepalive`; `ld_mode`
+  is a forced-speed key, not loop protection.
+- **STP port settings only with `FEATURE|stp`** (the PVST path; without it
+  disunified-l2d takes them, above). `collect.py` prints
   `cfg_storm` (`PORT_STORM_CONTROL`) and `platform_json`: `no`, or
   platform.json's `interfaces` block reduced to each parent's `index`,
   `lanes` and `breakout_modes` (older captures say `yes`).
-- **Breakout (`breakout.go`) -- built 2026-10-27, HARDWARE-UNTESTED.** A
+- **FEC follows the module where UniFi says auto (§10.3, `optic.go`).** A
+  push without `port.N.fec` gets the FEC the cage's module calls for at the
+  interface's configured speed (`moduleFEC`, by xcvrd's compliance name),
+  within STATE_DB `supported_fecs`; an empty cage or an unknown module is
+  left alone with a note. Those writes are `plan.own`, and `PlanPorts`
+  plans without them (`plan.controllerOnly`), so the first-push hold and
+  fresh-port withholding never wait on something no controller setting can
+  match. Live fact: the DX010's 100G CWDM4 uplink stayed down until RS was
+  set by hand.
+- **Speed "auto" follows the module too (§10.9, `moduleSpeed`,
+  `moduleRuns`).** With no manual speed, a cage holding a known module
+  keeps a configuration (ports x lane speed) the module runs and otherwise
+  takes its native one: a breakout to the mode with that many ports that
+  runs that speed (`breakoutSpeed` now takes a `laneCfg` and a writer), else
+  a lane speed. xcvrd's SFF-8636 info has no "far end broken out" field, so
+  a code that fits a straight cable and a breakout (CR4/CA-25G-L, AOC/ACC,
+  SR4) runs both and keeps a split made for it. An empty cage or an unknown
+  module keeps the old rule (split stays split; unsplit at native speed).
+  The controller-only plan must skip these writes **entirely**, not just
+  leave them uncounted: a planned join leaves the rejoined port admin down
+  and VLAN-less until the plan's own startup, which would count as a change
+  on every cycle and hold the first push for good (the mutation is tested).
+  A planned breakout also forgets STATE_DB's `supported_fecs` for the cage
+  (read at the old speed). Live facts (DX010, 2026-11-01, by hand): `config
+  interface speed` 40000/100000 and a breakout to 4x25G and back, each
+  without a swss/syncd restart, Ethernet0 unaffected; an empty cage split
+  through UniFi stays split on auto (no module, no opinion).
+- **The optic's name is its compliance code (§10.4).** xcvrd stores an
+  SFF-8636 module's `specification_compliance` as Python's `str()` of a
+  dict; `complianceName` parses it (`'Extended Specification Compliance'`
+  when the 10/40G code says Extended). UniFi's own SONiC switch reports
+  the same string (`100G CWDM4`) as `sfp_compliance`.
+- **Breakout (`breakout.go`) -- built 2026-10-27; 4x25G split and the join back verified live on the DX010 2026-11-01 (no swss/syncd restart, the uplink unaffected).** A
   cage speed its current `BREAKOUT_CFG` mode does not run picks the mode
   that runs it (its default speed preferred): DX010 100G/40G `1x100G[40G]`,
   50G `2x50G`, 25G/10G `4x25G[10G]`; a speed the mode runs is a lane-speed
@@ -262,7 +397,7 @@ control on in `TestReplaySonicLabSession`.
   `config save -y` (hostcfgd sets the Linux hostname). SONiC's YANG caps
   the whole name at 63 characters, not per label. Verified live on the VS
   (`docs/drivers/sonic.md` §6.6).
-- **Locate (`locate.go`) -- HARDWARE-UNTESTED.** No LED in the `config`
+- **Locate (`locate.go`) -- verified live on the DX010 2026-11-01 (LED toggles ~1/s, green after).** No LED in the `config`
   CLI; the platform API's `Chassis.set_status_led("off"|"green")` (DX010:
   `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`) returns False
   on failure, so the command exits on its result. Toggled once a second
@@ -270,8 +405,33 @@ control on in `TestReplaySonicLabSession`.
   `FileNotFoundError` (no `/etc/sonic/vs_chassis_metadata.json`): logged
   once per run, then report-only. pmon's system-health may set the LED
   too. `Start` also checks `config clock timezone` and `config hostname`.
+- **LACP and the hardware tables (§11.4, `hardware.go`, 2026-11-01).**
+  `collect.py`'s later sections (`laterSections`: older captures lack
+  them) are `state_lag_member` (STATE_DB `LAG_MEMBER_TABLE`, tlm_teamd's
+  copy of `teamdctl <pc> state dump` -- no `docker exec`), `crm`
+  (COUNTERS_DB `CRM:STATS`) and `hwmon` (sysfs chips: name, i2c device,
+  `*_input`/`*_label`). A member is active when link up, `runner.selected`,
+  `runner.aggregator.selected` and the partner's SYNC bit (0x08);
+  `00:00:00:00:00:00` is no partner. Fans are one row per drawer
+  (`Fan<N>`, mean of the rotors, `direction` as thermalctld says it); a
+  supply's fan belongs to the supply. Community psud keeps the **output**
+  power and one temperature; the ECS reports the **input** power, so the
+  supply's PMBus chip is read too (`psuChips`: DX010 `PSU-1` = `10-005a`,
+  `PSU-2` = `11-005b`, from the platform's `psu.py`; hwmon numbers move
+  across boots). The FDB capacity is CRM used + available (8196 on the
+  DX010). The shapes are held to the ECS's inform
+  (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`); nothing read
+  off the ECS itself is kept in the tree (Clint, 2026-11-01: no text or code
+  copied from it). teamd's records in the tests are upstream SONiC's own
+  test data (`docs/fixtures/sonic-utilities-202505/`, Apache-2.0).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
-  rewritten too (their EUI-64 half is a real MAC). The FDB keys put a MAC
+  rewritten too (their EUI-64 half is a real MAC). A hardware capture also
+  carries serials (chassis, PSUs, optics), the LLDP neighbour's system name
+  (a site device name: `neighbor-N`) and the bridge's authorized_keys block
+  (the site's public keys: `<type> SCRUBBEDKEY<N> key-N`); the communities
+  of `cfg_snmp` and `snmp_yml` share one `community-N` mapping. The FDB keys put a MAC
   right after `Vlan4094:`; the MAC pattern must not refuse a preceding `:`.
   The capture's own `version` section keeps the build host string from
-  `sonic_version.yml` (a CI host, not site data).
+  `sonic_version.yml` (a CI host, not site data). The switch's own LLDP
+  name becomes `host-1.example.net` once a DNS domain is set (it is the
+  FQDN then).

@@ -13,11 +13,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -264,6 +266,25 @@ func (t *SSH) Run(ctx context.Context, command string, stdin string) (string, er
 		return stdout.String(), fmt.Errorf("%s: %w: %s", firstWords(command, 6), err, Truncate(strings.TrimSpace(stderr.String()), 300))
 	}
 	return stdout.String(), nil
+}
+
+// SessionDropped reports whether err is Run's error for a command that was
+// sent and whose session then went away -- the connection closed or reset,
+// the channel closed without an exit status, or the deadline passed while
+// it ran -- as when the command reboots the host and takes sshd down
+// before it returns. Errors before the command was sent (dial, handshake,
+// keys, opening the session) and a command that exited non-zero are not.
+func SessionDropped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if m := err.Error(); strings.HasPrefix(m, "ssh ") || strings.HasPrefix(m, "known_hosts ") {
+		return false // never sent: ssh dial/handshake/session/agent/key
+	}
+	var missing *ssh.ExitMissingError
+	return errors.As(err, &missing) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 
 // Close drops the connection.

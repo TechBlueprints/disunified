@@ -205,6 +205,10 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 			}
 		}
 	}
+	setLACP(out, db["state_lag_member"])
+	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
+		l2Ports(out, db)
+	}
 	return out
 }
 
@@ -389,11 +393,14 @@ func neighborOf(f map[string]string) *devicemodel.Neighbor {
 // only; nothing on the VS).
 func opticOf(x, d map[string]string) *devicemodel.Optic {
 	o := &devicemodel.Optic{Vendor: strings.TrimSpace(x["manufacturer"]), Part: strings.TrimSpace(x["model"]), Serial: strings.TrimSpace(x["serial"])}
-	for _, k := range []string{"specification_compliance", "type"} {
-		if known(x[k]) {
-			o.MediaType = strings.TrimSpace(x[k])
-			break
-		}
+	if known(x["vendor_rev"]) {
+		o.Revision = strings.TrimSpace(x["vendor_rev"])
+	}
+	// The compliance code names the module ("100G CWDM4"), as UniFi's own
+	// SONiC switches report it; the form factor ("QSFP28 or later") only
+	// when no code does.
+	if o.MediaType = complianceName(x["specification_compliance"]); o.MediaType == "" && known(x["type"]) {
+		o.MediaType = strings.TrimSpace(x["type"])
 	}
 	if t, ok := atof(d["temperature"]); ok {
 		o.TempC, o.HasDOM = t, true
@@ -559,8 +566,9 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 				sys.MgmtMAC = hw.String()
 			}
 			// Up is carrier, not the admin flag: an unplugged management
-			// port is admin UP, NO-CARRIER.
-			sys.OOBInterfaces = append(sys.OOBInterfaces, devicemodel.OOBInterface{Name: "eth0", Up: a.carrier(), IP: v4})
+			// port is admin UP, NO-CARRIER. A port taken down on purpose
+			// (`ip link set eth0 down`) has no UP flag and keeps its address.
+			sys.OOBInterfaces = append(sys.OOBInterfaces, devicemodel.OOBInterface{Name: "eth0", Up: a.carrier(), IP: v4, AdminDown: !a.hasFlag("UP")})
 		}
 	}
 	addrRank := func(a devicemodel.IfAddress) int {
@@ -570,6 +578,9 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 		return rank(a.Iface)
 	}
 	sort.SliceStable(sys.Addresses, func(i, j int) bool { return addrRank(sys.Addresses[i]) < addrRank(sys.Addresses[j]) })
+	if len(sys.Addresses) > 0 {
+		sys.IPv6 = ipv6Of(addrs, sys.Addresses[0].Iface)
+	}
 
 	// The default gateway: the default route with the lowest metric whose
 	// interface has carrier (a stale DHCP route stays on a down eth0).
@@ -630,30 +641,22 @@ func buildSystem(db map[string]table, sec map[string]string, addrs []ipAddr, rou
 		}
 		sys.SyslogHosts = append(sys.SyslogHosts, h)
 	}
+	// A community snmp.yml names is configured too: the snmp container
+	// imports it into CONFIG_DB at its next start (§10.1).
 	sys.SNMPCommunities = keyNames(db["cfg_snmp"], "SNMP_COMMUNITY|")
+	if yml, _ := snmpYmlNames(sec["snmp_yml"]); len(yml) > 0 {
+		for _, n := range sys.SNMPCommunities {
+			yml[n] = true
+		}
+		sys.SNMPCommunities = sortedSet(yml)
+	}
 
-	// Platform (pmon; hardware only -- absent or N/A on the VS).
-	fans := db["fan"].byName("|")
-	for _, name := range sortedKeys(fans) {
-		f := fans[name]
-		if !isTrue(f["presence"]) {
-			continue
-		}
-		sys.Fans = append(sys.Fans, devicemodel.Fan{Label: name, SpeedPct: atoi(f["speed"]), OK: isTrue(f["status"])})
-	}
+	// Platform (pmon; hardware only -- absent or N/A on the VS): fan
+	// modules, and the supplies with their own chip's readings (hardware.go).
 	psus := db["psu"].byName("|")
-	for _, name := range sortedKeys(psus) {
-		f := psus[name]
-		p := devicemodel.PSU{Slot: name, Model: f["model"], Present: isTrue(f["presence"]), OK: isTrue(f["status"])}
-		if !known(p.Model) {
-			p.Model = ""
-		}
-		p.OutputW, _ = atof(f["power"])
-		if t, ok := atof(f["temp"]); ok {
-			p.TempsC = []float64{t}
-		}
-		sys.PSUs = append(sys.PSUs, p)
-	}
+	sys.Fans = fanModules(db["fan"].byName("|"), psus)
+	sys.PSUs = powerSupplies(psus, meta["platform"], db["hwmon"])
+	sys.MACTableCapacity, sys.MACTableUsed = fdbCapacity(db["crm"])
 	temps := db["temp"].byName("|")
 	for _, name := range sortedKeys(temps) {
 		f := temps[name]

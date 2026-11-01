@@ -370,6 +370,10 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if mac := serviceMAC(s.snap, s.desc.MAC); mac != "" {
 			m["service_mac"] = mac
 		}
+		if s.snap != nil && len(s.snap.System.IPv6) > 0 {
+			m["ipv6"] = s.snap.System.IPv6 // the management interface's, "<address>/<prefix>", as UniFi switches send them
+		}
+		m["displayable_version"] = displayableVersion(s.desc.Version)
 		// lldp_table is always sent, empty when there is no neighbour: that
 		// is what real devices do (a USP-PDU-Pro on 10.6.106 sends []), and
 		// an absent key reads as a device that does not speak LLDP at all.
@@ -409,6 +413,23 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		return nil // unreachable: only JSON-safe values above
 	}
 	return b
+}
+
+// displayableVersion is the version as the UI names it: a UniFi version
+// drops its build number ("4.0.1.995" -> "4.0.1", the ECS Aggregation's
+// pair); any other device's own version string ("4.26.14M",
+// "202505.1238526-ff3c0c9f6") is already what it calls itself.
+func displayableVersion(v string) string {
+	parts := strings.Split(v, ".")
+	if len(parts) != 4 {
+		return v
+	}
+	for _, p := range parts {
+		if _, err := strconv.Atoi(p); err != nil || p == "" {
+			return v
+		}
+	}
+	return strings.Join(parts[:3], ".")
 }
 
 // informResponse is the controller's reply. mgmt_cfg is newline-separated

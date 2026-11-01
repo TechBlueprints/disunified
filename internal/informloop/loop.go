@@ -735,6 +735,8 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 		}
 		d.BPDUGuard = p.BPDUGuard
 		d.STPEdge = !p.STPPortMode
+		d.STPEdgeMode = p.STPEdge
+		d.LoopProtect = p.Keepalive
 		switch p.OpMode {
 		case "aggregate":
 			d.LAG = p.LAG
@@ -1154,7 +1156,7 @@ func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bo
 	if !ok {
 		return false
 	}
-	changed := planner.PlanPorts(desired)
+	changed := planner.PlanPorts(withoutMTU(desired))
 	if len(changed) == 0 {
 		return false
 	}
@@ -1166,6 +1168,21 @@ func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bo
 		l.cfg.OnHeld(l.session.Snapshot())
 	}
 	return true
+}
+
+// withoutMTU is desired with every port's MTU left alone, for the first-push
+// hold and the fresh-port withholding. Jumbo is a device-wide setting in
+// UniFi, like NTP and the hostname, which follow the controller from the
+// first push; the hold protects a port's own config (state, VLANs). A port
+// MTU in the plan held a new SONiC switch for good: its ports run 9100
+// against a new device's jumbo off (1500), and nothing the seed writes
+// could match it (docs/drivers/sonic.md §10.2).
+func withoutMTU(desired []devicemodel.PortDesired) []devicemodel.PortDesired {
+	out := append([]devicemodel.PortDesired(nil), desired...)
+	for i := range out {
+		out[i].MTU = 0
+	}
+	return out
 }
 
 // holdInitialOutletPush keeps the first outlet push of this run from
@@ -1215,7 +1232,7 @@ func (l *Loop) withholdFreshPorts(desired []devicemodel.PortDesired) []devicemod
 		return desired
 	}
 	wouldChange := map[int]bool{}
-	for _, idx := range planner.PlanPorts(desired) {
+	for _, idx := range planner.PlanPorts(withoutMTU(desired)) {
 		wouldChange[idx] = true
 	}
 	out := desired[:0:0]
@@ -1495,15 +1512,22 @@ func (r *recorder) Close() {
 // address on an OOB port it finds the switch's IP behind one UniFi switch and
 // its LLDP identity behind another, and never places it in the topology
 // (no Uplink, no Parent Device). An OOB port that is merely cabled is a
-// milder risk (a second LLDP identity) and gets a note.
+// milder risk (a second LLDP identity) and gets a note. An address on a
+// port taken down on purpose answers nowhere and is not warned about, nor
+// is an IPv4 link-local one (169.254/16, the rescue address for a laptop on
+// the jack: it names nothing on the LAN), which is treated as no address
+// (docs/drivers/sonic.md §10.6).
 func (l *Loop) warnOOB(snap *devicemodel.Snapshot) {
 	var msgs []string
 	for _, o := range snap.System.OOBInterfaces {
+		routable := o.IP != "" && !isLinkLocal(o.IP)
 		switch {
 		case o.IP != "" && o.IP == l.cfg.DeviceHost:
 			msgs = append(msgs, fmt.Sprintf("!!! the bridge reaches this switch through its out-of-band management port %s (%s). UniFi expects the management address in-band, behind the uplink; the controller will show no Uplink/Parent and will not place the switch in the topology. Move the address to a VLAN interface and point the bridge at it (docs/adding-a-device.md)", o.Name, o.IP))
-		case o.IP != "":
+		case routable && (o.Up || !o.AdminDown):
 			msgs = append(msgs, fmt.Sprintf("!!! out-of-band management port %s carries address %s; the controller may locate the switch behind that port instead of its uplink. Prefer an in-band management address (docs/adding-a-device.md)", o.Name, o.IP))
+		case o.Up && o.IP != "":
+			msgs = append(msgs, fmt.Sprintf("NOTE: out-of-band management port %s is connected, with only a link-local address (%s); keep LLDP off on it so the controller sees one identity for this switch", o.Name, o.IP))
 		case o.Up:
 			msgs = append(msgs, fmt.Sprintf("NOTE: out-of-band management port %s is connected but addressless; keep LLDP off on it so the controller sees one identity for this switch", o.Name))
 		}
@@ -1516,6 +1540,12 @@ func (l *Loop) warnOOB(snap *devicemodel.Snapshot) {
 	for _, m := range msgs {
 		l.cfg.Logger.Printf("[%s] %s", l.desc.MAC, m)
 	}
+}
+
+// isLinkLocal: an IPv4 link-local address (169.254/16).
+func isLinkLocal(ip string) bool {
+	p := net.ParseIP(ip)
+	return p != nil && p.To4() != nil && p.IsLinkLocalUnicast()
 }
 
 var authKeyRe = regexp.MustCompile(`authkey=[0-9a-fA-F]{32}`)

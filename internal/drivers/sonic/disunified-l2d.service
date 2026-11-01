@@ -1,0 +1,17 @@
+# Installed by the disunified bridge's sonic driver (docs/drivers/sonic.md 11.5).
+[Unit]
+Description=disunified spanning tree and loop protection (mstpd, StpOrch glue)
+After=swss.service
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/sbin/disunified-l2d
+ExecReload=/bin/kill -HUP $MAINPID
+# Stopping leaves mstpd running and the ASIC as it is; the next start adopts
+# both, so a restart never runs the LAN without spanning tree. Turning STP off
+# is the controller's setting, or `disunified-l2d --teardown`.
+KillMode=process
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

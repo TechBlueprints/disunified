@@ -152,3 +152,35 @@ func TestParseSyslogRemote(t *testing.T) {
 		t.Errorf("remote logging off must leave no host, got %v", off.SyslogHosts)
 	}
 }
+
+// The ECS Aggregation's push (Ubiquiti's own SONiC switch, which claims STP,
+// BPDU guard, auto edge and loop protection) carries the spanning-tree and
+// loop-protection keys the controller withholds from a device that does not
+// claim them.
+func TestParseECSSpanningTreeAndLoopProtection(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-aggregation.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if !c.STP.Set || !c.STP.Enabled || c.STP.Version != "rstp" || c.STP.Priority != 8192 {
+		t.Errorf("stp = %+v, want enabled rstp 8192", c.STP)
+	}
+	edge := map[string]int{}
+	for _, idx := range c.PortIndexes() {
+		p := c.Ports[idx]
+		edge[p.STPEdge]++
+		if !p.STPPortMode || p.BPDUGuard || p.Keepalive {
+			t.Errorf("port %d = port_mode %v bpdu_guard %v keepalive %v; the capture has every port enabled/disabled/disabled", idx, p.STPPortMode, p.BPDUGuard, p.Keepalive)
+		}
+	}
+	if edge["auto"] != 46 || edge["disabled"] != 8 {
+		t.Errorf("stp.edge values = %v, want 46 auto and 8 disabled", edge)
+	}
+	if c.Ports[10].STPEdge != "disabled" || c.Ports[1].STPEdge != "auto" {
+		t.Errorf("port 1 edge %q, port 10 edge %q", c.Ports[1].STPEdge, c.Ports[10].STPEdge)
+	}
+	if !strings.Contains(string(b), "switch.port.1.keepalive=disabled") {
+		t.Error("fixture lost its keepalive keys")
+	}
+}

@@ -1,0 +1,11 @@
+@@@ chrony_sources
+^,+,192.0.2.2,2,6,177,1,-0.000066012,-0.000066012,0.004171604
+^,*,192.0.2.3,1,6,177,1,0.000009290,0.000002516,0.002929779
+@@@ chrony_activity
+200 OK
+2 sources online
+0 sources offline
+0 sources doing burst (return to online)
+0 sources doing burst (return to offline)
+0 sources with unknown address
+@@@ end

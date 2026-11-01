@@ -9,7 +9,8 @@ Handles two formats:
 
 Keeps structure and types intact; rewrites everything that identifies a site,
 a device or a person: MAC addresses (consistent mapping into 02:00:00:xx:xx:xx),
-IPv4 (192.0.2.0/24, 198.51.100.0/24) and IPv6 (2001:db8::/32) addresses,
+IPv4 (192.0.2.0/24, 198.51.100.0/24) and IPv6 (2001:db8::/32; a link-local
+address, whose EUI-64 half is a real MAC, into fe80::N) addresses,
 serials, hostnames/device names, and every secret or id: auth keys, the site
 key, password hashes, SSH public keys, SNMP communities, TURN credentials,
 UUIDs and object ids. system_cfg / mgmt_cfg text inside payloads is scrubbed
@@ -29,7 +30,9 @@ import json, re, sys, ipaddress
 
 MAC_RE = re.compile(r'\b([0-9a-f]{2}[:.-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b', re.I)
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
-IP6_RE = re.compile(r'\b(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{0,4}(?:/\d{1,3})?\b', re.I)
+# Any run of hex digits and colons with at least two colons (so "fe80::1"
+# with its "::" matches too); ipaddress decides whether it is an address.
+IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?:/\d{1,3})?(?![0-9A-Za-z:.])')
 SERIAL_RE = re.compile(r'\b[A-Z]{3}\d{8}\b')
 UUID_RE = re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', re.I)
 HEX24_RE = re.compile(r'\b[0-9a-f]{24}\b')   # Mongo object ids (device_id, _id, site id)
@@ -69,10 +72,13 @@ def map_ip6(s):
         ip = ipaddress.ip_address(addr)
     except ValueError:
         return s
-    if ip.version != 6 or ip.is_link_local and False:
+    if ip.version != 6 or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
         return s
     if addr not in ip6s:
-        ip6s[addr] = str(ipaddress.ip_address('2001:db8::') + len(ip6s) + 1)
+        # A link-local address carries the interface's real MAC in its
+        # EUI-64 half: it gets a fe80:: number of its own.
+        base, n = ('fe80::', len([a for a in ip6s if a.lower().startswith('fe8')]) + 1) if ip.is_link_local else ('2001:db8::', len([a for a in ip6s if not a.lower().startswith('fe8')]) + 1)
+        ip6s[addr] = str(ipaddress.ip_address(base) + n)
     return ip6s[addr] + ('/' + plen if plen else '')
 
 def map_host(s):

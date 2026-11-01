@@ -45,6 +45,14 @@ type PortDesired struct {
 	StormCtrl *StormControlSpec // nil = no storm control (remove any)
 	BPDUGuard bool
 	STPEdge   bool // "STP disabled" on the port in UniFi terms: edge port, no BPDUs
+	// STPEdgeMode is the port's Edge Port setting: "auto" (edge once no BPDU
+	// arrives), "enabled" (edge from link up), "disabled" (never edge); ""
+	// when the controller did not push it. Only a driver claiming
+	// Capabilities.STPAutoEdge reads it.
+	STPEdgeMode string
+	// LoopProtect is UniFi's Loop Protection on the port; only a driver
+	// claiming Capabilities.LoopProtection reads it.
+	LoopProtect bool
 
 	LAG          int // >0: member of link aggregation group LAG (every lane of a cage joins)
 	MirrorSource int // >0: this port is a mirror destination receiving a copy of port MirrorSource's traffic
@@ -323,6 +331,7 @@ type System struct {
 	MACTableUsed     int       // entries in use
 
 	Addresses  []IfAddress       // the switch's own IPv4 addresses (management, VLAN, loopback)
+	IPv6       []string          // the management interface's IPv6 addresses with their prefix ("fe80::1/64"), global first; nil if none or unknown
 	ARP        map[string]string // IPv4 -> MAC the switch has resolved, lower-case colon form
 	GatewayMAC string            // MAC of the switch's gateway/controller next hop, "" if unknown
 	Gateway    string            // the device's own default gateway address, "" if unknown
@@ -363,6 +372,12 @@ type System struct {
 	STPMode     string // "rstp", "mstp", "stp", "none", ""
 	STPPriority int    // bridge priority, 0 if unknown
 	STPRoot     string // MAC of the root bridge (this switch's own when it is the root), "" if unknown
+	// STPTopologyChanges is the bridge's own topology-change count and
+	// STPLastTopologyChange when the last one happened, where the device
+	// keeps them (zero = not known; the presentation layer then sums the
+	// ports' changes).
+	STPTopologyChanges    int
+	STPLastTopologyChange time.Time
 
 	IGMPSnooping    map[int]bool // VLAN ID -> snooping enabled
 	NTPServers      []string
@@ -383,6 +398,10 @@ type OOBInterface struct {
 	Name string
 	Up   bool   // link up (cabled and active)
 	IP   string // configured IPv4 address, "" if none
+	// AdminDown: the interface is administratively down (taken down on
+	// purpose), so its address answers nowhere until it is brought up.
+	// False when the driver cannot tell.
+	AdminDown bool
 }
 
 // PortVLAN is a port's configured 802.1Q state.
@@ -393,22 +412,29 @@ type PortVLAN struct {
 	Allowed    []int  // trunk allowed VLANs when !AllowAll (sorted, includes native if allowed)
 }
 
-// Fan is one fan's state.
+// Fan is one fan's state: a fan module (drawer) where the device has them.
 type Fan struct {
-	Label    string
-	SpeedPct int
-	OK       bool
+	Label     string
+	SpeedPct  int
+	TargetPct int // the speed the device's fan control asks for; 0 = not reported (SpeedPct stands in)
+	OK        bool
+	Missing   bool   // the slot is empty (a module pulled); false when present or not known
+	Direction string // airflow as the device names it: "intake" (port side in) or "exhaust"; "" if unknown
 }
 
 // PSU is one power supply's state.
 type PSU struct {
 	Slot      string
 	Model     string
+	Serial    string
 	Present   bool // a supply is fitted in the slot
 	OK        bool // present and delivering power
+	HotSwap   bool // the supply can be replaced while the device runs
 	OutputW   float64
+	InputW    float64 // power drawn from the feed; 0 if the supply does not report it
 	CapacityW float64
 	TempsC    []float64 // the supply's own temperature sensors, if any
+	FanRPM    []int     // the supply's own fans, if it reports their speed in RPM
 }
 
 // MACEntry is one learned MAC address.
@@ -425,6 +451,7 @@ type Optic struct {
 	Part       string
 	Serial     string
 	MediaType  string  // vendor string, e.g. "100GBASE-CWDM4"
+	Revision   string  // the module's hardware revision, "" if unknown
 	TempC      float64 // 0 when the module has no DOM
 	VoltageV   float64
 	TxBiasMA   float64
@@ -495,15 +522,28 @@ type Port struct {
 	STPPathCost  int
 	LAG          string // aggregate the port belongs to ("Port-Channel1"), "" if none
 	LAGID        int    // numeric id of LAG, 0 if none
+	LACP         *LACP  // the member's LACP state; nil if not a member or not readable
 	MirrorFrom   int    // >0: configured as a mirror destination for that source port
 	FEC          FEC    // operating
 	FECConfig    FEC    // configured (from running-config); "" = not configured
 	BPDUGuard    bool
 	STPEdge      bool              // portfast + bpdufilter configured
+	STPOperEdge  bool              // the port runs as an edge port now (configured, or detected by auto edge)
 	StormCtrl    *StormControlSpec // nil = none configured
 	Optic        *Optic            // nil for copper or an empty cage
 	MACs         []MACEntry        // addresses learned on this port
 	Health       PortHealth        // fault and change signals (anomaly reporting)
+}
+
+// LACP is an aggregate member's LACP state as the device's LACP daemon
+// holds it.
+type LACP struct {
+	// Active: the member is bundled -- selected for its aggregate and in
+	// sync with the partner, so it carries the aggregate's traffic.
+	Active bool
+	// PartnerSystem is the partner's LACP system id (a MAC, lower-case
+	// colon form), "" when the driver cannot read it or no partner answers.
+	PartnerSystem string
 }
 
 // Outlet is one outlet on a power device. Outlets are to a PDU what ports are
@@ -652,18 +692,23 @@ func (c *Counters) Add(c2 Counters) {
 // controls the UI offers, so a driver claims only what it implements: a
 // claimed feature the driver ignores is a silent lie in the UI.
 type Capabilities struct {
-	STP           bool // switch-wide STP mode/priority
-	BPDUGuard     bool // per-port BPDU guard
-	STPPortCost   bool // per-port STP path cost is reported
-	Jumbo         bool // jumbo frames (reported and/or switchable)
-	FEC           bool // per-port forward error correction
-	LACP          bool // link aggregation (Controller honours PortDesired.LAG)
-	StormControl  bool // per-port storm control in percent
-	IGMPSnooping  bool // IGMP snooping (DeviceController honours IGMPSnooping)
-	LLDPMED       bool
-	DHCPSnooping  bool
-	PortIsolation bool
-	SNMP          bool // DeviceController honours SNMPCommunity
+	STP         bool // switch-wide STP mode/priority
+	BPDUGuard   bool // per-port BPDU guard
+	STPAutoEdge bool // per-port edge auto/enabled/disabled (PortDesired.STPEdgeMode)
+	STPPortCost bool // per-port STP path cost is reported
+	// LoopProtection: the driver honours PortDesired.LoopProtect and takes a
+	// looping port down by itself (reported as a port Fault containing
+	// "loop-protect").
+	LoopProtection bool
+	Jumbo          bool // jumbo frames (reported and/or switchable)
+	FEC            bool // per-port forward error correction
+	LACP           bool // link aggregation (Controller honours PortDesired.LAG)
+	StormControl   bool // per-port storm control in percent
+	IGMPSnooping   bool // IGMP snooping (DeviceController honours IGMPSnooping)
+	LLDPMED        bool
+	DHCPSnooping   bool
+	PortIsolation  bool
+	SNMP           bool // DeviceController honours SNMPCommunity
 	// MirrorSessions / AggregateSessions are the counts the UI is told; 0
 	// hides the feature.
 	MirrorSessions    int

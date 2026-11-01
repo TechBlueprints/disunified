@@ -315,3 +315,74 @@ func meminfo(body string) map[string]uint64 {
 	}
 	return m
 }
+
+// snmpYmlNames reads collect.py's snmp_yml section: the communities
+// /etc/sonic/snmp.yml names. A capture from before the section (the VS
+// fixtures) reads as an empty file; "error" (the file did not parse on the
+// switch) as unknown, ok false.
+func snmpYmlNames(body string) (map[string]bool, bool) {
+	out := map[string]bool{}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return out, true
+	}
+	t, err := parseTable("snmp_yml", body)
+	if err != nil {
+		return out, false
+	}
+	for k := range t {
+		out[k] = true
+	}
+	return out, true
+}
+
+// chronySource is one line of `chronyc -n -c sources` (chrony 4.3's CSV:
+// mode, state, name, stratum, poll, reach in octal, seconds since the last
+// sample, three offsets). Reach is the register of the last eight polls.
+type chronySource struct {
+	Name, State string
+	Reach       int
+}
+
+// parseChronySources reads the chrony_sources section; false when it is
+// absent or empty (an older capture, or chronyc could not reach chronyd).
+func parseChronySources(body string) ([]chronySource, bool) {
+	var out []chronySource
+	for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
+		f := strings.Split(strings.TrimSpace(line), ",")
+		if len(f) < 7 {
+			continue
+		}
+		reach, err := strconv.ParseUint(f[5], 8, 16)
+		if err != nil {
+			continue
+		}
+		out = append(out, chronySource{Name: f[2], State: f[1], Reach: int(reach)})
+	}
+	return out, len(out) > 0
+}
+
+// chronyActivity reads `chronyc -n activity` ("200 OK", "2 sources
+// online", "0 sources offline", the burst and unknown-address lines): how
+// many sources are online and offline; false when the section has neither
+// line (an older capture, or chronyc could not reach chronyd).
+func chronyActivity(body string) (online, offline int, ok bool) {
+	var on, off bool
+	for _, line := range strings.Split(body, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 || f[1] != "sources" {
+			continue
+		}
+		n, err := strconv.Atoi(f[0])
+		if err != nil {
+			continue
+		}
+		switch f[2] {
+		case "online":
+			online, on = n, true
+		case "offline":
+			offline, off = n, true
+		}
+	}
+	return online, offline, on && off
+}

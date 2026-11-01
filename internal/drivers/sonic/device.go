@@ -197,8 +197,24 @@ type deviceOp struct {
 
 // ApplyDevice implements devicemodel.DeviceController.
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
+	n, err := c.applyDevice(ctx, d)
+	if err != nil {
+		return n, err
+	}
 	c.mu.Lock()
 	st := c.state
+	c.mu.Unlock()
+	if st != nil && !st.stpFeature {
+		c.l2SetSTP(d)
+		m, err := c.applyL2(ctx)
+		return n + m, err
+	}
+	return n, nil
+}
+
+func (c *Collector) applyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
+	c.mu.Lock()
+	st, snap, dial := c.state, c.last, c.Dial
 	mNTP, mSyslog, mSNMP := copySet(c.managedNTP), copySet(c.managedSyslog), c.managedSNMP
 	pins := copyPins(c.pinned)
 	before := c.managedLocked()
@@ -220,13 +236,11 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	}
 	note := func(format string, args ...any) { notes = append(notes, fmt.Sprintf(format, args...)) }
 
-	// STP: PVST only, and only where the image has the daemon.
-	if d.STPSet {
+	// STP: an image with the community daemon (FEATURE|stp) runs PVST
+	// through `config spanning-tree`; without it disunified-l2d runs RSTP
+	// (ApplyDevice, l2.go).
+	if d.STPSet && sim.stpFeature {
 		switch {
-		case !sim.stpFeature:
-			if d.STPEnabled {
-				note("spanning tree requested, but this image has no STP daemon (no FEATURE|stp); not written")
-			}
 		case d.STPEnabled && d.STPMode == "mstp":
 			note("MSTP requested; SONiC runs PVST (per-VLAN 802.1D) only; not written")
 		default:
@@ -260,6 +274,12 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	// whoever configured it. The managed sets record what the controller
 	// last set.
 	if d.ManageNTP {
+		ntpOps := len(ops)
+		// chrony sends from NTP|global src_intf, the image's eth0 by
+		// default: the in-band interface the bridge dials instead (§10.6).
+		if src := ntpSource(snap, sim, dial); src != "" && sim.ntpGlobal != nil && sim.ntpGlobal["src_intf"] != src {
+			add("sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("NTP|global")+" src_intf "+src, "", func(s *swState) { s.ntpGlobal["src_intf"] = src })
+		}
 		want := map[string]bool{}
 		for _, h := range d.NTPServers {
 			ip, err := c.pinnedIP("ntp", h, pins, func(ip string) bool { return sim.ntp[ip] })
@@ -283,6 +303,9 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		}
 		mNTP = want
 		dropPins("ntp", d.NTPServers, pins)
+		if len(ops) == ntpOps {
+			c.chronyNudge(ctx, snap, st, dial) // an NTP write restarts chrony anyway
+		}
 	}
 	if d.ManageSyslog {
 		want := map[string]bool{}
@@ -330,9 +353,21 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 
 	// SNMP: UniFi's one read-only community is the switch's only one --
 	// the image's own (`public`) and any other go, and the site's SNMP off
-	// (no community) leaves none.
+	// (no community) leaves none. /etc/sonic/snmp.yml goes first: every
+	// `config snmp community` call restarts the snmp container, whose
+	// start imports the file's communities into CONFIG_DB again (§10.1).
+	var ymlDrop []string
 	if d.SNMPSet {
 		want := d.SNMPCommunity
+		if !sim.snmpYmlOK {
+			note("SNMP: /etc/sonic/snmp.yml could not be read on the switch; a community it names comes back at every snmp restart")
+		}
+		for _, n := range sortedSet(sim.snmpYml) {
+			if n != want {
+				ymlDrop = append(ymlDrop, n)
+				delete(sim.snmpYml, n)
+			}
+		}
 		if want != "" && !sim.snmp[want] {
 			w := want
 			add("config snmp community add "+sshrun.ShellQuote(w)+" RO", "config snmp community add <community> RO", func(s *swState) { s.snmp[w] = true })
@@ -398,9 +433,26 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			c.Log.Printf("sonic: keeping %s: %v (the bridge's NTP/syslog/SNMP ownership is held in memory)", managedFile, err)
 		}
 	}
+	changed := 0
+	if len(ymlDrop) > 0 {
+		c.Log.Printf("sonic apply switch: %s <community> x%d (/etc/sonic/snmp.yml, before the snmp restarts)", snmpYmlCommand, len(ymlDrop))
+		if _, err := c.run(ctx, snmpYmlCommand, snmpYmlScript(ymlDrop)); err != nil {
+			return 0, fmt.Errorf("sonic apply switch settings: snmp.yml: %s", redact(err.Error(), ymlDrop...))
+		}
+		changed++
+		c.mu.Lock()
+		if c.state == st {
+			next := st.clone()
+			for _, n := range ymlDrop {
+				delete(next.snmpYml, n)
+			}
+			c.state = next
+		}
+		c.mu.Unlock()
+	}
 	if len(ops) == 0 {
 		commitManaged()
-		return 0, nil
+		return changed, nil
 	}
 	cmds := make([]string, 0, len(ops)+1)
 	logged := make([]string, 0, len(ops)+1)
@@ -418,7 +470,124 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	c.state = sim
 	c.mu.Unlock()
 	commitManaged()
-	return len(ops), nil
+	return changed + len(ops), nil
+}
+
+// snmpYmlCommand rewrites /etc/sonic/snmp.yml without the communities the
+// script on stdin names (snmpYmlScript).
+const snmpYmlCommand = "bash -s -- disunified-snmp-yml"
+
+// snmpYmlScript drops the named communities from /etc/sonic/snmp.yml: from
+// the four keys snmp_yml_to_configdb.py reads, a scalar key goes, a list
+// keeps the rest, an emptied list goes. Every other key stays (the
+// importer exits 1 without snmp_location). The file is written only if
+// something changed, through a temporary file in /etc/sonic moved into
+// place. The names travel on stdin, never on a command line.
+func snmpYmlScript(drop []string) string {
+	names, _ := json.Marshal(drop) // a JSON list of strings is a Python list literal
+	var b strings.Builder
+	b.WriteString("set -e\n")
+	b.WriteString("f=/etc/sonic/snmp.yml\n")
+	b.WriteString(`[ -f "$f" ] || exit 0` + "\n")
+	b.WriteString(`sudo python3 - "$f" <<'DISUNIFIED_SNMP_YML'` + "\n")
+	b.WriteString(`import os, sys, tempfile, yaml
+path = sys.argv[1]
+drop = set(` + string(names) + `)
+with open(path) as f:
+    y = yaml.safe_load(f) or {}
+changed = False
+for k in ("snmp_rocommunity", "snmp_rocommunities", "snmp_rwcommunity", "snmp_rwcommunities"):
+    if k not in y:
+        continue
+    v = y[k]
+    if isinstance(v, list):
+        keep = [c for c in v if str(c) not in drop]
+        if len(keep) != len(v):
+            changed = True
+            if keep:
+                y[k] = keep
+            else:
+                del y[k]
+    elif v is not None and str(v) in drop:
+        del y[k]
+        changed = True
+if changed:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".snmp.yml.")
+    with os.fdopen(fd, "w") as f:
+        yaml.safe_dump(y, f, default_flow_style=False, sort_keys=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+`)
+	b.WriteString("DISUNIFIED_SNMP_YML\n")
+	return b.String()
+}
+
+// chronyNudge repairs what chrony's boot hook leaves (§10.6): it runs
+// `chronyc onoffline` two seconds after chronyd starts, before the in-band
+// route exists, so every source is marked offline -- and nothing runs it
+// again (SONiC's if-up hook fires for ifupdown interfaces only). When
+// servers are configured, the interface chrony sends from has carrier and
+// `chronyc activity` counts no source online and some offline (`sources`
+// shows an offline source as `?` with reach 0, the same as an unreachable
+// one), `sudo chronyc onoffline` (it only sets online a source that has a
+// route now) runs once per collect, logged once per episode; not a
+// setting, so not counted.
+func (c *Collector) chronyNudge(ctx context.Context, snap *devicemodel.Snapshot, st *swState, dial string) {
+	if !st.chronyKnown || len(st.ntp) == 0 || snap == nil {
+		return
+	}
+	stuck := st.chronyOnline == 0 && st.chronyOffline > 0
+	c.mu.Lock()
+	episode, done := c.chronyStuck, c.chronyNudged == snap
+	if !stuck {
+		c.chronyStuck = false
+	}
+	c.mu.Unlock()
+	if !stuck {
+		if episode {
+			c.Log.Printf("sonic: chrony: NTP sources online again (%d)", st.chronyOnline)
+		}
+		return
+	}
+	src := ntpSource(snap, st, dial)
+	if src == "" || !st.carrier[src] || done {
+		return
+	}
+	c.mu.Lock()
+	c.chronyNudged, c.chronyStuck = snap, true
+	c.mu.Unlock()
+	if !episode {
+		var names []string
+		for _, s := range st.chrony {
+			names = append(names, s.Name)
+		}
+		c.Log.Printf("sonic: chrony: every NTP source offline (%d: %s) while %s is up -- chrony's boot hook marks sources offline before the in-band route exists, and nothing marks them online again; running `sudo chronyc onoffline` once a cycle until they are online", st.chronyOffline, strings.Join(names, ", "), src)
+	}
+	if _, err := c.run(ctx, "sudo chronyc onoffline", ""); err != nil {
+		c.warnOnce("chronyc onoffline: "+err.Error(), "sonic: chrony: `sudo chronyc onoffline`: %v", err)
+	}
+}
+
+// ntpSource is the interface chrony should send from (§10.6): the one
+// carrying the address the bridge dials, when CONFIG_DB holds that address
+// in an in-band table (VLAN_INTERFACE, INTERFACE, PORTCHANNEL_INTERFACE,
+// LOOPBACK_INTERFACE) -- chrony.conf.j2 binds only to an interface whose
+// address its table holds. "" when the bridge dials eth0 (its default is
+// then right) or the address is not known.
+func ntpSource(snap *devicemodel.Snapshot, st *swState, dial string) string {
+	if snap == nil {
+		return ""
+	}
+	isDialled := map[string]bool{}
+	for _, ip := range dialAddrs(dial) {
+		isDialled[ip] = true
+	}
+	for _, a := range snap.System.Addresses {
+		if isDialled[a.IP] && st.ifaddrs[fmt.Sprintf("%s|%s/%d", a.Iface, a.IP, a.PrefixLen)] {
+			return a.Iface
+		}
+	}
+	return ""
 }
 
 // badHostname says why a name cannot be the switch's hostname, "" if it
@@ -568,9 +737,22 @@ func keysScript(lines []string) string {
 	return b.String()
 }
 
-// Reboot implements devicemodel.Rebooter (only with control.reboot).
+// Reboot implements devicemodel.Rebooter (only with control.reboot). SONiC's
+// reboot script can take the SSH session down before `sudo reboot` returns
+// (live on the DX010, 2026-11-01: the switch went down 9 s after the
+// request and the call ran into the apply deadline): a session that drops
+// once the command was sent (sshrun.SessionDropped) is the reload under
+// way, not a failure. The connection goes with the switch, so it is closed
+// and the next collect dials the rebooted switch afresh.
 func (c *Collector) Reboot(ctx context.Context) error {
 	c.Log.Printf("sonic: rebooting the switch at the controller's request")
 	_, err := c.run(ctx, "sudo reboot", "")
+	if sshrun.SessionDropped(err) {
+		c.Log.Printf("sonic: the connection dropped while `sudo reboot` ran (%v): the switch is going down", err)
+		err = nil
+	}
+	if err == nil {
+		_ = c.runner().Close()
+	}
 	return err
 }

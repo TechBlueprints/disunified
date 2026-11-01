@@ -21,7 +21,7 @@ var sonicContractOmissions = map[string]string{
 	"total_max_power":      "no PSU capacity known on the virtual switch",
 	"root_switch":          "spanning tree is not configured on the L2 preset; no root bridge to name",
 	"stp_priority":         "spanning tree is not configured on the L2 preset",
-	"mac_table_capability": "SONiC publishes no FDB capacity in the tables the driver reads",
+	"mac_table_capability": "the VS capture predates collect.py's crm section (the DX010's has it: contract_sonic_hw_test.go)",
 	"fan_level":            "pmon is empty on the virtual switch (has_fan is sent as false)",
 	"fan_table":            "pmon is empty on the virtual switch",
 	"general_temperature":  "no temperature sensor on the virtual switch (has_temperature is sent as false)",
@@ -53,15 +53,16 @@ func runContractSonic(t *testing.T, ours map[string]any) {
 		return out
 	}
 	omit := merge(contractOmissions, switchOmissions, sonicContractOmissions)
+	delete(omit, "ipv6") // read from the dialled interface (fe80:: only on the VS and on site)
 	portOmit := merge(portOmissions, sonicPortOmissions)
 	downOmit := merge(portOmit, sonicDownPortOmissions)
-	for _, ref := range []string{"inform-ecs-aggregation-uswf066.json", "inform-usw-xg16-usxg.json"} {
-		real := loadReference(t, ref)
-		compareKeys(t, "sonic "+ref+" device", real, ours, omit)
-		compareKeys(t, "sonic "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmit)
+	for _, ref := range contractReferences {
+		real := loadFixtureJSON(t, ref.path)
+		compareKeys(t, "sonic "+ref.path+" device", real, ours, omit)
+		compareKeys(t, "sonic "+ref.path+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), mergeOmissions(portOmit, ref.uplinkOmit))
 		rd := downPort(t, real, false)
 		_, optical := rd["sfp_found"]
-		compareKeys(t, "sonic "+ref+" down port", rd, downPort(t, ours, optical), downOmit)
+		compareKeys(t, "sonic "+ref.path+" down port", rd, downPort(t, ours, optical), downOmit)
 	}
 	if u, ok := ours["uplink"].(string); !ok || u == "" {
 		t.Errorf("sonic: uplink must be the management interface name (a string), got %v", ours["uplink"])

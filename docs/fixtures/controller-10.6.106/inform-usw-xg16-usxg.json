@@ -85,7 +85,7 @@
   "ip": "192.0.2.3",
   "ipv6": [
     "2001:db8::2/64",
-    "fe80::1056/64"
+    "fe80::1/64"
   ],
   "isolated": false,
   "kernel_version": "3.6.5",
@@ -205,7 +205,7 @@
         "latency_us": 0,
         "latency_us_ema": 0,
         "loss_pcm_ema": 1000,
-        "resolved": "fe80::1076",
+        "resolved": "fe80::2",
         "samples": 15524,
         "state": "unreachable",
         "type": "gateway"

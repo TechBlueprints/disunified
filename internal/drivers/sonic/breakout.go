@@ -230,6 +230,19 @@ func (s *swState) cagePorts(idx int) []string {
 // BREAKOUT_CFG records the mode. The children carry no admin_status (down)
 // and no MTU (SONiC's 9100): the driver writes the cage's intent on them.
 func (s *swState) applyBreakout(parent string, pp platformPort, idx int, children []childPort, mode string) {
+	// STATE_DB's supported_fecs was read for the old interfaces at the old
+	// speed; the new ones' come with the next collect (shared map: copied).
+	fecs := map[string]map[string]bool{}
+	for name, f := range s.fecs {
+		fecs[name] = f
+	}
+	for _, name := range s.cagePorts(idx) {
+		delete(fecs, name)
+	}
+	for _, ch := range children {
+		delete(fecs, ch.name)
+	}
+	s.fecs = fecs
 	for _, name := range s.cagePorts(idx) {
 		delete(s.port, name)
 		delete(s.members, name)
@@ -265,30 +278,35 @@ func breakoutCommand(parent, mode string) string {
 // speed the current mode runs is a lane-speed change on every lane; any
 // other is a new mode (the cage's intent is then written on the children by
 // the rest of the plan), then the lane speed when the mode's default is not
-// the one asked for (4x25G[10G] at 10G).
-func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, want int, parent string, pp platformPort) {
+// the one asked for (4x25G[10G] at 10G). want.ports, when set, also asks
+// for a mode with that many ports (a module's native configuration,
+// §10.9); write is pl.add, or pl.addOwn for the driver's own writes.
+func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, want laneCfg, parent string, pp platformPort, write func(int, string, func(*swState))) {
 	cur, ok := parseMode(pl.sim.brkout[parent])
 	if !ok {
 		pl.note("port %d: BREAKOUT_CFG has no usable mode for %s (%q); speed not written", d.Index, parent, pl.sim.brkout[parent])
 		return
 	}
-	if !containsInt(cur.speeds, want) {
+	fits := func(m brkMode) bool {
+		return containsInt(m.speeds, want.speed) && (want.ports == 0 || m.ports == want.ports)
+	}
+	if !fits(cur) {
 		var target *brkMode
 		for _, m := range pp.modes() {
-			if !containsInt(m.speeds, want) {
+			if !fits(m) {
 				continue
 			}
-			if target == nil || (m.def == want && target.def != want) {
+			if target == nil || (m.def == want.speed && target.def != want.speed) {
 				mm := m
 				target = &mm
 			}
 		}
 		if target == nil {
-			pl.note("port %d: %d Mb/s is not among the cage's breakout speeds %v; speed not written", d.Index, want, pp.speeds())
+			pl.note("port %d: %d Mb/s is not among the cage's breakout speeds %v; speed not written", d.Index, want.speed, pp.speeds())
 			return
 		}
 		if why := pl.breakoutBlocked(d, p.Index); why != "" {
-			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want, target.name, why)
+			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want.speed, target.name, why)
 			return
 		}
 		children, err := pp.children(parent, *target)
@@ -297,7 +315,7 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			return
 		}
 		idx, mode, par := p.Index, target.name, parent
-		pl.add(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
+		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
 		port := pl.ports[d.Index]
 		port.Interfaces = pl.sim.cagePorts(idx)
 		port.IfName = port.Interfaces[0]
@@ -308,11 +326,11 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 	for _, ln := range lanesOf(pl.ports[d.Index]) {
 		lane := ln
 		if isTrue(pl.sim.field(lane, "autoneg")) {
-			pl.add(d.Index, fmt.Sprintf("config interface autoneg %s disabled", lane), func(s *swState) { s.setField(lane, "autoneg", "off") })
+			write(d.Index, fmt.Sprintf("config interface autoneg %s disabled", lane), func(s *swState) { s.setField(lane, "autoneg", "off") })
 		}
-		if atoi(pl.sim.field(lane, "speed")) != want {
-			v := strconv.Itoa(want)
-			pl.add(d.Index, fmt.Sprintf("config interface speed %s %s", lane, v), func(s *swState) { s.setField(lane, "speed", v) })
+		if atoi(pl.sim.field(lane, "speed")) != want.speed {
+			v := strconv.Itoa(want.speed)
+			write(d.Index, fmt.Sprintf("config interface speed %s %s", lane, v), func(s *swState) { s.setField(lane, "speed", v) })
 		}
 	}
 }

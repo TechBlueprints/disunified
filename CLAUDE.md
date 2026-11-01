@@ -39,8 +39,13 @@ VLANs with the `native_vlan` stand-in for VLAN 1, LAG, mirror, storm
 control, jumbo, NTP, SSH keys, reboot, a static address move) were
 verified live against that build (`docs/drivers/sonic.md` §6.6) except: a forced speed change (the live 100G was already the cage's speed, so no speed command ran), the driver's own aggregate creation (live it stopped at the PortChannel MTU refusal and was finished by hand; the fixed sequence is fixture- and replay-tested), a gateway change and the undo of a move whose new address does not answer (never run live) and SNMP (not pushed with the site's SNMP off); syslog was verified live the same evening once the site's remote logging was switched on;
 the lab session's own pushes are replayed in
-`internal/informloop/replay_sonic_live_test.go`. STP is feature-gated (no
-daemon in community images), hardware-only parts wait for the unit, and
+`internal/informloop/replay_sonic_live_test.go`. Community images have no
+STP daemon, so RSTP and loop protection run through the driver's own
+disunified-l2d (mstpd built on the switch, its port states mirrored into
+orchagent's StpOrch, one STP instance per VLAN; `docs/drivers/sonic.md`
+§11.5): built 2026-11-01, verified live on the DX010 by hand and then
+through the deployed driver; on by default (`options.l2d: off` opts out);
+hardware-only parts wait for the unit, and
 time zone, hostname, locate and breakout (§7.5) are fixture-tested only.
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
@@ -81,7 +86,8 @@ reply, and the reported address following an applied move
     `*.pem`, `known_hosts`, `ssh/`); tests use
     `0123456789abcdef0123456789abcdef`, fixtures `00000000000000000000000000000001`;
   - a real IP address, subnet, DNS name or domain (use `192.0.2.0/24`,
-    `2001:db8::/32`, `example.net`);
+    `2001:db8::/32`, `example.net`); an IPv6 link-local other than
+    `fe80::N` too -- its EUI-64 half is the interface's MAC;
   - a real MAC address or serial number, even as a "sample" in a unit test
     (use `02:00:00:xx:xx:xx` / `aa:bb:cc:dd:ee:ff`, `SSJ00000000`);
   - device, site or host names, the LAN topology (which port goes where,
@@ -517,9 +523,24 @@ under "Since then".
 
 **SONiC driver merged and deployed 2026-10-27 (branch `sonic`, 30 commits,
 fast-forwarded into main).** Built and verified on a SONiC virtual-switch guest
-(`docs/drivers/sonic.md`); the guest is **shut down** until the DX010 arrives (no
-bridge runs for it; its device record stays in the controller, offline). The
-arrival-day steps are `docs/drivers/sonic.md` §3.
+(`docs/drivers/sonic.md`); the guest is **shut down** (its controller record was
+forgotten 2026-10-31). **The DX010 arrived 2026-10-31**: C0 stepping (no AVR54
+exposure), reinstalled with SONiC 202505.1238526 (the factory image kept in the
+second slot), adopted as `USWF07D` and deployed in the one container the same
+evening; the arrival-day steps are `docs/drivers/sonic.md` §3, and what the
+hardware exposed (SNMP communities re-imported from `snmp.yml`, the jumbo hold,
+FEC on a 100G link, eth0 sharing the switch MAC) is the follow-up to that run.
+Parity with a UniFi switch is planned and tracked in `docs/drivers/sonic.md`
+§11 (measured against the ECS Aggregation's own inform, claims and push).
+Merged and deployed 2026-11-01 (main 6803b78): the hardware tables and LACP state as the
+ECS reports them, speed "auto" following the module, and RSTP with loop
+protection through `disunified-l2d` (mstpd plus glue into the stock StpOrch,
+on by default). Verified live on the DX010 the same night:
+locate, a forced speed, a 4x25G breakout and its join, and the UI's Restart
+(§11.6); RSTP and loop protection by hand and then through the deployed driver
+(§11.5), with one fix after (a down port's BPDU guard, lost to a reload race).
+IGMP snooping needs a custom 202511 image (§8); a build
+VM exists for it.
 
 **What has gone upstream, and the fact that none of it has been reviewed, is
 `docs/prior-art.md` §6** (issues #2 and #6–#9; PRs #3–#5, the stacked series

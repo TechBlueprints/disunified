@@ -11,8 +11,9 @@ import (
 
 // The wire contract: what we send must have the shape of what a real UniFi
 // switch sends. The references are real informs captured from this
-// controller (docs/fixtures/controller-10.6.106/inform-*.json, identifiers
-// and secrets replaced by scripts/sanitize-controller.py); each driver's
+// controller (docs/fixtures/controller-10.6.106/inform-*.json, and the ECS
+// Aggregation's 10.6.109 inform printed on the switch: contractReferences;
+// identifiers and secrets replaced by scripts/sanitize-controller.py); each driver's
 // payload is built by the real driver from its real captures, in
 // contract_<driver>_test.go, and checked by runContract. Every key a real
 // switch reports must be present with the same JSON type, at the device
@@ -34,8 +35,8 @@ var contractOmissions = map[string]string{
 	"fw2_caps":    "unknown bit vocabulary",
 	"fw3_caps":    "unknown bit vocabulary",
 	"routing_mac": "no L3 routing MAC (switch-only)",
+	"ipv6":        "the driver does not read the management interface's IPv6 addresses (sonic does, and drops this)",
 	"service_mac": "reported only while the OOB port is unplugged (see serviceMAC)",
-	"ipv6":        "no IPv6 management address on the reference switch",
 	// Controller-side or model-specific.
 	"cfgversion_effective":               "USW-only",
 	"cfgversion_saved":                   "USW-only",
@@ -56,9 +57,31 @@ var switchOmissions = map[string]string{
 }
 
 var portOmissions = map[string]string{
-	"sfp_rev":       "EOS does not expose the optic's hardware revision",
 	"port_caps":     "USW-only bitmask with an unknown vocabulary",
 	"stp_bridge_id": "USW-only; which bridge id it names is not established",
+}
+
+// contractReferences are the real switch informs every switch payload is
+// held to. The ECS Aggregation's 10.6.109 inform was printed by mca-dump on
+// the switch itself (the first from a SONiC-based UniFi switch read there)
+// and its uplink is an aggregate: an uplink that is one link is excused the
+// aggregate's keys, which are held to it on an aggregate of our own
+// (TestWireContractSonicAggregate).
+var contractReferences = []struct {
+	path       string
+	uplinkOmit map[string]string
+}{
+	{"controller-10.6.106/inform-ecs-aggregation-uswf066.json", nil},
+	{"controller-10.6.106/inform-usw-xg16-usxg.json", nil},
+	{"controller-10.6.109/inform-ecs-aggregation-uswf066.json", aggregateUplinkOmissions},
+}
+
+var aggregateUplinkOmissions = map[string]string{
+	"aggregate_num_ports": "the reference's uplink is an aggregate's head; ours is one link",
+	"lacp_state":          "the reference's uplink is an aggregate's head; ours is one link",
+	"lag_member":          "the reference's uplink is an aggregate member; ours is one link",
+	"partner_system_id":   "the reference's uplink is an aggregate's head; ours is one link",
+	"service_mac_table":   "sent on an aggregate's head only",
 }
 
 func jsonType(v any) string {
@@ -81,7 +104,13 @@ func jsonType(v any) string {
 
 func loadReference(t *testing.T, name string) map[string]any {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", name))
+	return loadFixtureJSON(t, filepath.Join("controller-10.6.106", name))
+}
+
+// loadFixtureJSON reads a JSON fixture by its path under docs/fixtures.
+func loadFixtureJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,6 +183,16 @@ func compareKeys(t *testing.T, what string, real, ours map[string]any, omit map[
 	}
 }
 
+func mergeOmissions(ms ...map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, m := range ms {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // runContract checks one driver's payload against every reference inform:
 // the device level, the uplink port and a down port, plus the keys that
 // hid for a day. extraOmissions are the driver's own gaps, with reasons.
@@ -184,13 +223,13 @@ func runContractPorts(t *testing.T, driver string, ours map[string]any, extraOmi
 	for k, v := range extraOmissions {
 		omit[k] = v
 	}
-	for _, ref := range []string{"inform-ecs-aggregation-uswf066.json", "inform-usw-xg16-usxg.json"} {
-		real := loadReference(t, ref)
-		compareKeys(t, driver+" "+ref+" device", real, ours, omit)
-		compareKeys(t, driver+" "+ref+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmit)
+	for _, ref := range contractReferences {
+		real := loadFixtureJSON(t, ref.path)
+		compareKeys(t, driver+" "+ref.path+" device", real, ours, omit)
+		compareKeys(t, driver+" "+ref.path+" uplink port", uplinkPort(t, real), uplinkPort(t, ours), mergeOmissions(portOmit, ref.uplinkOmit))
 		rd := downPort(t, real, false)
 		_, optical := rd["sfp_found"]
-		compareKeys(t, driver+" "+ref+" down port", rd, downPort(t, ours, optical), portOmit)
+		compareKeys(t, driver+" "+ref.path+" down port", rd, downPort(t, ours, optical), portOmit)
 	}
 	// The one that hid for a day: uplink is the NAME of the if_table interface.
 	if u, ok := ours["uplink"].(string); !ok || u == "" {

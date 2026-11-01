@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 )
 
@@ -78,7 +79,7 @@ func (f *FixtureRunner) applyDevice(w []string) error {
 	case w[1] == "snmp":
 		name := at(4)
 		k := "SNMP_COMMUNITY|" + name
-		return f.update("cfg_snmp", func(t table) error {
+		err := f.update("cfg_snmp", func(t table) error {
 			_, ok := t[k]
 			switch at(3) {
 			case "add":
@@ -99,6 +100,13 @@ func (f *FixtureRunner) applyDevice(w []string) error {
 			}
 			return nil
 		})
+		if err != nil {
+			return err
+		}
+		// Both restart the snmp container, whose start.sh imports
+		// snmp.yml's communities into CONFIG_DB again (§10.1).
+		f.SNMPStart()
+		return nil
 
 	case w[1] == "dns":
 		k := "DNS_NAMESERVER|" + at(4)
@@ -381,4 +389,64 @@ func (f *FixtureRunner) applyKeys(script string) error {
 	}
 	f.setSection("authorized_keys", strings.Join(keys, "\n"))
 	return nil
+}
+
+// SNMPStart models the snmp container's start: snmp_yml_to_configdb.py
+// adds every community snmp.yml names (the capture's snmp_yml section) to
+// CONFIG_DB SNMP_COMMUNITY, and removes none (§10.1).
+func (f *FixtureRunner) SNMPStart() {
+	yml, _ := snmpYmlNames(sections(f.Fixture)["snmp_yml"])
+	if len(yml) == 0 {
+		return
+	}
+	_ = f.update("cfg_snmp", func(t table) error {
+		for n := range yml {
+			if _, ok := t["SNMP_COMMUNITY|"+n]; !ok {
+				t["SNMP_COMMUNITY|"+n] = map[string]string{}
+			}
+		}
+		return nil
+	})
+}
+
+// UseSection replaces a section of the capture, or adds it before the end
+// marker (a VS capture predates snmp_yml): a test puts the factory
+// snmp.yml's section (snmp_yml-factory.txt) in place of the unit's.
+func (f *FixtureRunner) UseSection(name, body string) {
+	head := "@@@ " + name + "\n"
+	body = strings.TrimRight(body, "\n") + "\n"
+	i := strings.Index(f.Fixture, head)
+	if i < 0 {
+		f.Fixture = strings.Replace(f.Fixture, "@@@ end\n", head+body+"@@@ end\n", 1)
+		return
+	}
+	rest := f.Fixture[i+len(head):]
+	if j := strings.Index(rest, "@@@ "); j >= 0 {
+		f.Fixture = f.Fixture[:i] + head + body + rest[j:]
+	}
+}
+
+// snmpYmlDropRe finds the names in an snmp.yml rewrite (snmpYmlScript).
+var snmpYmlDropRe = regexp.MustCompile(`(?m)^drop = set\((\[.*\])\)$`)
+
+// applySNMPYml applies a rewrite's drop list to the capture's snmp_yml
+// section, as the script does to the file.
+func (f *FixtureRunner) applySNMPYml(script string) error {
+	m := snmpYmlDropRe.FindStringSubmatch(script)
+	if m == nil {
+		return fmt.Errorf("snmp.yml rewrite without a drop list")
+	}
+	var drop []string
+	if err := json.Unmarshal([]byte(m[1]), &drop); err != nil {
+		return fmt.Errorf("snmp.yml drop list: %w", err)
+	}
+	if _, ok := sections(f.Fixture)["snmp_yml"]; !ok {
+		return nil // no file in this capture
+	}
+	return f.update("snmp_yml", func(t table) error {
+		for _, n := range drop {
+			delete(t, n)
+		}
+		return nil
+	})
 }

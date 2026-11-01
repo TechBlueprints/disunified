@@ -15,13 +15,15 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 // A test SSH server on 127.0.0.1 that accepts the listed keys and answers
-// every exec with exit status 0.
+// every exec with exit status 0 (startServer), or as exec says
+// (startServerExec).
 type testServer struct {
 	addr      string
 	knownHost string // a known_hosts file naming it
@@ -42,6 +44,11 @@ func newKey(t *testing.T) ssh.Signer {
 }
 
 func startServer(t *testing.T, accept ...ssh.PublicKey) *testServer {
+	t.Helper()
+	return startServerExec(t, nil, accept...)
+}
+
+func startServerExec(t *testing.T, exec func(net.Conn, ssh.Channel), accept ...ssh.PublicKey) *testServer {
 	t.Helper()
 	host := newKey(t)
 	srv := &testServer{}
@@ -67,7 +74,7 @@ func startServer(t *testing.T, accept ...ssh.PublicKey) *testServer {
 				return
 			}
 			srv.attempts.Add(1)
-			go serve(c, cfg)
+			go serve(c, cfg, exec)
 		}
 	}()
 	srv.knownHost = filepath.Join(t.TempDir(), "known_hosts")
@@ -78,7 +85,7 @@ func startServer(t *testing.T, accept ...ssh.PublicKey) *testServer {
 	return srv
 }
 
-func serve(c net.Conn, cfg *ssh.ServerConfig) {
+func serve(c net.Conn, cfg *ssh.ServerConfig, exec func(net.Conn, ssh.Channel)) {
 	_, chans, reqs, err := ssh.NewServerConn(c, cfg)
 	if err != nil {
 		c.Close()
@@ -93,6 +100,10 @@ func serve(c net.Conn, cfg *ssh.ServerConfig) {
 		go func() {
 			for r := range creqs {
 				r.Reply(r.Type == "exec", nil)
+				if r.Type == "exec" && exec != nil {
+					exec(c, ch)
+					continue
+				}
 				if r.Type == "exec" {
 					io.Copy(io.Discard, ch)
 					status := make([]byte, 4)
@@ -240,3 +251,59 @@ func TestAgentErrorFallsThroughToKeyFiles(t *testing.T) {
 }
 
 func pemEncode(b *pem.Block) []byte { return pem.EncodeToMemory(b) }
+
+// A command that takes the host down (`sudo reboot` on SONiC) loses its
+// session before it returns: the server drops the TCP connection, or just
+// stops answering until the deadline. Both are SessionDropped; a command
+// that exits non-zero and a host that cannot be dialled are not.
+func TestSessionDropped(t *testing.T) {
+	key := newKey(t)
+	run := func(exec func(net.Conn, ssh.Channel), timeout time.Duration) error {
+		srv := startServerExec(t, exec, key.PublicKey())
+		r := New(srv.addr, "admin")
+		r.KnownHosts = srv.knownHost
+		r.agentKeys = fakeAgent(identity{name: "k", signer: key})
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		_, err := r.Run(ctx, "sudo reboot", "")
+		return err
+	}
+	exit := func(code uint32) func(net.Conn, ssh.Channel) {
+		return func(_ net.Conn, ch ssh.Channel) {
+			status := make([]byte, 4)
+			binary.BigEndian.PutUint32(status, code)
+			ch.SendRequest("exit-status", false, status)
+			ch.Close()
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		exec    func(net.Conn, ssh.Channel)
+		dropped bool
+	}{
+		{"connection closed", func(c net.Conn, _ ssh.Channel) { c.Close() }, true},
+		{"channel closed without a status", func(_ net.Conn, ch ssh.Channel) { ch.Close() }, true},
+		{"no answer until the deadline", func(net.Conn, ssh.Channel) {}, true},
+		{"exit 0", exit(0), false},
+		{"exit 1", exit(1), false},
+	} {
+		err := run(tc.exec, 500*time.Millisecond)
+		t.Logf("%s: %v", tc.name, err)
+		if got := SessionDropped(err); got != tc.dropped {
+			t.Errorf("%s: SessionDropped(%v) = %v, want %v", tc.name, err, got, tc.dropped)
+		}
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+	r := New(addr, "admin")
+	r.agentKeys = fakeAgent(identity{name: "k", signer: key})
+	r.KnownHosts = filepath.Join(t.TempDir(), "known_hosts")
+	os.WriteFile(r.KnownHosts, nil, 0o600)
+	if _, err := r.Run(context.Background(), "sudo reboot", ""); err == nil || SessionDropped(err) {
+		t.Errorf("a host that cannot be dialled: SessionDropped(%v) must be false", err)
+	}
+}

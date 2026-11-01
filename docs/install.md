@@ -85,6 +85,9 @@ If it fails, the error names the command or credential at fault; fix that
 before going on. `-driver <name>` (or `DUI_DRIVER`) names the driver, e.g.
 `-driver arista-eos -device-url https://…/command-api` or
 `-driver proxmox -device-ssh root@proxmox-2`; a config file names it per device.
+`-device-ssh-key` (or `DUI_DEVICE_SSH_KEY`) names the SSH key as a config
+file's `options.ssh_key` does: a private key file, or a `.pub` that selects
+that one ssh-agent identity (without it every agent key is tried in turn).
 The pre-rename `-switch-url`/`-switch-ssh` flags and `STU_*` env names are
 still read, so an existing deployment keeps working unchanged.
 
@@ -117,8 +120,10 @@ driver can write (`all`); `"off"` writes none, and a list such as `"2,5-8"`
 tries a few first. Adoption takes the device as it is: with `api_url` and an
 API key set, the bridge seeds the controller's port settings from the
 device's live state, and the loop holds the first push while it would still
-change a port or switch an outlet, until the controller agrees with the
-device (every switch driver plans its pushes; without `api_url`, set the
+change a port's own settings or switch an outlet, until the controller
+agrees with the device -- jumbo frames are a device-wide setting, like NTP
+or the hostname, and follow the controller from the first push (every
+switch driver plans its pushes; without `api_url`, set the
 ports in UniFi to match, or `allow_initial_changes: true` to take UniFi's
 defaults). **Check:** the log shows `reconciled ... 0 of N ports changed` (or
 the changes it made to bring the device in line with the controller). From

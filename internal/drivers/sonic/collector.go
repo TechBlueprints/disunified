@@ -83,15 +83,29 @@ type Collector struct {
 
 	zones []zone // the switch's time zones and their POSIX rules, read once per run (zones.go)
 
+	// chrony left offline by its boot hook (§10.6, chronyNudge): the
+	// snapshot the last `chronyc onoffline` ran for (once per collect), and
+	// whether an episode of every source unreachable is on (logged once).
+	chronyNudged *devicemodel.Snapshot
+	chronyStuck  bool
+
 	// Locate (locate.go): the status LED blink.
 	BlinkInterval time.Duration // between LED toggles; default 1 s
 	blinkStop     func()        // stops the running blink and waits for it; nil when none
 	noLED         bool          // the platform API could not set the status LED: report only
+
+	// Spanning tree and loop protection through disunified-l2d (l2.go):
+	// on unless options.l2d is off (docs/drivers/sonic.md §11.5).
+	L2 bool
+	l2 l2Want
+	// L2Wait is the pause before each check that a first STP enable left
+	// the switch reachable (default 5 s; tests set 0).
+	L2Wait *time.Duration
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
-	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{},
+	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, L2: true, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{},
 		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}, pinned: map[string]string{}}
 }
 
@@ -147,16 +161,23 @@ func (c *Collector) Close() error {
 
 // Capabilities are computed from the switch (§6.1): FEC, jumbo, LACP,
 // storm control and SNMP always; one mirror session and eight aggregates
-// (what is tested); STP, BPDU guard and port cost only when the image has
-// the STP daemon (FEATURE|stp). IGMP snooping, LLDP-MED, DHCP snooping and
-// isolation never: community SONiC has none of them.
+// (what is tested). STP, BPDU guard and port cost through the image's STP
+// daemon where it has one (FEATURE|stp, PVST); otherwise RSTP, BPDU guard,
+// auto edge, port cost and loop protection through disunified-l2d, where
+// the switch can run it (mstpd installed, or docker to build it; §11.5).
+// IGMP snooping, LLDP-MED, DHCP snooping and isolation never: community
+// SONiC has none of them.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	caps := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
 	c.mu.Lock()
 	st := c.state
 	c.mu.Unlock()
-	if st != nil && st.stpFeature {
+	switch {
+	case st == nil:
+	case st.stpFeature:
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
+	case c.L2 && st.l2.canRun():
+		caps.STP, caps.BPDUGuard, caps.STPAutoEdge, caps.STPPortCost, caps.LoopProtection = true, true, true, true, true
 	}
 	return caps
 }
@@ -183,10 +204,15 @@ var required = []string{"metadata", "cfg_port", "appl_port", "version", "addr"}
 // redisSections is every Redis section collect.py prints.
 var redisSections = []string{
 	"metadata", "state_metadata", "cfg_port", "appl_port", "state_port", "cfg_vlan", "cfg_vlan_member",
-	"cfg_lag", "cfg_lag_member", "appl_lag", "cfg_mgmt", "cfg_stp", "cfg_mirror", "cfg_ntp", "cfg_syslog",
+	"cfg_lag", "cfg_lag_member", "appl_lag", "cfg_mgmt", "cfg_stp", "cfg_mirror", "cfg_ntp", "cfg_ntp_global", "cfg_syslog",
 	"cfg_snmp", "cfg_route", "cfg_dns", "cfg_storm", "cfg_breakout", "cfg_feature", "lldp_loc", "lldp", "fdb", "counters_map", "counters", "rates",
 	"xcvr", "dom", "fan", "psu", "temp", "chassis", "asic_temp",
 }
+
+// laterSections joined collect.py on 2026-11-01 (docs/drivers/sonic.md
+// §11.4, the hardware tables; §11.5, disunified-l2d's tables); the captures
+// before that lack them, which reads as empty.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
@@ -199,7 +225,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 	db := map[string]table{}
-	for _, name := range redisSections {
+	for _, name := range append(redisSections[:len(redisSections):len(redisSections)], laterSections...) {
 		t, err := parseTable(name, sec[name])
 		if err != nil {
 			return nil, err
@@ -245,7 +271,12 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 
 	sys := buildSystem(db, sec, addrs, routes, neigh, dialAddrs(c.CurrentAddress()))
-	sys.MACTableUsed = len(macs)
+	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
+		l2System(&sys, db, now)
+	}
+	if sys.MACTableCapacity == 0 {
+		sys.MACTableUsed = len(macs) // CRM's count goes with its capacity
+	}
 	cpu := parseCPUTimes(sec["stat"])
 	c.mu.Lock()
 	if c.prevCPU.total > 0 && cpu.total > c.prevCPU.total {

@@ -25,7 +25,11 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
 - Breakout cages: fold lanes; speed to lane 1 to split/join, to all lanes
   for a lane-speed change; everything else to all lanes; set `LanesDiverge`
   when lanes differ; claim the cage's speeds.
-- Never set an optical port to auto speed; only write FEC when asked.
+- Never set an optical port to auto speed; only write FEC when asked --
+  or, where the platform reads the module, the FEC and the speed (or
+  breakout) the module calls for when UniFi pushes none (UniFi's own
+  "auto"; `sonic`, docs/drivers/sonic.md §10.3, §10.9), planned without by
+  the `Planner` so the first-push hold never waits on them.
 - Tests use a fixture transport (`aristaeos.FixtureTransport` for a
   command API; `proxmox`/`podman.FixtureRunner` for a script over SSH;
   `apcups.FixtureRunner` for a register map) over real captures — never

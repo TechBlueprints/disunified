@@ -30,6 +30,7 @@ const (
 	swCapLACP          = 8192
 	swCapFEC           = 65536
 	swCapJumbo         = 524288
+	swCapLoopProtect   = 1048576 // KEEPALIVE_LOOP_PROTECTION: the UI's per-port Loop Protection (switch.port.N.keepalive)
 )
 
 // switch_caps.vlan_caps
@@ -41,6 +42,7 @@ const (
 // switch_caps.stp_caps
 const (
 	stpCapBPDUGuard = 1
+	stpCapAutoEdge  = 2 // Edge Port auto/enabled/disabled (switch.port.N.stp.edge)
 	stpCapPortCost  = 8
 )
 
@@ -70,6 +72,12 @@ const (
 	sysErrFanIssue    = 4
 	sysErrPSUIssue    = 8
 )
+
+// psu_table[].psu_caps (unifi-emu capability_bits.json: CHARGE_CTRL 1,
+// POWER_METER 2, HOT_SWAPPABLE 4). The ECS Aggregation claims 4 alone,
+// though its supplies meter their power, so that is all a supply here
+// claims; what POWER_METER changes in the UI is not known.
+const psuCapHotSwappable = 4
 
 // hw_caps says what hardware the device physically has. The controller
 // believes it over anything else the payload claims: a device that reports an
@@ -228,9 +236,13 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	set(c.LLDPMED, swCapLLDPMED)
 	set(c.DHCPSnooping, swCapDHCPSnooping)
 	set(c.PortIsolation, swCapPortIsolation)
+	set(c.LoopProtection, swCapLoopProtect)
 	stp := 0
 	if c.BPDUGuard {
 		stp |= stpCapBPDUGuard
+	}
+	if c.STPAutoEdge {
+		stp |= stpCapAutoEdge
 	}
 	if c.STPPortCost {
 		stp |= stpCapPortCost

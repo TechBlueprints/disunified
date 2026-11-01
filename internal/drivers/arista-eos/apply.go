@@ -62,6 +62,9 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 					updated.Ports[i].StormCtrl = d.StormCtrl
 					updated.Ports[i].BPDUGuard = d.BPDUGuard
 					updated.Ports[i].STPEdge = d.STPEdge
+					if updated.Ports[i].LAGID != d.LAG {
+						updated.Ports[i].LACP = nil // read again at the next collect
+					}
 					updated.Ports[i].LAGID = d.LAG
 					if d.LAG > 0 {
 						updated.Ports[i].LAG = "Port-Channel" + strconv.Itoa(d.LAG)

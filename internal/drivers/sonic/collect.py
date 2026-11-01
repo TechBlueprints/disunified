@@ -121,10 +121,15 @@ section("cfg_vlan_member", "CONFIG_DB", "VLAN_MEMBER|*")
 section("cfg_lag", "CONFIG_DB", "PORTCHANNEL|*")
 section("cfg_lag_member", "CONFIG_DB", "PORTCHANNEL_MEMBER|*")
 section("appl_lag", "APPL_DB", "LAG_TABLE:*")
+# Each member's LACP state: tlm_teamd mirrors `teamdctl <PortChannel> state
+# dump` into STATE_DB (partner system, actor/partner state, selection), so
+# no `docker exec` into the teamd container is needed.
+section("state_lag_member", "STATE_DB", "LAG_MEMBER_TABLE|*")
 section("cfg_mgmt", "CONFIG_DB", "MGMT_INTERFACE|*", "MGMT_PORT|*", "VLAN_INTERFACE|*", "INTERFACE|*", "LOOPBACK_INTERFACE|*", "PORTCHANNEL_INTERFACE|*")
 section("cfg_stp", "CONFIG_DB", "STP|*", "STP_VLAN|*", "STP_PORT|*", "STP_VLAN_PORT|*")
 section("cfg_mirror", "CONFIG_DB", "MIRROR_SESSION|*")
 section("cfg_ntp", "CONFIG_DB", "NTP_SERVER|*")
+section("cfg_ntp_global", "CONFIG_DB", "NTP|global")
 section("cfg_syslog", "CONFIG_DB", "SYSLOG_SERVER|*")
 section("cfg_snmp", "CONFIG_DB", "SNMP_COMMUNITY|*", keys_only=True)
 section("cfg_route", "CONFIG_DB", "STATIC_ROUTE|*")
@@ -145,6 +150,13 @@ section("psu", "STATE_DB", "PSU_INFO|*")
 section("temp", "STATE_DB", "TEMPERATURE_INFO|*")
 section("chassis", "STATE_DB", "CHASSIS_INFO|*")
 section("asic_temp", "STATE_DB", "ASIC_TEMPERATURE_INFO")
+# disunified-l2d's view (docs/drivers/sonic.md 11.5): mstpd's bridge and
+# ports, and the ports loop protection holds down.
+section("l2_bridge", "STATE_DB", "DUI_STP_TABLE|*")
+section("l2_port", "STATE_DB", "DUI_STP_PORT_TABLE|*")
+section("l2_guard", "STATE_DB", "DUI_LOOP_GUARD_TABLE|*")
+# orchagent's resource counters: the FDB's used and available entries.
+section("crm", "COUNTERS_DB", "CRM:STATS")
 
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the
@@ -179,6 +191,101 @@ try:
                 sys.stdout.write(_line + "\n")
 except Exception:
     pass
+# The SNMP communities /etc/sonic/snmp.yml names: the snmp container's
+# start.sh copies them into CONFIG_DB SNMP_COMMUNITY on every start
+# (snmp_yml_to_configdb.py), so one deleted from CONFIG_DB alone comes
+# back. Names only, like cfg_snmp: community -> the yml key that holds it.
+# "{}" when the file is absent; "error" when it cannot be read.
+s("snmp_yml")
+try:
+    _y = {}
+    if os.path.exists("/etc/sonic/snmp.yml"):
+        import yaml
+        with open("/etc/sonic/snmp.yml") as _f:
+            _y = yaml.safe_load(_f) or {}
+    _c = {}
+    for _k in ("snmp_rocommunity", "snmp_rocommunities", "snmp_rwcommunity", "snmp_rwcommunities"):
+        _v = _y.get(_k)
+        for _n in (_v if isinstance(_v, list) else [_v] if _v is not None else []):
+            _c[str(_n)] = {"key": _k}
+    dump(_c)
+except Exception:
+    sys.stdout.write("error\n")
+# disunified-l2d's installation, one JSON object: the installed files'
+# sha256 ("" = absent), mstpd's version, the units' states, whether the
+# switch can build mstpd (docker), the kernel bridge's stp_state and the
+# daemon's config (no secrets in it).
+s("l2d")
+try:
+    import hashlib
+
+    def _sha(path):
+        try:
+            with open(path, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            return ""
+
+    def _unit(*args):
+        try:
+            return subprocess.run(["systemctl"] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  timeout=5).stdout.decode().strip()
+        except Exception:
+            return ""
+
+    _l2 = {"files": {p: _sha(p) for p in ("/usr/local/sbin/disunified-l2d", "/usr/sbin/bridge-stp",
+                                          "/etc/systemd/system/disunified-l2d.service")}}
+    _l2["mstpd"] = ""
+    if os.access("/usr/local/sbin/mstpd", os.X_OK) and os.access("/usr/local/sbin/mstpctl", os.X_OK):
+        _l2["mstpd"] = subprocess.run(["/usr/local/sbin/mstpd", "-V"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                      timeout=5).stdout.decode().strip()
+    _l2["service"] = _unit("is-active", "disunified-l2d")
+    _l2["deadman"] = _unit("is-active", "disunified-l2d-deadman.timer")
+    _l2["build"] = "running" if _unit("is-active", "disunified-mstpd-build") == "active" else ""
+    if not _l2["build"]:
+        try:
+            with open("/var/lib/disunified/mstpd-build/status") as _f:
+                _l2["build"] = _f.read().strip()
+        except Exception:
+            pass
+    _l2["docker"] = os.access("/usr/bin/docker", os.X_OK)
+    try:
+        with open("/sys/class/net/Bridge/bridge/stp_state") as _f:
+            _l2["stp_state"] = _f.read().strip()
+    except Exception:
+        _l2["stp_state"] = ""
+    _l2["conf"] = None
+    try:
+        with open("/etc/sonic/disunified/l2.json") as _f:
+            _l2["conf"] = json.load(_f)
+    except Exception:
+        pass
+    sys.stdout.write(json.dumps(_l2, sort_keys=True) + "\n")
+except Exception:
+    sys.stdout.write("error\n")
+# The hardware monitors (sysfs hwmon), each chip reduced to its name, its
+# device ("<i2c bus>-<addr>" for a PMBus supply) and its *_input/*_label
+# readings: pmon's PSU_INFO keeps one supply temperature and the output
+# power, while the supply's own chip has every sensor, its fan's RPM and
+# the input power.
+s("hwmon")
+_h = {}
+try:
+    for _d in sorted(os.listdir("/sys/class/hwmon")):
+        _p = os.path.join("/sys/class/hwmon", _d)
+        _e = {}
+        for _n in sorted(os.listdir(_p)):
+            if _n == "name" or _n.endswith(("_input", "_label")):
+                try:
+                    with open(os.path.join(_p, _n)) as _f:
+                        _e[_n] = _f.read().strip()
+                except Exception:
+                    pass
+        _e["device"] = os.path.basename(os.path.realpath(os.path.join(_p, "device")))
+        _h[_d] = _e
+except Exception:
+    pass
+dump(_h)
 text("hostname", ["hostname"])
 text("version", path="/etc/sonic/sonic_version.yml")
 text("uptime", path="/proc/uptime")
@@ -188,4 +295,11 @@ text("meminfo", path="/proc/meminfo")
 text("addr", ["ip", "-j", "addr", "show"])
 text("route", ["ip", "-j", "route", "show", "default"])
 text("neigh", ["ip", "-j", "neigh", "show"])
+# chrony's own view of its sources (docs/drivers/sonic.md §10.6), read
+# through chronyd's localhost command port as the login user: the sources
+# (CSV), and how many are online and offline -- a boot hook can leave every
+# source offline, which `sources` cannot tell from unreachable (both read
+# `?` with reach 0); the driver nudges chrony from `activity`.
+text("chrony_sources", ["chronyc", "-n", "-c", "sources"])
+text("chrony_activity", ["chronyc", "-n", "activity"])
 s("end")

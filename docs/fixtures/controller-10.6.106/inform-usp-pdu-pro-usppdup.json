@@ -74,7 +74,7 @@
   "ip": "192.0.2.1",
   "ipv6": [
     "2001:db8::1/64",
-    "fe80::107c/64"
+    "fe80::1/64"
   ],
   "isolated": false,
   "kernel_version": "device-3",

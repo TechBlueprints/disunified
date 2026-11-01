@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"golang.org/x/crypto/ssh"
 )
 
 // The device controller, the key installer, the rebooter and the address
@@ -268,8 +270,44 @@ func TestInstallSSHKeys(t *testing.T) {
 
 func TestReboot(t *testing.T) {
 	r := newRig(t, nil)
-	if err := r.c.Reboot(context.Background()); err != nil || r.fr.Commands[len(r.fr.Commands)-1] != "sudo reboot" {
-		t.Errorf("Reboot: %v, %q", err, r.fr.Commands)
+	if err := r.c.Reboot(context.Background()); err != nil || r.fr.Commands[len(r.fr.Commands)-1] != "sudo reboot" || r.fr.Closes != 1 {
+		t.Errorf("Reboot: %v, %q, %d closes", err, r.fr.Commands, r.fr.Closes)
+	}
+}
+
+// SONiC's reboot script can take the session down before `sudo reboot`
+// returns (live on the DX010, 2026-11-01: "reboot: context deadline
+// exceeded" 90 s after the switch went down). The errors are the ones
+// sshrun gives for that (TestSessionDropped there): the channel closing
+// without an exit status, and the deadline. Both are the reload under way:
+// no error, a log line, the dead connection closed. A command that exits
+// non-zero and a switch that cannot be dialled stay errors, and nothing is
+// closed.
+func TestRebootSessionDrops(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		ok   bool
+	}{
+		{"channel closed", fmt.Errorf("%s: %w: %s", "sudo reboot", &ssh.ExitMissingError{}, ""), true},
+		{"deadline", context.DeadlineExceeded, true},
+		{"sudo refused", errors.New("sudo reboot: Process exited with status 1: sudo: a password is required"), false},
+		{"not dialled", errors.New("ssh dial 192.0.2.1:22: dial tcp 192.0.2.1:22: i/o timeout"), false},
+	} {
+		r := newRig(t, nil)
+		r.fr.RebootErr = tc.err
+		closes := r.fr.Closes
+		err := r.c.Reboot(context.Background())
+		if r.fr.Commands[len(r.fr.Commands)-1] != "sudo reboot" {
+			t.Fatalf("%s: commands %q", tc.name, r.fr.Commands)
+		}
+		dropped := strings.Contains(r.log.String(), "the connection dropped while `sudo reboot` ran")
+		switch {
+		case tc.ok && (err != nil || !dropped || r.fr.Closes != closes+1):
+			t.Errorf("%s: Reboot = %v, logged %v, %d closes; want success, the drop logged, the connection closed", tc.name, err, dropped, r.fr.Closes-closes)
+		case !tc.ok && (err == nil || dropped || r.fr.Closes != closes):
+			t.Errorf("%s: Reboot = %v, logged %v, %d closes; want the error", tc.name, err, dropped, r.fr.Closes-closes)
+		}
 	}
 }
 

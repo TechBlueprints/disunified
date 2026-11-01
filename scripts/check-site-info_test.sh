@@ -53,5 +53,28 @@ expect "a raw key comment in system_cfg text is refused" 1 "fixture.txt:1: comme
 expect "a raw key comment is refused (--staged)" 1 "comment=builder-laptop" --staged
 reset
 
+# IPv6: the documentation forms pass; a link-local whose EUI-64 half is a
+# MAC, a long-form link-local and a global prefix outside 2001:db8 do not.
+printf '{"ipv6": ["%s/64", "%s/64", "%s/80"], "resolved": "%s"}\n' 2001:db8::2 fe80::1 fd00::1 ff02::1 > fixture.json
+git add fixture.json
+expect "documentation IPv6 forms pass" 0 "ok: no secrets"
+reset
+eui=$(printf 'fe80::%s:%sff:fe%s:%s' f29f c2 0a d361)   # assembled so this file passes the checker
+printf '{"ipv6": ["%s/64"]}\n' "$eui" > fixture.json
+git add fixture.json
+expect "a MAC-bearing link-local is refused" 1 "$eui"
+expect "a MAC-bearing link-local is refused (--staged)" 1 "$eui" --staged
+reset
+priv=$(printf 'fe80::%s:%s:%s:%s' ff57 1145 7bc6 d70b)
+printf '{"dst":"%s","dev":"vmbr0"}\n' "$priv" > fixture.txt
+git add fixture.txt
+expect "a long-form link-local is refused" 1 "$priv"
+reset
+glob=$(printf '%s:%s:%s:%s::1' 2605 a601 8068 6800)
+printf '{"dst":"%s","dev":"eth0"}\n' "$glob" > fixture.txt
+git add fixture.txt
+expect "a global IPv6 outside 2001:db8 is refused" 1 "$glob"
+reset
+
 [ "$fails" -eq 0 ] && echo "check-site-info: all rules behave" && exit 0
 exit 1

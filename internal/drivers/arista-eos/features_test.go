@@ -157,6 +157,10 @@ func TestLAGMembershipFromSummary(t *testing.T) {
 		if p := portByIndex(t, snap, idx); p.LAGID != 1 || p.LAG != "Port-Channel1" {
 			t.Errorf("port %d lag = %q/%d", idx, p.LAG, p.LAGID)
 		}
+		// Both links were down: LACP reads them, neither is bundled.
+		if p := portByIndex(t, snap, idx); p.LACP == nil || p.LACP.Active || p.LACP.PartnerSystem != "" {
+			t.Errorf("port %d LACP %+v, want read and not bundled", idx, p.LACP)
+		}
 	}
 	if p := portByIndex(t, snap, 4); p.LAGID != 0 {
 		t.Errorf("port 4 lag = %d", p.LAGID)

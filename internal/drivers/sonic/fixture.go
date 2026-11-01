@@ -31,9 +31,21 @@ type FixtureRunner struct {
 	Helps    []string          // the help commands Start ran
 
 	KeyScripts []string // the authorized_keys rewrites, as sent
+	// SNMPYmlScripts are the /etc/sonic/snmp.yml rewrites, as sent; the
+	// capture's snmp_yml section is the file (§10.1).
+	SNMPYmlScripts []string
 	// DialFails makes a runner from Dial fail its first command, as a
 	// switch that does not answer at the new address would.
 	DialFails bool
+	// ChronyAfterOnoffline is the chrony sections `chronyc onoffline` leads
+	// to (chrony-synced.txt); "" leaves them as they are, as when there is
+	// still no route to the sources.
+	ChronyAfterOnoffline string
+	// RebootErr is what `sudo reboot` returns once sent: nil, or the error
+	// sshrun gives when the reboot takes the session down first (or a real
+	// failure). Closes counts Close calls.
+	RebootErr error
+	Closes    int
 	Dials     []string // the addresses Dial was asked for
 
 	// promote is net.ipv4.conf.<iface>.promote_secondaries as written by the
@@ -53,6 +65,16 @@ type FixtureRunner struct {
 	// last set.
 	LEDWorks bool
 	LED      string
+
+	// disunified-l2d (fixture_l2.go): L2Files are the files written, by
+	// path; L2Scripts the disunified-l2 scripts as sent; Builds the mstpd
+	// builds started. BuildFails makes the build fail; STPCutsUplink makes
+	// a fresh connection fail once spanning tree is on (the dead-man path).
+	L2Files       map[string]string
+	L2Scripts     []string
+	Builds        int
+	BuildFails    bool
+	STPCutsUplink bool
 
 	mu sync.Mutex // Run may be called from the locate blink's goroutine
 }
@@ -83,6 +105,9 @@ type dialled struct {
 }
 
 func (d *dialled) Run(ctx context.Context, command, stdin string) (string, error) {
+	if d.f.STPCutsUplink && command == l2CheckCommand {
+		return "", fmt.Errorf("ssh dial %s:22: i/o timeout", d.host)
+	}
 	if command == "true" && d.f.DialFails {
 		return "", fmt.Errorf("ssh dial %s:22: i/o timeout", d.host)
 	}
@@ -101,7 +126,7 @@ func NewFixtureRunner(path string) (*FixtureRunner, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &FixtureRunner{Fixture: string(b), Help: map[string]string{}}
+	f := &FixtureRunner{Fixture: string(b), Help: map[string]string{}, L2Files: map[string]string{}}
 	if h, err := os.ReadFile(filepath.Join(filepath.Dir(path), "config-help.txt")); err == nil {
 		for name, body := range sections(string(h)) {
 			f.Help[name] = body
@@ -137,6 +162,29 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.KeyScripts = append(f.KeyScripts, stdin)
 		return "", f.applyKeys(stdin)
+	case command == l2Command:
+		f.Commands = append(f.Commands, command)
+		f.L2Scripts = append(f.L2Scripts, stdin)
+		return "", f.applyL2(stdin)
+	case command == mstpdBuildCommand:
+		f.Commands = append(f.Commands, command)
+		f.Builds++
+		return "", f.buildMstpd(stdin)
+	case command == l2CheckCommand:
+		return f.l2Check(), nil
+	case command == l2DeadmanCancel:
+		f.Commands = append(f.Commands, command)
+		if f.STPCutsUplink {
+			return "", fmt.Errorf("ssh: i/o timeout")
+		}
+		in := f.l2Inst()
+		in.Deadman = "inactive"
+		f.setL2Inst(in)
+		return "", nil
+	case command == snmpYmlCommand:
+		f.Commands = append(f.Commands, command)
+		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
+		return "", f.applySNMPYml(stdin)
 	case command == batchCommand:
 		for _, line := range strings.Split(stdin, "\n") {
 			line = strings.TrimSpace(line)
@@ -152,7 +200,12 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 	return "", f.apply(command)
 }
 
-func (f *FixtureRunner) Close() error { return nil }
+func (f *FixtureRunner) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Closes++
+	return nil
+}
 
 // --- the capture's CONFIG_DB ---
 
@@ -313,7 +366,16 @@ func (f *FixtureRunner) apply(line string) error {
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
 		return nil
-	case len(w) == 1 && (w[0] == "reboot" || w[0] == "true"):
+	case len(w) == 2 && w[0] == "chronyc" && w[1] == "onoffline":
+		if f.ChronyAfterOnoffline != "" {
+			sec := sections(f.ChronyAfterOnoffline)
+			f.UseSection("chrony_sources", sec["chrony_sources"])
+			f.UseSection("chrony_activity", sec["chrony_activity"])
+		}
+		return nil
+	case len(w) == 1 && w[0] == "reboot":
+		return f.RebootErr
+	case len(w) == 1 && w[0] == "true":
 		return nil
 	case strings.HasPrefix(cmd, "config ntp") || strings.HasPrefix(cmd, "config syslog") || cmd == "config snmp community" ||
 		cmd == "config dns nameserver" || strings.HasPrefix(cmd, "config route") || cmd == "config interface ip" ||
@@ -322,6 +384,20 @@ func (f *FixtureRunner) apply(line string) error {
 
 	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (w[2] == "hset" || w[2] == "hdel"):
 		key := w[3]
+		if key == "NTP|global" {
+			// chrony's source interface (§10.6); hostcfgd regenerates
+			// chrony.conf. 202505 has no CLI for it.
+			if w[2] != "hset" || len(w) != 6 || w[4] != "src_intf" {
+				return fmt.Errorf("unmodelled NTP|global write")
+			}
+			return f.update("cfg_ntp_global", func(t table) error {
+				if t[key] == nil {
+					return fmt.Errorf("unmodelled: NTP|global absent")
+				}
+				t[key]["src_intf"] = w[5]
+				return nil
+			})
+		}
 		if pc, ok := strings.CutPrefix(key, "PORTCHANNEL|"); ok {
 			// The probed way to set a PortChannel's MTU, and the LACP fields
 			// the driver brings in line on a PortChannel made without them.

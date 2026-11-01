@@ -2,7 +2,9 @@
 """Scrub a text fixture (the Proxmox collector's tagged-section output).
 
 Rewrites MAC addresses (consistent mapping into 02:00:00:xx:xx:xx, the
-locally administered range), IPv4 addresses (into 192.0.2.0/24), DMI and
+locally administered range), IPv4 addresses (into 192.0.2.0/24), IPv6
+addresses (global ones into 2001:db8::/32, link-local ones into fe80::N --
+their EUI-64 half is a real MAC), DMI and
 optic serial numbers, and VM/container names (name: <n> -> name: vm-<n>),
 keeping every other byte so parsers see real output.
 
@@ -13,8 +15,9 @@ import re, sys, ipaddress
 MAC_RE = re.compile(r'\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
 BRIDGE_ID_RE = re.compile(r'\b([0-9a-f]{4})\.([0-9a-f]{12})\b')
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
+IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Za-z:.])')
 
-macs, ips, names, chassis = {}, {}, {}, {}
+macs, ips, ip6s, lls, names, chassis = {}, {}, {}, {}, {}, {}
 CHASSIS_NAME_RE = re.compile(r'^(\s*)"name": \[\s*$')   # lldpcli json0: chassis "name": [{"value": ...}]
 
 def map_mac(m):
@@ -35,6 +38,18 @@ def map_ip(s):
     if s not in ips:
         ips[s] = str(ipaddress.ip_address('192.0.2.0') + len(ips) + 1)
     return ips[s]
+
+def map_ip6(s):
+    try:
+        ip = ipaddress.IPv6Address(s)
+    except ValueError:
+        return s   # a MAC or a time, not an address
+    if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+        return s
+    table, base = (lls, 'fe80::') if ip.is_link_local else (ip6s, '2001:db8::')
+    if s.lower() not in table:
+        table[s.lower()] = f'{base}{len(table) + 1:x}'
+    return table[s.lower()]
 
 def map_name(s):
     if s not in names:
@@ -61,6 +76,7 @@ for line in lines:
     line = MAC_RE.sub(lambda m: map_mac(m.group(0)), line)
     line = BRIDGE_ID_RE.sub(lambda m: m.group(1) + '.' + map_mac(':'.join(m.group(2)[i:i+2] for i in range(0, 12, 2))).replace(':', ''), line)
     line = IP_RE.sub(lambda m: map_ip(m.group(0)), line)
+    line = IP6_RE.sub(lambda m: map_ip6(m.group(0)), line)
     line = re.sub(r'^(product_serial|board_serial)=.*', r'\1=SCRUBBED', line)
     line = re.sub(r'^(\s*Vendor SN\s*:\s*).*', r'\1SCRUBBED', line)
     line = re.sub(r'^(name|hostname): (.*)$', lambda m: f'{m.group(1)}: {map_name(m.group(2))}', line)

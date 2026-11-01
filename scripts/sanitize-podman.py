@@ -17,11 +17,13 @@ import sys
 
 MAC_RE = re.compile(r'\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
-IP6_RE = re.compile(r'\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}\b')
+# Any run of hex digits and colons with at least two colons (so "::1" forms
+# match too); ipaddress decides whether it is an address.
+IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Za-z:.])')
 HEX32_RE = re.compile(r'\b[0-9a-f]{32}\b')
 UUID_RE = re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b')
 
-macs, ips, ip6s = {}, {}, {}
+macs, ips, ip6s, lls = {}, {}, {}, {}
 KEEP_NAMES = ('disunified',)
 
 
@@ -50,8 +52,13 @@ def map_ip6(s):
         ip = ipaddress.ip_address(s)
     except ValueError:
         return s
-    if ip.is_link_local or ip.is_loopback or ip.is_unspecified:
+    if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
         return s
+    if ip.is_link_local:
+        # The EUI-64 half of a link-local address is the interface's real MAC.
+        if s not in lls:
+            lls[s] = f'fe80::{len(lls) + 1:x}'
+        return lls[s]
     if s not in ip6s:
         ip6s[s] = f'2001:db8::{len(ip6s) + 1}'
     return ip6s[s]
@@ -119,7 +126,7 @@ def main(src, dst):
     if mid:
         out = out.replace(mid, '0' * 32)
     open(dst, 'w').write(out)
-    print(f'scrubbed {src}: {len(macs)} MACs, {len(ips)} IPv4, {len(ip6s)} IPv6, {len(names)} names')
+    print(f'scrubbed {src}: {len(macs)} MACs, {len(ips)} IPv4, {len(ip6s)} global IPv6, {len(lls)} link-local IPv6, {len(names)} names')
 
 
 if __name__ == '__main__':

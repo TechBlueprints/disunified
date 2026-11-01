@@ -159,6 +159,13 @@ round-trip on one unused port (state, VLAN, speed). Different port layouts
 (a 7050, a 7280) also need the model choice checked against
 [`unifi-models.md`](unifi-models.md).
 
+**Built, untested live (2026-11-01):** an aggregate member's LACP bundling
+(`lacp_state[].active`) from `show port-channel summary`'s `lagMember`,
+fixture-tested on the captured Po1 (members down, not bundled). The
+partner's system id (`partner_system_id`) is not reported: it needs `show
+lacp neighbor` captured on 4.26.14M first. A PR needs that capture and a
+live aggregate's `lacp_state` in the controller's record.
+
 ---
 
 ## `apc-pdu`, `apc-ups`, `apc-backups` — APC power devices
@@ -188,9 +195,9 @@ syslog lines are stamped an hour behind.
 
 ---
 
-## `sonic` — community SONiC switch (control verified live on the virtual switch, build 202505.1238524, with the exceptions below; hardware pending)
+## `sonic` — community SONiC switch (control verified live on the virtual switch, build 202505.1238524, with the exceptions below; the Celestica DX010 adopted on build 202505.1238526, 2026-10-31)
 
-Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6).
+Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixtures: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6) (the VS guest) and [`fixtures/sonic-202505.1238526-ff3c0c9f6/`](fixtures/sonic-202505.1238526-ff3c0c9f6) (the DX010; the same commit); the reference for UniFi's own shapes is the ECS Aggregation's inform in [`fixtures/controller-10.6.109/`](fixtures/controller-10.6.109), and teamd's member records come from upstream SONiC's own test data ([`fixtures/sonic-utilities-202505/`](fixtures/sonic-utilities-202505), Apache-2.0).
 
 ### Verified
 
@@ -198,6 +205,10 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 |---|---|
 | SONiC **202505.1238524-ff3c0c9f6**, the **virtual switch** (KVM image) as hardware SKU `Seastone-DX010`, L2 preset: 32 ports, one linked | `-collect-once` against the lab guest, 2026-10-27 |
 | Read: ports from CONFIG_DB `PORT` (index, alias, admin state, speed, MTU), oper state and flap count from APPL_DB, SAI counters, VLAN membership, the FDB as the MAC table, identity and health, eth0 as the OOB port | fixture + `internal/drivers/sonic/collector_test.go` + `internal/device/contract_sonic_test.go` (as `USWF07D`) |
+| SONiC **202505.1238526-ff3c0c9f6** on a **Celestica DX010** (`Seastone-DX010`, L2 preset), read side: adopted as `USWF07D` and placed behind its uplink's UniFi port (2026-10-31); the hardware tables against its capture -- 12 fans, 2 PSUs (power, ceiling, temperature), 5 sensors, a 100G CWDM4 module with DOM named by its compliance code, FEC codeword counters, `supported_speeds`/`supported_fecs`, the LLDP neighbour as the uplink, eth0 taken down on purpose read as admin down | live on the unit; `internal/drivers/sonic/hardware_test.go`, `internal/informloop/oob_test.go` ([`drivers/sonic.md`](drivers/sonic.md) §10) |
+| The ECS Aggregation's hardware shapes on the DX010 (2026-11-01, a second capture with collect.py's `state_lag_member`, `crm` and `hwmon` sections): five fan drawers with airflow direction, the supplies' PMBus chips (three temperatures, fan RPM, input power), `psu_caps`/serials, `mac_table_capability` from CRM, `ipv6`, `displayable_version`, `sfp_rev` -- every ECS key but `psu_type` | `internal/drivers/sonic/hwtables_test.go` + `internal/device/contract_sonic_hw_test.go` against the ECS's own inform (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`, printed by `mca-dump` on the switch) |
+| **Live on the DX010 from the controller (2026-11-01, deployed build of 2026-10-31 18:54)**, each override restored to its pre-test value afterwards and a zero-change push confirmed: **Locate** (`set-locate`/`unset-locate`: the status LED `dx010:green:stat` toggling about once a second, steady green after; nothing in pmon fought the blink); a **forced speed** (cage 3 manual 40G: `config interface speed Ethernet8 40000`, then auto: `... 100000`); **breakout** (cage 2 manual 25G: `config interface breakout -f -y Ethernet4 '4x25G[10G]'`, the four children `Ethernet4`-`7` up, MTU 1500 and untagged in the native VLAN; joined back with a manual 100G: `'1x100G[40G]'` and the cage's VLAN restored; no prompt, no swss or syncd restart, the uplink up throughout); **Restart** (the UI command: `reboot requested`, the reload issued about 50 s later, SSH back 112 s after the switch went down, on the same image with the saved config intact, the bridge recovering after one failed collect, the next push writing nothing) | the bridge's log and `show interfaces status` on the unit; the commands are the ones `features_test.go` and `control_test.go` expect |
+| LACP state (`lag_member`; `aggregate_num_ports`, `lacp_state[]`, `partner_system_id` on the lowest member) from teamd's STATE_DB `LAG_MEMBER_TABLE`: the driver's reading against upstream SONiC's own member records (bundled, link down, defaulted), and the DX010 capture's first two cages put in an aggregate at the model level held to the ECS's inform (its head key for key, the aggregate keys on its member, the `lacp_state` rows' keys and types) | `TestLACPOfUpstreamRecords`, `TestLACPInactive`, `TestSetLACP`, `TestWireContractSonicAggregate` |
 | Adoption sequence, read-only (the ECS Core's recorded replies drive the real driver; nothing is written) | `internal/informloop/replay_sonic_test.go` |
 | Port control against the capture: state, name, speed, FEC, jumbo, VLANs with the native mapping, LAG, mirror, storm control; STP port settings and breakout refused on the VS | `internal/drivers/sonic/control_test.go` (a FixtureRunner that applies each write to the capture's CONFIG_DB and refuses what SONiC refuses) + `internal/informloop/replay_sonic_control_test.go` (two recorded controller pushes through the loop) |
 | Device control against the capture: NTP/syslog/SNMP with bridge-owned entries only, STP (PVST, feature-gated), SSH keys in a marked block, reboot, the static address (dial-proven, undone when the new address does not answer) | `internal/drivers/sonic/device_test.go` + `TestReplaySonicDeviceLevel` (a recorded device-level push through the loop) |
@@ -214,30 +225,58 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixture: [`f
 | SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
 | A move whose new address does not answer (the new address and route removed again) | a move to an address the bridge cannot reach |
 | A gateway change in IP Settings (`config route add` then the old route's `del`) | a static push with a new gateway, the route read back, the zero-change reconcile |
-| A forced speed change (live, 100G was pushed on a cage already at 100G, so no speed command ran) | a forced lower speed the cage runs without a breakout (40G on a 1x100G[40G] cage, hardware) |
+| SNMP off on a switch whose `/etc/sonic/snmp.yml` names a community (every image ships `public` there; the snmp container re-imports it at each start, so a CONFIG_DB delete alone came back and was redone every cycle on the DX010): the file is rewritten first (`bash -s -- disunified-snmp-yml`), then `config snmp community del` (§10.1; `snmp_yml_test.go`, the runner models the importer) | the DX010's file was fixed by hand before the fix, so the rewrite never ran live: a switch with the factory file and the site's SNMP off -- the rewrite logged, `snmp_location` kept, `SNMP_COMMUNITY` empty after the snmp restart, the next reconcile writing nothing |
+| FEC from the module where UniFi pushes none (§10.3; `fec_test.go`) | the CWDM4 → RS case is verified by hand on the DX010 (its uplink stayed down until `config interface fec Ethernet0 rs`) but the driver's own write never ran (RS was already set): a module in another cage with FEC left at auto in the UI -- the logged `config interface fec`, the link up; any other module type (the table's other rows come from the IEEE clauses and MSAs) |
+| NTP from the in-band interface (§10.6: `NTP\|global src_intf`, from the image's `eth0` to the dialled `Vlan<native_vlan>`; `ntp_source_test.go`, `TestDX010FirstPushSourcesNTPInBand`) | the DX010 was fixed by hand (`hset … src_intf Vlan4094`, chrony synced) before the driver could, so its write never ran live: a switch on the image's `src_intf eth0` with a configured eth0 address -- the logged hset, chrony's `bindacqdevice` on the Vlan interface, sources reachable |
+| chrony nudged after a reboot (§10.6: `chronyc activity` counting every source offline, the in-band interface up → `sudo chronyc onoffline` once a cycle; `chrony_test.go`, `TestDX010PushNudgesChronyAfterAReboot`, on the synced, offline and after-`onoffline` states read from the unit) | a Restart from the UI on the DX010: the journal's "Source … offline", the bridge's one `chronyc onoffline` log line within a cycle, `chronyc sources` reaching the servers |
+| A reboot whose SSH session drops before `sudo reboot` returns (DX010, 2026-11-01: logged as `reboot: context deadline exceeded`), now the reload issued (`TestRebootSessionDrops`, `TestSessionDropped`, the recorded Restart through the loop) | the next Restart from the UI on the DX010: `reboot: switch reload issued` and the bridge reconnecting |
+| Speed "auto" from the module (§10.9; `speed_test.go`, `hold_sonic_test.go` on the DX010's real first push with cage 1 at 40G) | the speed and breakout commands are verified by hand on the DX010 (40G and back, 4x25G and back, no restart) but the driver's own module-driven write never ran: a split or a forced speed on a cage holding a 100G module, set back to auto in the UI -- the logged join or speed, the link back; a breakout cable (CA-25G-S/N) in a cage; any module but the CWDM4 |
+| The first-push hold without the MTU (§10.2; `hold_sonic_test.go` on the DX010's real held push) | on the DX010 the hold was released by setting 1500 by hand, so the fix never ran live: a newly adopted SONiC switch at 9100 with jumbo off -- its first push applied (1500 on every port), not held |
+| `-device-ssh-key` / `DUI_DEVICE_SSH_KEY` (§10.5) | a `-collect-once` with `-device-ssh-key <key>.pub` against an agent holding several keys, the chosen one authenticating |
+| LACP state on the DX010 (2026-11-01; held to the ECS's own tables and inform, never read from a community SONiC LAG) | the second core cable in and the aggregate up: `LAG_MEMBER_TABLE` filled by tlm_teamd on 202505, the head port's `lacp_state` both active with the core's system id as partner, the controller's record showing `lacp_state`/`partner_system_id`; and a member pulled reading `active: false` |
+| The DX010's hardware tables in the controller (2026-11-01; not deployed) | the controller keeping `mac_table_capability` for `USWF07D` (it drops it for USW models), the PSU rows' input power, fan RPM and three temperatures and the drawers' `direction` in the UI, `total_max_power` as the summed draw (was the capacity), `ipv6`, `sfp_rev` on cage 1 |
 | LACP fast rate / min-links on a real LAG partner (2026-10-28: the driver creates `config portchannel add PortChannelN --fast-rate true --min-links 1`, as UniFi's own SONiC switches run their aggregates, and brings a managed PortChannel without them in line with `hset 'PORTCHANNEL\|PortChannelN' fast_rate true min_links 1`; `control_test.go` `TestLAGLACPFastRateAndMinLinks`, `replay_sonic_live_test.go` record 104) | an aggregate to a real LACP partner (the DX010 to a UniFi switch): `teamdctl PortChannel<n> state` showing fast rate and min ports 1, the partner reporting our fast timeout; and an older slow-rate PortChannel taking the hset, with the restart it needs to reach the running team (teammgrd reads both only at creation) |
 
 ### Hardware only (the DX010) — PRs welcome
 
 Fans, PSUs and temperatures (pmon), optics and DOM (xcvrd), real speeds and
-FEC, `supported_speeds`, PCS/FEC codeword counters, LLDP neighbours from
-real cables. The parser reads each table when present; none has seen real
-data.
+FEC, `supported_speeds`, PCS/FEC codeword counters and LLDP neighbours from
+real cables are read from the DX010 and tested against its capture since
+2026-10-31 (Verified, above).
 
 Built and fixture-tested against the DX010's upstream `platform.json`, never
 run on hardware:
 
 | Gap | What the PR needs |
 |---|---|
-| Dynamic port breakout (split 1x100G → 4x25G / 2x50G, lane speed 25G → 10G, join back) | on an empty cage with a 4x25G DAC: each step from the UI, the logged commands, the children in `show interfaces status`, the cage's VLANs/MTU/state on every child, the zero-change reconcile; whether the breakout prompts for tables without YANG (stdin is `/dev/null`, so it would abort the batch) |
-| Locate (the status LED toggled off/green once a second through the platform API, green after; on the VS the platform call fails and is logged once, as verified live) | the LED blinking from the UI's Locate on the DX010 and green after; whether pmon's system-health daemon fights the blink |
+| Dynamic port breakout, the modes not yet run on hardware: 2x50G, and a lane speed change on a split cage (25G → 10G) | from the UI on an empty cage: the split, the lane speed on each child, the join; the logged commands and the zero-change reconcile (4x25G and the join back are verified, above) |
 
-### STP
+### STP and loop protection
 
-Feature-gated: the driver claims STP, BPDU guard and port cost only when
-`FEATURE|stp` exists. Community images ship without the STP daemon
-(`INCLUDE_STP=y` is off in the build), so on build 1238524 every STP setting
-is refused with a log and not claimed; untested with the daemon.
+Community images ship without the STP daemon (`INCLUDE_STP=y` is off), so the
+driver runs RSTP itself where the image lacks `FEATURE|stp`: disunified-l2d on
+the switch runs mstpd (built there from the upstream source) on the kernel
+`Bridge` and mirrors its port states into the stock orchagent's StpOrch, one
+STP instance per VLAN; loop protection (`switch.port.N.keepalive`) is a MAC-move
+guard in the same daemon ([`drivers/sonic.md`](drivers/sonic.md) §11.5). Built
+2026-11-01, on by default since the driver's own path passed live the same
+day (`l2d: off` opts out); fixture- and replay-tested
+(`l2_test.go` on `collect-l2.txt`, the DX010 collected read-only;
+`replay_sonic_l2_test.go`, the ECS's real spanning-tree keys through the loop;
+the read side on `collect-l2-running.txt`, captured with l2d running).
+**The mechanism is verified live by hand on the DX010** (§11.5's table): mstpd
+joining the LAN's RSTP with Ethernet0 the root port and forwarding, the ASIC
+following (`STP_PORT` objects, the VLAN in its own instance), a restart that
+adopts mstpd, the topology-change flush, BPDU guard and auto edge on a veth
+port, loop protection on two empty cages, the teardown. **The driver's own path
+passed live** after a deploy: the build, the install, the first enable under
+the dead-man cancelled over a fresh connection, the bridge priority from the
+UI. **What still needs a run:** BPDU guard on a down port from the UI after
+the reconciliation fix (`l2d_reconcile_test.go`; the coordinator's re-test),
+and the guard and loop protection tripping on a real second link, which the
+DX010's single cable cannot give. With
+`FEATURE|stp` the PVST path (`config spanning-tree`) is untested with the
+daemon.
 
 ### Refused (logged, not claimed)
 
@@ -245,14 +284,15 @@ IGMP snooping, port isolation, 802.1X, LLDP-MED off, DHCP snooping (community
 SONiC has none of them); breakout on a platform without `platform.json`
 (the VS), a speed no breakout mode runs, and a breakout of a cage in an
 aggregate or mirror session; a pushed time zone no zone on the switch
-matches; a hostname that is not a DNS name of at most 63 characters; STP
-and the per-port STP settings on an image without the STP daemon.
+matches; a hostname that is not a DNS name of at most 63 characters; STP,
+the per-port STP settings and loop protection on an image without the STP
+daemon while `l2d` is off, or on a switch with neither mstpd nor docker.
 
 ### Untested — expected to work — PRs welcome
 
 | Gap | Why it should work | What the PR needs |
 |---|---|---|
-| **Real hardware** (the DX010 first) | the same Redis tables and `config` CLI; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them when present | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
+| **Other hardware** (the DX010 is read since 2026-10-31) | the same Redis tables and `config` CLI; pmon fills `FAN_INFO`/`PSU_INFO`/`TEMPERATURE_INFO`, xcvrd fills `TRANSCEIVER_INFO`/`_DOM_SENSOR`, and the parser reads them as it does the DX010's | a capture from the unit as `docs/fixtures/sonic-<build-id>/` (`scripts/sanitize-sonic.py`), the collector test over it, `-collect-once` in the PR |
 | **Other SONiC branches** (`202411`, master) and other hardware SKUs | `swsscommon`, the table names and the `config` groups `Start` checks are stable across branches | a capture per branch; `Start`'s `--help` checks pass |
 
 ### Known limits (by design)
