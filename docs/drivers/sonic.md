@@ -3185,6 +3185,141 @@ on Ethernet8, `dhcp_rate_limit 300` on the written ports, `MGMT_PORT|eth0`
 port bound to it; gone at the next swss restart or reboot). No ACL table,
 no PortChannel, no mirror row, cage 2 unbroken.
 
+Both commits were deployed later the same day (15:11Z, by the
+coordinating session): the DX010's first apply dropped NTP's source
+interface, chrony restarted unbound and re-selected both servers at
+stratum 2 within two minutes.
+
+### 11.9 Port mirroring on the DX010: the ACL route (spec, 2026-11-02)
+
+**Why the SPAN path cannot work on this unit.** orchagent asks the SAI at
+start whether a port can carry `SAI_PORT_ATTR_INGRESS_MIRROR_SESSION` /
+`EGRESS_MIRROR_SESSION` (`SwitchOrch::querySwitchPortMirrorCapability`,
+`switchorch.cpp`). A query the SAI cannot answer is recorded as
+**`true`**; `false` is written only when the SAI answers and says the
+attribute is not implemented. The DX010's `SWITCH_CAPABILITY|switch`
+carries `PORT_INGRESS_MIRROR_CAPABLE false` and `PORT_EGRESS_MIRROR_CAPABLE
+false`, and syncd logged no "capability query not supported" line for the
+port object at boot: Broadcom's `libsaibcm 13.2.1.100` (the legacy
+Tomahawk branch) itself denies port-bound mirroring. `MirrorOrch` and the
+CLI both honour that answer (§11.8), so no row the driver writes can bind a
+source port. The only way to learn whether the SAI would in fact accept the
+attribute is an orchagent build that ignores the answer -- a probe patch in
+the 202511 series (`switchorch.cpp`, treat `set_implemented false` as
+capable), hours of build on VM 116 and an image install; kept as a register
+item, not part of this spec.
+
+**How the ECS does it (read 2026-11-02 on the USWF066).** Ubiquiti's glue
+writes a port-based SPAN session: a `MIRROR_SESSION` row with `type SPAN`,
+`dst_port`, the `src_port` list and `direction BOTH` -- the row shape this
+driver already writes (§6) -- and nothing through ACLs. Its SONiC 4.0.1
+(202106) orchagent predates the capability gate (its `SWITCH_CAPABILITY`
+has no `PORT_*_MIRROR_CAPABLE` rows) and Marvell's SAI (`mrvllibsai
+1.8.1`) binds the ports. Its ACL capability rows read like the DX010's:
+`MIRROR_INGRESS_ACTION` at ingress, none at egress. So the ECS pattern is
+port SPAN in both directions, and the DX010 falls short of it only because
+Broadcom's legacy-TH SAI answers the port-mirror capability query with no.
+
+**What the same SAI does offer.** `SWITCH_CAPABILITY|switch` has `MIRROR
+true` and `MIRRORV6 true` (the ACL table types; orchagent logs
+`TABLE_TYPE_MIRROR: yes` at init), and `ACL_STAGE_CAPABILITY_TABLE|INGRESS`
+lists `MIRROR_INGRESS_ACTION` among the ingress actions. The `EGRESS` stage
+lists `PACKET_ACTION` only. So the ASIC can mirror **frames received on a
+port** through an ingress ACL rule, and nothing can mirror frames the
+switch sends out of a port. **Mirroring on the DX010 is therefore
+ingress-only**, and the driver says so in a note once per session; a
+UniFi switch mirrors both directions, and this stays short of parity until
+the probe patch (or a newer SAI) says otherwise.
+
+**Design.**
+
+1. *Session.* `MIRROR_SESSION|dui<dst>` with `type SPAN` and `dst_port`
+   only: no `src_port`, no `direction`. `MirrorOrch::activateSession`
+   binds ports only when both are set (`mirrororch.cpp`, the
+   `!session.src_port.empty() && !session.direction.empty()` branch), so a
+   destination-only session is created and reported `active` in
+   `STATE_DB MIRROR_SESSION_TABLE|dui<dst>` as soon as the destination's
+   link is up, `inactive` while it is down. Written with `sonic-db-cli`
+   (`hset ... type SPAN dst_port <dst>`), not the CLI: the CLI's gate is
+   about port binding and the row never asks for one. Removal: `config
+   mirror_session remove dui<dst>` as today. The destination keeps today's
+   treatment (every VLAN membership stripped before, restored after).
+2. *Table.* One ACL table **`DUI_MIRROR`**, type `MIRROR`, stage
+   `ingress`, bound to every source port of every session
+   (`AclOrch::addAclTable` allows one `MIRROR` table per stage; it binds
+   to the `PORT` and `LAG` bind points). Created and rewritten with
+   `config acl add table DUI_MIRROR MIRROR -p <ports> -s ingress` exactly
+   as `DUI_DHCP_GUARD`/`DUI_IP_ACL` are (`set_entry` replaces the row,
+   rules survive); removed with `config acl remove table DUI_MIRROR` when
+   the last session goes. On Broadcom XGS orchagent builds the combined
+   v4+v6 mirror table (`m_isCombinedMirrorV6Table true`), which changes
+   nothing for rules that match ports only. CRM: the ingress `PORT` bind
+   point reports **3 ACL tables available** on the DX010 (`CRM:ACL_STATS:
+   INGRESS:PORT`); guard + IP ACL + mirror is exactly three, so the three
+   tables fit and a fourth of any kind would not -- the driver logs the
+   `STATE_DB ACL_TABLE_TABLE|DUI_MIRROR` status after the write, as it does
+   for the other two.
+3. *Rules.* One per source port: `ACL_RULE|DUI_MIRROR|SRC_<src>` with
+   `PRIORITY` (9999 downwards, any distinct values), `IN_PORTS <src>` and
+   `MIRROR_INGRESS_ACTION dui<dst>`. `AclRuleMirror::validate` needs at
+   least one match, and `IN_PORTS` is that match: the rule mirrors every
+   frame the port receives, whatever its type. `AclRuleMirror::activate`
+   programs the SAI entry only while the session is `active`, and
+   `AclOrch::update` re-runs it on every `SUBJECT_TYPE_MIRROR_SESSION_CHANGE`,
+   so a rule written while the destination is down takes effect when it
+   comes up -- the driver writes rows and does not wait. Rule status is in
+   `STATE_DB ACL_RULE_TABLE|DUI_MIRROR|SRC_<src>`.
+4. *Choosing the route.* The ACL route is used when the collect shows
+   `PORT_INGRESS_MIRROR_CAPABLE` or `PORT_EGRESS_MIRROR_CAPABLE` present
+   and not `true` (today's `portMirrorUnsupported`), **and** `MIRROR` is
+   `true` in `SWITCH_CAPABILITY|switch`, **and** `ACL_STAGE_CAPABILITY_TABLE|
+   INGRESS` lists `MIRROR_INGRESS_ACTION`. The VS and 202505 (no flags)
+   keep the SPAN CLI path unchanged; a unit with the flags false and no
+   ACL mirror support keeps today's refusal note. `collect.py` gains the
+   `ACL_STAGE_CAPABILITY_TABLE|INGRESS` row (a later section, like
+   `state_switch_cap`), and the `DUI_*` ACL sections already cover the
+   table, its rules and their status.
+5. *Read side.* `Port.MirrorFrom` comes from the `DUI_MIRROR` rules (the
+   `IN_PORTS` of the rule whose action names `dui<dst>`), since the session
+   row no longer carries `src_port`; the SPAN path keeps reading
+   `MIRROR_SESSION`. The note, once per session per run: "port N mirrors
+   what port M receives; this switch cannot mirror what it sends out of
+   port M (SAI: no port-bound mirror; ACL mirror is ingress-only)".
+6. *Interactions.* `aclUnbind` (f723e82) takes a lane out of the driver's
+   tables before a `portchannel member add`; it must accept the
+   `MIRROR`/`ingress` shape as the driver's own, and a rule whose
+   `IN_PORTS` is a lane that joins a LAG is removed with the unbind (a
+   mirrored port that becomes a LAG member is no longer a port the
+   controller can mirror; the loop already handles the override). A
+   breakout of a mirrored cage follows the same rebind step the other two
+   tables use (`applyACL` after `ApplyPorts`). Order within an apply stays
+   as §6 lists it: mirror removals (rule, then the table if empty, then
+   the session) first; session, table, rules after the VLAN and LAG work.
+   A source that is a PortChannel: the table binds the PortChannel (a
+   `LAG` bind point) and `IN_PORTS` lists its members; whether orchagent
+   accepts the member list is checked on the fixture first and, if
+   refused, a LAG source is declined with a note.
+
+**Captures first (Clint's rule), on empty cages, by hand, before any
+code:** the session `dui4` with `dst_port Ethernet12` only; the table
+`DUI_MIRROR MIRROR -p Ethernet16 -s ingress`; the rule `SRC_Ethernet16`
+as in 3. Capture CONFIG_DB, `STATE_DB` (`MIRROR_SESSION_TABLE`,
+`ACL_TABLE_TABLE`, `ACL_RULE_TABLE`), the ASIC_DB ACL entry once the
+session is active, `CRM:ACL_STATS`, and orchagent's syslog lines; then
+remove in the reverse order and capture again. With no link on cage 4 the
+session stays `inactive` and the rule unprogrammed; the capture then
+proves orchagent accepts the rows, and **packet-level proof waits for two
+cabled devices** on the DX010 (a sender on the source cage, a capture
+host on the destination) -- the first time a cage is cabled, mirror it
+and look. The fixture runner models `config acl add table ... MIRROR`, the
+`MIRROR_INGRESS_ACTION` rule, the status rows and the
+`ACL_STAGE_CAPABILITY_TABLE` section; tests on the 202511 capture
+(`rig202511`): the route chosen, the writes in order, the read-back of
+`MirrorFrom`, removal, the LAG-join unbind, the breakout rebind, and the
+SPAN path untouched on the VS capture (`TestApplyMirror`). Docs: §6's
+mirror row, the support matrix row ("ingress-only on the DX010"), the
+feature map, this driver's `CLAUDE.md`.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>
