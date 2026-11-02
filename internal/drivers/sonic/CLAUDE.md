@@ -486,7 +486,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   ingress mirror is not supported by the ASIC") and leak the object on
   removal. The driver refuses the mirror with a note
   (`portMirrorUnsupported`); the ASIC_DB object alone proves nothing, read
-  orchagent's syslog. Every PORT write adds `dhcp_rate_limit:
+  orchagent's syslog. **The SAI itself does bind ports** (probed
+  2026-11-02 through ASIC_DB's op queue: `SAI_STATUS_SUCCESS`, `bcmcmd
+  "mirror show"` programmed): the gate is orchagent's capability query,
+  fixable in the image (sonic.md §11.9). Every PORT write adds `dhcp_rate_limit:
   300`. `config spanning-tree interface` spells `bpdu-guard` (202505:
   `bpdu_guard`); `config` gains `igmp-snooping`, `mld-snooping`,
   `dhcpv4_relay`. portconfig prints its FEC refusal (`fec fc is not in

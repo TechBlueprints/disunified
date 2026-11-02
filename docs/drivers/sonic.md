@@ -2690,9 +2690,12 @@ for ten minutes. A `systemctl restart disunified-l2d` fixed it in one
 second (stop does not tear down, start re-adopts: `addbridge`, settle, every
 VLAN remapped). ae2ce0e adds that branch to the sync loop: a present bridge
 whose `stp_state` is not 2 is a recreation, and l2d runs the fresh-enable
-path with its port, state and VLAN memory cleared. Fixture-tested by the
-existing reconcile tests only; the live proof is the restart above, which
-runs the same `stp_up`.
+path with its port, state and VLAN memory cleared. Live-proven the same
+afternoon by the day's second swss restart (§11.9): `Bridge was recreated
+(swss restart?): re-enabling spanning tree` 20 s after the netdev came
+back, mstpd `create_br`, the VLANs mapped 16 s later (27 ports at that
+moment, the rest joining as portsorch brought them up), Ethernet0
+blocking -> learning -> forwarding, one topology change.
 
 ### 11.6 Live checks on the DX010, 2026-11-01
 
@@ -3372,8 +3375,35 @@ A `SAI_STATUS_SUCCESS` means the capability query lied and the orchagent
 probe patch gives ECS-style SPAN; `NOT_SUPPORTED`/`NOT_IMPLEMENTED` means
 the ACL route above is all there is. Frames actually copied still need two
 cabled devices, or a read of the SDK's mirror table through the Broadcom
-shell. Not run yet with the correct encoding (Clint's call after the
-crash).
+shell.
+
+**Result (2026-11-02 17:19Z): the Broadcom SAI binds a port to a mirror
+session; the capability query lied.** With a SPAN row written to
+CONFIG_DB (`type SPAN`, `dst_port Ethernet12`, no source) orchagent created
+and activated the SAI session as before. The push of
+`SAI_PORT_ATTR_INGRESS_MIRROR_SESSION = 1:oid:<that session>` on
+Ethernet16's port object came back `SAI_STATUS_SUCCESS` in under two
+seconds, and the SDK shell (`bcmcmd "mirror show"`) showed the silicon
+programmed: `ce4: Mirror ingress to local port ce3` (ce4 is Ethernet16,
+ce3 Ethernet12). The undo (`0:null`) answered `SAI_STATUS_SUCCESS` and the
+shell reported `No mirror ports configured`. So port-based SPAN, the ECS's
+pattern, works on this SAI once orchagent stops believing the query: the
+orchagent probe patch (`switchorch.cpp`, treat the query's `false` as
+capable, or skip the query) in the 202511 series gives mirroring in both
+directions without a driver change, and the ACL route above stays the
+fallback for images that cannot be rebuilt. **The egress attribute is
+unprobed**: the bridge's own reconcile removed the probe row between the
+two pushes (UniFi owns the session list; `config mirror_session remove
+duiprobe` ran at 17:19:52Z), so the egress push named a session object
+that no longer existed and syncd stopped again (`translateVidToRid:
+unable to get RID for VID`, a throw before any SAI call, so synchronous
+mode does not soften it: **a stale object id in a hand-pushed op kills
+syncd whatever the mode**) -- the second restart of the day, both mine
+(see §11.5's gap for the first). This time l2d re-enabled spanning tree
+by itself 20 s after the bridge reappeared (17:21:52Z; the fix below,
+deployed an hour earlier, live-proven). A future probe writes the row,
+probes and removes it in **one** script, with the row re-read before
+every push.
 
 ## Sources
 
