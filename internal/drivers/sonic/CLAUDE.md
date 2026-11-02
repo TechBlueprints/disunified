@@ -489,7 +489,15 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   orchagent's syslog. **The SAI itself does bind ports** (probed
   2026-11-02 through ASIC_DB's op queue: `SAI_STATUS_SUCCESS`, `bcmcmd
   "mirror show"` programmed): the gate is orchagent's capability query,
-  fixable in the image (sonic.md §11.9). Every PORT write adds `dhcp_rate_limit:
+  fixable in the image (sonic.md §11.9).
+  Upstream knows: sonic-buildimage #28139 (Broadcom TH5, same lie; Broadcom:
+  fixed in SAI 15.2, backport to 14.3 -- not in any pinned version as of
+  2026-10-30, and the DX010's legacy-TH train 13.2.1.x gets no fixes at
+  all). **Treat every `SWITCH_CAPABILITY` `false` on this SAI as a claim,
+  not a fact**: Broadcom's 2026 release notes correct capability tables
+  repeatedly (RX SNR, WRED ECN stats, FEC corrected bits, TAM bind points);
+  before building around a refusal, probe the SAI through ASIC_DB in one
+  script (§11.9: op `Sset`, re-read every oid first). Every PORT write adds `dhcp_rate_limit:
   300`. `config spanning-tree interface` spells `bpdu-guard` (202505:
   `bpdu_guard`); `config` gains `igmp-snooping`, `mld-snooping`,
   `dhcpv4_relay`. portconfig prints its FEC refusal (`fec fc is not in
