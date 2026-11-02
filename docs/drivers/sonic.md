@@ -3225,7 +3225,8 @@ source port. The only way to learn whether the SAI would in fact accept the
 attribute is an orchagent build that ignores the answer -- a probe patch in
 the 202511 series (`switchorch.cpp`, treat `set_implemented false` as
 capable), hours of build on VM 116 and an image install; kept as a register
-item, not part of this spec.
+item, not part of this spec (the probe below then showed the SAI binds;
+§11.10 is that patch).
 
 **How the ECS does it (read 2026-11-02 on the USWF066).** Ubiquiti's glue
 writes a port-based SPAN session: a `MIRROR_SESSION` row with `type SPAN`,
@@ -3404,6 +3405,107 @@ by itself 20 s after the bridge reappeared (17:21:52Z; the fix below,
 deployed an hour earlier, live-proven). A future probe writes the row,
 probes and removes it in **one** script, with the row re-read before
 every push.
+
+### 11.10 Port mirroring on the DX010: the orchagent capability patch (2026-11-02)
+
+The ECS's way (§11.9: a port-based SPAN session, both directions, no ACL)
+on the DX010, by taking out the gate that §11.9's probe showed to be wrong.
+No driver change: with the capability rows `true` the driver's existing
+SPAN path (`config mirror_session span add dui<dst> <dst> <src> both`, §6)
+runs, and `portMirrorUnsupported` (b26fb67) stays for images without the
+patch.
+
+**The patch** (`series/sonic-swss/0002-switchorch-do-not-record-port-mirroring-as-unsupport.patch`
+in the IGMP image kit, after 0001's l2mc series, base `177c7a0`). In
+`SwitchOrch::querySwitchPortMirrorCapability`, an answer of
+`set_implemented=false` for `SAI_PORT_ATTR_INGRESS_MIRROR_SESSION` or
+`SAI_PORT_ATTR_EGRESS_MIRROR_SESSION` is recorded as `true`, the same as
+the existing branch for a query that fails:
+
+```diff
+     else
+     {
+-        if (capability.set_implemented)
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "true");
+-            m_portIngressMirrorSupported = true;
+-        }
+-        else
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "false");
+-            m_portIngressMirrorSupported = false;
+-        }
+-        SWSS_LOG_NOTICE("port ingress mirror capability %d", capability.set_implemented);
++        // The Broadcom legacy-TH SAI (libsaibcm 13.2.1.100, Tomahawk-1) answers
++        // set_implemented=false here, yet it sets SAI_PORT_ATTR_INGRESS_MIRROR_SESSION
++        // and programs the port. Take a "no" as a failed query: record the
++        // capability, and let MirrorOrch::setUnsetPortMirror log a set the SAI
++        // refuses.
++        fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "true");
++        m_portIngressMirrorSupported = true;
++        SWSS_LOG_NOTICE("port ingress mirror capability %d (recorded as supported)", capability.set_implemented);
+     }
+```
+
+and the same for egress. Nothing else: MirrorOrch reads
+`m_portIngress/EgressMirrorSupported` and the CLI reads the STATE_DB rows,
+so both follow. The query arrived with sonic-net/sonic-swss#4137 (2026-03);
+202505's orchagent has none and asks every SAI to bind, and so does the
+ECS's 202106. The swss unit tests (`switchorch_ut.cpp`) check only that the
+two rows exist. The orchagent log line keeps the SAI's own answer
+(`port ingress mirror capability 0 (recorded as supported)`), so a boot log
+still shows that the SAI said no.
+
+**If the SAI does refuse a bind (the egress attribute was never probed).**
+`MirrorOrch::setUnsetPortMirror` logs `Failed to configure TX session on
+port …` and hands the status to `handleSaiSetStatus`, which for any status
+but the retry ones (`INSUFFICIENT_RESOURCES`, `TABLE_FULL`, `NO_MEMORY`,
+`NV_STORAGE_FULL`) calls `handleSaiFailure(…, abort_on_failure=false)`: an
+error log, a structured `sai-operation-failure` event, a SAI dump requested
+from syncd, and `gOrchUnhealthy`, which makes orchagent's main loop repeat
+the error line about once a second until it restarts. No abort.
+`parseHandleSaiStatusFailure(task_failed)` returns true, so the session is
+still reported active with the ingress half bound. On the syncd side a
+failed set in synchronous mode (`synchronous_mode enable`, read on the
+DX010 2026-11-02) is answered and logged, not thrown (`Syncd.cpp`: the
+throw is only `if (!m_enableSyncMode)`). So a genuinely unsupported egress
+bind degrades to a noisy log, not a crash; no second patch. The read-back
+below shows which case the DX010 is in.
+
+**Build.** The kit's own script on the build host, Broadcom only, in a
+fresh work directory so the tree the running image came from stays:
+`SKIP_PREFLIGHT=1 WORK=~/sonic-mirror OUT=~/out PLATFORMS=broadcom ./build.sh`
+(preflight's disk check budgets for two trees; this run builds one, and
+every other check passed). The series is the running image's plus this
+patch and sonic-buildimage 0011 (sonic-net/sonic-buildimage#26983, the
+`dx010_cpld` `setreg_store` fix the running image carries as a hand-swapped
+platform deb; now built in). The kit's `dry-run.sh` passed on the new
+series first. Build id: **`igmp-202511.20261102-e53777446`** (series applied 17:42Z); the DX010 takes
+`sonic-broadcom-legacy-th.bin`.
+
+**Install (Clint's call: a reboot of a switch with one live link).** With
+the kit's `sonic-upgrade.sh` as for the running image: `arm` installs
+beside the running image, which stays GRUB's default, boots the new one
+once under a 20-minute dead-man, and `confirm` makes it the default. The
+image's own `install.sh` deletes every image but the running one and the
+new one, so the 202505 image leaves `/host` (a copy is kept off the
+switch); `sonic-installer cleanup` is never run. After `confirm`, redo the
+settings that live in the image's overlay (the fan floor; the follow-up
+register lists them).
+
+**Read-back after the install (to run).** STATE_DB
+`SWITCH_CAPABILITY|switch` `PORT_INGRESS_MIRROR_CAPABLE true` and
+`PORT_EGRESS_MIRROR_CAPABLE true`; then from the UniFi UI an empty cage pair
+(cage 5 mirrored onto cage 4, as §11.8's 5b; never a port with a live link):
+`MIRROR_SESSION|dui<dst>` with `src_port`/`direction BOTH`, orchagent's
+syslog with the session activated and no `setUnsetPortMirror` refusal, and
+in the syncd container `bcmcmd "mirror show"` listing the source with both
+its ingress and egress entries; then the removal and `No mirror ports
+configured`. Captured into `docs/fixtures/sonic-igmp-202511.<build id>/`
+through the scrub scripts. **Packet-level proof is out of scope**: it needs
+two cabled devices on the DX010 (a sender on the source cage, a capture
+host on the destination); the SDK's mirror table is the proof available
+without them.
 
 ## Sources
 
