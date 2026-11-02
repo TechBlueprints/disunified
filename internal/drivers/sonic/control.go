@@ -262,6 +262,23 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 		}
 	}
 	sort.Ints(ids)
+	// `config portchannel member add` refuses a port an ACL table binds
+	// (get_port_acl_binding; the DX010, 2026-11-02), and the driver's own
+	// tables bind every port: the joining lanes leave them first, and
+	// applyACL binds the PortChannel once the batch has made it (acl.go).
+	var joining []string
+	for _, lag := range ids {
+		for _, d := range byLAG[lag] {
+			for _, lane := range lanesOf(pl.ports[d.Index]) {
+				if !pl.sim.lags[pcName(lag)][lane] {
+					joining = append(joining, lane)
+				}
+			}
+		}
+	}
+	if len(joining) > 0 {
+		pl.aclUnbind(byLAG[ids[0]][0].Index, joining)
+	}
 	for _, lag := range ids {
 		pc := pcName(lag)
 		members := byLAG[lag]
@@ -302,14 +319,17 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 			pl.syncVLANs(members[0].Index, pc, members[0])
 		}
 	}
-	// A PortChannel this apply emptied goes, its VLANs first.
+	// A PortChannel this apply emptied goes, its VLANs first. So does a
+	// memberless one the driver made and nobody wants: a batch that made
+	// it and then failed at the member add (the ACL refusal above, before
+	// the unbind) left exactly that on the DX010 (2026-11-02).
 	wanted := map[string]bool{}
 	for _, lag := range ids {
 		wanted[pcName(lag)] = true
 	}
 	var pcs []string
 	for pc, m := range pl.sim.lags {
-		if len(m) == 0 && !wanted[pc] && pl.emptiedHere(pc) {
+		if len(m) == 0 && !wanted[pc] && (pl.emptiedHere(pc) || pl.ownOrphan(pc)) {
 			pcs = append(pcs, pc)
 		}
 	}
@@ -360,6 +380,13 @@ func (pl *plan) memberMTUWritten(pc, m string) bool {
 		}
 	}
 	return false
+}
+
+// ownOrphan: pc has no members and the LACP settings only the driver's
+// `config portchannel add` writes (fast-rate true, min-links 1); a
+// PortChannel someone made by hand keeps SONiC's defaults and is left.
+func (pl *plan) ownOrphan(pc string) bool {
+	return len(pl.sim.lags[pc]) == 0 && pl.sim.lagLACP[pc] == lacpWanted
 }
 
 // emptiedHere: a member del for pc is among the planned writes.

@@ -339,6 +339,13 @@ func TestACLTablesFollowThePorts(t *testing.T) {
 	if len(got) < 2 || got[len(got)-2] != rebind || got[len(got)-1] != save {
 		t.Errorf("aggregate: the ACL table must be rebound after the port batch, got %q\nwant it to end with %q", got, rebind)
 	}
+	// `config portchannel member add` refuses a bound port (the DX010,
+	// 2026-11-02): the lanes leave the table before they join.
+	unbind := "sudo config acl add table DUI_IP_ACL L3 -p " + strings.Join(lagged, ",") + " -s ingress"
+	ui, mi := indexOf(got, unbind), indexOf(got, "sudo config portchannel member add PortChannel2 Ethernet4")
+	if ui < 0 || mi < 0 || ui > mi {
+		t.Errorf("aggregate: the lanes must leave the ACL table before they join, got %q\nunbind at %d, member add at %d", got, ui, mi)
+	}
 	if _, err := r.c.Collect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -474,5 +481,36 @@ func TestIPRulesNeverCutTheBridge(t *testing.T) {
 		if _, err := r.c.Collect(context.Background()); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func indexOf(cmds []string, want string) int {
+	for i, c := range cmds {
+		if c == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// A memberless PortChannel with the driver's own LACP settings and no
+// port that wants it is the leftover of a batch that made it and failed
+// before the member add (the DX010, 2026-11-02): the next apply removes
+// it. One with SONiC's defaults was made by hand and stays.
+func TestOrphanPortChannelOfOurOwnGoes(t *testing.T) {
+	r := newACLRig(t, func(fr *FixtureRunner) {
+		fr.update("cfg_lag", func(tb table) error {
+			tb["PORTCHANNEL|PortChannel1"] = map[string]string{"admin_status": "up", "fast_rate": "true", "lacp_key": "auto", "min_links": "1", "mtu": "1500"}
+			tb["PORTCHANNEL|PortChannel7"] = map[string]string{"admin_status": "up", "fast_rate": "false", "lacp_key": "auto", "min_links": "1", "mtu": "9100"}
+			return nil
+		})
+	})
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.apply(r.baseline())
+	want := []string{"sudo config portchannel del PortChannel1", save}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got %q\nwant %q", got, want)
 	}
 }

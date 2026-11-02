@@ -394,6 +394,51 @@ func delRule(table, rule string) string {
 	return "sonic-db-cli CONFIG_DB del " + sshrun.ShellQuote(ruleKey(table, rule))
 }
 
+// aclUnbind rewrites each of the driver's tables that binds one of ifaces
+// without them, inside the port batch, before those lanes join a
+// PortChannel: `config portchannel member add` refuses a bound port. The
+// PortChannel itself is bound after the batch (applyACL). A table that is
+// not the driver's shape is left alone and noted: the member add will say
+// why it fails.
+func (pl *plan) aclUnbind(idx int, ifaces []string) {
+	gone := map[string]bool{}
+	for _, i := range ifaces {
+		gone[i] = true
+	}
+	tables := make([]string, 0, len(pl.sim.aclTables))
+	for t := range pl.sim.aclTables {
+		tables = append(tables, t)
+	}
+	sort.Strings(tables)
+	for _, t := range tables {
+		cur := pl.sim.aclTables[t]
+		keep := map[string]bool{}
+		binds := false
+		for p := range cur.ports {
+			if gone[p] {
+				binds = true
+			} else {
+				keep[p] = true
+			}
+		}
+		if !binds {
+			continue
+		}
+		if cur.typ != aclType || cur.stage != aclStage {
+			pl.note("ACL table %s (%s %s) binds a port that is to join an aggregate; not the driver's table, left alone", t, cur.typ, cur.stage)
+			continue
+		}
+		if len(keep) == 0 {
+			pl.note("ACL table %s binds only ports that are to join an aggregate; cannot be rebound to nothing, left alone", t)
+			continue
+		}
+		name, bound := t, keep
+		pl.add(idx, "config acl add table "+name+" "+aclType+" -p "+strings.Join(sortIfnames(keep), ",")+" -s "+aclStage, func(s *swState) {
+			s.aclTables[name] = aclTable{typ: aclType, stage: aclStage, ports: copySet(bound)}
+		})
+	}
+}
+
 // applyACL brings the driver's ACL tables in line with the last intent:
 // ApplyDevice runs it for a push, ApplyPorts again once ports may have
 // changed (a breakout's new ports, a PortChannel's members). A table that

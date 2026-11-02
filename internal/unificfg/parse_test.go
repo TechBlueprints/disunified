@@ -396,4 +396,13 @@ func TestParseDX010RetestPushes(t *testing.T) {
 	if p := read("system_cfg-dx010-storm-rate.txt").Ports[3]; !p.StormCtrl.Enabled || p.StormCtrl.Type != "rate" || p.StormCtrl.Bcast != 100 || p.StormCtrl.Mcast != 100 || p.StormCtrl.Ucast >= 0 {
 		t.Errorf("storm-rate port 3 = %+v", p.StormCtrl)
 	}
+	// Ports 5 and 6 aggregated while DHCP guarding and one IP ACL rule are
+	// on: the push the driver's ACL tables refused to let join.
+	c := read("system_cfg-dx010-aggregate-acl.txt")
+	if p5, p6 := c.Ports[5], c.Ports[6]; p5.OpMode != "aggregate" || p5.LAG != 1 || p6.OpMode != "aggregate" || p6.LAG != 1 {
+		t.Errorf("aggregate-acl ports 5/6 = %q %d / %q %d", p5.OpMode, p5.LAG, p6.OpMode, p6.LAG)
+	}
+	if c.DHCPSnoop == nil || !*c.DHCPSnoop || len(c.IPACLs) != 1 {
+		t.Errorf("aggregate-acl: dhcp_snoop %v, %d IP ACLs", c.DHCPSnoop, len(c.IPACLs))
+	}
 }

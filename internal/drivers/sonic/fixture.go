@@ -584,6 +584,13 @@ func (f *FixtureRunner) apply(line string) error {
 			if f.portMTU(p) != f.lagMTU(pc) {
 				return fmt.Errorf("Port MTU of %s is different than the %s MTU size", p, pc) // seen live, 2026-10-27
 			}
+			// get_port_acl_binding: a port an ACL table binds cannot join
+			// (seen live on the DX010, 2026-11-02, with the driver's own
+			// two tables bound to every port; the bridge's log of it is the
+			// text below).
+			if bound := f.aclTablesBinding(p); len(bound) > 0 {
+				return fmt.Errorf("Usage: config portchannel member add [OPTIONS] <portchannel_name> <port_name>\nError: Port %s is already bound to following ACL_TABLES: ['%s']", p, strings.Join(bound, "', '"))
+			}
 			return f.update("cfg_lag_member", func(t table) error { t[k] = map[string]string{"NULL": "NULL"}; return nil })
 		case "del":
 			if _, ok := f.table("cfg_lag_member")[k]; !ok {

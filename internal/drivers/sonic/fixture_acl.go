@@ -115,6 +115,22 @@ func (f *FixtureRunner) aclBindable() map[string]bool {
 	return out
 }
 
+// aclTablesBinding are the ACL_TABLE keys whose ports@ list names p, in
+// key order, as get_port_acl_binding reports them.
+func (f *FixtureRunner) aclTablesBinding(p string) []string {
+	var out []string
+	for k, row := range f.table("cfg_acl_table") {
+		for _, b := range strings.Split(row["ports@"], ",") {
+			if b == p {
+				out = append(out, k)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // aclRemoveTable: config acl remove table <name> (set_entry None: no check
 // that it exists, and the table's rules stay in CONFIG_DB).
 func (f *FixtureRunner) aclRemoveTable(args []string) error {
