@@ -1244,10 +1244,23 @@ the CVL schema with libyang 3 and exit 0 on `--help`. They warn about three
 type-only modules (sonic-extension, sonic-types, sonic-common), and the
 libyang 1 `telemetry` from the IGMP tree prints the same warnings in the
 same image: 202511's behaviour, not the port's.
-**Not shown yet**: a full image with these patches, and the containers
-running on a switch. The build host was busy with the IGMP image builds, so
-the kit's next image built with these patches is the full-image test, and
-its VS run is the test of the containers on a switch.
+**On the DX010 (2026-11-02 02:02 UTC).** The IGMP image built with these
+patches (broadcom-legacy-th) was installed on the DX010, and gNMI and
+mgmt-framework ran on hardware for the first time:
+
+- `show feature status` lists both as enabled.
+- `docker ps` shows `gnmi` and `mgmt-framework` up.
+- The last 200 lines of each container's log hold no libyang, CVL, error,
+  fail or panic lines.
+- **Not yet seen:** `monit summary`, which was still in its first-boot delay
+  when checked.
+
+**Upstream (2026-11-01).** Posted as sonic-net/sonic-buildimage#30482 (the
+issue) and #30483 (the PR, with #26165's commit first), with
+sonic-net/sonic-swss-common#1269 and sonic-net/sonic-mgmt-common#273 for the
+two cherry-picks. #1269 needed one more commit, for 202511 only: its CI
+installs libyang 1's python3-yang again, because 202511's sonic_yang_mgmt
+still imports it.
 
 **For the IGMP kit.** `build.sh` applies submodule series only to
 `sonic-swss sonic-swss-common sonic-utilities sonic-l2mcd`. Add
@@ -1255,8 +1268,8 @@ its VS run is the test of the containers on a switch.
 `sonic-mgmt-common b5f84b0644d925828dc0a4e290695554d890ca4f 2025-12-05` to
 `BASES`.
 
-**Upstream.** A comment for #26165 describing the cause and this fix is
-drafted for Clint and not posted.
+**On #26165**, a comment answers the review's question with the
+reproduction and points to the new issue and PR.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
