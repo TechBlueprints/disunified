@@ -261,6 +261,12 @@ The factory image stays in its slot after the upgrade.
      dhclient recorded can bring back a default route through it; a laptop
      on the OOB jack (169.254/16) still reaches the switch -- the rescue
      path. `sudo ip link set eth0 down` alone does not survive a reboot.
+     **Add the port row too**: `sudo sonic-db-cli CONFIG_DB hset
+     'MGMT_PORT|eth0' alias eth0 admin_status up`, `sudo config save -y`.
+     `config interface ip add` writes MGMT_INTERFACE alone, and 202511's
+     `config interface breakout` validates CONFIG_DB with sonic-yang, whose
+     MGMT_INTERFACE leafref needs the MGMT_PORT row (§10.6, §11.8); the
+     driver adds the row itself before its first breakout if it is missing.
    - **Source NTP from the in-band interface**: `sudo sonic-db-cli
      CONFIG_DB hset 'NTP|global' src_intf Vlan4094` (202505 has no CLI for
      it), `sudo config save -y`. The image's default is `eth0`, and chrony
@@ -2099,6 +2105,17 @@ arrival checklist is §3 B3 step 5. What the driver does about it:
   then right). Tests: the image's `init_cfg.json` entry
   (`ntp_global-init_cfg.txt`, read from the unit) in place of the live one,
   the driver and the DX010's real first push through the loop.
+- **The MGMT_PORT row the hand fix never made.** `config interface ip add
+  eth0 ...` writes MGMT_INTERFACE and nothing else, and sonic-yang's model
+  of MGMT_INTERFACE has a leafref to a MGMT_PORT row of the same name.
+  Nothing on the switch minds (interfaces.j2 and hostcfgd do not read
+  MGMT_PORT) until `config interface breakout` validates the whole
+  CONFIG_DB and refuses every mode on every cage with `Leafref ... of value
+  "eth0" points to a non-existing leaf` (§11.8, 2026-11-02). The driver
+  adds the row (`sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0
+  admin_status up`, a name and nothing more) before the breakout that
+  needs it, once, with a note; the arrival checklist (§3 B3 step 5) gets
+  it by hand. Test: the 202511 capture, which lacks the row.
 - **No out-of-band warning for a link-local address without carrier.** An
   `eth0` with `169.254.1.1/16` and no link is the setup above, not a risk;
   the "carries address" warning now needs a routable address (an IPv4
@@ -3072,6 +3089,65 @@ The site afterwards: the controller's ACL rules `[]`, Rogue DHCP Server
 Detection off, the three networks' DHCP Guarding as before; the DX010's
 push identical to its push before the checks (with the two lines its
 claims add); no switch rebooted.
+
+### 11.8 Full retest on the 202511 IGMP image (2026-11-02)
+
+The DX010 was reinstalled with the custom 202511 image (§8,
+`igmp-202511.20261101-22cac574e`) and every control the driver implements
+was driven again from the controller UI (Network 10.6.109) through the
+deployed bridge, overnight and unattended, on the empty cages 2-8 (Ethernet0,
+the uplink, was touched only by the site-wide jumbo setting). Each push was
+checked on the switch (CONFIG_DB, STATE_DB, mstpd, chrony, the sudo
+journal) and every override and site setting was put back afterwards, the
+restore confirmed in the controller's objects and in every affected device's
+next push. The capture of each finding is a fixture, the fix a test, and the
+driver fixes are **committed but not deployed**: the session's permission
+check refused the rebuild on the deployment host, so the rows marked *fixed*
+below are fixture-tested and wait for a deploy and a re-run.
+
+**202511 against 202505, as seen from the driver:** `config interface
+breakout` now validates CONFIG_DB with sonic-yang (two dangling leafrefs
+refused the split, below); `config mirror_session span add` is gated by the
+SAI's `PORT_INGRESS/EGRESS_MIRROR_CAPABLE` flags (`'false'` on the DX010,
+so the CLI refuses every SPAN direction although the ASIC programs the
+session); every PORT write adds `dhcp_rate_limit: 300`; `config
+spanning-tree interface` spells `bpdu-guard`; `config` gains
+`igmp-snooping`, `mld-snooping` and `dhcpv4_relay`. Everything else the
+driver sends behaved as on 202505. The first `config save` on the new
+image rewrote the saved `config_db.json` as `version_202511_01`.
+
+| # | Feature (UI action) | What the switch did | Result |
+|---|---|---|---|
+| 1 | Port state and name (cage 2 Disabled + a name, then back) | `config interface shutdown Ethernet4`, `hset 'PORT\|Ethernet4' description <name>`, save (3 s); restore `startup`, `hset description ''`, `hdel description` | pass |
+| 2 | VLANs on cage 2: native kids; Allow All on a non-Default native; Allow All on Default; Block All; Custom kids+visitor; back | `config vlan add 2`, membership moves (`del 4094`, `add -u 2`); Allow All with a non-Default native logged as the stand-in's limit (VLAN 1 tagged cannot be expressed) and left the port; Allow All on Default created the nine other site VLANs (`config vlan add -m ...`) and tagged them; Block All removed them; Custom `add -m 2,69`; each 3-7 s. l2d gave each new VLAN its own STP instance | pass (the ten site VLANs stay on the switch; the driver never deletes a VLAN) |
+| 3 | Forced speed and FEC on cage 3: 40G (the UI picks FC-FEC itself), FEC off, 100G, RS-FEC, FEC off, auto | `config interface speed Ethernet8 40000` then `config interface fec Ethernet8 fc` **refused** (`fec fc is not in ['none', 'rs']`, portconfig's text on stdout, exit 1: the cage's SAI runs none and rs only); the controller re-pushed the same cfgversion every ~70 s until FEC was unticked. 100G, RS, none and auto each 3 s | pass except FC-FEC: **fixed** -- a FEC the cage's `supported_fecs` lacks is skipped with a note and the rest of the port applies (`TestPushedFECTheCageCannotRun`); the bridge's error now carries the command's stdout tail (`sshrun`, `TestRunErrorCarriesStdout`) |
+| 4 | Breakout of cage 2 to 4x25G (REST, no `fec_mode`: the Port drawer refuses every FEC at 25G on a QSFP28 port, `api.err.InvalidFecMode`, and insists on one) | `config interface breakout -f -y Ethernet4 '4x25G[10G]'` **refused by sonic-yang** (202511 validates CONFIG_DB before a breakout): `COPP_TRAP\|stp` → no `COPP_GROUP\|queue4_group1` (l2d wrote the trap only; the group lives in `copp_cfg.json`) and `MGMT_INTERFACE\|eth0\|169.254.1.1/16` → no `MGMT_PORT\|eth0` (the §10.6 hand fix made no port row). Eight retries, nothing changed; reverted through REST. The lane speeds, 2x50G and the join could not run | fail: **fixed** -- l2d puts the COPP group in CONFIG_DB with the trap (`TestL2dWritesTheTrapGroupWithTheTrap`); the driver adds the `MGMT_PORT\|eth0` row before a breakout when the address row has none (`TestBreakoutAddsTheManagementPortRow`). The hand fix for the row was refused by the session's permission check (a root write) |
+| 5a | Storm control on cage 3: 1 % broadcast + multicast (Level), then Rate mode, then off | `config interface storm-control add Ethernet8 broadcast 1000000`, `unknown-multicast 1000000` (kbps: 1 % of 100G); Rate mode made the driver **remove** storm control silently (SONiC storms are kbps only) | pass; Rate mode **fixed** to a note per port (`TestDesiredPortsStormRateIsNotedOnce`) |
+| 5b | Mirror of cage 5 onto cage 4 (the picker defaults to port 1, the uplink -- changed before Apply) | `config vlan member del 4094 Ethernet12` then `config mirror_session span add dui4 Ethernet12 Ethernet16 both` **refused** (`Port mirror direction 'both' is not supported by the ASIC`: 202511's `is_port_mirror_capability_supported` reads the SAI's two `'false'` flags; a SPAN row written by hand programs the ASIC and reads back Active); nine retries; back to Switching restored the VLAN | fail: **fixed** -- where the flags refuse, the `MIRROR_SESSION` row is written through `sonic-db-cli` and its STATE_DB status read back (`TestMirrorWrittenDirectWhereTheCLIRefuses`, on the 202511 capture and its own `config --help`) |
+| 6 | Aggregation of cages 6+7, then its removal | `config portchannel add PortChannel1 --fast-rate true --min-links 1`, the MTU hset, members out of their VLAN and in, the channel into the native VLAN, save (9 s); removal the reverse (10 s); teamd ran the channel (both members down: empty cages); l2d reconciled both times | pass (the UI renamed the second member to the profile default "QSFP28 7" on aggregation and kept it after; restored by hand) |
+| 7 | Per-port STP on cage 3: Edge (UniFi turns BPDU guard on with it), Infrastructure with BPDU guard, STP off, STP on with loop protection, back to auto | each an l2d config apply (0.2 s): mstpd admin/auto/oper edge and BPDU guard as asked, BPDU guard set on a down port (the 2026-11-01 fix holds), STP off = edge + BPDU filter, loop protection in `l2.json` with the port listed; `DUI_STP_PORT_TABLE` mirrored each | pass |
+| 8a | STP priority 61440, then 32768 | `spanning tree rstp priority 61440`: mstpd bridge id `F.000.<mac>`, root and root port (Ethernet0) unchanged; back to `8.000` | pass |
+| 8b | Locate | `dx010:green:stat` blinking (sampled 1 1 0 0 0 1 1 0), steady after Stop Locating | pass |
+| 8c | Rename the device | `config hostname <UniFi name>` + save (3 s; `service hostname-config restart`), `hostname`, `DEVICE_METADATA` and `/etc/hosts` followed; the first live run of the hostname apply; restored | pass |
+| 8d | Restart | the reply `_type: reboot` → "reboot requested: reloading the switch"; the SSH session dropped under `sudo reboot` (context deadline exceeded) and the bridge logged "reboot: switch reload issued" (the 2026-11-01 fix, now live); SSH answered 78 s after the request, on the same image with the saved config intact (32 ports at 1500, the eleven VLANs, the hostname, Ethernet0 up with RS-FEC); `eth0` came back `UP` without carrier on its static link-local address and **no DHCP lease or default route** (the §3 B3 hand fix holds across a reboot); the in-band default route and `NTP\|global src_intf Vlan4094` intact; chrony had both sources online two minutes after boot; l2d up with Ethernet0 the root port; the controller showed the switch Online within a cycle | pass |
+| 8e | Upgrade (emulated) | the reply `_type: upgrade`, "upgrade to 4.0.1.995 requested (emulated reboot)", the next push 0 changes; the UI shows 4.0.1 with a Revert button; the switch untouched | pass |
+| 9a | Rogue DHCP Server Detection on, with cage 4 carrying a tagged guarded network (kids) | `config acl add table DUI_DHCP_GUARD L3 -p <all 32>`; `V1_S1`/`V1_DROP` (VLAN_ID 4094) **and `V2_S1`-`V2_S3`/`V2_DROP` with `VLAN_ID 2`** -- the guard of every VLAN the switch carries, each network's own server list; all Active. When cage 4's tag was removed the V2 rules went in the same cycle; detection off removed the table (DROP, FORWARD, table) and the Proxmox nodes' and the PDU's next pushes carried the restore | pass (closes the register's "guard on a tagged VLAN" item) |
+| 9b | One IP ACL rule (Allow UDP any → any:68, switch-specific) | `config acl add table DUI_IP_ACL L3 -p <all 32>`; `RULE_1` {IP_PROTOCOL 17, L4_DST_PORT 68, FORWARD, PRIORITY 9998}, Active; the delete removed rule then table | pass |
+| 9c | Aggregation of cages 5+6 **while both tables were bound** (the register's rebind check) | `config portchannel member add PortChannel1 Ethernet16` **refused**: `Port Ethernet16 is already bound to following ACL_TABLES: ['ACL_TABLE\|DUI_DHCP_GUARD', 'ACL_TABLE\|DUI_IP_ACL']` (sonic-utilities' `get_port_acl_binding`, on 202505 too; test 6 passed only because no table existed then). Ten retries; the batch had already made the PortChannel and taken Ethernet16 out of its VLAN. Removing the aggregation restored the VLAN but left the memberless `PortChannel1`, which the driver deleted only when it had emptied it itself | fail: **fixed** -- the joining lanes leave the driver's tables inside the batch, before the member add, and `applyACL` binds the PortChannel after as before; a memberless PortChannel with the driver's own LACP settings that no port wants is removed (`TestACLTablesFollowThePorts` fails on the old order, `TestOrphanPortChannelOfOurOwnGoes`; the push is `system_cfg-dx010-aggregate-acl.txt`). The rebind itself (PortChannel in, members out, Active) still waits for the deploy; **`PortChannel1` is still on the switch** until then or a `config portchannel del` |
+| 10a | Jumbo Frames on, then off (site-wide) | `config interface mtu <p> 9216` on all 32 ports, Ethernet0 first (47 s for 33 commands), then `1500` x32; the uplink's MTU moved 1500→9216→1500 with no link event (zero `up to down` on this boot); the Proxmox nodes and the PDU got fresh pushes with 0 changes | pass (run without the §11.3 dead-man: a SONiC port MTU is a SAI attribute set, the adoption push had already moved Ethernet0's MTU over that link, and the dead-man's `systemd-run` is itself a root write the session could not make) |
+| 10b | NTP, syslog, time zone, SSH keys read back against the push | `NTP_SERVER` = the push's two servers, both reached in chrony; `SYSLOG_SERVER\|<host>` (514); `MST7MDT,M3.2.0,M11.1.0` → `MST7MDT`; the managed `authorized_keys` block holds the push's four keys, the operator's two lines outside it untouched | pass |
+| 11 | Static address move | not run (Clint's call: the risk of losing the only path) | skipped |
+| 12 | The read side in the UI and the stored record | PSUs 77/74 W of 900, five fans, 56 °C, memory, uptime, the module's DOM (100G CWDM4, 29 °C, -3.3/+0.6 dBm), parent core port 27 at 100G; `mac_table_capability` is **dropped from the stored record for the `USWF07D` too** (only the real USWF066 keeps it); the 24 h anomaly counts on cages 4 and 5 are the guard period's DHCP toast and the LAG attempt | pass |
+
+**Blocked by the session's permission check (root writes, never worked
+around):** the `MGMT_PORT\|eth0` hand fix, the redeploy of the fixes, the
+orphan `PortChannel1`'s removal, and `Ethernet8`'s `fec: none` leftover
+(CONFIG_DB keeps the explicit `none` from test 3; harmless). **Cannot be
+closed on this unit yet:** the second core cable (LACP state), IGMP
+snooping's hosts (§8), MAC ACL rules (an orchagent patch). What tonight
+left on the switch: the ten site VLANs, `fec none` on Ethernet8,
+`dhcp_rate_limit 300` on every written port (202511's CLI adds it), and
+`PortChannel1` without members.
 
 ## Sources
 

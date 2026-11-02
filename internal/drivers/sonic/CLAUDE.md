@@ -466,3 +466,30 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `sonic_version.yml` (a CI host, not site data). The switch's own LLDP
   name becomes `host-1.example.net` once a DNS domain is set (it is the
   FQDN then).
+- **202511 (the custom IGMP image, `igmp-202511.20261101-22cac574e`;
+  `docs/drivers/sonic.md` §11.8, 2026-11-02).** `config interface breakout`
+  validates CONFIG_DB with sonic-yang first: a dangling leafref anywhere
+  refuses the split (`COPP_TRAP|stp` needs `COPP_GROUP|queue4_group1`, which
+  l2d now writes with the trap; `MGMT_INTERFACE|eth0|...` needs
+  `MGMT_PORT|eth0`, which the driver adds before a breakout when missing;
+  check a unit read-only with `sonic_yang.loadData()` over `sonic-cfggen -d
+  --print-data`). `config mirror_session span add` is gated by STATE_DB
+  `SWITCH_CAPABILITY|switch` `PORT_INGRESS_MIRROR_CAPABLE` /
+  `PORT_EGRESS_MIRROR_CAPABLE`, `'false'` on the DX010 although the ASIC
+  programs SPAN: where either flag is present and not `true` the driver
+  writes the `MIRROR_SESSION` row with `sonic-db-cli` (`state_switch_cap`
+  section, `mirrorCLIRefuses`). Every PORT write adds `dhcp_rate_limit:
+  300`. `config spanning-tree interface` spells `bpdu-guard` (202505:
+  `bpdu_guard`); `config` gains `igmp-snooping`, `mld-snooping`,
+  `dhcpv4_relay`. portconfig prints its FEC refusal (`fec fc is not in
+  ['none', 'rs']`) on **stdout** with exit 1, so `sshrun`'s error carries
+  the stdout tail too; a FEC outside STATE_DB `supported_fecs` is skipped
+  with a note. **`config portchannel member add` refuses a port an ACL
+  table binds** (`get_port_acl_binding`, 202505 too): the joining lanes
+  leave the driver's `DUI_` tables inside the batch (`plan.aclUnbind`) and
+  `applyACL` binds the PortChannel after; a memberless PortChannel with the
+  driver's LACP settings that no port wants is removed (`ownOrphan`). The
+  2026-11-02 pushes are `controller-10.6.109/system_cfg-dx010-{fec-cl74,
+  breakout-25g,mirror,storm-rate,aggregate-acl}.txt`; the image's capture
+  and `config --help` are `sonic-igmp-202511.20261101-22cac574e/`
+  (`rig202511` in the tests).
