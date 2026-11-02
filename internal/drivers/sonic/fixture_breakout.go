@@ -57,6 +57,16 @@ func (f *FixtureRunner) breakout(args []string) error {
 	if !ok {
 		return fmt.Errorf("[ERROR] %s is not a Parent port. So, Breakout Mode is not available on this port", parent)
 	}
+	// sonic-yang validates the whole CONFIG_DB before the change (§11.8):
+	// §10.6's MGMT_INTERFACE|eth0 without a MGMT_PORT row is a dangling
+	// leafref, and the breakout fails whatever the cage.
+	if mg := f.table("cfg_mgmt"); mg["MGMT_PORT|eth0"] == nil {
+		for k := range mg {
+			if strings.HasPrefix(k, "MGMT_INTERFACE|eth0|") {
+				return fmt.Errorf(`libyang[0]: Leafref "/sonic-mgmt_port:sonic-mgmt_port/sonic-mgmt_port:MGMT_PORT/sonic-mgmt_port:MGMT_PORT_LIST/sonic-mgmt_port:name" of value "eth0" points to a non-existing leaf. (path: /sonic-mgmt_interface:sonic-mgmt_interface/MGMT_INTERFACE/MGMT_INTERFACE_LIST[name='eth0'][ip_prefix='%s']/name)`, strings.TrimPrefix(k, "MGMT_INTERFACE|eth0|"))
+			}
+		}
+	}
 	if _, ok := pp.BreakoutModes[mode]; !ok {
 		return fmt.Errorf("[ERROR] Target mode %s is not available for the port %s", mode, parent)
 	}
@@ -188,6 +198,20 @@ func (f *FixtureRunner) breakout(args []string) error {
 				"admin_status": "down", "alias": a.fields["alias"], "description": "", "index": a.fields["index"],
 				"lanes": a.fields["lanes"], "mtu": "9100", "oper_status": "down", "speed": a.fields["speed"],
 			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	// STATE_DB PORT_TABLE: the old interfaces' rows go (their
+	// supported_fecs spoke for the old speed); the new ones' arrive with
+	// the SAI's answers later, after the next collect at the earliest.
+	if err := f.update("state_port", func(t table) error {
+		for n := range gone {
+			delete(t, "PORT_TABLE|"+n)
+		}
+		for _, a := range adds {
+			delete(t, "PORT_TABLE|"+a.name)
 		}
 		return nil
 	}); err != nil {

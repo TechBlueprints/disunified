@@ -263,9 +263,29 @@ func (t *SSH) Run(ctx context.Context, command string, stdin string) (string, er
 	case err = <-done:
 	}
 	if err != nil {
-		return stdout.String(), fmt.Errorf("%s: %w: %s", firstWords(command, 6), err, Truncate(strings.TrimSpace(stderr.String()), 300))
+		return stdout.String(), fmt.Errorf("%s: %w: %s", firstWords(command, 6), err, failureOutput(stderr.String(), stdout.String()))
 	}
 	return stdout.String(), nil
+}
+
+// failureOutput is what a failed command said: its stderr (head-truncated)
+// and the tail of its stdout. A refusal is not always on stderr -- SONiC's
+// portconfig prints "fec fc is not in ['none', 'rs']" to stdout and exits
+// 1, and the `config` CLI pipes it -- and in a `set -e` batch the refusal
+// is the last thing stdout holds, after the commands that passed.
+func failureOutput(stderr, stdout string) string {
+	e := Truncate(strings.TrimSpace(stderr), 300)
+	o := strings.TrimSpace(stdout)
+	if o == "" {
+		return e
+	}
+	if len(o) > 300 {
+		o = "..." + o[len(o)-300:]
+	}
+	if e == "" {
+		return "stdout: " + o
+	}
+	return e + " | stdout: " + o
 }
 
 // SessionDropped reports whether err is Run's error for a command that was

@@ -116,6 +116,11 @@ section("state_metadata", "STATE_DB", "DEVICE_METADATA|localhost")
 section("cfg_port", "CONFIG_DB", "PORT|*")
 section("appl_port", "APPL_DB", "PORT_TABLE:*")
 section("state_port", "STATE_DB", "PORT_TABLE|*")
+# The SAI's answers about the switch (orchagent's SWITCH_CAPABILITY): 202511's
+# `config mirror_session span add` refuses a direction whose
+# PORT_INGRESS/EGRESS_MIRROR_CAPABLE flag is not 'true' (docs/drivers/sonic.md
+# 11.8), so the driver reads them to know when to write the session itself.
+section("state_switch_cap", "STATE_DB", "SWITCH_CAPABILITY|switch")
 section("cfg_vlan", "CONFIG_DB", "VLAN|*")
 section("cfg_vlan_member", "CONFIG_DB", "VLAN_MEMBER|*")
 section("cfg_lag", "CONFIG_DB", "PORTCHANNEL|*")

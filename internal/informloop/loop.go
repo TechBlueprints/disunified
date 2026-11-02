@@ -197,11 +197,15 @@ type Loop struct {
 	// follows it only when it changes.
 	driverAddr    string
 	warnedVersion string
-	aclHeld       string // the switch ACL rules last logged as held, to log on change only
-	oobWarned     string // last out-of-band warning state, to log on change only
-	uplinkPort    int    // the port last marked as uplink from the snapshot
-	everApplied   bool   // a system_cfg has been applied to this device (this run or a previous one)
-	heldVersion   string // the first push being held, to log once
+	// stormRateNoted holds the port:bcast/mcast/ucast combinations whose
+	// Rate-mode storm control has been logged as not applicable, so the
+	// note is written once per setting, not once per cycle.
+	stormRateNoted map[string]bool
+	aclHeld        string // the switch ACL rules last logged as held, to log on change only
+	oobWarned      string // last out-of-band warning state, to log on change only
+	uplinkPort     int    // the port last marked as uplink from the snapshot
+	everApplied    bool   // a system_cfg has been applied to this device (this run or a previous one)
+	heldVersion    string // the first push being held, to log once
 	// heldOutletVersion / everOutletApplied: the outlet counterpart of the
 	// ports' hold, per process rather than from state (see holdInitialOutletPush).
 	heldOutletVersion string
@@ -707,7 +711,19 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 			f := devicemodel.FECDisabled
 			d.FEC = &f
 		}
-		if p.StormCtrl.Enabled && p.StormCtrl.Type != "rate" {
+		if p.StormCtrl.Enabled && p.StormCtrl.Type == "rate" {
+			// UniFi's Rate mode is a packets-per-second ceiling; the drivers
+			// (SONiC's storm-control, EOS's storm-control) take a share of
+			// the port's bandwidth only. Once per cfgversion, not per cycle.
+			k := fmt.Sprintf("%d:%d/%d/%d", idx, p.StormCtrl.Bcast, p.StormCtrl.Mcast, p.StormCtrl.Ucast)
+			if !l.stormRateNoted[k] {
+				if l.stormRateNoted == nil {
+					l.stormRateNoted = map[string]bool{}
+				}
+				l.stormRateNoted[k] = true
+				l.cfg.Logger.Printf("[%s] NOTE: port %d storm control in Rate mode (packets/s) is not something this switch can apply; only Level (percent of bandwidth) is written -- storm control left off on the port", l.desc.MAC, idx)
+			}
+		} else if p.StormCtrl.Enabled {
 			spec := &devicemodel.StormControlSpec{}
 			if p.StormCtrl.Bcast >= 0 {
 				v := float64(p.StormCtrl.Bcast)

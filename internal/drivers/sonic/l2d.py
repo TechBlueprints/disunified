@@ -73,6 +73,28 @@ SYNC = 2.0  # seconds between full reconciliations
 # off, so the switch floods BPDUs and stays transparent to its neighbours'
 # spanning tree.
 COPP_STP = [("trap_ids", "stp"), ("trap_group", "queue4_group1"), ("always_enabled", "true")]
+# The trap's group. The image defines it in /etc/sonic/copp_cfg.json and
+# coppmgr merges that file with CONFIG_DB (an identical row is a duplicate
+# it ignores), so the switch runs the same either way; CONFIG_DB needs its
+# own copy because sonic-yang resolves the trap's trap_group leafref against
+# CONFIG_DB alone, and `config interface breakout` validates the whole
+# CONFIG_DB (docs/drivers/sonic.md 11.8: the trap on its own failed every
+# breakout). Written before the trap and left in place -- a group without
+# a trap is valid.
+COPP_GROUP_NAME = "queue4_group1"
+COPP_GROUP_DEFAULT = [("cbs", "6000"), ("cir", "6000"), ("meter_type", "packets"), ("mode", "sr_tcm"),
+                      ("queue", "4"), ("red_action", "drop"), ("trap_action", "trap"), ("trap_priority", "4")]
+COPP_CFG = "/etc/sonic/copp_cfg.json"
+
+
+def copp_group():
+    """The group as the image defines it, else as 202505 and 202511 ship it."""
+    try:
+        with open(COPP_CFG) as f:
+            return sorted(json.load(f)["COPP_GROUP"][COPP_GROUP_NAME].items())
+    except (IOError, OSError, KeyError, ValueError, AttributeError):
+        return COPP_GROUP_DEFAULT
+
 # A bridge port's settings: mstpctl's JSON field and the command that sets it.
 PORT_SETTINGS = (
     ("bpdu-filter-port", "setportbpdufilter"),
@@ -162,6 +184,7 @@ class DB(object):
         self.st_port = sw.Table(self.state, "DUI_STP_PORT_TABLE")
         self.st_guard = sw.Table(self.state, "DUI_LOOP_GUARD_TABLE")
         self.copp = sw.Table(self.cfg, "COPP_TRAP")
+        self.copp_group = sw.Table(self.cfg, "COPP_GROUP")
 
     @staticmethod
     def keys(conn, pattern):
@@ -337,7 +360,7 @@ class L2d(object):
         if not os.access(HOOK, os.X_OK):
             log("%s is missing: not enabling STP (the kernel would run its own)" % HOOK, syslog.LOG_ERR)
             return False
-        put(self.db.copp, "stp", COPP_STP)
+        self.copp_install()
         if not self.mstp.start():
             return False
         brdir = "%s/%s/bridge" % (SYS, BRIDGE)
@@ -535,6 +558,11 @@ class L2d(object):
         for vid in sorted(self.mapped):
             put(self.db.flush_pst, "Vlan%d" % vid, [("state", "true")])
         log("topology change on %s: FDB flushed in %d VLANs" % (",".join(sorted(due)), len(self.mapped)))
+
+    def copp_install(self):
+        """The STP trap and, before it, the group its trap_group names."""
+        put(self.db.copp_group, COPP_GROUP_NAME, copp_group())
+        put(self.db.copp, "stp", COPP_STP)
 
     def stp_down(self, why):
         """Every VLAN back to the default instance; the kernel forwards on every port."""

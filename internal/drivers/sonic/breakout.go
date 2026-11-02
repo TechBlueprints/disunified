@@ -315,6 +315,15 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			return
 		}
 		idx, mode, par := p.Index, target.name, parent
+		if pl.sim.mgmtPortMissing {
+			// `config interface breakout` validates the whole CONFIG_DB
+			// with sonic-yang and fails on MGMT_INTERFACE|eth0's leafref to
+			// a MGMT_PORT row that §10.6's hand fix never made (§11.8). The
+			// row only names the port: interfaces.j2 and hostcfgd do not
+			// read it, so nothing changes on eth0.
+			pl.note("port %d: eth0 has an address (MGMT_INTERFACE) and no MGMT_PORT row, which the breakout's config validation needs; adding the row", d.Index)
+			write(d.Index, "sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0 admin_status up", func(s *swState) { s.mgmtPortMissing = false })
+		}
 		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
 		port := pl.ports[d.Index]
 		port.Interfaces = pl.sim.cagePorts(idx)

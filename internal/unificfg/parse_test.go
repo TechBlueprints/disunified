@@ -369,3 +369,31 @@ func TestParseDX010ACLRules(t *testing.T) {
 		t.Errorf("a switch claiming DHCP snooping gets the site's setting (off): %v", c.DHCPSnoop)
 	}
 }
+
+// The pushes of the DX010 retest on the 202511 image (docs/drivers/sonic.md
+// 11.8), each the one that failed or misbehaved live: forced 40G with FC-FEC
+// on a QSFP28 cage, 25G saved through the REST API without a fec_mode (the
+// UI refuses every mode at 25G on that port: api.err.InvalidFecMode), a
+// mirror of port 5 onto port 4, and storm control in Rate mode.
+func TestParseDX010RetestPushes(t *testing.T) {
+	read := func(name string) *Config {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Parse(string(b))
+	}
+	if p := read("system_cfg-dx010-fec-cl74.txt").Ports[3]; p.AutoNeg || p.SpeedMbps != 40000 || p.FEC != "cl-74" {
+		t.Errorf("fec-cl74 port 3 = autoneg %v speed %d fec %q", p.AutoNeg, p.SpeedMbps, p.FEC)
+	}
+	if p := read("system_cfg-dx010-breakout-25g.txt").Ports[2]; p.AutoNeg || p.SpeedMbps != 25000 || p.FEC != "" {
+		t.Errorf("breakout-25g port 2 = autoneg %v speed %d fec %q", p.AutoNeg, p.SpeedMbps, p.FEC)
+	}
+	if p := read("system_cfg-dx010-mirror.txt").Ports[4]; p.OpMode != "mirror" || p.MirrorPort != 5 {
+		t.Errorf("mirror port 4 = opmode %q mirror_port %d", p.OpMode, p.MirrorPort)
+	}
+	if p := read("system_cfg-dx010-storm-rate.txt").Ports[3]; !p.StormCtrl.Enabled || p.StormCtrl.Type != "rate" || p.StormCtrl.Bcast != 100 || p.StormCtrl.Mcast != 100 || p.StormCtrl.Ucast >= 0 {
+		t.Errorf("storm-rate port 3 = %+v", p.StormCtrl)
+	}
+}

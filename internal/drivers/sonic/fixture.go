@@ -427,6 +427,30 @@ func (f *FixtureRunner) apply(line string) error {
 				return nil
 			})
 		}
+		if key == "MGMT_PORT|eth0" {
+			if w[2] != "hset" || len(w) != 8 || w[4] != "alias" || w[6] != "admin_status" {
+				return fmt.Errorf("unmodelled MGMT_PORT write")
+			}
+			return f.update("cfg_mgmt", func(t table) error {
+				t[key] = map[string]string{w[4]: w[5], w[6]: w[7]}
+				return nil
+			})
+		}
+		if n, ok := strings.CutPrefix(key, "MIRROR_SESSION|"); ok {
+			// The driver's own write where the CLI's gate refuses (§11.8);
+			// mirrororch takes the row as the CLI would have written it.
+			if w[2] != "hset" || len(w) < 6 || len(w)%2 != 0 {
+				return fmt.Errorf("unmodelled MIRROR_SESSION write")
+			}
+			return f.update("cfg_mirror", func(t table) error {
+				row := map[string]string{}
+				for i := 4; i+1 < len(w); i += 2 {
+					row[w[i]] = w[i+1]
+				}
+				t["MIRROR_SESSION|"+n] = row
+				return nil
+			})
+		}
 		if !strings.HasPrefix(key, "PORT|") || !f.hasPort(strings.TrimPrefix(key, "PORT|")) {
 			return fmt.Errorf("unexpected key %q", key)
 		}
@@ -453,6 +477,20 @@ func (f *FixtureRunner) apply(line string) error {
 	case len(w) == 3 && w[0] == "config" && w[1] == "hostname":
 		return f.hostname(w[2])
 	case cmd == "config interface fec":
+		// portconfig checks the mode against STATE_DB's supported_fecs and
+		// prints the refusal to stdout, exit 1 (the DX010, FC on a QSFP28
+		// cage: "fec fc is not in ['none', 'rs']").
+		if sup := f.table("state_port")["PORT_TABLE|"+at(3)]["supported_fecs"]; sup != "" {
+			var q []string
+			ok := false
+			for _, m := range strings.Split(sup, ",") {
+				q = append(q, "'"+m+"'")
+				ok = ok || m == at(4)
+			}
+			if !ok {
+				return fmt.Errorf("fec %s is not in [%s]", at(4), strings.Join(q, ", "))
+			}
+		}
 		return f.portField(at(3), "fec", at(4))
 	case cmd == "config interface autoneg":
 		return f.portField(at(3), "autoneg", map[string]string{"enabled": "on", "disabled": "off"}[at(4)])
@@ -556,6 +594,13 @@ func (f *FixtureRunner) apply(line string) error {
 
 	case len(w) >= 7 && cmd == "config mirror_session span" && w[3] == "add":
 		name, dst, src, dir := w[4], w[5], w[6], at(7)
+		// 202511's gate (is_port_mirror_capability_supported): the SAI's
+		// PORT_INGRESS/EGRESS_MIRROR_CAPABLE flags, absent on 202505.
+		for _, k := range []string{"PORT_INGRESS_MIRROR_CAPABLE", "PORT_EGRESS_MIRROR_CAPABLE"} {
+			if v, ok := f.table("state_switch_cap")["SWITCH_CAPABILITY|switch"][k]; ok && v != "true" {
+				return fmt.Errorf("Error: Port mirror direction '%s' is not supported by the ASIC", dir)
+			}
+		}
 		if _, ok := f.table("cfg_mirror")["MIRROR_SESSION|"+name]; ok {
 			return fmt.Errorf("session %s already exists", name)
 		}

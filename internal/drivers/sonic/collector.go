@@ -229,8 +229,9 @@ var redisSections = []string{
 // laterSections joined collect.py on 2026-11-01 (docs/drivers/sonic.md
 // §11.4, the hardware tables; §11.5, disunified-l2d's tables; §11.7.5, the
 // driver's ACL tables); the captures before that lack them, which reads as
-// empty.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl"}
+// empty. state_switch_cap (the SAI's SWITCH_CAPABILITY, §11.8) joined on
+// 2026-11-02.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)

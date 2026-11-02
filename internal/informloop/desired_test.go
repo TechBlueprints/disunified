@@ -1,7 +1,9 @@
 package informloop
 
 import (
+	"log"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
@@ -60,5 +62,27 @@ func TestDesiredDeviceTimezoneAndHostname(t *testing.T) {
 	on := (&Loop{cfg: Config{ControlHostname: true}}).desiredDevice(cfg)
 	if on.Hostname != "APCAP7931" {
 		t.Errorf("control.hostname on: hostname %q", on.Hostname)
+	}
+}
+
+// Rate mode (packets/s) has no equivalent in the drivers, which take a share
+// of the port's bandwidth: the port's storm control is left off and the loop
+// says so, once per setting (docs/drivers/sonic.md 11.8: it was dropped in
+// silence). The captured push is docs/fixtures/controller-10.6.109/
+// system_cfg-dx010-storm-rate.txt.
+func TestDesiredPortsStormRateIsNotedOnce(t *testing.T) {
+	var buf strings.Builder
+	l := &Loop{cfg: Config{Logger: log.New(&buf, "", 0)}}
+	rate := "switch.port.3.stormctrl.status=enabled\nswitch.port.3.stormctrl.type=rate\nswitch.port.3.stormctrl.bcast=100\nswitch.port.3.stormctrl.mcast=100\n"
+	if got := l.desiredPorts(rate); len(got) != 1 || got[0].StormCtrl != nil {
+		t.Fatalf("got %+v", got)
+	}
+	l.desiredPorts(rate)
+	if n := strings.Count(buf.String(), "NOTE: port 3 storm control in Rate mode (packets/s)"); n != 1 {
+		t.Errorf("noted %d times, want once:\n%s", n, buf.String())
+	}
+	got := l.desiredPorts(strings.Replace(rate, "rate", "level", 1))
+	if sc := got[0].StormCtrl; sc == nil || *sc.BroadcastPct != 100 || *sc.MulticastPct != 100 || sc.UnknownUnicastPct != nil {
+		t.Errorf("level mode: %+v", sc)
 	}
 }

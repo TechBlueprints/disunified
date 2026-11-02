@@ -307,3 +307,44 @@ func TestSessionDropped(t *testing.T) {
 		t.Errorf("a host that cannot be dialled: SessionDropped(%v) must be false", err)
 	}
 }
+
+// A refusal printed to stdout -- SONiC's portconfig prints "fec fc is not in
+// ['none', 'rs']" there and exits 1 with nothing on stderr, and the bridge
+// logged "Process exited with status 1:" and no more (docs/drivers/sonic.md
+// 11.8) -- is in the error after the stderr; a batch's stdout is cut to its
+// tail, where the refusal is.
+func TestRunErrorCarriesStdout(t *testing.T) {
+	key := newKey(t)
+	says := func(stdout, stderr string, code uint32) func(net.Conn, ssh.Channel) {
+		return func(_ net.Conn, ch ssh.Channel) {
+			io.WriteString(ch, stdout)
+			io.WriteString(ch.Stderr(), stderr)
+			status := make([]byte, 4)
+			binary.BigEndian.PutUint32(status, code)
+			ch.SendRequest("exit-status", false, status)
+			ch.Close()
+		}
+	}
+	run := func(exec func(net.Conn, ssh.Channel)) string {
+		srv := startServerExec(t, exec, key.PublicKey())
+		r := New(srv.addr, "admin")
+		r.KnownHosts = srv.knownHost
+		r.agentKeys = fakeAgent(identity{name: "k", signer: key})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := r.Run(ctx, "bash -s", "set -e\nsudo config interface fec Ethernet8 fc\n")
+		if err == nil {
+			t.Fatal("no error for a non-zero exit")
+		}
+		return err.Error()
+	}
+	if got := run(says("fec fc is not in ['none', 'rs']\n", "", 1)); !strings.HasSuffix(got, "Process exited with status 1: stdout: fec fc is not in ['none', 'rs']") {
+		t.Errorf("stdout only: %q", got)
+	}
+	if got := run(says(strings.Repeat("ok\n", 200)+"refused at the end", "Error: usage", 2)); !strings.Contains(got, "Error: usage | stdout: ...") || !strings.HasSuffix(got, "refused at the end") || len(got) > 420 {
+		t.Errorf("both, long stdout: %q", got)
+	}
+	if got := run(says("", "", 1)); strings.Contains(got, "stdout") {
+		t.Errorf("nothing said: %q", got)
+	}
+}

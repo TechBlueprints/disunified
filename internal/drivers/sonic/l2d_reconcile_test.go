@@ -68,3 +68,35 @@ func TestL2dReconcilesFromMstpdsReport(t *testing.T) {
 		t.Errorf("a second pass on the state the first produced set something:\n%s", second)
 	}
 }
+
+// §11.8: `config interface breakout` validates the whole CONFIG_DB with
+// sonic-yang, and the STP trap's trap_group is a leafref into CONFIG_DB's
+// COPP_GROUP, which the image keeps in copp_cfg.json only -- every breakout
+// failed on the trap left behind. l2d writes the group before the trap: the
+// image's definition when the file has one, the stock one otherwise.
+func TestL2dWritesTheTrapGroupWithTheTrap(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not found")
+	}
+	run := func(args ...string) []string {
+		t.Helper()
+		out, err := exec.Command(py, append([]string{"-I", filepath.Join("testdata", "l2d_copp.py"), "l2d.py"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		return strings.Split(strings.TrimSpace(string(out)), "\n")
+	}
+	stock := "PUT COPP_GROUP|queue4_group1 cbs=6000 cir=6000 meter_type=packets mode=sr_tcm queue=4 red_action=drop trap_action=trap trap_priority=4"
+	trap := "PUT COPP_TRAP|stp trap_ids=stp trap_group=queue4_group1 always_enabled=true"
+	if got := run(); strings.Join(got, "\n") != stock+"\n"+trap {
+		t.Errorf("without copp_cfg.json:\n%s", strings.Join(got, "\n"))
+	}
+	cfg := filepath.Join(t.TempDir(), "copp_cfg.json")
+	if err := os.WriteFile(cfg, []byte(`{"COPP_GROUP": {"queue4_group1": {"trap_action": "trap", "trap_priority": "4", "queue": "4", "meter_type": "packets", "mode": "sr_tcm", "cir": "600", "cbs": "600", "red_action": "drop"}}, "COPP_TRAP": {}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(cfg); got[0] != strings.Replace(stock, "cbs=6000 cir=6000", "cbs=600 cir=600", 1) || got[1] != trap {
+		t.Errorf("with the image's copp_cfg.json:\n%s", strings.Join(got, "\n"))
+	}
+}

@@ -126,3 +126,22 @@ func (r *controlRig) system2() *devicemodel.Snapshot {
 	}
 	return snap
 }
+
+// §11.8: FC-FEC pushed on a QSFP28 cage of the DX010, whose supported_fecs
+// is none,rs. portconfig refuses it on stdout and exits 1, which under set
+// -e failed the whole batch live and left the rest of the push unapplied
+// every retry; the driver now skips the mode with a note and the rest of
+// the port's push (here its name) goes through.
+func TestPushedFECTheCageCannotRun(t *testing.T) {
+	r := newHardwareRig(t, nil)
+	if _, err := r.fr.Run(context.Background(), batchCommand, "set -e\nsudo config interface fec Ethernet0 fc\n"); err == nil || !strings.Contains(err.Error(), "fec fc is not in ['none', 'rs']") {
+		t.Fatalf("the capture must refuse FC as portconfig does: %v", err)
+	}
+	base := r.baseline()
+	fc := devicemodel.FECFC
+	ds := edit(base, 1, func(d *devicemodel.PortDesired) { d.FEC = &fc; d.Description = "fec test" })
+	r.expect("FC on a QSFP28 cage", ds, []string{"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet0' description 'fec test'", save})
+	if !strings.Contains(r.log.String(), "port 1: the controller asks for FEC fc, which Ethernet0 does not support (none,rs); FEC left as it is") {
+		t.Errorf("no note: %s", r.log.String())
+	}
+}

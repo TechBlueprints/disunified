@@ -58,6 +58,14 @@ type swState struct {
 	// fecs is STATE_DB's supported_fecs per interface ("none,rs" on the
 	// DX010; absent on the VS); read-only, shared by clones.
 	fecs map[string]map[string]bool
+	// switchCap is STATE_DB's SWITCH_CAPABILITY|switch, the SAI's answers
+	// about the switch as orchagent publishes them (nil on a capture
+	// without the section, from a collect.py before 2026-11-02).
+	switchCap map[string]string
+	// mgmtPortMissing: eth0 has a MGMT_INTERFACE address and no MGMT_PORT
+	// row (§10.6's hand fix makes one and not the other), which sonic-yang
+	// rejects as a dangling leafref when a breakout validates CONFIG_DB.
+	mgmtPortMissing bool
 
 	// l2 is disunified-l2d's installation and config (collect.py's l2d
 	// section; §11.5).
@@ -179,14 +187,20 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	s.ifaddrs = map[string]bool{}
+	var mgmtAddr, mgmtPort bool
 	for k := range db["cfg_mgmt"] {
 		parts := strings.Split(k, "|")
 		switch {
+		case k == "MGMT_PORT|eth0":
+			mgmtPort = true
 		case len(parts) != 3:
+		case parts[0] == "MGMT_INTERFACE" && parts[1] == "eth0":
+			mgmtAddr = true
 		case parts[0] == "VLAN_INTERFACE", parts[0] == "INTERFACE", parts[0] == "PORTCHANNEL_INTERFACE", parts[0] == "LOOPBACK_INTERFACE":
 			s.ifaddrs[parts[1]+"|"+parts[2]] = true
 		}
 	}
+	s.mgmtPortMissing = mgmtAddr && !mgmtPort
 	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			s.keys = append(s.keys, line)
@@ -224,6 +238,9 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 		s.aclCRM = db["crm_acl"]
 	}
+	if f, ok := db["state_switch_cap"]["SWITCH_CAPABILITY|switch"]; ok {
+		s.switchCap = copyFields(f)
+	}
 	s.fecs = map[string]map[string]bool{}
 	for name, f := range db["state_port"].byName("|") {
 		for _, m := range strings.Split(f["supported_fecs"], ",") {
@@ -257,7 +274,7 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs,
+		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
@@ -393,6 +410,21 @@ func (s *swState) lagOf(iface string) string {
 		}
 	}
 	return ""
+}
+
+// mirrorCLIRefuses reports whether `config mirror_session span add` would
+// refuse a SPAN session in both directions. 202511's CLI asks STATE_DB's
+// SWITCH_CAPABILITY|switch for PORT_INGRESS_MIRROR_CAPABLE and
+// PORT_EGRESS_MIRROR_CAPABLE first and takes anything but 'true' as no
+// ("Error: Port mirror direction 'both' is not supported by the ASIC");
+// a build without the flags (202505) has no such gate.
+func (s *swState) mirrorCLIRefuses() bool {
+	for _, k := range []string{"PORT_INGRESS_MIRROR_CAPABLE", "PORT_EGRESS_MIRROR_CAPABLE"} {
+		if v, ok := s.switchCap[k]; ok && v != "true" {
+			return true
+		}
+	}
+	return false
 }
 
 // mirrorTo is the session whose destination is iface, "" if none.

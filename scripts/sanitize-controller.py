@@ -21,7 +21,8 @@ assert on them).
 SSH key comments (sshd.auth.key.N.comment: an owner's e-mail address or
 machine name) become key-N, numbered by first appearance within a file.
 
-Usage: scripts/sanitize-controller.py <file>...   (writes the file back)
+Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
+           .ndjson = one reply per line, .txt = one system_cfg push, else JSON)
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -196,6 +197,10 @@ for path in args:
                 continue
             lines.append(json.dumps(scrub(json.loads(line)), sort_keys=True))
         open(path, 'w').write('\n'.join(lines) + '\n')
+    elif path.endswith('.txt'):
+        # a system_cfg push saved as text (the bridge's reply log holds it as
+        # the payload's system_cfg string)
+        open(path, 'w').write(scrub_cfg_text(raw))
     else:
         data = json.loads(raw)
         with open(path, 'w') as f:

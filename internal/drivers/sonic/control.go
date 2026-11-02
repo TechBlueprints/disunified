@@ -220,9 +220,18 @@ func (pl *plan) mirrorAdds(ds []devicemodel.PortDesired) {
 		}
 		// SONiC refuses a destination with VLAN config.
 		pl.stripVLANs(d.Index, dst)
-		pl.add(d.Index, fmt.Sprintf("config mirror_session span add %s %s %s both", name, dst, src), func(s *swState) {
+		set := func(s *swState) {
 			s.mirrors[name] = map[string]string{"type": "SPAN", "dst_port": dst, "src_port": src, "direction": "BOTH"}
-		})
+		}
+		if pl.sim.mirrorCLIRefuses() {
+			// 202511's CLI asks the SAI first, and the DX010's SAI answers
+			// 'false' for both directions while programming SPAN sessions
+			// all the same (a row written by hand reached ASIC_DB, §11.8):
+			// the row goes in as the CLI would have written it.
+			pl.add(d.Index, fmt.Sprintf("sonic-db-cli CONFIG_DB hset %s type SPAN dst_port %s src_port %s direction BOTH", sshrun.ShellQuote("MIRROR_SESSION|"+name), dst, src), set)
+		} else {
+			pl.add(d.Index, fmt.Sprintf("config mirror_session span add %s %s %s both", name, dst, src), set)
+		}
 	}
 }
 
@@ -550,6 +559,13 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 		fec, write := d.FEC, pl.add
 		if fec == nil {
 			fec, write = pl.moduleFEC(d.Index, ln), pl.addOwn
+		} else if sup := pl.sim.fecs[ln]; len(sup) > 0 && !sup[fecKeyword(*fec)] {
+			// portconfig refuses a mode outside supported_fecs ("fec fc is
+			// not in ['none', 'rs']", exit 1), which under set -e would fail
+			// the whole batch and leave the rest of the push unapplied, as
+			// FC-FEC on a QSFP28 cage of the DX010 did (§11.8).
+			pl.note("port %d: the controller asks for FEC %s, which %s does not support (%s); FEC left as it is", d.Index, fecKeyword(*fec), ln, strings.Join(sortedSet(sup), ","))
+			fec = nil
 		}
 		if fec != nil && *fec != fecOf(pl.sim.field(ln, "fec")) {
 			if kw := fecKeyword(*fec); kw != "" && !(kw == "none" && pl.sim.field(ln, "fec") == "") {
