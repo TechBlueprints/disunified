@@ -437,8 +437,9 @@ func (f *FixtureRunner) apply(line string) error {
 			})
 		}
 		if n, ok := strings.CutPrefix(key, "MIRROR_SESSION|"); ok {
-			// The driver's own write where the CLI's gate refuses (§11.8);
-			// mirrororch takes the row as the CLI would have written it.
+			// A row written past the 202511 CLI's gate (by hand, or by the
+			// driver before §11.8's re-run showed orchagent never binds the
+			// source port): CONFIG_DB takes it as the CLI would have.
 			if w[2] != "hset" || len(w) < 6 || len(w)%2 != 0 {
 				return fmt.Errorf("unmodelled MIRROR_SESSION write")
 			}

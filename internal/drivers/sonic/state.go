@@ -66,6 +66,12 @@ type swState struct {
 	// row (§10.6's hand fix makes one and not the other), which sonic-yang
 	// rejects as a dangling leafref when a breakout validates CONFIG_DB.
 	mgmtPortMissing bool
+	// mgmtNoGateway lists eth0's MGMT_INTERFACE prefixes without a gateway
+	// of their own family. sonic-mgmt_interface.yang requires one ("Must
+	// condition ... contains(../gwaddr, '.')"), `config interface ip add
+	// eth0 <ip>` without one writes {"NULL": "NULL"}, and a breakout, which
+	// validates the whole CONFIG_DB, fails on it (§11.8).
+	mgmtNoGateway []string
 
 	// l2 is disunified-l2d's installation and config (collect.py's l2d
 	// section; §11.5).
@@ -188,7 +194,8 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	}
 	s.ifaddrs = map[string]bool{}
 	var mgmtAddr, mgmtPort bool
-	for k := range db["cfg_mgmt"] {
+	s.mgmtNoGateway = nil
+	for k, fv := range db["cfg_mgmt"] {
 		parts := strings.Split(k, "|")
 		switch {
 		case k == "MGMT_PORT|eth0":
@@ -196,11 +203,15 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		case len(parts) != 3:
 		case parts[0] == "MGMT_INTERFACE" && parts[1] == "eth0":
 			mgmtAddr = true
+			if pfx, gw := parts[2], fv["gwaddr"]; !(strings.Contains(pfx, ":") && strings.Contains(gw, ":")) && !(strings.Contains(pfx, ".") && strings.Contains(gw, ".")) {
+				s.mgmtNoGateway = append(s.mgmtNoGateway, pfx)
+			}
 		case parts[0] == "VLAN_INTERFACE", parts[0] == "INTERFACE", parts[0] == "PORTCHANNEL_INTERFACE", parts[0] == "LOOPBACK_INTERFACE":
 			s.ifaddrs[parts[1]+"|"+parts[2]] = true
 		}
 	}
 	s.mgmtPortMissing = mgmtAddr && !mgmtPort
+	sort.Strings(s.mgmtNoGateway)
 	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			s.keys = append(s.keys, line)
@@ -274,7 +285,7 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing,
+		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
@@ -412,13 +423,16 @@ func (s *swState) lagOf(iface string) string {
 	return ""
 }
 
-// mirrorCLIRefuses reports whether `config mirror_session span add` would
-// refuse a SPAN session in both directions. 202511's CLI asks STATE_DB's
-// SWITCH_CAPABILITY|switch for PORT_INGRESS_MIRROR_CAPABLE and
-// PORT_EGRESS_MIRROR_CAPABLE first and takes anything but 'true' as no
-// ("Error: Port mirror direction 'both' is not supported by the ASIC");
-// a build without the flags (202505) has no such gate.
-func (s *swState) mirrorCLIRefuses() bool {
+// portMirrorUnsupported reports whether the SAI says it cannot attach a
+// port to a mirror session. 202511 publishes the answer in STATE_DB's
+// SWITCH_CAPABILITY|switch (PORT_INGRESS_MIRROR_CAPABLE,
+// PORT_EGRESS_MIRROR_CAPABLE) and acts on it twice: the CLI refuses the
+// session ("Error: Port mirror direction 'both' is not supported by the
+// ASIC"), and orchagent, given the row directly, creates the session
+// object but never binds the source port ("setUnsetPortMirror: Port
+// ingress mirror is not supported by the ASIC"), so nothing is mirrored
+// (DX010, §11.8). A build without the flags (202505) has no such gate.
+func (s *swState) portMirrorUnsupported() bool {
 	for _, k := range []string{"PORT_INGRESS_MIRROR_CAPABLE", "PORT_EGRESS_MIRROR_CAPABLE"} {
 		if v, ok := s.switchCap[k]; ok && v != "true" {
 			return true

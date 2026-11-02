@@ -36,13 +36,15 @@ func rig202511(t *testing.T, edit func(*FixtureRunner)) *controlRig {
 	return &controlRig{t: t, c: c, fr: fr, log: &buf}
 }
 
-// §11.8: 202511's `config mirror_session span add` asks the SAI whether the
-// port can mirror in the direction asked, and the DX010's SAI says no to
-// both (PORT_INGRESS/EGRESS_MIRROR_CAPABLE 'false') while programming SPAN
-// sessions all the same. On that build the driver writes the row itself;
-// on 202505, which has no flags and no gate, the CLI is still used
-// (TestApplyMirror).
-func TestMirrorWrittenDirectWhereTheCLIRefuses(t *testing.T) {
+// §11.8: 202511 asks the SAI whether a port can be attached to a mirror
+// session, and the DX010's SAI says no to both directions
+// (PORT_INGRESS/EGRESS_MIRROR_CAPABLE 'false'). The CLI refuses the session;
+// a row written past it (66bf6c8) made orchagent create the session object
+// without ever binding the source port ("setUnsetPortMirror: Port ingress
+// mirror is not supported by the ASIC"), leaking the object on removal. On
+// that build the driver refuses, once, and writes nothing; on 202505, which
+// has no flags and no gate, the CLI is still used (TestApplyMirror).
+func TestMirrorRefusedWhereTheSAIHasNoPortMirror(t *testing.T) {
 	r := rig202511(t, nil)
 	if _, err := r.fr.Run(context.Background(), batchCommand, "set -e\nsudo config mirror_session span add dui4 Ethernet12 Ethernet16 both\n"); err == nil || !strings.Contains(err.Error(), "Error: Port mirror direction 'both' is not supported by the ASIC") {
 		t.Fatalf("the capture must refuse the CLI add as 202511 does: %v", err)
@@ -52,28 +54,32 @@ func TestMirrorWrittenDirectWhereTheCLIRefuses(t *testing.T) {
 		t.Fatalf("the unit as captured needs no write: %q", got)
 	}
 	ds := edit(base, 4, func(d *devicemodel.PortDesired) { d.MirrorSource = 5 })
-	snap := r.expect("mirror 4 <- 5", ds, []string{
-		"sudo config vlan member del 4094 Ethernet12",
-		"sudo sonic-db-cli CONFIG_DB hset 'MIRROR_SESSION|dui4' type SPAN dst_port Ethernet12 src_port Ethernet16 direction BOTH",
-		save,
-	})
-	if p := port(snap, 4); p.MirrorFrom != 5 || p.VLAN.NativeVLAN != 0 {
-		t.Errorf("read back: mirror from %d, VLAN %+v", p.MirrorFrom, p.VLAN)
+	for i := 0; i < 2; i++ {
+		if got, _ := r.apply(ds); len(got) != 0 {
+			t.Fatalf("apply %d wrote %q", i+1, got)
+		}
 	}
-	r.expect("mirror off", base, []string{
-		"sudo config mirror_session remove dui4",
-		"sudo config vlan member add -u 4094 Ethernet12",
-		save,
-	})
+	note := "port 4: mirroring port 5 is not possible on this switch"
+	if n := strings.Count(r.log.String(), note); n != 1 {
+		t.Errorf("note logged %d times: %s", n, r.log.String())
+	}
+	snap, err := r.c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := port(snap, 4); p.MirrorFrom != 0 || p.VLAN.NativeVLAN == 0 {
+		t.Errorf("read back: mirror from %d, VLAN %+v (the destination keeps its VLAN)", p.MirrorFrom, p.VLAN)
+	}
 }
 
 // §11.8: on the DX010 every breakout failed sonic-yang's validation of the
 // whole CONFIG_DB on two dangling leafrefs: the STP trap's group (l2d now
 // writes it, TestL2dWritesTheTrapGroupWithTheTrap) and MGMT_INTERFACE|eth0
 // without a MGMT_PORT row, left by §10.6's hand fix. The driver adds the
-// row before the breakout, once.
+// row before the breakout, once. (The row here has a gateway; the captured
+// one has none, TestBreakoutRefusedWhileEthZeroHasNoGateway.)
 func TestBreakoutAddsTheManagementPortRow(t *testing.T) {
-	r := rig202511(t, nil)
+	r := rig202511(t, withMgmtGateway)
 	brk := "sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null"
 	if _, err := r.fr.Run(context.Background(), batchCommand, "set -e\n"+brk+"\n"); err == nil || !strings.Contains(err.Error(), `Leafref "/sonic-mgmt_port:sonic-mgmt_port/sonic-mgmt_port:MGMT_PORT/sonic-mgmt_port:MGMT_PORT_LIST/sonic-mgmt_port:name" of value "eth0" points to a non-existing leaf`) {
 		t.Fatalf("the capture must refuse the breakout as sonic-yang did: %v", err)
@@ -101,5 +107,48 @@ func TestBreakoutAddsTheManagementPortRow(t *testing.T) {
 	got, _ = r.apply(speedOn(base, 2, 100000))
 	if len(got) == 0 || got[0] != "sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null" {
 		t.Errorf("join: %q", got)
+	}
+}
+
+// withMgmtGateway gives the captured eth0 address a gateway of its own
+// family, the shape sonic-mgmt_interface.yang accepts.
+func withMgmtGateway(fr *FixtureRunner) {
+	fr.update("cfg_mgmt", func(tb table) error {
+		tb["MGMT_INTERFACE|eth0|169.254.1.1/16"] = map[string]string{"gwaddr": "169.254.0.1"}
+		return nil
+	})
+}
+
+// §11.8, after the deploy: with the MGMT_PORT row in place the breakout
+// still failed, on sonic-yang's rule that every MGMT_INTERFACE row carries
+// a gateway of its own family; §10.6's `config interface ip add eth0
+// 169.254.1.1/16` wrote {"NULL": "NULL"}. A gateway there is not the
+// driver's to invent (it becomes a default route on eth0 that the syslog
+// servers' forced rules would follow), so the breakout is refused with one
+// note and nothing is written: no retry loop, no half-made rows.
+func TestBreakoutRefusedWhileEthZeroHasNoGateway(t *testing.T) {
+	withRow := rig202511(t, func(fr *FixtureRunner) {
+		fr.update("cfg_mgmt", func(tb table) error {
+			tb["MGMT_PORT|eth0"] = map[string]string{"alias": "eth0", "admin_status": "up"}
+			return nil
+		})
+	})
+	brk := "sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null"
+	if _, err := withRow.fr.Run(context.Background(), batchCommand, "set -e\n"+brk+"\n"); err == nil || !strings.Contains(err.Error(), `Must condition "(contains(current(), ':') and contains(../gwaddr, ':')) or (contains(current(), '.') and contains(../gwaddr, '.'))" not satisfied. (path: /sonic-mgmt_interface:sonic-mgmt_interface/MGMT_INTERFACE/MGMT_INTERFACE_LIST[name='eth0'][ip_prefix='169.254.1.1/16']/ip_prefix)`) {
+		t.Fatalf("the capture must refuse the breakout as sonic-yang did live: %v", err)
+	}
+	r := rig202511(t, nil)
+	base := r.baseline()
+	for i := 0; i < 2; i++ {
+		if got, _ := r.apply(speedOn(base, 2, 25000)); len(got) != 0 {
+			t.Fatalf("apply %d wrote %q", i+1, got)
+		}
+	}
+	note := "port 2: 25000 Mb/s needs breakout mode 4x25G[10G]"
+	if n := strings.Count(r.log.String(), note); n != 1 {
+		t.Errorf("note logged %d times: %s", n, r.log.String())
+	}
+	if !strings.Contains(r.log.String(), "eth0's address 169.254.1.1/16 (MGMT_INTERFACE) has no gateway") {
+		t.Errorf("note does not name the row: %s", r.log.String())
 	}
 }

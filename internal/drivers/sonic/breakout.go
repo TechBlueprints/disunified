@@ -309,6 +309,15 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want.speed, target.name, why)
 			return
 		}
+		if len(pl.sim.mgmtNoGateway) > 0 {
+			// The breakout validates the whole CONFIG_DB with sonic-yang,
+			// which requires a gateway on every MGMT_INTERFACE row (§11.8).
+			// A gateway is not the driver's to add: interfaces.j2 turns it
+			// into a default route on eth0 in the management table, where
+			// the syslog servers' forced rules would then send their traffic.
+			pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC checks the whole config against its YANG model before a breakout; eth0's address %s (MGMT_INTERFACE) has no gateway, which the model requires, and the driver does not change eth0; speed not written (give the row a gateway or remove it: docs/drivers/sonic.md 11.8)", d.Index, want.speed, target.name, strings.Join(pl.sim.mgmtNoGateway, ", "))
+			return
+		}
 		children, err := pp.children(parent, *target)
 		if err != nil {
 			pl.note("port %d: breakout %s of %s: %v; speed not written", d.Index, target.name, parent, err)

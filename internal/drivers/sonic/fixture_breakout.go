@@ -67,6 +67,15 @@ func (f *FixtureRunner) breakout(args []string) error {
 			}
 		}
 	}
+	// ... and every MGMT_INTERFACE row needs a gateway of its own family;
+	// `config interface ip add eth0 <ip>` without one writes NULL (§11.8).
+	for k, fv := range f.table("cfg_mgmt") {
+		if pfx, ok := strings.CutPrefix(k, "MGMT_INTERFACE|eth0|"); ok {
+			if gw := fv["gwaddr"]; !(strings.Contains(pfx, ":") && strings.Contains(gw, ":")) && !(strings.Contains(pfx, ".") && strings.Contains(gw, ".")) {
+				return fmt.Errorf(`libyang[0]: Must condition "(contains(current(), ':') and contains(../gwaddr, ':')) or (contains(current(), '.') and contains(../gwaddr, '.'))" not satisfied. (path: /sonic-mgmt_interface:sonic-mgmt_interface/MGMT_INTERFACE/MGMT_INTERFACE_LIST[name='eth0'][ip_prefix='%s']/ip_prefix)`, pfx)
+			}
+		}
+	}
 	if _, ok := pp.BreakoutModes[mode]; !ok {
 		return fmt.Errorf("[ERROR] Target mode %s is not available for the port %s", mode, parent)
 	}

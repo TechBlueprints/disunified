@@ -214,6 +214,10 @@ func (pl *plan) mirrorAdds(ds []devicemodel.PortDesired) {
 		if cur := pl.sim.mirrorTo(dst); cur != "" && pl.sim.mirrors[cur]["src_port"] == src {
 			continue
 		}
+		if pl.sim.portMirrorUnsupported() {
+			pl.note("port %d: mirroring port %d is not possible on this switch: its SAI reports that a port cannot be attached to a mirror session (STATE_DB SWITCH_CAPABILITY PORT_INGRESS/EGRESS_MIRROR_CAPABLE false), and SONiC then creates the session without its source port; not mirrored", d.Index, d.MirrorSource)
+			continue
+		}
 		name := "dui" + strconv.Itoa(d.Index)
 		if _, taken := pl.sim.mirrors[name]; taken {
 			pl.add(d.Index, "config mirror_session remove "+name, func(s *swState) { delete(s.mirrors, name) })
@@ -223,15 +227,7 @@ func (pl *plan) mirrorAdds(ds []devicemodel.PortDesired) {
 		set := func(s *swState) {
 			s.mirrors[name] = map[string]string{"type": "SPAN", "dst_port": dst, "src_port": src, "direction": "BOTH"}
 		}
-		if pl.sim.mirrorCLIRefuses() {
-			// 202511's CLI asks the SAI first, and the DX010's SAI answers
-			// 'false' for both directions while programming SPAN sessions
-			// all the same (a row written by hand reached ASIC_DB, §11.8):
-			// the row goes in as the CLI would have written it.
-			pl.add(d.Index, fmt.Sprintf("sonic-db-cli CONFIG_DB hset %s type SPAN dst_port %s src_port %s direction BOTH", sshrun.ShellQuote("MIRROR_SESSION|"+name), dst, src), set)
-		} else {
-			pl.add(d.Index, fmt.Sprintf("config mirror_session span add %s %s %s both", name, dst, src), set)
-		}
+		pl.add(d.Index, fmt.Sprintf("config mirror_session span add %s %s %s both", name, dst, src), set)
 	}
 }
 

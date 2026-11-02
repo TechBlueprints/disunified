@@ -472,13 +472,21 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   refuses the split (`COPP_TRAP|stp` needs `COPP_GROUP|queue4_group1`, which
   l2d now writes with the trap; `MGMT_INTERFACE|eth0|...` needs
   `MGMT_PORT|eth0`, which the driver adds before a breakout when missing;
-  check a unit read-only with `sonic_yang.loadData()` over `sonic-cfggen -d
-  --print-data`). `config mirror_session span add` is gated by STATE_DB
-  `SWITCH_CAPABILITY|switch` `PORT_INGRESS_MIRROR_CAPABLE` /
-  `PORT_EGRESS_MIRROR_CAPABLE`, `'false'` on the DX010 although the ASIC
-  programs SPAN: where either flag is present and not `true` the driver
-  writes the `MIRROR_SESSION` row with `sonic-db-cli` (`state_switch_cap`
-  section, `mirrorCLIRefuses`). Every PORT write adds `dhcp_rate_limit:
+  and every `MGMT_INTERFACE` row needs a `gwaddr` of its own family, which
+  `config interface ip add eth0 <ip>` without a gateway never writes -- the
+  driver then refuses the breakout with a note (`mgmtNoGateway`) and never
+  invents a gateway: interfaces.j2 makes it a default route on eth0 in the
+  management table, which the syslog servers' forced rules follow; check a
+  unit read-only with `sonic_yang.loadData()` over `sonic-cfggen -d
+  --print-data`). **Port mirroring does not work on the DX010 on 202511**:
+  STATE_DB `SWITCH_CAPABILITY|switch` `PORT_INGRESS_MIRROR_CAPABLE` /
+  `PORT_EGRESS_MIRROR_CAPABLE` are `'false'`, the CLI refuses the session,
+  and a `MIRROR_SESSION` row written past it makes orchagent create the SAI
+  session without binding the source port ("setUnsetPortMirror: Port
+  ingress mirror is not supported by the ASIC") and leak the object on
+  removal. The driver refuses the mirror with a note
+  (`portMirrorUnsupported`); the ASIC_DB object alone proves nothing, read
+  orchagent's syslog. Every PORT write adds `dhcp_rate_limit:
   300`. `config spanning-tree interface` spells `bpdu-guard` (202505:
   `bpdu_guard`); `config` gains `igmp-snooping`, `mld-snooping`,
   `dhcpv4_relay`. portconfig prints its FEC refusal (`fec fc is not in
@@ -490,6 +498,7 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `applyACL` binds the PortChannel after; a memberless PortChannel with the
   driver's LACP settings that no port wants is removed (`ownOrphan`). The
   2026-11-02 pushes are `controller-10.6.109/system_cfg-dx010-{fec-cl74,
-  breakout-25g,mirror,storm-rate,aggregate-acl}.txt`; the image's capture
+  breakout-25g,mirror,storm-rate,aggregate-acl}.txt`; the re-run after the
+  deploy is `sonic-igmp-202511.20261101-22cac574e/rerun-20261102.txt`; the image's capture
   and `config --help` are `sonic-igmp-202511.20261101-22cac574e/`
   (`rig202511` in the tests).

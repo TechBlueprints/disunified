@@ -316,7 +316,9 @@ func TestIPRulesRefusals(t *testing.T) {
 // The tables bind to every port and PortChannel: after an aggregate or a
 // breakout the list is written again, a member out and the PortChannel in.
 func TestACLTablesFollowThePorts(t *testing.T) {
-	r := newACLRig(t, nil)
+	// The capture's eth0 row has no gateway, which refuses every breakout
+	// (TestBreakoutRefusedWhileEthZeroHasNoGateway); the split below needs one.
+	r := newACLRig(t, withMgmtGateway)
 	cfg := ecsPush(t, "system_cfg-ecs-acl.txt")
 	r.deviceCmds(devicemodel.DeviceDesired{IPACLSet: true, IPACLs: ipACLsOf(cfg)})
 	if _, err := r.c.Collect(context.Background()); err != nil {
