@@ -968,9 +968,9 @@ blocked`, last touched 2026-09-10:
 
 | Piece | Where | Size | State |
 |---|---|---|---|
-| `l2mcorch` (orchagent) + `l2mcmgrd` (cfgmgr): CONFIG_DB → APPL_DB → SAI | [sonic-swss #3950](https://github.com/sonic-net/sonic-swss/pull/3950) | 4,084 lines, 16 files (`l2mcmgr.cpp` 2,023, `l2mcorch.cpp` 1,573) | 30 review comments, nearly all answered "will further revise"; a real memory-safety bug (`memcpy` of short IP strings past `c_str()`) found 2026-08-12 and acknowledged, not yet fixed; CI runs approved by maintainers |
+| `l2mcorch` (orchagent) + `l2mcmgrd` (cfgmgr): CONFIG_DB → APPL_DB → SAI | [sonic-swss #3950](https://github.com/sonic-net/sonic-swss/pull/3950) | 4,084 lines, 16 files (`l2mcmgr.cpp` 2,023, `l2mcorch.cpp` 1,573) | 30 review comments, nearly all answered "will further revise"; a real memory-safety bug (`memcpy` of short IP strings past `c_str()`) found 2026-08-12 and acknowledged (corrected 2026-11-01: fixed in the PR on 2026-08-19, `379cfb9`; the daemon carries the same bug, fixed in this build's series, §8.6); CI runs approved by maintainers |
 | `docker-l2mcd` container, `INCLUDE_L2MCD`, YANG models (`sonic-igmp-snooping.yang`, `sonic-mld-snooping.yang`), CoPP trap group for IGMP/MLD to the CPU, rsyslog, feature table | [sonic-buildimage #24327](https://github.com/sonic-net/sonic-buildimage/pull/24327) | 772 lines, 22 files | draft; **its submodule points at `sonic-net/sonic-l2mcd`, which does not exist** -- the build cannot resolve it as submitted |
-| `config ip igmp snooping …` / `show ip igmp snooping …` | [sonic-utilities #4100](https://github.com/sonic-net/sonic-utilities/pull/4100) | 1,944 lines | draft |
+| `config igmp-snooping …` / `show igmp-snooping …`, and `mld-snooping` (corrected 2026-11-01; not under `ip`) | [sonic-utilities #4100](https://github.com/sonic-net/sonic-utilities/pull/4100) | 1,944 lines | draft |
 | gNMI/translib for it | sonic-buildimage #24328 | 285 lines | closed, not merged |
 | **The daemon itself (`l2mcd`)**: IGMPv1/2/3 and MLD state machines, querier, fast-leave, mrouter ports, timers, a `l2mcd_sync.cpp` bridge to swss-common | [`jasper-hou-micas/sonic-l2mcd-micas`](https://github.com/jasper-hou-micas/sonic-l2mcd-micas), branches `dev` / `l2mcd-pre` (master holds only LICENSE/NOTICE) | 62 files, 1.09 MB of C (`igmp.c` 113 KB, `igmp_fsm.c` 98 KB, `l2mcd_mld_port.c` 133 KB, …), autotools + `debian/`, depends on libswsscommon and libevent | last commit 2026-08-14; Apache-2.0, NOTICE says it derives from Microsoft's original (the 2020 Broadcom L2MCD lineage -- [buildimage #4213](https://github.com/sonic-net/sonic-buildimage/pull/4213), whose own source repo `Azure/sonic-l2mcd` was never populated) |
 | Design | [SONiC HLD #426](https://github.com/sonic-net/SONiC/pull/426), `doc/l2mc/IGMP_Snooping_HLD.md`, 701 lines | closed 2025-01-29 **unmerged**; not in the SONiC doc tree |
@@ -1001,7 +1001,7 @@ recaptured on a 202511 VS (`Start`'s `--help` checks are built for that drift).
 ### 8.2 How it fits together
 
 ```
-UniFi switch.vlan.N.igmp_*  --driver-->  config ip igmp snooping … (CLI, #4100)
+UniFi switch.vlan.N.igmp_*  --driver-->  config igmp-snooping … (CLI, #4100)
                                                |
                                       CONFIG_DB L2MC|VlanN {enabled, querier, fast-leave,
                                                 query-interval, query-max-response-time, …}
@@ -1027,7 +1027,9 @@ query interval + max response, so 125 s for UniFi's 260/10) and the
 `L2MC_SUPPRESS` table; the querier address and the mrouter expiry have no
 field and are logged. That driver side is the small part: the usual
 captures, `control.go` mapping, tests -- a day or two in the established
-pattern, once the switch has the commands.
+pattern, once the switch has the commands. (Superseded 2026-11-01 by §8.10,
+which maps every key against what Ubiquiti's own switch writes:
+`L2MC_SUPPRESS` carries `forward_unknown_multicast`, not `igmp_supression`.)
 
 ### 8.3 The plan, if it is wanted
 
@@ -1037,6 +1039,10 @@ pattern, once the switch has the commands.
    unmodified `sonic-vs.img.gz` and `sonic-broadcom.bin` to prove the
    pipeline: 3-6 hours each, the first one longer for the slave container.
    This also yields the `INCLUDE_STP=y` images on the same tree.
+   (Corrected 2026-11-01: sonic-buildimage 202511 asks for 300 GB free, KVM
+   -- the vs image is installed by a KVM guest during the build, so a Proxmox
+   guest needs CPU type host -- Docker 20.10.10 or newer, `j2`, and a non-root
+   user. §8.6 has the host as planned and the time estimate.)
 2. **Integrate the three PRs** on a fork of 202511: #24327 with the
    submodule pointed at `jasper-hou-micas/sonic-l2mcd-micas@dev` (or a fork
    of it under TechBlueprints, so the build does not depend on a personal
@@ -1091,9 +1097,9 @@ site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
 |---|---|
 | OS | SONiC, Ubiquiti build `4.0.1`, `release: 202106`, Debian 10.13, kernel 4.19, `asic_type: marvell`, built 2026-09-08 by `ubnt` |
 | Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
-| Containers | `swss` (orchagent **with the L2MC orch** and `l2mcmgrd`), `l2mcd`, `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
+| Containers | `swss` (orchagent **with the L2MC orch**), `l2mcd` (the daemon **and `l2mcmgrd`**, the same split as the Micas container; corrected 2026-11-01, the process's cgroup is the l2mcd container's), `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
 | The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
-| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB; there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a small Python helper that runs scripts as interfaces come and go; no Python on the box mentions an `igmp_*` key, so the translation from the controller's keys is compiled -- most likely in `mcad`, Ubiquiti's management daemon, not read. §9's attribution of VLAN 1 to it is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
 
 **UniFi's per-VLAN IGMP settings land in `CFG_L2MC_TABLE`**, one entry per
 VLAN: on that switch the native VLAN has snooping and the querier on, the
@@ -1126,6 +1132,607 @@ smaller than it read, and the SAI question in step 4 now has two vendors'
 worth of precedent. The one thing the ECS build cannot lend the DX010 is a
 binary: its `l2mcd` and orchagent are 202106 and link that branch's
 `libswsscommon`; the Micas source on 202511 is the path.
+
+### 8.6 The build, prepared (2026-11-01)
+
+Steps 1-2 of §8.3 are done short of running the build. The build kit lives
+outside this repo, beside the SONiC source clones: `series/` (the patches, one
+directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
+`build.sh` (unattended, for the build host), `dry-run.sh` and a README.
+
+**The series** (22 patches), each applying with `git am` on the **current
+202511 head** of its repository -- which is also the commit sonic-buildimage
+202511 pins for that submodule:
+
+| Repository | Base | Patches |
+|---|---|---|
+| sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005, 0007 and 0011 DX010 platform fixes (§8.7, 0007 and 0011 being upstream's own); 0006 CoPP as the ECS does it (§8.11); 0008-0010 fixes the first build needed (below) |
+| sonic-swss | `177c7a009f5e` (2026-09-19) | #3950 squashed (`l2mcorch`, `l2mcmgrd`) |
+| sonic-swss-common | `e59457c6da43` (2026-07-21) | 0001 the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it); 0002 upstream's port to libyang 3 (`1431c3d`, §8.12) |
+| sonic-mgmt-common | `b5f84b0644d9` (2025-12-05) | upstream's port to libyang 3 (#157, `cdb612e`; §8.12) |
+| sonic-utilities | `73f8c019ff7c` (2026-10-20) | #4100 squashed |
+| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0007 the receive path: packet parsers and a socket leak (§8.13) |
+
+**Conflicts: none textual.** Each PR, squashed, three-way merged onto its base
+cleanly (the PR merge bases are 7-154 commits behind). The semantic checks
+found nothing to change in the merged code: 202511's dockers are still bookworm
+(the PR's docker-l2mcd matches docker-stp's pattern), the orchagent interfaces
+l2mcorch calls (`Orch`, the `PortsOrch` lookups, the port-change observer) are
+unchanged in 202511, all 15 SAI identifiers it uses are in the SAI 1.17 headers,
+and every CoPP trap name it adds is in copporch's map. What the series changes beyond the PRs:
+
+- **The submodule.** #24327's `.gitmodules` names `sonic-net/sonic-l2mcd`, which
+  does not exist, and the PR adds **no gitlink** at all, so `make init` would never
+  check the daemon out. 0002 points it at `jasper-hou-micas/sonic-l2mcd-micas`
+  pinned at `651a13b` and fixes two rule mistakes (`SMDEP_SPATH` named a
+  directory that does not exist; `INCLUDE_L2MCD ?= y`).
+- **Unrelated changes on the PR branch, removed (0003):** gNMI translib write
+  access switched on, gNMI template and `x509` YANG changes (from the closed
+  #24328), and an `init_cfg` default `MGMT_PORT|eth0 admin_status up` -- the
+  last one would fight §10.6's deliberately-down eth0.
+- **Left out:** sonic-sairedis #1672 (L2MC warm-reboot view comparison; this build
+  is cold-boot only), sonic-mgmt-common #185 (gNMI YANG import), and two upstream
+  commits plus four leftover debug-table defines on #1093's branch.
+- **The memcpy bug.** The one acknowledged on #3950 (all ten IP-address copies in
+  `cfgmgr/l2mcmgr.cpp` read 46 bytes from strings that guarantee `size() + 1`) was
+  fixed upstream on 2026-08-19 (`379cfb9`, `strncpy` of size - 1); the series
+  carries that. **The daemon has the same bug and upstream did not touch it**:
+  `L2mcSync::dumpL2mcVlanEntry` in `l2mcd_sync.cpp` copies the port name and both
+  addresses with `memcpy(dst, s.c_str(), FIXED_SIZE)` (the warm-restart path).
+  `sonic-l2mcd/0001` bounds them the same way. The review's other crash-class
+  findings (use-after-erase, an iterator that never advanced, `.at()` throws,
+  unbounded start-up waits) are fixed on the PR head; what remains is minor (an
+  early `return` on a malformed mrouter key, stale per-VLAN map entries after a
+  VLAN is removed).
+
+**Dry run** (`dry-run.sh`, passed): every series applies with no fuzz to its
+base and reproduces the work branches exactly, also without 0005; the templates
+the image renders (`copp_cfg.j2`, `init_cfg.json.j2`, the docker-l2mcd
+Dockerfile, `l2mcd.service`) render to valid output with `FEATURE|l2mcd`
+disabled and no MGMT_PORT default; both YANG models parse (pyang, with
+sonic-yang-models' templated modules rendered); every make variable the new rules
+use is defined (except `$(LIBEVENT)`, which expands empty -- harmless, libevent-dev
+is in the bookworm slave and l2mcd links it statically); the CLI byte-compiles and
+adds no undefined names; the daemon's pinned commit answers. **Not compiled**: the
+Mac has no container runtime and creating one would mean a VM. `build.sh` builds
+libswsscommon, l2mcd, swss and docker-l2mcd first in the bookworm slave, so a
+compile error in the series shows within about an hour of the first run instead
+of after the full image.
+
+**What the first build needed (2026-11-01).** The series' own code compiled first
+time (swss with l2mcorch and l2mcmgrd, the daemon, the container). Three more
+patches came out of the build itself, none of them snooping logic:
+
+- **0008, 0009: libyang 1 and 3.** 202511 builds most things against libyang 3 but
+  sonic-mgmt-common, sonic-mgmt-framework and sonic-gnmi compiled Go validation code
+  against libyang 1's headers. The two libyang-dev packages replace each other, and
+  which one is installed when those compile depends on build order: "too many
+  arguments to function `ly_set_log_clb`", first under parallel jobs, then with the
+  packages built alone (upstream #26165). The first answer left the gNMI and
+  management-framework containers out of the image; the series now carries the
+  real fix instead, worked out and proven in its own session (§8.12): 0008 builds
+  swss-common, mgmt-common, gNMI and the management framework against libyang 3 (as
+  master and 202605 do), 0009 retires the ordering gate nothing needs any more, and
+  upstream's own libyang 3 ports of swss-common and mgmt-common come with them. The
+  image keeps both containers. (An image built with the earlier 0009, as the first
+  vs run in §8.14 was, needs `gnmi` and `mgmt-framework` disabled after an upgrade
+  from 202505.)
+- **0010: the snooping YANG models.** With #24327's two models installed, 7
+  sonic-utilities tests of the generic config updater fail, and those tests run in
+  the image build. Bisected in the build slave: any new module that imports
+  `sonic-vlan` (one VLAN-name leafref is enough) changes the references the
+  updater's libyang 1 walk reports for existing tables, i.e. how `config
+  apply-patch` orders changes; an unrelated module does not. 0010 makes the models'
+  interface and VLAN-name fields plain strings without those imports: all 214 tests
+  of the two files pass. Lost: the schema's check that a named VLAN or port exists,
+  which nothing here uses (the snooping CLI writes unvalidated, the driver writes
+  rows directly).
+
+**The build host and the time.** Debian 12 x86_64, 16 cores, 64 GB, 400 GB, Docker
+(20.10.10 or newer), `j2`, a non-root user in the docker and kvm groups, `/dev/kvm`
+(nested virtualisation on a Proxmox guest: CPU type host). `build.sh` checks all
+of it, prepares one patched tree (clone, `git am`, `make init`, the submodule
+series), copies it per platform, and builds `sonic-vs.img.gz` and the Broadcom
+ONIE images in separate trees (the dpkg cache keys include the platform, so
+nothing is shared between them except the build slaves). Estimated, unattended:
+**about 7-10 hours** for both (prepare 15-30 min, the two slaves 40-70 min once,
+fail-fast packages 45-90 min, vs 2.5-4 h, broadcom 3-4.5 h with three ONIE images),
+about 120 GB of disk per platform tree. The first run writes the measured
+durations. The build id is `igmp-202511.<BUILD_NUMBER>-<sha>` (SONiC's own
+`sonic_get_version` on the local branch); record it with the image as §1 asks.
+
+### 8.7 202511 under a Tomahawk-1: the DX010 needs more than the snooping patches
+
+Moving the DX010 from 202505 to 202511 changes its SAI and its platform
+support, independently of snooping. Found while preparing the build:
+
+- **Two Broadcom SAIs.** 202511 moved the XGS SAI to `14.3.0.0.0.0.41.1` and split
+  Tomahawk-1 off to a "legacy-TH" SAI pinned at `13.2.1.100` (sonic-buildimage
+  #25878, #26136: Broadcom "would still support TH SAI with current version, but
+  no upgrade plan"). Only the Arista 7060CX-32S was moved; the DX010 -- the same
+  BCM56960 -- still says `platform_asic broadcom` and would get 14.3, which nobody
+  upstream reports running on a Tomahawk-1. The DX010 runs `13.2.1.36` on 202505
+  today. `make target/sonic-broadcom.bin` builds one ONIE image per machine
+  (`sonic-broadcom.bin`, `-dnx.bin`, `-legacy-th.bin`), each installing only on the
+  platforms whose `platform_asic` names it. **Series 0005** moves the DX010 to
+  `broadcom-legacy-th` and adds the legacy-TH BDE kernel modules the ONIE image
+  never listed (#28125); the DX010's image is then
+  **`sonic-broadcom-legacy-th.bin`**. `build.sh DX010_SAI=xgs` leaves 0005 out.
+- **A start-up crash on any of those SAIs.** 202511's orchagent asks for
+  streaming-telemetry capability at start (`HFTelOrch::isSupportedHFTel`), which
+  202505's never did, and the Broadcom SAI null-dereferences on it on a Tomahawk-1
+  (sonic-sairedis #1788): syncd SIGSEGV, swss crash-loop. All three libsaibcm
+  builds export the crashing function. 202511's sairedis has the opt-out (#1795);
+  **series 0004** sets `SAI_STATS_ST_CAPABILITY_SUPPORTED=0` and
+  `SAI_STATS_EXT_SWITCH_SUPPORTED=0` in the eight Seastone `sai.profile`s (the
+  DX010 part of the open #28160; a DX010 on 202605 was brought up this way, #28127).
+- **No platform vitals on 202511 (#27291), found and fixed here.** A DX010 on 202511
+  reports nothing in `show platform fan/psustatus/temperature/syseeprom`. The
+  cause: 202511's kernel 6.12/trixie rework of the Celestica packaging moved the
+  non-PDDF platforms to pybuild and dropped the line that installed the DX010's
+  `sonic_platform` wheel into its device directory -- the file pmon's container
+  installs the platform API from at start. Without it every pmon daemon starts with
+  no platform. On 202505 this unit reports both drawers and both PSUs from exactly
+  that file (read 2026-11-01). **Series 0007** is upstream's own fix, open as
+  [sonic-net/sonic-buildimage#27355](https://github.com/sonic-net/sonic-buildimage/pull/27355)
+  ("Restore Celestica platform API wheels", review required, base master),
+  cherry-picked unchanged from its head `748ad3bb4c40` with its author and title,
+  so this image tests what upstream is reviewing. It applies to 202511 without
+  conflict and builds the wheel with `setup.py bdist_wheel` for every non-PDDF
+  Celestica board; all five build in the 202511 trixie slave, and the DX010's
+  comes out with its 18 `sonic_platform` modules. H1 below is still where it is
+  proven, and any word on the PR waits for that.
+- **The CPLD driver panics 6.12 on its first register write (#26885), found on the
+  DX010 (§8.14).** `dx010_cpld`'s `setreg_store` copies the sysfs buffer into
+  `char clone[count]` with `strcpy`, one byte short for the NUL. Kernel 6.1 never
+  noticed; 6.12's FORTIFY_SOURCE checks the dynamic size of the array and BUG()s
+  (`lib/string_helpers.c:1040`), and the first write comes from the platform
+  watchdog's disarm at boot. **Series 0011** is upstream's fix,
+  [sonic-net/sonic-buildimage#26983](https://github.com/sonic-net/sonic-buildimage/pull/26983)
+  ("Fix VLA size in setreg_store for DX010", open, base master, labelled for a 202511
+  backport), cherry-picked unchanged from its head `894c85517024` with its author:
+  `char clone[count + 1]`, `strcpy` kept. Other Celestica boards' store handlers
+  (seastone2, ds3000, haliburton, silverstone and the rest) have the same array;
+  that is for a note upstream, not this series.
+- The host OS under 202511 is Debian trixie with kernel 6.12 (the dockers stay
+  bookworm); `platform-modules-cel` was adapted for it on the branch. The driver's
+  fixtures are recaptured on the new build (`Start`'s `--help` checks exist for
+  this drift).
+
+### 8.8 The hard unknown: L2MC in the Tomahawk-1 SAI
+
+Whether the Broadcom SAI programs L2MC entries and the VLAN snooping attribute
+on a BCM56960 decides the whole effort. Inspected without hardware: the three
+`libsaibcm` packages 202511 and 202505 can put on the DX010 (`13.2.1.36` running
+now, `13.2.1.100` legacy-TH, `14.3.0.0.0.0.41.1` XGS, downloaded from the URLs in
+the build rules, symbols and strings only) and `libsaibcm-dev` 14.3's headers.
+
+**What is known:**
+
+- All three implement the API l2mcorch calls: `brcm_sai_create/remove/set/get`
+  `_l2mc_entry`, the L2MC group and group-member functions, and export the
+  `l2mc_apis` table. The VLAN attributes it sets
+  (`SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE`, the unknown-multicast output groups)
+  are in their metadata and in sairedis 202511's SAI headers (1.17.5).
+- The SAI tracks snooping per VLAN ("L2MC not enabeld on vlan:%d" is one of its
+  messages) and carries the SDK's `BCM_VLAN_IGMP_SNOOP_DISABLE` control, so the
+  VLAN attribute is implemented, not just declared.
+- Its L2MC feature gate, `_brcm_sai_l2mc_support`, is a byte initialised to 1 in
+  `.data` in all three builds, and none of the per-chip feature-init functions
+  (Tomahawk, Tomahawk-2, common, device, XGS) writes it. 14.3 adds the message
+  "This device doesn't supports L2MC flow." for some other path.
+- Tomahawk-1 code is present in all three (about 1,000 BCM56960 strings in 13.2.1,
+  about 700 in 14.3).
+- A refused SAI call does not take the switch down: l2mcorch logs
+  "Failed to Enable L2mc snooping" / "L2MC entry create failed" and carries on, and a
+  refused IGMP trap marks orchagent unhealthy without aborting it.
+
+**What cannot be known before hardware:** whether the SDK accepts an L2 (VLAN,
+group) entry on this chip in the mode the SAI uses, whether the VLAN control
+actually stops unregistered-group flooding, whether the IGMP traps install on
+it, how many L2MC entries it holds, and whether 202511 boots on a DX010 at all
+(legacy-TH on 202511 is CI-tested only on the 7060CX). The virtual switch cannot
+answer any of it -- `vslib` accepts every L2MC object. The first answer is H3
+below: one syslog line and one ASIC_DB row.
+
+### 8.9 Validation plan
+
+**V -- the virtual switch** (the build's `sonic-vs.img.gz` as a Proxmox guest,
+the way §2 A0 ran the 202505 one; creating it waits for Clint). Pass = every step's
+evidence recorded and captured for fixtures (scrubbed).
+
+1. Boot: `show version` prints the build id; all containers up; `show feature
+   status` has `l2mcd disabled` and no l2mcd container runs; orchagent's log has no
+   L2MC errors. The driver's normal collect and push work against it (fixtures
+   recaptured on 202511).
+2. `sudo config feature state l2mcd enabled`: the container runs `l2mcd` and
+   `l2mcmgrd`; the `l2mcd` CoPP trap group and its five IGMP traps reach APPL_DB and
+   ASIC_DB (`SAI_OBJECT_TYPE_HOSTIF_TRAP` with the IGMP types).
+3. `sudo config igmp-snooping enable <vid>` on a test VLAN: `CONFIG_DB L2MC|Vlan<vid>`
+   with the defaults, `APPL_DB L2MC_VLAN_TABLE:Vlan<vid>`, and the VLAN's ASIC_DB
+   object gains `SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE true`.
+4. Joins from a test host (a second guest on the VS's bridge port, joining with
+   any IGMPv2 client): `show igmp-snooping groups vlan <vid>` lists the group on
+   that port; `APPL_DB L2MC_MEMBER_TABLE:Vlan<vid>:0.0.0.0:<group>:<port>` (the
+   ECS's key shape, §8.5); ASIC_DB has the `L2MC_ENTRY` (type XG), its `L2MC_GROUP`
+   and a `L2MC_GROUP_MEMBER` on the port's bridge port. A leave removes them, after
+   the last-member query interval, or at once with fast-leave.
+5. Querier: with no other querier on the segment, `config igmp-snooping querier
+   enable <vid>` makes general queries appear on the test host every query interval;
+   record their source (l2mcd uses the lowest IPv4 address of the VLAN's interface,
+   `0.0.0.0` when it has none). With a second querier at a lower address, the
+   switch must fall silent.
+6. Static group, mrouter port, and `optimised_multicast_flood enable`: the VLAN's
+   `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID` points at a group holding the
+   mrouter ports.
+7. Lifecycle: `disable` removes every entry; `config vlan del` is refused while
+   snooping is on (the CLI's own check) and `vlan member del` while the port holds
+   static entries; restarting the l2mcd container, then swss, then a reboot with the
+   config saved rebuilds the same state.
+
+**H -- the DX010**, under §11.3 (dead-man timer, Ethernet0 the only path, probes
+never change state) and only after V passes and Clint says go:
+
+0. Before rebooting into it: the image downloaded to the switch and its sha256
+   checked; `sonic-installer install` adds it beside 202505 and the factory image
+   (never `cleanup`) and makes it the default: `sonic-installer set-default` back
+   to 202505 and `set-next-boot` the new one, so a power cycle returns to 202505. Confirm
+   that eth0's down state is saved configuration, not an `ip link` change that a
+   reboot undoes (§10.6).
+1. Boot: syncd runs libsaibcm `13.2.1.100` (or 14.3 with `DX010_SAI=xgs`) without a
+   segfault; its log shows `SAI_STATS_ST_CAPABILITY_SUPPORTED=0`; orchagent logs HFTel
+   disabled; 32 ports created, Ethernet0 forwarding, the bridge's collect and push
+   work. `show platform fan/psustatus/temperature/syseeprom` -- #27291 -- decides
+   whether §10's hardware fields survive; if not, back to 202505 and that is its own
+   problem first.
+2. `config feature state l2mcd enabled`: the IGMP traps install (ASIC_DB, no
+   "Failed to create trap" in syslog). Then confirm IGMP still crosses the switch on
+   VLANs **without** snooping: the traps send every IGMP packet to the CPU, so
+   l2mcd and the kernel bridge now carry what the ASIC used to forward.
+3. **The hard unknown**: snooping on a test VLAN on two unused ports. Syslog has no
+   "Failed to Enable L2mc snooping"; the VLAN's ASIC_DB object has the attribute.
+4. Traffic: two receivers on the test VLAN, one joined, a multicast source; the
+   unjoined port's multicast counters stay flat (`show interfaces counters`); after a
+   leave the joined one goes quiet too. Repeat with `optimised_multicast_flood` on
+   for an unjoined group.
+5. Only then a production VLAN, observing first: the LAN's existing querier is
+   learned as the mrouter port, the reports reach it, and nothing upstream loses a
+   group.
+6. Rollback at any step: `config igmp-snooping disable`, `config feature state l2mcd
+   disabled`, or the 202505 image as default and a reboot under the timer.
+
+### 8.10 The UniFi side: the controller's keys and their future write path
+
+What the controller pushes to a SONiC-based UniFi switch with snooping on (the
+ECS Aggregation's `system_cfg`, site data in `local-information/ecs-reference/`),
+what Ubiquiti's own switch does with each key (read from its CONFIG_DB
+2026-11-01, read-only, described here rather than copied), and where each would
+land on the DX010 with the series. **Not implemented**: no capture of the DX010
+side exists until the image runs (§8.9 V), and the controller withholds these
+keys until the device claims the feature (§11.1). The driver claims IGMP snooping
+(`feature_caps` 256, `IGMP_SNOOPING_ADVANCED`, `igmp_snoop_caps` 31, as the ECS)
+only after H3 and H4 pass.
+
+| UniFi key (`switch.vlan.N.…`, per VLAN) | On the ECS (one `CFG_L2MC_TABLE` entry per snooping VLAN) | DX010 with the series: CONFIG_DB `L2MC\|VlanX`, and the CLI that means the same |
+|---|---|---|
+| `igmp_snooping` true/false | an entry with snooping enabled; no entry for a VLAN without snooping | the row with every field (`config igmp-snooping enable <vid>` writes the defaults); removing it (`disable <vid>`) also drops the VLAN's static groups, mrouter ports and IPv4 suppression settings |
+| `igmp_querier_status` | the querier switch | `querier` (`config igmp-snooping querier enable\|disable <vid>`) |
+| `igmp_querier` (address, often empty) | the querier's source address: the pushed one, or, when the push leaves it empty, a made-up address in the benchmarking range 198.18.0.0/15 derived from the switch's own management address | **no field.** l2mcd sends queries from the lowest IPv4 of the VLAN's interface (STATE_DB `INTERFACE_TABLE`), 0.0.0.0 without one. Logged; the patch that closes this is specified in §8.11 |
+| `igmp_fastleave` | fast leave | `fast-leave` (`config igmp-snooping fast-leave enable\|disable <vid>`) |
+| `igmp_maxresponse` (s) | the max response time | `query-max-response-time` (1-25 s; must stay below the query interval, CLI and YANG check) |
+| `igmp_groupmembership` (s) | the membership time, stored as pushed, beside a query interval the switch chooses itself (shorter on the VLAN whose push names a querier address) and a querier timeout derived from it | **no field**; l2mcd derives membership as 2 x query interval + max response, so `query-interval` = (membership - response) / 2: 125 for UniFi's 260/10, the RFC 3376 default |
+| `igmp_mcrtrexpiretime` (s) | nothing that carries it | none; logged |
+| `igmp_supression` | nothing that carries it (every VLAN there pushes false) | none; meaning not established; logged |
+| `forward_unknown_multicast` true/false | flood unknown multicast in the VLAN, or send it to the multicast-router ports only | `L2MC_SUPPRESS ipv4-optimised-multicast-flood` `disable`/`enable` (`config igmp-snooping optimised_multicast_flood …`, snooping must be on): unknown IPv4 multicast to the mrouter ports only (`SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`) |
+
+Global keys:
+
+- `switch.multicast.flood_known_protocols=true` → on the ECS, seven static groups
+  per snooping VLAN in `CFG_L2MC_STATIC_GROUP_TABLE` (SSDP, NTP, PTP, H.323 and three
+  SLP groups), every port a member, named symbolically and resolved by its own
+  daemon (§8.5). On the DX010: `L2MC_STATIC_GROUP|VlanX|<group>` plus
+  `L2MC_STATIC_MEMBER|VlanX|<group>|<port>` for each VLAN member, with IANA's
+  addresses for those protocols (239.255.255.250, 224.0.1.1, 224.0.1.129, 224.0.1.41,
+  224.0.1.35, 224.0.1.22, 239.255.255.253), kept in step with VLAN membership.
+- `switch.multicast.forward_unk_mcast_router_ports=true` → nothing separate on the
+  ECS; read as "unknown multicast always reaches the mrouter ports", which the
+  optimised flood above already does. Logged if it is ever false.
+- **The IGMP version: no key, and the driver must write 3.** The CLI's default
+  for a snooping VLAN is version 2, and l2mcd at version 2 ignores IGMPv3 reports
+  -- which is what a Linux host sends until a querier tells it otherwise. On the VS
+  (§8.14) a host's join was never learned until `config igmp-snooping version
+  <vid> 3`; at 3 l2mcd took v3 and v2 joins alike. So every snooping VLAN gets
+  `version 3` with the rest of its row.
+
+Order rules the driver inherits from the CLI: enable snooping before writing
+suppression or static entries; disable snooping (or delete the statics) before
+removing a VLAN or a member; UniFi's VLAN 1 settings land on `Vlan<native_vlan>`
+(§5.2a). As everywhere else, UniFi's list replaces the switch's: a snooping VLAN the
+push does not name is disabled.
+
+The CLI column says what each key means on this build; the write path itself
+follows the ECS (§8.11): whole rows straight into CONFIG_DB.
+
+### 8.11 Following the ECS (2026-11-01)
+
+Clint, 2026-11-01: for this work, follow how the site's ECS switch, which runs
+Ubiquiti's SONiC, does the same things, wherever possible. Compared piece by piece
+from what the ECS shows read-only; where this build departs, the reason is the
+code, not a preference:
+
+| Piece | The ECS (Ubiquiti SONiC 4.0.1, 202106) | This build | |
+|---|---|---|---|
+| Daemon and manager | `l2mcd` (2019 Broadcom lineage) and `l2mcmgrd` share the `l2mcd` container; orchagent's L2MC orch is in `swss` | the same layout (Micas's l2mcd is the same lineage, modernised) | same |
+| Feature | `l2mcd` enabled, auto-restart on, always | the image ships it disabled, so a first boot of new code changes nothing; the driver enables it (auto-restart on) once it claims IGMP snooping and leaves it on, as the ECS does | same once claimed |
+| CoPP | the five IGMP trap types (and PIM) in one rate-limited group that traps to the CPU; **no MLD traps** | **series 0006**: the five IGMP types only, no MLD, in a group of its own (so it follows the feature) with the ECS's rate limit, queue and priority -- about a fifth of the rate the PR used. The PR also trapped MLD, which would send every IPv6 neighbour-discovery join on every VLAN to the CPU | same, without PIM: this l2mcd's socket filter accepts IGMP only, so trapping PIM would only take it off the ASIC |
+| Who writes the config | no snooping CLI on the box; the controller's keys reach its `CFG_L2MC_*` tables from Ubiquiti's compiled management side | the driver writes complete `L2MC`, `L2MC_SUPPRESS` and static-group rows with one swsscommon script per apply (the collector's transport, §5.1), not one `config igmp-snooping` call per field | same |
+| What a VLAN's entry carries | every timer and switch in one entry, including the querier address, the membership time and unknown-multicast handling | one `L2MC` row with every field this l2mcd reads; unknown-multicast handling in the `L2MC_SUPPRESS` row | same values; Micas's table names (`L2MC`, not `CFG_L2MC_TABLE`) kept, because they are what upstream would merge |
+| Membership time | stored as pushed, independent of the query interval | derived (above); the push's 260 s comes out the same | same result; the ECS's shorter query interval on one VLAN not copied (with derived membership it would age groups out in about a minute) |
+| Querier source address | the pushed address, or a synthetic one; never 0.0.0.0 | the VLAN interface's address, else **0.0.0.0** -- the DX010 has an address only on its native VLAN | **differs**; the next patch, below |
+| Reserved groups | `flood_known_protocols` → seven reserved groups static on every port | the same seven as static groups by address (§8.10) | same |
+| Unknown multicast | to the mrouter ports only when `forward_unknown_multicast` is false | `ipv4-optimised-multicast-flood enable` | same |
+| Kernel bridge | `Bridge` with multicast snooping on | 202511's vlanmgrd never sets it, so the kernel default, on (not read on the DX010) | same |
+
+**The querier-address patch (specified, not written).** Without it, on every VLAN
+where the DX010 has no address, its queries leave from 0.0.0.0, which RFC 4541
+permits but some hosts and snoopers ignore; the ECS never sends one. The change,
+for the round after the first image (it touches the daemon's query and election
+paths and should be written with a compiler at hand, by the Opus pass that
+implements §8.10):
+
+1. swss `cfgmgr/l2mcmgr.cpp`: read a `querier-address` field from `L2MC|VlanX`
+   beside the other fields (the three places that parse them) into a new
+   `char querier_addr[L2MCD_IP_ADDR_STR_SIZE]` in `L2MCD_CONFIG_MSG`
+   (`sonic-l2mcd/include/l2mcd_ipc.h`, before the `count`/`ports[]` tail; both
+   sides compile from that one header).
+2. l2mcd `port/l2mcd_system.c`: store it per VLAN (a `uint32_t` in the VLAN node of
+   `mld_vlan_db.h`) when the config message is applied.
+3. l2mcd `src/igmp_io.c`: where the source is chosen -- `igmp_send_general_query`
+   (no interface address → today 0) and `ip_get_lowest_ip_address_on_port` (used by
+   group queries and by querier election) -- fall back to the configured address
+   before 0.0.0.0, so the switch both sends from it and elects with it.
+4. YANG: a `querier-address` leaf (`inet:ipv4-address`) in `L2MC_LIST`.
+
+The driver then writes the pushed `igmp_querier`, or, when it is empty, an address
+in 198.18.0.0/15 built from the DX010's own management address, as the ECS does.
+Validation: §8.9 V5, with and without an interface address on the VLAN.
+
+### 8.13 The daemon's packet parsers: checked, fixed, fuzzed (2026-11-01)
+
+A read of l2mcd's receive path said its IGMPv3 and MLDv2 record walks trust the
+counts in the packet. Checked in-process, never on a network: `l2mcd-fuzz/` in the
+build kit compiles the daemon's own C sources with clang's AddressSanitizer and
+UndefinedBehaviorSanitizer, configures it through its own IPC handler as l2mcmgrd
+does (port list; snooping on one VLAN, IGMPv3 and MLDv2; membership), makes one
+port a router port with a general query, and feeds each packet to
+`receive_igmp_packet()` / `receive_mld_packet()` in a heap buffer of exactly the
+received size, built as the socket handlers build it. Only the APPL_DB sync layer is
+stubbed and transmits are counted, not sent; it runs in the bookworm build slave
+with no network and dummy links. One named case per finding (24) is the regression
+suite (`run.sh regress`).
+
+**Every finding was real**, and there were more than reported:
+
+| Where | What a host on a snooping VLAN could do |
+|---|---|
+| IGMPv3 report walk | `num_grps` and each record's `num_srcs` trusted; the sources are converted to host order **in place**, so a report claiming 65535 sources **writes** up to 256 KB past the packet |
+| `NEXT_GRP_REC` | `aux_data_len` (one byte, a count of words) byte-swapped as 16 bits: one aux word moves the walk 1 KB, so even a well-formed RFC 3376 report with aux data overruns |
+| Record types outside 1-6 | type 0 counts at index -1; higher types read past the action-label table (with the VLAN's debug log on) and reach the group state machine, which indexes by type (heap over-read) |
+| Queries | IGMPv3 and MLDv2 source counts read in network order (one source walks 256); a 9-11 byte IGMP query counts at index -1; an 8-byte IGMPv1 query naming a group reads bytes 10-11 (found by the fuzzer after the first round of fixes) |
+| IP lengths, checksums | `tot_len` and `ihl` never compared with the bytes received, and a zero IGMP or ICMPv6 checksum skips the check, so the parse runs over whatever length the header claims. `l2mcd_fwd_pkt()` copies `tot_len` bytes to every router port: a 50-byte report claiming 300 is forwarded as 300 bytes, the rest being whatever an earlier packet left in that receive slot |
+| `receive_mld_packet()` | hop-by-hop length unset without a hop-by-hop header and unchecked with one, `payload_length` unchecked; a bad checksum, a failed validation and a down port logged but the packet processed anyway |
+| MLDv2 report walk | each record advanced by the running total of all record sizes, so a well-formed three-record report overruns; aux data ignored |
+| Group state machine | `i <= src_cnt` reads one source past every record's list -- past the packet for the last record of any well-formed report with sources |
+| VLAN-tagged MLD frames | the IPv6 header taken from the 19th receive buffer, not this one |
+| Port updates (found on the VS, §8.14) | every resend of the port list and every link change opened another IGMP receive socket on the port -- the "already open" test read a field nothing sets -- and each copy parsed and forwarded every packet: after a few VLAN membership changes one report reached the mrouter port a dozen times |
+
+The MLD findings are unreachable in this image (0006 traps IGMP only) and are fixed
+anyway. On a switch the receive buffer is a 1 MB static ring (500 slots of 2 KB), so
+most over-reads land in other packets' bytes rather than faulting; the in-place
+source conversion can write past the ring.
+
+**Fixed in sonic-l2mcd 0002-0007** (the build kit's series; nothing posted
+upstream, a register item for the daemon's author once the image has run on the
+hardware):
+
+- 0002: a malformed packet is dropped, counted (`malformed-igmp`/`malformed-mld` in
+  the daemon's debug dump) and logged at most once per family every 10 s with the
+  number dropped since, so a flood of them cannot flood the log.
+- 0003, IGMP: every record, with its sources and aux words, is checked to lie inside
+  the message before anything past the header is read; unknown record types are
+  skipped (RFC 3376 4.2.12); 9-11 byte queries dropped (RFC 3376 7.1); query sources
+  read in host order and checked; the checksum always verified; every record
+  advances the walk (a `continue` used to re-read the same record).
+- 0004: the IPv4 lengths checked against the bytes received; the tagged-MLD offset.
+- 0005, MLD: the same, and an 8-byte hop-by-hop header followed by ICMPv6 required
+  -- RFC 2710 and RFC 3810 send every MLD message with a router alert there, and the
+  handlers parse at those fixed offsets; bad checksums and down ports dropped.
+- 0006: the state machine's loop.
+- 0007: one IGMP receive socket per port (the field the socket is stored in).
+
+The daemon's own validators keep their advisory verdict: the IGMP one rejects a
+whole report for one 224.0.0.x record, which Linux hosts send by default, so
+honouring it would drop real joins. gcc `-Wall` reports nothing new.
+
+**Results.** Unfixed (`651a13b` + 0001): 21 of the 25 cases overrun or leak with the
+debug log off, 23 with it on. Fixed: all 25 clean either way, LeakSanitizer included;
+the malformed ones counted as drops, the valid ones still forwarded to the router
+port. (The harness configures the daemon's event priorities and AF_PACKET receive
+sockets as its init does; without them every per-port socket failed to register,
+which is why the socket leak only showed on the VS first.)
+
+**Fuzzing.** libFuzzer with ASan and UBSan, one target per family whose input is a
+whole IPv4 or IPv6 packet (the checksum made valid wherever the header chain lets the
+harness find it), seeded with the regression cases, the debug log's arguments
+evaluated. Its first minute on the fixed tree found the IGMPv1 read above (case
+`igmp-v1-query-group`, fixed in 0003). Then 4 hours with 4 workers per family on
+the fixed tree (before 0007, which changes socket bookkeeping, not parsing), at the lowest priority beside the image build: **71.0 million IGMP
+and 49.3 million MLD packets, about 1,100 and 1,160 code edges reached, no crash, no
+leak, no undefined behaviour**. Two inputs were saved as slow (10 s, once each) and
+replay in under 10 ms: the harness never runs the daemon's timers, so its group
+state only grows over a run (the daemon caps it with its group pool), and the build
+host was at a load near 35.
+
+### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
+
+The vs build of the series ran on the VS guest (§2 A0's guest, 4 vCPU / 8 GB,
+installed beside its 202505 image): first as built before the l2mcd parser fixes
+(build `igmp-202511.20261101-de9675d44`, buildimage = the series without 0007,
+which touches only the Broadcom platform), then rebuilt with them (same build id:
+the version string does not see submodule commits, so the build's MANIFEST
+records the l2mcd commits). Debian 13.7, kernel 6.12.41.
+
+**The install path, rehearsed as §8.9 H0 will run it** (the build kit's
+`sonic-upgrade.sh`):
+
+- `arm` (sha256, `sonic-installer install`, 202505 kept as the default, the new
+  image once): verified by `verify-next-image`; the new image's overlay carried the
+  SSH host key, admin's authorized_keys and password. Booted in under 90 s; the
+  bridge's SSH (strict known_hosts) logged in with no host-key change.
+- **The dead-man rollback (R2):** with an 8-minute timer and no confirm it fired
+  on time and the guest was back on 202505 two minutes later, 202511 still
+  installed. Re-armed with 20 minutes, checked and `confirm`ed: 202511 the
+  default, 202505 kept.
+- Found and fixed in the script: arming an image installed by an earlier arm
+  failed with a misleading message, and re-arming it in place would boot the
+  config it migrated the first time, not today's -- `arm` now refuses and says to
+  `sonic-installer remove -y <image>` first; `status` misreported a confirmed run;
+  and the new image had to rebuild mstpd (docker, DNS and the internet inside the
+  20-minute window -- on the guest a stale lab nameserver made that fail as
+  "Run 'docker run --help'") -- `arm` now carries the switch's own static `mstpd`
+  and `mstpctl` into the new image, so the bridge only reinstalls l2d.
+- **Installing deletes every other image.** The image's `install.sh`, run from a
+  running SONiC as `sonic-installer install` runs it, removes every `/host/image-*`
+  except the running image and the new one (202505 and 202511 alike). On the DX010
+  the factory 20181130.77 image went that way with the first H0; only ONIE can put
+  one back. `arm` now names what an install will delete before it starts.
+- **Disk:** the 202511 vs image takes 6.8 GB installed (5.8 GB for 202505), plus
+  the installer (2.1 GB) while it installs. `/tmp` is no way round that: on SONiC it
+  is the running image's overlay on `/host`, not memory. Delete the installer once
+  `arm` has installed it, before the reboot. Measure the Broadcom image the same way
+  before H0.
+
+**§8.9 V1-V7, all passed.** The guest has a NIC behind Ethernet0 only, so the
+other front-panel ports are down and l2mcd programs nothing on them. The build
+kit's `vs-hosts.sh` gives Ethernet8 and Ethernet12 veth pairs (`eth3`/`eth4`, the
+VS lane map's names) whose far ends are network namespaces h1 and h2 -- two test
+hosts inside the VM, nothing on the LAN -- and `vs-join-test.sh` drives them:
+
+| Step | Result |
+|---|---|
+| V1 | the build id; `l2mcd` shipped disabled, no l2mcd container; no L2MC/IGMP errors |
+| V2 | `config feature state l2mcd enabled`: the container with `l2mcd` and `l2mcmgrd` running; `COPP_TABLE:l2mcd_group` and exactly the five IGMP hostif traps in ASIC_DB; no MLD traps |
+| V3 | `L2MC\|Vlan100`, APPL_DB `L2MC_VLAN_TABLE:Vlan100`, the VLAN's `SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE true` |
+| V4 | h1's IGMPv3 join and h2's IGMPv2 join (the hosts' own kernels, a socket joining 239.1.2.3) learned on their own ports and nowhere else; APPL_DB `L2MC_MEMBER_TABLE:Vlan100:0.0.0.0:239.1.2.3:Ethernet8` (the ECS's key shape); ASIC_DB `L2MC_ENTRY` with one group member per port; both leaves cleared everything within 2 s. **Only at IGMP version 3** (§8.10) |
+| V5 | no queries with the querier off; on (query interval 12 s), h2 saw them from 0.0.0.0 (no address on the VLAN, §8.11); silent again once off |
+| V6 | a static group, an mrouter port and optimised flood: APPL_DB and ASIC_DB entries, `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID` set (with the ports down: stored, not programmed) |
+| V7 | restored after a container restart; `vlan del` and the static member's removal refused by the CLI; disable leaves no L2MC row or ASIC object |
+
+**The bridge on 202511** (G2): the driver's own loop and collector, run from the
+Mac over SSH against the guest, the controller replaced by the recorded pushes.
+`Start` ran every command the driver uses once (none missing from 202511's CLI)
+in 7 s. Then the VS lab session's pushes (§6.6: the first push with port control,
+port state and name, Allow All, Block All, a custom tagged set, the aggregate of
+ports 5+6, the mirror, forced FEC and storm control, the removals, jumbo, syslog)
+each applied, and the reconcile after each wrote nothing; the IP Settings were
+declined with the right reason (the guest is dialled on eth0's lease). Then the
+DX010's own push with the ECS's spanning-tree keys: mstpd built on the switch,
+l2d installed and enabled under its 3-minute dead-man (cancelled over a fresh
+connection), RSTP up at priority 8192, port states in APPL_DB and 352 STP port
+objects in ASIC_DB, two quiet reconciles after.
+
+**What 202511 changed, and what is only the VS:**
+
+- **The earlier 0009's leftovers** (this run's image; the series has since replaced
+  it, §8.6). A 202505 config enables the `gnmi` and `mgmt-framework` features, and
+  an upgrade keeps them: featured fails to start the units the image no longer has,
+  monit's container check reports them every cycle, systemd says "degraded".
+  `config feature state gnmi disabled`, the same for `mgmt-framework`, and `config
+  save -y` clear it (verified).
+- Only the VS, and the same on its 202505: orchagent's `SAI_API_PORT` set failures
+  at start, pmon's missing `sonic_platform`, and the system-health and
+  watchdog-control units failing on the VS platform's missing chassis metadata.
+
+**The image rebuilt with the l2mcd fixes** (0002-0006; 0007 came out of this run),
+installed the way H0 will run it: from 202505, with mstpd in 202505's overlay as on
+the DX010. `arm` from 202505 (the installer, then deleted), boot, `confirm`: the host
+key and mstpd carried. One more script fix: `confirm | head -n 1` stopped `confirm`
+halfway (the image the default, the state file not marked) -- SIGPIPE is now ignored
+and sonic-installer's output goes to `/host/sonic-upgrade.log`. Then:
+
+- **V1-V7 all passed again** (l2mcd not running at boot; V2-V7 as above).
+- **The parser fixes end to end**, through the daemon's real socket path: test host
+  h1 sent the regression cases' packets (§8.13) as tagged frames into a snooping
+  VLAN on Ethernet8. All eight malformed ones were dropped and counted
+  (`malformed-igmp` in l2mcd's dump), the six well-formed ones processed, and l2mcd
+  ran on under the same pid. Each drop was counted 6-9 times, and a valid report sent
+  once reached the mrouter port a dozen times: l2mcd held 14 receive sockets on
+  Ethernet8 against 3 on an untouched port. That is the socket leak in §8.13's table,
+  fixed in 0007, which the Broadcom image carries.
+- **The bridge on the fixed image:** the same recorded pushes, all applied with quiet
+  reconciles. 202505's stale lab nameserver came over with the config, so building
+  mstpd would have failed; the carried binaries meant the push installed and enabled
+  l2d at once, RSTP up under its dead-man in six seconds.
+
+**On the DX010 (H0, 2026-11-01/02): two failed boots, the cause, and a confirmed
+install.** The Broadcom build `igmp-202511.20261101-22cac574e` (the series through
+0010), the `legacy-th` image (§8.7), installed from 202505 with `sonic-upgrade.sh`.
+
+- **Trial 1** booted 202511 once and came back on 202505 about three minutes after
+  the reboot. Every log stopped together about 22 s after `watchdog-control` started
+  `watchdogutil disarm`, with no lockup or oops message on disk. One fact explained
+  the timing: 202505's `reboot` arms the DX010's CPLD watchdog for 180 s
+  (`watchdogutil arm`), the CPLD keeps counting through the CPU reset, and only the
+  next boot's `watchdogutil disarm` turns it off -- its `Watchdog()` constructor
+  writes 0x141 = 0 through `dx010_cpld/setreg`. Any hang before that point ends in
+  a CPLD reset into GRUB's default image.
+- **Trial 2: the same image, instrumented, no rebuild.** `arm ... trace` (the kit)
+  adds to the new image's overlay only:
+  - a boot trace synced to `/host` every 2 s (unit states, whether `setreg`/`getreg`
+    exist, the CPLD's 0x141, the last SDK step and kernel error);
+  - a feeder that arms the CPLD watchdog for 120 s once the CPLD driver is up and
+    feeds it every 20 s, so a hang still resets into 202505;
+  - `watchdogutil disarm` run under a timeout with its output in a file of its own;
+  - `hardlockup_panic=1` beside SONiC's `softlockup_panic=1` and `panic_on_oops=1`.
+
+  `confirm` turns the CPLD watchdog off, reads 0x141 back as 0 before it touches
+  the dead-man or GRUB, and removes all of it. The mechanics were tested on the VS,
+  the CPLD branches against a stub. The trace answered it at 29 s:
+  `kernel BUG at lib/string_helpers.c:1040`, with the platform module still
+  activating and the feeder's first `setreg` write the last thing it did.
+  202505's systemd-pstore had archived an ERST panic record after each trial. The
+  cause is §8.7's `setreg_store` overflow (#26885), so trial 1 was the disarm's own
+  write. The watchdog code, syncd and the SAI were never involved.
+- **Trial 3: the fixed platform package injected into the installed image.** Only
+  `platform-modules-dx010` was rebuilt from the same tree (vermagic
+  `6.12.41+deb13-sonic-amd64`, all imported symbol CRCs matching the kernel's
+  `Module.symvers`, the other five modules byte-identical). rc.local's first boot
+  installs `platform/<platform>/*.deb` with apt from a `[trusted=yes]` flat repo on
+  `platform/common`: a same-version deb swapped in fails with "Hash Sum mismatch"
+  unless its `Packages.gz` entry (Size, MD5sum, SHA1, SHA256) is rewritten. A
+  re-versioned deb in the platform directory installs from the file itself (both
+  checked on the VS with rc.local's own commands). Trial 3 ran a re-versioned
+  build, `1.0+dx010cpld1`.
+- **Trial 3 passed and was confirmed.**
+  - The boot: no BUG. The feeder fed throughout, the disarm returned in 39 s, and
+    `confirm` read 0x141 back as 0x00, removed the trial pieces and restored the
+    sysctls. 202505 stays installed.
+  - The window checks: SOC unit 0 attached, SDK init in 3 s on libsaibcm
+    13.2.1.100, the 100G uplink up with RS FEC, the management address on its VLAN
+    with the default route through it. pmon showed fans, both PSUs and
+    temperatures (0007). NTP was synced. l2d was active with the uplink as the RSTP
+    root port, forwarding.
+  - The bridge recovered and applied the controller's push with 0 of 32 ports
+    changed. The fan floor was re-applied.
+  - l2mcd is still off: §8.9's V-steps on hardware come next.
+- **What runs is not exactly 0011.** The installed `platform-modules-dx010` is
+  `1.0+dx010cpld1` (`dx010_cpld` srcversion `B61467287F95373235ED7FB`), built from a
+  fix written here before #26983 turned up. It sizes the array the same way but
+  copies with `strscpy(clone, buf, sizeof(clone))`, and it also changed the other
+  Celestica boards' handlers (not on this unit). Series 0011 is #26983 unchanged, so
+  the next image build carries upstream's version. A 1.0 package built from it
+  (srcversion `9A732FC0E3A48B6C025AE37`) is kept for a swap if the running module
+  should match upstream before then.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
