@@ -723,6 +723,20 @@ class L2d(object):
             self.stp_on = self.stp_up()
         elif not want and (self.stp_on or rd("%s/%s/bridge/stp_state" % (SYS, BRIDGE)) == "2"):
             self.stp_down("disabled by the controller")
+        elif self.stp_on and os.path.isdir("%s/%s/brif" % (SYS, BRIDGE)) and \
+                rd("%s/%s/bridge/stp_state" % (SYS, BRIDGE)) != "2":
+            # swss recreated Bridge (a restart of swss, a config reload): the
+            # new netdev has stp_state 0 and mstpd dropped the old bridge, so
+            # every port forwards unguarded until the bridge is adopted again
+            # (seen live 2026-11-02: an orchagent crash left the switch with
+            # no spanning tree for ten minutes). Start over as a fresh enable:
+            # the ASIC's STP ports are new too.
+            log("Bridge was recreated (swss restart?): re-enabling spanning tree", syslog.LOG_WARNING)
+            self.written.clear()
+            self.mapped.clear()
+            self.asic_floor = 0
+            self.ports.clear()
+            self.stp_on = self.stp_up()
         elif self.stp_on and not self.mstp.running():
             log("mstpd died: restarting it", syslog.LOG_ERR)
             self.stp_on = self.stp_up()
