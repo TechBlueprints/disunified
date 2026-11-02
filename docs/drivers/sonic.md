@@ -1589,6 +1589,11 @@ records the l2mcd commits). Debian 13.7, kernel 6.12.41.
   20-minute window -- on the guest a stale lab nameserver made that fail as
   "Run 'docker run --help'") -- `arm` now carries the switch's own static `mstpd`
   and `mstpctl` into the new image, so the bridge only reinstalls l2d.
+- **Installing deletes every other image.** The image's `install.sh`, run from a
+  running SONiC as `sonic-installer install` runs it, removes every `/host/image-*`
+  except the running image and the new one (202505 and 202511 alike). On the DX010
+  the factory 20181130.77 image went that way with the first H0; only ONIE can put
+  one back. `arm` now names what an install will delete before it starts.
 - **Disk:** the 202511 vs image takes 6.8 GB installed (5.8 GB for 202505), plus
   the installer (2.1 GB) while it installs. `/tmp` is no way round that: on SONiC it
   is the running image's overlay on `/host`, not memory. Delete the installer once
