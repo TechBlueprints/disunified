@@ -3116,8 +3116,8 @@ below are fixture-tested and wait for a deploy and a re-run.
 breakout` now validates CONFIG_DB with sonic-yang (two dangling leafrefs
 refused the split, below); `config mirror_session span add` is gated by the
 SAI's `PORT_INGRESS/EGRESS_MIRROR_CAPABLE` flags (`'false'` on the DX010,
-so the CLI refuses every SPAN direction although the ASIC programs the
-session); every PORT write adds `dhcp_rate_limit: 300`; `config
+so the CLI refuses every SPAN direction, and orchagent applies the same
+answer to a row written past it -- the re-run below); every PORT write adds `dhcp_rate_limit: 300`; `config
 spanning-tree interface` spells `bpdu-guard`; `config` gains
 `igmp-snooping`, `mld-snooping` and `dhcpv4_relay`. Everything else the
 driver sends behaved as on 202505. The first `config save` on the new
@@ -3155,6 +3155,35 @@ snooping's hosts (§8), MAC ACL rules (an orchagent patch). What tonight
 left on the switch: the ten site VLANs, `fec none` on Ethernet8,
 `dhcp_rate_limit 300` on every written port (202511's CLI adds it), and
 `PortChannel1` without members.
+
+#### Re-run after the deploy (2026-11-02, 14:25-14:56 UTC)
+
+66bf6c8 and f723e82 were deployed at 14:21 UTC (HEAD 4c511fd). The first
+apply removed the orphan `PortChannel1` (`ownOrphan`, live) and the l2d
+reinstall put `COPP_GROUP|queue4_group1` in CONFIG_DB. Only what the deploy
+changed, or what had never run, was driven again, one pass each, restored
+and followed by a zero-change cycle. Rogue DHCP Server Detection, the
+site-wide half of (e)'s precondition, was **refused by the session's
+permission check** (a shared-setting change); the rebind needs any of the
+driver's tables bound, so (e) ran with one IP ACL rule scoped to the DX010
+alone, and no other device got a push. The live lines are
+`docs/fixtures/sonic-igmp-202511.20261101-22cac574e/rerun-20261102.txt`.
+
+| # | Re-run | What the switch did | Result |
+|---|---|---|---|
+| 3 | FC-FEC at 40G on cage 3 (REST: speed 40000, `fec_mode fc-fec`), then auto | the note "the controller asks for FEC fc, which Ethernet8 does not support (none,rs); FEC left as it is" and `config interface speed Ethernet8 40000`, save (3.5 s); no failed batch, no re-push; auto: `speed 100000` | **pass** (fixed, verified live) |
+| 5a | Storm control Rate mode on cage 3 (Multicast 100 pkts/s), then off | one NOTE ("storm control in Rate mode (packets/s) is not something this switch can apply ...; storm control left off on the port"), 0 of 32 changed; off: 0 changed | **pass** (fixed, verified live) |
+| 5b | Mirror of cage 5 onto cage 4 (REST: `op_mode mirror`, `mirror_port_idx 5`), then off | the row went in past the CLI (`hset 'MIRROR_SESSION\|dui4' ...`, 3 s) and the controller read the mirror back; removal through the CLI restored the destination's VLAN. **But nothing was mirrored:** orchagent logged `setUnsetPortMirror: Port ingress mirror is not supported by the ASIC`, `Failed to configure mirror session dui4 port Ethernet16`, `Failed to activate port mirror session dui4`, then `Created mirror session dui4` -- 202511's MirrorOrch applies the same SAI answer (`querySwitchPortMirrorCapability` 0/0) and creates the SAI session without binding the source port. STATE_DB's `inactive` meant that, not "destination down". The session object stayed in ASIC_DB after the removal (orchagent skips deactivating a session that never activated). The hand test of the night before (`duitest`) had failed the same way | **fail, not fixable in the driver on this image**: b26fb67 refuses the mirror with one note where SWITCH_CAPABILITY says no; port mirroring needs an ACL-based mirror or a SAI that answers the capability query (follow-up) |
+| 4 | Breakout of cage 2 to 4x25G (REST, no `fec_mode`) | the driver added `MGMT_PORT\|eth0` (logged once) and the split was **refused by the next sonic-yang rule**: `Must condition "(contains(current(), ':') and contains(../gwaddr, ':')) or (contains(current(), '.') and contains(../gwaddr, '.'))" not satisfied` on `MGMT_INTERFACE\|eth0\|169.254.1.1/16` -- every MGMT_INTERFACE row needs a gateway of its family, and `config interface ip add eth0 <ip>` without one writes `{"NULL": "NULL"}`. One attempt, nothing else written; reverted through REST. A read-only `sonic_yang.loadData()` then showed the next refusal behind it: the driver's own `NTP\|global src_intf Vlan4094` (sonic-ntp.yang allows no VLAN there). With both changed in memory the unit's config validates | **fail**: 7dca204 clears `src_intf` for a VLAN instead of setting it (chrony then sources from the kernel's route, in-band); b26fb67 refuses the breakout with a note while eth0's row has no gateway. **The eth0 row is a site decision** (a gateway becomes a default route on eth0 in the management table, which the syslog server's forced rule follows; removing the row returns eth0 to DHCP, `metric 202` on 202511). The lanes at 10G, 2x50G and the join still never ran |
+| 9c | Aggregation of cages 5+6 while `DUI_IP_ACL` was bound (UI) | **`config acl add table DUI_IP_ACL L3 -p <30 ports, without Ethernet16/20>` first**, then the PortChannel, its MTU, the members, the native VLAN, save (11 s); then `DUI_IP_ACL` rebound with `PortChannel1` (31 entries); table and rule Active, LAG in STATE_DB. Removal: members out, back in VLAN 4094, `portchannel del`, the table rebound to all 32. The controller deleted port 6's override when it joined (the UI showed "QSFP28 6"); restored by REST | **pass** (fixed, verified live) |
+
+Not deployed: b26fb67 and 7dca204 (the session's permission check refused
+the rebuild). The switch after the re-run: the ten site VLANs, `fec none`
+on Ethernet8, `dhcp_rate_limit 300` on the written ports, `MGMT_PORT|eth0`
+(added by the driver, now saved), `NTP|global src_intf Vlan4094` (until
+7dca204 is deployed), and the leaked SAI mirror session in ASIC_DB (no
+port bound to it; gone at the next swss restart or reboot). No ACL table,
+no PortChannel, no mirror row, cage 2 unbroken.
 
 ## Sources
 
