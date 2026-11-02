@@ -1146,7 +1146,7 @@ directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
 
 | Repository | Base | Patches |
 |---|---|---|
-| sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005 and 0007 DX010 platform fixes (§8.7, 0007 being upstream's own); 0006 CoPP as the ECS does it (§8.11); 0008-0010 fixes the first build needed (below) |
+| sonic-buildimage | `1354e0ce4630` (2026-11-01) | 0001 #24327 squashed (docker-l2mcd, rules, service, CoPP trap group, YANG); 0002 the daemon submodule; 0003 the PR's unrelated changes taken out; 0004, 0005, 0007 and 0011 DX010 platform fixes (§8.7, 0007 and 0011 being upstream's own); 0006 CoPP as the ECS does it (§8.11); 0008-0010 fixes the first build needed (below) |
 | sonic-swss | `177c7a009f5e` (2026-09-19) | #3950 squashed (`l2mcorch`, `l2mcmgrd`) |
 | sonic-swss-common | `e59457c6da43` (2026-07-21) | 0001 the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it); 0002 upstream's port to libyang 3 (`1431c3d`, §8.12) |
 | sonic-mgmt-common | `b5f84b0644d9` (2025-12-05) | upstream's port to libyang 3 (#157, `cdb612e`; §8.12) |
@@ -1282,6 +1282,18 @@ support, independently of snooping. Found while preparing the build:
   Celestica board; all five build in the 202511 trixie slave, and the DX010's
   comes out with its 18 `sonic_platform` modules. H1 below is still where it is
   proven, and any word on the PR waits for that.
+- **The CPLD driver panics 6.12 on its first register write (#26885), found on the
+  DX010 (§8.14).** `dx010_cpld`'s `setreg_store` copies the sysfs buffer into
+  `char clone[count]` with `strcpy`, one byte short for the NUL. Kernel 6.1 never
+  noticed; 6.12's FORTIFY_SOURCE checks the dynamic size of the array and BUG()s
+  (`lib/string_helpers.c:1040`), and the first write comes from the platform
+  watchdog's disarm at boot. **Series 0011** is upstream's fix,
+  [sonic-net/sonic-buildimage#26983](https://github.com/sonic-net/sonic-buildimage/pull/26983)
+  ("Fix VLA size in setreg_store for DX010", open, base master, labelled for a 202511
+  backport), cherry-picked unchanged from its head `894c85517024` with its author:
+  `char clone[count + 1]`, `strcpy` kept. Other Celestica boards' store handlers
+  (seastone2, ds3000, haliburton, silverstone and the rest) have the same array;
+  that is for a note upstream, not this series.
 - The host OS under 202511 is Debian trixie with kernel 6.12 (the dockers stay
   bookworm); `platform-modules-cel` was adapted for it on the branch. The driver's
   fixtures are recaptured on the new build (`Start`'s `--help` checks exist for
@@ -1561,7 +1573,7 @@ replay in under 10 ms: the harness never runs the daemon's timers, so its group
 state only grows over a run (the daemon caps it with its group pool), and the build
 host was at a load near 35.
 
-### 8.14 The image on the virtual switch (2026-11-01)
+### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
 The vs build of the series ran on the VS guest (§2 A0's guest, 4 vCPU / 8 GB,
 installed beside its 202505 image): first as built before the l2mcd parser fixes
@@ -1661,6 +1673,66 @@ and sonic-installer's output goes to `/host/sonic-upgrade.log`. Then:
   reconciles. 202505's stale lab nameserver came over with the config, so building
   mstpd would have failed; the carried binaries meant the push installed and enabled
   l2d at once, RSTP up under its dead-man in six seconds.
+
+**On the DX010 (H0, 2026-11-01/02): two failed boots, the cause, and a confirmed
+install.** The Broadcom build `igmp-202511.20261101-22cac574e` (the series through
+0010), the `legacy-th` image (§8.7), installed from 202505 with `sonic-upgrade.sh`.
+
+- **Trial 1** booted 202511 once and came back on 202505 about three minutes after
+  the reboot. Every log stopped together about 22 s after `watchdog-control` started
+  `watchdogutil disarm`, with no lockup or oops message on disk. One fact explained
+  the timing: 202505's `reboot` arms the DX010's CPLD watchdog for 180 s
+  (`watchdogutil arm`), the CPLD keeps counting through the CPU reset, and only the
+  next boot's `watchdogutil disarm` turns it off -- its `Watchdog()` constructor
+  writes 0x141 = 0 through `dx010_cpld/setreg`. Any hang before that point ends in
+  a CPLD reset into GRUB's default image.
+- **Trial 2: the same image, instrumented, no rebuild.** `arm ... trace` (the kit)
+  adds to the new image's overlay only:
+  - a boot trace synced to `/host` every 2 s (unit states, whether `setreg`/`getreg`
+    exist, the CPLD's 0x141, the last SDK step and kernel error);
+  - a feeder that arms the CPLD watchdog for 120 s once the CPLD driver is up and
+    feeds it every 20 s, so a hang still resets into 202505;
+  - `watchdogutil disarm` run under a timeout with its output in a file of its own;
+  - `hardlockup_panic=1` beside SONiC's `softlockup_panic=1` and `panic_on_oops=1`.
+
+  `confirm` turns the CPLD watchdog off, reads 0x141 back as 0 before it touches
+  the dead-man or GRUB, and removes all of it. The mechanics were tested on the VS,
+  the CPLD branches against a stub. The trace answered it at 29 s:
+  `kernel BUG at lib/string_helpers.c:1040`, with the platform module still
+  activating and the feeder's first `setreg` write the last thing it did.
+  202505's systemd-pstore had archived an ERST panic record after each trial. The
+  cause is §8.7's `setreg_store` overflow (#26885), so trial 1 was the disarm's own
+  write. The watchdog code, syncd and the SAI were never involved.
+- **Trial 3: the fixed platform package injected into the installed image.** Only
+  `platform-modules-dx010` was rebuilt from the same tree (vermagic
+  `6.12.41+deb13-sonic-amd64`, all imported symbol CRCs matching the kernel's
+  `Module.symvers`, the other five modules byte-identical). rc.local's first boot
+  installs `platform/<platform>/*.deb` with apt from a `[trusted=yes]` flat repo on
+  `platform/common`: a same-version deb swapped in fails with "Hash Sum mismatch"
+  unless its `Packages.gz` entry (Size, MD5sum, SHA1, SHA256) is rewritten. A
+  re-versioned deb in the platform directory installs from the file itself (both
+  checked on the VS with rc.local's own commands). Trial 3 ran a re-versioned
+  build, `1.0+dx010cpld1`.
+- **Trial 3 passed and was confirmed.**
+  - The boot: no BUG. The feeder fed throughout, the disarm returned in 39 s, and
+    `confirm` read 0x141 back as 0x00, removed the trial pieces and restored the
+    sysctls. 202505 stays installed.
+  - The window checks: SOC unit 0 attached, SDK init in 3 s on libsaibcm
+    13.2.1.100, the 100G uplink up with RS FEC, the management address on its VLAN
+    with the default route through it. pmon showed fans, both PSUs and
+    temperatures (0007). NTP was synced. l2d was active with the uplink as the RSTP
+    root port, forwarding.
+  - The bridge recovered and applied the controller's push with 0 of 32 ports
+    changed. The fan floor was re-applied.
+  - l2mcd is still off: §8.9's V-steps on hardware come next.
+- **What runs is not exactly 0011.** The installed `platform-modules-dx010` is
+  `1.0+dx010cpld1` (`dx010_cpld` srcversion `B61467287F95373235ED7FB`), built from a
+  fix written here before #26983 turned up. It sizes the array the same way but
+  copies with `strscpy(clone, buf, sizeof(clone))`, and it also changed the other
+  Celestica boards' handlers (not on this unit). Series 0011 is #26983 unchanged, so
+  the next image build carries upstream's version. A 1.0 package built from it
+  (srcversion `9A732FC0E3A48B6C025AE37`) is kept for a swap if the running module
+  should match upstream before then.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
