@@ -2679,6 +2679,21 @@ push, and off again the same way. Two reboots through the UI's Restart
 brought mstpd back with Ethernet0 the root port. With that the option went:
 RSTP is the driver's default.
 
+**Gap found 2026-11-02: a swss restart left the switch without spanning
+tree.** An orchagent crash (the mis-encoded probe in §11.9) restarted swss,
+which deletes and recreates the `Bridge` netdev. The new bridge came up
+with `stp_state 0`, mstpd logged `delete_br_byindex` and dropped it, and
+l2d, seeing mstpd still running, took its only recovery branch (mstpd
+died) never: it rebuilt the APPL_DB states from kernel ports that were all
+forwarding, and `mstpctl` answered `Couldn't find bridge` every two seconds
+for ten minutes. A `systemctl restart disunified-l2d` fixed it in one
+second (stop does not tear down, start re-adopts: `addbridge`, settle, every
+VLAN remapped). ae2ce0e adds that branch to the sync loop: a present bridge
+whose `stp_state` is not 2 is a recreation, and l2d runs the fresh-enable
+path with its port, state and VLAN memory cleared. Fixture-tested by the
+existing reconcile tests only; the live proof is the restart above, which
+runs the same `stp_up`.
+
 ### 11.6 Live checks on the DX010, 2026-11-01
 
 Run from the controller against the deployed bridge (the 2026-10-31 build),
@@ -3319,6 +3334,46 @@ and look. The fixture runner models `config acl add table ... MIRROR`, the
 SPAN path untouched on the VS capture (`TestApplyMirror`). Docs: §6's
 mirror row, the support matrix row ("ingress-only on the DX010"), the
 feature map, this driver's `CLAUDE.md`.
+
+**Asking the SAI without a rebuild (2026-11-02).** Whether Broadcom's
+`false` is honest can be tested on the running switch: orchagent never
+calls the SAI itself, it pushes a record into ASIC_DB's operation queue,
+syncd pops it, calls the vendor library and, in synchronous mode (`syncd
+-s`; `DEVICE_METADATA|localhost synchronous_mode enable` on this image),
+writes the SAI status to the response queue. So the one record a patched
+orchagent would write can be pushed by hand with `redis-cli -n 1` and
+syncd's answer read back:
+
+```
+EVAL "redis.call('LPUSH', KEYS[1], ARGV[1], ARGV[2], ARGV[3]); redis.call('PUBLISH', KEYS[2], ARGV[4])" 2 \
+  ASIC_STATE_KEY_VALUE_OP_QUEUE ASIC_STATE_CHANNEL@1 \
+  SAI_OBJECT_TYPE_PORT:oid:<source port vid> \
+  '["SAI_PORT_ATTR_INGRESS_MIRROR_SESSION","1:oid:<mirror session vid>"]' \
+  Sset G
+```
+
+The port and session VIDs come from `COUNTERS_PORT_NAME_MAP` and
+`ASIC_STATE:SAI_OBJECT_TYPE_MIRROR_SESSION:*`; the undo is the same push
+with `"0:null"`. The status lands in `GETRESPONSE_KEY_VALUE_OP_QUEUE`; a
+reply orchagent did not ask for is discarded by its `RedisChannel::wait`
+with a warning. **The op is `Sset`, not `set`**: swss-common's
+`ProducerTable` prefixes every op with `S` (set) or `D` (del) and the
+consumer's Lua strips that first character. A bare `set` reaches syncd as
+`et`, which `processSingleEvent` throws on -- syncd enters shutdown-wait,
+tells orchagent, orchagent exits, and swss, syncd, teamd and bgp restart:
+forwarding was gone for about 80 s (16:49:11-16:50:35Z; the bridge missed
+one collect) and, because swss recreates the kernel bridge, spanning tree
+was gone for ten minutes until `disunified-l2d` was restarted by hand
+(ae2ce0e makes l2d do that itself, §11.5). That first attempt was mine,
+with the wrong op. In sync mode a *failed* SAI set is only logged (`api
+set failed in syncd mode`) and answered; syncd throws on failure only in
+asynchronous mode, so the correctly encoded probe cannot repeat the crash.
+A `SAI_STATUS_SUCCESS` means the capability query lied and the orchagent
+probe patch gives ECS-style SPAN; `NOT_SUPPORTED`/`NOT_IMPLEMENTED` means
+the ACL route above is all there is. Frames actually copied still need two
+cabled devices, or a read of the SDK's mirror table through the Broadcom
+shell. Not run yet with the correct encoding (Clint's call after the
+crash).
 
 ## Sources
 

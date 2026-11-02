@@ -501,4 +501,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   breakout-25g,mirror,storm-rate,aggregate-acl}.txt`; the re-run after the
   deploy is `sonic-igmp-202511.20261101-22cac574e/rerun-20261102.txt`; the image's capture
   and `config --help` are `sonic-igmp-202511.20261101-22cac574e/`
-  (`rig202511` in the tests).
+  (`rig202511` in the tests). **Never push a bare `set` into
+`ASIC_STATE_KEY_VALUE_OP_QUEUE`**: the producer prefixes ops with `S`/`D`
+and the consumer strips one character, so `set` arrives as `et`, syncd
+throws, and the whole swss stack restarts (2026-11-02, §11.9 of the
+write-up: the op is `Sset`; in sync mode a failed SAI call is only
+logged). **A swss restart recreates the kernel `Bridge`** (stp_state 0,
+mstpd drops it): l2d re-runs its enable path when it sees that (ae2ce0e);
+before that fix the switch ran without spanning tree until the service
+was restarted.
