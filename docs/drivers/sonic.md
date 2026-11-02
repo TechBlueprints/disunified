@@ -1497,6 +1497,150 @@ The driver then writes the pushed `igmp_querier`, or, when it is empty, an addre
 in 198.18.0.0/15 built from the DX010's own management address, as the ECS does.
 Validation: §8.9 V5, with and without an interface address on the VLAN.
 
+### 8.12 libyang 1 and 3: the gNMI and management-framework containers stay in (2026-11-01)
+
+The first builds of the series failed with "too many arguments to function
+`ly_set_log_clb`" in sonic-mgmt-common, sonic-mgmt-framework or sonic-gnmi,
+depending on the order of the run. The series then left both containers out
+(the first 0009). Clint, 2026-11-01: fix the build so it works with them
+on. This section replaces that 0008 and 0009 with four patches, so
+`INCLUDE_SYSTEM_GNMI` and `INCLUDE_MGMT_FRAMEWORK` stay `y` as on the stock
+image. The ECS runs `mgmt-framework` too (§8.5).
+
+**The cause.** 202511 builds libyang 1 (1.0.73) and libyang 3 (3.12.2) side
+by side, and their `-dev` packages are the same Debian package,
+`libyang-dev`. Installing one replaces the other, so a compile finds
+whichever was installed last. Three things in the build rules leave that to
+chance:
+
+- The build runs each package's `-install` once per make run and does not
+  check it again. A package that declared libyang-dev 3 can still compile
+  against 1, if something installed 1 later in the same run.
+- The conflict declaration in `rules/libyang.mk` does nothing. It runs
+  before `rules/libyang3.mk` has defined `$(LIBYANG3_DEV)`, so the "wait
+  for the conflicting package to be uninstalled" loop has an empty list.
+  The IGMP tree's log shows the downgrade from 3.12.2-1 to 1.0.73 going
+  straight through.
+- `libyang3-dev-done` (upstream #25427) orders the *build* of libyang 1
+  after the libyang 3 consumers. That holds only in one run from a clean
+  `target/`. In a later or resumed run the debs already exist, and the
+  order of the two installs is up to make.
+
+Two packages in 202511 compile against libyang 1's headers: sonic-swss-common
+(the `DefaultValueProvider`) and sonic-mgmt-common's cvl. sonic-gnmi and
+sonic-mgmt-framework compile cvl too, through cgo, and declare no
+libyang-dev at all. gnmi's own `$(LIBSWSSCOMMON_DEV)` dependency installs
+swss-common's build dependencies, libyang-dev 1 among them, while
+mgmt-common's `sonic_yang_models` wheel dependency installs libyang-dev 3
+through python3-libyang. That is why the first 0008 (declare libyang-dev 1
+on both) was not enough. Makefile.work also starts a fresh slave container
+**per goal**. So `make a.deb b.deb`, the kit's fail-fast stage before the
+image, and every rebuild after a failure are separate make runs. In each
+one, whichever libyang-dev was installed last decides.
+
+**Upstream's PR first: #26165 does not fix it on 202511.** sonic-net/sonic-buildimage#26165 ("[build] Fix
+sonic-mgmt-common build failure due to libyang-dev conflict", xq9mend,
+base master) adds `$(SONIC_MGMT_COMMON)_PHONIES += $(LIBYANG3-DEV-DONE)`.
+Its only review, from the developer leading the libyang 3 move, said it
+should be redundant, because mgmt-common already waits on the gate through
+`$(LIBYANG)`. They had seen the failure only on rebuilds, and were removing
+libyang 1 instead. The PR was closed unmerged on 2026-04-15. Tried on
+202511 before anything else (cherry-picked unchanged with its author; 202511's
+`rules/sonic-mgmt-common.mk` is byte-identical to the PR's base), containers
+on:
+
+| Run (each a fresh slave) | Result |
+|---|---|
+| swss-common and mgmt-common, 4 jobs | passes (in mgmt-common's run libyang-dev 1 happened to be installed last) |
+| mgmt-framework alone, 1 job | **fails**: libyang-dev 1 at 17:35:05, then 3 "over (1.0.73)" at 17:35:06; `util.go:33:9: error: too many arguments to function 'ly_set_log_clb'` |
+| sonic-gnmi alone, 1 job | **fails** the same way, the installs one second apart |
+
+The failures are deterministic. They do not need parallel jobs. The PR's gate is a file in
+`target/phony/`, already up to date from the first run, so it orders
+nothing. The obvious extension is to gate and declare libyang-dev 1 on gnmi
+and mgmt-framework too. That is the first 0008, and it failed the same way,
+because that install has already run when their build starts. The reverse
+order would break the libyang 3 consumers (FRR, python3-libyang) instead.
+While both `-dev`s are installed in one tree, no ordering in the rules
+fixes it. Hence the backport.
+
+**The fix: backport upstream's own ports, then move the two build
+dependencies.** On master, libyang 1 left in steps. sonic-swss-common
+`1431c3d` (2026-05-22) and sonic-mgmt-common `cdb612e` (#157, 2026-06-01)
+made both C/cgo consumers compile against either libyang, using libyang 3's
+`LY_ARRAY_COUNT` to tell them apart. sonic-yang-mgmt moved to libyang 3's
+Python bindings (#26584). #27629 then removed libyang 1 and the shim
+(202605 has it as #27783). This series takes the first two and the
+dependency half of the last:
+
+| Patch | What | Source |
+|---|---|---|
+| `sonic-swss-common/0002` | port `defaultvalueprovider` to libyang 3 with a libyang 1 fallback | `1431c3d` cherry-picked unchanged onto the 202511 pin, author kept; the one conflict is a CI job that never runs (`azure-pipelines.yml`) |
+| `sonic-mgmt-common/0001` (new series) | port cvl to libyang 3 with a libyang 1 fallback | `cdb612e` (#157) cherry-picked unchanged onto the 202511 pin `b5f84b0`, author kept; its CI hunk is redone on bookworm paths |
+| `sonic-buildimage/0008` | swss-common and mgmt-common build against `$(LIBYANG3_DEV) $(LIBYANG3)`; sonic-gnmi and sonic-mgmt-framework declare it (and the libyang 3 runtime their binaries now link) | ours; mgmt-common's rule is master's after #27629 |
+| `sonic-buildimage/0009` | retire `libyang3-dev-done` | as in #27629 |
+
+After 0008, no package depends on libyang-dev 1, so it is never installed,
+and the order of a run no longer decides anything. The patches are
+byte-identical to upstream's apart from the CI files (`git patch-id` of
+the rest matches). Nothing in gnmi or mgmt-framework needed changing: the
+only cvl functions whose signatures changed are internal to mgmt-common.
+
+**What stays on libyang 1, and why.** Its runtime and python3-yang, which
+202511's sonic-yang-mgmt uses, and with it `config` validation and the
+generic config updater. Moving that is #26584, a rewrite of
+sonic-yang-mgmt's schema walk, and 0010 was bisected against the current
+walk. Not a backport for a release branch. libswsscommon keeps libyang 1 in
+its runtime dependencies next to libyang 3, master's state between #26584
+and #27629, so no image or container loses a package. **The one runtime
+change**: swss-common's default-value lookups and the gNMI and REST
+servers' validation now run on libyang 3, as on master and 202605.
+
+**Proof.** Built on the build host from the IGMP kit's prepared 202511
+tree: series 0001-0007, these four patches, 0010. Each run was in a fresh
+slave pinned to 4 cores, next to the IGMP build:
+
+| Run | Result |
+|---|---|
+| the eight targets as eight goals, 4 jobs (libyang 1 and 3, swss-common, mgmt-common, mgmt-framework, gnmi, `docker-sonic-gnmi`, `docker-sonic-mgmt-framework`); mgmt-framework and gnmi each built alone after mgmt-common, the case that failed | all built; libyang-dev 1 never installed |
+| `docker-sonic-gnmi.gz` as **one** goal from a clean tree, 4 jobs (one make run, mgmt-common and swss-common in parallel); the slave **killed** with mgmt-common compiling; the same goal **resumed**; then `docker-sonic-mgmt-framework.gz` as one goal | killed run rc 2 as intended; resume rc 0 (mgmt-common rebuilt beside swss-common, then gnmi and the container); mgmt-framework container rc 0; libyang-dev 1 never installed |
+| serial (1 job): `sonic-mgmt-framework` as one goal from a clean tree, then `sonic-gnmi` alone, then the trixie `libswsscommon` (the host image's; gcc and `-Werror` of trixie) | all rc 0; libyang-dev 1 never installed, in either slave |
+
+`libswsscommon.so`, `rest_server`, `telemetry` and `dialout_client_cli`
+link `libyang.so.3`. Their packages depend on `libyang3 (>= 3.12.2)`. Both
+container images carry libyang3 3.12.2 next to libyang 1.0.73. Started
+inside their images from `/usr/sbin`, `telemetry` and `rest_server` parse
+the CVL schema with libyang 3 and exit 0 on `--help`. They warn about three
+type-only modules (sonic-extension, sonic-types, sonic-common), and the
+libyang 1 `telemetry` from the IGMP tree prints the same warnings in the
+same image: 202511's behaviour, not the port's.
+**On the DX010 (2026-11-02 02:02 UTC).** The IGMP image built with these
+patches (broadcom-legacy-th) was installed on the DX010, and gNMI and
+mgmt-framework ran on hardware for the first time:
+
+- `show feature status` lists both as enabled.
+- `docker ps` shows `gnmi` and `mgmt-framework` up.
+- The last 200 lines of each container's log hold no libyang, CVL, error,
+  fail or panic lines.
+- **Not yet seen:** `monit summary`, which was still in its first-boot delay
+  when checked.
+
+**Upstream (2026-11-01).** Posted as sonic-net/sonic-buildimage#30482 (the
+issue) and #30483 (the PR, with #26165's commit first), with
+sonic-net/sonic-swss-common#1269 and sonic-net/sonic-mgmt-common#273 for the
+two cherry-picks. #1269 needed one more commit, for 202511 only: its CI
+installs libyang 1's python3-yang again, because 202511's sonic_yang_mgmt
+still imports it.
+
+**For the IGMP kit.** `build.sh` applies submodule series only to
+`sonic-swss sonic-swss-common sonic-utilities sonic-l2mcd`. Add
+`sonic-mgmt-common` to that loop, and the line
+`sonic-mgmt-common b5f84b0644d925828dc0a4e290695554d890ca4f 2025-12-05` to
+`BASES`.
+
+**On #26165**, a comment answers the review's question with the
+reproduction and points to the new issue and PR.
+
 ### 8.13 The daemon's packet parsers: checked, fixed, fuzzed (2026-11-01)
 
 A read of l2mcd's receive path said its IGMPv3 and MLDv2 record walks trust the
