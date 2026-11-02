@@ -117,6 +117,7 @@ func withMgmtGateway(fr *FixtureRunner) {
 		tb["MGMT_INTERFACE|eth0|169.254.1.1/16"] = map[string]string{"gwaddr": "169.254.0.1"}
 		return nil
 	})
+	ntpSourceCleared(fr) // the NTP apply runs before the ports (TestNTPSourceVlanCleared)
 }
 
 // §11.8, after the deploy: with the MGMT_PORT row in place the breakout
@@ -150,5 +151,33 @@ func TestBreakoutRefusedWhileEthZeroHasNoGateway(t *testing.T) {
 	}
 	if !strings.Contains(r.log.String(), "eth0's address 169.254.1.1/16 (MGMT_INTERFACE) has no gateway") {
 		t.Errorf("note does not name the row: %s", r.log.String())
+	}
+}
+
+// §11.8: with a gateway on eth0's row, sonic-yang's next refusal was the
+// driver's own NTP|global src_intf Vlan4094 (sonic-ntp.yang allows no VLAN
+// there). The NTP apply now clears it; a VLAN left there still refuses the
+// breakout with a note and no write.
+func TestBreakoutRefusedWhileNTPSourcesFromAVlan(t *testing.T) {
+	r := rig202511(t, func(fr *FixtureRunner) {
+		withMgmtGateway(fr)
+		fr.update("cfg_mgmt", func(tb table) error {
+			tb["MGMT_PORT|eth0"] = map[string]string{"alias": "eth0", "admin_status": "up"}
+			return nil
+		})
+		fr.update("cfg_ntp_global", func(tb table) error {
+			tb["NTP|global"]["src_intf"] = "Vlan4094"
+			return nil
+		})
+	})
+	brk := "sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null"
+	if _, err := r.fr.Run(context.Background(), batchCommand, "set -e\n"+brk+"\n"); err == nil || !strings.Contains(err.Error(), `libyang[0]: Invalid value "Vlan4094" in "src_intf" element. (path: /sonic-ntp:sonic-ntp/NTP/global/src_intf[.='Vlan4094'])`) {
+		t.Fatalf("the capture must refuse the breakout as sonic-yang does: %v", err)
+	}
+	if got, _ := r.apply(speedOn(r.baseline(), 2, 25000)); len(got) != 0 {
+		t.Fatalf("wrote %q", got)
+	}
+	if !strings.Contains(r.log.String(), "refuses NTP|global src_intf Vlan4094") {
+		t.Errorf("no note: %s", r.log.String())
 	}
 }

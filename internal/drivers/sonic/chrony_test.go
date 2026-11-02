@@ -32,6 +32,7 @@ func chronyFile(t *testing.T, name string) string {
 // what `chronyc onoffline` leads to.
 func chronyAs(t *testing.T, name, after string) func(*FixtureRunner) {
 	return func(fr *FixtureRunner) {
+		ntpSourceCleared(fr)
 		sec := sections(chronyFile(t, name))
 		fr.UseSection("chrony_sources", sec["chrony_sources"])
 		fr.UseSection("chrony_activity", sec["chrony_activity"])
@@ -39,6 +40,18 @@ func chronyAs(t *testing.T, name, after string) func(*FixtureRunner) {
 			fr.ChronyAfterOnoffline = chronyFile(t, after)
 		}
 	}
+}
+
+// ntpSourceCleared is the unit once the driver has taken NTP|global's
+// src_intf off Vlan4094 (TestNTPSourceVlanCleared), so a chrony test sees
+// only chrony's own writes.
+func ntpSourceCleared(fr *FixtureRunner) {
+	fr.update("cfg_ntp_global", func(tb table) error {
+		if tb["NTP|global"] != nil {
+			delete(tb["NTP|global"], "src_intf")
+		}
+		return nil
+	})
 }
 
 const onoffline = "sudo chronyc onoffline"
@@ -136,7 +149,7 @@ func TestChronyNotNudged(t *testing.T) {
 		}
 	}
 	var r *controlRig
-	r = hwRigAt(t, at, nil)
+	r = hwRigAt(t, at, ntpSourceCleared)
 	if got := r.deviceCmds(ntpAsCaptured(r)); len(got) != 0 {
 		t.Errorf("no chrony sections: wrote %q", got)
 	}

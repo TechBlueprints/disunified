@@ -14,7 +14,11 @@ import (
 // NTP from the in-band interface (docs/drivers/sonic.md §10.6). The image's
 // NTP|global (init_cfg.json, read from the DX010: ntp_global-init_cfg.txt)
 // names src_intf eth0, and chrony binds to it once eth0 has a configured
-// address; the driver points it at the interface the bridge dials.
+// address; the driver points it at the interface the bridge dials. A VLAN
+// is not a valid src_intf in sonic-ntp.yang, and a VLAN there failed the
+// sonic-yang check of every breakout (§11.8), so for the VLAN the bridge
+// dials the field is deleted: chrony then binds nothing and the kernel
+// sends from the in-band interface.
 
 // hwRigAt is newHardwareRig over another DX010 capture.
 func hwRigAt(t *testing.T, path string, edit func(*FixtureRunner)) *controlRig {
@@ -58,24 +62,31 @@ func ntpAsCaptured(r *controlRig) devicemodel.DeviceDesired {
 	return devicemodel.DeviceDesired{ManageNTP: true, NTPServers: r.system().NTPServers}
 }
 
-const ntpSrcVlan = "sudo sonic-db-cli CONFIG_DB hset 'NTP|global' src_intf Vlan4094"
+const ntpSrcCleared = "sudo sonic-db-cli CONFIG_DB hdel 'NTP|global' src_intf"
 
 func TestNTPSourcedFromTheDialledInterface(t *testing.T) {
 	r := hwRigAt(t, hwFixture, imageNTPGlobal(t))
-	r.device("image default", ntpAsCaptured(r), []string{ntpSrcVlan, save})
-	if got := parseTableMust(t, sections(r.fr.Fixture), "cfg_ntp_global")["NTP|global"]["src_intf"]; got != "Vlan4094" {
-		t.Errorf("read back src_intf %q", got)
+	r.device("image default", ntpAsCaptured(r), []string{ntpSrcCleared, save})
+	if got, ok := parseTableMust(t, sections(r.fr.Fixture), "cfg_ntp_global")["NTP|global"]["src_intf"]; ok {
+		t.Errorf("read back src_intf %q, want none", got)
 	}
+	r.device("then nothing", ntpAsCaptured(r), nil)
 	// Without NTP management nothing is touched.
 	r = hwRigAt(t, hwFixture, imageNTPGlobal(t))
 	r.device("not managed", devicemodel.DeviceDesired{}, nil)
 }
 
 // The unit after the hand fix (collect-20261101.txt: src_intf Vlan4094,
-// eth0 on 169.254.1.1/16 in MGMT_INTERFACE): nothing to write.
-func TestNTPSourceAlreadyInBand(t *testing.T) {
-	r := hwRigAt(t, filepath.Join(filepath.Dir(hwFixture), "collect-20261101.txt"), nil)
-	r.device("already Vlan4094", ntpAsCaptured(r), nil)
+// eth0 on 169.254.1.1/16 in MGMT_INTERFACE), and the 202511 unit, which
+// the driver had set the same way: the VLAN goes, once.
+func TestNTPSourceVlanCleared(t *testing.T) {
+	for _, r := range []*controlRig{hwRigAt(t, filepath.Join(filepath.Dir(hwFixture), "collect-20261101.txt"), nil), rig202511(t, nil)} {
+		if got := r.c.state.ntpGlobal["src_intf"]; got != "Vlan4094" {
+			t.Fatalf("captured src_intf %q", got)
+		}
+		r.device("Vlan4094 cleared", ntpAsCaptured(r), []string{ntpSrcCleared, save})
+		r.device("then nothing", ntpAsCaptured(r), nil)
+	}
 }
 
 // No NTP|global on the switch (a capture from before the section; an image

@@ -76,6 +76,11 @@ func (f *FixtureRunner) breakout(args []string) error {
 			}
 		}
 	}
+	// ... and sonic-ntp.yang has no VLAN among src_intf's types (the branch
+	// is commented out), which the driver itself wrote before §11.8's re-run.
+	if v := f.table("cfg_ntp_global")["NTP|global"]["src_intf"]; strings.HasPrefix(v, "Vlan") {
+		return fmt.Errorf(`libyang[0]: Invalid value "%s" in "src_intf" element. (path: /sonic-ntp:sonic-ntp/NTP/global/src_intf[.='%s'])`, v, v)
+	}
 	if _, ok := pp.BreakoutModes[mode]; !ok {
 		return fmt.Errorf("[ERROR] Target mode %s is not available for the port %s", mode, parent)
 	}

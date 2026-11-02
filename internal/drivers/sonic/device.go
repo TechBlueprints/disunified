@@ -286,8 +286,18 @@ func (c *Collector) applyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		ntpOps := len(ops)
 		// chrony sends from NTP|global src_intf, the image's eth0 by
 		// default: the in-band interface the bridge dials instead (§10.6).
-		if src := ntpSource(snap, sim, dial); src != "" && sim.ntpGlobal != nil && sim.ntpGlobal["src_intf"] != src {
-			add("sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("NTP|global")+" src_intf "+src, "", func(s *swState) { s.ntpGlobal["src_intf"] = src })
+		// sonic-ntp.yang leaves VLANs out of src_intf (commented out in
+		// 202505 and 202511), and a VLAN there fails the sonic-yang check
+		// every breakout runs (§11.8): for a VLAN the field goes, and
+		// chrony.conf.j2 then binds nothing and the kernel sends from the
+		// interface its route to the server uses -- the in-band one, on a
+		// switch whose default route is in-band (§3 B3).
+		if src := ntpSource(snap, sim, dial); src != "" && sim.ntpGlobal != nil {
+			if _, set := sim.ntpGlobal["src_intf"]; strings.HasPrefix(src, "Vlan") && set {
+				add("sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote("NTP|global")+" src_intf", "", func(s *swState) { delete(s.ntpGlobal, "src_intf") })
+			} else if !strings.HasPrefix(src, "Vlan") && sim.ntpGlobal["src_intf"] != src {
+				add("sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("NTP|global")+" src_intf "+src, "", func(s *swState) { s.ntpGlobal["src_intf"] = src })
+			}
 		}
 		want := map[string]bool{}
 		for _, h := range d.NTPServers {

@@ -149,8 +149,10 @@ func TestDX010FirstPushRestoresTheModulesSpeed(t *testing.T) {
 // NTP from the in-band interface (§10.6) through the loop: the same real
 // push carries the site's NTP servers; with the image's NTP|global
 // (src_intf eth0, ntp_global-init_cfg.txt read from the unit) in place,
-// the push points chrony at Vlan4094, the interface the bridge dials, and
-// the reconcile writes nothing more.
+// the push takes chrony off eth0 -- the bridge dials Vlan4094, which
+// sonic-ntp.yang does not allow as src_intf, so the field is deleted and the
+// kernel sources from the in-band interface (§11.8) -- and the reconcile
+// writes nothing more.
 func TestDX010FirstPushSourcesNTPInBand(t *testing.T) {
 	dir := filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238526-ff3c0c9f6")
 	b, err := os.ReadFile(filepath.Join(dir, "ntp_global-init_cfg.txt"))
@@ -170,8 +172,8 @@ func TestDX010FirstPushSourcesNTPInBand(t *testing.T) {
 		}
 	}
 	cmds := r.applyAndReconcile(t)
-	if !contains(cmds, "sudo sonic-db-cli CONFIG_DB hset 'NTP|global' src_intf Vlan4094") {
-		t.Errorf("chrony not pointed at Vlan4094; commands %q", cmds)
+	if !contains(cmds, "sudo sonic-db-cli CONFIG_DB hdel 'NTP|global' src_intf") {
+		t.Errorf("chrony not taken off eth0; commands %q", cmds)
 	}
 }
 

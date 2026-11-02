@@ -2097,7 +2097,14 @@ arrival checklist is §3 B3 step 5. What the driver does about it:
   address the bridge dials, when that is an in-band interface whose
   address CONFIG_DB holds (`Vlan<native_vlan>` on a switch set up as §3
   says): `sonic-db-cli CONFIG_DB hset 'NTP|global' src_intf <iface>`, then
-  `config save -y` (hostcfgd regenerates chrony.conf). `collect.py` reads
+  `config save -y` (hostcfgd regenerates chrony.conf). **For a VLAN the
+  field is deleted instead** (`hdel 'NTP|global' src_intf`, since
+  2026-11-02): sonic-ntp.yang has no VLAN among `src_intf`'s types (the
+  branch is commented out in 202505 and 202511), and the VLAN the driver
+  wrote failed the sonic-yang check every breakout runs (§11.8). Without
+  the field chrony.conf.j2 binds nothing and the kernel sends from the
+  interface its route uses, which is the in-band one on a switch set up as
+  §3 says. `collect.py` reads
   `NTP|global` (`cfg_ntp_global`) and an interface already right is left
   alone. Nothing is written when the switch has no `NTP|global` (an image
   without `init_cfg.json`'s entry; a hash with `src_intf` alone is not

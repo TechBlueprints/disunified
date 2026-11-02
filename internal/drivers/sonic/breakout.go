@@ -318,6 +318,13 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC checks the whole config against its YANG model before a breakout; eth0's address %s (MGMT_INTERFACE) has no gateway, which the model requires, and the driver does not change eth0; speed not written (give the row a gateway or remove it: docs/drivers/sonic.md 11.8)", d.Index, want.speed, target.name, strings.Join(pl.sim.mgmtNoGateway, ", "))
 			return
 		}
+		if v := pl.sim.ntpGlobal["src_intf"]; strings.HasPrefix(v, "Vlan") {
+			// The same check refuses a VLAN as NTP's source interface; the
+			// NTP apply, which runs before the ports, clears it whenever
+			// the controller's NTP servers are applied (§11.8).
+			pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC's YANG check before a breakout refuses NTP|global src_intf %s (no VLAN is allowed there); it is cleared with the controller's NTP settings; speed not written", d.Index, want.speed, target.name, v)
+			return
+		}
 		children, err := pp.children(parent, *target)
 		if err != nil {
 			pl.note("port %d: breakout %s of %s: %v; speed not written", d.Index, target.name, parent, err)

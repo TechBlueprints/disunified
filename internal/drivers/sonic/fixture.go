@@ -394,14 +394,19 @@ func (f *FixtureRunner) apply(line string) error {
 		if key == "NTP|global" {
 			// chrony's source interface (§10.6); hostcfgd regenerates
 			// chrony.conf. 202505 has no CLI for it.
-			if w[2] != "hset" || len(w) != 6 || w[4] != "src_intf" {
+			set := w[2] == "hset" && len(w) == 6
+			if !set && !(w[2] == "hdel" && len(w) == 5) || w[4] != "src_intf" {
 				return fmt.Errorf("unmodelled NTP|global write")
 			}
 			return f.update("cfg_ntp_global", func(t table) error {
 				if t[key] == nil {
 					return fmt.Errorf("unmodelled: NTP|global absent")
 				}
-				t[key]["src_intf"] = w[5]
+				if set {
+					t[key]["src_intf"] = w[5]
+				} else {
+					delete(t[key], "src_intf")
+				}
 				return nil
 			})
 		}
