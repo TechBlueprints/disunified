@@ -368,7 +368,10 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 // confirmL2 dials the switch afresh once spanning tree is up and, if it
 // answers and mstpd runs, cancels the dead-man timer through that
 // connection. A first enable starts every port discarding: the root port
-// forwards again as soon as the root's next BPDU arrives (hello 2 s).
+// forwards again as soon as the root's next BPDU arrives (hello 2 s). On
+// the switch itself (transport local) the fresh runner is a fresh process,
+// and the proof is the probe between the check and the cancel: the switch
+// still reaches the probe address over the uplink.
 func (c *Collector) confirmL2(ctx context.Context) error {
 	if c.Redial == nil {
 		return fmt.Errorf("no way to dial the switch afresh; the dead-man timer stays")
@@ -382,18 +385,27 @@ func (c *Collector) confirmL2(ctx context.Context) error {
 		}
 		r := c.Redial(c.Dial)
 		out, err := r.Run(ctx, l2CheckCommand, "")
-		if err == nil && strings.TrimSpace(out) == "running" {
-			_, err = r.Run(ctx, l2DeadmanCancel, "")
-			r.Close()
-			if err == nil {
-				c.Log.Printf("sonic apply l2: spanning tree up, the switch answers a fresh connection; dead-man timer cancelled")
-				return nil
+		if err == nil && strings.TrimSpace(out) != "running" {
+			err = fmt.Errorf("mstpd %q", strings.TrimSpace(out))
+		}
+		// On the switch itself a fresh runner proves nothing about the
+		// uplink: the switch must still reach the probe address.
+		if err == nil && c.Probe != nil {
+			if perr := c.Probe(ctx, c.ProbeAddr, ""); perr != nil {
+				err = fmt.Errorf("mstpd runs, but the switch does not reach %s (%v)", c.ProbeAddr, perr)
 			}
-		} else {
-			r.Close()
 		}
 		if err == nil {
-			err = fmt.Errorf("mstpd %q", strings.TrimSpace(out))
+			_, err = r.Run(ctx, l2DeadmanCancel, "")
+		}
+		r.Close()
+		if err == nil {
+			if c.Probe != nil {
+				c.Log.Printf("sonic apply l2: spanning tree up, the switch reaches %s; dead-man timer cancelled", c.ProbeAddr)
+			} else {
+				c.Log.Printf("sonic apply l2: spanning tree up, the switch answers a fresh connection; dead-man timer cancelled")
+			}
+			return nil
 		}
 		last = err
 	}

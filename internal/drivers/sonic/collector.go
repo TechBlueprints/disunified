@@ -66,6 +66,11 @@ type Collector struct {
 	// user, key and known_hosts (set by Open; tests set a fixture's). The
 	// address controller proves a new address through it.
 	Redial func(host string) sshrun.Runner
+	// Probe proves the switch still reaches the network where there is
+	// nothing to dial (transport local, probe.go): ProbeAddr is the
+	// host:port it connects to. Probe is nil on the SSH transport.
+	Probe     probeFunc
+	ProbeAddr string
 	// StateDir is where the driver keeps what it owns on the switch (the
 	// managed NTP/syslog/SNMP entries), next to device.json; "" = memory only.
 	StateDir string

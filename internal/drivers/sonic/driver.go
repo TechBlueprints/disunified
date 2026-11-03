@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	osuser "os/user"
 	"strconv"
 	"strings"
 
@@ -18,8 +19,20 @@ import (
 //
 // Config: SSH = admin@<host> (key auth; the ssh-agent, or ssh_key). The
 // login user needs no sudo: collect.py reads Redis through swsscommon.
-// Options:
+// With transport local the bridge runs on the switch itself as that user,
+// and <host> is the switch's own in-band address (the one reported, and
+// the one an address move starts from); nothing is dialled
+// (docs/drivers/sonic-on-switch.md). Options:
 //
+//	transport    ssh (default): reach the switch over SSH; local: run every
+//	             command on this host (bash -c), as the process's user,
+//	             which must be the user ssh: names; ssh_key and
+//	             known_hosts are then ignored
+//	probe        host:port the switch must keep reaching (TCP connect),
+//	             which proves an address move (bound to the new address)
+//	             and the first STP enable when there is nothing to dial;
+//	             required with transport local, and filled by the bridge
+//	             from the controller's inform address unless set
 //	ssh_key      private key file, or a .pub that selects that one ssh-agent
 //	             key (default: every agent key one at a time, then
 //	             ~/.ssh/id_ed25519, id_rsa)
@@ -45,9 +58,10 @@ import (
 // last two hardware-untested) writes `sudo config …` commands, so the login user needs passwordless sudo (the admin
 // user has it). The managed NTP/syslog/SNMP entries are remembered in
 // <state_dir>/sonic-managed.json (state_dir is set by the bridge, next to
-// device.json). An address change dials the new address with the same
-// key and known_hosts, so known_hosts must carry the switch's host key for
-// the new address before the change.
+// device.json). Over SSH an address change dials the new address with the
+// same key and known_hosts, so known_hosts must carry the switch's host key
+// for the new address before the change; on the switch (transport local)
+// it connects to the probe address from the new one instead.
 type Driver struct{}
 
 func init() { devicemodel.RegisterDriver(Driver{}) }
@@ -55,11 +69,12 @@ func init() { devicemodel.RegisterDriver(Driver{}) }
 func (Driver) Name() string { return "sonic" }
 
 func (Driver) Describe() string {
-	return "community SONiC switch over SSH (admin@host, key auth, passwordless sudo); Redis tables via swsscommon; port control via config"
+	return "community SONiC switch over SSH (admin@host, key auth, passwordless sudo), or on the switch itself (options.transport: local, as the login user); Redis tables via swsscommon; port control via config"
 }
 
-// Open builds the SSH runner and the collector; Start then runs the
-// collector once so a bad key or a host that is not SONiC fails there.
+// Open builds the runner (SSH, or local on the switch itself) and the
+// collector; Start then runs the collector once so a bad key or a host
+// that is not SONiC fails there.
 func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemodel.Device, error) {
 	if cfg.SSH == "" {
 		return nil, errors.New("sonic: set ssh: admin@host (key auth)")
@@ -72,28 +87,19 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	if err != nil {
 		return nil, err
 	}
-	t := sshrun.New(host, user)
-	t.KeyFile = cfg.Options["ssh_key"]
-	t.KnownHosts = cfg.Options["known_hosts"]
-	c := NewCollector(t)
-	logf := func(f string, a ...any) { c.Log.Printf(f, a...) }
-	t.Logf = logf
-	c.NativeVLAN = native
-	c.Dial = host
-	port := ""
-	if h, p, err := net.SplitHostPort(host); err == nil {
-		c.Dial, port = h, p
-	}
-	keyFile, knownHosts := cfg.Options["ssh_key"], cfg.Options["known_hosts"]
-	c.Redial = func(h string) sshrun.Runner {
-		addr := h
-		if port != "" {
-			addr = net.JoinHostPort(h, port)
+	transport := strings.ToLower(strings.TrimSpace(cfg.Options["transport"]))
+	var c *Collector
+	switch transport {
+	case "", "ssh":
+		c = openSSH(user, host, cfg.Options)
+	case "local":
+		if c, err = openLocal(user, host, cfg.Options); err != nil {
+			return nil, err
 		}
-		r := sshrun.New(addr, user)
-		r.KeyFile, r.KnownHosts, r.Logf = keyFile, knownHosts, logf
-		return r
+	default:
+		return nil, fmt.Errorf("sonic: transport must be ssh or local, got %q", transport)
 	}
+	c.NativeVLAN = native
 	c.StateDir = strings.TrimSpace(cfg.Options["state_dir"])
 	switch v := strings.ToLower(strings.TrimSpace(cfg.Options["l2d"])); v {
 	case "", "on", "true", "yes":
@@ -112,6 +118,71 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		c.Log.Printf("sonic: dialling %s, the address an earlier move adopted (%s/%s), not the configured %s (which stays a fallback)", c.savedDial, c.StateDir, managedFile, c.Dial)
 		c.r, c.Dial = c.Redial(c.savedDial), c.savedDial
 	}
+	return c, nil
+}
+
+// openSSH is the collector for a switch reached over SSH: a fresh dial is
+// how a new address and a first STP enable are proven.
+func openSSH(user, host string, opts map[string]string) *Collector {
+	t := sshrun.New(host, user)
+	t.KeyFile = opts["ssh_key"]
+	t.KnownHosts = opts["known_hosts"]
+	c := NewCollector(t)
+	logf := func(f string, a ...any) { c.Log.Printf(f, a...) }
+	t.Logf = logf
+	c.Dial = host
+	port := ""
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		c.Dial, port = h, p
+	}
+	keyFile, knownHosts := opts["ssh_key"], opts["known_hosts"]
+	c.Redial = func(h string) sshrun.Runner {
+		addr := h
+		if port != "" {
+			addr = net.JoinHostPort(h, port)
+		}
+		r := sshrun.New(addr, user)
+		r.KeyFile, r.KnownHosts, r.Logf = keyFile, knownHosts, logf
+		return r
+	}
+	return c
+}
+
+// openLocal is the collector for the bridge on the switch itself
+// (docs/drivers/sonic-on-switch.md §2): commands run as the service's own
+// user, which must be the login user ssh: names -- the controller's SSH
+// keys go into that user's authorized_keys and collect.py reads its home --
+// and the host part of ssh: stays the switch's own address, the one the
+// loop reports and an address move starts from. With nothing to dial, a
+// TCP connect to options.probe is the proof (§3).
+func openLocal(user, host string, opts map[string]string) (*Collector, error) {
+	me, err := osuser.Current()
+	if err != nil {
+		return nil, fmt.Errorf("sonic: transport local: who runs this bridge? %w", err)
+	}
+	if me.Username != user {
+		return nil, fmt.Errorf("sonic: transport local runs as %s, but ssh: names %s; the service must run as the login user", me.Username, user)
+	}
+	probe := strings.TrimSpace(opts["probe"])
+	if probe == "" {
+		return nil, errors.New("sonic: transport local proves an address move and the first STP enable by reaching options.probe; set options.probe host:port, or let the bridge fill it from the controller")
+	}
+	if _, _, err := net.SplitHostPort(probe); err != nil {
+		return nil, fmt.Errorf("sonic: options.probe must be host:port, got %q", probe)
+	}
+	c := NewCollector(&sshrun.Local{})
+	c.Redial = func(string) sshrun.Runner { return &sshrun.Local{} }
+	c.Dial = host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		c.Dial = h
+	}
+	c.Probe, c.ProbeAddr = tcpProbe, probe
+	for _, k := range []string{"ssh_key", "known_hosts"} {
+		if opts[k] != "" {
+			c.Log.Printf("sonic: transport local: options.%s is ignored (nothing is dialled)", k)
+		}
+	}
+	c.Log.Printf("sonic: transport local: commands run on this switch as %s; reachability is proven against %s", user, probe)
 	return c, nil
 }
 

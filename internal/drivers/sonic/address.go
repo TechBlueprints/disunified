@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/sshrun"
 )
 
 // ApplyAddress implements devicemodel.AddressController (§6.4): the
@@ -25,6 +26,14 @@ import (
 // old one never went. If the finish batch fails, nothing is saved and the
 // new address stays a pending dial target the runner falls back to.
 //
+// On the switch itself (transport local) there is nothing to dial: the
+// proof is a TCP connection to the probe address (the controller's inform
+// host:port) bound to the new address as its source, and the finish batch
+// runs through the same local runner (docs/drivers/sonic-on-switch.md §3).
+// It proves a route to the controller's host from the new address and an
+// answer to a SYN from it, not that the controller accepts an inform from
+// it -- the same gap the SSH dial has.
+//
 // known_hosts: sshrun checks the host key by address, so the operator's
 // known_hosts must carry the switch's key under the new address too (the
 // key is the same; add a line for the new address, or a host pattern that
@@ -38,7 +47,7 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 		return false, fmt.Errorf("sonic: static address without an IP and prefix length")
 	}
 	c.mu.Lock()
-	snap, st, dial, redial := c.last, c.state, c.Dial, c.Redial
+	snap, st, dial, redial, probe, probeAddr := c.last, c.state, c.Dial, c.Redial, c.Probe, c.ProbeAddr
 	c.mu.Unlock()
 	if snap == nil || st == nil {
 		return false, fmt.Errorf("sonic: no snapshot yet")
@@ -125,13 +134,26 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if err := c.runBatch(ctx, first); err != nil {
 		return false, fmt.Errorf("sonic: adding %s on %s: %w", newAddr, cur.Iface, err)
 	}
-	if redial == nil {
+	// The proof: on the switch itself (transport local), a connection to
+	// the probe address from the new one -- the finish batch then runs
+	// through the runner the bridge has; over SSH, a fresh dial of the new
+	// address, which the finish batch runs through.
+	var nr sshrun.Runner
+	answers := "answers at " + d.IP
+	switch {
+	case probe != nil:
+		if err := probe(ctx, probeAddr, d.IP); err != nil {
+			return false, c.undoAddress(ctx, cur.Iface, newAddr, d.Gateway, gwChange, fmt.Errorf("the switch does not reach %s from %s (%v)", probeAddr, d.IP, err))
+		}
+		nr, answers = c.runner(), fmt.Sprintf("reaches %s from %s", probeAddr, d.IP)
+	case redial == nil:
 		return false, c.undoAddress(ctx, cur.Iface, newAddr, d.Gateway, gwChange, fmt.Errorf("this runner cannot be re-dialled"))
-	}
-	nr := redial(d.IP)
-	if _, err := nr.Run(ctx, "true", ""); err != nil {
-		_ = nr.Close()
-		return false, c.undoAddress(ctx, cur.Iface, newAddr, d.Gateway, gwChange, fmt.Errorf("the switch does not answer at %s (%v; is its host key in known_hosts for that address?)", d.IP, err))
+	default:
+		nr = redial(d.IP)
+		if _, err := nr.Run(ctx, "true", ""); err != nil {
+			_ = nr.Close()
+			return false, c.undoAddress(ctx, cur.Iface, newAddr, d.Gateway, gwChange, fmt.Errorf("the switch does not answer at %s (%v; is its host key in known_hosts for that address?)", d.IP, err))
+		}
 	}
 	// Proven: finish through the new address. From here on a lost
 	// connection must not strand the bridge on the old address, so the new
@@ -144,8 +166,10 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	finish = append(finish, "sudo config save -y")
 	c.Log.Printf("sonic address (via %s): %s", d.IP, strings.Join(finish, " ; "))
 	if _, err := nr.Run(ctx, batchCommand, "set -e\n"+strings.Join(finish, "\n")+"\n"); err != nil {
-		_ = nr.Close()
-		return false, fmt.Errorf("sonic: the switch answers at %s, but removing %s did not leave %s on %s (%w); nothing was saved -- the bridge keeps %s and tries %s if that stops answering", d.IP, oldAddr, newAddr, cur.Iface, err, dial, d.IP)
+		if probe == nil {
+			_ = nr.Close()
+		}
+		return false, fmt.Errorf("sonic: the switch %s, but removing %s did not leave %s on %s (%w); nothing was saved -- the bridge keeps %s and tries %s if that stops answering", answers, oldAddr, newAddr, cur.Iface, err, dial, d.IP)
 	}
 	c.adoptDial(d.IP, nr)
 	c.noteAddress(cur, d, oldGW, dnsAdd, dnsDel)

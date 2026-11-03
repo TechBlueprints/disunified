@@ -92,6 +92,12 @@ func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
 			c.mu.Lock()
 			from, to := c.sshFrom, c.sshTo
 			c.mu.Unlock()
+			// On the switch itself there is no SSH session: the far end
+			// that must keep reaching the switch is the probe's host (the
+			// controller), whose replies arrive on the uplink's ingress.
+			if from == "" {
+				from = c.probeHost()
+			}
 			dial := []string{to}
 			if to == "" {
 				dial = dialAddrs(c.CurrentAddress())
