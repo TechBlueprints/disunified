@@ -269,6 +269,9 @@ and state under `/host/disunified`, which survives an image install.
 **Check:** `systemctl is-active disunified` says `active`, the log says
 `transport local: commands run on this switch as admin` and, for an adopted
 device, `resuming adopted state`; the controller shows the switch connected.
+Read the log with `sudo journalctl -u disunified -t disunified`: every
+`sudo` the driver runs logs its own session lines into the unit's journal,
+and `-t disunified` keeps only the bridge's.
 
 **Image installs.** Only `/host` and `/etc/sonic` survive a SONiC image
 install; the package itself is in the image's overlay and does not. SONiC
