@@ -139,3 +139,23 @@ func TestChildOnAMissingPort(t *testing.T) {
 		t.Errorf("log = %q", buf.String())
 	}
 }
+
+// report: lldp leaves the MAC tables alone; report: mac leaves the
+// neighbour alone.
+func TestChildReportOneEntry(t *testing.T) {
+	snap := dx010Snapshot(t)
+	l := &Loop{cfg: Config{Logger: log.New(&strings.Builder{}, "", 0), Children: []Child{
+		{Port: 2, MAC: "02:00:00:00:00:a2", Name: "x", Report: "lldp"},
+		{Port: 3, MAC: "02:00:00:00:00:a3", Name: "y", Report: "mac"},
+	}}}
+	s := l.withChildren(snap)
+	if p := s.Ports[1]; len(p.MACs) != 0 || p.Neighbor == nil || p.Neighbor.ChassisID != "02:00:00:00:00:a2" {
+		t.Errorf("lldp only: port 2 MACs %v neighbour %+v", p.MACs, p.Neighbor)
+	}
+	if p := s.Ports[2]; len(p.MACs) != 1 || p.Neighbor != nil {
+		t.Errorf("mac only: port 3 MACs %v neighbour %+v", p.MACs, p.Neighbor)
+	}
+	if len(s.MACTable) != len(snap.MACTable)+1 {
+		t.Errorf("switch MAC table grew by %d, want 1", len(s.MACTable)-len(snap.MACTable))
+	}
+}

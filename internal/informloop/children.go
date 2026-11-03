@@ -19,6 +19,9 @@ type Child struct {
 	Port int
 	MAC  string // lower-case colon form
 	Name string // the neighbour's system name
+	// Report: "" = both entries, "lldp" or "mac" = only that one -- for
+	// telling which of the two the controller places by.
+	Report string
 }
 
 // withChildren returns snap with the declared children reported on their
@@ -46,13 +49,16 @@ func (l *Loop) withChildren(snap *devicemodel.Snapshot) *devicemodel.Snapshot {
 		}
 		e := devicemodel.MACEntry{MAC: c.MAC, VLAN: vlan, PortIndex: c.Port, LastMove: at}
 		has := func(m devicemodel.MACEntry) bool { return m.MAC == c.MAC }
-		if !slices.ContainsFunc(p.MACs, has) {
-			p.MACs = append(slices.Clip(p.MACs), e)
-		}
-		if !slices.ContainsFunc(s.MACTable, has) {
-			s.MACTable = append(slices.Clip(s.MACTable), e)
+		if c.Report != "lldp" {
+			if !slices.ContainsFunc(p.MACs, has) {
+				p.MACs = append(slices.Clip(p.MACs), e)
+			}
+			if !slices.ContainsFunc(s.MACTable, has) {
+				s.MACTable = append(slices.Clip(s.MACTable), e)
+			}
 		}
 		switch {
+		case c.Report == "mac":
 		case p.Neighbor == nil:
 			p.Neighbor = &devicemodel.Neighbor{ChassisID: c.MAC, SystemName: c.Name, PortID: "eth0", IsBridge: true, Child: true}
 			l.noteChild(c.Port, "")

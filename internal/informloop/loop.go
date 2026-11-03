@@ -270,7 +270,14 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 		l.state = StateConnected
 	}
 	for _, c := range cfg.Children {
-		cfg.Logger.Printf("[%s] child %s (%s) reported on port %d: in its MAC table, and as its LLDP neighbour while it has none", desc.MAC, c.Name, c.MAC, c.Port)
+		what := "in its MAC table, and as its LLDP neighbour while it has none"
+		switch c.Report {
+		case "lldp":
+			what = "as its LLDP neighbour only, while it has none"
+		case "mac":
+			what = "in its MAC table only"
+		}
+		cfg.Logger.Printf("[%s] child %s (%s) reported on port %d: %s", desc.MAC, c.Name, c.MAC, c.Port, what)
 	}
 	if len(cfg.Children) > 0 {
 		sess.SetSnapshot(l.withChildren(sess.Snapshot()))

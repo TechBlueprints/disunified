@@ -269,7 +269,7 @@ func configOptions(f *config.File, sw config.Device) options {
 func childrenOf(cs []config.Child) []informloop.Child {
 	var out []informloop.Child
 	for _, c := range cs {
-		out = append(out, informloop.Child{Port: c.Port, MAC: c.MAC, Name: c.Name})
+		out = append(out, informloop.Child{Port: c.Port, MAC: c.MAC, Name: c.Name, Report: c.Report})
 	}
 	return out
 }

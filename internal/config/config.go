@@ -81,6 +81,9 @@ type Child struct {
 	Port int    `yaml:"port"` // front-panel port index
 	MAC  string `yaml:"mac"`  // the child's MAC, as its own bridge reports it
 	Name string `yaml:"name"` // reported as the neighbour's system name (default: the MAC)
+	// Report: "" = both entries; "lldp" or "mac" reports only that one (an
+	// experiment's knob: which of the two the controller places by).
+	Report string `yaml:"report"`
 }
 
 // Control says which of the device's ports and outlets the bridge writes
@@ -199,6 +202,9 @@ func Load(path string) (*File, error) {
 				return nil, fmt.Errorf("%s: device %q: children[%d]: mac %q is not a 6-byte MAC", path, s.Name, j, c.MAC)
 			}
 			c.MAC = hw.String()
+			if c.Report != "" && c.Report != "lldp" && c.Report != "mac" {
+				return nil, fmt.Errorf("%s: device %q: children[%d]: report must be lldp, mac or unset (both), got %q", path, s.Name, j, c.Report)
+			}
 			if c.Name == "" {
 				c.Name = c.MAC
 			}

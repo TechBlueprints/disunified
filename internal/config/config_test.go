@@ -123,11 +123,11 @@ func TestChildren(t *testing.T) {
 		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: proxmox\n    ssh: root@node\n    children:\n"+children), 0o644)
 		return Load(p)
 	}
-	f, err := load("      - {port: 54, mac: 02:00:00:00:00:AB, name: lanes}\n      - {port: 2, mac: 02-00-00-00-00-cd}\n")
+	f, err := load("      - {port: 54, mac: 02:00:00:00:00:AB, name: lanes}\n      - {port: 2, mac: 02-00-00-00-00-cd, report: mac}\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Child{{Port: 54, MAC: "02:00:00:00:00:ab", Name: "lanes"}, {Port: 2, MAC: "02:00:00:00:00:cd", Name: "02:00:00:00:00:cd"}}
+	want := []Child{{Port: 54, MAC: "02:00:00:00:00:ab", Name: "lanes"}, {Port: 2, MAC: "02:00:00:00:00:cd", Name: "02:00:00:00:00:cd", Report: "mac"}}
 	if got := f.Devices[0].Children; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("children = %+v, want %+v", got, want)
 	}
@@ -136,6 +136,7 @@ func TestChildren(t *testing.T) {
 		"      - {port: 3, mac: not-a-mac}\n",
 		"      - {port: 3, mac: 02:00:00:00:00:00:00:01}\n",
 		"      - {port: 3, mac: 02:00:00:00:00:ab}\n      - {port: 3, mac: 02:00:00:00:00:cd}\n",
+		"      - {port: 3, mac: 02:00:00:00:00:ab, report: arp}\n",
 	} {
 		if _, err := load(bad); err == nil {
 			t.Errorf("accepted %q", bad)

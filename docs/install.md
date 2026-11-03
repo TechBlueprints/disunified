@@ -117,7 +117,8 @@ child is reported as the port's neighbour (chassis id = the MAC, system
 name = `name`, default the MAC). A port that already has a neighbour keeps
 it, with a log line. A child is never the device's uplink. Reported values
 only: nothing is written to the device; the start log has one line per
-child.
+child. `report: lldp` or `report: mac` on a child reports only that entry
+(for telling which one the controller places by; unset = both).
 
 ## 4. First run and adoption
 
