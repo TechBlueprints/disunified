@@ -191,6 +191,11 @@ a breakout DAC to a bonded host.
 
 ## 6. Shape 2: the lane switch
 
+**Build spec (2026-11-02): [`docs/drivers/breakout.md`](drivers/breakout.md)** --
+the parent contract (`LaneProvider`), the SONiC implementation, the loop
+and config changes, tests and the live order. What follows is the design
+discussion it came from.
+
 A split cage is presented to the controller as a second device: a small
 UniFi switch whose uplink is the breakout cable and whose ports are the
 lanes. The cage on the real switch carries that switch; the LAG is then
