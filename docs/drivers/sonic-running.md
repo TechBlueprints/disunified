@@ -145,7 +145,7 @@ image. Two things do not, and one platform needs help:
 | Ports, names, speed, FEC, VLANs, LAG, jumbo, storm control, NTP, syslog, SNMP, time zone, hostname, SSH keys, Restart, locate, breakout, static IP | yes | yes | yes |
 | RSTP, BPDU guard, edge ports, loop protection | yes, through **disunified-l2d** (mstpd built on the switch by the driver; no patch, §4) | yes, the same | yes, the same |
 | Rogue DHCP Server Detection, switch IP ACL rules | yes, the driver's own ACL tables (no patch, §4) | yes | yes |
-| **Port mirroring** | yes: 202505's orchagent binds without asking (verified on the VS; expected on the DX010, not run there) | **no on Broadcom SAIs that answer the capability query wrongly** (the DX010's legacy-TH SAI, Tomahawk-5 per upstream #28139): the CLI refuses, orchagent creates the session unbound; the driver refuses with a note | yes: `sonic-swss 0002` takes the gate out (the hardware binds, proven by probe) -- image built, install pending on the DX010 |
+| **Port mirroring** | yes: 202505's orchagent binds without asking (verified on the VS; expected on the DX010, not run there) | **no on Broadcom SAIs that answer the capability query wrongly** (the DX010's legacy-TH SAI, Tomahawk-5 per upstream #28139): the CLI refuses, orchagent creates the session unbound; the driver refuses with a note | **yes, verified live on the DX010 2026-11-02**: `sonic-swss 0002` takes the gate out and the chip binds both directions (`sonic.md` §11.10) |
 | **IGMP snooping** | no: community SONiC has no snooping daemon; the driver logs the keys | no | the Micas l2mcd series built in and verified on the virtual switch; **not yet enabled on the DX010, and the driver does not write the keys yet** (§3.3) |
 | **The DX010 itself on 202511** | n/a | **does not run**: orchagent's telemetry query crashes the Tomahawk-1 SAI, the CPLD driver panics kernel 6.12 on its first write, pmon has no platform (no fans, PSUs, temperatures) | runs: the four platform patches (§3.1) |
 | Port isolation, 802.1X, LLDP-MED off, MAC ACL rules | no (refused with a log; MAC rules need an orchagent patch no one has written) | no | no |
@@ -241,20 +241,22 @@ the CPLD watchdog, the trace that found it) is §8.14.
 
 ### 3.3 Status on the DX010, 2026-11-02
 
-- Running: `igmp-202511.20261101-22cac574e` (the series through
-  sonic-buildimage 0010, with the CPLD fix as a hand-swapped platform deb
-  equivalent to 0011), installed 2026-11-02, the full driver retest passed
-  on it (§11.8), adopted as `USWF07D`, the bridge on the switch (§2).
-- Built, install pending: `igmp-202511.20261102-e53777446`, the same plus
-  sonic-swss 0002 (port mirroring) and 0011 built in. Its read-back plan is
-  §11.10.
+- Running: `igmp-202511.20261102-e53777446`, the full series of §3.1
+  (installed and confirmed 2026-11-02 evening; port mirroring verified on
+  it the same hour, §11.10). The image before it,
+  `igmp-202511.20261101-22cac574e` (the series through sonic-buildimage
+  0010, with the CPLD fix as a hand-swapped platform deb), carried the full
+  driver retest (§11.8) and stays installed as the other slot. Adopted as
+  `USWF07D`, the bridge on the switch (§2). Every image the unit has run,
+  with checksums and manifests, is kept on the deployment host.
 - IGMP snooping: in the image, `l2mcd` shipped disabled, verified on the
   virtual switch with two test hosts (§8.14 V1-V7); the hardware steps
   (§8.9 H2-H5) and the driver's write path for the controller's
   `igmp_*` keys (§8.10) are not done, so the driver does not claim the
   feature and UniFi does not offer it yet.
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
-  DX010; confirmations there are due. The mirror finding is on #28139.
+  DX010; confirmations there are due. The mirror finding is on #28139,
+  where the egress result (both directions bind) still needs adding.
 
 ## 4. What is not a patch
 

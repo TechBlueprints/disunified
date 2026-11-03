@@ -3516,19 +3516,32 @@ switch); `sonic-installer cleanup` is never run. After `confirm`, redo the
 settings that live in the image's overlay (the fan floor; the follow-up
 register lists them).
 
-**Read-back after the install (to run).** STATE_DB
-`SWITCH_CAPABILITY|switch` `PORT_INGRESS_MIRROR_CAPABLE true` and
-`PORT_EGRESS_MIRROR_CAPABLE true`; then from the UniFi UI an empty cage pair
-(cage 5 mirrored onto cage 4, as §11.8's 5b; never a port with a live link):
-`MIRROR_SESSION|dui<dst>` with `src_port`/`direction BOTH`, orchagent's
-syslog with the session activated and no `setUnsetPortMirror` refusal, and
-in the syncd container `bcmcmd "mirror show"` listing the source with both
-its ingress and egress entries; then the removal and `No mirror ports
-configured`. Captured into `docs/fixtures/sonic-igmp-202511.<build id>/`
-through the scrub scripts. **Packet-level proof is out of scope**: it needs
-two cabled devices on the DX010 (a sender on the source cage, a capture
-host on the destination); the SDK's mirror table is the proof available
-without them.
+**Installed and verified 2026-11-02 (03:53-04:05Z).** The image went in
+with `sonic-upgrade.sh arm` (the 202505 image deleted as announced, its
+copy on the Podman host; the on-switch bridge's deb, mstpd and the platform
+deb carried), `sudo reboot`, SSH back after 185 s with swss, syncd, l2d
+(RSTP, the same root) and the bridge all active -- the bridge reinstalled
+by the image's first boot, its start-up reconcile setting the VLAN MTUs,
+the first inform answered 200 with 0 of 32 ports changed -- and `confirm`
+at 03:58Z. STATE_DB `SWITCH_CAPABILITY|switch` reads
+`PORT_INGRESS_MIRROR_CAPABLE true` and `PORT_EGRESS_MIRROR_CAPABLE true`
+(orchagent's boot log still says `port ingress mirror capability 0
+(recorded as supported)`). Then cage 4 set to mirror cage 5 through the
+REST API (`op_mode mirror`, `mirror_port_idx 5`, both cages empty): the
+push arrived on the next cycle and the driver's ordinary path ran
+(`config vlan member del 4094 Ethernet12 ; config mirror_session span add
+dui4 Ethernet12 Ethernet16 both`), orchagent logged `Activated mirror
+session dui4` with no `setUnsetPortMirror` refusal, STATE_DB `status
+active`, and `bcmcmd "mirror show"` listed **both** `ce4: Mirror ingress
+to local port ce3` and `ce4: Mirror egress to local port ce3` -- so the
+egress attribute, never probed by hand, binds on this SAI too. The
+removal (`config mirror_session remove dui4 ; config vlan member add -u
+4094 Ethernet12`) left `No mirror ports configured` and the cage back in
+its VLAN. No new fixture was captured: the build differs from
+`22cac574e`'s capture only in the two capability rows. **Packet-level
+proof is out of scope**: it needs two cabled devices on the DX010 (a
+sender on the source cage, a capture host on the destination); the SDK's
+mirror table is the proof available without them.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
