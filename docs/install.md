@@ -60,7 +60,9 @@ git clone https://github.com/TechBlueprints/disunified && cd disunified
 go build ./cmd/disunified
 ```
 The binaries from each release are attached to it on GitHub as well; they are
-static, so `tar xzf` and run.
+static, so `tar xzf` and run. So is a `.deb` for running the bridge on a
+SONiC switch itself (§7; when to choose that over a container:
+[`docs/drivers/sonic-running.md`](drivers/sonic-running.md)).
 
 Steps 2 and 4 below are written as `./disunified …`. With the image, that
 is `docker run --rm …  ghcr.io/techblueprints/disunified:latest …`

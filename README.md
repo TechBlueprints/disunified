@@ -26,7 +26,7 @@ control (the controller's config applied back to the device).
 | Podman host (containers as ports) | `podman` | `UDC48X6` ("USW Leaf") | Podman 5.8.2, AlmaLinux 10.2 |
 | APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
 | APC Back-UPS Pro network model (its NMC's web pages) | `apc-backups` | `USPDA2B` ("UPS 2U Pro") | BG500, UPS 05.3, NMC AOS 6.0.1 |
-| Community SONiC switch (Redis tables + `config` CLI over SSH) | `sonic` | `USWF07D` ("ECS Core") | the SONiC virtual switch, build 202505.1238524, as SKU `Seastone-DX010` (no hardware yet) |
+| Community SONiC switch (Redis tables + `config` CLI; the bridge over SSH, or on the switch itself) | `sonic` | `USWF07D` ("ECS Core") | Celestica Seastone DX010 on this repo's patched 202511 image, with the bridge running on the switch; the SONiC virtual switch on 202505 |
 
 "Verified on" means exactly that one device. What each driver has and has
 not been tried on, and what a pull request needs to extend it (a PVE 8 node,
@@ -74,9 +74,13 @@ What each driver does today:
   jumbo, NTP, SSH-key, reboot and address settings written through SONiC's
   own `config` CLI. Like UniFi's own SONiC switches, it takes the UniFi
   name as its hostname and runs its aggregates with
-  LACP fast rate and min-links 1. Verified on the SONiC virtual switch (build
-  202505.1238524) only; hardware is pending
-  ([`docs/drivers/sonic.md`](docs/drivers/sonic.md)).
+  LACP fast rate and min-links 1. Verified on the SONiC virtual switch
+  (202505) and on a Celestica DX010, which runs the bridge on the switch
+  itself from a `.deb` so a core switch depends on nothing behind its own
+  links. The two deployments, and the patched SONiC image that adds IGMP
+  snooping and port mirroring on hardware whose SAI denies it, are mapped in
+  [`docs/drivers/sonic-running.md`](docs/drivers/sonic-running.md); the
+  working record is [`docs/drivers/sonic.md`](docs/drivers/sonic.md).
 - **`apc-ups`** — an APC Smart-UPS read over Modbus TCP from its own
   SmartConnect port (enabled at the LCD; no network card, no cable): the
   controller gets the battery pipeline (charge, runtime, on-battery, low
@@ -122,7 +126,7 @@ running it against anything you care about.
   the bridge from the device it manages. A wrong
   click in the UniFi UI, a controller bug, or a bug here can cut off the
   device, the hosts behind it, or the bridge itself.
-- **Verified on very little hardware:** the seven drivers above (one of them on a virtual switch only), against UniFi
+- **Verified on very little hardware:** the seven drivers above, each on one device, against UniFi
   Network 10.6 on a UniFi OS gateway. Any other device, OS version or
   controller version is untested. Several features are marked as modelled but
   never verified live in [`docs/feature-map.md`](docs/feature-map.md).

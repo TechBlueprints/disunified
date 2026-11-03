@@ -16,6 +16,12 @@ The driver targets **community SONiC**, not the DX010: SONiC is Debian
 with the switch state in Redis, and every SONiC switch exposes the same
 databases and `config` CLI. The DX010 is the first unit it will run on.
 
+**Since 2026-11-02 the DX010 runs this repo's patched 202511 image (§8) with
+the bridge on the switch itself (§12).** This file is the working record, in
+the order things happened. The reader's map -- the two deployments (the
+bridge over SSH, or on the switch) and the image patches by what each
+enables -- is [`sonic-running.md`](sonic-running.md).
+
 ## 0. The device
 
 | | |

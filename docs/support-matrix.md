@@ -195,7 +195,7 @@ syslog lines are stamped an hour behind.
 
 ---
 
-## `sonic` — community SONiC switch (control verified live on the virtual switch, build 202505.1238524, with the exceptions below; the Celestica DX010 adopted on build 202505.1238526, 2026-10-31)
+## `sonic` — community SONiC switch (control verified live on the virtual switch, build 202505.1238524, with the exceptions below; the Celestica DX010 adopted on build 202505.1238526, 2026-10-31, retested in full on the patched 202511 image 2026-11-02 and running the bridge on the switch itself since then -- [`drivers/sonic-running.md`](drivers/sonic-running.md) maps the deployments and the image)
 
 Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixtures: [`fixtures/sonic-202505.1238524-ff3c0c9f6/`](fixtures/sonic-202505.1238524-ff3c0c9f6) (the VS guest) and [`fixtures/sonic-202505.1238526-ff3c0c9f6/`](fixtures/sonic-202505.1238526-ff3c0c9f6) (the DX010; the same commit); the reference for UniFi's own shapes is the ECS Aggregation's inform in [`fixtures/controller-10.6.109/`](fixtures/controller-10.6.109), and teamd's member records come from upstream SONiC's own test data ([`fixtures/sonic-utilities-202505/`](fixtures/sonic-utilities-202505), Apache-2.0).
 

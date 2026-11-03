@@ -52,6 +52,11 @@ are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 2026-11-01 from the ECS's and the DX010's captured pushes and verified live
 on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`);
 MAC ACL rules need an orchagent patch and are refused.
+**Since 2026-11-02 the DX010's bridge runs on the switch itself**
+(`options.transport: local`, a `.deb` whose config and state live in
+`/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two
+deployments and of the image patches by what each enables is
+`docs/drivers/sonic-running.md`.
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering
@@ -160,7 +165,8 @@ symlinked from outside the repo); every `control` flag is on.
 `state/<name>/device.json` holds the adopted key: one instance per device,
 keep the file. Logs: `run.log`, `inform-log/<name>/`. Since 2026-09-27 every
 deployed bridge (Arista, three Proxmox nodes, PDU, UPS, the Podman host
-itself) runs in **one** container on Clint's Podman host (`/opt/disunified`;
+itself; the DX010's ran there until 2026-11-02 and now runs on the switch,
+§1) runs in **one** container on Clint's Podman host (`/opt/disunified`;
 the UPS had its own stack for a day while its driver was new -- merged back,
 old dir kept as `/opt/disunified-ups.retired-20260927`, its volume as a
 backup). The container is on two networks: the podman bridge (to reach its
