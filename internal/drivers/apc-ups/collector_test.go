@@ -232,9 +232,6 @@ func TestReachabilityComesFromTheOperator(t *testing.T) {
 	if snap.System.GatewayMAC != "02:00:00:00:00:fe" {
 		t.Errorf("gateway MAC = %q, want lower-cased", snap.System.GatewayMAC)
 	}
-	if prefixLen("") != 0 || prefixLen("not-a-mask") != 0 {
-		t.Error("an absent or bad mask must give no prefix, not a guess")
-	}
 }
 
 // Without an operator-supplied MAC the device gets a stable locally

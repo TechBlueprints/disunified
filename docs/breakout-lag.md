@@ -238,6 +238,14 @@ is checked in §6.6.
   switch that appears by itself when a cage splits (and goes offline when
   it joins) is the UniFi-like version and waits for the loop to grow a
   dynamic device list.
+- **The parent's half exists (2026-11-02):** a device's `children:` list
+  (`[{port: N, mac: M, name: X}]`, `docs/install.md` §3) reports M in
+  port N's MAC table (native VLAN) and the switch's, and as port N's LLDP
+  neighbour (chassis id M, system name X, port id `eth0`, a bridge) while
+  the port has none of its own; a child is never the parent's uplink
+  (`Neighbor.Child`), and nothing is written to the device
+  (`internal/informloop/children.go`). The lane-switch driver declares
+  its cage's child through the same list.
 - **Collect:** the child is a view over its parent's latest snapshot. The
   SONiC collector keeps the per-lane ports it folds today
   (`Port.Lanes`/`Port.Interfaces` become real `Port`s on the side); the

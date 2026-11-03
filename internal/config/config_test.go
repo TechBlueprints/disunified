@@ -114,3 +114,31 @@ func TestRetiredControlKeysStillLoad(t *testing.T) {
 		t.Errorf("control = %+v", f.Devices[0].Control)
 	}
 }
+
+// children: a port, a MAC (normalised) and a name (default: the MAC); a bad
+// port, a bad MAC or two children on one port are config errors.
+func TestChildren(t *testing.T) {
+	load := func(children string) (*File, error) {
+		p := filepath.Join(t.TempDir(), "c.yaml")
+		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: proxmox\n    ssh: root@node\n    children:\n"+children), 0o644)
+		return Load(p)
+	}
+	f, err := load("      - {port: 54, mac: 02:00:00:00:00:AB, name: lanes}\n      - {port: 2, mac: 02-00-00-00-00-cd}\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Child{{Port: 54, MAC: "02:00:00:00:00:ab", Name: "lanes"}, {Port: 2, MAC: "02:00:00:00:00:cd", Name: "02:00:00:00:00:cd"}}
+	if got := f.Devices[0].Children; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("children = %+v, want %+v", got, want)
+	}
+	for _, bad := range []string{
+		"      - {port: 0, mac: 02:00:00:00:00:ab}\n",
+		"      - {port: 3, mac: not-a-mac}\n",
+		"      - {port: 3, mac: 02:00:00:00:00:00:00:01}\n",
+		"      - {port: 3, mac: 02:00:00:00:00:ab}\n      - {port: 3, mac: 02:00:00:00:00:cd}\n",
+	} {
+		if _, err := load(bad); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}

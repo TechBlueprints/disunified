@@ -149,7 +149,7 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
 
 - [`internal/devicemodel`](internal/devicemodel) — the vendor-neutral model of a device and the
   driver contract.
-- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `sonic`, `apc-pdu`, `apc-ups`, `apc-backups`), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
+- `internal/drivers/<driver>` — one driver per vendor/OS (`arista-eos`, `proxmox`, `podman`, `sonic`, `apc-pdu`, `apc-ups`, `apc-backups`, and `stub`, a file-described device for controller experiments), each with its own [`CLAUDE.md`](CLAUDE.md) of working notes; its write-up is `docs/drivers/<driver>.md`, its captures `docs/fixtures/<driver>-<version>/`, its scrub script `scripts/sanitize-<driver>.py`, and its wire-contract and replay cases `internal/device/contract_<driver>_test.go` and `internal/informloop/replay_<driver>_test.go`.
 - [`internal/device`](internal/device) — the inform session (forked from unifi-emu), payload,
   capability claims, persisted adoption state.
 - [`internal/unificfg`](internal/unificfg) — parses the controller's `system_cfg` pushes.

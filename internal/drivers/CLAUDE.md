@@ -62,6 +62,13 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   APC drivers share about the management card itself -- its `config.ini`
   (section parsing, the fixture runners' `Merge`) and the syslog section
   (`SyslogApplier`, behind `devicemodel.SyslogController`). A key it writes must exist in the card's own file.
+- **`reach` is not a driver** either: the `mac`, `netmask` and
+  `gateway_mac` options and the reported address for a device that cannot
+  report them itself (`apc-ups`, `stub`). A new driver with the same need
+  embeds `reach.Identity`; it does not copy it.
+- **`stub` is an instrument**, not a device: a snapshot from a file, no
+  write interface. Use it to ask the controller a question before building
+  a driver for the answer (`docs/drivers/stub.md`).
 - **A device's own address (`AddressController`)** is applied only when the
   driver can verify it will still reach the device afterwards; DHCP is
   declined by a driver that cannot predict the lease. Adopting a device

@@ -100,10 +100,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		m.Timeout = d
 	}
 	c := NewCollector(m)
-	c.Addr = m.Addr
-	c.MAC = strings.ToLower(strings.TrimSpace(cfg.Options["mac"]))
-	c.Netmask = strings.TrimSpace(cfg.Options["netmask"])
-	c.GatewayMAC = strings.ToLower(strings.TrimSpace(cfg.Options["gateway_mac"]))
+	c.SetOptions(m.Addr, cfg.Options)
 	if v := cfg.Options["shed_on_battery_after"]; v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d <= 0 || d > maxShedOnBattery {

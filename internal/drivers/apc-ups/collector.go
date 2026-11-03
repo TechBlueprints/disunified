@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/reach"
 )
 
 // The register map is APC's Smart-UPS Modbus map as NUT's apc_modbus driver
@@ -211,28 +211,18 @@ var changeCause = map[uint16]string{
 // Collector is an open connection to one APC Smart-UPS.
 type Collector struct {
 	r Runner
-	// Addr is the address dialled, reported as the device's own so the
-	// controller has somewhere to place it; MAC is the SmartConnect port's
-	// address when the operator supplied it.
-	Addr string
-	MAC  string
-	// Netmask and GatewayMAC are the unit's network as the operator knows it.
-	// Modbus carries no IP configuration, and the controller places a device
-	// by its netmask and gateway MAC (a device without them has no parent in
-	// the topology -- the lesson that cost a day on the Arista).
-	Netmask    string
-	GatewayMAC string
-	// Resolve turns the dialled host into addresses when it is a name rather
-	// than a literal. The UPS's address is held only by a DHCP lease (nothing
+	// Identity is the unit's MAC (the SmartConnect port's, when the operator
+	// supplied it), the address dialled and reported, and the network mask
+	// and gateway MAC the controller places it by: Modbus carries no IP
+	// configuration. The UPS's address is held only by a DHCP lease (nothing
 	// can push one onto it), and the gateway keeps a DNS name for the lease
-	// itself -- one that survives adoption deleting the client record. Dialling
-	// that name follows the lease; the resolved address is what is reported.
-	Resolve func(ctx context.Context, host string) ([]net.IP, error)
+	// itself -- one that survives adoption deleting the client record.
+	// Dialling that name follows the lease; the resolved address is reported.
+	reach.Identity
 
-	mu       sync.Mutex
-	last     *devicemodel.Snapshot
-	resolved string // last address the name resolved to, for change logging
-	warned   map[string]bool
+	mu     sync.Mutex
+	last   *devicemodel.Snapshot
+	warned map[string]bool
 	// PowerEventSettings are the thresholds for the bridge's power-event
 	// lines (options low_runtime, load_alarm_w): the unit has no log of
 	// its own, so the loop logs its transitions.
@@ -246,7 +236,11 @@ type Collector struct {
 }
 
 // NewCollector builds a collector over a runner.
-func NewCollector(r Runner) *Collector { return &Collector{r: r, warned: map[string]bool{}} }
+func NewCollector(r Runner) *Collector {
+	c := &Collector{r: r, warned: map[string]bool{}}
+	c.Driver = "apc-ups"
+	return c
+}
 
 // Start reads the whole unit once, so an unreachable port, Modbus left
 // disabled at the LCD, or a unit that is not a Smart-UPS fails here rather
@@ -381,7 +375,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = c.system(static)
-	c.fillAddress(ctx, &snap.System)
+	c.Fill(ctx, &snap.System)
 	snap.System.Battery = c.battery(status, dyn, static, cfg)
 	// The UPS measures its whole output; this is the aggregate the overview's
 	// power card reads, the same fields a metered PDU fills.
@@ -428,7 +422,6 @@ func (c *Collector) system(static []uint16) devicemodel.System {
 	if sys.MAC == "" {
 		sys.MAC = syntheticMAC(sys.Serial)
 	}
-	sys.GatewayMAC = strings.ToLower(c.GatewayMAC)
 	return sys
 }
 
@@ -567,17 +560,6 @@ func regString(regs []uint16, off, n int) string {
 	return strings.TrimRight(strings.TrimSpace(strings.TrimRight(string(b), "\x00")), " ")
 }
 
-// prefixLen turns a dotted netmask into a prefix length; 0 when absent or
-// unparseable, which the payload reports as no netmask.
-func prefixLen(mask string) int {
-	ip := net.ParseIP(mask)
-	if ip == nil {
-		return 0
-	}
-	ones, _ := net.IPMask(ip.To4()).Size()
-	return ones
-}
-
 // syntheticMAC derives a stable locally-administered unicast address from the
 // unit's serial, for a bridged device adopted under its own identity rather
 // than the SmartConnect port's. Adopting under the port's real MAC replaces
@@ -586,50 +568,4 @@ func prefixLen(mask string) int {
 func syntheticMAC(serial string) string {
 	h := sha256.Sum256([]byte("apc-ups " + serial))
 	return fmt.Sprintf("02:%02x:%02x:%02x:%02x:%02x", h[0], h[1], h[2], h[3], h[4])
-}
-
-// fillAddress reports the unit's address: the dialled literal, or what the
-// dialled name resolves to right now. A name that stops resolving leaves
-// the address unreported rather than stale.
-func (c *Collector) fillAddress(ctx context.Context, sys *devicemodel.System) {
-	host, _, err := net.SplitHostPort(c.Addr)
-	if err != nil {
-		host = c.Addr
-	}
-	ip := host
-	if net.ParseIP(host) == nil {
-		resolve := c.Resolve
-		if resolve == nil {
-			resolve = func(ctx context.Context, h string) ([]net.IP, error) {
-				addrs, err := net.DefaultResolver.LookupIPAddr(ctx, h)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]net.IP, 0, len(addrs))
-				for _, a := range addrs {
-					out = append(out, a.IP)
-				}
-				return out, nil
-			}
-		}
-		ips, err := resolve(ctx, host)
-		ip = ""
-		for _, a := range ips {
-			if v4 := a.To4(); v4 != nil {
-				ip = v4.String()
-				break
-			}
-		}
-		if err != nil || ip == "" {
-			log.Printf("apc-ups: %s does not resolve to an IPv4 address (%v); address unreported this cycle", host, err)
-			return
-		}
-		c.mu.Lock()
-		if c.resolved != "" && c.resolved != ip {
-			log.Printf("apc-ups: %s now resolves to %s (was %s): following the lease", host, ip, c.resolved)
-		}
-		c.resolved = ip
-		c.mu.Unlock()
-	}
-	sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: ip, PrefixLen: prefixLen(c.Netmask)}}
 }

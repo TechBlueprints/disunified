@@ -1,0 +1,13 @@
+# Shape 1's first question (docs/breakout-lag.md §5.1): what the controller
+# draws for a port reporting 75000 Mb/s (three 25G lanes summed), a speed no
+# UniFi profile has. Port 1 carries it; the rest as flexxg-4x25g.yaml.
+hostname: lane-switch
+serial: SSJ00000000
+version: 1.0.0
+capabilities: {fec: true, lacp: true, aggregate_sessions: 8}
+ports:
+  - {index: 1, ifname: Ethernet4, up: true, enabled: true, speed: 75000, full_duplex: true, media: SFP28, speed_caps: [10000, 25000], fec: rs-fec, optic_present: true}
+  - {index: 2, ifname: Ethernet5, up: true, enabled: true, speed: 25000, full_duplex: true, media: SFP28, speed_caps: [10000, 25000], fec: rs-fec, optic_present: true}
+  - {index: 3, ifname: Ethernet6, up: true, enabled: true, speed: 25000, full_duplex: true, media: SFP28, speed_caps: [10000, 25000], fec: rs-fec, optic_present: true}
+  - {index: 4, ifname: Ethernet7, up: true, enabled: true, speed: 25000, full_duplex: true, media: SFP28, speed_caps: [10000, 25000], fec: rs-fec, optic_present: true}
+  - {index: 5, ifname: Ethernet4-7, up: true, enabled: true, speed: 100000, full_duplex: true, media: QSFP28, speed_caps: [100000], optic_present: true, is_uplink: true}

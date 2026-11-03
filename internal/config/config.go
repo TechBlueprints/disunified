@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -65,6 +66,21 @@ type Device struct {
 	Firmware string `yaml:"firmware"`
 
 	Control Control `yaml:"control"`
+
+	// Children are devices reported below this one's ports: each child's MAC
+	// is added to its port's MAC table and, when the port has no LLDP
+	// neighbour of its own, reported as the port's neighbour, so the
+	// controller can place a separately bridged device there (a breakout
+	// cage's lane switch, docs/breakout-lag.md §6.4). Reported values only:
+	// nothing is written to the device.
+	Children []Child `yaml:"children"`
+}
+
+// Child is one device reported on a port (see Device.Children).
+type Child struct {
+	Port int    `yaml:"port"` // front-panel port index
+	MAC  string `yaml:"mac"`  // the child's MAC, as its own bridge reports it
+	Name string `yaml:"name"` // reported as the neighbour's system name (default: the MAC)
 }
 
 // Control says which of the device's ports and outlets the bridge writes
@@ -166,6 +182,25 @@ func Load(path string) (*File, error) {
 		if s.Control.ApplyTimeout != "" {
 			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {
 				return nil, fmt.Errorf("%s: device %q: control.apply_timeout %q is not a positive duration (e.g. \"90s\")", path, s.Name, s.Control.ApplyTimeout)
+			}
+		}
+		ports := map[int]bool{}
+		for j := range s.Children {
+			c := &s.Children[j]
+			if c.Port <= 0 {
+				return nil, fmt.Errorf("%s: device %q: children[%d]: port must be a port index (1 or more)", path, s.Name, j)
+			}
+			if ports[c.Port] {
+				return nil, fmt.Errorf("%s: device %q: children[%d]: port %d already has a child", path, s.Name, j, c.Port)
+			}
+			ports[c.Port] = true
+			hw, err := net.ParseMAC(strings.TrimSpace(c.MAC))
+			if err != nil || len(hw) != 6 {
+				return nil, fmt.Errorf("%s: device %q: children[%d]: mac %q is not a 6-byte MAC", path, s.Name, j, c.MAC)
+			}
+			c.MAC = hw.String()
+			if c.Name == "" {
+				c.Name = c.MAC
 			}
 		}
 		if s.UDAPIVersion == "" {

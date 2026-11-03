@@ -63,6 +63,11 @@ itself) -- with the guards in [`internal/drivers/CLAUDE.md`](../internal/drivers
    out. That is how the Back-UPS outlet control was captured with both
    outlets still on ([`docs/drivers/apc-backups.md`](drivers/apc-backups.md) §3). For a
    single-step write, capture it on something that carries nothing.
+5. **Ask the controller before building.** A question about what the
+   controller or the UI does with a shape (a profile, a port speed, a
+   placement, the push an edit sends) can be answered with the `stub`
+   driver, which reports a file and writes nothing
+   ([`docs/drivers/stub.md`](drivers/stub.md)).
 
 ### APC network cards: which surface a card offers
 

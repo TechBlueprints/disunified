@@ -33,6 +33,9 @@ devices:                             # "switches:" is still accepted (the pre-re
       #                              # snooping, NTP, the remote syslog host, the hostname, SSH keys,
       #                              # SNMP and Restart (a real reload) -- the device's own settings for
       #                              # them are replaced. A driver applies what its device can take.
+    # children:                      # devices reported below a port: the MAC in its MAC table and, while
+    #   - {port: 54, mac: "02:00:00:00:00:a5", name: lane-switch}   # it has no LLDP neighbour, as the
+    #                                # neighbour -- so the controller places them there (docs/install.md §3)
 
 
   # A Proxmox VE node: its bridge is the switch, its guests are the ports

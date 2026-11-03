@@ -169,6 +169,9 @@ type Config struct {
 	// DeviceName is the bridge's name for the device (its config entry),
 	// written as device= on power-event lines; "" = its MAC.
 	DeviceName string
+
+	// Children are devices reported below this device's ports (children.go).
+	Children []Child
 }
 
 // Loop is one device's inform loop.
@@ -218,6 +221,7 @@ type Loop struct {
 	freshWarned  map[int]bool
 	layoutByPort map[int]string
 	faultSig     string
+	childNoted   map[int]string // per child's port, the condition last logged (children.go)
 	// power logs a power device's transitions when its driver asks for it
 	// (devicemodel.PowerEventSource); nil otherwise.
 	power *powerevent.Tracker
@@ -264,6 +268,12 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	}
 	if sess.Adopted() {
 		l.state = StateConnected
+	}
+	for _, c := range cfg.Children {
+		cfg.Logger.Printf("[%s] child %s (%s) reported on port %d: in its MAC table, and as its LLDP neighbour while it has none", desc.MAC, c.Name, c.MAC, c.Port)
+	}
+	if len(cfg.Children) > 0 {
+		sess.SetSnapshot(l.withChildren(sess.Snapshot()))
 	}
 	if ar, ok := cfg.Collector.(devicemodel.AddressReporter); ok {
 		l.driverAddr = ar.CurrentAddress()
@@ -1328,6 +1338,7 @@ func (l *Loop) collect(ctx context.Context) {
 	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
 		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
 	}
+	snap = l.withChildren(snap)
 	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
 	// Follow the driver's address only when it moved since start-up (or

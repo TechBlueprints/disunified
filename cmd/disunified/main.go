@@ -45,6 +45,7 @@ import (
 	_ "github.com/TechBlueprints/disunified/internal/drivers/podman"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/sonic"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/stub"
 )
 
 // buildVersion is this bridge's own version, stamped by the release build
@@ -209,6 +210,7 @@ type options struct {
 	logger                                     *log.Logger
 	stateDir                                   string
 	name                                       string // the config entry's name; "" from flags
+	children                                   []informloop.Child
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
@@ -259,7 +261,17 @@ func configOptions(f *config.File, sw config.Device) options {
 		applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
 		unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 		logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
+		children: childrenOf(sw.Children),
 	}
+}
+
+// childrenOf is a config entry's children as the loop takes them.
+func childrenOf(cs []config.Child) []informloop.Child {
+	var out []informloop.Child
+	for _, c := range cs {
+		out = append(out, informloop.Child{Port: c.Port, MAC: c.MAC, Name: c.Name})
+	}
+	return out
 }
 
 // openAndStart opens a driver and takes its first snapshot, closing the
@@ -620,6 +632,7 @@ func runOne(ctx context.Context, o options) error {
 	loopCfg := informloop.Config{
 		Logger:       log,
 		DeviceName:   o.name,
+		Children:     o.children,
 		NUT:          nutApplier(nut),
 		Interval:     o.interval,
 		ApplyTimeout: o.applyTimeout,

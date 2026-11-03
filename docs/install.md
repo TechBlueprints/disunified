@@ -102,6 +102,23 @@ environment variable names. Devices go under `devices:` (the pre-rename
 owns the device from adoption (§5). Set `control.ports: "off"` only if you
 want to look around in the UI before the bridge writes any port.
 
+`children:` on a device reports other devices below its ports, for a
+device the controller should place there that no switch sees (a breakout
+cage's lane switch, [`docs/breakout-lag.md`](breakout-lag.md) §6.4):
+
+```yaml
+    children:
+      - {port: 54, mac: "02:00:00:00:00:a5", name: lane-switch}
+```
+
+The MAC goes into the port's MAC table (in the port's native VLAN) and the
+switch's, and -- while the port has no LLDP neighbour of its own -- the
+child is reported as the port's neighbour (chassis id = the MAC, system
+name = `name`, default the MAC). A port that already has a neighbour keeps
+it, with a log line. A child is never the device's uplink. Reported values
+only: nothing is written to the device; the start log has one line per
+child.
+
 ## 4. First run and adoption
 
 ```sh

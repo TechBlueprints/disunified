@@ -346,7 +346,7 @@ type Snapshot struct {
 func (s *Snapshot) UplinkPort() int {
 	best := 0
 	for _, p := range s.Ports {
-		if p.Neighbor == nil || !p.Neighbor.IsBridge || !p.Up {
+		if p.Neighbor == nil || !p.Neighbor.IsBridge || p.Neighbor.Child || !p.Up {
 			continue
 		}
 		if p.Neighbor.IsRouter {
@@ -721,6 +721,10 @@ type Neighbor struct {
 	ManagementIP    string
 	IsBridge        bool
 	IsRouter        bool
+	// Child: the bridge filled this in for a device it reports below the
+	// port (a declared child, informloop), not one the device learned. A
+	// child is never this device's uplink.
+	Child bool
 }
 
 // Add sums c2 into c (used when folding breakout lanes).
