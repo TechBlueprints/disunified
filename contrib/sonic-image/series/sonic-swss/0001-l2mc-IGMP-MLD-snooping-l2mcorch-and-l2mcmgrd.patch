@@ -1,0 +1,4371 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Jasper.Hou" <jasper-hou@example.net>
+Date: Sun, 1 Nov 2026 03:51:18 -0700
+Subject: [PATCH] l2mc: IGMP/MLD snooping -- l2mcorch and l2mcmgrd
+
+Squash of sonic-net/sonic-swss#3950 (draft, Micas Networks), head
+0a10a61735df84aae7d705e0ceff8b4172298029, 13 commits from merge base
+d43da01824, merged onto 202511 at 177c7a009f5e (the commit
+sonic-buildimage 202511 pins). Three-way merge, no conflicts.
+
+Co-authored-by: Cipher324 <cipher324@example.net>
+---
+ cfgmgr/Makefile.am                     |    9 +-
+ cfgmgr/l2mcmgr.cpp                     | 2023 ++++++++++++++++++++++++
+ cfgmgr/l2mcmgr.h                       |  133 ++
+ cfgmgr/l2mcmgrd.cpp                    |  140 ++
+ configure.ac                           |    6 +
+ orchagent/Makefile.am                  |    1 +
+ orchagent/l2mcorch.cpp                 | 1573 ++++++++++++++++++
+ orchagent/l2mcorch.h                   |  145 ++
+ orchagent/orchdaemon.cpp               |   11 +
+ orchagent/orchdaemon.h                 |    1 +
+ orchagent/p4orch/tests/test_main.cpp   |    3 +
+ orchagent/port.h                       |    1 +
+ orchagent/portsorch.cpp                |   49 +-
+ orchagent/saihelper.cpp                |    2 +
+ tests/mock_tests/Makefile.am           |    1 +
+ tests/mock_tests/mock_orchagent_main.h |    2 +
+ 16 files changed, 4084 insertions(+), 16 deletions(-)
+ create mode 100644 cfgmgr/l2mcmgr.cpp
+ create mode 100644 cfgmgr/l2mcmgr.h
+ create mode 100644 cfgmgr/l2mcmgrd.cpp
+ create mode 100644 orchagent/l2mcorch.cpp
+ create mode 100644 orchagent/l2mcorch.h
+
+diff --git a/cfgmgr/Makefile.am b/cfgmgr/Makefile.am
+index 0f71ad7b0bb85bff469539660ab3706d5197c37c..48c0b44b502bf8d39014a15d42857f7602b4cdde 100644
+--- a/cfgmgr/Makefile.am
++++ b/cfgmgr/Makefile.am
+@@ -5,7 +5,7 @@ LIBNL_LIBS = -lnl-genl-3 -lnl-route-3 -lnl-3
+ SAIMETA_LIBS = -lsaimeta -lsaimetadata -lzmq
+ COMMON_LIBS = -lswsscommon -lpthread
+ 
+-bin_PROGRAMS = vlanmgrd teammgrd portmgrd intfmgrd buffermgrd vrfmgrd nbrmgrd vxlanmgrd sflowmgrd natmgrd coppmgrd tunnelmgrd macsecmgrd fabricmgrd stpmgrd
++bin_PROGRAMS = vlanmgrd teammgrd portmgrd intfmgrd buffermgrd vrfmgrd nbrmgrd vxlanmgrd sflowmgrd natmgrd coppmgrd tunnelmgrd macsecmgrd fabricmgrd stpmgrd l2mcmgrd
+ 
+ cfgmgrdir = $(datadir)/swss
+ 
+@@ -107,6 +107,11 @@ stpmgrd_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAG
+ stpmgrd_CPPFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAGS_ASAN)
+ stpmgrd_LDADD = $(LDFLAGS_ASAN) $(COMMON_LIBS) $(SAIMETA_LIBS)
+ 
++l2mcmgrd_SOURCES = l2mcmgrd.cpp l2mcmgr.cpp $(COMMON_ORCH_SOURCE) shellcmd.h
++l2mcmgrd_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAGS_ASAN)
++l2mcmgrd_CPPFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(CFLAGS_COMMON) $(CFLAGS_SAI) $(CFLAGS_ASAN) -I$(top_srcdir)/../sonic-l2mcd/include
++l2mcmgrd_LDADD = $(LDFLAGS_ASAN) $(COMMON_LIBS) $(SAIMETA_LIBS)
++
+ if GCOV_ENABLED
+ vlanmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+ teammgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+@@ -123,6 +128,7 @@ coppmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+ tunnelmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+ macsecmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+ stpmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
++l2mcmgrd_SOURCES += ../gcovpreload/gcovpreload.cpp
+ endif
+ 
+ if ASAN_ENABLED
+@@ -141,5 +147,6 @@ tunnelmgrd_SOURCES += $(top_srcdir)/lib/asan.cpp
+ macsecmgrd_SOURCES += $(top_srcdir)/lib/asan.cpp
+ fabricmgrd_SOURCES += $(top_srcdir)/lib/asan.cpp
+ stpmgrd_SOURCES += $(top_srcdir)/lib/asan.cpp
++l2mcmgrd_SOURCES += $(top_srcdir)/lib/asan.cpp
+ endif
+ 
+diff --git a/cfgmgr/l2mcmgr.cpp b/cfgmgr/l2mcmgr.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..aac7042e1c280057f0896545d0452c79f52cbaa4
+--- /dev/null
++++ b/cfgmgr/l2mcmgr.cpp
+@@ -0,0 +1,2023 @@
++#include "exec.h"
++#include "l2mcmgr.h"
++#include "tokenize.h"
++#include "warm_restart.h"
++#include "logger.h"
++
++#include <string>
++#include <sstream>
++#include <iostream>
++#include <stdlib.h>
++
++using namespace std;
++using namespace swss;
++
++#define MLD_IP_IPV4_AFI 1
++#define MLD_IP_IPV6_AFI 2
++
++#define TAGGED 1
++#define UNTAGGED 0
++
++#define L2MCD_MAX_SIZE 16318
++#define PORT_INIT_MAX_RETRY 180
++#define RECONCILE_WARMSTART_MAX_RETRY  60
++
++static char buffer[L2MCD_MAX_SIZE] = {0};
++
++
++L2McMgr::L2McMgr(DBConnector *confDb, DBConnector *applDb, DBConnector *statDb,
++        const vector<TableConnector> &tables) :
++    Orch(tables),
++    m_cfgL2McGlobalTable(confDb, CFG_L2MC_TABLE_NAME),
++    m_cfgL2McMldGlobalTable(confDb, CFG_MLD_L2MC_TABLE_NAME),
++    m_cfgL2McStaticTable(confDb, CFG_L2MC_STATIC_TABLE_NAME),
++    m_cfgL2McMldStaticTable(confDb, CFG_MLD_L2MC_STATIC_TABLE_NAME),
++    m_cfgL2McMrouterTable(confDb, CFG_L2MC_MROUTER_TABLE_NAME),
++    m_cfgL2McMldMrouterTable(confDb, CFG_MLD_L2MC_MROUTER_TABLE_NAME),
++    m_cfgVlanMemberTable(confDb, CFG_VLAN_MEMBER_TABLE_NAME),
++    m_stateVlanTable(statDb, STATE_VLAN_TABLE_NAME),
++    m_stateVlanMemberTable(statDb, STATE_VLAN_MEMBER_TABLE_NAME),
++    m_stateInterfaceTableName(statDb,STATE_INTERFACE_TABLE_NAME),
++    m_statel2mcdLocalMemberTable(statDb, STATE_L2MC_MEMBER_TABLE_NAME),
++    m_statel2mcdLocalMrouterTable(statDb,STATE_L2MC_MROUTER_TABLE_NAME),
++    m_cfgLagMemberTable(confDb, CFG_LAG_MEMBER_TABLE_NAME),
++    m_statePortTable(statDb, STATE_PORT_TABLE_NAME),
++    m_stateLagTable(statDb, STATE_LAG_TABLE_NAME),
++    m_appPortTable(applDb, APP_PORT_TABLE_NAME),
++    m_appLagTable(applDb,APP_LAG_TABLE_NAME),
++    m_appL2mcVlanTable(applDb,APP_L2MC_VLAN_TABLE_NAME),
++    m_appL2mcGrpMemTable(applDb,APP_L2MC_MEMBER_TABLE_NAME),
++    m_appL2mcMrouterTable(applDb,APP_L2MC_MROUTER_TABLE_NAME),
++    m_appL2mcSuppressTableProducer(applDb,APP_L2MC_SUPPRESS_TABLE_NAME)
++{
++    SWSS_LOG_ENTER();
++    m_warmstart = WarmStart::isWarmStart();
++    if (m_warmstart)
++    {
++        auto processTable =
++            [&](Table &table, bool isIgmp)
++            {
++                vector<string> keys;
++                vector<FieldValueTuple> entry;
++
++                table.getKeys(keys);
++
++                for (const auto &key : keys)
++                {
++                    if (key.rfind("Vlan", 0) != 0)
++                    {
++                        SWSS_LOG_WARN("Invalid VLAN key: %s", key.c_str());
++                        continue;
++                    }
++
++                    if (!table.get(key, entry))
++                        continue;
++
++                    auto it = std::find_if(
++                        entry.begin(), entry.end(),
++                        [](const auto &t) { return t.first == "enabled"; });
++
++                    if (it != entry.end() && fvValue(*it) == "true")
++                    {
++                        int vlan_id = stoi(key.substr(4));
++                        auto &flag = m_warmrebootvlanMap[vlan_id];
++
++                        if (isIgmp)
++                            flag.igmp = true;
++                        else
++                            flag.mld = true;
++                    }
++                }
++            };
++
++        processTable(m_cfgL2McGlobalTable, true);   // IGMP
++        processTable(m_cfgL2McMldGlobalTable, false); // MLD
++        if (m_warmrebootvlanMap.empty())
++        {
++            SWSS_LOG_NOTICE("L2MCMGRD warm reboot RECONCILED");
++            WarmStart::setWarmStartState("l2mcmgrd", WarmStart::RECONCILED);
++            m_warmstart = false;
++        }
++    }
++
++    SWSS_LOG_INFO("Add REDIS DB L2mc entry notification support");
++    m_l2mcNotificationConsumer = new swss::NotificationConsumer(statDb, "L2MC_NOTIFICATIONS_REMOTE");
++    auto l2mcNotificatier = new Notifier(m_l2mcNotificationConsumer, this, "L2MC_NOTIFICATIONS_REMOTE");
++    Orch::addExecutor(l2mcNotificatier);
++
++    SWSS_LOG_INFO("Add REDIS DB mrouter notification support");
++    m_l2mcMrouterNotificationConsumer = new swss::NotificationConsumer(statDb, "L2MC_MROUTER_NOTIFICATIONS_REMOTE");
++    auto l2mcMrouterNotificatier = new Notifier(m_l2mcMrouterNotificationConsumer, this, "L2MC_MROUTER_NOTIFICATIONS_REMOTE");
++    Orch::addExecutor(l2mcMrouterNotificatier);
++
++    m_l2mcCfgparaDoneNotificationConsumer = new swss::NotificationConsumer(applDb, "L2MC_CONFIG_PARA_DONE");
++    auto l2mcCfgparaDoneNotificatier = new Notifier(m_l2mcCfgparaDoneNotificationConsumer, this, "L2MC_CONFIG_PARA_DONE");
++    Orch::addExecutor(l2mcCfgparaDoneNotificatier);
++
++}
++
++void L2McMgr::doTask(Consumer &consumer)
++{
++    auto table = consumer.getTableName();
++    if (table == CFG_L2MC_TABLE_NAME)
++    {
++        doL2McGlobalTask(consumer);
++    }
++    else if (table == CFG_L2MC_STATIC_TABLE_NAME)
++    {
++        doL2McStaticEntryTask(consumer);
++    }
++    else if (table == STATE_VLAN_TABLE_NAME)
++    {
++        doVlanUpdateTask(consumer);
++    }
++    else if (table == STATE_VLAN_MEMBER_TABLE_NAME)
++    {
++        doL2McVlanMemUpdateTask(consumer);
++    }
++    else if (table == STATE_INTERFACE_TABLE_NAME)
++    {
++        doL2McL3InterfaceUpdateTask(consumer);
++    }
++    else if (table == CFG_L2MC_MROUTER_TABLE_NAME)
++    {
++        doL2McMrouterUpdateTask(consumer);
++    }
++    else if (table == CFG_LAG_MEMBER_TABLE_NAME)
++    {
++        doL2McLagMemberUpdateTask(consumer);
++    }
++    else if ((table == STATE_LAG_TABLE_NAME)|| (table == STATE_PORT_TABLE_NAME))
++    {
++        doL2McInterfaceUpdateTask(consumer);
++    }
++    else if (table == CFG_L2MC_SUPPRESS_TABLE_NAME)
++    {
++        SWSS_LOG_NOTICE("enter table %s", table.c_str());
++        doL2McSuppressUpdateTask(consumer);
++    }
++    else if (table == CFG_MLD_L2MC_TABLE_NAME)
++    {
++        SWSS_LOG_NOTICE("enter table %s", table.c_str());
++        doL2McMldGlobalTask(consumer);
++    }
++    else if (table == CFG_MLD_L2MC_STATIC_TABLE_NAME)
++    {
++        doL2McMldStaticEntryTask(consumer);
++    }
++    else if (table == CFG_MLD_L2MC_MROUTER_TABLE_NAME)
++    {
++        doL2McMldMrouterUpdateTask(consumer);
++    }
++    else
++    {
++        SWSS_LOG_ERROR("Invalid table %s", table.c_str());
++    }
++}
++
++void L2McMgr::doL2McGlobalTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op  = kfvOp(t);
++        string vlanKey = key.substr(4); // Remove "Vlan"
++        int vlan_id = stoi(vlanKey);
++
++        bool enabled = false;
++        bool exist_enabled = false;
++
++        auto vlan_it = m_vlanIgmpSnoopMap.find(vlan_id);
++        if (vlan_it != m_vlanIgmpSnoopMap.end())
++            exist_enabled = true;
++
++        vector<PORT_ATTR> port_list;
++        uint32_t port_count = getVlanMembers(key, port_list);
++
++        msg_len = sizeof(L2MCD_CONFIG_MSG);
++        msg_len += (uint32_t)(port_count * sizeof(PORT_ATTR));
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->cmd_code  = 0;
++        msg->query_interval = 125;
++        msg->query_max_response_time = 10;
++        msg->last_member_query_interval = 1000;
++        msg->version = 2;
++        msg->afi = MLD_IP_IPV4_AFI;
++        msg->vlan_id = vlan_id;
++        msg->warm_reboot = m_warmstart ? 1 : 0;
++
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++
++            auto tuples = kfvFieldsValues(t);
++            auto its = std::find_if(
++                tuples.begin(), tuples.end(),
++                [](const FieldValueTuple &v){ return v.first == "enabled"; });
++
++            if (its == tuples.end())
++            {
++                SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s is not enabled", key.c_str());
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++
++            for (auto &i : tuples)
++            {
++                const string &field = fvField(i);
++                const string &value = fvValue(i);
++
++                if (field == "enabled")
++                {
++                    msg->enabled = (value == "true") ? 1 : 0;
++                    if (!msg->enabled)
++                    {
++                        msg->op_code = L2MCD_OP_DISABLE;
++                        enabled = false;
++                        m_vlanIgmpSnoopMap.erase(vlan_id);
++                    }
++                    else
++                    {
++                        enabled = true;
++                        m_vlanIgmpSnoopMap[vlan_id] = true;
++                    }
++                }
++                else if (field == "querier") msg->querier = (value == "true") ? 1 : 0;
++                else if (field == "fast-leave") msg->fast_leave = (value == "true") ? 1 : 0;
++                else if (field == "version") msg->version = stoi(value);
++                else if (field == "query-interval") msg->query_interval = stoi(value);
++                else if (field == "last-member-query-interval") msg->last_member_query_interval = stoi(value);
++                else if (field == "query-max-response-time") msg->query_max_response_time = stoi(value);
++            }
++            if (!exist_enabled && !enabled)
++            {
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++            msg->count = port_count;
++            PORT_ATTR *ports = msg->ports;
++            for (uint32_t j = 0 ; j < port_count;j++ )
++            {
++                ports[j].tagged = port_list[j].tagged;
++                memcpy(ports[j].pnames, port_list[j].pnames, L2MCD_IFNAME_SIZE);
++            }
++        }
++        else
++        {
++            if (!exist_enabled)
++            {
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++            msg->op_code = L2MCD_OP_DISABLE;
++            m_vlanIgmpSnoopMap.erase(vlan_id);
++        }
++
++        SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s [key:%s] vlan:%d Ver:%d Qr:%d qi:%d lmqi:%d qmr:%d FL:%d count:%u afi:%d warm-reboot:%d",
++            op.c_str(), key.c_str(), vlan_id, msg->version, msg->querier, msg->query_interval, msg->last_member_query_interval,
++            msg->query_max_response_time, msg->fast_leave, msg->count, msg->afi,msg->warm_reboot);
++
++        sendMsgL2Mcd(L2MCD_SNOOP_CONFIG_MSG, msg_len, (void *)msg);
++
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++
++void L2McMgr::doL2McMldGlobalTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t  msg_len = 0 ;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    vector<string> l2mcLocalMemKeys;
++    vector<string> l2mcLocalMrouterKeys;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op  = kfvOp(t);
++        string vlanKey = key.substr(4); // Remove "Vlan"
++        int vlan_id = stoi(vlanKey);
++
++        bool enabled = false;
++        bool exist_enabled = false;
++
++        auto vlan_it = m_vlanMldSnoopMap.find(vlan_id);
++        if (vlan_it != m_vlanMldSnoopMap.end())
++            exist_enabled = true;
++
++        vector<PORT_ATTR> port_list;
++        uint32_t port_count = getVlanMembers(key, port_list);
++
++        // header + payload
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + (uint32_t)(port_count * sizeof(PORT_ATTR));
++
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->cmd_code  = 0;
++        msg->query_interval = 125;
++        msg->query_max_response_time = 10;
++        msg->last_member_query_interval = 1000;
++        msg->version = 2;
++        msg->afi = MLD_IP_IPV6_AFI;
++        msg->vlan_id = vlan_id;
++        msg->warm_reboot = m_warmstart ? 1 : 0;
++        msg->count = port_count;
++
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++
++            auto tuples = kfvFieldsValues(t);
++            auto its = std::find_if(
++                tuples.begin(), tuples.end(),
++                [](const FieldValueTuple &v){ return v.first == "enabled"; });
++
++            if (its == tuples.end())
++            {
++                SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s is not enabled", key.c_str());
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++
++            for (auto &i : tuples)
++            {
++                const string &field = fvField(i);
++                const string &value = fvValue(i);
++
++                if (field == "enabled")
++                {
++                    msg->enabled = (value == "true") ? 1 : 0;
++                    if (!msg->enabled)
++                    {
++                        msg->op_code = L2MCD_OP_DISABLE;
++                        enabled = false;
++                        m_vlanMldSnoopMap.erase(vlan_id);
++                    }
++                    else
++                    {
++                        enabled = true;
++                        m_vlanMldSnoopMap[vlan_id] = true;
++                    }
++                }
++                else if (field == "querier") msg->querier = (value == "true") ? 1 : 0;
++                else if (field == "fast-leave") msg->fast_leave = (value == "true") ? 1 : 0;
++                else if (field == "version") msg->version = stoi(value);
++                else if (field == "query-interval") msg->query_interval = stoi(value);
++                else if (field == "last-member-query-interval") msg->last_member_query_interval = stoi(value);
++                else if (field == "query-max-response-time") msg->query_max_response_time = stoi(value);
++            }
++            if (!exist_enabled && !enabled)
++            {
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++            PORT_ATTR *ports = msg->ports;
++            for (uint32_t j= 0; j < port_count; j++ )
++            {
++                ports[j].tagged = port_list[j].tagged;
++                memcpy(ports[j].pnames, port_list[j].pnames, L2MCD_IFNAME_SIZE);
++            }
++        }
++        else
++        {
++            if (!exist_enabled)
++            {
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++            msg->op_code = L2MCD_OP_DISABLE;
++            m_vlanMldSnoopMap.erase(vlan_id);
++        }
++
++        SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s [key:%s] vlan:%d Ver:%d Qr:%d qi:%d lmqi:%d qmr:%d FL:%d count:%u afi:%d warm-reboot:%d",
++            op.c_str(), key.c_str(), vlan_id, msg->version, msg->querier, msg->query_interval, msg->last_member_query_interval,
++            msg->query_max_response_time, msg->fast_leave, msg->count, msg->afi, msg->warm_reboot);
++
++        sendMsgL2Mcd(L2MCD_SNOOP_CONFIG_MSG, msg_len, (void *)msg);
++
++        it = consumer.m_toSync.erase(it);
++    }
++
++}
++
++void L2McMgr::updateMrouterEntry(const string vlan_id, const string ifname)
++{
++    SWSS_LOG_ENTER();
++
++    vector<string> l2mcIgmpMrouterKeys, l2mcMldMrouterKeys;
++    //"L2MC_MROUTER|Vlan10|Ethernet5" |"MLD_L2MC_MROUTER|Vlan10|Ethernet5"
++    m_cfgL2McMrouterTable.getKeys(l2mcIgmpMrouterKeys);
++    m_cfgL2McMldMrouterTable.getKeys(l2mcMldMrouterKeys);
++
++    SWSS_LOG_NOTICE("Found %zu IGMP mrouter keys, %zu MLD mrouter keys",
++                    l2mcIgmpMrouterKeys.size(), l2mcMldMrouterKeys.size());
++
++    vector<pair<string, int>> l2mcMrouterKeys;
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++
++    for (auto &k : l2mcIgmpMrouterKeys)
++        l2mcMrouterKeys.push_back({k, MLD_IP_IPV4_AFI});
++    for (auto &k : l2mcMldMrouterKeys)
++        l2mcMrouterKeys.push_back({k, MLD_IP_IPV6_AFI});
++
++    for (auto &item : l2mcMrouterKeys)
++    {
++        const string &entry = item.first;
++        int afi = item.second;
++
++        // entry example: "Vlan10|Ethernet5"
++        vector<string> tokens = swss::tokenize(entry, '|');
++        if (tokens.size() != 2) {
++            SWSS_LOG_ERROR("Invalid MROUTER key: %s", entry.c_str());
++            continue;
++        }
++        SWSS_LOG_NOTICE("Processing MROUTER key: %s", entry.c_str());
++
++        string vlanStr = tokens[0];
++        string iname   = tokens[1];
++        SWSS_LOG_NOTICE("MROUTER vlanStr: %s iname : %s", vlanStr.c_str(),iname.c_str());
++
++        
++        const string vlanNum = vlanStr.substr(4);
++        int vlanid = 0;
++
++        try {
++            vlanid = stoi(vlanNum);
++        }
++        catch (exception &e)
++        {
++            SWSS_LOG_ERROR("Invalid VLAN number in MROUTER key: %s", vlanStr.c_str());
++            continue;
++        }
++
++
++        //SWSS_LOG_INFO("vlanKey %s, vlan_id %s ,iname %s ", vlanKey.c_str(), vlan_id.c_str(), iname.c_str());
++
++        if (!vlan_id.empty() && vlanNum != vlan_id) {
++            SWSS_LOG_INFO("Skipping entry: vlanNum '%s' != filter vlan_id '%s'",
++                           vlanNum.c_str(), vlan_id.c_str());
++            continue;
++        }
++        if (!ifname.empty()  && iname  != ifname) {
++            SWSS_LOG_INFO("Skipping entry: iname '%s' != filter ifname '%s'",
++                           iname.c_str(), ifname.c_str());
++            continue;
++        }
++
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlanid);
++
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->vlan_id = vlanid;
++        msg->count   = 1;
++        msg->afi     = afi;
++        msg->op_code = L2MCD_OP_ENABLE;
++        PORT_ATTR *ports = msg->ports;
++
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++
++        SWSS_LOG_NOTICE("L2MCD_CFG:MROUTER: [key:%s] port:%s vlan:%d afi:%d",entry.c_str(), ports[0].pnames, msg->vlan_id, msg->afi);
++        sendMsgL2Mcd(L2MCD_SNOOP_MROUTER_CONFIG_MSG, msg_len, (void *)msg);
++    }
++}
++
++void L2McMgr::updateReadyVlanEntries(const string vlan_id)
++{
++    const string prefix = vlan_id + "|";
++    for (const auto &vlan_port : m_readyVlanPorts)
++    {
++        if (vlan_port.compare(0, prefix.size(), prefix) != 0)
++            continue;
++
++        const string ifname = vlan_port.substr(prefix.size());
++        if (m_operUpPorts.count(ifname) || getPortOperState(ifname))
++        {
++            updateMrouterEntry(vlan_id, ifname);
++            updateGrpStaticEntry(vlan_id, ifname);
++        }
++    }
++}
++
++void L2McMgr::updateReadyPortEntries(const string ifname)
++{
++    const string suffix = "|" + ifname;
++    for (const auto &vlan_port : m_readyVlanPorts)
++    {
++        if (vlan_port.size() < suffix.size() ||
++            vlan_port.compare(vlan_port.size() - suffix.size(), suffix.size(), suffix) != 0)
++            continue;
++
++        const string vlan_id = vlan_port.substr(0, vlan_port.size() - suffix.size());
++        if (m_snoopEnabledVlans.count(vlan_id))
++        {
++            updateMrouterEntry(vlan_id, ifname);
++            updateGrpStaticEntry(vlan_id, ifname);
++        }
++    }
++}
++
++void  L2McMgr::doL2McMrouterUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {   
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        size_t pos = key.find('|');
++        string vlanKey = key.substr(4,pos-4); 
++        string iname  = key.substr(pos+1);
++        int vlan_id = stoi(vlanKey.c_str());
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->vlan_id = vlan_id;
++        msg->count=1;
++        msg->afi = MLD_IP_IPV4_AFI;
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", iname.c_str());
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++        }
++        else
++        {
++            msg->op_code = L2MCD_OP_DISABLE;
++        }
++        for (auto i : kfvFieldsValues(t))
++        {
++            SWSS_LOG_INFO("L2MCD_CFG Field: %s Val %s vlan:%d opcode:%d", fvField(i).c_str(), fvValue(i).c_str(), vlan_id, msg->op_code );
++        }
++        SWSS_LOG_NOTICE("L2MCD_CFG:MROUTER: op:%s [key:%s] %s vlan:%d", op.c_str(), key.c_str(),ports[0].pnames,vlan_id);
++        sendMsgL2Mcd(L2MCD_SNOOP_MROUTER_CONFIG_MSG, msg_len, (void *)msg);
++        it = consumer.m_toSync.erase(it);
++    }
++
++}
++
++void  L2McMgr::doL2McMldMrouterUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        size_t pos = key.find('|');
++        string vlanKey = key.substr(4,pos-4); 
++        string iname  = key.substr(pos+1);
++        int vlan_id = stoi(vlanKey.c_str());
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->vlan_id = vlan_id;
++        msg->count=1;
++        msg->afi = MLD_IP_IPV6_AFI;
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", iname.c_str());
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++        }
++        else
++        {
++            msg->op_code = L2MCD_OP_DISABLE;
++        }
++        for (auto i : kfvFieldsValues(t))
++        {
++            SWSS_LOG_INFO("L2MCD_CFG Field: %s Val %s vlan:%d opcode:%d", fvField(i).c_str(), fvValue(i).c_str(), vlan_id, msg->op_code );
++        }
++        SWSS_LOG_NOTICE("L2MCD_CFG:MROUTER: op:%s [key:%s] %s vlan:%d afi:%d", op.c_str(), key.c_str(),ports[0].pnames,vlan_id,msg->afi);
++        sendMsgL2Mcd(L2MCD_SNOOP_MROUTER_CONFIG_MSG, msg_len , (void *)msg);
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::updateGrpStaticEntry(const string vlan_id, const string ifname)
++{
++    SWSS_LOG_ENTER();
++
++    vector<string> l2mcGrpStaticKeys, l2mcIgmpGrpStaticKeys , l2mcMldStaticKeys;
++    string srcipv4="0.0.0.0";
++    string srcipv6="0::0";
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++
++    m_cfgL2McStaticTable.getKeys(l2mcIgmpGrpStaticKeys);
++    m_cfgL2McMldStaticTable.getKeys(l2mcMldStaticKeys);
++    l2mcGrpStaticKeys.insert(l2mcGrpStaticKeys.end(), l2mcIgmpGrpStaticKeys.begin(), l2mcIgmpGrpStaticKeys.end());
++    l2mcGrpStaticKeys.insert(l2mcGrpStaticKeys.end(), l2mcMldStaticKeys.begin(), l2mcMldStaticKeys.end());
++
++    for (const auto &entry : l2mcGrpStaticKeys)
++    {
++        SWSS_LOG_NOTICE("StaticEntry entry");
++        vector<string> tokens = swss::tokenize(entry, '|'); 
++
++        string vlanKey = tokens[0];
++        string ipKey   = tokens[1];
++        string iname   = tokens[2];
++        SWSS_LOG_NOTICE("StaticEntry entry vlanKey %s ipKey %s iname %s",vlanKey.c_str(),ipKey.c_str(),iname.c_str());
++
++        const string vlanNum = vlanKey.substr(4);
++        int vlanid = 0;
++
++        try {
++            vlanid = stoi(vlanNum);
++        }
++        catch (exception &e)
++        {
++            SWSS_LOG_ERROR("Invalid VLAN number in MROUTER key: %s", vlanNum.c_str());
++            continue;
++        }
++
++
++        if (!vlan_id.empty() && vlanNum != vlan_id)
++            continue;
++        if (!ifname.empty()  && iname   != ifname)
++            continue;
++
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlanid);
++
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->op_code = L2MCD_OP_ENABLE;
++        msg->vlan_id = vlanid;
++        msg->count   = 1;
++        strncpy(msg->gaddr, ipKey.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        msg->gaddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++
++        if (IpAddress(ipKey).isV4())
++        {
++            msg->afi = MLD_IP_IPV4_AFI;
++            strncpy(msg->saddr, srcipv4.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++            msg->saddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        }
++        else
++        {
++            msg->afi = MLD_IP_IPV6_AFI;
++            strncpy(msg->saddr, srcipv6.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++            msg->saddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        }
++
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", iname.c_str());
++
++        SWSS_LOG_NOTICE("L2MCD_CFG:STATIC [key:%s] GA:%s Port:%s vlan:%d afi:%d", entry.c_str(), ipKey.c_str(), iname.c_str(), msg->vlan_id, msg->afi);
++
++        sendMsgL2Mcd(L2MCD_SNOOP_STATIC_CONFIG_MSG, msg_len, (void *)msg);
++    }
++}
++
++void L2McMgr::doL2McStaticEntryTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    string srcip="0.0.0.0";
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        size_t pos = key.find('|');
++        string vlanKey = key.substr(4,pos-4); 
++        string key2 = key.substr(pos+1);
++        pos = key2.find('|');
++        string ipKey = key2.substr(0,pos);
++        string iname = key2.substr(pos+1);
++        int vlan_id = stoi(vlanKey.c_str());
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++            size_t idx = key.find('|');
++            string tmp_key = key.substr(0, idx+1) + srcip + key.substr(idx);
++        }
++        else
++        {
++            msg->op_code = L2MCD_OP_DISABLE;
++        }
++        msg->cmd_code=0;
++        msg->vlan_id = vlan_id;
++        msg->count=1;
++        
++        strncpy(msg->gaddr, ipKey.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        msg->gaddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        strncpy(msg->saddr, srcip.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        msg->saddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        msg->afi = MLD_IP_IPV4_AFI;
++
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", iname.c_str());
++
++        for (auto i : kfvFieldsValues(t))
++        {
++            SWSS_LOG_INFO("L2MCD_CFG Field: %s Val %s vlan:%d opcode:%d", fvField(i).c_str(), fvValue(i).c_str(), vlan_id, msg->op_code );
++        }
++        SWSS_LOG_NOTICE("L2MCD_CFG:STATIC op:%s [key:%s]  GA:%s Port:%s vlan:%d", op.c_str(), key.c_str(), ipKey.c_str(), iname.c_str(), vlan_id);
++        sendMsgL2Mcd(L2MCD_SNOOP_STATIC_CONFIG_MSG, msg_len, (void *)msg);
++        it = consumer.m_toSync.erase(it);
++    }
++
++}
++
++void L2McMgr::doL2McMldStaticEntryTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    string srcip="0::0";
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        size_t pos = key.find('|');
++        string vlanKey = key.substr(4,pos-4); 
++        string key2 = key.substr(pos+1);
++        pos = key2.find('|');
++        string ipKey = key2.substr(0,pos);
++        string iname = key2.substr(pos+1);
++        int vlan_id = stoi(vlanKey.c_str());
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++        if (op == SET_COMMAND)
++        {
++            msg->op_code = L2MCD_OP_ENABLE;
++        }
++        else
++        {
++            msg->op_code = L2MCD_OP_DISABLE;
++        }
++        msg->cmd_code=0;
++        msg->vlan_id = vlan_id;
++        msg->count=1;
++        msg->afi = MLD_IP_IPV6_AFI;
++        strncpy(msg->gaddr, ipKey.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        msg->gaddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        strncpy(msg->saddr, srcip.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        msg->saddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, iname.c_str(),  (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", iname.c_str());
++        for (auto i : kfvFieldsValues(t))
++        {
++            SWSS_LOG_INFO("L2MCD_CFG Field: %s Val %s vlan:%d opcode:%d", fvField(i).c_str(), fvValue(i).c_str(), vlan_id, msg->op_code );
++        }
++        SWSS_LOG_NOTICE("L2MCD_CFG:STATIC op:%s [key:%s]  GA:%s Port:%s vlan:%d afi %d", op.c_str(), key.c_str(), ipKey.c_str(), iname.c_str(), vlan_id, msg->afi);
++        sendMsgL2Mcd(L2MCD_SNOOP_STATIC_CONFIG_MSG, msg_len, (void *)msg);
++        
++        it = consumer.m_toSync.erase(it);
++    }
++
++}
++void L2McMgr::sendL2McSnoopConfig(
++        const std::string &key,
++        int vlan_id,
++        int afi,
++        const std::string &op,
++        const std::vector<FieldValueTuple> &tuples)
++{
++
++    std::vector<PORT_ATTR> port_list;
++    uint32_t port_count = getVlanMembers(key, port_list);
++
++    L2MCD_CONFIG_MSG *msg = NULL;
++    uint32_t msg_len = sizeof(L2MCD_CONFIG_MSG);
++    msg_len += (uint32_t)(port_count * sizeof(PORT_ATTR));
++    if (msg_len > L2MCD_MAX_SIZE)
++    {
++        SWSS_LOG_ERROR(
++            "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++            msg_len, L2MCD_MAX_SIZE, vlan_id);
++
++        return;
++    }
++    memset(buffer, 0, msg_len);
++    msg = (L2MCD_CONFIG_MSG *)buffer;
++
++    msg->afi = afi;
++    msg->vlan_id = vlan_id;
++    msg->cmd_code = 0;
++    msg->query_interval = 125;
++    msg->query_max_response_time = 10;
++    msg->last_member_query_interval = 1000;
++    msg->version = 2;
++    msg->count = port_count;
++    //msg->warm_reboot = WarmStart::isWarmStart() ? 1 : 0;
++
++    if (op == SET_COMMAND)
++    {
++        msg->op_code = L2MCD_OP_ENABLE;
++
++        for (auto &i : tuples)
++        {
++            const std::string &field = fvField(i);
++            const std::string &value = fvValue(i);
++
++            if (field == "enabled") msg->enabled = (value == "true") ? 1 : 0;
++            else if (field == "querier") msg->querier = (value == "true") ? 1 : 0;
++            else if (field == "fast-leave") msg->fast_leave = (value == "true") ? 1 : 0;
++            else if (field == "version") msg->version = stoi(value);
++            else if (field == "query-interval") msg->query_interval = stoi(value);
++            else if (field == "last-member-query-interval") msg->last_member_query_interval = stoi(value);
++            else if (field == "query-max-response-time") msg->query_max_response_time = stoi(value);
++        }
++    }
++    else
++    {
++        msg->op_code = L2MCD_OP_DISABLE;
++    }
++
++    PORT_ATTR *ports = msg->ports;
++    for (uint32_t j = 0 ; j < port_count;j++ )
++    {
++        ports[j].tagged = port_list[j].tagged;
++        memcpy(ports[j].pnames, port_list[j].pnames, L2MCD_IFNAME_SIZE);
++        SWSS_LOG_INFO("L2MCD_CFG:SNOOP vlan %s mem-port:%s idx:%u total:%u",
++                    key.c_str(), ports[j].pnames, j, port_count);
++    }
++
++    SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s [key:%s] vlan:%d Ver:%d Qr:%d qi:%d lmqi:%d qmr:%d FL:%d count:%u afi:%d",
++                   op.c_str(), key.c_str(), vlan_id, msg->version, msg->querier, msg->query_interval,
++                   msg->last_member_query_interval, msg->query_max_response_time,
++                   msg->fast_leave, msg->count, msg->afi);
++
++    sendMsgL2Mcd(L2MCD_SNOOP_CONFIG_MSG, msg_len, (void *)msg);
++
++}
++
++void L2McMgr::doVlanUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    auto it = consumer.m_toSync.begin();
++
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        auto key = kfvKey(t);
++        auto op  = kfvOp(t);
++
++        if (strncmp(key.c_str(), VLAN_PREFIX, 4))
++        {
++            SWSS_LOG_ERROR("Invalid key format. No 'Vlan' prefix: %s", key.c_str());
++            return;
++        }
++
++        string vlanKey = key.substr(4);
++        int vlan_id = stoi(vlanKey);
++
++        bool has_IGMP = false;
++        bool has_MLD = false;
++
++        std::vector<FieldValueTuple> tuples_IGMP;
++        std::vector<FieldValueTuple> tuples_MLD;
++
++        /* IGMP snooping */
++        if (m_cfgL2McGlobalTable.get(key, tuples_IGMP))
++        {
++            auto it_en = std::find_if(
++                tuples_IGMP.begin(), tuples_IGMP.end(),
++                [](auto &t){ return t.first == "enabled"; });
++
++            if (it_en != tuples_IGMP.end() && fvValue(*it_en) == "true")
++                has_IGMP = true;
++        }
++
++        /* MLD snooping */
++        if (m_cfgL2McMldGlobalTable.get(key, tuples_MLD))
++        {
++            auto it_en = std::find_if(
++                tuples_MLD.begin(), tuples_MLD.end(),
++                [](auto &t){ return t.first == "enabled"; });
++
++            if (it_en != tuples_MLD.end() && fvValue(*it_en) == "true")
++                has_MLD = true;
++        }
++
++        if (!has_IGMP && !has_MLD)
++        {
++            SWSS_LOG_NOTICE("L2MCD_CFG:SNOOP %s has no IPv4 nor IPv6 snooping enabled", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        if (has_IGMP)
++            sendL2McSnoopConfig(
++                key, vlan_id, MLD_IP_IPV4_AFI, op, tuples_IGMP);
++
++        if (has_MLD)
++            sendL2McSnoopConfig(
++                key, vlan_id, MLD_IP_IPV6_AFI, op, tuples_MLD);
++
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::ipcInitL2McMgr()
++{
++    int ret;
++	struct sockaddr_un addr;
++
++    unlink(L2MCMGR_IPC_SOCK_NAME);
++    l2mcd_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
++    if (l2mcd_fd < 0)
++    {
++		SWSS_LOG_ERROR("socket error %s", strerror(errno));
++		return;
++    }
++
++    // setup socket address structure
++    bzero(&addr, sizeof(addr));
++    addr.sun_family = AF_UNIX;
++    strncpy(addr.sun_path, L2MCMGR_IPC_SOCK_NAME, sizeof(addr.sun_path)-1);
++
++    ret = (int)bind(l2mcd_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un));
++    if (ret == -1)
++    {
++		SWSS_LOG_ERROR("ipc bind error %s", strerror(errno));
++        close(l2mcd_fd);
++        return;
++    }
++}
++
++
++int L2McMgr::sendMsgL2Mcd(L2MCD_MSG_TYPE msgType, uint32_t msgLen, void *data)
++{
++    L2MCD_IPC_MSG *tx_msg;
++    size_t len = 0;
++    struct sockaddr_un addr;
++    int rc;
++    len = msgLen + (offsetof(struct L2MCD_IPC_MSG, data));
++    tx_msg = (L2MCD_IPC_MSG *)calloc(1, len);
++    if (tx_msg == NULL)
++    {
++		SWSS_LOG_ERROR("tx_msg mem alloc error\n");
++        return -1;
++    }
++
++    tx_msg->msg_type = msgType;
++    tx_msg->msg_len  = msgLen;
++    memcpy(tx_msg->data, data, msgLen);
++
++    bzero(&addr, sizeof(addr));
++    addr.sun_family = AF_UNIX;
++    strncpy(addr.sun_path, L2MCD_IPC_SOCK_NAME, sizeof(addr.sun_path)-1);
++
++    rc = (int)sendto(l2mcd_fd, (void*)tx_msg, len, 0, (struct sockaddr *)&addr, sizeof(addr));
++    if (rc == -1)
++    {
++		SWSS_LOG_ERROR("tx_msg send error type:%d len%d",msgType,(int)len);
++    }
++    SWSS_LOG_NOTICE("sendMsgL2Mcd tx_msg send type:%d len%d",msgType,(int)len);
++    free(tx_msg);
++    return rc;
++}
++
++/* To check the port init is done or not */
++int L2McMgr::isPortInitComplete(DBConnector *app_db)
++{
++    bool portInit = 0;
++    long cnt = 0;
++
++    while(!portInit) {
++
++        if (cnt > PORT_INIT_MAX_RETRY)
++        {
++            SWSS_LOG_ERROR("Port init check timeout! Max retry(%d) reached, cnt=%ld", 
++                           PORT_INIT_MAX_RETRY, cnt);
++            portInit = false;
++            break;
++        }
++        Table portTable(app_db, APP_PORT_TABLE_NAME);
++        std::vector<FieldValueTuple> tuples;
++        portInit = portTable.get("PortInitDone", tuples);
++
++        if(portInit)
++            break;
++        sleep(1);
++        cnt++;
++    }
++    SWSS_LOG_NOTICE("PORT_INIT_DONE : %d %ld", portInit, cnt);
++    return portInit;
++}
++
++bool L2McMgr::isPortStateOk(const string &alias)
++{
++    SWSS_LOG_ENTER();
++
++    vector<FieldValueTuple> temp;
++
++    if (!m_statePortTable.get(alias, temp))
++    {
++        SWSS_LOG_INFO("Port %s is not ready", alias.c_str());
++        return false;
++    }
++    SWSS_LOG_INFO("Port %s is ready", alias.c_str());
++    return true;
++}
++
++bool L2McMgr::isLagStateOk(const string &alias)
++{
++    vector<FieldValueTuple> temp;
++
++    if (!m_stateLagTable.get(alias, temp))
++    {
++        SWSS_LOG_INFO("Lag %s is not ready", alias.c_str());
++        return false;
++    }
++
++    SWSS_LOG_INFO("Lag %s is ready", alias.c_str());
++    return true;
++}
++
++int L2McMgr::getPortOperState(string if_name)
++{
++    vector<FieldValueTuple> fvs;
++    string oper_status;
++    string oper_up="up";
++
++    if (if_name.find("Ethernet") != string::npos)
++        m_appPortTable.get(if_name.c_str(), fvs);
++    else 
++        m_appLagTable.get(if_name.c_str(), fvs);
++    auto it = find_if(fvs.begin(), fvs.end(), [](const FieldValueTuple &fv) 
++    {
++         return fv.first == "oper_status";
++    });
++
++    if (it != fvs.end())
++    {
++        oper_status = it->second;
++    }
++    SWSS_LOG_NOTICE("%s oper:%s ",if_name.c_str(), oper_status.c_str());
++    if (oper_status.compare(oper_up) == 0) return 1;
++    return 0;
++}
++
++int  L2McMgr::getL2McPortList(DBConnector *state_db)
++{   
++    SWSS_LOG_ENTER();
++    Table m_statePortTable(state_db, STATE_PORT_TABLE_NAME);
++    Table m_stateLagTable(state_db, STATE_LAG_TABLE_NAME); 
++    string Pname; 
++    vector<string> portKeys;
++    vector<string> lagKeys;
++    m_statePortTable.getKeys(portKeys);
++    m_stateLagTable.getKeys(lagKeys);
++    uint32_t port_count=(unsigned int) portKeys.size();
++    port_count+=(unsigned int) lagKeys.size();
++
++    L2MCD_CONFIG_MSG *msg = NULL;
++    uint32_t msg_len = sizeof(L2MCD_CONFIG_MSG);
++    msg_len += (uint32_t)(port_count * sizeof(PORT_ATTR));
++    if (msg_len > L2MCD_MAX_SIZE)
++    {
++        SWSS_LOG_ERROR(
++            "L2MCD_CFG:SNOOP payload too large: %u (max %u)",
++            msg_len, L2MCD_MAX_SIZE);
++        return -1;
++    }
++    memset(buffer, 0, msg_len);
++    msg = (L2MCD_CONFIG_MSG *)buffer;
++    msg->count = port_count;
++    int i = 0;
++    PORT_ATTR *ports = msg->ports;
++    for (auto port_name : portKeys)
++    {
++        ports[i].oper_state = getPortOperState(port_name);
++        memcpy(ports[i++].pnames, port_name.c_str(), (port_name.length()<L2MCD_IFNAME_SIZE)? port_name.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_INFO("Port:%s oper:%d", port_name.c_str(), ports[i-1].oper_state);
++    }
++    for (auto lag_name : lagKeys)
++    {
++        ports[i].oper_state = getPortOperState(lag_name);
++        memcpy(ports[i++].pnames, lag_name.c_str(), (lag_name.length()<L2MCD_IFNAME_SIZE)? lag_name.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_INFO("Port:%s oper:%d", lag_name.c_str(), ports[i-1].oper_state);
++        m_readyLags.insert(lag_name);
++    }
++    msg->op_code = L2MCD_OP_ENABLE;
++    SWSS_LOG_NOTICE("L2MCD_CFG:PORTLIST count:%d ",  msg->count);
++    sendMsgL2Mcd(L2MCD_SNOOP_PORT_LIST_MSG, msg_len, (void *)msg);
++    return 0;
++}
++
++int L2McMgr::getL2McCfgParams(DBConnector *conf_db)
++{
++    L2MCD_CONFIG_MSG msg;
++    MacAddress m_macAddr;
++    memset(&msg, 0, sizeof(L2MCD_CONFIG_MSG));
++    int loglevel;
++
++    Table table(conf_db, "DEVICE_METADATA");
++    std::vector<FieldValueTuple> ovalues;
++    table.get("localhost", ovalues);
++    auto it = std::find_if( ovalues.begin(), ovalues.end(), [](const FieldValueTuple& t){ return t.first == "mac";} );
++    if ( it == ovalues.end() ) {
++        throw runtime_error("couldn't find MAC address of the device from config DB");
++    }
++    m_macAddr = MacAddress(it->second);
++    memcpy(&msg.mac_addr[0], m_macAddr.getMac(), 6);
++    loglevel = swss::Logger::getInstance().getMinPrio();
++    msg.count=loglevel;
++    SWSS_LOG_NOTICE("L2MCD_CFG:PARAMS  loglevel:%d mac:%s %x:%x:%x:%x:%x:%x ", loglevel, m_macAddr.to_string().c_str(), 
++        msg.mac_addr[0],msg.mac_addr[1],msg.mac_addr[2],msg.mac_addr[3],msg.mac_addr[4],msg.mac_addr[5]);
++    sendMsgL2Mcd(L2MCD_CONFIG_PARAMS_MSG, sizeof(msg), (void *)&msg);
++    return 0;
++}
++
++int  L2McMgr::getVlanMembers(const string &vlanKey, vector<PORT_ATTR>&port_list)
++{
++    PORT_ATTR port_id;
++    vector<FieldValueTuple> vmEntry;
++    vector<string> vmKeys;
++    SWSS_LOG_ENTER();
++    m_stateVlanMemberTable.getKeys(vmKeys);
++
++   
++    for (auto key : vmKeys)
++    {
++        size_t found = key.find(CONFIGDB_KEY_SEPARATOR); //split VLAN and interface
++
++        string vlanName;
++        string intfName;
++        memset(&port_id, 0, sizeof(port_id));
++        if (found != string::npos)
++        {
++            vlanName = key.substr(0, found);
++            intfName = key.substr(found+1);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Invalid Key: %s", key.c_str());
++            continue;
++        }
++
++        if (vlanKey == vlanName)
++        {
++            strncpy(port_id.pnames, intfName.c_str(), L2MCD_IFNAME_SIZE-1);
++            port_id.pnames[L2MCD_IFNAME_SIZE - 1] = '\0';
++            vector<FieldValueTuple> tupEntry;
++            string vlanmemkey = vlanKey + "|" + intfName;
++
++            if (m_cfgVlanMemberTable.get(vlanmemkey, tupEntry))
++            {
++                auto tag = std::find_if(
++                    tupEntry.begin(), tupEntry.end(),
++                    [](auto &t){ return t.first == "tagging_mode"; });
++
++                if (tag != tupEntry.end() && fvValue(*tag) == "untagged")
++                    port_id.tagged = UNTAGGED;
++                else
++                    port_id.tagged = TAGGED;
++            }
++            port_list.push_back(port_id);
++            SWSS_LOG_INFO("vlan:%s MemIntf: %s", vlanName.c_str(), intfName.c_str());
++        }
++    }
++    SWSS_LOG_INFO("vlan members Key: %s memcnt:%d", vlanKey.c_str(), (int)port_list.size());
++    return (int)port_list.size();
++
++}
++
++void L2McMgr::updateVlanMember(const string vlan_id)
++{
++    vector<string> l2mcVlanMemKeys;
++    // Table vlanmemtable(state_db, STATE_VLAN_MEMBER_TABLE_NAME);
++    m_stateVlanMemberTable.getKeys(l2mcVlanMemKeys);
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++
++    for (auto l2mc_localMemName : l2mcVlanMemKeys)
++    {
++        size_t found = l2mc_localMemName.find(CONFIGDB_KEY_SEPARATOR); //split VLAN and interface
++
++        string vlanName;
++        string intfName;
++        if (found != string::npos)
++        {
++            vlanName = l2mc_localMemName.substr(4, found-4);
++            intfName = l2mc_localMemName.substr(found+1);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Invalid Key: %s", l2mc_localMemName.c_str());
++            continue;
++        }
++        SWSS_LOG_INFO("VlanName %s, vlan_id %s", vlanName.c_str(), vlan_id.c_str());
++        if (vlanName != vlan_id)
++        {
++            SWSS_LOG_INFO("Vlan not match, continue");
++            continue;
++        }
++        int vlanid = atoi(vlanName.c_str());
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                msg_len, L2MCD_MAX_SIZE, vlanid);
++                
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        msg->vlan_id = vlanid;
++        msg->count =1;
++
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, intfName.c_str(), (intfName.length()<L2MCD_IFNAME_SIZE)? intfName.length():L2MCD_IFNAME_SIZE);
++        SWSS_LOG_DEBUG("MemIntf: %s", intfName.c_str());
++        msg->op_code = L2MCD_OP_ENABLE;
++        vector<FieldValueTuple> tupEntry;
++        if (m_cfgVlanMemberTable.get(l2mc_localMemName, tupEntry))
++        {
++            auto tag  = std::find_if(
++            tupEntry.begin(), tupEntry.end(),
++            [](auto &t){ return t.first == "tagging_mode"; });
++
++            if (tag != tupEntry.end() && fvValue(*tag) == "untagged")
++                ports[0].tagged = UNTAGGED;
++            else
++                ports[0].tagged = TAGGED; 
++        }
++        sendMsgL2Mcd(L2MCD_VLAN_MEM_TABLE_UPDATE, msg_len, (void *)msg);
++    }
++}
++
++void L2McMgr::doL2McVlanMemUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        auto key = kfvKey(t);
++        auto op = kfvOp(t);
++        size_t found = key.find("|");
++        string vlanName = key.substr(4, found-4);
++        string intfName = key.substr(found+1);
++
++        SWSS_LOG_INFO("vlanmemebr key:%s op:%s", key.c_str(), op.c_str());
++        if ((found != string::npos))
++        {
++            int vlanid = stoi(vlanName.c_str());
++            msg_len = sizeof(L2MCD_CONFIG_MSG) +  sizeof(PORT_ATTR);
++            if (msg_len > L2MCD_MAX_SIZE)
++            {
++                SWSS_LOG_ERROR(
++                    "L2MCD_CFG:SNOOP payload too large: %u (max %u), vlan=%d",
++                    msg_len, L2MCD_MAX_SIZE, vlanid);
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++            memset(buffer, 0, msg_len);
++            msg = (L2MCD_CONFIG_MSG *)buffer;
++            msg->vlan_id = vlanid;
++            msg->count =1;
++            PORT_ATTR *ports = msg->ports;
++            memcpy(ports[0].pnames, intfName.c_str(), (intfName.length()<L2MCD_IFNAME_SIZE)? intfName.length():L2MCD_IFNAME_SIZE);
++            SWSS_LOG_DEBUG("MemIntf: %s", intfName.c_str());
++            vector<FieldValueTuple> tupEntry;
++            if (m_cfgVlanMemberTable.get(key, tupEntry))
++            {
++                auto tag  = std::find_if(
++                tupEntry.begin(), tupEntry.end(),
++                [](auto &t){ return t.first == "tagging_mode"; });
++
++                if (tag != tupEntry.end() && fvValue(*tag) == "untagged")
++                    ports[0].tagged = UNTAGGED;
++                else
++                    ports[0].tagged = TAGGED; 
++            }
++            if (op == SET_COMMAND)
++            {
++                msg->op_code = L2MCD_OP_ENABLE;
++            }
++            else
++            {
++                msg->op_code = L2MCD_OP_DISABLE;
++            }
++            SWSS_LOG_NOTICE("L2MCD_CFG:VLAN_MEMBER op:%s iname:%s %s vlan:%d tagged:%d", op.c_str(), ports[0].pnames, intfName.c_str(), msg->vlan_id, ports[0].tagged);
++            sendMsgL2Mcd(L2MCD_VLAN_MEM_TABLE_UPDATE, msg_len, (void *)msg);
++        }
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::doL2McLagMemberUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        auto key = kfvKey(t);
++        auto op = kfvOp(t);
++
++        string po_name;
++        string po_mem;
++        size_t found = key.find(CONFIGDB_KEY_SEPARATOR);
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + 2 * sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u)",
++                msg_len, L2MCD_MAX_SIZE);
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        if (found != string::npos)
++        {   
++            PORT_ATTR *ports = msg->ports;
++            po_name = key.substr(0, found);
++            po_mem  = key.substr(found+1);
++            SWSS_LOG_INFO("LAG_MEMBER %s %s %s", po_name.c_str(), po_mem.c_str(), op.c_str());
++            memcpy(ports[0].pnames, po_name.c_str(), (po_name.length()<L2MCD_IFNAME_SIZE)? po_name.length():L2MCD_IFNAME_SIZE);
++            memcpy(ports[1].pnames, po_mem.c_str(), (po_mem.length()<L2MCD_IFNAME_SIZE)? po_mem.length():L2MCD_IFNAME_SIZE);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Invalid key format %s", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        if (op == SET_COMMAND)
++        {
++            if (!isLagStateOk(po_name) || !isPortStateOk(po_mem)|| !m_readyLags.count(po_name))
++            {
++                it++;
++                continue;
++            }
++            msg->op_code = L2MCD_OP_ENABLE;
++        }
++        else
++        {
++            msg->op_code = L2MCD_OP_DISABLE;
++        }
++        msg->count = 2;
++        SWSS_LOG_NOTICE("L2MCD_CFG:LAG_MEMBER op:%s  Po:%s  count:%d", op.c_str(), po_name.c_str(), msg->count);
++        sendMsgL2Mcd(L2MCD_LAG_MEM_TABLE_UPDATE, msg_len, (void *)msg);
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::doL2McL3InterfaceUpdateTask(Consumer &consumer)
++{
++    L2MCD_CONFIG_MSG msg;
++    memset(&msg, 0, sizeof(L2MCD_CONFIG_MSG));
++
++    //Vlan700|100.100.100.2/24   -- 700 , 100.100.100.2, 24
++    SWSS_LOG_ENTER();
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        auto key = kfvKey(t);
++        auto op = kfvOp(t);
++        size_t found = key.find("|");
++        size_t found2 =  key.find("/");
++        SWSS_LOG_INFO(" key:%s op:%s", key.c_str(), op.c_str());
++        if (!key.find("Vlan",0)  && (found != string::npos) && (found2 != string::npos))
++        {
++            string vlanstr = key.substr(4, found-4);
++            int vlanid = stoi(vlanstr.c_str());
++
++            string ipstr = key.substr(found+1, found2-found-1);
++            string prefix = key.substr(found2+1);
++            int pr_len = stoi(prefix);
++            msg.vlan_id =vlanid;
++            strncpy(msg.gaddr, ipstr.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++            msg.gaddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++            msg.prefix_length = pr_len;
++            SWSS_LOG_NOTICE("L2MCD_CFG:INTERFACE %s Vid:%s %d ip:%s prefix:%s(%d)", op.c_str(), vlanstr.c_str(),  msg.vlan_id, msg.gaddr, prefix.c_str(),msg.prefix_length);
++            if (ipstr.find(':') != string::npos)
++            {
++                msg.afi = MLD_IP_IPV6_AFI;
++                SWSS_LOG_DEBUG("IPv6 address: %s", ipstr.c_str());
++            }
++            else if (ipstr.find('.') != string::npos)
++            {
++                msg.afi = MLD_IP_IPV4_AFI;
++                SWSS_LOG_DEBUG("IPv4 address: %s", ipstr.c_str());
++            }
++            else
++            {
++                msg.afi = MLD_IP_IPV4_AFI;
++                SWSS_LOG_WARN("Cannot determine address family for IP: %s, defaulting to IPv4", ipstr.c_str());
++            }
++            if (op == SET_COMMAND)
++            {
++                msg.op_code = L2MCD_OP_ENABLE;
++            }
++            else
++            {
++                msg.op_code = L2MCD_OP_DISABLE;
++            }
++        
++            sendMsgL2Mcd(L2MCD_INTERFACE_TABLE_UPDATE, sizeof(msg), (void *)&msg);
++        }
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::doL2McInterfaceUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++        if (msg_len > L2MCD_MAX_SIZE)
++        {
++            SWSS_LOG_ERROR(
++                "L2MCD_CFG:SNOOP payload too large: %u (max %u)",
++                msg_len, L2MCD_MAX_SIZE);
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        memset(buffer, 0, msg_len);
++        msg = (L2MCD_CONFIG_MSG *)buffer;
++
++        KeyOpFieldsValuesTuple t = it->second;
++        auto key = kfvKey(t);
++        auto op = kfvOp(t);
++        msg->count=1;
++        msg->op_code = (op == SET_COMMAND)? L2MCD_OP_ENABLE:L2MCD_OP_DISABLE;
++        PORT_ATTR *ports = msg->ports;
++        memcpy(ports[0].pnames, key.c_str(), (key.length()<L2MCD_IFNAME_SIZE)? key.length():L2MCD_IFNAME_SIZE);
++        ports[0].oper_state = getPortOperState(ports[0].pnames);
++        if (0 == key.find("PortChannel"))
++        {
++          m_readyLags.insert(key);
++        }
++        SWSS_LOG_NOTICE("L2MCD_CFG: IF:%s op:%s oper:%d", key.c_str(), op.c_str(),ports[0].oper_state);
++        sendMsgL2Mcd(L2MCD_SNOOP_PORT_LIST_MSG, msg_len, (void *)msg);
++        it = consumer.m_toSync.erase(it);
++    }
++}
++
++void L2McMgr::doL2McSuppressUpdateTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple &tuple = it->second;
++
++        string op = kfvOp(tuple);
++        string vlan_name = kfvKey(tuple);
++        SWSS_LOG_NOTICE("doL2McSuppressUpdateTask : enter SET_COMMAND");
++        if (op == SET_COMMAND)
++        {
++            std::vector<FieldValueTuple> validFields;
++            for (const auto &fv : kfvFieldsValues(tuple))
++            {
++                const string &field = fvField(fv);
++                const string &value = fvValue(fv);
++
++                if (field == "ipv4-optimised-multicast-flood" || field == "ipv4-link-local-groups-suppression" ||field == "ipv6-optimised-multicast-flood" || field == "ipv6-link-local-groups-suppression")
++                {
++                    validFields.push_back(fv);
++                    SWSS_LOG_NOTICE("doL2McSuppressUpdateTask : Set %s: %s = %s", vlan_name.c_str(), field.c_str(), value.c_str());
++                }
++                else
++                {
++                    SWSS_LOG_WARN("Unknown field '%s' for VLAN '%s', ignoring", field.c_str(), vlan_name.c_str());
++                }
++            }
++
++            if (!validFields.empty())
++            {
++                m_appL2mcSuppressTableProducer.set(vlan_name, validFields);
++            }
++            else
++            {
++                SWSS_LOG_WARN("No valid fields to set for VLAN '%s'", vlan_name.c_str());
++            }
++        }
++        else if (op == DEL_COMMAND)
++        {
++            SWSS_LOG_NOTICE("doL2McSuppressUpdateTask Deleting L2MC suppression config for VLAN '%s'", vlan_name.c_str());
++            m_appL2mcSuppressTableProducer.del(vlan_name);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Unknown operation '%s' for VLAN '%s'", op.c_str(), vlan_name.c_str());
++        }
++
++        it = consumer.m_toSync.erase(it);  // Remove processed entry
++    }
++}
++
++void L2McMgr::doL2McProcRemoteEntries(string op, string key, string key_seperator, int cmd_type)
++{
++    SWSS_LOG_ENTER();
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++    if (msg_len > L2MCD_MAX_SIZE)
++    {
++        SWSS_LOG_ERROR(
++            "L2MCD_CFG:SNOOP payload too large: %u (max %u)",
++            msg_len, L2MCD_MAX_SIZE);
++        return;
++    }
++    memset(buffer, 0, msg_len);
++    msg = (L2MCD_CONFIG_MSG *)buffer;
++
++    size_t pos=key.find(key_seperator.c_str());
++    if (pos == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing separator");
++        return;
++    }
++    auto vlan_name = key.substr(0,pos);
++    auto pos1 = key.find(key_seperator.c_str(), pos+1);
++    if (pos1 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing saddr field");
++        return;
++    }
++    auto saddr = key.substr(pos+1, pos1-pos-1);
++    auto pos2 = key.find(key_seperator.c_str(), pos1+1);
++    if (pos1 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing gaddr field");
++        return;
++    }
++    auto gaddr = key.substr(pos1+1, pos2-pos1-1);
++    auto pos3 = key.find(key_seperator.c_str(), pos2+1);
++    if (pos3 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing iname field");
++        return;
++    }
++    auto iname = key.substr(pos2+1, pos3-pos2-1);
++    auto pos4 = key.find(key_seperator.c_str(), pos3+1);
++    if (pos4 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing type field");
++        return;
++    }
++    auto type = key.substr(pos3+1, pos4-pos3-1);
++    auto pos5 = key.find(key_seperator.c_str(), pos4+1);
++    if (pos5 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing leave field");
++        return;
++    }
++    auto leave = key.substr(pos4+1, pos5-pos4-1);
++    msg->vlan_id = (unsigned int) stoi(vlan_name.substr(4));
++    strncpy(msg->saddr, saddr.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++    msg->saddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++    strncpy(msg->gaddr, gaddr.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++    msg->gaddr[L2MCD_IP_ADDR_STR_SIZE - 1] = '\0';
++    if (IpAddress(gaddr).isV4())
++    {
++        msg->afi = MLD_IP_IPV4_AFI;
++    }
++    else
++    {
++        msg->afi = MLD_IP_IPV6_AFI;
++    }
++    msg->count=1;
++    PORT_ATTR *ports = msg->ports;
++    memcpy(ports[0].pnames, iname.c_str(), (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++
++    if (IpAddress(gaddr).isV4() && saddr != "0.0.0.0")
++    {
++        msg->version = IGMP_VERSION_3;
++    }
++    else if (IpAddress(gaddr).isV4() && saddr == "0.0.0.0")
++    {
++        msg->version = IGMP_VERSION_2;
++    }
++    else if (!IpAddress(gaddr).isV4() && saddr != "0000:0000:0000:0000:0000:0000:0000:0000")
++    {
++        msg->version = MLD_VERSION_2;
++    }
++    else
++    {
++        msg->version = MLD_VERSION_1;
++    }
++
++    if (op =="SET")
++    {
++        msg->op_code = L2MCD_OP_ENABLE;
++    }
++    else 
++    {
++        msg->op_code = L2MCD_OP_DISABLE;
++    }
++    msg->cmd_code=cmd_type;
++    SWSS_LOG_NOTICE("L2MCD_CFG:REMOTE op:%s [key:%s]  SA:%s GA:%s Port:%s vlan:%d type:%d", 
++           op.c_str(), key.c_str(), saddr.c_str(), gaddr.c_str(), iname.c_str(), msg->vlan_id,msg->cmd_code);
++    sendMsgL2Mcd(L2MCD_SNOOP_REMOTE_CONFIG_MSG, msg_len , (void *)msg);
++}
++
++void L2McMgr::doL2McProcRemoteMrouterEntries(string op, string key, string key_seperator)
++{
++    uint32_t msg_len = 0;
++    L2MCD_CONFIG_MSG *msg = NULL;
++    msg_len = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
++    if (msg_len > L2MCD_MAX_SIZE)
++    {
++        SWSS_LOG_ERROR(
++            "L2MCD_CFG:SNOOP payload too large: %u (max %u)",
++            msg_len, L2MCD_MAX_SIZE);
++        return;
++    }
++    memset(buffer, 0, msg_len);
++    msg = (L2MCD_CONFIG_MSG *)buffer;
++
++    SWSS_LOG_ENTER();
++    size_t pos=key.find(key_seperator.c_str());
++    if (pos == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: missing separator");
++        return;
++    }
++    auto vlan_name = key.substr(0,pos);
++    auto pos1 = key.find(key_seperator.c_str(), pos+1);
++    if (pos == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: iname separator");
++        return;
++    }
++    auto iname = key.substr(pos+1, pos1-pos-1);
++    auto pos2 = key.find(key_seperator.c_str(), pos1+1);
++    if (pos2 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: type separator");
++        return;
++    }
++    auto type = key.substr(pos1+1, pos2-pos1-1);
++    auto pos3 = key.find(key_seperator.c_str(), pos2+1);
++    if (pos3 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: leave separator");
++        return;
++    }
++    auto leave = key.substr(pos2+1, pos3-pos2-1);
++    auto pos4 = key.find(key_seperator.c_str(), pos3+1);
++    if (pos4 == std::string::npos) {
++        SWSS_LOG_ERROR("Invalid key format: proctol separator");
++        return;
++    }
++    auto proctol = key.substr(pos3+1, pos4-pos3-1);
++    msg->vlan_id = (unsigned int) stoi(vlan_name.substr(4));
++    msg->count=1;
++    PORT_ATTR *ports = msg->ports;
++    memcpy(ports[0].pnames, iname.c_str(), (iname.length()<L2MCD_IFNAME_SIZE)? iname.length():L2MCD_IFNAME_SIZE);
++
++    if(proctol == "V4")
++        msg->afi = MLD_IP_IPV4_AFI;
++    else
++        msg->afi = MLD_IP_IPV6_AFI;
++
++    if (op =="SET")
++    {
++        msg->op_code = L2MCD_OP_ENABLE;
++    }
++    else 
++    {
++        msg->op_code = L2MCD_OP_DISABLE;
++    }
++    SWSS_LOG_NOTICE("L2MCD_Mrouter:REMOTE op:%s [key:%s] Port:%s vlan:%d", 
++           op.c_str(), key.c_str(), iname.c_str(), msg->vlan_id);
++    sendMsgL2Mcd(L2MCD_SNOOP_MROUTER_REMOTE_CONFIG_MSG, msg_len , (void *)msg);
++}
++
++void L2McMgr::doTask(NotificationConsumer &consumer)
++{
++    std::string op;
++    std::string data;
++    std::vector<swss::FieldValueTuple> values;
++
++    if (&consumer == m_l2mcNotificationConsumer)
++    {
++        SWSS_LOG_INFO("Received l2mc entry notification");
++        consumer.pop(op, data, values);
++        doL2McProcRemoteEntries(op, data, "|", 0);
++    }
++    else if (&consumer == m_l2mcMrouterNotificationConsumer)
++    {
++        SWSS_LOG_INFO("Received l2mc Mrouter notification");
++        consumer.pop(op, data, values);
++        doL2McProcRemoteMrouterEntries(op, data, "|"); 
++    }
++    else if (&consumer == m_l2mcCfgparaDoneNotificationConsumer)
++    {
++        SWSS_LOG_INFO("Received l2mc cfgpara notification");
++        consumer.pop(op, data, values);
++        SWSS_LOG_INFO("Received l2mcd_sync op  %s data %s",op.c_str(), data.c_str());
++        size_t pos = data.find('|');
++        if (pos == string::npos) 
++        {
++            SWSS_LOG_ERROR("Invalid l2mcd_sync data: %s", data.c_str());
++            return;
++        }
++        string option = data.substr(0,pos);
++        string param = data.substr(pos+1);
++        string vlan_id = "";
++        string ifname = "";
++        SWSS_LOG_INFO("Received l2mcd_sync op  %s option %s vlan_id %s",op.c_str(), option.c_str(), param.c_str());
++        if (op == "VLAN_MEMBER_READY")
++        {
++            ifname = option;
++            vlan_id = param;
++            auto ready = m_readyVlanPorts.insert(vlan_id + "|" + ifname);
++            bool port_up = m_operUpPorts.count(ifname) || getPortOperState(ifname);
++            if (port_up)
++                m_operUpPorts.insert(ifname);
++
++            if (ready.second && m_snoopEnabledVlans.count(vlan_id) && port_up)
++            {
++                SWSS_LOG_INFO("Vlan %s member %s is ready and UP, refresh static/mrouter entries",
++                              vlan_id.c_str(), ifname.c_str());
++                updateMrouterEntry(vlan_id, ifname);
++                updateGrpStaticEntry(vlan_id, ifname);
++            }
++        }
++        else if (op == "VLAN_MEMBER_REMOVED")
++        {
++            m_readyVlanPorts.erase(param + "|" + option);
++        }
++        else if (op == "SNP")
++        {
++            vlan_id = param;
++            if (option == "enable")
++            {
++                auto res = m_snoopEnabledVlans.insert(vlan_id);
++
++                if (!res.second)
++                {
++                    SWSS_LOG_INFO("Vlan %s already enable, skip", vlan_id.c_str());
++                    //return;
++                }
++                SWSS_LOG_INFO("Vlan %s changed to enable", vlan_id.c_str());
++                updateVlanMember(vlan_id);
++                updateReadyVlanEntries(vlan_id);
++            }
++            else if (option == "disable")
++            {
++                SWSS_LOG_INFO("Vlan %s changed to disable", vlan_id.c_str());
++                m_snoopEnabledVlans.erase(vlan_id);
++                const string prefix = vlan_id + "|";
++                for (auto it = m_readyVlanPorts.begin(); it != m_readyVlanPorts.end();)
++                {
++                    if (it->compare(0, prefix.size(), prefix) == 0)
++                        it = m_readyVlanPorts.erase(it);
++                    else
++                        ++it;
++                }
++            }
++        }
++        else if (op == "LINK_STATUS")
++        {
++            ifname = param;
++
++            if (option == "up")
++            {
++                auto res = m_operUpPorts.insert(ifname);
++
++                if (!res.second)
++                {
++                    SWSS_LOG_INFO("Port %s already UP, skip", ifname.c_str());
++                    //return;
++                }
++                SWSS_LOG_INFO("Port %s changed to UP", ifname.c_str());
++                updateReadyPortEntries(ifname);
++            }
++            else if (option == "down")
++            {
++                SWSS_LOG_INFO("Port %s changed to DOWM", ifname.c_str());
++                m_operUpPorts.erase(ifname);
++            }
++        }
++        else if (op == "WARM_REBOOT")
++        {
++            int vlanid = atoi(param.c_str());
++            int proto  = atoi(option.c_str());  // 1 = IGMP, 2 = MLD
++
++            auto it = m_warmrebootvlanMap.find(vlanid);
++            if (it == m_warmrebootvlanMap.end())
++                return;
++
++            if (proto == 1)
++                it->second.igmp = false;
++            else if (proto == 2)
++                it->second.mld = false;
++
++            if (!it->second.igmp && !it->second.mld)
++            {
++                m_warmrebootvlanMap.erase(it);
++            }
++
++            if (m_warmrebootvlanMap.empty())
++            {
++                SWSS_LOG_NOTICE("L2MCMGRD warm reboot RECONCILED");
++                WarmStart::setWarmStartState("l2mcmgrd", WarmStart::RECONCILED);
++                m_warmstart = false;
++            }
++        }
++            
++    }
++}
++
++void L2McMgr::waitTillReadyToReconcile()
++{
++    long cnt = 0;
++    bool reconciled = false;
++
++    while (!reconciled) {
++        if (cnt > RECONCILE_WARMSTART_MAX_RETRY ) {
++            SWSS_LOG_ERROR("Vlanmgrd reconcile check timeout! Max retry(%d) reached, cnt=%ld", 
++                           RECONCILE_WARMSTART_MAX_RETRY, cnt);
++            break;
++        }
++
++        WarmStart::WarmStartState state;
++        WarmStart::getWarmStartState("vlanmgrd", state);
++
++        if ((WarmStart::REPLAYED == state) || (WarmStart::RECONCILED == state)) {
++            reconciled = true;
++            break;
++        }
++        SWSS_LOG_INFO("Vlanmgrd NOT Reconciled %d", (int) state);            
++        sleep(1);
++        cnt++;
++    }
++
++    if (reconciled) {
++        SWSS_LOG_NOTICE("Vlanmgrd Reconciled successfully after %ld retries", cnt);
++    } else {
++        SWSS_LOG_WARN("Vlanmgrd failed to reach REPLAYED/RECONCILED state after max retries. "
++                     "Continuing with current state.");
++    }
++    return;
++}
++
++void L2McMgr::waitForPortsReady( int timeout_sec)
++{
++    SWSS_LOG_NOTICE("[WARM] Wait for ports oper_status UP (timeout=%d)", timeout_sec);
++
++    time_t start = time(nullptr);
++
++    while (true)
++    {
++        vector<string> keys;
++        m_appPortTable.getKeys(keys);
++
++        bool allReady = true;
++
++        for (const auto &key : keys)
++        {
++            vector<FieldValueTuple> fvs;
++            m_appPortTable.get(key, fvs);
++
++            string oper;
++            bool hasOper = false;
++
++            for (auto &fv : fvs)
++            {
++                if (fv.first == "oper_status")
++                {
++                    oper = fv.second;
++                    hasOper = true;
++                    break;
++                }
++            }
++
++            if (hasOper && oper != "up")
++            {
++                allReady = false;
++                SWSS_LOG_INFO("[WARM] Port %s oper=%s, wait...", key.c_str(), oper.c_str());
++                break;
++            }
++        }
++
++        if (allReady)
++        {
++            SWSS_LOG_NOTICE("[WARM] All ports oper UP");
++            return;
++        }
++
++        if (time(nullptr) - start >= timeout_sec)
++        {
++            SWSS_LOG_NOTICE("[WARM] Port wait timeout, continue anyway");
++            return;
++        }
++
++        sleep(1);
++    }
++}
+\ No newline at end of file
+diff --git a/cfgmgr/l2mcmgr.h b/cfgmgr/l2mcmgr.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4f51fb2f28c95e279580417fe98099d97013e33
+--- /dev/null
++++ b/cfgmgr/l2mcmgr.h
+@@ -0,0 +1,133 @@
++#pragma once
++
++#include <set>
++#include <string>
++#include <unistd.h>
++#include <bitset>
++#include <iostream>
++#include <sstream>
++#include <thread>
++#include <vector>
++
++#include "l2mcd_ipc.h"
++#include <sys/stat.h>
++#include "dbconnector.h"
++#include "netmsg.h"
++#include "orch.h"
++#include "producerstatetable.h"
++#include <stddef.h>
++#include <algorithm>
++#include "logger.h"
++#include "tokenize.h"
++#include "warm_restart.h"
++#include "notifier.h"
++
++#define L2MCMGR_IPC_SOCK_NAME "/var/run/l2mcdmgr_ipc.sock"
++
++#define IGMP_VERSION_2 2
++#define IGMP_VERSION_3 3
++#define MLD_VERSION_1 1
++#define MLD_VERSION_2 2
++#define RESTORE_MAX_WAIT_TIME 120
++
++using namespace std;
++using namespace swss;
++
++namespace swss {
++
++struct L2mcWarmRebootAfi
++{
++    bool igmp{false};
++    bool mld{false};
++};
++
++class L2McMgr : public Orch
++{
++public:
++    L2McMgr(DBConnector *cfgDb, DBConnector *appDb, DBConnector *staDb,
++            const vector<TableConnector> &tables);
++
++    using Orch::doTask;
++	void ipcInitL2McMgr();
++    int sendMsgL2Mcd(L2MCD_MSG_TYPE msgType, uint32_t msgLen, void *data);
++    int isPortInitComplete(DBConnector *app_db);
++    int getL2McPortList(DBConnector *state_db);
++    int getL2McCfgParams(DBConnector *cfgDb);
++    void waitTillReadyToReconcile();
++    void waitForPortsReady(int timeout_sec);
++  
++
++private:
++    ProducerStateTable m_appL2mcSuppressTableProducer;
++    Table m_cfgL2McGlobalTable;
++    Table m_cfgL2McStaticTable;
++    Table m_cfgVlanMemberTable;
++    Table m_stateVlanTable;
++    Table m_cfgL2McMrouterTable;
++    Table m_stateVlanMemberTable;
++    Table m_stateInterfaceTableName;
++    Table m_cfgLagMemberTable;
++    Table m_stateLagTable;
++    Table m_appPortTable;
++    Table m_appLagTable;
++    Table m_statePortTable;
++    Table m_appL2mcVlanTable;
++    Table m_appL2mcGrpMemTable;
++    Table m_appL2mcMrouterTable;
++    Table m_statel2mcdLocalMemberTable;
++    Table m_statel2mcdLocalMrouterTable;
++    Table m_cfgL2McMldGlobalTable;
++    Table m_cfgL2McMldStaticTable;
++    Table m_cfgL2McMldMrouterTable;
++
++    NotificationConsumer* m_l2mcNotificationConsumer;
++    NotificationConsumer* m_l2mcMrouterNotificationConsumer;
++    NotificationConsumer* m_l2mcCfgparaDoneNotificationConsumer;
++    
++    bool m_warmstart;
++    std::unordered_set<std::string> m_operUpPorts;
++    std::unordered_set<std::string> m_snoopEnabledVlans;
++    std::unordered_set<std::string> m_readyVlanPorts;
++    std::unordered_set<std::string> m_readyLags;
++    map<string, string> m_l2mcentry;
++    map<string, string> m_l2mcVlanentry;
++    map<string, string> m_l2mcGrpMementry;
++    map<string, string> m_l2mcMrouterentry;
++    map<int, bool> m_vlanIgmpSnoopMap;
++    map<int, bool> m_vlanMldSnoopMap;
++    map<int, L2mcWarmRebootAfi> m_warmrebootvlanMap;
++    bool l2mcVlanReplayDone;
++    bool l2mcGrpMemReplayDone;
++    bool l2mcMouterReplayDone;
++
++    int l2mcd_fd;
++    void doTask(Consumer &consumer);
++    void doTask(NotificationConsumer &consumer);
++    void doL2McGlobalTask(Consumer &consumer);
++    void doL2McMldGlobalTask(Consumer &consumer);
++    void doL2McStaticEntryTask(Consumer &consumer);
++    void doL2McMldStaticEntryTask(Consumer &consumer);
++    void doVlanUpdateTask (Consumer &consumer);
++    void doL2McMrouterUpdateTask(Consumer &consumer);
++    void doL2McMldMrouterUpdateTask(Consumer &consumer);
++    void doL2McVlanMemUpdateTask(Consumer &consumer);
++    void updateVlanMember(const string vlan_id);
++    void updateReadyVlanEntries(const string vlan_id);
++    void updateReadyPortEntries(const string ifname);
++    void updateMrouterEntry(const string vlan_id, const string ifname);
++    void updateGrpStaticEntry(const string vlan_id, const string ifname);
++    void doL2McSuppressUpdateTask(Consumer &consumer);
++    void doL2McL3InterfaceUpdateTask(Consumer &consumer);
++    void doL2McLagMemberUpdateTask(Consumer &consumer);
++    void doL2McInterfaceUpdateTask(Consumer &consumer);
++    void doL2McProcRemoteEntries(string op, string key, string key_seperator, int type);
++    void doL2McProcRemoteMrouterEntries(string op, string key, string key_seperator);
++    int getVlanMembers(const string &vlanKey, vector<PORT_ATTR>&port_list);
++    int getPortOperState(string if_name);
++    bool isLagStateOk(const string &alias);
++    bool isPortStateOk(const string &alias);
++    void sendL2McSnoopConfig(const string &key,int vlan_id,int afi,const string &op,const vector<FieldValueTuple> &tuples);
++
++};
++
++}
+diff --git a/cfgmgr/l2mcmgrd.cpp b/cfgmgr/l2mcmgrd.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..75e4c4af368452b248e366733e713a9a0c8c02c8
+--- /dev/null
++++ b/cfgmgr/l2mcmgrd.cpp
+@@ -0,0 +1,140 @@
++/*
++ * Copyright 2019 Broadcom. All rights reserved.
++ * The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.
++ * 
++ *  cfgmgr/l2mcmgrd.cpp
++ */
++
++#include <fstream>
++#include "l2mcmgr.h"
++#include "netdispatcher.h"
++#include "netlink.h"
++#include "select.h"
++#include "warm_restart.h"
++#include "schema.h"
++
++using namespace std;
++using namespace swss;
++
++/* select() function timout retry time in milli-seconds */
++#define SELECT_TIMEOUT 1000
++
++bool gSwssRecord = false;
++bool gLogRotate = false;
++bool gResponsePublisherLogRotate = false;
++bool gResponsePublisherRecord = false;
++ofstream gResponsePublisherRecordOfs;
++ofstream gRecordOfs;
++string gRecordFile;
++string gResponsePublisherRecordFile;
++/* Global database mutex */
++mutex gDbMutex;
++
++int main(int argc, char **argv)
++{
++    Logger::linkToDbNative("l2mcmgrd");
++    SWSS_LOG_ENTER();
++
++    SWSS_LOG_NOTICE("--- Starting l2mcmgrd ---");
++
++    try
++    {
++        DBConnector conf_db(CONFIG_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
++        DBConnector app_db(APPL_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
++        DBConnector state_db(STATE_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
++
++        WarmStart::initialize("l2mcmgrd", "l2mcmgrd");
++        WarmStart::checkWarmStart("l2mcmgrd", "l2mcmgrd");
++        if (WarmStart::isWarmStart())
++        {
++            WarmStart::setWarmStartState("l2mcmgrd", WarmStart::INITIALIZED);
++        }
++
++        // SelectableTimer replayCheckTimer(timespec{0, 0});
++        // int pasttime = 0;
++
++        // Config DB Tables
++        TableConnector conf_l2mc_global_table(&conf_db, CFG_L2MC_TABLE_NAME);
++        TableConnector conf_l2mc_static_table(&conf_db, CFG_L2MC_STATIC_TABLE_NAME);
++        TableConnector conf_l2mc_mrouter_table(&conf_db, CFG_L2MC_MROUTER_TABLE_NAME);
++        TableConnector conf_lag_member_table(&conf_db,  CFG_LAG_MEMBER_TABLE_NAME);
++        TableConnector conf_l2mc_suppress_table(&conf_db,  CFG_L2MC_SUPPRESS_TABLE_NAME);
++        TableConnector conf_l2mc_mld_global_table(&conf_db, CFG_MLD_L2MC_TABLE_NAME);
++        TableConnector conf_l2mc_mld_static_table(&conf_db, CFG_MLD_L2MC_STATIC_TABLE_NAME);
++        TableConnector conf_l2mc_mld_mrouter_table(&conf_db,CFG_MLD_L2MC_MROUTER_TABLE_NAME);
++        TableConnector state_interface_table(&state_db, STATE_INTERFACE_TABLE_NAME);
++        TableConnector state_vlan_table(&state_db, STATE_VLAN_TABLE_NAME);
++        TableConnector state_vlan_member_table(&state_db,  STATE_VLAN_MEMBER_TABLE_NAME);
++        TableConnector state_lag_table(&state_db,  STATE_LAG_TABLE_NAME);
++        TableConnector state_port_table(&state_db,  STATE_PORT_TABLE_NAME);
++        TableConnector appl_l2mc_vlan_table(&app_db,  APP_L2MC_VLAN_TABLE_NAME);
++        TableConnector appl_l2mc_grpmem_table(&app_db,  APP_L2MC_MEMBER_TABLE_NAME);
++        TableConnector appl_l2mc_mouter_table(&app_db,  APP_L2MC_MROUTER_TABLE_NAME);
++
++        vector<TableConnector> tables = {
++            conf_l2mc_global_table,
++            conf_l2mc_static_table,
++            conf_l2mc_mrouter_table,
++            conf_lag_member_table,
++            conf_l2mc_suppress_table,
++            conf_l2mc_mld_global_table,
++            conf_l2mc_mld_static_table,
++            conf_l2mc_mld_mrouter_table,
++            state_interface_table,
++            state_vlan_table,
++            state_vlan_member_table,
++            state_lag_table,
++            state_port_table,
++            appl_l2mc_vlan_table,
++            appl_l2mc_grpmem_table,
++            appl_l2mc_mouter_table,
++        };
++
++        L2McMgr l2mcmgr(&conf_db, &app_db, &state_db, tables);
++        l2mcmgr.ipcInitL2McMgr();
++        l2mcmgr.isPortInitComplete(&app_db);
++        l2mcmgr.getL2McPortList(&state_db);
++        l2mcmgr.getL2McCfgParams(&conf_db);
++        vector<Orch *> cfgOrchList = {&l2mcmgr};
++        Select s;
++        for (Orch *o: cfgOrchList)
++        {
++            s.addSelectables(o->getSelectables());
++        }
++
++        if (WarmStart::isWarmStart())
++        {
++            l2mcmgr.waitTillReadyToReconcile();
++            l2mcmgr.waitForPortsReady(120);
++            WarmStart::setWarmStartState("l2mcmgrd", WarmStart::REPLAYED);
++        }
++
++        SWSS_LOG_NOTICE("L2MCMGrd Start main loop log_debug:%d",swss::Logger::getInstance().getMinPrio());
++        while (true)
++        {
++            Selectable *sel;
++            int ret;
++
++            ret = s.select(&sel, SELECT_TIMEOUT);
++            if (ret == Select::ERROR)
++            {
++                SWSS_LOG_NOTICE("Error: %s!", strerror(errno));
++                continue;
++            }
++            if (ret == Select::TIMEOUT)
++            {
++                l2mcmgr.doTask();
++                continue;
++            }
++
++            auto *c = (Executor *)sel;
++            c->execute();
++        }
++    }
++    catch (const exception &e)
++    {
++        SWSS_LOG_ERROR("Runtime error: %s", e.what());
++    }
++
++    return -1;
++}
+diff --git a/configure.ac b/configure.ac
+index 145231749ce40a832ba401f43be3928a75267ccc..bbd3435691e9eb698a9712b02fba770639d7c114 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -18,6 +18,12 @@ AC_CHECK_LIB([team], [team_alloc],
+    [AC_MSG_WARN([libteam is not installed.])
+     AM_CONDITIONAL(HAVE_LIBTEAM, false)])
+ 
++AC_CHECK_FILE([/usr/include/l2mcd_ipc.h], 
++    AM_CONDITIONAL(HAVE_L2MCD, true),
++   [AC_MSG_WARN([l2mcd is not installed.])
++    AM_CONDITIONAL(HAVE_L2MCD, false)])
++
++
+ PKG_CHECK_MODULES([JANSSON], [jansson])
+ 
+ AC_CHECK_FILE([/usr/include/stp_ipc.h],
+diff --git a/orchagent/Makefile.am b/orchagent/Makefile.am
+index f7eaf48c739ae774918200da9f55b6981b7df34f..c4561d84aae46ad5e95b900d0c58e254cf7bc8fa 100644
+--- a/orchagent/Makefile.am
++++ b/orchagent/Makefile.am
+@@ -131,6 +131,7 @@ orchagent_SOURCES = \
+             dash/dashportmaporch.cpp \
+             twamporch.cpp \
+             stporch.cpp \
++            l2mcorch.cpp\
+             nexthopkey.cpp \
+             macsecpost.cpp \
+             high_frequency_telemetry/hftelorch.cpp \
+diff --git a/orchagent/l2mcorch.cpp b/orchagent/l2mcorch.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c6ead5817884f77986d4d70e79447b6eb654dfc
+--- /dev/null
++++ b/orchagent/l2mcorch.cpp
+@@ -0,0 +1,1573 @@
++#include <assert.h>
++#include <algorithm>
++#include "l2mcorch.h"
++#include "logger.h"
++#include "swssnet.h"
++#include  "tokenize.h"
++//#include  "errororch.h"
++#include "sai_serialize.h"
++#include "redisclient.h"
++
++
++using namespace swss;
++
++#define VLAN_PREFIX "Vlan"
++
++extern sai_object_id_t gSwitchId;
++
++extern sai_vlan_api_t *sai_vlan_api;
++extern sai_switch_api_t*            sai_switch_api;
++extern sai_l2mc_api_t*              sai_l2mc_entry_api;
++extern sai_l2mc_group_api_t*        sai_l2mc_group_api;
++
++extern PortsOrch *gPortsOrch;
++
++extern L2mcOrch *gL2mcOrch;
++extern PortsOrch*        gPortsOrch;
++
++std::map<std::string, L2mcSuppressType> suppress_type_map = {
++    {"ipv4-optimised-multicast-flood", L2mcSuppressType::UNKNOWN_IPV4},
++    {"ipv4-link-local-groups-suppression", L2mcSuppressType::IPV4_LINK_LOCAL},
++    {"ipv6-optimised-multicast-flood", L2mcSuppressType::UNKNOWN_IPV6},
++    {"ipv6-link-local-groups-suppression", L2mcSuppressType::IPV6_LINK_LOCAL}
++};
++
++std::vector<L2mcSuppressType> suppress_types = {
++    L2mcSuppressType::UNKNOWN_IPV4,
++    L2mcSuppressType::IPV4_LINK_LOCAL,
++    L2mcSuppressType::UNKNOWN_IPV6,
++    L2mcSuppressType::IPV6_LINK_LOCAL
++};
++
++L2mcOrch::L2mcOrch(DBConnector * appDb, vector<string> &tableNames) :
++    Orch(appDb, tableNames)
++{
++    SWSS_LOG_ENTER();
++    gPortsOrch->attach(this);
++};
++
++bool L2mcOrch::hasL2mcGroup(string vlan, const L2mcGroupKey &l2mckey)
++{
++    auto vlan_iter = m_syncdL2mcEntries.find(vlan);
++    
++    if (vlan_iter == m_syncdL2mcEntries.end()) {
++        return false;
++    }
++    
++    return vlan_iter->second.find(l2mckey) != vlan_iter->second.end();
++}
++
++sai_object_id_t L2mcOrch::getL2mcGroupId(string vlan, const L2mcGroupKey &l2mckey)
++{
++    return m_syncdL2mcEntries[vlan][l2mckey].l2mc_group_id;
++}
++
++void L2mcOrch::increaseL2mcMemberRefCount(string vlan, const L2mcGroupKey& l2mckey)
++{
++    m_syncdL2mcEntries[vlan][l2mckey].ref_count ++;
++    return;
++}
++
++void L2mcOrch::decreaseL2mcMemberRefCount(string vlan, const L2mcGroupKey& l2mckey)
++{
++    m_syncdL2mcEntries[vlan][l2mckey].ref_count --;
++    return;
++}
++
++bool L2mcOrch::isMemberRefCntZero(string vlan, const L2mcGroupKey& l2mckey) const
++{
++    return m_syncdL2mcEntries.at(vlan).at(l2mckey).ref_count == 0;
++}
++
++bool L2mcOrch::isSuppressionEnabled(string vlan_alias) const
++{
++    auto it = m_vlan_suppress_info.find(vlan_alias);
++    return it != m_vlan_suppress_info.end() &&
++           (it->second.unknown_ipv4_enabled || it->second.ipv4_link_local_enabled 
++            ||it->second.unknown_ipv6_enabled || it->second.ipv6_link_local_enabled );
++}
++
++// bool L2mcOrch::bake()
++// {
++//     SWSS_LOG_ENTER();
++
++//     // addExistingData(APP_L2MC_VLAN_TABLE_NAME);
++//     // addExistingData(APP_L2MC_MEMBER_TABLE_NAME);
++//     // addExistingData(APP_L2MC_MROUTER_TABLE_NAME);
++
++//     return true;
++// }
++
++bool L2mcOrch::AddL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vlan_alias, Port &port)
++{
++    sai_status_t status;
++    sai_object_id_t l2mc_member_id;
++    vector<sai_attribute_t> l2mcgm_attrs;
++    sai_attribute_t l2mcgm_attr;
++    Port vlan;
++
++    SWSS_LOG_ENTER();
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_NOTICE("AddL2mcGroupMember: Failed to locate vlan %s", vlan_alias.c_str());
++        return false;
++    }
++
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan_alias).find(l2mc_GrpKey);
++    /*Group member already exists */
++    if (l2mc_group->second.l2mc_group_members.find(port.m_alias) != l2mc_group->second.l2mc_group_members.end())
++        return true;
++
++    SWSS_LOG_NOTICE("AddL2mcGroupMember: (%s,%s,%s) Add l2mc group member %s to l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), port.m_alias.c_str(), l2mc_group->second.l2mc_group_id);
++    
++    bzero(&l2mcgm_attr, sizeof(l2mcgm_attr));
++
++    l2mcgm_attr.id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_GROUP_ID;
++    l2mcgm_attr.value.oid = l2mc_group->second.l2mc_group_id;
++    l2mcgm_attrs.push_back(l2mcgm_attr);
++
++    l2mcgm_attr.id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_OUTPUT_ID;
++    l2mcgm_attr.value.oid = port.m_bridge_port_id;
++    l2mcgm_attrs.push_back(l2mcgm_attr);
++
++    status = sai_l2mc_group_api->create_l2mc_group_member(&l2mc_member_id, gSwitchId,
++                                                        (uint32_t)l2mcgm_attrs.size(),
++                                                        l2mcgm_attrs.data());
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR("AddL2mcGroupMember: Failed to add l2mc group member %s, to l2mc-grp:%lx rv:%d",
++                        port.m_alias.c_str(), l2mc_group->second.l2mc_group_id, status);
++        return false;
++    }
++
++    l2mc_group->second.l2mc_group_members[port.m_alias].l2mc_member_id = l2mc_member_id;
++    l2mc_group->second.l2mc_group_members[port.m_alias].is_l2mc_member = true;
++    increaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++
++    port.m_l2mc_count++;
++    gPortsOrch->setPort(port.m_alias, port);
++    vlan.m_l2mc_count++;
++    gPortsOrch->setPort(vlan.m_alias, vlan);
++    SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
++        port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++
++    return true;
++}
++
++bool L2mcOrch::RemoveL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vlan_alias, Port &port)
++{
++    sai_status_t status;
++    Port vlan;
++
++    SWSS_LOG_ENTER();
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_NOTICE("RemoveL2mcGroupMember: Failed to locate vlan %s", vlan_alias.c_str());
++        return false;
++    }
++
++    if (m_syncdL2mcEntries.find(vlan_alias) == m_syncdL2mcEntries.end())
++    {
++        SWSS_LOG_NOTICE("RemoveL2mcGroupMember: vlan %s not found, skip removing group member", vlan_alias.c_str());
++        return true;
++    }
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan_alias).find(l2mc_GrpKey);
++    auto l2mc_group_member = l2mc_group->second.l2mc_group_members.find(port.m_alias);
++    /* l2mc group member already deleted or doesn't exists */
++    if(l2mc_group_member == l2mc_group->second.l2mc_group_members.end())
++        return true;
++    
++    /* Retain l2mc group member from deletion if mrouter port learnt on the
++     * same member port where delete request recieved due to IGMP leave*/
++    vector<string> mrouter_ports;
++    if(l2mc_GrpKey.group_address.isV4())
++        mrouter_ports = mrouter_ports_ipv4_per_vlan[vlan_alias];
++    else
++        mrouter_ports = mrouter_ports_ipv6_per_vlan[vlan_alias];
++
++    if(!mrouter_ports.empty())
++    {
++        auto v = find(mrouter_ports.begin(), mrouter_ports.end(), port.m_alias);
++
++        if(v != mrouter_ports.end())
++        {
++            SWSS_LOG_NOTICE("L2mc mrouter port is same as group member port (%s, %s, %d)", l2mc_GrpKey.source_address.to_string().c_str(),
++                    l2mc_GrpKey.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id);
++        
++            if (l2mc_group_member != l2mc_group->second.l2mc_group_members.end())
++            {
++                l2mc_group->second.l2mc_group_members[port.m_alias].is_l2mc_member = false;
++            }
++            /* If it is the last memember, IGMP leave should be allowed to delete the member */
++            if(m_syncdL2mcEntries[vlan_alias][l2mc_GrpKey].ref_count != 1)
++                return true;
++        }
++    }
++
++    SWSS_LOG_NOTICE("RemoveL2mcGroupMember: (%s,%s,%s) Delete l2mc group member %s from l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), port.m_alias.c_str(), l2mc_group->second.l2mc_group_id);
++    
++    if (l2mc_group_member != l2mc_group->second.l2mc_group_members.end())
++    {
++        status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
++        
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcGroupMember: Failed to remove l2mc group member %lx, from l2mc-grp:%lx rv:%d",
++                           l2mc_group_member->second.l2mc_member_id, l2mc_group->second.l2mc_group_id, status);
++            return false;
++        }
++        decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++        l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
++
++        port.m_l2mc_count--;
++        gPortsOrch->setPort(port.m_alias, port);
++        vlan.m_l2mc_count--;
++        gPortsOrch->setPort(vlan.m_alias, vlan);
++        SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
++            port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++    }
++    return true;
++}
++
++bool L2mcOrch::RemoveL2mcGroupMembers(const L2mcGroupKey &l2mc_GrpKey, string vlan_alias)
++{
++    sai_status_t status;
++    Port vlan;
++
++    SWSS_LOG_ENTER();
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_NOTICE("RemoveL2mcGroupMembers: Failed to locate vlan %s", vlan_alias.c_str());
++        return false;
++    }
++
++    if (m_syncdL2mcEntries.find(vlan_alias) == m_syncdL2mcEntries.end())
++    {
++        SWSS_LOG_NOTICE("RemoveL2mcGroupMember: vlan %s not found, skip removing group member", vlan_alias.c_str());
++        return true;
++    }
++    
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan_alias).find(l2mc_GrpKey);
++
++    SWSS_LOG_NOTICE("RemoveL2mcGroupMembers: (%s,%s,%s) Delete l2mc group members from l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), l2mc_group->second.l2mc_group_id);
++    
++    auto l2mc_group_member = l2mc_group->second.l2mc_group_members.begin();
++    while(l2mc_group_member != l2mc_group->second.l2mc_group_members.end())
++    {
++        Port port;
++        if (!gPortsOrch->getPort(l2mc_group_member->first, port))
++        {
++            SWSS_LOG_NOTICE("RemoveL2mcGroupMembers: Failed to locate port %s", port.m_alias.c_str());
++            l2mc_group_member++;
++            continue;
++        }
++        SWSS_LOG_NOTICE("RemoveL2mcGroupMembers: (%s,%s,%s) Delete l2mc group member %s from l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), port.m_alias.c_str(), l2mc_group->second.l2mc_group_id);
++        
++        status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
++        
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcGroupMembers: Failed to remove l2mc group member %lx, from l2mc-grp:%lx rv:%d",
++                           l2mc_group_member->second.l2mc_member_id, l2mc_group->second.l2mc_group_id, status);
++            return false;
++        }
++        decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++        l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
++
++        port.m_l2mc_count--;
++        gPortsOrch->setPort(port.m_alias, port);
++        vlan.m_l2mc_count--;
++        gPortsOrch->setPort(vlan.m_alias, vlan);
++        SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
++            port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++    }
++    return true;
++}
++
++bool L2mcOrch::AddL2mcEntry(const L2mcGroupKey &l2mcGrpKey, Port &vlan, Port &port)
++{
++    sai_object_id_t l2mc_group_id;
++    sai_status_t status;
++    L2mcGroupEntry l2mc_group_entry;
++
++    SWSS_LOG_ENTER();
++
++    // if (port.m_bridge_port_id == SAI_NULL_OBJECT_ID)
++    // {
++    //     SWSS_LOG_NOTICE("AddL2mcEntry: NULL port OID"); 
++    //     return false;
++    // }
++
++    if (vlan.m_vlan_info.vlan_oid == SAI_NULL_OBJECT_ID)
++    {
++        SWSS_LOG_NOTICE("AddL2mcEntry: NULL vlan OID");
++        return false;
++    }
++
++    if (!hasL2mcGroup(vlan.m_alias,l2mcGrpKey))
++    {
++        if (m_pend_l2mc_group_id != SAI_NULL_OBJECT_ID )
++        {
++            l2mc_group_id = m_pend_l2mc_group_id;
++            m_pend_l2mc_group_id = SAI_NULL_OBJECT_ID;
++        }
++        else
++        {
++            status = sai_l2mc_group_api->create_l2mc_group(&l2mc_group_id, gSwitchId, 0 , NULL);
++            if (status != SAI_STATUS_SUCCESS)
++            {
++                SWSS_LOG_ERROR("AddL2mcEntry: Failed to add l2mc group %lx, rv:%d", l2mc_group_id, status);
++                return false;
++            }
++            SWSS_LOG_NOTICE("AddL2mcEntry: success add l2mc group %lx, rv:%d", l2mc_group_id, status);
++        }
++
++        l2mc_group_entry.l2mc_group_id = l2mc_group_id;
++        l2mc_group_entry.ref_count = 0;
++    }
++    else
++    {
++        l2mc_group_id = getL2mcGroupId(vlan.m_alias, l2mcGrpKey);
++    }
++
++    sai_attribute_t l2mc_entry_attr;
++    sai_l2mc_entry_t l2mc_entry;
++    vector<sai_attribute_t> l2mc_entry_attrs;
++
++    bzero(&l2mc_entry_attr, sizeof(l2mc_entry_attr));
++    
++    /*Add l2mc entry */
++    l2mc_entry_attr.id = SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID;
++    l2mc_entry_attr.value.oid = l2mc_group_id;
++    l2mc_entry_attrs.push_back(l2mc_entry_attr);
++
++    l2mc_entry_attr.id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
++    l2mc_entry_attr.value.oid = SAI_PACKET_ACTION_FORWARD;
++    l2mc_entry_attrs.push_back(l2mc_entry_attr);
++
++    l2mc_entry.switch_id = gSwitchId;
++    copy(l2mc_entry.source, l2mcGrpKey.source_address);
++    copy(l2mc_entry.destination, l2mcGrpKey.group_address);
++
++    if (l2mcGrpKey.group_address.isV4()) {
++        l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++        l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++    } else {
++        l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++        l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++    }
++
++    l2mc_entry.bv_id = vlan.m_vlan_info.vlan_oid;
++
++    if(IpAddress(l2mcGrpKey.source_address.to_string()).isZero())
++        l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_XG;
++    else
++        l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_SG;
++
++
++    SWSS_LOG_NOTICE("AddL2mcEntry: create l2mc entry  (%s, %s, %d) ",
++                        l2mcGrpKey.source_address.to_string().c_str(), l2mcGrpKey.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id);
++    
++
++    status = sai_l2mc_entry_api->create_l2mc_entry(&l2mc_entry, (uint32_t)l2mc_entry_attrs.size(),
++                                                    l2mc_entry_attrs.data());
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR("AddL2mcEntry: Failed to create l2mc entry  (%s, %s, %d) rv:%d",
++                        l2mcGrpKey.source_address.to_string().c_str(), l2mcGrpKey.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, status);
++        m_pend_l2mc_group_id = l2mc_group_id;
++        return false;
++    }
++
++    if (!hasL2mcGroup(vlan.m_alias, l2mcGrpKey))
++        m_syncdL2mcEntries[vlan.m_alias][l2mcGrpKey] = l2mc_group_entry;
++
++    
++    if (port.m_bridge_port_id != SAI_NULL_OBJECT_ID)
++    {
++        AddL2mcGroupMember(l2mcGrpKey, vlan.m_alias, port);
++    }
++    
++    SWSS_LOG_NOTICE("AddL2mcEntry: Added l2mc entry (%s,%s,%d) with l2mc-gid:%lx", l2mcGrpKey.source_address.to_string().c_str(),
++                    l2mcGrpKey.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, l2mc_group_id);
++
++    return true;
++}
++
++bool L2mcOrch::RemoveL2mcEntry(const L2mcGroupKey &key, Port &vlan)
++{
++    sai_l2mc_entry_t l2mc_entry;
++    sai_object_id_t l2mc_group_id;
++    sai_status_t status;
++
++    SWSS_LOG_ENTER();
++
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan.m_alias).find(key);
++
++    if(l2mc_group == m_syncdL2mcEntries.at(vlan.m_alias).end())
++    {
++        SWSS_LOG_INFO("RemoveL2mcEntry: L2mc Entry not found. (%s, %s, %d)", key.source_address.to_string().c_str(),
++                     key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id);
++        return true;
++    }
++    /*Remove l2mc entry */
++    l2mc_entry.switch_id = gSwitchId;
++    copy(l2mc_entry.source, key.source_address);
++    copy(l2mc_entry.destination, key.group_address);
++    if (key.group_address.isV4()) {
++        l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++        l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++    } else {
++        l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++        l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++    }
++    l2mc_entry.bv_id = vlan.m_vlan_info.vlan_oid;
++
++    if(IpAddress(key.source_address.to_string()).isZero())
++        l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_XG;
++    else
++        l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_SG;
++
++    status = sai_l2mc_entry_api->remove_l2mc_entry(&l2mc_entry);
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR("RemoveL2mcEntry: Failed to remove l2mc entry  (%s, %s, %d) rv:%d",
++                        key.source_address.to_string().c_str(), key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, status);
++        return false;
++    }
++    l2mc_group_id = getL2mcGroupId(vlan.m_alias, key);
++
++    SWSS_LOG_NOTICE("RemoveL2mcEntry: (%s,%s,%d) Delete l2mc group %lx", key.source_address.to_string().c_str(),
++                    key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, l2mc_group_id);
++
++    /* Remove all mrouter ports added as group members */
++    for (auto l2mc_group_member = l2mc_group->second.l2mc_group_members.begin();
++         l2mc_group_member != l2mc_group->second.l2mc_group_members.end();)
++    {
++        status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcEntry: Failed to remove mrouter from l2mc group member %lx, rv:%d",
++                           l2mc_group_member->second.l2mc_member_id, status);
++            return false;
++        }
++        l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
++    }
++    /* Remove l2mc group */
++    status = sai_l2mc_group_api->remove_l2mc_group(l2mc_group_id);
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR("RemoveL2mcEntry: Failed to remove l2mc group %lx, rv:%d", l2mc_group_id, status);
++        return false;
++    }
++
++    m_syncdL2mcEntries.at(vlan.m_alias).erase(key);
++
++    return true;
++}
++
++bool L2mcOrch::RemoveL2mcEntrys(Port &vlan)
++{
++    sai_l2mc_entry_t l2mc_entry;
++    sai_object_id_t l2mc_group_id;
++    sai_status_t status;
++
++    SWSS_LOG_ENTER();
++
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan.m_alias).begin();
++
++    while(l2mc_group != m_syncdL2mcEntries.at(vlan.m_alias).end())
++    {
++        auto key = l2mc_group->first;
++        /* Remove all ports added as group members */
++        RemoveL2mcGroupMembers(key,vlan.m_alias);
++
++        /*Remove l2mc entry */
++        l2mc_entry.switch_id = gSwitchId;
++        copy(l2mc_entry.source, key.source_address);
++        copy(l2mc_entry.destination, key.group_address);
++        if (key.group_address.isV4()) {
++            l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++            l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
++        } else {
++            l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++            l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
++        }
++        l2mc_entry.bv_id = vlan.m_vlan_info.vlan_oid;
++
++        if(IpAddress(key.source_address.to_string()).isZero())
++            l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_XG;
++        else
++            l2mc_entry.type = SAI_L2MC_ENTRY_TYPE_SG;
++
++        status = sai_l2mc_entry_api->remove_l2mc_entry(&l2mc_entry);
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcEntrys: Failed to remove l2mc entry  (%s, %s, %d) rv:%d",
++                            key.source_address.to_string().c_str(), key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, status);
++            return false;
++        }
++        l2mc_group_id = getL2mcGroupId(vlan.m_alias, key);
++
++        SWSS_LOG_NOTICE("RemoveL2mcEntrys: (%s,%s,%d) Delete l2mc group %lx", key.source_address.to_string().c_str(),
++                        key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, l2mc_group_id);
++
++        /* Remove all mrouter ports added as group members */
++        for (auto l2mc_group_member = l2mc_group->second.l2mc_group_members.begin();
++            l2mc_group_member != l2mc_group->second.l2mc_group_members.end();)
++        {
++            status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
++            if (status != SAI_STATUS_SUCCESS)
++            {
++                SWSS_LOG_ERROR("RemoveL2mcEntrys: Failed to remove mrouter from l2mc group member %lx, rv:%d",
++                            l2mc_group_member->second.l2mc_member_id, status);
++                return false;
++            }
++            l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
++        }
++        /* Remove l2mc group */
++        status = sai_l2mc_group_api->remove_l2mc_group(l2mc_group_id);
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcEntrys: Failed to remove l2mc group %lx, rv:%d", l2mc_group_id, status);
++            return false;
++        }
++
++        l2mc_group = m_syncdL2mcEntries.at(vlan.m_alias).erase(l2mc_group);
++    }
++
++    return true;
++}
++
++bool L2mcOrch::AddL2mcMrouterPort(const L2mcGroupKey &l2mc_GrpKey, string vlan, Port &port)
++{
++    sai_status_t status;
++    sai_object_id_t l2mc_member_id;
++    vector<sai_attribute_t> l2mcgm_attrs;
++    sai_attribute_t l2mcgm_attr;
++
++    SWSS_LOG_ENTER();
++
++    if (port.m_bridge_port_id == SAI_NULL_OBJECT_ID)
++    {
++        SWSS_LOG_NOTICE("AddL2mcMrouterPort: NULL port OID"); 
++        return false;
++    }
++
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan).find(l2mc_GrpKey);
++    /*Group member already exists */
++    if (l2mc_group->second.l2mc_group_members.find(port.m_alias) != l2mc_group->second.l2mc_group_members.end())
++        return true;
++
++    SWSS_LOG_NOTICE("AddL2mcMrouterPort: (%s,%s,%s) Add mrouter port %s as l2mc group member to l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), port.m_alias.c_str(), l2mc_group->second.l2mc_group_id);
++    
++    bzero(&l2mcgm_attr, sizeof(l2mcgm_attr));
++
++    l2mcgm_attr.id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_GROUP_ID;
++    l2mcgm_attr.value.oid = l2mc_group->second.l2mc_group_id;
++    l2mcgm_attrs.push_back(l2mcgm_attr);
++
++    l2mcgm_attr.id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_OUTPUT_ID;
++    l2mcgm_attr.value.oid = port.m_bridge_port_id;
++    l2mcgm_attrs.push_back(l2mcgm_attr);
++
++    status = sai_l2mc_group_api->create_l2mc_group_member(&l2mc_member_id, gSwitchId,
++                                                        (uint32_t)l2mcgm_attrs.size(),
++                                                        l2mcgm_attrs.data());
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR("AddL2mcMrouterPort: Failed to add mrouter port %s as l2mc group member to l2mc-grp:%lx rv:%d",
++                        port.m_alias.c_str(), l2mc_group->second.l2mc_group_id, status);
++        return false;
++    }
++    SWSS_LOG_NOTICE("AddL2mcMrouterPort: Success to add mrouter port %s as l2mc group member to l2mc-grp:%lx rv:%d",
++                        port.m_alias.c_str(), l2mc_group->second.l2mc_group_id, status);
++    l2mc_group->second.l2mc_group_members[port.m_alias].l2mc_member_id = l2mc_member_id;
++    return true;
++}
++
++bool L2mcOrch::RemoveL2mcMrouterPort(const L2mcGroupKey &l2mc_GrpKey, string vlan, string port)
++{
++    sai_status_t status;
++
++    SWSS_LOG_ENTER();
++
++    auto l2mc_group = m_syncdL2mcEntries.at(vlan).find(l2mc_GrpKey);
++
++    /* l2mc group member already deleted or doesn't exists */
++    auto &l2mc_group_members = l2mc_group->second.l2mc_group_members;
++
++    auto l2mc_group_member = l2mc_group_members.find(port);
++    if (l2mc_group_member == l2mc_group_members.end())
++        return true;
++    
++    SWSS_LOG_NOTICE("RemoveL2mcMrouterPort: (%s,%s,%s) Delete l2mc mrouter group member %s from l2mc_gid:%lx", 
++                    l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
++                    l2mc_GrpKey.vlan_alias.c_str(), port.c_str(), l2mc_group->second.l2mc_group_id);
++
++    if (!l2mc_group_member->second.is_l2mc_member)
++    {
++        auto member_id = l2mc_group_member->second.l2mc_member_id;
++        auto group_id = l2mc_group->second.l2mc_group_id;
++
++        status = sai_l2mc_group_api->remove_l2mc_group_member(member_id);
++
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcMrouterPort: Failed to remove l2mc mrouter group member %lx, from l2mc-grp:%lx rv:%d",
++                           member_id, group_id, status);
++            return false;
++        }
++
++        l2mc_group_members.erase(l2mc_group_member);
++
++        SWSS_LOG_NOTICE("RemoveL2mcMrouterPort: Success to remove l2mc mrouter group member %lx, from l2mc-grp:%lx rv:%d",
++                        member_id, group_id, status);
++    }
++    return true;
++}
++
++bool L2mcOrch::EnableIgmpSnooping(string vlan_alias)
++{
++    Port vlan;
++    sai_attribute_t attr;
++
++    SWSS_LOG_ENTER();
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_INFO("Failed to locate VLAN %s", vlan_alias.c_str());
++        auto v = find(m_pend_snoop_enabled_vlans.begin(), m_pend_snoop_enabled_vlans.end(), vlan_alias);
++        if (v == m_pend_snoop_enabled_vlans.end())
++            m_pend_snoop_enabled_vlans.push_back(vlan_alias);
++        return false;
++    }
++
++    if (vlan.m_vlan_info.vlan_oid == SAI_NULL_OBJECT_ID)
++    {
++        SWSS_LOG_NOTICE("EnableIgmpSnooping: NULL vlan OID");
++        return false;
++    }
++
++    bzero(&attr, sizeof(attr));
++
++    attr.id = SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE;
++    attr.value.booldata = true;
++
++    sai_status_t status = sai_vlan_api->set_vlan_attribute(vlan.m_vlan_info.vlan_oid, &attr);
++
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR(" Failed to Enable L2mc snooping on %s status %u", vlan_alias.c_str(), status);
++        return false;
++    }
++    auto v = find(m_pend_snoop_enabled_vlans.begin(), m_pend_snoop_enabled_vlans.end(), vlan_alias);
++    if (v != m_pend_snoop_enabled_vlans.end())
++        m_pend_snoop_enabled_vlans.erase(v);
++    SWSS_LOG_NOTICE(" Enabled L2mc Snooping on %s ", vlan_alias.c_str());
++    return true;
++}
++
++bool L2mcOrch::DisableIgmpSnooping(string vlan_alias)
++{
++    Port vlan;
++    sai_attribute_t attr;
++
++    SWSS_LOG_ENTER();
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_INFO("Failed to locate VLAN %s", vlan_alias.c_str());
++        return false;
++    }
++
++    bzero(&attr, sizeof(attr));
++
++    attr.id = SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE;
++    attr.value.booldata = false;
++
++    sai_status_t status = sai_vlan_api->set_vlan_attribute(vlan.m_vlan_info.vlan_oid, &attr);
++
++    if (status != SAI_STATUS_SUCCESS)
++    {
++        SWSS_LOG_ERROR(" Failed to Disable L2mc snooping on %s status %u", vlan_alias.c_str(), status);
++        return false;
++    }
++    SWSS_LOG_NOTICE(" Disabled L2mc Snooping on %s ", vlan_alias.c_str());
++    return true;
++}
++
++// Helper function to set VLAN suppression attributes
++bool L2mcOrch::setL2mcSuppressionAttribute(L2mcSuppressType type, bool enable, const SuppressionGroupInfo &info, sai_attribute_t &attr)
++{
++    switch (type)
++    {
++        case L2mcSuppressType::UNKNOWN_IPV4:
++            attr.value.oid = enable ? info.ipv4_group_id : SAI_NULL_OBJECT_ID;
++            attr.id = SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID;
++            break;
++        case L2mcSuppressType::IPV4_LINK_LOCAL:
++            attr.value.oid = enable ? info.ipv4_group_id : SAI_NULL_OBJECT_ID;
++            attr.id = SAI_VLAN_ATTR_UNKNOWN_LINKLOCAL_MCAST_OUTPUT_GROUP_ID;
++            break;
++        case L2mcSuppressType::UNKNOWN_IPV6:
++            attr.value.oid = enable ? info.ipv6_group_id : SAI_NULL_OBJECT_ID;
++            attr.id = SAI_VLAN_ATTR_UNKNOWN_IPV6_MCAST_OUTPUT_GROUP_ID;
++            break;
++        case L2mcSuppressType::IPV6_LINK_LOCAL:
++            attr.value.oid = enable ? info.ipv6_group_id : SAI_NULL_OBJECT_ID;
++            attr.id = SAI_VLAN_ATTR_UNKNOWN_LINKLOCAL_MCAST_OUTPUT_GROUP_ID;
++            break;
++        default:
++            SWSS_LOG_ERROR("Unknown L2MC suppression type");
++            return false;
++    }
++
++    return true;
++}
++
++bool L2mcOrch::createL2mcGroup(const std::string &vlan_alias, const L2mcGroupKey &l2mcKey, Port &vlan, Port &port, bool is_ipv6)
++{
++    Port  mrport;
++    // Create L2MC entry if it's not already present
++    if (m_syncdL2mcEntries.find(vlan.m_alias) == m_syncdL2mcEntries.end())
++    {
++        m_syncdL2mcEntries.emplace(vlan.m_alias, L2mcEntryTable());
++    }
++
++    // Determine which set of router ports to use (IPv4 or IPv6)
++    auto &mrouter_ports = is_ipv6 ? mrouter_ports_ipv6_per_vlan[vlan_alias] : mrouter_ports_ipv4_per_vlan[vlan_alias];
++    if (!hasL2mcGroup(vlan_alias, l2mcKey))
++    {
++        if (!AddL2mcEntry(l2mcKey, vlan, port))
++        {
++            SWSS_LOG_ERROR("Failed to create L2mc entry on %s ", vlan_alias.c_str());
++            return false;
++        }
++    }
++    // Iterate over the router ports and add them as group members
++    for (const auto &mrouter : mrouter_ports)
++    {
++        if (gPortsOrch->getPort(mrouter, mrport))
++        {
++            // If group is created, add more router ports as members
++            AddL2mcMrouterPort(l2mcKey, vlan_alias, mrport);
++        }
++    }
++
++    return true;
++}
++// Helper function to check if suppression status has changed
++bool L2mcOrch::isSuppressionUnchanged(L2mcSuppressType type, bool enable, const SuppressionGroupInfo &info)
++{
++    switch (type)
++    {
++        case L2mcSuppressType::UNKNOWN_IPV4:
++            return info.unknown_ipv4_enabled == enable;
++        case L2mcSuppressType::IPV4_LINK_LOCAL:
++            return info.ipv4_link_local_enabled == enable;
++        case L2mcSuppressType::UNKNOWN_IPV6:
++            return info.unknown_ipv6_enabled == enable;
++        case L2mcSuppressType::IPV6_LINK_LOCAL:
++            return info.ipv6_link_local_enabled == enable;
++        default:
++            return false;
++    }
++}
++
++// Helper function to update suppression info
++void L2mcOrch::updateSuppressionInfo(L2mcSuppressType type, bool enable, SuppressionGroupInfo &info)
++{
++    switch (type)
++    {
++        case L2mcSuppressType::UNKNOWN_IPV4:
++            info.unknown_ipv4_enabled = enable;
++            break;
++        case L2mcSuppressType::IPV4_LINK_LOCAL:
++            info.ipv4_link_local_enabled = enable;
++            break;
++        case L2mcSuppressType::UNKNOWN_IPV6:
++            info.unknown_ipv6_enabled = enable;
++            break;
++        case L2mcSuppressType::IPV6_LINK_LOCAL:
++            info.ipv6_link_local_enabled = enable;
++            break;
++    }
++}
++
++std::string L2mcOrch::getSuppressionTypeStr(L2mcSuppressType type) 
++{
++    switch (type) {
++        case L2mcSuppressType::UNKNOWN_IPV4:
++            return "UNKNOWN_IPV4";
++        case L2mcSuppressType::IPV4_LINK_LOCAL:
++            return "IPV4_LINK_LOCAL";
++        case L2mcSuppressType::UNKNOWN_IPV6:
++            return "UNKNOWN_IPV6";
++        case L2mcSuppressType::IPV6_LINK_LOCAL:
++            return "IPV6_LINK_LOCAL";
++        default:
++            return "UNKNOWN";
++    }
++}
++
++bool L2mcOrch::handleL2mcSuppression(const std::string &vlan_alias, bool enable, L2mcSuppressType type)
++{
++    SWSS_LOG_ENTER();
++
++    Port vlan, port;
++    sai_attribute_t attr;
++    bzero(&attr, sizeof(attr));
++    port.m_bridge_port_id = SAI_NULL_OBJECT_ID;
++
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_WARN("VLAN %s not found", vlan_alias.c_str());
++        return false;
++    }
++
++    auto v = find(m_snoop_enabled_vlans.begin(), m_snoop_enabled_vlans.end(), vlan_alias);
++    if (v == m_snoop_enabled_vlans.end()) 
++    {
++        if (enable) 
++        {
++            SWSS_LOG_WARN("VLAN %s not enable IGMP Snooping", vlan_alias.c_str());
++            return false;
++        } 
++        else 
++        {
++            SWSS_LOG_WARN("VLAN %s disable IGMP Snooping, L2MC suppression false, ignore", vlan_alias.c_str());
++            return true;
++        }
++    }
++    
++    auto &info = m_vlan_suppress_info[vlan_alias];
++    // Save current suppression state before updating
++    SuppressionGroupInfo original_info = info;
++
++    if (isSuppressionUnchanged(type,enable,info))
++    {
++        SWSS_LOG_NOTICE("L2MC suppression status unchanged for VLAN %s [%s]", 
++                        vlan_alias.c_str(),
++                        (type == L2mcSuppressType::UNKNOWN_IPV4 ? "Unknown IPv4" : "Link-local"));
++        return true;
++    }
++
++    updateSuppressionInfo(type, enable,info);
++    bool success = true;
++    
++    if (enable && info.ipv4_group_id == SAI_NULL_OBJECT_ID)
++    {
++        auto ipv4_l2mcKey = L2mcGroupKey(vlan_alias, IpAddress("0.0.0.0"), IpAddress("0.0.0.0"));
++
++        if(!createL2mcGroup(vlan_alias, ipv4_l2mcKey,vlan,port,false))
++        {
++            success = false;
++        }
++
++        info.ipv4_group_id = getL2mcGroupId(vlan_alias, ipv4_l2mcKey);
++    }
++
++    if (enable && info.ipv6_group_id == SAI_NULL_OBJECT_ID)
++    {
++        auto ipv6_l2mcKey = L2mcGroupKey(vlan_alias, IpAddress("0::0"), IpAddress("0::0"));
++
++
++        if(!createL2mcGroup(vlan_alias, ipv6_l2mcKey,vlan,port,true))
++        {
++            success = false;
++        }
++        info.ipv6_group_id = getL2mcGroupId(vlan_alias, ipv6_l2mcKey);     
++
++    }
++
++    if (success)
++    {
++        if (!setL2mcSuppressionAttribute(type, enable, info, attr))
++        {
++            success = false;
++        }
++    }
++
++    if (success)
++    {
++        sai_status_t status = sai_vlan_api->set_vlan_attribute(vlan.m_vlan_info.vlan_oid, &attr);
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("Failed to set L2MC suppression for VLAN %s, attr %d, status %u",
++                           vlan_alias.c_str(), attr.id, status);
++            success = false;
++        }
++    }
++
++    if (!success)
++    {
++        SWSS_LOG_ERROR("Rolling back suppression changes for VLAN %s", vlan_alias.c_str());
++        info = original_info;  // Restore previous state
++        return false;
++    }
++    else
++    {
++        if (!info.unknown_ipv4_enabled && !info.ipv4_link_local_enabled && !info.unknown_ipv6_enabled && !info.ipv6_link_local_enabled)
++        {
++            
++            m_vlan_suppress_info.erase(vlan_alias);
++            SWSS_LOG_NOTICE("Suppression group for VLAN %s fully disabled and removed", vlan_alias.c_str());
++        }
++    }
++
++    SWSS_LOG_NOTICE("L2MC suppression %s for VLAN %s: %s", getSuppressionTypeStr(type).c_str(),
++                    vlan_alias.c_str(), enable ? "enabled" : "disabled");
++
++    return true;
++}
++
++
++void L2mcOrch::doL2mcTask(Consumer &consumer)
++{
++    unsigned short vlan_id;
++    string vlan_alias;
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        vector<string> keys = tokenize(kfvKey(t), ':');
++        
++        /* Key: <VLAN_name>*/
++
++        /* Ensure the key size is 1 otherwise ignore */
++        if (keys.size() != 1)
++        {
++            SWSS_LOG_ERROR("Invalid key size, skipping %s", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        
++        /* Ensure the key starts with "Vlan" otherwise ignore */
++        if (strncmp(keys[0].c_str(), VLAN_PREFIX, 4))
++        {
++            SWSS_LOG_ERROR("doL2mcTask:Invalid key format. No 'Vlan' prefix: %s", keys[0].c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        vlan_id = (unsigned short) stoi(keys[0].substr(4));
++        vlan_alias = VLAN_PREFIX + to_string(vlan_id);
++        SWSS_LOG_NOTICE("doL2mcMemberTask: vlan_alias %s enable op %s", vlan_alias.c_str(),op.c_str());
++
++        if (op == SET_COMMAND)
++        {
++            auto v = find(m_snoop_enabled_vlans.begin(), m_snoop_enabled_vlans.end(), vlan_alias);
++            if (v == m_snoop_enabled_vlans.end())
++            {
++                m_snoop_enabled_vlans.push_back(vlan_alias);
++                if(EnableIgmpSnooping(vlan_alias))
++                    it = consumer.m_toSync.erase(it);
++                else
++                    it++;
++            }
++            else
++                it = consumer.m_toSync.erase(it);
++        }
++        else if (op == DEL_COMMAND)
++        {
++            if (m_syncdL2mcEntries.find(vlan_alias) == m_syncdL2mcEntries.end())
++            {
++                SWSS_LOG_NOTICE("doL2mcTask: l2mc already deleted from vlan %s",vlan_alias.c_str());
++            }
++            else 
++            {
++                Port vlan;
++                if (!gPortsOrch->getPort(vlan_alias, vlan))
++                {
++                    SWSS_LOG_NOTICE("doL2mcTask: Failed to locate vlan %s", vlan_alias.c_str());
++                    it = consumer.m_toSync.erase(it);
++                    continue;
++                }
++                /*Remove all l2mc form vlan*/
++                RemoveL2mcEntrys(vlan);
++            }
++            auto v = find(m_snoop_enabled_vlans.begin(), m_snoop_enabled_vlans.end(), vlan_alias);
++            if (v != m_snoop_enabled_vlans.end())
++                m_snoop_enabled_vlans.erase(v);
++
++            if(DisableIgmpSnooping(vlan_alias))
++                it = consumer.m_toSync.erase(it);
++            else
++                it++;
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Unknown operation type %s\n", op.c_str());
++            it = consumer.m_toSync.erase(it);
++        }
++    }
++}
++
++void L2mcOrch::doL2mcMemberTask(Consumer &consumer)
++{
++    if (!gPortsOrch->allPortsReady())
++    {
++        return;
++    }    
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        vector<string> keys = tokenize(kfvKey(t), ':');
++        /* Key: <VLAN_name>:<source_address>:<group_address>:<member_port> */
++
++        /* Ensure the key has at least 4 fields otherwise ignore */
++        if (keys.size() < 4)
++        {
++            SWSS_LOG_ERROR("doL2mcMemberTask: Invalid key size, skipping %s", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++        
++        /* Ensure the key starts with "Vlan" otherwise ignore */
++        if (strncmp(keys[0].c_str(), VLAN_PREFIX, 4))
++        {
++            SWSS_LOG_ERROR("doL2mcMemberTask: Invalid key format. No 'Vlan' prefix: %s", keys[0].c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        unsigned short vlan_id;
++        std::string port_alias, vlan_alias;
++        Port port, mrport, vlan;
++
++        vlan_id = (unsigned short) stoi(keys[0].substr(4));
++        vlan_alias = VLAN_PREFIX + to_string(vlan_id);
++        
++        port_alias = keys[keys.size() - 1];
++
++        if (!gPortsOrch->getPort(port_alias, port))
++        {
++            SWSS_LOG_ERROR("doL2mcMemberTask: Failed to get port for %s alias", port_alias.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        if (!gPortsOrch->getPort(vlan_alias, vlan))
++        {
++            SWSS_LOG_NOTICE("doL2mcMemberTask: Failed to locate vlan %s", vlan_alias.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        string source_addr, group_addr;
++        
++        if (keys.size() == 4)
++        {
++            /*IPv4 addresses*/
++            source_addr = keys[1];
++            group_addr = keys[2];
++        }
++        else
++        {
++            /*IPv6 addresses*/
++            vector<string> address_parts(keys.begin() + 1, keys.end() - 1);
++
++            SWSS_LOG_NOTICE("doL2mcMemberTask: address_parts size %lu", address_parts.size());
++            
++            if (address_parts.size() == 16)
++            {
++                size_t mid_point = 8;
++                
++                source_addr = address_parts[0];
++                for (size_t i = 1; i < mid_point; i++)
++                {
++                    source_addr += ":" + address_parts[i];
++                }
++                
++                group_addr = address_parts[mid_point];
++                for (size_t i = mid_point + 1; i < address_parts.size(); i++)
++                {
++                    group_addr += ":" + address_parts[i];
++                }
++            }
++            else
++            {
++                SWSS_LOG_ERROR("doL2mcMemberTask: Invalid IPv6 address format in key %s", key.c_str());
++                it = consumer.m_toSync.erase(it);
++                continue;
++            }
++        }
++
++        bool is_ipv4 = IpAddress(group_addr).isV4();
++
++        SWSS_LOG_NOTICE("doL2mcMemberTask: Processing %s vlan %s, source %s, group %s, port %s", 
++                       is_ipv4 ? "IPv4" : "IPv6", vlan_alias.c_str(), 
++                       source_addr.c_str(), group_addr.c_str(), port_alias.c_str());
++
++        auto l2mcKey = L2mcGroupKey(vlan_alias, IpAddress(source_addr), IpAddress(group_addr));
++
++        if (m_syncdL2mcEntries.find(vlan.m_alias) == m_syncdL2mcEntries.end())
++        {
++            m_syncdL2mcEntries.emplace(vlan.m_alias, L2mcEntryTable());
++        }
++        SWSS_LOG_NOTICE("doL2mcMemberTask: set vlan %s op %s", vlan_alias.c_str(),op.c_str());
++
++        if (op == SET_COMMAND)
++        {
++            if (!hasL2mcGroup(vlan_alias, l2mcKey))
++            {
++                if (AddL2mcEntry(l2mcKey, vlan, port))
++                {
++                    vector<string> mrouter_ports;
++                    /* Add all mrouter ports to the newly added l2mc entry */
++                    if(is_ipv4)
++                        mrouter_ports = mrouter_ports_ipv4_per_vlan[vlan_alias];
++                    else
++                        mrouter_ports = mrouter_ports_ipv6_per_vlan[vlan_alias];
++        
++                    if(!mrouter_ports.empty())
++                    {
++                        for (const auto& mrouter: mrouter_ports)
++                        {
++                            if (gPortsOrch->getPort(mrouter, mrport))
++                                AddL2mcMrouterPort(l2mcKey, vlan_alias, mrport);
++                        }
++                    }
++                    it = consumer.m_toSync.erase(it);
++                }
++                else
++                    it++;  
++            }
++            else
++            {
++                if (AddL2mcGroupMember(l2mcKey, vlan_alias, port))
++                    it = consumer.m_toSync.erase(it);
++                else
++                    it++;
++            }
++        }
++        else if (op == DEL_COMMAND)
++        {
++            if (hasL2mcGroup(vlan_alias, l2mcKey))
++            {
++                if (RemoveL2mcGroupMember(l2mcKey, vlan_alias, port))
++                {
++                    if (isMemberRefCntZero(vlan_alias, l2mcKey))
++                        RemoveL2mcEntry(l2mcKey, vlan);
++
++                    it = consumer.m_toSync.erase(it);
++                }
++                else
++                    it++;
++            }
++            else
++                it = consumer.m_toSync.erase(it);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("doL2mcMemberTask: Unknown operation type %s\n", op.c_str());
++            it = consumer.m_toSync.erase(it);
++        }
++    }
++}
++
++bool L2mcOrch::addMrouterPortToL2mcEntries(string vlan, Port &port ,string protocol)
++{
++    if (m_syncdL2mcEntries.find(vlan) == m_syncdL2mcEntries.end())
++        return true;
++    
++    if (port.m_bridge_port_id == SAI_NULL_OBJECT_ID)
++    {
++        SWSS_LOG_NOTICE("AddL2mcMrouterPort: NULL port OID"); 
++        return false;
++    }
++    /* Add mrouter port to all groups learnt on this vlan*/
++    auto itr = m_syncdL2mcEntries.at(vlan).begin(); 
++    while (itr != m_syncdL2mcEntries.at(vlan).end())
++    {
++        auto l2mcKey = itr->first;
++        if((protocol == "V4" && l2mcKey.group_address.isV4()) || (protocol == "V6" && !l2mcKey.group_address.isV4()))
++            AddL2mcMrouterPort(l2mcKey, vlan, port);
++        itr++;
++    }
++    return true;
++}
++
++void L2mcOrch::removeMrouterPortFromL2mcEntries(string vlan, string mrouterport, string protocol)
++{
++    std::vector<string>* mrouter_ports = nullptr;
++    if (protocol == "V4")
++    {
++        auto ipv4_iter = mrouter_ports_ipv4_per_vlan.find(vlan);
++        if (ipv4_iter != mrouter_ports_ipv4_per_vlan.end())
++        {
++            mrouter_ports = &(ipv4_iter->second);
++        }
++        else
++        {
++            SWSS_LOG_WARN("removeMrouterPortFromL2mcEntries: VLAN %s not found in IPv4 mrouter ports map", vlan.c_str());
++            return;
++        }
++    }
++    else
++    {
++        auto ipv6_iter = mrouter_ports_ipv6_per_vlan.find(vlan);
++        if (ipv6_iter != mrouter_ports_ipv6_per_vlan.end())
++        {
++            mrouter_ports = &(ipv6_iter->second);
++        }
++        else
++        {
++            SWSS_LOG_WARN("removeMrouterPortFromL2mcEntries: VLAN %s not found in IPv6 mrouter ports map", vlan.c_str());
++            return;
++        }
++    }
++
++    auto iter = std::find(mrouter_ports->begin(), mrouter_ports->end(), mrouterport);
++    if (iter != mrouter_ports->end())
++    {
++        mrouter_ports->erase(iter);
++        SWSS_LOG_NOTICE("removeMrouterPortFromL2mcEntries: Mrouter port %s deleted from vlan %s", mrouterport.c_str(), vlan.c_str());
++        if (mrouter_ports->empty())
++        {
++            if (protocol == "V4")
++            {
++                mrouter_ports_ipv4_per_vlan.erase(vlan);
++                SWSS_LOG_NOTICE("removeMrouterPortFromL2mcEntries: IPv4 mrouter ports for VLAN %s are empty, erase VLAN from map", vlan.c_str());
++            }
++            else
++            {
++                mrouter_ports_ipv6_per_vlan.erase(vlan);
++                SWSS_LOG_NOTICE("removeMrouterPortFromL2mcEntries: IPv6 mrouter ports for VLAN %s are empty, erase VLAN from map", vlan.c_str());
++            }
++        }
++        if (m_syncdL2mcEntries.find(vlan) == m_syncdL2mcEntries.end())
++            return;
++        auto itr = m_syncdL2mcEntries.at(vlan).begin(); 
++        while (itr != m_syncdL2mcEntries.at(vlan).end())
++        {
++            auto l2mcKey = itr->first;
++            if((protocol == "V4" && l2mcKey.group_address.isV4()) || (protocol == "V6" && !l2mcKey.group_address.isV4()))
++            RemoveL2mcMrouterPort(l2mcKey, vlan, mrouterport);
++            itr++;
++        }
++    }
++
++    return;
++}
++
++void L2mcOrch::doL2mcMrouterTask(Consumer &consumer)
++{
++    if (!gPortsOrch->allPortsReady())
++    {
++        return;
++    }  
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple t = it->second;
++        string key = kfvKey(t);
++        string op = kfvOp(t);
++        vector<string> keys = tokenize(kfvKey(t), ':');
++        
++        /* Key: <VLAN_name>:<mrouter_port> */
++
++        /* Ensure the key size is 1 otherwise ignore */
++        if (keys.size() != 3)
++        {
++            SWSS_LOG_ERROR("Invalid key size, skipping %s", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        /* Ensure the key starts with "Vlan" otherwise ignore */
++        if (strncmp(keys[0].c_str(), VLAN_PREFIX, 4))
++        {
++            SWSS_LOG_ERROR("doL2mcMrouterTask: Invalid key format. No 'Vlan' prefix: %s", keys[0].c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        unsigned short vlan_id;
++        std::string port_alias, vlan_alias , protocol;
++        Port port, vlan;
++
++        vlan_id = (unsigned short) stoi(keys[0].substr(4));
++        vlan_alias = VLAN_PREFIX + to_string(vlan_id);
++        port_alias = keys[1];
++        protocol = keys[2];
++
++        if (!gPortsOrch->getPort(port_alias, port))
++        {
++            SWSS_LOG_ERROR("doL2mcMrouterTask: Failed to get port for %s alias", port_alias.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        if (!gPortsOrch->getPort(vlan_alias, vlan))
++        {
++            SWSS_LOG_NOTICE("doL2mcMrouterTask: Failed to locate vlan %s", vlan_alias.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        L2mcGroupKey l2mcKey;
++        vector<string> *mrouter_ports = nullptr;
++
++        if (protocol == "V4")
++        {
++            mrouter_ports = &mrouter_ports_ipv4_per_vlan[vlan_alias];
++        }
++        else if (protocol == "V6")
++        {
++            mrouter_ports = &mrouter_ports_ipv6_per_vlan[vlan_alias];
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Invalid protocol %s for VLAN %s", protocol.c_str(), vlan_alias.c_str());
++            it = consumer.m_toSync.erase(it);
++            return;
++        }
++
++        if (op == SET_COMMAND)
++        {
++            mrouter_ports->push_back(port_alias);
++
++            if (addMrouterPortToL2mcEntries(vlan_alias, port, protocol))
++            {
++                SWSS_LOG_NOTICE("doL2mcMrouterTask: Mrouter port %s added to vlan %s", port_alias.c_str(), vlan_alias.c_str());
++                it = consumer.m_toSync.erase(it);
++            }
++            else 
++            {
++                it++;
++            }
++        }
++        else if (op == DEL_COMMAND)
++        {
++            if (!mrouter_ports->empty())
++            {
++                removeMrouterPortFromL2mcEntries(vlan_alias, port_alias, protocol);
++            }
++
++            it = consumer.m_toSync.erase(it);
++        }
++        else
++        {
++            SWSS_LOG_ERROR("doL2mcMrouterTask: Unknown operation type %s\n", op.c_str());
++            it = consumer.m_toSync.erase(it);
++        }
++    }
++}
++
++void L2mcOrch::doL2mcSuppressTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++
++    auto it = consumer.m_toSync.begin();
++    while (it != consumer.m_toSync.end())
++    {
++        KeyOpFieldsValuesTuple &tuple = it->second;
++        string key = kfvKey(tuple);
++        string op = kfvOp(tuple);
++
++        if (strncmp(key.c_str(), VLAN_PREFIX, strlen(VLAN_PREFIX)) != 0)
++        {
++            SWSS_LOG_ERROR("Invalid key format. Expected prefix 'Vlan': %s", key.c_str());
++            it = consumer.m_toSync.erase(it);
++            continue;
++        }
++
++        string vlan_alias = key;
++        bool need_retry  = false;
++
++        if (op == SET_COMMAND)
++        {
++            for (const auto &fv : kfvFieldsValues(tuple))
++            {
++                const string &attr = fvField(fv);
++                const string &value = fvValue(fv);
++                bool enable = false;
++
++                if (value == "enable")
++                {
++                    enable = true;
++                }
++                else if (value == "disable")
++                {
++                    enable = false;
++                }
++                else
++                {
++                    SWSS_LOG_ERROR("Invalid value '%s' for attribute '%s' in VLAN %s", value.c_str(), attr.c_str(), vlan_alias.c_str());
++                    continue;
++                }
++
++                auto it = suppress_type_map.find(attr);
++                if (it != suppress_type_map.end()) {
++                    SWSS_LOG_NOTICE("Setting %s on %s to %s", attr.c_str(), vlan_alias.c_str(), value.c_str());
++                    if (!handleL2mcSuppression(vlan_alias, enable, it->second)) {
++                        SWSS_LOG_NOTICE("Retry Setting %s on %s to %s", attr.c_str(), vlan_alias.c_str(), value.c_str());
++                        need_retry = true;
++                    }
++                }
++                else
++                {
++                    SWSS_LOG_WARN("Unknown attribute '%s' for VLAN %s", attr.c_str(), vlan_alias.c_str());
++                }
++            }
++            if (need_retry)
++            {
++                it++;
++            }
++            else
++            {
++                it = consumer.m_toSync.erase(it); 
++            }
++        }
++        else if (op == DEL_COMMAND)
++        {
++            bool need_retry = false;
++
++            // Loop through each suppression type and attempt to reset
++            for (const auto& type : suppress_types) {
++                if (!handleL2mcSuppression(vlan_alias, false, type)) {
++                    need_retry = true;
++                    continue;  // If one fails, no need to continue further
++                }
++            }
++
++            if (need_retry) {
++                SWSS_LOG_NOTICE("Retry Deleting suppression config for VLAN %s (reset to default)", vlan_alias.c_str());
++                ++it;  // retry by advancing the iterator
++            } else {
++                it = consumer.m_toSync.erase(it);  // remove entry if no retry is needed
++            }
++        }
++        else
++        {
++            SWSS_LOG_ERROR("Unknown operation: %s", op.c_str());
++            it = consumer.m_toSync.erase(it); 
++        }
++
++    }
++}
++
++bool L2mcOrch::removeL2mcFromVlan(string vlan_alias)
++{
++    auto v = find(m_snoop_enabled_vlans.begin(), m_snoop_enabled_vlans.end(), vlan_alias);
++    if (v == m_snoop_enabled_vlans.end())
++    {
++        SWSS_LOG_NOTICE("removeL2mcFromVlan: %s is igmp snooping disable",vlan_alias.c_str());
++        return true;
++    }
++
++    if (m_syncdL2mcEntries.find(vlan_alias) == m_syncdL2mcEntries.end())
++    {
++        SWSS_LOG_NOTICE("removeL2mcFromVlan: l2mc already deleted from vlan %s",vlan_alias.c_str());
++        return true;
++    }
++    Port vlan;
++    if (!gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        SWSS_LOG_NOTICE("removeL2mcFromVlan: Failed to locate vlan %s", vlan_alias.c_str());
++        return false;
++    }
++    /*Remove all l2mc form vlan*/
++    RemoveL2mcEntrys(vlan);
++    
++    /*disable igmp vlan snooping before deleting vlan*/
++    DisableIgmpSnooping(vlan_alias);
++    auto it = find(m_pend_snoop_enabled_vlans.begin(), m_pend_snoop_enabled_vlans.end(), vlan_alias);
++    if (it == m_pend_snoop_enabled_vlans.end())
++        m_pend_snoop_enabled_vlans.push_back(vlan_alias);
++    
++    return true;
++
++}
++
++void L2mcOrch::update(SubjectType type, void *cntx)
++{
++    SWSS_LOG_ENTER();
++
++    if (type != SUBJECT_TYPE_PORT_CHANGE)
++    {
++        return;
++    }
++    if (type == SUBJECT_TYPE_PORT_CHANGE)
++    {
++        PortUpdate *update = static_cast<PortUpdate *>(cntx);
++        if(update->port.m_type == Port::VLAN)
++        {
++            string vlan_alias = update->port.m_alias;
++            SWSS_LOG_INFO("L2mcOrch : Update VLAN %s", vlan_alias.c_str());
++            if(update->add)
++            {
++                auto v = find(m_pend_snoop_enabled_vlans.begin(), m_pend_snoop_enabled_vlans.end(), vlan_alias);
++                if (v == m_pend_snoop_enabled_vlans.end())
++                {
++                    SWSS_LOG_NOTICE("Update: %s is igmp snooping disable",vlan_alias.c_str());
++                    return;
++                }
++                else 
++                {
++                    /*enable igmp vlan snooping after add vlan*/
++                    SWSS_LOG_NOTICE("Update: %s is igmp snooping enable",vlan_alias.c_str());
++                    EnableIgmpSnooping(vlan_alias);
++                }
++                return;
++            }
++        }
++    }
++    return;
++    
++}
++
++void L2mcOrch::doTask(Consumer &consumer)
++{
++    SWSS_LOG_ENTER();
++
++    string table_name = consumer.getTableName();
++
++    if (table_name == APP_L2MC_VLAN_TABLE_NAME)
++    {
++        SWSS_LOG_INFO("Received APP_L2MC_VLAN_TABLE_NAME update");
++        doL2mcTask(consumer);
++    }
++    else if (table_name == APP_L2MC_MEMBER_TABLE_NAME)
++    {
++        SWSS_LOG_INFO("Received APP_L2MC_MEMBER_TABLE_NAME update");
++        doL2mcMemberTask(consumer);
++    }
++    else if (table_name == APP_L2MC_MROUTER_TABLE_NAME)
++    {
++        SWSS_LOG_INFO("Received APP_L2MC_MROUTER_TABLE_NAME update");
++        doL2mcMrouterTask(consumer);
++    }
++    else if (table_name == APP_L2MC_SUPPRESS_TABLE_NAME)
++    {
++        SWSS_LOG_INFO("Received APP_L2MC_SUPPRESS_TABLE_NAME update");
++        doL2mcSuppressTask(consumer);
++    }
++    else
++    {
++        SWSS_LOG_ERROR("Unknown L2mc Table");
++        return;
++    }
++}
+diff --git a/orchagent/l2mcorch.h b/orchagent/l2mcorch.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..1ce1eec5e728715c34f566e772d1d3132ba9338f
+--- /dev/null
++++ b/orchagent/l2mcorch.h
+@@ -0,0 +1,145 @@
++#ifndef SWSS_L2MCORCH_H
++#define SWSS_L2MCORCH_H
++
++#include "orch.h"
++#include "observer.h"
++#include "intfsorch.h"
++
++
++#include "ipaddress.h"
++#include "ipaddresses.h"
++#include "ipprefix.h"
++#include "tokenize.h"
++
++#include <map>
++#include <string>
++#include <set>
++
++struct L2mcGroupKey
++{
++    std::string  vlan_alias;
++    IpAddress source_address;
++    IpAddress group_address;
++
++    L2mcGroupKey() = default;
++
++    L2mcGroupKey(std::string vlan, IpAddress srcAddress, IpAddress grpAddress)
++    {
++        vlan_alias = vlan;
++        source_address = srcAddress;
++        group_address = grpAddress;
++    };
++
++    bool operator<(const L2mcGroupKey& o) const
++    {
++        return tie(vlan_alias, source_address, group_address) < tie(o.vlan_alias, o.source_address, o.group_address);
++    }
++
++    bool operator==(const L2mcGroupKey& o) const
++    {
++        return tie(vlan_alias, source_address, group_address) == tie(o.vlan_alias, o.source_address, o.group_address);
++    }
++};
++struct l2mc_member_t {
++    sai_object_id_t l2mc_member_id;
++    bool is_l2mc_member = false;
++};
++
++typedef std::map<string, l2mc_member_t> L2mcGroupMembers;
++
++struct L2mcGroupEntry
++{
++    sai_object_id_t         l2mc_group_id;          // l2mc group id
++    int                     ref_count;              // group members reference count
++    L2mcGroupMembers        l2mc_group_members;     // ids of members indexed by <port_alias, member_obj_id>
++};
++
++/* L2mcEntryTable: L2mcGroupKey, L2mcGroupEntry */
++typedef std::map<L2mcGroupKey, L2mcGroupEntry> L2mcEntryTable;
++/*L2mcEntryTables: Vlan, L2mcEntryTable */
++typedef std::map<string, L2mcEntryTable> L2mcEntryTables;
++/*mrouter_ports: Vlan, mrouter_ports */
++typedef unordered_map<string, vector<string>> mrouter_ports;
++
++enum class L2mcSuppressType {
++    UNKNOWN_IPV4,
++    IPV4_LINK_LOCAL,
++    UNKNOWN_IPV6,
++    IPV6_LINK_LOCAL
++};
++
++struct SuppressionGroupInfo 
++{
++    sai_object_id_t ipv4_group_id;
++    sai_object_id_t ipv6_group_id;
++    bool unknown_ipv4_enabled = false;
++    bool ipv4_link_local_enabled = false;
++    bool unknown_ipv6_enabled = false;
++    bool ipv6_link_local_enabled = false;
++};
++
++class L2mcOrch : public Orch, public Observer
++{
++public:
++    L2mcOrch(DBConnector *appDb, vector<string> &tableNames);
++
++    ~L2mcOrch()
++    {
++        // do nothing
++    }
++
++    bool hasL2mcGroup(string vlan, const L2mcGroupKey&);
++    sai_object_id_t getL2mcGroupId(string vlan, const L2mcGroupKey&);
++    
++    //bool bake() override;
++    void increaseL2mcMemberRefCount(string vlan, const L2mcGroupKey&);
++    void decreaseL2mcMemberRefCount(string vlan, const L2mcGroupKey&);
++    bool isMemberRefCntZero(string vlan, const L2mcGroupKey&) const;
++    bool removeL2mcFromVlan(string vlan);
++    void update(SubjectType, void *);
++    bool RemoveL2mcEntrys(Port &vlan);
++    bool RemoveL2mcGroupMembers(const L2mcGroupKey&, string vlan);
++    bool isSuppressionEnabled(string vlan_alias) const;
++    void removeMrouterPortFromL2mcEntries(string vlan, string mrouterport,string protocol);
++
++private:
++
++    L2mcEntryTables m_syncdL2mcEntries;
++    mrouter_ports mrouter_ports_ipv4_per_vlan;
++    mrouter_ports mrouter_ports_ipv6_per_vlan;
++    vector<string> m_snoop_enabled_vlans;
++    vector<string> m_pend_snoop_enabled_vlans;
++    sai_object_id_t  m_pend_l2mc_group_id = SAI_NULL_OBJECT_ID;  
++    std::unordered_map<std::string, SuppressionGroupInfo> m_vlan_suppress_info;
++
++
++    void doTask(Consumer &consumer);
++    void doL2mcTask(Consumer &consumer);
++    void doL2mcMemberTask(Consumer &consumer);
++    void doL2mcMrouterTask(Consumer &consumer);
++    void doL2mcSuppressTask(Consumer &consumer);
++
++    bool EnableIgmpSnooping(string vlan);
++    bool DisableIgmpSnooping(string vlan);
++
++    bool AddL2mcEntry(const L2mcGroupKey &l2mckey, Port &vlan, Port &port);
++    bool RemoveL2mcEntry(const L2mcGroupKey &l2mkey, Port &vlan);
++    bool AddL2mcGroupMember(const L2mcGroupKey &l2mc_grpKey, string vlan, Port &port);
++    bool RemoveL2mcGroupMember(const L2mcGroupKey &l2mc_grpKey, string vlan, Port &port);
++
++    bool AddL2mcMrouterPort(const L2mcGroupKey &l2mc_grpKey, string vlan, Port &port);
++    bool RemoveL2mcMrouterPort(const L2mcGroupKey &l2mc_grpKey, string vlan, string port);
++    bool addMrouterPortToL2mcEntries(string vlan, Port &port,string protocol);
++    //void removeMrouterPortFromL2mcEntries(string vlan, string mrouterport);
++    bool dealOptimisedMuliticastFlood(string vlan,bool flag);
++    bool dealLinkLocalGroupsSuppress(string vlan,bool flag);
++    bool handleL2mcSuppression(const string& vlan_alias, bool enable, L2mcSuppressType type);
++
++    std::string getSuppressionTypeStr(L2mcSuppressType type);
++    bool setL2mcSuppressionAttribute(L2mcSuppressType type, bool enable, const SuppressionGroupInfo &info, sai_attribute_t &attr);
++    bool createL2mcGroup(const std::string &vlan_alias, const L2mcGroupKey &l2mcKey, Port &vlan, Port &port, bool is_ipv6);
++    bool isSuppressionUnchanged(L2mcSuppressType type, bool enable, const SuppressionGroupInfo &info);
++    void updateSuppressionInfo(L2mcSuppressType type, bool enable, SuppressionGroupInfo &info);
++};
++
++#endif /* SWSS_L2MCORCH_H */
+diff --git a/orchagent/orchdaemon.cpp b/orchagent/orchdaemon.cpp
+index b13321a26f9ca7bfb17378111b5391a3c1c781d0..9a24d78ad2aeb881f9df25cd227d62715a57db2d 100644
+--- a/orchagent/orchdaemon.cpp
++++ b/orchagent/orchdaemon.cpp
+@@ -70,6 +70,7 @@ TunnelDecapOrch *gTunneldecapOrch;
+ StpOrch *gStpOrch;
+ MuxOrch *gMuxOrch;
+ IcmpOrch *gIcmpOrch;
++L2mcOrch *gL2mcOrch;
+ HFTelOrch *gHFTOrch;
+ 
+ bool gIsNatSupported = false;
+@@ -525,6 +526,15 @@ bool OrchDaemon::init()
+ 
+     gIsoGrpOrch = new IsoGrpOrch(iso_grp_tbl_ctrs);
+ 
++    vector<string> app_l2mc_tables = {
++        APP_L2MC_VLAN_TABLE_NAME,
++        APP_L2MC_MEMBER_TABLE_NAME,
++        APP_L2MC_MROUTER_TABLE_NAME,
++        APP_L2MC_SUPPRESS_TABLE_NAME
++    };
++
++    gL2mcOrch = new L2mcOrch(m_applDb, app_l2mc_tables);
++
+     //
+     // Policy Based Hashing (PBH) orchestrator
+     //
+@@ -576,6 +586,7 @@ bool OrchDaemon::init()
+     m_orchList.push_back(mux_st_orch);
+     m_orchList.push_back(nvgre_tunnel_orch);
+     m_orchList.push_back(nvgre_tunnel_map_orch);
++    m_orchList.push_back(gL2mcOrch);
+ 
+     if (m_fabricEnabled)
+     {
+diff --git a/orchagent/orchdaemon.h b/orchagent/orchdaemon.h
+index 2041c6bfff33e814ba3e26ee9338ba3630ddd286..be037af725a483cd7c76186801b42ef0c0c941d8 100644
+--- a/orchagent/orchdaemon.h
++++ b/orchagent/orchdaemon.h
+@@ -58,6 +58,7 @@
+ #include "dash/dashhaorch.h"
+ #include "dash/dashmeterorch.h"
+ #include "dash/dashportmaporch.h"
++#include "l2mcorch.h"
+ #include "high_frequency_telemetry/hftelorch.h"
+ #include <sairedis.h>
+ 
+diff --git a/orchagent/p4orch/tests/test_main.cpp b/orchagent/p4orch/tests/test_main.cpp
+index 605748744b8ed2b2ae36d87ff452431cbd9191a6..e18cb1da51657dccff593a9c33923b0e6e89cdd4 100644
+--- a/orchagent/p4orch/tests/test_main.cpp
++++ b/orchagent/p4orch/tests/test_main.cpp
+@@ -85,6 +85,9 @@ sai_my_mac_api_t *sai_my_mac_api;
+ sai_counter_api_t *sai_counter_api;
+ sai_bridge_api_t* sai_bridge_api;
+ sai_generic_programmable_api_t *sai_generic_programmable_api;
++sai_l2mc_api_t*              sai_l2mc_entry_api;
++sai_l2mc_group_api_t*        sai_l2mc_group_api;
++sai_vlan_api_t *sai_vlan_api;
+ 
+ task_process_status handleSaiCreateStatus(sai_api_t api, sai_status_t status, void *context)
+ {
+diff --git a/orchagent/port.h b/orchagent/port.h
+index 42bdc02a6ab2292c39d957ac81e1000f67816b91..b536f912b4379a96cbc1dc29fb22369d8b59eae1 100644
+--- a/orchagent/port.h
++++ b/orchagent/port.h
+@@ -211,6 +211,7 @@ public:
+     uint32_t  m_fdb_count = 0;
+     uint64_t  m_flap_count = 0;
+     uint32_t  m_up_member_count = 0;
++    uint32_t  m_l2mc_count=0;
+     std::set<uint32_t> m_adv_speeds;
+     sai_port_interface_type_t m_interface_type = SAI_PORT_INTERFACE_TYPE_NONE;
+     std::set<sai_port_interface_type_t> m_adv_interface_types;
+diff --git a/orchagent/portsorch.cpp b/orchagent/portsorch.cpp
+index 313f2d02b395520c463fea3ae5e6eb2a776612f8..dd4b7d7374e6e514456db542008149219140a5c2 100644
+--- a/orchagent/portsorch.cpp
++++ b/orchagent/portsorch.cpp
+@@ -41,6 +41,7 @@
+ #include "stringutility.h"
+ #include "subscriberstatetable.h"
+ #include "warm_restart.h"
++#include "orchdaemon.h"
+ 
+ #include "saitam.h"
+ 
+@@ -73,6 +74,7 @@ extern string gMyAsicName;
+ extern event_handle_t g_events_handle;
+ extern bool isVoqChassisDbInUse();
+ extern bool gMultiAsicVoq;
++extern L2mcOrch *gL2mcOrch;
+ 
+ // defines ------------------------------------------------------------------------------------------------------------
+ 
+@@ -5854,7 +5856,7 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
+ 
+         if (!getPort(port_alias, port))
+         {
+-            SWSS_LOG_DEBUG("%s is not not yet created, delaying", port_alias.c_str());
++            SWSS_LOG_INFO("%s is not not yet created, delaying", port_alias.c_str());
+             it++;
+             continue;
+         }
+@@ -5892,24 +5894,24 @@ void PortsOrch::doVlanMemberTask(Consumer &consumer)
+         }
+         else if (op == DEL_COMMAND)
+         {
++            bool ret = true;
++
+             if (vlan.m_members.find(port_alias) != vlan.m_members.end())
+             {
+-                if (removeVlanMember(vlan, port))
+-                {
+-                    if (m_portVlanMember[port.m_alias].empty())
+-                    {
+-                        removeBridgePort(port);
+-                    }
+-                    it = consumer.m_toSync.erase(it);
+-                }
+-                else
+-                {
+-                    it++;
+-                }
++                ret = removeVlanMember(vlan, port);
+             }
+-            else
+-                /* Cannot locate the VLAN */
++            if ((ret == true) && m_portVlanMember[port.m_alias].empty())
++            {
++                ret = removeBridgePort(port);
++            }
++            if (ret == true)
++            {
+                 it = consumer.m_toSync.erase(it);
++            }
++            else
++            {
++                it++;
++            }
+         }
+         else
+         {
+@@ -7279,6 +7281,13 @@ bool PortsOrch::removeBridgePort(Port &port)
+     /* Remove STP ports before bridge port deletion*/
+     gStpOrch->removeStpPorts(port);
+ 
++    /* Remove L2MC ports before bridge port deletion*/
++    if (port.m_l2mc_count != 0)
++    {
++        SWSS_LOG_NOTICE("port %s still has references to a Layer 2 multicast group member.", port.m_alias.c_str());
++        return false;
++    }
++
+     //Flush the FDB entires corresponding to the port
+     gFdbOrch->flushFDBEntries(port.m_bridge_port_id, SAI_NULL_OBJECT_ID);
+     SWSS_LOG_INFO("Flush FDB entries for port %s", port.m_alias.c_str());
+@@ -7425,6 +7434,12 @@ bool PortsOrch::removeVlan(Port vlan)
+     {
+         gStpOrch->removeVlanFromStpInstance(vlan.m_alias, 0);
+     }
++    
++    if(!gL2mcOrch->removeL2mcFromVlan(vlan.m_alias))
++    {
++        SWSS_LOG_ERROR("Fail Remove %s l2mc", vlan.m_alias.c_str());
++        return false;
++    }
+ 
+     sai_status_t status = sai_vlan_api->remove_vlan(vlan.m_vlan_info.vlan_oid);
+     if (status != SAI_STATUS_SUCCESS)
+@@ -7831,6 +7846,10 @@ bool PortsOrch::removeVlanMember(Port &vlan, Port &port, string end_point_ip)
+     {
+         return removeVlanEndPointIp(vlan, port, end_point_ip);
+     }
++
++    gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V4");
++    gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V6");
++    
+     sai_object_id_t vlan_member_id;
+     sai_vlan_tagging_mode_t sai_tagging_mode;
+     auto vlan_member = m_portVlanMember[port.m_alias].find(vlan.m_vlan_info.vlan_id);
+diff --git a/orchagent/saihelper.cpp b/orchagent/saihelper.cpp
+index ec2566e7373328a5929211df3c1bcff1c0fb20f7..521b9bd242f6e95f861fd59a86b12d8b91e967ae 100644
+--- a/orchagent/saihelper.cpp
++++ b/orchagent/saihelper.cpp
+@@ -73,6 +73,7 @@ sai_isolation_group_api_t*  sai_isolation_group_api;
+ sai_system_port_api_t*      sai_system_port_api;
+ sai_macsec_api_t*           sai_macsec_api;
+ sai_srv6_api_t**            sai_srv6_api;;
++sai_l2mc_api_t*             sai_l2mc_entry_api;
+ sai_l2mc_group_api_t*       sai_l2mc_group_api;
+ sai_counter_api_t*          sai_counter_api;
+ sai_bfd_api_t*              sai_bfd_api;
+@@ -233,6 +234,7 @@ void initSaiApi()
+     sai_api_query(SAI_API_SYSTEM_PORT,          (void **)&sai_system_port_api);
+     sai_api_query(SAI_API_MACSEC,               (void **)&sai_macsec_api);
+     sai_api_query(SAI_API_SRV6,                 (void **)&sai_srv6_api);
++    sai_api_query(SAI_API_L2MC,                 (void **)&sai_l2mc_entry_api);
+     sai_api_query(SAI_API_L2MC_GROUP,           (void **)&sai_l2mc_group_api);
+     sai_api_query(SAI_API_COUNTER,              (void **)&sai_counter_api);
+     sai_api_query(SAI_API_BFD,                  (void **)&sai_bfd_api);
+diff --git a/tests/mock_tests/Makefile.am b/tests/mock_tests/Makefile.am
+index ef939887ed6974700a8c4fad8a554814d8bc3997..601597fa3754bc3a92feeb2ac29a2f2f47cce26f 100644
+--- a/tests/mock_tests/Makefile.am
++++ b/tests/mock_tests/Makefile.am
+@@ -184,6 +184,7 @@ tests_SOURCES = aclorch_ut.cpp \
+                 $(top_srcdir)/orchagent/twamporch.cpp \
+                 $(top_srcdir)/orchagent/stporch.cpp \
+                 $(top_srcdir)/orchagent/nexthopkey.cpp \
++                $(top_srcdir)/orchagent/l2mcorch.cpp \
+                 $(top_srcdir)/orchagent/high_frequency_telemetry/hftelorch.cpp \
+                 $(top_srcdir)/orchagent/high_frequency_telemetry/hftelprofile.cpp \
+                 $(top_srcdir)/orchagent/high_frequency_telemetry/counternameupdater.cpp \
+diff --git a/tests/mock_tests/mock_orchagent_main.h b/tests/mock_tests/mock_orchagent_main.h
+index 886409fee31040ba357a3e8372e5741694373fe2..8263be425bafbaeb21b90c3009b5b0900cef4ad1 100644
+--- a/tests/mock_tests/mock_orchagent_main.h
++++ b/tests/mock_tests/mock_orchagent_main.h
+@@ -124,3 +124,5 @@ extern sai_dash_tunnel_api_t* sai_dash_tunnel_api;
+ extern sai_dash_outbound_port_map_api_t* sai_dash_outbound_port_map_api;
+ extern sai_dash_trusted_vni_api_t* sai_dash_trusted_vni_api;
+ extern sai_icmp_echo_api_t* sai_icmp_echo_api;
++extern sai_l2mc_api_t* sai_l2mc_entry_api;
++extern sai_l2mc_group_api_t* sai_l2mc_group_api;

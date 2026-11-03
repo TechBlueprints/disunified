@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:04:42 -0700
+Subject: [PATCH 02/10] l2mcd: point the submodule at sonic-l2mcd-micas@651a13b
+
+sonic-net/sonic-buildimage#24327 adds a .gitmodules entry for
+src/sonic-l2mcd with the URL https://github.com/sonic-net/sonic-l2mcd,
+which does not exist, and no gitlink, so make init never checks the
+daemon out and rules/l2mcd.mk has no source to build. The daemon is
+published on its author's fork, branches dev and l2mcd-pre (both at
+651a13bdf036, 2026-08-14); this points the submodule there and pins
+that commit.
+
+Also, in the PR's rules:
+- rules/l2mcd.dep: SMDEP_SPATH was $(SPATH)/sonic-l2mcd, a directory
+  that does not exist (the submodule is $(SPATH) itself); the cache
+  hashing would have run git ls-files in a missing path.
+- rules/config: INCLUDE_L2MCD = y becomes ?= y, like the other
+  INCLUDE_ switches, so it can be turned off from the make command line.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .gitmodules     | 2 +-
+ rules/config    | 2 +-
+ rules/l2mcd.dep | 2 +-
+ src/sonic-l2mcd | 1 +
+ 4 files changed, 4 insertions(+), 3 deletions(-)
+ create mode 160000 src/sonic-l2mcd
+
+diff --git a/.gitmodules b/.gitmodules
+index 8009ead0c419d16a402507c0c56090e148750a36..3f98689b7aa32e5748f4b4175b4316631afc8067 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -165,4 +165,4 @@
+ 	url = https://github.com/Supervisor/supervisor
+ [submodule "src/sonic-l2mcd"]
+ 	path = src/sonic-l2mcd
+-	url = https://github.com/sonic-net/sonic-l2mcd
++	url = https://github.com/jasper-hou-micas/sonic-l2mcd-micas
+diff --git a/rules/config b/rules/config
+index de43284688d62927b4b547aadc73c41f3615a88d..2cc647e828e05f4549b2d47470f0fc1ff539d994 100644
+--- a/rules/config
++++ b/rules/config
+@@ -135,7 +135,7 @@ INCLUDE_SNMP ?= y
+ INCLUDE_LLDP ?= y
+ 
+ # INCLUDE_L2MCD - build docker-l2mcd for IGMP Snooping
+-INCLUDE_L2MCD = y
++INCLUDE_L2MCD ?= y
+ 
+ # INCLUDE_SFLOW - build docker-sflow for sFlow support
+ INCLUDE_SFLOW = y
+diff --git a/rules/l2mcd.dep b/rules/l2mcd.dep
+index 74a19250ed43a2b4507ed63825bdf540bb3e2cef..b03d8abae571cba8273141e4d6b493ac2e2de9bf 100644
+--- a/rules/l2mcd.dep
++++ b/rules/l2mcd.dep
+@@ -4,7 +4,7 @@ DEP_FILES   := $(SONIC_COMMON_FILES_LIST) rules/l2mcd.mk rules/l2mcd.dep
+ DEP_FILES   += $(SONIC_COMMON_BASE_FILES_LIST)
+ DEP_FILES   += $(shell git ls-files $(SPATH))
+ 
+-SMDEP_SPATH   := $(SPATH)/sonic-l2mcd
++SMDEP_SPATH   := $(SPATH)
+ SMDEP_FILES := $(addprefix $(SMDEP_SPATH)/,$(shell cd $(SMDEP_SPATH) && git ls-files))
+ $(L2MCD)_SMDEP_FILES := $(SMDEP_FILES)
+ $(L2MCD)_SMDEP_PATHS := $(SMDEP_SPATH)
+diff --git a/src/sonic-l2mcd b/src/sonic-l2mcd
+new file mode 160000
+index 0000000000000000000000000000000000000000..651a13bdf036e719661d38de0463b1c5e1c5726c
+--- /dev/null
++++ b/src/sonic-l2mcd
+@@ -0,0 +1 @@
++Subproject commit 651a13bdf036e719661d38de0463b1c5e1c5726c

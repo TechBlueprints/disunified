@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 09:34:37 -0700
+Subject: [PATCH] igmp_fsm: read each reported source once, not one past the
+ list
+
+mcgrp_update_group_address_table() refreshes the remote flag of each
+source of a report with `for (i = 0; i <= src_cnt; i++)`: the `<=` gives
+the no-source case its one pass, and with sources it reads src_array
+[src_cnt], one source past the list -- 4 bytes for IGMPv3, 16 for MLDv2,
+past the end of the packet when the record is the last one. Every
+well-formed report whose last record lists sources does it.
+
+Loop once when there are no sources and once per source otherwise.
+---
+ src/igmp_fsm.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/igmp_fsm.c b/src/igmp_fsm.c
+index 7115bbb..6d149a9 100644
+--- a/src/igmp_fsm.c
++++ b/src/igmp_fsm.c
+@@ -2012,7 +2012,9 @@ MCGRP_MBRSHP *mcgrp_update_group_address_table(MCGRP_CLASS *mcgrp,
+ 
+         if (!mbrshp_del)
+         {
+-            for (i = 0; i <= src_cnt; i++)
++            /* once with no sources (the (*,G) entry), else once per source:
++             * i <= src_cnt read one source past the report's list */
++            for (i = 0; i < (src_cnt ? src_cnt : 1); i++)
+             {
+                 /* 
+                  * If the type of (S,G) /(*,G) entry is changed between remote to dynamic or viceversa, 

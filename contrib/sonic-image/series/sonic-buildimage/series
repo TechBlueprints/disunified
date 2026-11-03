@@ -1,0 +1,11 @@
+0001-l2mcd-docker-l2mcd-build-rules-YANG-CoPP-trap-group-.patch
+0002-l2mcd-point-the-submodule-at-sonic-l2mcd-micas-651a1.patch
+0003-l2mcd-drop-the-parts-of-24327-that-are-not-snooping.patch
+0004-seastone-sai.profile-guards-for-the-Tomahawk-1-HFTel.patch
+0005-seastone-run-the-DX010-on-the-legacy-TH-SAI-13.2.1-l.patch
+0006-copp-trap-IGMP-the-way-UniFi-s-own-SONiC-switches-do.patch
+0007-platform-Restore-Celestica-platform-API-wheels.patch
+0008-rules-swss-common-sonic-mgmt-common-sonic-gnmi-and-s.patch
+0009-rules-retire-libyang3-dev-done-nothing-installs-liby.patch
+0010-yang-snooping-models-without-references-into-sonic-v.patch
+0011-Fix-VLA-size-in-setreg_store-for-DX010.patch

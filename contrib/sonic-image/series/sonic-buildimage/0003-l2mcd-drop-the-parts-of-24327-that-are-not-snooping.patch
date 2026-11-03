@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:04:55 -0700
+Subject: [PATCH 03/10] l2mcd: drop the parts of #24327 that are not snooping
+
+The PR branch carries four changes from other work on the same fork.
+None is needed for IGMP/MLD snooping and each changes the image's
+behaviour, so they are taken out:
+
+- rules/config: ENABLE_TRANSLIB_WRITE = y (gNMI translib write access)
+  goes back to commented out, the 202511 default.
+- dockers/docker-sonic-gnmi/telemetry_vars.j2: the "is defined" guards
+  belong to the closed gNMI PR (#24328); back to 202511.
+- src/sonic-yang-models/yang-models/sonic-device_metadata.yang: the
+  x509 container is gNMI certificate config, same origin; back to
+  202511.
+- files/build_templates/init_cfg.json.j2: a default MGMT_PORT|eth0 with
+  admin_status up. A switch that keeps its management port down on
+  purpose would have it brought up by the image's defaults; removed.
+  The l2mcd FEATURE entry (state disabled) in the same file stays.
+
+After this the series diff against 202511 is the l2mcd container, its
+rules, service, CoPP trap group, rsyslog/logrotate lines and the two
+snooping YANG models with their sample config.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ dockers/docker-sonic-gnmi/telemetry_vars.j2   |  6 ++---
+ files/build_templates/init_cfg.json.j2        |  6 -----
+ rules/config                                  |  2 +-
+ .../yang-models/sonic-device_metadata.yang    | 25 -------------------
+ 4 files changed, 4 insertions(+), 35 deletions(-)
+
+diff --git a/dockers/docker-sonic-gnmi/telemetry_vars.j2 b/dockers/docker-sonic-gnmi/telemetry_vars.j2
+index aeafb8230185e30ba803092fca26451f82030f88..4546ae5ab743a84d29fc6270b20c331b33a2c6d4 100644
+--- a/dockers/docker-sonic-gnmi/telemetry_vars.j2
++++ b/dockers/docker-sonic-gnmi/telemetry_vars.j2
+@@ -1,5 +1,5 @@
+ {
+-    "certs": {% if GNMI is defined and "certs" in GNMI.keys() %}{{ GNMI["certs"] }}{% else %}""{% endif %},
+-    "gnmi" : {% if GNMI is defined and "gnmi" in GNMI.keys() %}{{ GNMI["gnmi"] }}{% else %}""{% endif %},
+-    "x509" : {% if DEVICE_METADATA is defined and "x509" in DEVICE_METADATA.keys() %}{{ DEVICE_METADATA["x509"] }}{% else %}""{% endif %}
++    "certs": {% if "certs" in GNMI.keys() %}{{ GNMI["certs"] }}{% else %}""{% endif %},
++    "gnmi" : {% if "gnmi" in GNMI.keys() %}{{ GNMI["gnmi"] }}{% else %}""{% endif %},
++    "x509" : {% if "x509" in DEVICE_METADATA.keys() %}{{ DEVICE_METADATA["x509"] }}{% else %}""{% endif %}
+ }
+diff --git a/files/build_templates/init_cfg.json.j2 b/files/build_templates/init_cfg.json.j2
+index 05d1d259585e48b48fa82a212cf59de1418e7683..08d52a996d6a81a7c2dea5939221de1ef530fe0a 100644
+--- a/files/build_templates/init_cfg.json.j2
++++ b/files/build_templates/init_cfg.json.j2
+@@ -21,12 +21,6 @@
+ {% endfor %}
+         }
+     },
+-    "MGMT_PORT": {
+-        "eth0": {
+-            "alias": "eth0",
+-            "admin_status": "up"
+-        }
+-    },
+     "FLEX_COUNTER_TABLE": {
+         "ACL": {
+             "FLEX_COUNTER_STATUS": "enable",
+diff --git a/rules/config b/rules/config
+index 2cc647e828e05f4549b2d47470f0fc1ff539d994..f5054668e20f36d4b947a4f432b1f71a3bd88275 100644
+--- a/rules/config
++++ b/rules/config
+@@ -170,7 +170,7 @@ ENABLE_AUTO_TECH_SUPPORT = y
+ 
+ # ENABLE_TRANSLIB_WRITE - Enable translib write/config operations via the gNMI interface.
+ # Uncomment to enable:
+-ENABLE_TRANSLIB_WRITE = y
++# ENABLE_TRANSLIB_WRITE = y
+ 
+ # ENABLE_NATIVE_WRITE - Enable native write/config operations via the gNMI interface.
+ ENABLE_NATIVE_WRITE = y
+diff --git a/src/sonic-yang-models/yang-models/sonic-device_metadata.yang b/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
+index 5f9f648bcb6bcf73f9124cb6424d02edd55250f6..ccc7b656cc320e8ff93543e86464fc6224c3f909 100644
+--- a/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
++++ b/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
+@@ -346,31 +346,6 @@ module sonic-device_metadata {
+                 }
+             }
+             /* end of container localhost */
+-
+-            container x509 {
+-
+-                leaf ca_crt {
+-                    type string {
+-                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+)\.(cer|crt|pem)';
+-                    }
+-                    description "Local path for ca_crt.";
+-                }
+-
+-                leaf server_crt {
+-                    type string {
+-                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+)\.(cer|crt|pem)';
+-                    }
+-                    description "Local path for server_crt.";
+-                }
+-
+-                leaf server_key {
+-                    type string {
+-                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+).key';
+-                    }
+-                    description "Local path for server_key.";
+-                }
+-
+-            }
+         }
+         /* end of container DEVICE_METADATA */
+     }

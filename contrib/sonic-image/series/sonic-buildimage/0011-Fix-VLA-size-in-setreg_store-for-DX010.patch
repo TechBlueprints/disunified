@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexandre Seo <alexandre-seo@example.net>
+Date: Fri, 24 Apr 2026 17:35:51 -0700
+Subject: [PATCH] Fix VLA size in setreg_store for DX010
+
+Increase size of clone array to accommodate null terminator.
+
+Signed-off-by: Alexandre Seo <alexandre-seo@example.net>
+
+Cherry-picked unchanged from sonic-net/sonic-buildimage#26983 (open, base
+master), head 894c85517024a8807adc6fe76621b95bbf139563, onto 202511: the
+upstream fix for sonic-net/sonic-buildimage#26885 (a 202511 DX010 panics in
+dx010_cpld's setreg_store under the 6.12 kernel's FORTIFY_SOURCE when
+watchdogutil writes setreg, and boot-loops), taken as submitted so this
+image tests what upstream is reviewing.
+---
+ .../sonic-platform-modules-cel/dx010/modules/dx010_cpld.c       | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/platform/broadcom/sonic-platform-modules-cel/dx010/modules/dx010_cpld.c b/platform/broadcom/sonic-platform-modules-cel/dx010/modules/dx010_cpld.c
+index d4c15eca9..b0d17c3b9 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/dx010/modules/dx010_cpld.c
++++ b/platform/broadcom/sonic-platform-modules-cel/dx010/modules/dx010_cpld.c
+@@ -190,7 +190,7 @@ static ssize_t setreg_store(struct device *dev, struct device_attribute *devattr
+     uint16_t addr;
+     uint8_t value;
+     char *tok;
+-    char clone[count];
++    char clone[count + 1];
+     char *pclone = clone;
+     char *last;
+ 
+-- 
+2.39.5
+

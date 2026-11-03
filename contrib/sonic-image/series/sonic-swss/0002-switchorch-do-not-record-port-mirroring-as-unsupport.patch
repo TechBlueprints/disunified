@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Mon, 2 Nov 2026 10:36:25 -0700
+Subject: [PATCH] switchorch: do not record port mirroring as unsupported on a
+ SAI "no"
+
+querySwitchPortMirrorCapability() writes PORT_INGRESS_MIRROR_CAPABLE and
+PORT_EGRESS_MIRROR_CAPABLE into STATE_DB SWITCH_CAPABILITY|switch from
+sai_query_attribute_capability(). The Broadcom legacy-TH SAI (libsaibcm
+13.2.1.100, Tomahawk-1) answers set_implemented=false for both
+SAI_PORT_ATTR_INGRESS_MIRROR_SESSION and SAI_PORT_ATTR_EGRESS_MIRROR_SESSION,
+yet a set of SAI_PORT_ATTR_INGRESS_MIRROR_SESSION pushed through ASIC_DB
+returns SAI_STATUS_SUCCESS and the SDK's "mirror show" lists the port as
+mirrored to the session's destination. On that "no", the config CLI refuses
+every port-based session and MirrorOrch::setUnsetPortMirror() refuses to bind
+the source port, so port mirroring cannot be configured at all on a switch
+that does it.
+
+Record the capability as supported when the SAI says no, as the code already
+does when the query itself fails. A set the SAI then refuses is handled by
+setUnsetPortMirror(): logged through handleSaiSetStatus(), no abort. The query
+came with sonic-net/sonic-swss#4137 (2026-03); before it every SAI was asked
+to bind, as 202505 and earlier still do.
+---
+ orchagent/switchorch.cpp | 34 ++++++++++++----------------------
+ 1 file changed, 12 insertions(+), 22 deletions(-)
+
+diff --git a/orchagent/switchorch.cpp b/orchagent/switchorch.cpp
+index b1f7050..cfee094 100644
+--- a/orchagent/switchorch.cpp
++++ b/orchagent/switchorch.cpp
+@@ -1909,17 +1909,14 @@ void SwitchOrch::querySwitchPortMirrorCapability()
+     }
+     else
+     {
+-        if (capability.set_implemented)
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "true");
+-            m_portIngressMirrorSupported = true;
+-        }
+-        else
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "false");
+-            m_portIngressMirrorSupported = false;
+-        }
+-        SWSS_LOG_NOTICE("port ingress mirror capability %d", capability.set_implemented);
++        // The Broadcom legacy-TH SAI (libsaibcm 13.2.1.100, Tomahawk-1) answers
++        // set_implemented=false here, yet it sets SAI_PORT_ATTR_INGRESS_MIRROR_SESSION
++        // and programs the port. Take a "no" as a failed query: record the
++        // capability, and let MirrorOrch::setUnsetPortMirror log a set the SAI
++        // refuses.
++        fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_INGRESS_MIRROR_CAPABLE, "true");
++        m_portIngressMirrorSupported = true;
++        SWSS_LOG_NOTICE("port ingress mirror capability %d (recorded as supported)", capability.set_implemented);
+     }
+ 
+     // Check if SAI is capable of handling Port egress mirror session
+@@ -1933,17 +1930,10 @@ void SwitchOrch::querySwitchPortMirrorCapability()
+     }
+     else
+     {
+-        if (capability.set_implemented)
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_EGRESS_MIRROR_CAPABLE, "true");
+-            m_portEgressMirrorSupported = true;
+-        }
+-        else
+-        {
+-            fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_EGRESS_MIRROR_CAPABLE, "false");
+-            m_portEgressMirrorSupported = false;
+-        }
+-        SWSS_LOG_NOTICE("port egress mirror capability %d", capability.set_implemented);
++        // As for ingress: the legacy-TH SAI's "no" is not to be trusted.
++        fvVector.emplace_back(SWITCH_CAPABILITY_TABLE_PORT_EGRESS_MIRROR_CAPABLE, "true");
++        m_portEgressMirrorSupported = true;
++        SWSS_LOG_NOTICE("port egress mirror capability %d (recorded as supported)", capability.set_implemented);
+     }
+ 
+     set_switch_capability(fvVector);
+-- 
+2.50.1 (Apple Git-155)
+

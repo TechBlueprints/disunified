@@ -1,0 +1,10 @@
+# <series dir> <base commit> <base date>: each series applies with git am
+# on exactly this commit. sonic-buildimage 202511 pins sonic-swss,
+# sonic-swss-common and sonic-utilities at these same commits; sonic-l2mcd
+# is the submodule commit patch 0002 of sonic-buildimage adds.
+sonic-buildimage 1354e0ce463074ae796c7868ecd32d58fd8653aa 2026-11-01
+sonic-swss 177c7a009f5e91a74665c9059773a0d6eff210d0 2026-09-19
+sonic-swss-common e59457c6da43aa8fcd433c772d47274f24a79da6 2026-07-21
+sonic-utilities 73f8c019ff7cfdaa5ab50d01d8c0dcad2dd34417 2026-10-20
+sonic-l2mcd 651a13bdf036e719661d38de0463b1c5e1c5726c 2026-08-13
+sonic-mgmt-common b5f84b0644d925828dc0a4e290695554d890ca4f 2025-12-05

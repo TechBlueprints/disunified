@@ -1,0 +1,1038 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Jasper.Hou" <jasper-hou@example.net>
+Date: Sun, 1 Nov 2026 04:03:12 -0700
+Subject: [PATCH 01/10] l2mcd: docker-l2mcd, build rules, YANG, CoPP trap group
+ for IGMP/MLD
+
+Squash of sonic-net/sonic-buildimage#24327 (draft, Micas Networks),
+head 80aa33e2de012d927d2fd1aa13de0799809c84c4, 10 commits from merge
+base 97a82c196d, merged onto 202511 at 1354e0ce463074ae (154 commits
+newer than the merge base). Three-way merge, no conflicts. Kept
+verbatim here; the follow-up commits repoint the daemon submodule and
+take out what is unrelated to snooping.
+
+Co-authored-by: Cipher324 <cipher324@example.net>
+---
+ .gitmodules                                   |   3 +
+ dockers/docker-l2mcd/Dockerfile.j2            |  45 ++++
+ dockers/docker-l2mcd/critical_processes       |   2 +
+ dockers/docker-l2mcd/start.sh                 |   5 +
+ dockers/docker-l2mcd/supervisord.conf         |  67 +++++
+ dockers/docker-sonic-gnmi/telemetry_vars.j2   |   6 +-
+ files/build_templates/init_cfg.json.j2        |   7 +
+ .../per_namespace/l2mcd.service.j2            |  21 ++
+ files/image_config/copp/copp_cfg.j2           |  17 +-
+ files/image_config/logrotate/rsyslog.j2       |   1 +
+ .../rsyslog/rsyslog.d/00-sonic.conf.j2        |   6 +
+ rules/config                                  |   5 +-
+ rules/docker-l2mcd.dep                        |  11 +
+ rules/docker-l2mcd.mk                         |  30 +++
+ rules/l2mcd.dep                               |  14 +
+ rules/l2mcd.mk                                |  18 ++
+ slave.mk                                      |   2 +
+ src/sonic-yang-models/setup.py                |   2 +
+ .../tests/files/sample_config_db.json         |  22 ++
+ .../yang-models/sonic-device_metadata.yang    |  25 ++
+ .../yang-models/sonic-igmp-snooping.yang      | 255 ++++++++++++++++++
+ .../yang-models/sonic-mld-snooping.yang       | 213 +++++++++++++++
+ 22 files changed, 772 insertions(+), 5 deletions(-)
+ create mode 100644 dockers/docker-l2mcd/Dockerfile.j2
+ create mode 100644 dockers/docker-l2mcd/critical_processes
+ create mode 100644 dockers/docker-l2mcd/start.sh
+ create mode 100644 dockers/docker-l2mcd/supervisord.conf
+ create mode 100644 files/build_templates/per_namespace/l2mcd.service.j2
+ create mode 100644 rules/docker-l2mcd.dep
+ create mode 100644 rules/docker-l2mcd.mk
+ create mode 100644 rules/l2mcd.dep
+ create mode 100644 rules/l2mcd.mk
+ create mode 100644 src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
+ create mode 100644 src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
+
+diff --git a/.gitmodules b/.gitmodules
+index 780d00945d18693744e0758114840532c9035e6e..8009ead0c419d16a402507c0c56090e148750a36 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -163,3 +163,6 @@
+ [submodule "src/supervisor"]
+ 	path = src/supervisor
+ 	url = https://github.com/Supervisor/supervisor
++[submodule "src/sonic-l2mcd"]
++	path = src/sonic-l2mcd
++	url = https://github.com/sonic-net/sonic-l2mcd
+diff --git a/dockers/docker-l2mcd/Dockerfile.j2 b/dockers/docker-l2mcd/Dockerfile.j2
+new file mode 100644
+index 0000000000000000000000000000000000000000..a734a07bb1a3d0865991869acdfc1793e6aa64d2
+--- /dev/null
++++ b/dockers/docker-l2mcd/Dockerfile.j2
+@@ -0,0 +1,45 @@
++{% from "dockers/dockerfile-macros.j2" import install_debian_packages, copy_files %}
++
++ARG BASE=docker-config-engine-bookworm-{{DOCKER_USERNAME}}:{{DOCKER_USERTAG}}
++
++FROM $BASE AS base
++
++ARG docker_container_name
++ARG image_version
++
++ENV DEBIAN_FRONTEND=noninteractive
++ENV IMAGE_VERSION=$image_version
++
++RUN [ -f /etc/rsyslog.conf ] && sed -ri "s/%syslogtag%/$docker_container_name#%syslogtag%/;" /etc/rsyslog.conf
++
++RUN apt-get update && apt-get install -f -y \
++    libdbus-1-3 \
++    libdaemon0 \
++    libjansson4 \
++    libpython3.11 \
++    libjemalloc2 \
++    libevent-dev
++
++{% if docker_l2mcd_debs.strip() -%}
++
++{{ copy_files("debs/", docker_l2mcd_debs.split(' '), "/debs/") }}
++
++{{ install_debian_packages(docker_l2mcd_debs.split(' ')) }}
++{%- endif %}
++
++RUN apt-get clean -y && \
++    apt-get autoclean -y && \
++    apt-get autoremove -y && \
++    rm -rf /debs
++
++COPY ["start.sh", "/usr/bin/"]
++COPY ["supervisord.conf", "/etc/supervisor/conf.d/"]
++COPY ["critical_processes", "/etc/supervisor/"]
++RUN chmod +x /usr/bin/start.sh
++
++FROM $BASE
++
++RUN --mount=type=bind,from=base,target=/changes-to-image rsync -axAX --no-D --exclude=/sys --exclude=/proc --exclude=/dev --exclude=resolv.conf /changes-to-image/ /
++
++
++ENTRYPOINT ["/usr/local/bin/supervisord"]
+diff --git a/dockers/docker-l2mcd/critical_processes b/dockers/docker-l2mcd/critical_processes
+new file mode 100644
+index 0000000000000000000000000000000000000000..7bfd0ee0d5bf647b7e75dc148949626d5d579342
+--- /dev/null
++++ b/dockers/docker-l2mcd/critical_processes
+@@ -0,0 +1,2 @@
++program:l2mcd
++program:l2mcmgrd
+\ No newline at end of file
+diff --git a/dockers/docker-l2mcd/start.sh b/dockers/docker-l2mcd/start.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..9255d2b877749ee9d05d7c207298ad7890f15a90
+--- /dev/null
++++ b/dockers/docker-l2mcd/start.sh
+@@ -0,0 +1,5 @@
++#!/usr/bin/env bash
++
++rm -f /var/run/rsyslogd.pid
++rm -f /var/run/l2mcd/*
++rm -f /var/run/l2mcmgrd/*
+diff --git a/dockers/docker-l2mcd/supervisord.conf b/dockers/docker-l2mcd/supervisord.conf
+new file mode 100644
+index 0000000000000000000000000000000000000000..751b020b93ced50d88b4fe6e260f0968e5a5e753
+--- /dev/null
++++ b/dockers/docker-l2mcd/supervisord.conf
+@@ -0,0 +1,67 @@
++[supervisord]
++logfile_maxbytes=1MB
++logfile_backups=2
++nodaemon=true
++
++[eventlistener:dependent-startup]
++command=python3 -m supervisord_dependent_startup
++autostart=true
++autorestart=unexpected
++startretries=0
++exitcodes=0,3
++events=PROCESS_STATE
++buffer_size=1024
++
++[eventlistener:supervisor-proc-exit-listener]
++command=/usr/local/bin/supervisor-proc-exit-listener --container-name l2mcd
++events=PROCESS_STATE_EXITED,PROCESS_STATE_RUNNING
++autostart=true
++autorestart=unexpected
++buffer_size=1024
++
++[program:rsyslogd]
++command=/usr/sbin/rsyslogd -n -iNONE
++priority=2
++autostart=false
++autorestart=false
++stdout_logfile=NONE
++stdout_syslog=true
++stderr_logfile=NONE
++stderr_syslog=true
++dependent_startup=true
++
++[program:start]
++command=/usr/bin/start.sh
++priority=1
++autostart=true
++autorestart=false
++startsecs=0
++stdout_logfile=NONE
++stdout_syslog=true
++stderr_logfile=NONE
++stderr_syslog=true
++dependent_startup=true
++
++[program:l2mcd]
++command=/usr/bin/l2mcd -n 1
++priority=3
++autostart=false
++autorestart=false
++stdout_logfile=NONE
++stdout_syslog=true
++stderr_logfile=NONE
++stderr_syslog=true
++dependent_startup=true
++dependent_startup_wait_for=rsyslogd:running
++
++[program:l2mcmgrd]
++command=/usr/bin/l2mcmgrd
++priority=3
++autostart=false
++autorestart=false
++stdout_logfile=NONE
++stdout_syslog=true
++stderr_logfile=NONE
++stderr_syslog=true
++dependent_startup=true
++dependent_startup_wait_for=rsyslogd:running
+diff --git a/dockers/docker-sonic-gnmi/telemetry_vars.j2 b/dockers/docker-sonic-gnmi/telemetry_vars.j2
+index 4546ae5ab743a84d29fc6270b20c331b33a2c6d4..aeafb8230185e30ba803092fca26451f82030f88 100644
+--- a/dockers/docker-sonic-gnmi/telemetry_vars.j2
++++ b/dockers/docker-sonic-gnmi/telemetry_vars.j2
+@@ -1,5 +1,5 @@
+ {
+-    "certs": {% if "certs" in GNMI.keys() %}{{ GNMI["certs"] }}{% else %}""{% endif %},
+-    "gnmi" : {% if "gnmi" in GNMI.keys() %}{{ GNMI["gnmi"] }}{% else %}""{% endif %},
+-    "x509" : {% if "x509" in DEVICE_METADATA.keys() %}{{ DEVICE_METADATA["x509"] }}{% else %}""{% endif %}
++    "certs": {% if GNMI is defined and "certs" in GNMI.keys() %}{{ GNMI["certs"] }}{% else %}""{% endif %},
++    "gnmi" : {% if GNMI is defined and "gnmi" in GNMI.keys() %}{{ GNMI["gnmi"] }}{% else %}""{% endif %},
++    "x509" : {% if DEVICE_METADATA is defined and "x509" in DEVICE_METADATA.keys() %}{{ DEVICE_METADATA["x509"] }}{% else %}""{% endif %}
+ }
+diff --git a/files/build_templates/init_cfg.json.j2 b/files/build_templates/init_cfg.json.j2
+index e12082f0cf36fbfdae5991a2ed716d36bf866720..05d1d259585e48b48fa82a212cf59de1418e7683 100644
+--- a/files/build_templates/init_cfg.json.j2
++++ b/files/build_templates/init_cfg.json.j2
+@@ -21,6 +21,12 @@
+ {% endfor %}
+         }
+     },
++    "MGMT_PORT": {
++        "eth0": {
++            "alias": "eth0",
++            "admin_status": "up"
++        }
++    },
+     "FLEX_COUNTER_TABLE": {
+         "ACL": {
+             "FLEX_COUNTER_STATUS": "enable",
+@@ -77,6 +83,7 @@
+ {%- if include_dhcp_server == "y" %}{% do features.append(("dhcp_server", "disabled", false, "enabled")) %}{% endif %}
+ {%- if sonic_asic_platform == "vs" %}{% do features.append(("gbsyncd", "enabled", false, "enabled")) %}{% endif %}
+ {%- if include_iccpd == "y" %}{% do features.append(("iccpd", "disabled", false, "enabled")) %}{% endif %}
++{%- if include_l2mcd == "y" %}{% do features.append(("l2mcd", "disabled", false, "enabled")) %}{% endif %}
+ {%- if include_mgmt_framework == "y" %}{% do features.append(("mgmt-framework", "enabled", true, "enabled")) %}{% endif %}
+ {%- if include_mux == "y" %}{% do features.append(("mux", "{% if 'subtype' in DEVICE_METADATA['localhost'] and DEVICE_METADATA['localhost']['subtype'] == 'DualToR' %}enabled{% else %}always_disabled{% endif %}", false, "enabled")) %}{% endif %}
+ {%- if include_nat == "y" %}{% do features.append(("nat", "disabled", false, "enabled")) %}{% endif %}
+diff --git a/files/build_templates/per_namespace/l2mcd.service.j2 b/files/build_templates/per_namespace/l2mcd.service.j2
+new file mode 100644
+index 0000000000000000000000000000000000000000..29bb0d0a45ccf1fbdc3797849df26638c2a1cf38
+--- /dev/null
++++ b/files/build_templates/per_namespace/l2mcd.service.j2
+@@ -0,0 +1,21 @@
++[Unit]
++Description=L2MCD container
++Requires=swss{% if multi_instance == 'true' %}@%i{% endif %}.service
++After=swss{% if multi_instance == 'true' %}@%i{% endif %}.service
++After=syncd{% if multi_instance == 'true' %}@%i{% endif %}.service
++Requires=config-setup.service
++After=config-setup.service
++BindsTo=sonic.target
++After=sonic.target
++Before=ntp-config.service
++BindsTo=sonic.target
++After=sonic.target
++
++[Service]
++User={{ sonicadmin_user }}
++ExecStartPre=/usr/bin/{{docker_container_name}}.sh start{% if multi_instance == 'true' %} %i{% endif %}
++ExecStart=/usr/bin/{{docker_container_name}}.sh wait{% if multi_instance == 'true' %} %i{% endif %}
++ExecStop=/usr/bin/{{docker_container_name}}.sh stop{% if multi_instance == 'true' %} %i{% endif %}
++
++[Install]
++WantedBy=sonic.target
+diff --git a/files/image_config/copp/copp_cfg.j2 b/files/image_config/copp/copp_cfg.j2
+index fc2002cffd39e472f9cf604cdae70bd203766ae2..6e4fb4cc85d62d37447aafd12087165066c02a80 100755
+--- a/files/image_config/copp/copp_cfg.j2
++++ b/files/image_config/copp/copp_cfg.j2
+@@ -85,7 +85,18 @@
+ 		    "trap_action": "trap",
+ 		    "trap_priority": "1"
+ 
+-	    }
++	    },
++        "l2mcd_group": {
++            "cir":"600",
++            "cbs":"600",
++            "meter_type":"packets",
++            "mode":"sr_tcm",
++            "red_action":"drop",
++            "trap_action":"trap",
++            "trap_priority":"3",
++            "queue": "3",
++            "yellow_action":"drop"
++		}
+     },
+     "COPP_TRAP": {
+ 	    "bgp": {
+@@ -136,6 +147,10 @@
+ 		    "trap_ids": "neighbor_miss",
+ 		    "trap_group": "queue1_group3",
+ 		    "always_enabled": "true"
++	    },
++		"l2mcd": {
++            "trap_ids": "igmp_v1_report,igmp_query,igmp_leave,igmp_v2_report,igmp_v3_report,mld_v1_v2,mld_v1_report,mld_v1_done,mld_v2_report",
++            "trap_group": "l2mcd_group"
+ 	    }
+     }
+ }
+diff --git a/files/image_config/logrotate/rsyslog.j2 b/files/image_config/logrotate/rsyslog.j2
+index 52115d302e04afe86152db74784445e56f5fd4c6..babb3e5d17f8d8d7ca4448809a22b7c751fdaa65 100644
+--- a/files/image_config/logrotate/rsyslog.j2
++++ b/files/image_config/logrotate/rsyslog.j2
+@@ -29,6 +29,7 @@
+ /var/log/auth.log
+ /var/log/cron.log
+ /var/log/teamd.log
++/var/log/l2mcd.log
+ /var/log/telemetry.log
+ /var/log/stpd.log
+ /var/log/gnmi.log
+diff --git a/files/image_config/rsyslog/rsyslog.d/00-sonic.conf.j2 b/files/image_config/rsyslog/rsyslog.d/00-sonic.conf.j2
+index acd447c7a5c20eb4f471ae31513067964ebe6d80..bbc00afe7cadfa652202b063284abddadcb79b60 100644
+--- a/files/image_config/rsyslog/rsyslog.d/00-sonic.conf.j2
++++ b/files/image_config/rsyslog/rsyslog.d/00-sonic.conf.j2
+@@ -35,6 +35,12 @@ if $programname contains "teamd_" then {
+     stop
+ }
+ 
++
++if $programname contains "l2mc" then {
++    /var/log/l2mcd.log
++    stop
++}
++
+ ## gnmi rules
+ if $msg startswith " gnmi-native" then {
+     /var/log/gnmi.log
+diff --git a/rules/config b/rules/config
+index 1ed2d7836d429375f8146bfc8f8b1a965fa13cc8..de43284688d62927b4b547aadc73c41f3615a88d 100644
+--- a/rules/config
++++ b/rules/config
+@@ -134,6 +134,9 @@ INCLUDE_SNMP ?= y
+ # INCLUDE_LLDP - build docker-lldp for LLDP support
+ INCLUDE_LLDP ?= y
+ 
++# INCLUDE_L2MCD - build docker-l2mcd for IGMP Snooping
++INCLUDE_L2MCD = y
++
+ # INCLUDE_SFLOW - build docker-sflow for sFlow support
+ INCLUDE_SFLOW = y
+ 
+@@ -167,7 +170,7 @@ ENABLE_AUTO_TECH_SUPPORT = y
+ 
+ # ENABLE_TRANSLIB_WRITE - Enable translib write/config operations via the gNMI interface.
+ # Uncomment to enable:
+-# ENABLE_TRANSLIB_WRITE = y
++ENABLE_TRANSLIB_WRITE = y
+ 
+ # ENABLE_NATIVE_WRITE - Enable native write/config operations via the gNMI interface.
+ ENABLE_NATIVE_WRITE = y
+diff --git a/rules/docker-l2mcd.dep b/rules/docker-l2mcd.dep
+new file mode 100644
+index 0000000000000000000000000000000000000000..59dac97ff1b9f8540f836eed3b968bf4a1c8e5d1
+--- /dev/null
++++ b/rules/docker-l2mcd.dep
+@@ -0,0 +1,11 @@
++
++DPATH       := $($(DOCKER_L2MCD)_PATH)
++DEP_FILES   := $(SONIC_COMMON_FILES_LIST) rules/docker-l2mcd.mk rules/docker-l2mcd.dep
++DEP_FILES   += $(SONIC_COMMON_BASE_FILES_LIST)
++DEP_FILES   += $(shell git ls-files $(DPATH))
++
++$(DOCKER_L2MCD)_CACHE_MODE  := GIT_COMMIT_SHA
++$(DOCKER_L2MCD)_DEP_FLAGS   := $(SONIC_COMMON_FLAGS_LIST)
++$(DOCKER_L2MCD)_DEP_FILES   := $(DEP_FILES)
++
++$(eval $(call add_dbg_docker,$(DOCKER_L2MCD),$(DOCKER_L2MCD_DBG)))
+\ No newline at end of file
+diff --git a/rules/docker-l2mcd.mk b/rules/docker-l2mcd.mk
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c97b8ce9c73a9ed1fe027a945f29a9c511476f3
+--- /dev/null
++++ b/rules/docker-l2mcd.mk
+@@ -0,0 +1,30 @@
++# Docker image for L2MCD
++DOCKER_L2MCD_STEM = docker-l2mcd
++DOCKER_L2MCD = $(DOCKER_L2MCD_STEM).gz
++DOCKER_L2MCD_DBG = $(DOCKER_L2MCD_STEM)-$(DBG_IMAGE_MARK).gz
++
++$(DOCKER_L2MCD)_PATH = $(DOCKERS_PATH)/docker-l2mcd
++
++$(DOCKER_L2MCD)_DEPENDS += $(LIBEVENT) $(L2MCD) $(SWSS) $(LIBSWSSCOMMON)
++$(DOCKER_L2MCD)_DBG_DEPENDS = $($(DOCKER_CONFIG_ENGINE_BOOKWORM)_DBG_DEPENDS)
++$(DOCKER_L2MCD)_DBG_DEPENDS += $(SWSS_DBG) $(LIBSWSSCOMMON_DBG)
++$(DOCKER_L2MCD)_DBG_IMAGE_PACKAGES = $($(DOCKER_CONFIG_ENGINE_BOOKWORM)_DBG_IMAGE_PACKAGES)
++
++$(DOCKER_L2MCD)_LOAD_DOCKERS += $(DOCKER_CONFIG_ENGINE_BOOKWORM)
++
++ifeq ($(INCLUDE_L2MCD), y)
++SONIC_DOCKER_IMAGES += $(DOCKER_L2MCD)
++SONIC_INSTALL_DOCKER_IMAGES += $(DOCKER_L2MCD)
++SONIC_DOCKER_DBG_IMAGES += $(DOCKER_L2MCD_DBG)
++SONIC_INSTALL_DOCKER_DBG_IMAGES += $(DOCKER_L2MCD_DBG)
++endif
++
++$(DOCKER_L2MCD)_VERSION = 1.0.0
++$(DOCKER_L2MCD)_PACKAGE_NAME = l2mcd
++$(DOCKER_L2MCD)_CONTAINER_NAME = l2mcd
++$(DOCKER_L2MCD)_RUN_OPT += -t --cap-add=NET_ADMIN --cap-add=SYS_ADMIN
++$(DOCKER_L2MCD)_RUN_OPT += -v /etc/sonic:/etc/sonic:ro
++$(DOCKER_L2MCD)_RUN_OPT += -v /host/warmboot:/var/warmboot
++
++SONIC_BOOKWORM_DOCKERS += $(DOCKER_L2MCD)
++SONIC_BOOKWORM_DBG_DOCKERS += $(DOCKER_L2MCD_DBG)
+diff --git a/rules/l2mcd.dep b/rules/l2mcd.dep
+new file mode 100644
+index 0000000000000000000000000000000000000000..74a19250ed43a2b4507ed63825bdf540bb3e2cef
+--- /dev/null
++++ b/rules/l2mcd.dep
+@@ -0,0 +1,14 @@
++
++SPATH       := $($(L2MCD)_SRC_PATH)
++DEP_FILES   := $(SONIC_COMMON_FILES_LIST) rules/l2mcd.mk rules/l2mcd.dep
++DEP_FILES   += $(SONIC_COMMON_BASE_FILES_LIST)
++DEP_FILES   += $(shell git ls-files $(SPATH))
++
++SMDEP_SPATH   := $(SPATH)/sonic-l2mcd
++SMDEP_FILES := $(addprefix $(SMDEP_SPATH)/,$(shell cd $(SMDEP_SPATH) && git ls-files))
++$(L2MCD)_SMDEP_FILES := $(SMDEP_FILES)
++$(L2MCD)_SMDEP_PATHS := $(SMDEP_SPATH)
++
++$(L2MCD)_CACHE_MODE  := GIT_CONTENT_SHA
++$(L2MCD)_DEP_FLAGS   := $(SONIC_COMMON_FLAGS_LIST)
++$(L2MCD)_DEP_FILES   := $(DEP_FILES)
+\ No newline at end of file
+diff --git a/rules/l2mcd.mk b/rules/l2mcd.mk
+new file mode 100644
+index 0000000000000000000000000000000000000000..91881170fbc28a4d3304bd0f3309c697db9f89b6
+--- /dev/null
++++ b/rules/l2mcd.mk
+@@ -0,0 +1,18 @@
++# L2MCD package
++#
++L2MCD_VERSION = 1.0.0
++export L2MCD_VERSION
++
++L2MCD = l2mcd_$(L2MCD_VERSION)_$(CONFIGURED_ARCH).deb
++$(L2MCD)_SRC_PATH = $(SRC_PATH)/sonic-l2mcd
++$(L2MCD)_DEPENDS += $(LIBSWSSCOMMON_DEV)
++$(L2MCD)_RDEPENDS += $(LIBSWSSCOMMON)
++$(L2MCD)_DEPENDS += $(LIBEVENT)
++SONIC_DPKG_DEBS += $(L2MCD)
++
++# L2MCD_DBG = l2mcd-dbg_1.0.0_$(CONFIGURED_ARCH).deb
++# $(L2MCD_DBG)_DEPENDS += $(L2MCD)
++# $(L2MCD_DBG)_RDEPENDS += $(L2MCD)
++$(eval $(call add_derived_package,$(L2MCD)))
++
++export L2MCD
+diff --git a/slave.mk b/slave.mk
+index b4cabbfc6736cec604c5e3c0384bb0fe0f70149d..e4776650e902084dad098c960d5a90e030750c76 100644
+--- a/slave.mk
++++ b/slave.mk
+@@ -460,6 +460,7 @@ $(info "BLDENV"                          : "$(BLDENV)")
+ $(info "VS_PREPARE_MEM"                  : "$(VS_PREPARE_MEM)")
+ $(info "INCLUDE_MGMT_FRAMEWORK"          : "$(INCLUDE_MGMT_FRAMEWORK)")
+ $(info "INCLUDE_ICCPD"                   : "$(INCLUDE_ICCPD)")
++$(info "INCLUDE_L2MCD"                   : "$(INCLUDE_L2MCD)")
+ $(info "INCLUDE_STP"                     : "$(INCLUDE_STP)")
+ $(info "INCLUDE_SYSTEM_TELEMETRY"        : "$(INCLUDE_SYSTEM_TELEMETRY)")
+ $(info "INCLUDE_SYSTEM_GNMI"             : "$(INCLUDE_SYSTEM_GNMI)")
+@@ -1541,6 +1542,7 @@ $(addprefix $(TARGET_PATH)/, $(SONIC_INSTALLERS)) : $(TARGET_PATH)/% : \
+ 	export include_dhcp_server="$(INCLUDE_DHCP_SERVER)"
+ 	export include_mgmt_framework="$(INCLUDE_MGMT_FRAMEWORK)"
+ 	export include_iccpd="$(INCLUDE_ICCPD)"
++	export include_l2mcd="$(INCLUDE_L2MCD)"
+ 	export include_dash_ha="$(INCLUDE_DASH_HA)"
+ 	export include_stp="$(INCLUDE_STP)"
+ 	export pddf_support="$(PDDF_SUPPORT)"
+diff --git a/src/sonic-yang-models/setup.py b/src/sonic-yang-models/setup.py
+index 77f1800acbdfe83ef91b9586cfa66d14a749f962..9e78c1ac73870dd586ff63b5cbb93e2ea0a7feb5 100644
+--- a/src/sonic-yang-models/setup.py
++++ b/src/sonic-yang-models/setup.py
+@@ -183,6 +183,8 @@ yang_files = [
+     'sonic-smart-switch.yang',
+     'sonic-snmp.yang',
+     'sonic-spanning-tree.yang',
++    'sonic-igmp-snooping.yang',
++    'sonic-mld-snooping.yang',
+     'sonic-srv6.yang',
+     'sonic-ssh-server.yang',
+     'sonic-static-route.yang',
+diff --git a/src/sonic-yang-models/tests/files/sample_config_db.json b/src/sonic-yang-models/tests/files/sample_config_db.json
+index 16575dce1ea16934b779e64d985c4bad3582398e..753bbb36fae546667a4f9122b933bd44f92e2ca0 100644
+--- a/src/sonic-yang-models/tests/files/sample_config_db.json
++++ b/src/sonic-yang-models/tests/files/sample_config_db.json
+@@ -3184,6 +3184,28 @@
+                 ]
+             }
+         },
++        "L2MC": {
++            "Vlan100": {
++                "enabled": "true",
++                "fast-leave": "false",
++                "last-member-query-interval": "1000",
++                "querier": "false",
++                "query-interval": "125",
++                "query-max-response-time": "10",
++                "version": "2"
++            }
++        },
++        "MLD_L2MC": {
++            "Vlan100": {
++                "enabled": "true",
++                "fast-leave": "false",
++                "last-member-query-interval": "1000",
++                "querier": "false",
++                "query-interval": "125",
++                "query-max-response-time": "10",
++                "version": "2"
++            }
++        },
+         "STORMOND_CONFIG": {
+             "INTERVALS": {
+                 "daemon_polling_interval" : "3600",
+diff --git a/src/sonic-yang-models/yang-models/sonic-device_metadata.yang b/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
+index ccc7b656cc320e8ff93543e86464fc6224c3f909..5f9f648bcb6bcf73f9124cb6424d02edd55250f6 100644
+--- a/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
++++ b/src/sonic-yang-models/yang-models/sonic-device_metadata.yang
+@@ -346,6 +346,31 @@ module sonic-device_metadata {
+                 }
+             }
+             /* end of container localhost */
++
++            container x509 {
++
++                leaf ca_crt {
++                    type string {
++                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+)\.(cer|crt|pem)';
++                    }
++                    description "Local path for ca_crt.";
++                }
++
++                leaf server_crt {
++                    type string {
++                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+)\.(cer|crt|pem)';
++                    }
++                    description "Local path for server_crt.";
++                }
++
++                leaf server_key {
++                    type string {
++                        pattern '(/[a-zA-Z0-9_-]+)*/([a-zA-Z0-9_-]+).key';
++                    }
++                    description "Local path for server_key.";
++                }
++
++            }
+         }
+         /* end of container DEVICE_METADATA */
+     }
+diff --git a/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang b/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
+new file mode 100644
+index 0000000000000000000000000000000000000000..29135f048d3c4b7aaf3749f1bea324cfca03182d
+--- /dev/null
++++ b/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
+@@ -0,0 +1,255 @@
++module sonic-igmp-snooping {
++	namespace "http://github.com/sonic-net/sonic-igmp-snooping";
++	prefix sigmps;
++	yang-version 1.1;
++
++	import ietf-inet-types {
++		prefix inet;
++	}
++
++	import sonic-port {
++		prefix prt;
++	}
++
++    import sonic-portchannel {
++		prefix lag;
++	}
++
++	import sonic-vlan {
++        prefix svlan;
++    }
++
++	organization
++		"SONIC";
++
++	contact
++		"SONiC";
++
++	description
++		"SONIC IGMP SNOOPING";
++
++	revision 2019-10-15 {
++		description
++			"Initial revision.";
++	}
++
++	container sonic-igmp-snooping {
++
++		container L2MC_STATIC_GROUP {
++
++			list L2MC_STATIC_GROUP_LIST {
++				key "vlan-name group-addr";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				}
++
++				leaf group-addr {
++					type inet:ipv4-address;
++				}
++
++				leaf-list static-members {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++					description "List of interfaces/portchannels for the multicast group.";
++				}
++			}			
++		}
++
++		container L2MC_STATIC_MEMBER {
++
++			list L2MC_STATIC_MEMBER_LIST {
++
++				key "vlan-name group-addr out-intf";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }	
++				}
++
++				leaf group-addr {
++					type inet:ipv4-address;
++				}
++
++				leaf out-intf {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}
++				leaf port {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}			
++			}
++		}
++
++		container L2MC_MROUTER {
++
++			list L2MC_MROUTER_LIST {
++
++				key "vlan-name mrouter-intf";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				}
++
++				leaf mrouter-intf {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}
++
++				leaf mrouter_port {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}			
++			}		
++		}
++
++		container L2MC {		
++
++			list L2MC_LIST {
++				key "vlan-name";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				} 
++
++				leaf enabled {
++					type boolean;
++					default false;
++				}
++
++				leaf querier {
++					type boolean;
++					default false;
++				}
++
++				leaf fast-leave {
++					type boolean;	
++					default false;							
++				}			
++
++				leaf version {
++					type uint8 {
++						range "1..3"{
++							error-message "Invalid IGMP Snooping version.";
++					}
++					}
++					default 2;
++				}
++
++				leaf query-interval {
++					must "current() > ../query-max-response-time" {
++						error-message "Invalid IGMP Snooping query interval value.";
++					}
++
++					type uint32 {
++						range "1..18000" {
++							error-message "Invalid IGMP Snooping Query Interval.";
++						}
++					}
++					default 125;
++				}
++
++				leaf last-member-query-interval {
++					type uint32 {
++						range "100..25500"{
++							error-message "Invalid IGMP Snooping Last Member Query Interval.";
++					}
++					}
++					default 1000;
++				}
++
++				leaf query-max-response-time {
++					must "current() < ../query-interval" {
++						error-message "Invalid IGMP Snooping query interval value.";
++					}				
++					type uint16 {
++						range "1..25"{
++							error-message "Invalid IGMP Snooping Query Max Response Time.";
++					}
++					}
++					default 10;
++				}				
++			}		
++		}
++
++		container L2MC_SUPPRESS {
++
++			list L2MC_SUPPRESS_LIST {
++
++				key "vlan-name";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				} 
++
++				leaf ipv4-link-local-groups-suppression {
++					type enumeration {
++                        enum enable;
++                        enum disable;
++                    }	
++				}
++
++				leaf ipv4-optimised-multicast-flood {
++					type enumeration {
++                        enum enable;
++                        enum disable;
++                    }	
++				}
++
++				leaf ipv6-link-local-groups-suppression {
++					type enumeration {
++                        enum enable;
++                        enum disable;
++                    }	
++				}
++
++				leaf ipv6-optimised-multicast-flood {
++					type enumeration {
++                        enum enable;
++                        enum disable;
++                    }	
++				}
++			} 
++		}
++	}
++}
+diff --git a/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang b/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
+new file mode 100644
+index 0000000000000000000000000000000000000000..5fd606b3188e4af9e685970e05927aa2fb3658ef
+--- /dev/null
++++ b/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
+@@ -0,0 +1,213 @@
++module sonic-mld-snooping {
++	namespace "http://github.com/sonic-net/sonic-mld-snooping";
++	prefix smlds;
++	yang-version 1.1;
++
++	import ietf-inet-types {
++		prefix inet;
++	}
++
++	import sonic-port {
++		prefix prt;
++	}
++
++    import sonic-portchannel {
++		prefix lag;
++	}
++
++	import sonic-vlan {
++        prefix svlan;
++    }
++
++	organization
++		"SONIC";
++
++	contact
++		"SONiC";
++
++	description
++		"SONIC MLD SNOOPING";
++
++	revision 2025-11-14 {
++		description
++			"Initial revision.";
++	}
++
++	container sonic-mld-snooping {
++
++		container MLD_L2MC_STATIC_GROUP {
++
++			list MLD_L2MC_STATIC_GROUP_LIST {
++				key "vlan-name group-addr";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				}
++
++				leaf group-addr {
++					type inet:ipv6-address;
++				}
++
++				leaf-list static-members {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++					description "List of interfaces/portchannels for the multicast group.";
++				}
++			}			
++		}
++
++		container MLD_L2MC_STATIC_MEMBER {
++
++			list MLD_L2MC_STATIC_MEMBER_LIST {
++
++				key "vlan-name group-addr out-intf";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }	
++				}
++
++				leaf group-addr {
++					type inet:ipv6-address;
++				}
++
++				leaf out-intf {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}
++				leaf port {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}			
++			}
++		}
++
++		container MLD_L2MC_MROUTER {
++
++			list MLD_L2MC_MROUTER_LIST {
++
++				key "vlan-name mrouter-intf";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				}
++
++				leaf mrouter-intf {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}
++
++				leaf mrouter_port {
++					type union {
++                        type leafref {
++                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
++                        }
++                        type leafref {
++                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
++                        }
++                    }
++				}			
++			}		
++		}
++
++		container MLD_L2MC {		
++
++			list MLD_L2MC_LIST {
++				key "vlan-name";
++
++				leaf vlan-name {
++					type leafref {
++                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
++                    }
++				} 
++
++				leaf enabled {
++					type boolean;
++					default false;
++				}
++
++				leaf querier {
++					type boolean;
++					default false;
++				}
++
++				leaf fast-leave {
++					type boolean;	
++					default false;							
++				}			
++
++				leaf version {
++					type uint8 {
++						range "1..2"{
++							error-message "Invalid MLD Snooping version.";
++						}
++					}
++					default 2;
++				}
++
++				leaf query-interval {
++					must "current() > ../query-max-response-time" {
++						error-message "Invalid MLD Snooping query interval value.";
++					}
++
++					type uint32 {
++						range "1..18000" {
++							error-message "Invalid MLD Snooping Query Interval.";
++						}
++					}
++					default 125;
++				}
++
++				leaf last-member-query-interval {
++					type uint32 {
++						range "100..25500"{
++							error-message "Invalid MLD Snooping Last Member Query Interval.";
++						}
++					}
++					default 1000;
++				}
++
++				leaf query-max-response-time {
++					must "current() < ../query-interval" {
++						error-message "Invalid MLD Snooping query interval value.";
++					}				
++					type uint16 {
++						range "1..25"{
++							error-message "Invalid MLD Snooping Query Max Response Time.";
++						}
++					}
++					default 10;
++				}				
++			}		
++		}
++	}
++}

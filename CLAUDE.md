@@ -79,6 +79,7 @@ reply, and the reported address following an applied move
 | `internal/sshrun` | the SSH transport the host drivers share (`Runner`, `SSH`, `ShellQuote`), and `Local` for a bridge on the device itself | drivers take a `Runner` so tests serve captures |
 | `internal/nutd` | the NUT server behind a UPS's "NUT Server" switch (read-only upsd protocol) | driven only by the controller's `nutserver.*` push |
 | `docs/` | protocol notes, `drivers/<name>.md`, feature map, `support-matrix.md` (verified/untested per driver; every gap says what a PR needs), fixtures | scrub fixtures with `scripts/sanitize-<driver>.py` / `sanitize-controller.py` |
+| `contrib/sonic-image` | the SONiC image build kit: the patch series (IGMP snooping, port mirroring, the DX010 on 202511), `build.sh`, `dry-run.sh`, `sonic-upgrade.sh`, the l2mcd fuzz harness | Apache-2.0 patches; placeholder e-mails in patch headers; the `src/` work clones stay outside the repo (`~/techblueprints/sonic/igmp-build/`) |
 
 ## 3. How Clint wants to work
 

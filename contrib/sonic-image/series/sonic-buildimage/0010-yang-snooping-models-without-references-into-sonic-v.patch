@@ -1,0 +1,310 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 08:17:35 -0700
+Subject: [PATCH 10/10] yang: snooping models without references into
+ sonic-vlan/port/portchannel
+
+With #24327's two models installed, 7 sonic-utilities tests of the
+generic config updater fail (gu_common_test TestPathAddressing,
+patch_sorter_test), and the sonic-utilities wheel -- whose tests run in
+the image build -- does not build. Bisected in the bookworm build slave:
+any module that imports sonic-vlan (even one with a single leafref to a
+VLAN name) changes the references GCU's libyang 1 walk reports for the
+existing tables (VLAN_MEMBER starts showing up as a reference to PORT);
+an unrelated module does not, and neither model without the imports
+does. That is GCU's behaviour for config apply-patch/replace changing
+under the image, not just a test.
+
+So the interface and VLAN-name fields become plain strings and the
+imports of sonic-vlan, sonic-port and sonic-portchannel go; the
+structure, ranges, enums and must checks stay. All 214 tests of the two
+GCU test files pass and all 141 models load. What is lost is YANG's
+check that a named VLAN or port exists; the snooping CLI writes through
+an unvalidated ConfigDBConnector and the disunified driver writes rows
+directly, so nothing in this build depends on it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../yang-models/sonic-igmp-snooping.yang      | 77 +++----------------
+ .../yang-models/sonic-mld-snooping.yang       | 73 +++---------------
+ 2 files changed, 19 insertions(+), 131 deletions(-)
+
+diff --git a/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang b/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
+index 29135f048d3c4b7aaf3749f1bea324cfca03182d..2aa001e2a251cbf769a7f44fb50c053ea3bda405 100644
+--- a/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
++++ b/src/sonic-yang-models/yang-models/sonic-igmp-snooping.yang
+@@ -7,18 +7,6 @@ module sonic-igmp-snooping {
+ 		prefix inet;
+ 	}
+ 
+-	import sonic-port {
+-		prefix prt;
+-	}
+-
+-    import sonic-portchannel {
+-		prefix lag;
+-	}
+-
+-	import sonic-vlan {
+-        prefix svlan;
+-    }
+-
+ 	organization
+ 		"SONIC";
+ 
+@@ -41,9 +29,7 @@ module sonic-igmp-snooping {
+ 				key "vlan-name group-addr";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf group-addr {
+@@ -51,14 +37,7 @@ module sonic-igmp-snooping {
+ 				}
+ 
+ 				leaf-list static-members {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 					description "List of interfaces/portchannels for the multicast group.";
+ 				}
+ 			}			
+@@ -71,9 +50,7 @@ module sonic-igmp-snooping {
+ 				key "vlan-name group-addr out-intf";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }	
++					type string;	
+ 				}
+ 
+ 				leaf group-addr {
+@@ -81,24 +58,10 @@ module sonic-igmp-snooping {
+ 				}
+ 
+ 				leaf out-intf {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}
+ 				leaf port {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}			
+ 			}
+ 		}
+@@ -110,31 +73,15 @@ module sonic-igmp-snooping {
+ 				key "vlan-name mrouter-intf";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf mrouter-intf {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf mrouter_port {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}			
+ 			}		
+ 		}
+@@ -145,9 +92,7 @@ module sonic-igmp-snooping {
+ 				key "vlan-name";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				} 
+ 
+ 				leaf enabled {
+@@ -217,9 +162,7 @@ module sonic-igmp-snooping {
+ 				key "vlan-name";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				} 
+ 
+ 				leaf ipv4-link-local-groups-suppression {
+diff --git a/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang b/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
+index 5fd606b3188e4af9e685970e05927aa2fb3658ef..9fa9cc44af731e8c920ad0c7f59ceebc288ac98e 100644
+--- a/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
++++ b/src/sonic-yang-models/yang-models/sonic-mld-snooping.yang
+@@ -7,18 +7,6 @@ module sonic-mld-snooping {
+ 		prefix inet;
+ 	}
+ 
+-	import sonic-port {
+-		prefix prt;
+-	}
+-
+-    import sonic-portchannel {
+-		prefix lag;
+-	}
+-
+-	import sonic-vlan {
+-        prefix svlan;
+-    }
+-
+ 	organization
+ 		"SONIC";
+ 
+@@ -41,9 +29,7 @@ module sonic-mld-snooping {
+ 				key "vlan-name group-addr";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf group-addr {
+@@ -51,14 +37,7 @@ module sonic-mld-snooping {
+ 				}
+ 
+ 				leaf-list static-members {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 					description "List of interfaces/portchannels for the multicast group.";
+ 				}
+ 			}			
+@@ -71,9 +50,7 @@ module sonic-mld-snooping {
+ 				key "vlan-name group-addr out-intf";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }	
++					type string;	
+ 				}
+ 
+ 				leaf group-addr {
+@@ -81,24 +58,10 @@ module sonic-mld-snooping {
+ 				}
+ 
+ 				leaf out-intf {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}
+ 				leaf port {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}			
+ 			}
+ 		}
+@@ -110,31 +73,15 @@ module sonic-mld-snooping {
+ 				key "vlan-name mrouter-intf";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf mrouter-intf {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}
+ 
+ 				leaf mrouter_port {
+-					type union {
+-                        type leafref {
+-                            path "/prt:sonic-port/prt:PORT/prt:PORT_LIST/prt:name";
+-                        }
+-                        type leafref {
+-                            path "/lag:sonic-portchannel/lag:PORTCHANNEL/lag:PORTCHANNEL_LIST/lag:name";
+-                        }
+-                    }
++					type string;
+ 				}			
+ 			}		
+ 		}
+@@ -145,9 +92,7 @@ module sonic-mld-snooping {
+ 				key "vlan-name";
+ 
+ 				leaf vlan-name {
+-					type leafref {
+-                        path "/svlan:sonic-vlan/svlan:VLAN/svlan:VLAN_LIST/svlan:name";
+-                    }
++					type string;
+ 				} 
+ 
+ 				leaf enabled {

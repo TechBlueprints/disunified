@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:06:55 -0700
+Subject: [PATCH 04/10] seastone: sai.profile guards for the Tomahawk-1 HFTel
+ and stats-ext calls
+
+202511's orchagent asks the SAI for streaming-telemetry capability at
+start (HFTelOrch::isSupportedHFTel -> sai_query_stats_st_capability),
+which 202505's did not. On a BCM56960 (Tomahawk-1) the Broadcom SAI
+answers by dereferencing an uninitialised streaming-telemetry driver
+in brcm_sai_st_pd_ctr_cap_list_get: syncd dies with SIGSEGV and swss
+crash-loops (sonic-sairedis#1788, sonic-buildimage#28127). The same
+function is in every libsaibcm 202511 can install on this box
+(13.2.1.36, 13.2.1.100 legacy-TH, 14.3.0.0.0.0.41.1 XGS).
+
+202511's sairedis carries the runtime opt-out (#1795, backport of
+#1788/#1789): SAI_STATS_ST_CAPABILITY_SUPPORTED=0 nulls the query, and
+SAI_STATS_EXT_SWITCH_SUPPORTED=0 the switch get_stats_ext that crashes
+the same way during flex-counter polling. The Arista 7060CX-32S (the
+other Tomahawk-1 in the tree) has carried both since #26201/#26217;
+the Seastone profiles never got them. This is the DX010 part of
+sonic-net/sonic-buildimage#28160 (open, against master), applied to
+all eight Seastone HwSKUs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../x86_64-cel_seastone-r0/Celestica-DX010-C32/sai.profile.j2  | 2 ++
+ .../x86_64-cel_seastone-r0/Celestica-DX010-D48C8/sai.profile   | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010-10-50/sai.profile    | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010-25-50/sai.profile    | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010-50-40/sai.profile    | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010-50-50-40/sai.profile | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010-50/sai.profile       | 3 +++
+ .../x86_64-cel_seastone-r0/Seastone-DX010/sai.profile          | 3 +++
+ 8 files changed, 23 insertions(+)
+
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-C32/sai.profile.j2 b/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-C32/sai.profile.j2
+index 5feba4956931998aaad9d9c5e8be3ae502fb302d..3e3d9529812111720f8284452c1e34a0c0ea0f67 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-C32/sai.profile.j2
++++ b/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-C32/sai.profile.j2
+@@ -12,3 +12,5 @@
+ {# Write the contents of sai_ profile_filename to sai.profile file #}
+ {{ sai_profile_contents }}
+ SAI_NUM_ECMP_MEMBERS=64
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-D48C8/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-D48C8/sai.profile
+index 50220639519c3840f77e12e35e1adb6ca4bc705c..520e34167238cc01a7bd9a46e0463f5b2c440eda 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-D48C8/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Celestica-DX010-D48C8/sai.profile
+@@ -1,2 +1,5 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/hwsku/th-seastone-dx010-48x50G+8x100G.config.bcm
+ SAI_NUM_ECMP_MEMBERS=64
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-10-50/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-10-50/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-10-50/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-10-50/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-25-50/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-25-50/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-25-50/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-25-50/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-40/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-40/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-40/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-40/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-50-40/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-50-40/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-50-40/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50-50-40/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010-50/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0
+diff --git a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010/sai.profile b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010/sai.profile
+index 7342ae8002e83506ff32faa4aa15926e3e802953..b431fdc02fd7b567f81759336ad818940dcc94bb 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010/sai.profile
++++ b/device/celestica/x86_64-cel_seastone-r0/Seastone-DX010/sai.profile
+@@ -1 +1,4 @@
+ SAI_INIT_CONFIG_FILE=/usr/share/sonic/platform/th-seastone-dx010-config-flex-all.bcm
++
++SAI_STATS_ST_CAPABILITY_SUPPORTED=0
++SAI_STATS_EXT_SWITCH_SUPPORTED=0

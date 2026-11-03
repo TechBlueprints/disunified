@@ -162,6 +162,10 @@ UniFi controller  <── inform (TNBU/AES-GCM, every ~70 s) ──  disunified 
   changes nothing.
 - [`internal/sshrun`](internal/sshrun) — the SSH transport the host drivers (Proxmox, Podman, SONiC)
   share; [`internal/nutd`](internal/nutd) — the NUT server a UPS's "NUT Server" switch turns on.
+- [`contrib/sonic-image`](contrib/sonic-image) — the patch series and scripts that build the SONiC
+  image the `sonic` driver's hardware runs (IGMP snooping, port mirroring on a SAI that denies
+  it, a Tomahawk-1 on 202511), with the install script that boots a new image once under a
+  dead-man timer ([`docs/drivers/sonic-running.md`](docs/drivers/sonic-running.md) §3).
 
 ## Install
 

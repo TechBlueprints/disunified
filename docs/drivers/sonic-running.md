@@ -156,14 +156,16 @@ SAI lies about it, and for a Tomahawk-1 on 202511 at all.
 
 ### 3.1 The patch series, by what it enables
 
-The series is maintained as a build kit outside this repository
+The series is the build kit in [`contrib/sonic-image/`](../../contrib/sonic-image/)
 (`series/`, one directory per SONiC repository with a `series` file,
 `BASES` pinning the commit each applies to, `CONFLICTS.md` the rebase
 record, `build.sh` the unattended build, `dry-run.sh` the checks that need
-no build host, `sonic-upgrade.sh` the install script). Every patch applies
-with `git am` to the current `202511` head of its repository. The kit is
-described in [`sonic.md`](sonic.md) §8.6 and is not published yet; it is
-small (about 600 KB of patches and scripts) and carries no site information.
+no build host, `sonic-upgrade.sh` the install script, `l2mcd-fuzz/` the
+harness the daemon's parsers were fuzzed with). Every patch applies with
+`git am` to the pinned `202511` base of its repository; the kit's README is
+the build procedure, [`sonic.md`](sonic.md) §8.6 the record of preparing
+it. The patches are Apache-2.0 like SONiC (`series/LICENSE`); the e-mail
+addresses in their headers are placeholders, by this repository's rule.
 
 **Running a Tomahawk-1 (the DX010) on 202511 at all** -- platform patches,
 two of them upstream's own fixes carried unchanged:

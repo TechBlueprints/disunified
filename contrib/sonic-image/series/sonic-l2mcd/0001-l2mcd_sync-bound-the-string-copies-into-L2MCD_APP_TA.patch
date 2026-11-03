@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:02:36 -0700
+Subject: [PATCH] l2mcd_sync: bound the string copies into
+ L2MCD_APP_TABLE_ENTRY
+
+The dump path copied port names and group/source addresses with
+memcpy(dst, s.c_str(), L2MCD_IFNAME_SIZE / L2MCD_IP_ADDR_STR_SIZE): a
+fixed 16 or 46 bytes read from std::string::c_str(), which only
+guarantees size() + 1 readable bytes. Short names and addresses (all of
+them, in practice) read past the string into adjacent heap memory and
+copy it into the message.
+
+This is the bug reviewed on sonic-net/sonic-swss#3950 (2026-08-12) and
+fixed there for cfgmgr/l2mcmgr.cpp in 379cfb9; the daemon carries the
+same pattern in L2mcSync::dumpL2mcVlanEntry (the per-VLAN entries
+the daemon reads back from APPL_DB after a warm restart) and was not
+touched. The entry is memset to zero just above, so strncpy of size - 1 leaves a terminating
+NUL in every field.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ l2mcd_sync.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/l2mcd_sync.cpp b/l2mcd_sync.cpp
+index 9d831f68aa45471a2ae69fc2f77327bcdae1eb81..94584a7cab9e1113300c0a31fe3e868cdf6a26e7 100644
+--- a/l2mcd_sync.cpp
++++ b/l2mcd_sync.cpp
+@@ -759,9 +759,10 @@ void L2mcSync::dumpL2mcVlanEntry(DUMP_L2MCD_APP_TABLE_ENTRY *msg)
+         }
+         entry.vlan_id   = vlanid;
+         entry.is_igmp = (afi == 1) ? TRUE : FALSE;
+-        memcpy(entry.port.pnames, port_alias.c_str() , L2MCD_IFNAME_SIZE);
+-        memcpy(entry.gaddr,group_addr.c_str(), L2MCD_IP_ADDR_STR_SIZE);
+-        memcpy(entry.saddr,source_addr.c_str(), L2MCD_IP_ADDR_STR_SIZE);
++        /* entry is zeroed above: copy at most size - 1 so the NUL stays */
++        strncpy(entry.port.pnames, port_alias.c_str(), L2MCD_IFNAME_SIZE - 1);
++        strncpy(entry.gaddr, group_addr.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
++        strncpy(entry.saddr, source_addr.c_str(), L2MCD_IP_ADDR_STR_SIZE - 1);
+ 
+         idx++;
+ 
+@@ -820,7 +821,7 @@ void L2mcSync::dumpL2mcVlanEntry(DUMP_L2MCD_APP_TABLE_ENTRY *msg)
+         }
+         entry.vlan_id   = vlanid;
+         entry.is_igmp = (afi == 1) ? TRUE : FALSE;
+-        memcpy(entry.port.pnames, port_alias.c_str() , L2MCD_IFNAME_SIZE);
++        strncpy(entry.port.pnames, port_alias.c_str(), L2MCD_IFNAME_SIZE - 1);
+         
+         idx++;
+         

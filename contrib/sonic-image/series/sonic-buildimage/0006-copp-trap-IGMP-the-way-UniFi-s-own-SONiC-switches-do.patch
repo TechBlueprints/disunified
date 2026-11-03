@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:32:23 -0700
+Subject: [PATCH 06/10] copp: trap IGMP the way UniFi's own SONiC switches do;
+ no MLD
+
+The IGMP trap group from #24327 trapped IGMP and MLD at 600 pps to
+queue 3. A UniFi ECS switch (Ubiquiti's SONiC 4.0.1, 202106, l2mcd from
+the same Broadcom lineage) traps igmp_leave, igmp_query and
+igmp_v1/v2/v3_report (with pim) in one group at cir 128 / cbs 160
+packets per second, queue 1, priority 1, action trap -- and no MLD at
+all: UniFi configures IGMP snooping only. Follow it:
+
+- trap_ids: the five IGMP types; the four MLD types are dropped. With
+  them, every MLD report and query on every VLAN (IPv6 neighbour
+  discovery's solicited-node joins among them) went to the CPU as soon
+  as the feature was enabled, whether or not any VLAN had MLD snooping;
+  config mld-snooping learns nothing without them, which is what a
+  UniFi-managed switch needs.
+- l2mcd_group: cir 128, cbs 160, queue 1, trap_priority 1.
+- pim is not added: this l2mcd's receive filter takes IPv4 protocol 2
+  (IGMP) only, so trapping PIM would move PIM off the ASIC for nothing.
+
+The group keeps its own name, so the trap is still installed only while
+the l2mcd feature is enabled.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ files/image_config/copp/copp_cfg.j2 | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/files/image_config/copp/copp_cfg.j2 b/files/image_config/copp/copp_cfg.j2
+index 6e4fb4cc85d62d37447aafd12087165066c02a80..1f014d35255434903507783ac1f10fc4f88b4320 100755
+--- a/files/image_config/copp/copp_cfg.j2
++++ b/files/image_config/copp/copp_cfg.j2
+@@ -87,14 +87,14 @@
+ 
+ 	    },
+         "l2mcd_group": {
+-            "cir":"600",
+-            "cbs":"600",
++            "cir":"128",
++            "cbs":"160",
+             "meter_type":"packets",
+             "mode":"sr_tcm",
+             "red_action":"drop",
+             "trap_action":"trap",
+-            "trap_priority":"3",
+-            "queue": "3",
++            "trap_priority":"1",
++            "queue": "1",
+             "yellow_action":"drop"
+ 		}
+     },
+@@ -149,7 +149,7 @@
+ 		    "always_enabled": "true"
+ 	    },
+ 		"l2mcd": {
+-            "trap_ids": "igmp_v1_report,igmp_query,igmp_leave,igmp_v2_report,igmp_v3_report,mld_v1_v2,mld_v1_report,mld_v1_done,mld_v2_report",
++            "trap_ids": "igmp_leave,igmp_query,igmp_v1_report,igmp_v2_report,igmp_v3_report",
+             "trap_group": "l2mcd_group"
+ 	    }
+     }

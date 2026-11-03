@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 09:27:31 -0700
+Subject: [PATCH] l2mcd: count and rate-limit the log of malformed IGMP/MLD
+ packets
+
+The receive paths had nowhere to put a packet they reject for its lengths:
+the per-VLAN log macros only print when a VLAN's debug log is on, and a
+syslog line per packet would let any host on a snooping VLAN flood the log.
+
+l2mcd_rx_drop() counts the drop per family (malformed-igmp / malformed-mld,
+shown with the other receive counters in the debug dump) and logs one
+NOTICE line per family at most every 10 seconds, with the number dropped
+since the last line. The following commits call it.
+---
+ include/l2mcd.h    | 11 +++++++++++
+ port/l2mcd_cli.c   |  5 +++--
+ port/l2mcd_utils.c | 23 +++++++++++++++++++++++
+ 3 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/include/l2mcd.h b/include/l2mcd.h
+index 2bcca93..3b9f907 100644
+--- a/include/l2mcd.h
++++ b/include/l2mcd.h
+@@ -223,6 +223,8 @@ typedef struct
+     uint32_t no_aux;
+     uint32_t no_tag;
+     uint32_t inv_tags;
++    uint32_t malformed_igmp;    /* dropped: lengths or records past the packet */
++    uint32_t malformed_mld;
+ } L2MCD_RX_SOCK_STATS;
+ 
+ typedef struct L2MCD_CONTEXT {
+@@ -328,6 +330,8 @@ extern L2MCD_CONTEXT l2mcd_context;
+ #define g_rx_stats_tot_pkts               l2mcd_context.rx_stats.tot_pkts
+ #define g_rx_stats_no_aux                 l2mcd_context.rx_stats.no_aux
+ #define g_rx_stats_no_tag                 l2mcd_context.rx_stats.no_tag
++#define g_rx_stats_malformed_igmp         l2mcd_context.rx_stats.malformed_igmp
++#define g_rx_stats_malformed_mld          l2mcd_context.rx_stats.malformed_mld
+ #define g_rx_stats_inv_tags               l2mcd_context.rx_stats.inv_tags
+ #define g_portdb_pending_count            l2mcd_context.portdb_pending_count
+ #define g_port_init_done                  l2mcd_context.port_init_done
+@@ -423,6 +427,13 @@ int l2mcd_del_if_tree(uint32_t ifid);
+ l2mcd_if_tree_t* l2mcd_if_to_kif(uint32_t ifid);
+ l2mcd_if_tree_t* l2mcd_kif_to_if(uint32_t kif);
+ l2mcd_if_tree_t* l2mcd_kif_to_rx_if(uint32_t kif);
++
++/* A malformed IGMP or MLD packet is dropped, counted in g_rx_stats_malformed_*
++ * and logged at most once per family every L2MCD_RX_DROP_LOG_SECS, with the
++ * number dropped since the last line: a flood of them cannot flood the log. */
++#define L2MCD_RX_DROP_COUNTERS
++#define L2MCD_RX_DROP_LOG_SECS 10
++void l2mcd_rx_drop(int afi, uint32_t vid, uint32_t port, const char *why);
+ void l2mcd_set_loglevel(int level);
+ void l2mcd_dump_cfg(int vid);
+ void l2mcd_dump_custom(int id);
+diff --git a/port/l2mcd_cli.c b/port/l2mcd_cli.c
+index 9e4169e..8fca7f3 100644
+--- a/port/l2mcd_cli.c
++++ b/port/l2mcd_cli.c
+@@ -415,8 +415,9 @@ void l2mcd_print_global_var()
+ 	L2MCD_CLI_PRINT("Global Config Version=%d",gIgmp.cfg_version);
+ 	L2MCD_CLI_PRINT("Snooping Vlan Count=%d",gIgmp.mld_snp_vlan_count);
+ 	L2MCD_CLI_PRINT("Global Mac=0x%x:0x%x:0x%x:0x%x:0x%x:0x%x",gIgmp.mac[0],gIgmp.mac[1],gIgmp.mac[2],gIgmp.mac[3],gIgmp.mac[4],gIgmp.mac[5]);
+-	L2MCD_CLI_PRINT("Pkt Recv-Stats: Total:%d igmp:%d, pim:%d, non-igmp:%d, no_aux:%d, no_tag:%d, inv-tag:%d",
+-		 g_rx_stats_tot_pkts, g_rx_stats_igmp_pkts, g_rx_stats_pim_pkts, g_rx_stats_non_igmp_pkts,  g_rx_stats_no_aux, g_rx_stats_no_tag, g_rx_stats_inv_tags);
++	L2MCD_CLI_PRINT("Pkt Recv-Stats: Total:%d igmp:%d, pim:%d, non-igmp:%d, no_aux:%d, no_tag:%d, inv-tag:%d, malformed-igmp:%u, malformed-mld:%u",
++		 g_rx_stats_tot_pkts, g_rx_stats_igmp_pkts, g_rx_stats_pim_pkts, g_rx_stats_non_igmp_pkts,  g_rx_stats_no_aux, g_rx_stats_no_tag, g_rx_stats_inv_tags,
++		 g_rx_stats_malformed_igmp, g_rx_stats_malformed_mld);
+     L2MCD_CLI_PRINT("Log Level : %d, Flags: vlanlog_to_syslog:%d, vlanlog_mask:0x%x, vlan_dbg_log_all:%d g_l2mcd_pkt_fp:%p",
+      g_curr_dbg_level, g_l2mcd_vlan_dbg_to_sys_log,g_l2mcd_vlan_log_mask,g_l2mcd_dbg_vlan_log_all,g_l2mcd_pkt_fp);
+     L2MCD_CLI_PRINT("g_portdb_pending_count:%d, libev_no_of_sockets:%d",g_portdb_pending_count,g_l2mcd_stats_libev_no_of_sockets);
+diff --git a/port/l2mcd_utils.c b/port/l2mcd_utils.c
+index b280dde..0d60ca7 100644
+--- a/port/l2mcd_utils.c
++++ b/port/l2mcd_utils.c
+@@ -159,6 +159,29 @@ l2mcd_if_tree_t* l2mcd_if_to_kif(uint32_t ifid)
+     return(M_AVLL_FIND(g_l2mcd_if_to_kif_tree, &ifid));
+ }
+ 
++void l2mcd_rx_drop(int afi, uint32_t vid, uint32_t port, const char *why)
++{
++    static struct timespec last[2];
++    static uint32_t since[2];
++    struct timespec now;
++    int v6 = (afi == L2MCD_IPV6_AFI);
++    char *ifname;
++
++    if (v6)
++        g_rx_stats_malformed_mld++;
++    else
++        g_rx_stats_malformed_igmp++;
++    since[v6]++;
++    clock_gettime(CLOCK_MONOTONIC, &now);
++    if ((last[v6].tv_sec || last[v6].tv_nsec) && now.tv_sec - last[v6].tv_sec < L2MCD_RX_DROP_LOG_SECS)
++        return;
++    ifname = portdb_get_ifname_from_portindex(port);
++    L2MCD_LOG_NOTICE("%s rx: dropped a malformed packet on Vlan%u port %s: %s (%u dropped since the last report)",
++                     v6 ? "MLD" : "IGMP", vid, ifname ? ifname : "?", why, since[v6]);
++    last[v6] = now;
++    since[v6] = 0;
++}
++
+ l2mcd_if_tree_t* l2mcd_kif_to_rx_if(uint32_t kif)
+ {
+     l2mcd_if_tree_t *l2mcd_if_tree;

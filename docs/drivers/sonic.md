@@ -1147,10 +1147,13 @@ binary: its `l2mcd` and orchagent are 202106 and link that branch's
 
 ### 8.6 The build, prepared (2026-11-01)
 
-Steps 1-2 of §8.3 are done short of running the build. The build kit lives
-outside this repo, beside the SONiC source clones: `series/` (the patches, one
-directory per repository, `BASES`, and `CONFLICTS.md`, the rebase record),
-`build.sh` (unattended, for the build host), `dry-run.sh` and a README.
+Steps 1-2 of §8.3 are done short of running the build. The build kit lived
+outside this repo, beside the SONiC source clones, until 2026-11-02; it is
+now [`contrib/sonic-image/`](../../contrib/sonic-image/) (`series/` -- the
+patches, one directory per repository, `BASES`, and `CONFLICTS.md`, the
+rebase record -- `build.sh` (unattended, for the build host), `dry-run.sh`,
+`sonic-upgrade.sh`, the fuzz harness and a README; the work clones under
+`src/` stay outside).
 
 **The series** (22 patches), each applying with `git am` on the **current
 202511 head** of its repository -- which is also the commit sonic-buildimage

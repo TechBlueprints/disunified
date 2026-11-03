@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Rustiqly <rustiqly@example.net>
+Date: Wed, 13 May 2026 18:44:53 -0700
+Subject: [PATCH 07/10] [platform] Restore Celestica platform API wheels
+
+Signed-off-by: Rustiqly <rustiqly@example.net>
+
+Cherry-picked unchanged from sonic-net/sonic-buildimage#27355 (open, base
+master), head 748ad3bb4c40017054394affadcc638fdd347fcb, onto 202511: the upstream fix for
+sonic-net/sonic-buildimage#27291 (a 202511 DX010's pmon finds no
+platform API: no fans, PSUs or temperatures), taken as submitted so this
+image tests what upstream is reviewing.
+---
+ .../debian/platform-modules-dx010.install                       | 1 +
+ .../debian/platform-modules-haliburton.install                  | 1 +
+ .../debian/platform-modules-questone2.install                   | 1 +
+ .../debian/platform-modules-seastone2.install                   | 1 +
+ .../debian/platform-modules-silverstone.install                 | 1 +
+ platform/broadcom/sonic-platform-modules-cel/debian/rules       | 2 ++
+ 6 files changed, 7 insertions(+)
+
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-dx010.install b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-dx010.install
+index e525ba1a80c287e22aa27d3f49bb3bf354f0b57a..f164fb9da8b4721c75cca3ce452cb2ada9771d6f 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-dx010.install
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-dx010.install
+@@ -4,4 +4,5 @@ dx010/systemd/platform-modules-dx010.service lib/systemd/system
+ dx010/scripts/fancontrol.sh etc/init.d
+ dx010/scripts/fancontrol.service lib/systemd/system
+ services/fancontrol/fancontrol  usr/local/bin
++build-dx010/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_seastone-r0
+ services/platform_api/platform_api_mgnt.sh usr/local/bin
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-haliburton.install b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-haliburton.install
+index bfe4d49489242ad7789c9b18ce0ce22932bf5e80..8db25448eddf9709766cf71f41c0de61522a17ee 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-haliburton.install
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-haliburton.install
+@@ -4,6 +4,7 @@ haliburton/systemd/cpu_wdt.service lib/systemd/system
+ haliburton/script/fancontrol.sh etc/init.d
+ haliburton/script/fancontrol.service lib/systemd/system
+ services/fancontrol/fancontrol  usr/local/bin
++build-haliburton/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_e1031-r0
+ services/platform_api/platform_api_mgnt.sh usr/local/bin
+ haliburton/script/popmsg.sh usr/local/bin
+ haliburton/script/udev_prefix.sh usr/local/bin
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-questone2.install b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-questone2.install
+index 96f62de76504dd38bc77217d312eda2fd65e7b70..f6142dfba1e064f211b1773077f6061d3137c1ee 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-questone2.install
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-questone2.install
+@@ -1,6 +1,7 @@
+ questone2/cfg/questone2-modules.conf etc/modules-load.d
+ questone2/cfg/questone2-modprobe.conf etc/modprobe.d
+ questone2/systemd/platform-modules-questone2.service lib/systemd/system
++build-questone2/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_questone_2-r0
+ questone2/cfg/pid_config_questone2.ini usr/local/etc
+ questone2/scripts/questone2_platform_shutdown.sh usr/local/bin
+ questone2/scripts/sensors usr/bin
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-seastone2.install b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-seastone2.install
+index be4453188bd1a60fb31d528d0231d2bb8a739844..039bc1f59a531d9e018c435633d454ca15fccdf9 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-seastone2.install
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-seastone2.install
+@@ -1,5 +1,6 @@
+ seastone2/cfg/seastone2-modules.conf etc/modules-load.d
+ seastone2/systemd/platform-modules-seastone2.service lib/systemd/system
++build-seastone2/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_seastone_2-r0
+ seastone2/scripts/seastone2_platform_shutdown.sh usr/local/bin
+ seastone2/scripts/sensors usr/bin
+ seastone2/scripts/platform_sensors.py usr/local/bin
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-silverstone.install b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-silverstone.install
+index 60bb1ce65a353cb3f2001e170905f05cbaf2c2db..1507b8e8926a557213990025751bbdc1b4b20ce0 100644
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-silverstone.install
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/platform-modules-silverstone.install
+@@ -3,4 +3,5 @@ silverstone/scripts/platform_sensors.py usr/local/bin
+ silverstone/scripts/silverstone_platform_shutdown.sh usr/local/bin
+ silverstone/cfg/silverstone-modules.conf etc/modules-load.d
+ silverstone/systemd/platform-modules-silverstone.service lib/systemd/system
++build-silverstone/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_silverstone-r0
+ services/platform_api/platform_api_mgnt.sh usr/local/bin
+diff --git a/platform/broadcom/sonic-platform-modules-cel/debian/rules b/platform/broadcom/sonic-platform-modules-cel/debian/rules
+index e59f65a79d1a5361a55c6372758815cbf6472d08..5964e999f215fc51deaf83db38fa5f7aaba13f15 100755
+--- a/platform/broadcom/sonic-platform-modules-cel/debian/rules
++++ b/platform/broadcom/sonic-platform-modules-cel/debian/rules
+@@ -34,6 +34,8 @@ override_dh_auto_build:
+ 		$(MAKE) $(MAKE_FLAGS) -C $(KERNEL_SRC)/build M=$(MOD_SRC_DIR)/$${mod}/modules modules; \
+ 		if [ -f $(MOD_SRC_DIR)/$${mod}/setup.py ]; then \
+ 			PYBUILD_NAME=$${mod} pybuild --build -d $${mod}; \
++			(cd $(MOD_SRC_DIR)/$${mod} && python3 setup.py bdist_wheel -d $(MOD_SRC_DIR)/build-$${mod}); \
++			echo "Finished making sonic_platform whl package for $$mod"; \
+ 		fi; \
+ 		if [ -f $(MOD_SRC_DIR)/$${mod}/pddf/setup.py ]; then \
+ 			python3 -m build --no-isolation --wheel --outdir $(MOD_SRC_DIR)/build-$${mod} $(MOD_SRC_DIR)/$${mod}/pddf; \

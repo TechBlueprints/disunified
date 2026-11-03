@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Jasper.Hou" <jasper-hou@example.net>
+Date: Sun, 1 Nov 2026 03:51:25 -0700
+Subject: [PATCH] schema: L2MC and MLD_L2MC table names
+
+The schema.h part of sonic-net/sonic-swss-common#1093 (draft, Micas
+Networks), head a78b0db83f5e96d70f7764dc2462f5c7ed682274: the five L2MC
+commits e242b0e..a78b0db cherry-picked onto 202511 at e59457c6da43 (the
+commit sonic-buildimage 202511 pins). Net effect of those commits is
+schema.h only (the debug framework they added was removed again in
+a78b0db).
+
+Left out: the two upstream commits the PR branch carries (3cc4d68
+sonic-db-cli #1070, ab3ae1e #1087), which are not on 202511 and are not
+needed here, and the four APP_DEBUG*_TABLE_NAME defines left behind by
+the removed debug framework (nothing in swss, utilities or l2mcd uses
+them).
+---
+ common/schema.h | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/common/schema.h b/common/schema.h
+index 8ce8ee2027eb1417d143475e6ee834e1e85c7e34..310f0fcc276adde03ce276100ee2f444f1b7fd52 100644
+--- a/common/schema.h
++++ b/common/schema.h
+@@ -123,6 +123,12 @@ namespace swss {
+ #define APP_STP_MST_PORT_TABLE_NAME         "STP_MST_PORT_TABLE"
+ #define APP_STP_INST_PORT_FLUSH_TABLE_NAME  "STP_INST_PORT_FLUSH_TABLE"
+ 
++/* Multicast related APP_DB Tables */
++#define APP_L2MC_VLAN_TABLE_NAME        "L2MC_VLAN_TABLE"
++#define APP_L2MC_SUPPRESS_TABLE_NAME    "L2MC_SUPPRESS_TABLE"
++#define APP_L2MC_MEMBER_TABLE_NAME      "L2MC_MEMBER_TABLE"
++#define APP_L2MC_MROUTER_TABLE_NAME     "L2MC_MROUTER_TABLE"
++
+ 
+ #define APP_SAG_TABLE_NAME                  "SAG_TABLE"
+ 
+@@ -405,6 +411,17 @@ after libswsscommon deb make.
+ #define CHASSIS_APP_SYSTEM_NEIGH_TABLE_NAME         "SYSTEM_NEIGH"
+ #define CHASSIS_APP_LAG_TABLE_NAME                  "SYSTEM_LAG_TABLE"
+ #define CHASSIS_APP_LAG_MEMBER_TABLE_NAME           "SYSTEM_LAG_MEMBER_TABLE"
++
++#define CFG_L2MC_TABLE_NAME                         "L2MC"
++#define CFG_L2MC_SUPPRESS_TABLE_NAME                "L2MC_SUPPRESS"
++#define CFG_L2MC_MROUTER_TABLE_NAME                 "L2MC_MROUTER"
++#define CFG_L2MC_STATIC_TABLE_NAME                  "L2MC_STATIC_MEMBER"
++#define CFG_L2MC_STATIC_GROUP_TABLE_NAME            "L2MC_STATIC_GROUP"
++
++#define CFG_MLD_L2MC_TABLE_NAME                         "MLD_L2MC"
++#define CFG_MLD_L2MC_MROUTER_TABLE_NAME                 "MLD_L2MC_MROUTER"
++#define CFG_MLD_L2MC_STATIC_TABLE_NAME                  "MLD_L2MC_STATIC_MEMBER"
++#define CFG_MLD_L2MC_STATIC_GROUP_TABLE_NAME            "MLD_L2MC_STATIC_GROUP"
+ /***** STATE DATABASE *****/
+ 
+ #define STATE_SWITCH_CAPABILITY_TABLE_NAME          "SWITCH_CAPABILITY"
+@@ -503,6 +520,9 @@ after libswsscommon deb make.
+ 
+ #define STATE_BGP_PEER_CONFIGURED_TABLE_NAME "BGP_PEER_CONFIGURED_TABLE"
+ 
++#define STATE_L2MC_MEMBER_TABLE_NAME                "L2MC_MEMBER_TABLE"
++#define STATE_L2MC_MROUTER_TABLE_NAME               "L2MC_MROUTER_TABLE"
++
+ // ACL table and ACL rule table
+ #define STATE_ACL_TABLE_TABLE_NAME                  "ACL_TABLE_TABLE"
+ #define STATE_ACL_RULE_TABLE_NAME                   "ACL_RULE_TABLE"

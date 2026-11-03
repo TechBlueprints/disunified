@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 09:24:24 -0700
+Subject: [PATCH 9/9] rules: retire libyang3-dev-done; nothing installs
+ libyang-dev 1 any more
+
+libyang3-dev-done (sonic-net/sonic-buildimage#25427, #25502 on 202511)
+held libyang 1's build back until every libyang-dev 3 consumer had been
+built, so that libyang-dev 1 would be installed after them. With the
+previous commit no package depends on libyang-dev 1, so there is nothing
+left to order, and the gate only serialised libyang 1 (and swss-common
+behind it) after FRR. Master removed it for the same reason in #27629.
+The phony-target support it added to slave.mk stays.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ rules/libyang.mk            |  1 -
+ rules/libyang3-dev-done.dep |  9 ---------
+ rules/libyang3-dev-done.mk  | 21 ---------------------
+ 3 files changed, 31 deletions(-)
+ delete mode 100644 rules/libyang3-dev-done.dep
+ delete mode 100644 rules/libyang3-dev-done.mk
+
+diff --git a/rules/libyang.mk b/rules/libyang.mk
+index e0e853f8d89bbace0e4ff919db6e65c94f141199..04ce963f53823922b1f9058edca1e3e68d678ed0 100644
+--- a/rules/libyang.mk
++++ b/rules/libyang.mk
+@@ -13,7 +13,6 @@ ifeq ($(BLDENV),trixie)
+ $(LIBYANG)_DEPENDS += $(LIBPCRE3_DEV) $(LIBPCRE3) $(LIBPCRE16_3) $(LIBPCRE32_3) $(LIBPCRECPP0V5)
+ $(LIBYANG)_RDEPENDS += $(LIBPCRE3)
+ endif
+-$(LIBYANG)_PHONIES += $(LIBYANG3-DEV-DONE)
+ $(LIBYANG)_SRC_PATH = $(SRC_PATH)/libyang
+ SONIC_MAKE_DEBS += $(LIBYANG)
+ 
+diff --git a/rules/libyang3-dev-done.dep b/rules/libyang3-dev-done.dep
+deleted file mode 100644
+index c93c19c8563fbd2eb33516f8c6cfbd7118b5a4f1..0000000000000000000000000000000000000000
+--- a/rules/libyang3-dev-done.dep
++++ /dev/null
+@@ -1,9 +0,0 @@
+-
+-SPATH       := 
+-DEP_FILES   := $(SONIC_COMMON_FILES_LIST) rules/libyang3-dev-done.mk rules/libyang3-dev-done.dep
+-DEP_FILES   += $(SONIC_COMMON_BASE_FILES_LIST)
+-
+-$(LIBYANG3-DEV-DONE)_CACHE_MODE  := none
+-$(LIBYANG3-DEV-DONE)_DEP_FLAGS   := $(SONIC_COMMON_FLAGS_LIST)
+-$(LIBYANG3-DEV-DONE)_DEP_FILES   := $(DEP_FILES)
+-
+diff --git a/rules/libyang3-dev-done.mk b/rules/libyang3-dev-done.mk
+deleted file mode 100644
+index e9d0c3bd3fd76c06ba21e90a59be7ac3e98c82ba..0000000000000000000000000000000000000000
+--- a/rules/libyang3-dev-done.mk
++++ /dev/null
+@@ -1,21 +0,0 @@
+-# libyang1-dev and libyang3-dev are not designed to coexist.  The way
+-# SONiC builds, however, it depends on libyang3-dev being installed first
+-# and anything that needs it being built then, and only then, should
+-# libyang1-dev be installed, and the remaining packages can then be
+-# built.
+-#
+-# Any package that relies directly on $(LIBYANG3_DEV) needs to be listed
+-# as a dependency for libyang3-dev-done.
+-#
+-# libyang1 won't even be built until everything needing libyang3-dev is
+-# done.
+-
+-LIBYANG3-DEV-DONE = libyang3-dev-done
+-$(LIBYANG3-DEV-DONE)_DEPENDS = $(LIBYANG3_PY3)
+-
+-# Not compiling FRR for Trixie
+-ifeq ($(BLDENV),bookworm)
+-$(LIBYANG3-DEV-DONE)_DEPENDS += $(FRR)
+-endif
+-
+-SONIC_PHONIES += $(LIBYANG3-DEV-DONE)

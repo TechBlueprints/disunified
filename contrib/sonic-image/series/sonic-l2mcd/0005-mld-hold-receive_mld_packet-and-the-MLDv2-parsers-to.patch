@@ -1,0 +1,323 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 09:32:30 -0700
+Subject: [PATCH] mld: hold receive_mld_packet and the MLDv2 parsers to the
+ bytes received
+
+receive_mld_packet() located the ICMPv6 header from the hop-by-hop
+header's own length, left hbh_len unset when MLD followed the IPv6 header
+directly, checksummed payload_length - hbh_len bytes without comparing
+either with the packet, and dropped nothing: a bad checksum, a failed
+validation and a port that is down were logged and the packet processed
+anyway. The MLDv2 report walk (and the validator's) advanced each record
+by the running total of all record sizes, ignored aux data and trusted
+num_srcs and num_grps, so a well-formed three-record report already read
+past its end; MLDv2 queries read num_srcs in network order; and a zero
+checksum field skipped the checksum.
+
+mld_malformed() now checks, before anything is read: the payload length
+inside the bytes received; an 8-byte hop-by-hop header followed by
+ICMPv6 (RFC 2710 and RFC 3810 send every MLD message with a router alert
+in one, and the handlers parse at the offsets of MLD_PACKET and
+MLDV2_PACKET, so nothing else can be parsed); a 24-byte MLDv1 message, a
+query of 24 or 28+ bytes whose sources fit, and a report whose records
+fit (mldv2_report_fits(): 20 bytes, num_srcs sources and aux_data_len
+words each). A packet that fails is dropped through l2mcd_rx_drop(), as
+are a bad checksum (now always checked), an invalid interface and a
+port that is down. The report walk advances each record by its own size
+(MLDV2_NEXT_REC) on every iteration, skips record types outside 1..6
+(RFC 3810 5.2.12), and the query reads num_srcs in host order. Bytes
+past the IPv6 payload (padding) are no longer counted in pkt_size. The
+validator's verdict stays advisory, as for IGMP.
+---
+ include/l2mcd_mcast_co.h |   2 +
+ include/mld_struct.h     |   9 +++
+ port/l2mcd_mld_port.c    |  17 +++--
+ src/mld_io.c             | 137 ++++++++++++++++++++++++++++++++-------
+ 4 files changed, 134 insertions(+), 31 deletions(-)
+
+diff --git a/include/l2mcd_mcast_co.h b/include/l2mcd_mcast_co.h
+index 014e25f..c283f97 100644
+--- a/include/l2mcd_mcast_co.h
++++ b/include/l2mcd_mcast_co.h
+@@ -1297,6 +1297,8 @@ void mcgrp_delete_l3intf (MCGRP_CLASS  *mcgrp, UINT16        vir_port_id);
+ enum BOOLEAN igmp_check_valid_range(UINT32  group_address);
+ struct IGMPV3_REPORT;
+ enum BOOLEAN igmpv3_report_fits(struct IGMPV3_REPORT *rep, UINT32 len);
++struct MLDV2_REPORT;
++BOOLEAN mldv2_report_fits(struct MLDV2_REPORT *rep, UINT32 len);
+ enum BOOLEAN mld_check_valid_range(IPV6_ADDRESS  *group_address);
+ unsigned short l3_get_port_from_bd_id(unsigned int bd_id);
+ void igmp_reset_default_values(MCGRP_CLASS *igmp);
+diff --git a/include/mld_struct.h b/include/mld_struct.h
+index b682726..69478b9 100644
+--- a/include/mld_struct.h
++++ b/include/mld_struct.h
+@@ -120,6 +120,15 @@ typedef struct MLDV2_REPORT
+ } MLDV2_REPORT_MESSAGE;
+ 
+ // MLDv1 Packet (Query + Report + Leave)
++#define MLDV2_REPORT_HDR_SIZE       8     /* type .. num_grps */
++#define MLDV2_GROUP_REC_HDR_SIZE    20    /* type .. group_address */
++#define MLDV2_QUERY_HDR_SIZE        28    /* type .. num_srcs */
++
++/* The next record: past this one's sources and aux words (RFC 3810 5.2.6).
++ * Only safe once mldv2_report_fits() has said the records lie inside. */
++#define MLDV2_NEXT_REC(rec) ((MLDV2_GROUP_RECORD *)((UINT8 *)(rec) + MLDV2_GROUP_REC_HDR_SIZE + \
++                             ntohs((rec)->num_srcs) * sizeof(IPV6_ADDRESS) + (rec)->aux_data_len * 4))
++
+ typedef struct MLD_PACKET
+ {
+     IPV6_HEADER                     ip_header;
+diff --git a/port/l2mcd_mld_port.c b/port/l2mcd_mld_port.c
+index 993a6b2..841a132 100644
+--- a/port/l2mcd_mld_port.c
++++ b/port/l2mcd_mld_port.c
+@@ -3583,6 +3583,8 @@ BOOLEAN mcast_validate_mld_packet(IP6_RX_PKT_MSG *mld_pkt_msg)
+     mcast_set_ipv6_addr(&mldv2_addr, &mldv2);
+     mld_vport = gMld.port_list[vir_port_id];
+     vid = mld_l3_get_port_from_ifindex(vir_port_id, MLD_VLAN);
++    if (!icmp6h)    /* next header neither hop-by-hop nor ICMPv6 */
++        return FALSE;
+     switch (icmp6h->type)
+     {
+     case MLD_MEMBERSHIP_QUERY_TYPE: // MLDv1v2 Query
+@@ -3674,14 +3676,17 @@ BOOLEAN mcast_validate_mld_packet(IP6_RX_PKT_MSG *mld_pkt_msg)
+             return FALSE;
+         }
+ 
+-        UINT16 offset = 0;
++        UINT32 offset = 0;
+         UINT16 num_grps = ntohs(mesg->num_grps);
+-        MLDV2_GROUP_RECORD *mldv2_group_rec = &mesg->group_record;
+-        for (int n = 0; n < num_grps; n++)
++        MLDV2_GROUP_RECORD *mldv2_group_rec = mesg->group_record;
++        if (!mldv2_report_fits(mesg, mesg_size))
+         {
+-            int num_srcs = ntohs(mldv2_group_rec->num_srcs);
+-            offset = offset + sizeof(MLDV2_GROUP_RECORD) + (num_srcs - 1) * sizeof(IPV6_ADDRESS);
+-            mldv2_group_rec = (MLDV2_GROUP_RECORD *)((UINT8 *)mldv2_group_rec + offset);
++            mld->mld_stats[vir_port_id].recv_size_or_range_error++;
++            return FALSE;
++        }
++        for (int n = 0; n < num_grps; n++, mldv2_group_rec = MLDV2_NEXT_REC(mldv2_group_rec))
++        {
++            offset += (UINT8 *)MLDV2_NEXT_REC(mldv2_group_rec) - (UINT8 *)mldv2_group_rec;
+         }
+         if (mesg_size != offset + sizeof(MLDV2_REPORT_MESSAGE) - sizeof(MLDV2_GROUP_RECORD))
+         {
+diff --git a/src/mld_io.c b/src/mld_io.c
+index 8b4c929..dfceaad 100644
+--- a/src/mld_io.c
++++ b/src/mld_io.c
+@@ -17,18 +17,91 @@ BOOLEAN mld_check_if_checksum_is_valid(IPV6_ADDRESS *source_address, IPV6_ADDRES
+                                        ICMP6_PSEUDO_HDR_MESSAGE *icmp6h, USHORT message_size)
+ {
+     UINT16 calculated_checksum;
+-    /* calculate checksum for the whole MLD message */
+-    if (icmp6h->checksum != 0x0000)
++    /* calculate checksum for the whole MLD message; ICMPv6 has no "no
++     * checksum", so a zero checksum field is checked like any other */
++    calculated_checksum = calculate_ip6_checksum(source_address, dest_address, (BYTE *)icmp6h, message_size, IP6_ICMPV6);
++    if (calculated_checksum != 0x0000)
+     {
+-        calculated_checksum = calculate_ip6_checksum(source_address, dest_address, (BYTE *)icmp6h, message_size, IP6_ICMPV6);
+-        if (calculated_checksum != 0x0000)
+-        {
++        return FALSE;
++    }
++    return TRUE;
++}
++
++/* Whether every record of an MLDv2 report lies inside its len bytes: per
++ * record 20 bytes, then num_srcs sources and aux_data_len words (RFC 3810
++ * 5.2). Nothing past the report header is read before this has said yes. */
++BOOLEAN mldv2_report_fits(MLDV2_REPORT_MESSAGE *rep, UINT32 len)
++{
++    UINT8 *p = (UINT8 *)rep->group_record;
++    UINT8 *end = (UINT8 *)rep + len;
++    UINT16 g, num_grps;
++
++    if (len < MLDV2_REPORT_HDR_SIZE)
++        return FALSE;
++    num_grps = ntohs(rep->num_grps);
++    for (g = 0; g < num_grps; g++)
++    {
++        MLDV2_GROUP_RECORD *rec = (MLDV2_GROUP_RECORD *)p;
++
++        if (end - p < MLDV2_GROUP_REC_HDR_SIZE)
+             return FALSE;
+-        }
++        if ((UINT32)(end - p - MLDV2_GROUP_REC_HDR_SIZE) <
++                (UINT32)ntohs(rec->num_srcs) * sizeof(IPV6_ADDRESS) + rec->aux_data_len * 4)
++            return FALSE;
++        p = (UINT8 *)MLDV2_NEXT_REC(rec);
+     }
+     return TRUE;
+ }
+ 
++/* Why an MLD packet of pkt_size bytes cannot be parsed, or NULL; on NULL,
++ * *icmp6h, *hbh_len and *mld_len locate the message. The handlers read it at
++ * the offsets of MLD_PACKET / MLDV2_PACKET, i.e. after an 8-byte hop-by-hop
++ * header: RFC 2710 and RFC 3810 (5) send every MLD message with a router
++ * alert in one, and anything else is not parsed. */
++static const char *mld_malformed(IP6_RX_PKT_MSG *m, ICMP6_PSEUDO_HDR_MESSAGE **icmp6h,
++                                 UINT16 *hbh_len, UINT16 *mld_len)
++{
++    UINT8 *pkt = m->pkt_data;
++    IPV6_HEADER *ip6h = (IPV6_HEADER *)pkt;
++    struct ipv6_hopopt_hdr *hbh = (struct ipv6_hopopt_hdr *)(pkt + sizeof(IPV6_HEADER));
++    UINT32 plen = m->ip_param.payload_length;
++
++    if (m->pkt_size < sizeof(IPV6_HEADER) + sizeof(*hbh))
++        return "shorter than the IPv6 and hop-by-hop headers";
++    if (sizeof(IPV6_HEADER) + plen > m->pkt_size)
++        return "IPv6 payload length past the bytes received";
++    if (ip6h->next_header != IPPROTO_HOPOPTS || plen < sizeof(*hbh))
++        return "no hop-by-hop header (MLD is sent with a router alert)";
++    *hbh_len = (hbh->hdrlen + 1) * 8;
++    if (*hbh_len != sizeof(IPV6_HBH_ROUTER_ALERT_COMPLETE) || hbh->nexthdr != IPPROTO_ICMPV6)
++        return "hop-by-hop header other than 8 bytes followed by ICMPv6";
++    if (plen < *hbh_len + sizeof(ICMP6_PSEUDO_HDR_MESSAGE))
++        return "ICMPv6 header past the IPv6 payload";
++    *icmp6h = (ICMP6_PSEUDO_HDR_MESSAGE *)(pkt + sizeof(IPV6_HEADER) + *hbh_len);
++    *mld_len = plen - *hbh_len;
++    switch ((*icmp6h)->type)
++    {
++    case MLD_MEMBERSHIP_QUERY_TYPE:
++        if (*mld_len == sizeof(MLD_MESSAGE))
++            break;
++        if (*mld_len < MLDV2_QUERY_HDR_SIZE)
++            return "query neither MLDv1 (24 bytes) nor MLDv2 (28 or more)";
++        if ((*mld_len - MLDV2_QUERY_HDR_SIZE) / sizeof(IPV6_ADDRESS) < ntohs(((MLDV2_MESSAGE *)*icmp6h)->num_srcs))
++            return "MLDv2 query listing more sources than it carries";
++        break;
++    case MLD_V1_MEMBERSHIP_REPORT_TYPE:
++    case MLD_V1_MEMBERSHIP_DONE_TYPE:
++        if (*mld_len < sizeof(MLD_MESSAGE))
++            return "MLDv1 message shorter than 24 bytes";
++        break;
++    case MLD_V2_MEMBERSHIP_REPORT_TYPE:
++        if (!mldv2_report_fits((MLDV2_REPORT_MESSAGE *)*icmp6h, *mld_len))
++            return "MLDv2 report with records past its end";
++        break;
++    }
++    return NULL;
++}
++
+ BOOLEAN mld_update_ssm_parameters(MCGRP_CLASS         *mcgrp,
+         MADDR_ST             *group_addr,
+         UINT8                *version,
+@@ -233,7 +306,7 @@ void l2mcd_mld_process_query(IP6_RX_PKT_MSG* mld_pkt_msg)
+             {
+                 // This is a V2 source-specific query and the suppress bit is not set,
+                 // so update the source's age
+-                UINT16 s, num_srcs = mldv2_qry_msg->num_srcs;
++                UINT16 s, num_srcs = ntohs(mldv2_qry_msg->num_srcs);
+                 IPV6_ADDRESS *p_srcaddr = mldv2_qry_msg->source_ary;
+                 
+                 mld_mbrshp = mcgrp_find_mbrshp_entry_for_grpaddr(mld, &group_addr, vir_port_id, phy_port_id);
+@@ -577,15 +650,25 @@ void l2mcd_mld_process_v2_report(IP6_RX_PKT_MSG* mld_pkt_msg)
+     mld->mld_stats[rx_port_number].recv_packets++;
+ 
+     UINT16 num_grps = ntohs(mld_v2_report->num_grps);
+-    MLDV2_GROUP_RECORD *mldv2_group_rec = &mld_v2_report->group_record;
+-    UINT32 offset = 0;
+-    for (int g=0; g < num_grps; g++)
++    MLDV2_GROUP_RECORD *mldv2_group_rec = mld_v2_report->group_record;
++    if (!mldv2_report_fits(mld_v2_report, mld_pkt_msg->pkt_size - sizeof(IPV6_HEADER) - mld_pkt_msg->ip_param.hopbyhop_length))
++    {
++        l2mcd_rx_drop(L2MCD_IPV6_AFI, mld_pkt_msg->ip_param.vlan_id, rx_phy_port_number, "MLDv2 report with records past its end");
++        mld->mld_stats[rx_port_number].recv_size_or_range_error++;
++        return;
++    }
++    for (int g=0; g < num_grps; g++, mldv2_group_rec = MLDV2_NEXT_REC(mldv2_group_rec))
+     {
++        /* RFC 3810 5.2.12: a record type it does not know is ignored */
++        if (mldv2_group_rec->type < IS_INCL || mldv2_group_rec->type > BLOCK_OLD)
++        {
++            mld->mld_stats[rx_port_number].recv_size_or_range_error++;
++            continue;
++        }
+         IPV6_ADDRESS *src_list = mldv2_group_rec->source_address_ary; // No sources
+         IPV6_ADDRESS group_address = mldv2_group_rec->group_address;
+         UINT8 mld_action = mldv2_group_rec->type;
+         int num_srcs = ntohs(mldv2_group_rec->num_srcs);
+-        offset = offset + sizeof(MLDV2_GROUP_RECORD) + (num_srcs - 1) * sizeof(IPV6_ADDRESS);
+ 
+         mcast_init_addr(&group_addr, IP_IPV6_AFI, MADDR_GET_FULL_PLEN(IP_IPV6_AFI));
+         mcast_set_ipv6_addr(&group_addr, &group_address);
+@@ -659,7 +742,6 @@ void l2mcd_mld_process_v2_report(IP6_RX_PKT_MSG* mld_pkt_msg)
+                                mcast_print_addr(&group_addr));
+         }
+ 
+-        mldv2_group_rec = (MLDV2_GROUP_RECORD *)((UINT8 *)mldv2_group_rec + offset);
+     }
+ }
+ 
+@@ -1492,28 +1574,31 @@ int receive_mld_packet(IP6_RX_PKT_MSG *mld_pkt_msg)
+     VRF_INDEX vrf_index = mld_pkt_msg->ip_param.vrf_index;
+     USHORT rx_vir_port = mld_pkt_msg->ip_param.rx_port_number;
+     UINT32 rx_phy_port = mld_pkt_msg->ip_param.rx_physical_port_number;
+-    IPV6_HEADER *ip6h = (IPV6_HEADER *)mld_pkt_msg->pkt_data;
+     MCGRP_CLASS *mld = MLD_GET_INSTANCE_FROM_VRFINDEX(vrf_index);
+-    UINT8 nexthdr = ip6h->next_header;
+-    UINT16 hbh_len;
++    UINT16 hbh_len = 0, mld_len = 0;
++    const char *malformed;
+ 
+     char *ifname = portdb_get_ifname_from_portindex(rx_phy_port);
+     int vid = mld_l3_get_port_from_ifindex(rx_vir_port, MLD_VLAN);
+-    if (nexthdr == IPPROTO_HOPOPTS)
+-    {
+-        struct ipv6_hopopt_hdr *hbh = (struct ipv6_hopopt_hdr *)(mld_pkt_msg->pkt_data + sizeof(IPV6_HEADER));
+-        hbh_len = (hbh->hdrlen + 1) * 8;
+-        icmp6h = (ICMP6_PSEUDO_HDR_MESSAGE *)(mld_pkt_msg->pkt_data + sizeof(IPV6_HEADER) + hbh_len);
+-    }
+-    else if (nexthdr == IPPROTO_ICMPV6)
++
++    /* Nothing in the message is read before its lengths are known to lie
++     * inside the bytes received; a packet that fails is dropped and counted. */
++    malformed = mld_malformed(mld_pkt_msg, &icmp6h, &hbh_len, &mld_len);
++    if (malformed)
+     {
+-        icmp6h = (ICMP6_PSEUDO_HDR_MESSAGE *)(mld_pkt_msg->pkt_data + sizeof(IPV6_HEADER));
++        l2mcd_rx_drop(L2MCD_IPV6_AFI, mld_pkt_msg->ip_param.vlan_id, rx_phy_port, malformed);
++        if (MCGRP_IS_VALID_INTF(rx_vir_port))
++            mld->mld_stats[rx_vir_port].recv_size_or_range_error++;
++        return 0;
+     }
++    /* bytes past the IPv6 payload (frame padding) are not part of the message */
++    mld_pkt_msg->pkt_size = sizeof(IPV6_HEADER) + mld_pkt_msg->ip_param.payload_length;
+ 
+     if (!MCGRP_IS_VALID_INTF(rx_vir_port))
+     {
+         L2MCD_VLAN_LOG_ERR(vid, "%s:%d:[vlan:%d] : Invalid Rx Port %s. Dropping packet",FN,LN, 
+                 vid, mld_get_if_name_from_port(rx_vir_port));
++        return 0;
+     }
+ 
+     mld_vport = gMld.port_list[rx_vir_port];
+@@ -1523,18 +1608,20 @@ int receive_mld_packet(IP6_RX_PKT_MSG *mld_pkt_msg)
+                            vid, ifname, mld_get_if_name_from_port(rx_vir_port),
+                            (mld_vport == NULL ? mld_get_if_name_from_port(rx_vir_port) : mld_get_if_name_from_ifindex(rx_phy_port)));
+         mld->rx_bad_if++;
++        return 0;
+     }
+     mld->mld_stats[rx_vir_port].recv_packets++;
+     // checksum
+     if (!mld_check_if_checksum_is_valid(
+             &mld_pkt_msg->ip_param.destination_address, &mld_pkt_msg->ip_param.source_address,
+-            icmp6h, mld_pkt_msg->ip_param.payload_length - hbh_len))
++            icmp6h, mld_len))
+     {
+         L2MCD_VLAN_LOG_ERR(vid, "%s:%d:[vlan:%d] ERR Rx packet has invalid checksum. Dropping packet", FN, LN, vid);
+         mld->mld_stats[rx_vir_port].recv_checksum_error++;
++        return 0;
+     }
+ 
+-    // len + dest ip + proto + version check
++    // len + dest ip + proto + version check (advisory, as before)
+     if (!mcast_validate_mld_packet(mld_pkt_msg))
+     {
+         L2MCD_VLAN_LOG_ERR(vid, "%s:%d:[vlan:%d] ERR Rx packet is invalid. Dropping packet", FN, LN, vid);

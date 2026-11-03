@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 04:06:55 -0700
+Subject: [PATCH 05/10] seastone: run the DX010 on the legacy-TH SAI (13.2.1),
+ like the 7060CX
+
+202511 moved the Broadcom XGS SAI to 14.3 and split Tomahawk-1 off to a
+separate "legacy-TH" SAI pinned at 13.2.1.100 (sonic-buildimage#25878,
+#26136: "Broadcom would still support TH SAI with current version, but
+no upgrade plan"). Only the Arista 7060CX-32S was moved; the Seastone
+DX010, the same BCM56960, still says "broadcom" and would get the 14.3
+SAI, which nobody upstream has reported running on a Tomahawk-1. The
+DX010 runs SAI 13.2.1.36 on 202505 today, and a DX010 on 202605 was
+brought up on legacy-TH 13.2.1.120 with the sai.profile guards
+(sonic-buildimage#28125, #28127).
+
+Two lines:
+- platform_asic: broadcom -> broadcom-legacy-th, so the image installs
+  docker-syncd-brcm-legacy-th (libsaibcm 13.2.1.100) on this platform.
+- one-image.mk: the ONIE image never listed the legacy-TH BDE/knet
+  kernel modules in LAZY_BUILD_INSTALLS (only the Arista ABOOT image
+  does), so a legacy-TH box booted the ONIE image with no BDE and
+  syncd could not attach the ASIC (#28125). Added.
+
+The image for the DX010 is then target/sonic-broadcom-legacy-th.bin:
+make target/sonic-broadcom.bin builds one ONIE image per machine
+(broadcom, broadcom-dnx, broadcom-legacy-th), and each installs only on
+the platforms whose platform_asic names its machine (install.sh checks
+platforms_asic). sonic-broadcom.bin will refuse the DX010 after this.
+
+This commit is separate so the build can leave it out and take the XGS
+14.3 SAI instead (build.sh DX010_SAI=xgs).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ device/celestica/x86_64-cel_seastone-r0/platform_asic | 2 +-
+ platform/broadcom/one-image.mk                        | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/device/celestica/x86_64-cel_seastone-r0/platform_asic b/device/celestica/x86_64-cel_seastone-r0/platform_asic
+index 9604676527653dcf7b6046fdda7ba52026b7f56f..7974af6a10ad10554072ca3e49941ed71931f3b6 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/platform_asic
++++ b/device/celestica/x86_64-cel_seastone-r0/platform_asic
+@@ -1 +1 @@
+-broadcom
++broadcom-legacy-th
+diff --git a/platform/broadcom/one-image.mk b/platform/broadcom/one-image.mk
+index 30fc95016929efc867af8d0b9ebcf9de3ba25c15..480871f207ca6ea726ac6eeb50978415c5468f8c 100755
+--- a/platform/broadcom/one-image.mk
++++ b/platform/broadcom/one-image.mk
+@@ -142,7 +142,7 @@ ifeq ($(INSTALL_ARISTA_FIRMWARE),y)
+ $(SONIC_ONE_IMAGE)_LAZY_INSTALLS += $(ARISTA_FIRMWARE)
+ endif
+ 
+-$(SONIC_ONE_IMAGE)_LAZY_BUILD_INSTALLS = $(BRCM_OPENNSL_KERNEL) $(BRCM_DNX_OPENNSL_KERNEL)
++$(SONIC_ONE_IMAGE)_LAZY_BUILD_INSTALLS = $(BRCM_OPENNSL_KERNEL) $(BRCM_DNX_OPENNSL_KERNEL) $(BRCM_LEGACY_TH_OPENNSL_KERNEL)
+ ifeq ($(INSTALL_DEBUG_TOOLS),y)
+ $(SONIC_ONE_IMAGE)_DOCKERS += $(SONIC_INSTALL_DOCKER_DBG_IMAGES)
+ $(SONIC_ONE_IMAGE)_DOCKERS += $(filter-out $(patsubst %-$(DBG_IMAGE_MARK).gz,%.gz, $(SONIC_INSTALL_DOCKER_DBG_IMAGES)), $(SONIC_INSTALL_DOCKER_IMAGES))

@@ -42,3 +42,11 @@ id_ecdsa*
 *.pem
 known_hosts*
 authorized_keys
+
+# the SONiC image kit's work clones and build trees stay outside the repo
+contrib/sonic-image/src
+contrib/sonic-image/dryrun
+contrib/sonic-image/inspect
+contrib/sonic-image/vs-test
+contrib/sonic-image/*.tgz
+contrib/sonic-image/dry-run.log

@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 14:59:16 -0700
+Subject: [PATCH] l2mcd: open a port's IGMP receive socket once, not on every
+ port update
+
+l2mcd_port_list_update() is called for a port that is already known
+whenever l2mcmgrd resends the port list and whenever netlink reports a
+link change. It asked whether the port's IGMP socket existed by testing
+if_tree->sock_fd, a field nothing sets (l2mcd_add_kif_to_if() stores the
+socket in igmp_sock_fd; the MLD test right below it reads mld_sock_fd).
+So every such update opened another IGMP receive socket on the port and
+overwrote the stored one, leaving the old socket and its libevent event
+live: each one then received, parsed and forwarded its own copy of every
+IGMP packet on that port.
+
+Seen on a SONiC VS after a few VLAN membership changes on one port: 14
+of l2mcd's packet sockets bound to it (3 on an untouched port), each
+malformed packet counted 6-9 times, and one IGMPv3 report forwarded a
+dozen times to the VLAN's mrouter port. Test the field the socket is
+stored in.
+---
+ port/l2mcd_utils.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/port/l2mcd_utils.c b/port/l2mcd_utils.c
+index 0d60ca7..b3f4520 100644
+--- a/port/l2mcd_utils.c
++++ b/port/l2mcd_utils.c
+@@ -340,9 +340,9 @@ int l2mcd_port_list_update(char *pnames, int oper_state, int is_add)
+         if_tree = NULL;
+     }
+ 
+-    if (if_tree && if_tree->sock_fd)
++    if (if_tree && if_tree->igmp_sock_fd)
+     {
+-        L2MCD_INIT_LOG("IGMP socket already exists for %s, if:%d, fd:%d", pnames, kif, if_tree->mld_sock_fd);
++        L2MCD_INIT_LOG("IGMP socket already exists for %s, if:%d, fd:%d", pnames, kif, if_tree->igmp_sock_fd);
+     }
+     else
+     {

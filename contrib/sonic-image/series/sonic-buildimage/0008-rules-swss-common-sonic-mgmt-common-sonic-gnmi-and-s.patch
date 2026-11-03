@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 1 Nov 2026 09:24:13 -0700
+Subject: [PATCH 8/9] rules: swss-common, sonic-mgmt-common, sonic-gnmi and
+ sonic-mgmt-framework build against libyang-dev 3
+
+202511 builds libyang 1 and libyang 3 side by side, and their -dev
+packages are the same Debian package, libyang-dev: installing one
+replaces the other, and a compile finds whichever was installed last.
+The add_conflict_package line meant to order them is a no-op here
+(rules/libyang.mk is read before rules/libyang3.mk, so $(LIBYANG3_DEV)
+is still empty when it runs), and the libyang3-dev-done gate only holds
+inside one make run from a clean tree. The -install targets run once per
+make run, so in a staged or resumed build, or with SONIC_BUILD_JOBS > 1,
+the libyang-dev that sonic-mgmt-common's cvl (compiled by sonic-gnmi and
+sonic-mgmt-framework too) or swss-common's DefaultValueProvider meets
+depends on order. With libyang 3's headers mgmt-common fails with "too
+many arguments to function 'ly_set_log_clb'" (sonic-net/
+sonic-buildimage#26165).
+
+The two C/cgo consumers now compile against either libyang: the
+upstream ports sonic-net/sonic-swss-common@1431c3d and
+sonic-net/sonic-mgmt-common@cdb612e (#157), applied to 202511's
+submodule pins. This moves their build dependency, and the two Go
+packages that compile cvl, to libyang-dev 3, so nothing in the build
+installs libyang-dev 1 at all and the order no longer matters.
+sonic-gnmi and sonic-mgmt-framework now declare libyang-dev 3 and the
+libyang3 runtime themselves (their binaries link libyang.so.3) instead
+of relying on what mgmt-common's install happens to bring in.
+
+libyang 1 stays for its runtime and python3-yang, which 202511's
+sonic-yang-mgmt (and so config validation and GCU) still uses; master
+moved that separately (#26584) and then removed libyang 1 (#27629).
+libswsscommon keeps libyang 1 in its runtime dependencies, as master did
+between those two, so no image or container loses a package.
+sonic-mgmt-common's rules are master's after #27629.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ rules/libyang.mk              | 5 +++++
+ rules/sonic-mgmt-common.mk    | 4 ++--
+ rules/sonic-mgmt-framework.mk | 4 ++--
+ rules/swss-common.mk          | 4 ++--
+ rules/telemetry.mk            | 4 ++--
+ 5 files changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/rules/libyang.mk b/rules/libyang.mk
+index 8fb732c33b36a7483013dbf2dea1ccf45da3c5e0..e0e853f8d89bbace0e4ff919db6e65c94f141199 100644
+--- a/rules/libyang.mk
++++ b/rules/libyang.mk
+@@ -41,6 +41,11 @@ $(LIBYANG_PY3_DBG)_DEPENDS += $(LIBYANG_PY3)
+ $(LIBYANG_PY3_DBG)_RDEPENDS += $(LIBYANG_PY3)
+ $(eval $(call add_derived_package,$(LIBYANG),$(LIBYANG_PY3_DBG)))
+ 
++# libyang1 is built for its runtime and Python bindings only (python3-yang,
++# which sonic-yang-mgmt uses). Nothing may build against $(LIBYANG_DEV): it
++# and $(LIBYANG3_DEV) are the same package, libyang-dev, and whichever was
++# installed last is the one a compile finds. C and Go consumers depend on
++# $(LIBYANG3_DEV).
+ #$(eval $(call add_conflict_package,$(LIBYANG),$(LIBYANG3)))
+ $(eval $(call add_conflict_package,$(LIBYANG_DEV),$(LIBYANG3_DEV)))
+ 
+diff --git a/rules/sonic-mgmt-common.mk b/rules/sonic-mgmt-common.mk
+index 41441ab3ee94432b1ce73d04e05211b7bca78c8e..84cdc5d45ca82f7c186f6ef5a9366041bc164015 100644
+--- a/rules/sonic-mgmt-common.mk
++++ b/rules/sonic-mgmt-common.mk
+@@ -3,8 +3,8 @@
+ MGMT_COMMON_VERSION = 1.0.0
+ SONIC_MGMT_COMMON = sonic-mgmt-common_$(MGMT_COMMON_VERSION)_$(CONFIGURED_ARCH).deb
+ $(SONIC_MGMT_COMMON)_SRC_PATH = $(SRC_PATH)/sonic-mgmt-common
+-$(SONIC_MGMT_COMMON)_DEPENDS  = $(LIBYANG_DEV) $(LIBYANG)
+-$(SONIC_MGMT_COMMON)_RDEPENDS = $(LIBYANG)
++$(SONIC_MGMT_COMMON)_DEPENDS  = $(LIBYANG3_DEV) $(LIBYANG3)
++$(SONIC_MGMT_COMMON)_RDEPENDS = $(LIBYANG3)
+ $(SONIC_MGMT_COMMON)_WHEEL_DEPENDS = $(SONIC_YANG_MODELS_PY3)
+ SONIC_DPKG_DEBS += $(SONIC_MGMT_COMMON)
+ 
+diff --git a/rules/sonic-mgmt-framework.mk b/rules/sonic-mgmt-framework.mk
+index a423f7cd506b6b8c86d348d63876be9fcaced783..4638dd9378dc88fe388a19d674a20e750b4f290d 100644
+--- a/rules/sonic-mgmt-framework.mk
++++ b/rules/sonic-mgmt-framework.mk
+@@ -4,8 +4,8 @@ ifeq ($(INCLUDE_MGMT_FRAMEWORK), y)
+ 
+ SONIC_MGMT_FRAMEWORK = sonic-mgmt-framework_1.0-01_$(CONFIGURED_ARCH).deb
+ $(SONIC_MGMT_FRAMEWORK)_SRC_PATH = $(SRC_PATH)/sonic-mgmt-framework
+-$(SONIC_MGMT_FRAMEWORK)_DEPENDS  = $(SONIC_MGMT_COMMON) $(SONIC_MGMT_COMMON_CODEGEN)
+-$(SONIC_MGMT_FRAMEWORK)_RDEPENDS = 
++$(SONIC_MGMT_FRAMEWORK)_DEPENDS  = $(SONIC_MGMT_COMMON) $(SONIC_MGMT_COMMON_CODEGEN) $(LIBYANG3_DEV) $(LIBYANG3)
++$(SONIC_MGMT_FRAMEWORK)_RDEPENDS = $(LIBYANG3)
+ SONIC_DPKG_DEBS += $(SONIC_MGMT_FRAMEWORK)
+ 
+ SONIC_MGMT_FRAMEWORK_DBG = sonic-mgmt-framework-dbg_1.0-01_$(CONFIGURED_ARCH).deb
+diff --git a/rules/swss-common.mk b/rules/swss-common.mk
+index 9dd181be6aef5322860433b6fdc93310ca35051f..821b6d74e07facf58d0fa37a4f27ddda379feb36 100644
+--- a/rules/swss-common.mk
++++ b/rules/swss-common.mk
+@@ -9,9 +9,9 @@ $(LIBSWSSCOMMON)_VERSION = $(LIBSWSSCOMMON_VERSION)
+ $(LIBSWSSCOMMON)_NAME = $(LIBSWSSCOMMON_NAME)
+ $(LIBSWSSCOMMON)_DEPENDS += $(LIBNL3_DEV) $(LIBNL_GENL3_DEV) \
+                             $(LIBNL_ROUTE3_DEV) $(LIBNL_NF3_DEV) \
+-                            $(LIBNL_CLI_DEV) $(LIBYANG_DEV) $(LIBYANG) $(LIBYANG_CPP) $(LIBYANG_PY3) 
++                            $(LIBNL_CLI_DEV) $(LIBYANG3_DEV) $(LIBYANG3) $(LIBYANG) $(LIBYANG_CPP) $(LIBYANG_PY3)
+ $(LIBSWSSCOMMON)_RDEPENDS += $(LIBNL3) $(LIBNL_GENL3) \
+-                             $(LIBNL_ROUTE3) $(LIBNL_NF3) $(LIBNL_CLI) $(LIBYANG) 
++                             $(LIBNL_ROUTE3) $(LIBNL_NF3) $(LIBNL_CLI) $(LIBYANG) $(LIBYANG3)
+ $(LIBSWSSCOMMON)_WHEEL_DEPENDS += $(SONIC_YANG_MGMT_PY3) $(SONIC_YANG_MODELS_PY3) 
+ SONIC_DPKG_DEBS += $(LIBSWSSCOMMON)
+ 
+diff --git a/rules/telemetry.mk b/rules/telemetry.mk
+index 8e506ed8ff7bbc08d6ad914aceead2f117c78c10..8dc76e3284d8064fcfe6ad7e4d7103c639049274 100644
+--- a/rules/telemetry.mk
++++ b/rules/telemetry.mk
+@@ -3,8 +3,8 @@
+ SONIC_TELEMETRY = sonic-gnmi_0.1_$(CONFIGURED_ARCH).deb
+ $(SONIC_TELEMETRY)_SRC_PATH = $(SRC_PATH)/sonic-gnmi
+ $(SONIC_TELEMETRY)_DEPENDS  = $(SONIC_MGMT_COMMON) $(SONIC_MGMT_COMMON_CODEGEN) \
+-    $(LIBSWSSCOMMON_DEV) $(LIBSWSSCOMMON) 
+-$(SONIC_TELEMETRY)_RDEPENDS = $(LIBSWSSCOMMON)
++    $(LIBSWSSCOMMON_DEV) $(LIBSWSSCOMMON) $(LIBYANG3_DEV) $(LIBYANG3)
++$(SONIC_TELEMETRY)_RDEPENDS = $(LIBSWSSCOMMON) $(LIBYANG3)
+ SONIC_DPKG_DEBS += $(SONIC_TELEMETRY)
+ 
+ SONIC_TELEMETRY_DBG = sonic-gnmi-dbgsym_0.1_$(CONFIGURED_ARCH).deb

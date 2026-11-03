@@ -1,0 +1,5 @@
+Inputs the fuzzer found on the fixed tree before the last fix (whole IPv4 packets,
+fuzz-igmp's input format). All four are the same defect: an 8-byte IGMPv1 query
+(maximum response time 0) naming a group, which made igmp_process_query() read
+num_srcs from bytes 10-11. Fixed in sonic-l2mcd 0003; the named regression case is
+igmp-v1-query-group. Kept as seeds: run.sh copies them into corpus/igmp.
