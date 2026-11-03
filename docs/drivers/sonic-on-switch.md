@@ -509,8 +509,12 @@ under a running on-box bridge recreates the netdevs at 9100 and the loop
 reconciles only after an answered inform; `PartOf=swss.service` or a
 reconcile after N failed informs would close it.
 
-Steps 4-5 of §10 (the controller showing the switch connected, a push
-round-trip on a test port) wait on that install.
+Steps 4-5 of §10 ran once that deb was installed: the start-up reconcile
+logged the VLAN MTU batch (0 ports changed), the next inform was answered
+200 and the controller showed the switch connected on the same uplink
+port within a minute; a port name set through the REST API on a port with
+no link reached `PORT|…` `description` in 24 s and was cleared again on
+the restore. The on-box bridge runs at about 19 MB RSS.
 
 ## 11. What this specification does not do
 
