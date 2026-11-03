@@ -186,6 +186,39 @@ func TestParseECSSpanningTreeAndLoopProtection(t *testing.T) {
 	}
 }
 
+// The same push's IGMP snooping (site-wide on, the ECS claims advanced
+// snooping): three networks snoop, VLAN 1 names the gateway as querier,
+// VLAN 69 sends unknown multicast to the router ports only, and the
+// switch-wide multicast keys. The other networks carry no igmp key at all.
+func TestParseECSIGMPSnooping(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-ecs-aggregation.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if len(c.IGMPSnooping) != 3 || !c.IGMPSnooping[1] || !c.IGMPSnooping[2] || !c.IGMPSnooping[69] {
+		t.Fatalf("snooping = %v, want VLANs 1, 2 and 69 on", c.IGMPSnooping)
+	}
+	yes, no := true, false
+	for id, want := range map[int]IGMP{
+		1:  {Querier: true, QuerierAddr: "192.0.2.1", MaxResponse: 10, Membership: 260, RouterExpiry: 180, FloodUnknown: &yes},
+		2:  {Querier: true, MaxResponse: 10, Membership: 260, RouterExpiry: 180, FloodUnknown: &yes},
+		69: {Querier: true, MaxResponse: 10, Membership: 260, RouterExpiry: 180, FloodUnknown: &no},
+	} {
+		got := c.IGMP[id]
+		if got.FloodUnknown == nil || *got.FloodUnknown != *want.FloodUnknown {
+			t.Errorf("VLAN %d forward_unknown_multicast = %v, want %v", id, got.FloodUnknown, *want.FloodUnknown)
+		}
+		got.FloodUnknown, want.FloodUnknown = nil, nil
+		if got != want {
+			t.Errorf("VLAN %d = %+v, want %+v", id, got, want)
+		}
+	}
+	if m := c.Multicast; m.FloodKnownProtocols == nil || !*m.FloodKnownProtocols || m.ForwardUnknownToRouterPorts == nil || !*m.ForwardUnknownToRouterPorts {
+		t.Errorf("switch.multicast = %+v, want both true", m)
+	}
+}
+
 // Rogue DHCP Server Detection on, as the controller pushed it to the ECS
 // Aggregation (2026-11-01): the switch-wide flag plus one switch.dhcp_guard
 // group per trusted server of every network with DHCP Guarding on. The

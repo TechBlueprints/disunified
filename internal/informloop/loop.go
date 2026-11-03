@@ -868,6 +868,21 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 				d.IGMPSnooping[id] = false
 			}
 		}
+		for id, g := range cfg.IGMP {
+			if !d.IGMPSnooping[id] {
+				continue
+			}
+			if d.IGMP == nil {
+				d.IGMP = map[int]devicemodel.IGMPVLAN{}
+			}
+			d.IGMP[id] = devicemodel.IGMPVLAN{
+				Querier: g.Querier, QuerierAddress: g.QuerierAddr, FastLeave: g.FastLeave,
+				MaxResponse: g.MaxResponse, Membership: g.Membership, RouterExpiry: g.RouterExpiry,
+				Suppression: g.Suppression, FloodUnknown: g.FloodUnknown,
+			}
+		}
+		d.IGMPFloodReserved = cfg.Multicast.FloodKnownProtocols
+		d.IGMPUnknownToRouters = cfg.Multicast.ForwardUnknownToRouterPorts
 	}
 	return d
 }

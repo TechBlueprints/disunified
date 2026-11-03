@@ -570,6 +570,18 @@ func (pl *plan) vlanMembers(idx int, iface, verb string, ids []int, untagged, al
 		form = strconv.Itoa(ids[0])
 	}
 	ifc, list, add := iface, append([]int(nil), ids...), verb == "add"
+	if !add {
+		// The CLI refuses to take a port out of a VLAN while a static group
+		// names it there ("remove all associated static Layer 2 multicast
+		// group entries first"); applyIGMP rewrites the groups after the
+		// batch.
+		for _, id := range list {
+			for _, k := range pl.sim.staticsOf(ifc, id) {
+				key := k
+				pl.add(idx, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote(key), func(s *swState) { delete(s.l2mc, key) })
+			}
+		}
+	}
 	pl.add(idx, fmt.Sprintf("config vlan member %s %s %s", verb, form, ifc), func(s *swState) {
 		for _, id := range list {
 			if add {
@@ -934,6 +946,11 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	// The ACL tables bind to every port and PortChannel: a breakout or an
 	// aggregate this batch made changes that list (acl.go).
 	if _, err := c.applyACL(ctx); err != nil {
+		return n, err
+	}
+	// The reserved groups' static members follow VLAN membership, which the
+	// batch may have changed (igmp.go).
+	if _, err := c.applyIGMP(ctx); err != nil {
 		return n, err
 	}
 	return n, nil

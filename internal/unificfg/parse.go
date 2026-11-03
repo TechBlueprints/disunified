@@ -26,6 +26,13 @@ type Config struct {
 	// IGMPSnooping maps VLAN ID -> switch.vlan.<slot>.igmp_snooping for the
 	// VLANs the controller mentioned; VLANs without the key are absent.
 	IGMPSnooping map[int]bool
+	// IGMP is, by VLAN ID, the rest of a VLAN's snooping keys
+	// (switch.vlan.<slot>.igmp_* and forward_unknown_multicast), for the
+	// VLANs IGMPSnooping lists; Multicast is switch.multicast.*. Captured
+	// from the ECS Aggregation's push (controller-10.6.109/
+	// system_cfg-ecs-aggregation.txt), which claims advanced snooping.
+	IGMP      map[int]IGMP
+	Multicast Multicast
 
 	// Outlets is a power device's outlet intent, by 1-based outlet index.
 	// Its keys are top-level (outlet.<n>.*), not switch.*, because the
@@ -343,6 +350,27 @@ type VLAN struct {
 	Enabled   bool
 	igmpSet   bool
 	igmpSnoop bool
+	igmp      IGMP
+}
+
+// IGMP is one VLAN's snooping settings beside igmp_snooping. Times are in
+// seconds; 0 = absent.
+type IGMP struct {
+	Querier      bool   // igmp_querier_status
+	QuerierAddr  string // igmp_querier ("" when the push leaves it empty)
+	FastLeave    bool   // igmp_fastleave
+	MaxResponse  int    // igmp_maxresponse
+	Membership   int    // igmp_groupmembership
+	RouterExpiry int    // igmp_mcrtrexpiretime
+	Suppression  bool   // igmp_supression (the controller's spelling)
+	// FloodUnknown is forward_unknown_multicast; nil = absent.
+	FloodUnknown *bool
+}
+
+// Multicast is switch.multicast.*; nil = absent.
+type Multicast struct {
+	FloodKnownProtocols         *bool // flood_known_protocols
+	ForwardUnknownToRouterPorts *bool // forward_unk_mcast_router_ports
 }
 
 var (
@@ -581,6 +609,23 @@ func Parse(text string) *Config {
 				vl.Enabled = v != "disabled"
 			case "igmp_snooping":
 				vl.igmpSet, vl.igmpSnoop = true, v == "true"
+			case "igmp_querier_status":
+				vl.igmp.Querier = v == "true"
+			case "igmp_querier":
+				vl.igmp.QuerierAddr = v
+			case "igmp_fastleave":
+				vl.igmp.FastLeave = v == "true"
+			case "igmp_maxresponse":
+				vl.igmp.MaxResponse, _ = strconv.Atoi(v)
+			case "igmp_groupmembership":
+				vl.igmp.Membership, _ = strconv.Atoi(v)
+			case "igmp_mcrtrexpiretime":
+				vl.igmp.RouterExpiry, _ = strconv.Atoi(v)
+			case "igmp_supression":
+				vl.igmp.Suppression = v == "true"
+			case "forward_unknown_multicast":
+				b := v == "true"
+				vl.igmp.FloodUnknown = &b
 			}
 			continue
 		}
@@ -692,6 +737,12 @@ func Parse(text string) *Config {
 			}
 		case "switch.mtu":
 			c.MTU, _ = strconv.Atoi(v)
+		case "switch.multicast.flood_known_protocols":
+			b := v == "true"
+			c.Multicast.FloodKnownProtocols = &b
+		case "switch.multicast.forward_unk_mcast_router_ports":
+			b := v == "true"
+			c.Multicast.ForwardUnknownToRouterPorts = &b
 		case "switch.stp.status":
 			c.STP.Set, c.STP.Enabled = true, v != "disabled"
 		case "switch.stp.version":
@@ -713,6 +764,10 @@ func Parse(text string) *Config {
 				c.IGMPSnooping = map[int]bool{}
 			}
 			c.IGMPSnooping[vlans[n].ID] = vlans[n].igmpSnoop
+			if c.IGMP == nil {
+				c.IGMP = map[int]IGMP{}
+			}
+			c.IGMP[vlans[n].ID] = vlans[n].igmp
 		}
 	}
 	// Resolve per-port VLAN membership: slot -> VLAN ID.

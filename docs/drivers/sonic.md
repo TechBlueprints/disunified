@@ -1422,11 +1422,11 @@ What the controller pushes to a SONiC-based UniFi switch with snooping on (the
 ECS Aggregation's `system_cfg`, site data in `local-information/ecs-reference/`),
 what Ubiquiti's own switch does with each key (read from its CONFIG_DB
 2026-11-01, read-only, described here rather than copied), and where each would
-land on the DX010 with the series. **Not implemented**: no capture of the DX010
-side exists until the image runs (§8.9 V), and the controller withholds these
-keys until the device claims the feature (§11.1). The driver claims IGMP snooping
-(`feature_caps` 256, `IGMP_SNOOPING_ADVANCED`, `igmp_snoop_caps` 31, as the ECS)
-only after H3 and H4 pass.
+land on the DX010 with the series. **Implemented 2026-11-03** (`igmp.go`, the
+end of §8.14) behind `options.igmp`, off until H4 passes; the controller
+withholds these keys until the device claims the feature (§11.1), and the
+driver claims it (`feature_caps` 256, `IGMP_SNOOPING_ADVANCED`,
+`igmp_snoop_caps` 31, as the ECS) only with the option on.
 
 | UniFi key (`switch.vlan.N.…`, per VLAN) | On the ECS (one `CFG_L2MC_TABLE` entry per snooping VLAN) | DX010 with the series: CONFIG_DB `L2MC\|VlanX`, and the CLI that means the same |
 |---|---|---|
@@ -1438,7 +1438,7 @@ only after H3 and H4 pass.
 | `igmp_groupmembership` (s) | the membership time, stored as pushed, beside a query interval the switch chooses itself (shorter on the VLAN whose push names a querier address) and a querier timeout derived from it | **no field**; l2mcd derives membership as 2 x query interval + max response, so `query-interval` = (membership - response) / 2: 125 for UniFi's 260/10, the RFC 3376 default |
 | `igmp_mcrtrexpiretime` (s) | nothing that carries it | none; logged |
 | `igmp_supression` | nothing that carries it (every VLAN there pushes false) | none; meaning not established; logged |
-| `forward_unknown_multicast` true/false | flood unknown multicast in the VLAN, or send it to the multicast-router ports only | `L2MC_SUPPRESS ipv4-optimised-multicast-flood` `disable`/`enable` (`config igmp-snooping optimised_multicast_flood …`, snooping must be on): unknown IPv4 multicast to the mrouter ports only (`SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`) |
+| `forward_unknown_multicast` true/false | flood unknown multicast in the VLAN, or send it to the multicast-router ports only | `L2MC_SUPPRESS ipv4-optimised-multicast-flood` `disable`/`enable` (`config igmp-snooping optimised_multicast_flood …`, snooping must be on): unknown IPv4 multicast to the mrouter ports only (`SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`). **Refused by the DX010's SAI** (§8.14): false is logged, the VLAN keeps flooding |
 
 Global keys:
 
@@ -1485,7 +1485,7 @@ code, not a preference:
 | Membership time | stored as pushed, independent of the query interval | derived (above); the push's 260 s comes out the same | same result; the ECS's shorter query interval on one VLAN not copied (with derived membership it would age groups out in about a minute) |
 | Querier source address | the pushed address, or a synthetic one; never 0.0.0.0 | the VLAN interface's address, else **0.0.0.0** -- the DX010 has an address only on its native VLAN | **differs**; the next patch, below |
 | Reserved groups | `flood_known_protocols` → seven reserved groups static on every port | the same seven as static groups by address (§8.10) | same |
-| Unknown multicast | to the mrouter ports only when `forward_unknown_multicast` is false | `ipv4-optimised-multicast-flood enable` | same |
+| Unknown multicast | to the mrouter ports only when `forward_unknown_multicast` is false | `ipv4-optimised-multicast-flood enable`, which the DX010's Tomahawk-1 SAI refuses (§8.14) | **differs on the DX010**: unknown multicast keeps flooding; logged |
 | Kernel bridge | `Bridge` with multicast snooping on | 202511's vlanmgrd never sets it, so the kernel default, on (not read on the DX010) | same |
 
 **The querier-address patch (specified, not written).** Without it, on every VLAN
@@ -1893,6 +1893,84 @@ install.** The Broadcom build `igmp-202511.20261101-22cac574e` (the series throu
   (srcversion `9A732FC0E3A48B6C025AE37`) is kept for a swap if the running module
   should match upstream before then.
 
+**§8.9 H2-H3 on the DX010 (2026-11-03, image `igmp-202511.20261102-e53777446`,
+libsaibcm 13.2.1.100, Clint's go in the session).** Only Ethernet0, the
+uplink, has a link and no test host was cabled, so this is the chip's half
+without traffic. The bridge on the switch was stopped for the window
+(its reconcile would have undone the test VLAN's memberships; the switch
+showed offline in the controller for about 21 minutes), every step went
+through the CLI or `bcmcmd` reads, Ethernet0 was never touched, and nothing
+was saved.
+
+| Step | Result |
+|---|---|
+| H2: `config feature state l2mcd enabled` | the container with `l2mcd` and `l2mcmgrd`; `COPP_TABLE:l2mcd_group` (queue 1, 128 pps) and exactly the five IGMP hostif traps added to ASIC_DB (13 → 18 traps); no "Failed to create trap" |
+| H3: test VLAN 3999 on Ethernet4 and Ethernet8 (tagged), `igmp-snooping enable`, `version 3` | orchagent "Enabled L2mc Snooping on Vlan3999"; the VLAN's ASIC_DB object `SAI_VLAN_ATTR_CUSTOM_IGMP_SNOOPING_ENABLE true`; no SAI error. In the chip nothing per VLAN changed: every VLAN, snooping or not, uses `VLAN_PROFILE` 1, which already has `IPMCV4_L2_ENABLE=1` and `L2_PFM=1` (known groups by their entry, unknown multicast flooded) |
+| A static group (`static-group add 3999 Ethernet4 239.1.2.3`) on a port without link | CONFIG_DB only: l2mcd programs members on oper-up ports alone |
+| **Optimised flood** (`optimised_multicast_flood enable 3999`, UniFi's `forward_unknown_multicast=false`) | **refused**: the wildcard entry (0.0.0.0, 0.0.0.0, 3999) `brcm_sai_create_l2mc_entry ... Invalid parameter`, and `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID` `SAI_STATUS_ATTR_NOT_IMPLEMENTED`. orchagent rolls back and **retries twice a second for as long as the row says enable**; `disable` stops it. Its group object stayed in ASIC_DB until snooping was disabled |
+| **A group entry in the chip**: Ethernet4 reduced to VLAN 3999 only, then `bcmcmd "port ce1 lb=mac"` (MAC loopback: oper up with no cable, nothing it reflects can reach another VLAN) | the static group programmed: syncd `L2MC table add: mc-ip:0xef010203 src:0x0 vlan:3999`, orchagent "Added l2mc entry (0.0.0.0,239.1.2.3,3999)"; ASIC_DB `L2MC_ENTRY` (type XG), its `L2MC_GROUP` and a `L2MC_GROUP_MEMBER`; in the chip `ipmc table show` has (0.0.0.0, 239.1.2.3, VLAN 3999) → group 0x2000004, `mc show` that group with port ce1, `show igmp-snooping groups vlan 3999` the same group on Ethernet4 |
+| The querier | on, its own query looped back through ce1 and l2mcd learned Ethernet4 as a dynamic mrouter port. The mrouter add for the wildcard key failed (`l2mc_gid:0`, "object on list [0] is NULL"), left by the refused optimised flood; orchagent adds a router port to every group entry of its VLAN as well (`addMrouterPortToL2mcEntries`), so without optimised flood that path is not taken |
+| The driver's write path, by hand | `L2MC_STATIC_GROUP` and `L2MC_STATIC_MEMBER` rows written straight through swsscommon's `ConfigDBConnector` as the admin user program the entry exactly as the CLI's do; l2mcmgrd reads `L2MC_STATIC_MEMBER` only (deleting that row alone removed the entry; the group row is the CLI's bookkeeping). The CLI's delete removed the entry from ASIC_DB and from the chip's IPMC table |
+| Teardown | `lb=none`, `igmp-snooping disable`, VLAN 3999 deleted, Ethernet4 back untagged in Vlan4094, `l2mcd` disabled: no L2MC row or ASIC object, 13 traps, one multicast group in the chip; the saved config untouched. The one error: orchagent removing the wildcard entry it never created. The bridge restarted, "0 of 32 ports changed", inform HTTP 200 |
+
+So the hard unknown of §8.8 is answered for (*,G) entries: the Tomahawk-1 SAI
+programs snooping and group entries. It cannot keep unknown multicast to the
+router ports, which leaves UniFi's `forward_unknown_multicast=false`
+unhonoured: such a VLAN keeps flooding unregistered groups, as one without
+snooping does. **Still open (H4):** traffic between two cabled hosts (a
+joined stream reaching only its port, the queries on the wire, a leave),
+IGMP of VLANs without snooping still crossing the switch with the traps in
+place, and the switch's own address as the query source on its native VLAN.
+The captures are `docs/fixtures/sonic-igmp-202511.20261102-e53777446/`
+(`collect-snooping.txt`, taken with the test VLAN and its static group in
+place, and `config-help.txt` with `config feature` and `config
+igmp-snooping`).
+
+**The driver's write path (`igmp.go`, built 2026-11-03, after H3).** As the
+ECS keeps its own: whole rows, never the CLI per field.
+
+- **Gate:** `options.igmp: on` (off by default until H4) on an image with
+  `FEATURE|l2mcd` whose `L2MC*` tables collect.py prints (`cfg_l2mc`); then
+  the driver claims `feature_caps` 256 and `IGMP_SNOOPING_ADVANCED`
+  (67108864) and `igmp_snoop_caps` 31, the ECS's own inform's values, and
+  `Start` checks `config feature state`. Otherwise a push with snooping on
+  is logged ("options.igmp is off" or "the image has no l2mcd").
+- **Rows:** per snooping VLAN (UniFi's 1 on `Vlan<native_vlan>`) one `L2MC`
+  row: `enabled`, `querier` and `fast-leave` as pushed, `version` 3,
+  `query-max-response-time` the pushed max response (1-25 s),
+  `query-interval` (membership - max response) / 2 (125 for UniFi's
+  260/10), `last-member-query-interval` 1000 ms. With
+  `flood_known_protocols` on, the seven reserved groups (§8.10) as
+  `L2MC_STATIC_GROUP` + `L2MC_STATIC_MEMBER` rows on every member of the
+  VLAN. Everything else in those tables goes: a VLAN the push does not turn
+  on (its statics, suppression and router-port rows first, the CLI's
+  order), and every `L2MC_SUPPRESS` row, because optimised flood is refused
+  and a row with it on makes orchagent retry forever.
+- **One swsscommon script per apply** (`sudo python3 - disunified-l2mc`,
+  the ops as a JSON string on its last line, `ConfigDBConnector.set_entry`),
+  then `config save -y`: a `sonic-db-cli` call per row would put a 32-port
+  VLAN's 224 static rows past the apply budget. `config feature state l2mcd
+  enabled` first, with the first snooping VLAN; it then stays on, as on the
+  ECS.
+- **VLAN membership:** the CLI refuses `vlan member del` of a port a static
+  group names in that VLAN, so the port plan deletes those rows before any
+  membership removal, and `ApplyPorts` re-runs the IGMP apply after its
+  batch, so the reserved groups follow the ports.
+- **Logged, not written:** the querier address (no l2mcd field, §8.11;
+  the line names the source the queries will use, the VLAN's own address or
+  0.0.0.0), the multicast-router expiry and report suppression (no
+  setting), `forward_unknown_multicast=false` (refused by the SAI, above),
+  `forward_unk_mcast_router_ports=false`.
+- **Read side:** `System.IGMPSnooping` from the `L2MC` rows.
+- **Tests:** `igmp_test.go` over the H3 capture with the ECS's settings
+  (rows, order, the test VLAN removed, idempotence, the feature enable,
+  statics following a port's VLAN move); the FixtureRunner refuses a static
+  member outside its VLAN or without snooping, and the CLI's `vlan member
+  del` check (a mutation that drops the port plan's cleanup fails the test);
+  `TestReplaySonicIGMPSnooping` drives the DX010's own push with the ECS's
+  networks and snooping keys through unificfg and the loop;
+  `TestSwitchCapsIGMPAdvancedAsTheECS` holds the claim to the ECS's inform.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is
@@ -2278,7 +2356,7 @@ feature the DX010 does not claim:
 |---|---|---|---|
 | STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | no, 0 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
 | Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
-| IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | no | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
+| IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | with `options.igmp: on` on the l2mcd image (§8.14), off until H4 | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
 | DHCP snooping (128) | yes | yes since the 2026-11-01 build (§11.7.6) | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
 | Port isolation (4), port security (512) | yes | no | `switch.port.N.port-security` (isolation keys only when set) |
 | LLDP-MED (16) | yes | no | `switch.port.N.lldpmed.opmode/topology_notify` |

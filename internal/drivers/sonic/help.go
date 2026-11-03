@@ -15,6 +15,7 @@ var commandChecks = []struct {
 	subs  []string
 	stp   bool // checked only when the image has the STP daemon
 	acl   bool // checked only when the collector reads the ACL tables (acl.go)
+	igmp  bool // checked only when the driver writes IGMP snooping (igmp.go)
 }{
 	{group: "interface", subs: []string{"startup", "shutdown", "speed", "autoneg", "fec", "mtu", "storm-control", "breakout", "ip"}},
 	{group: "vlan", subs: []string{"add", "member"}},
@@ -37,6 +38,7 @@ var commandChecks = []struct {
 	{group: "acl", subs: []string{"add", "remove"}, acl: true},
 	{group: "acl add", subs: []string{"table"}, acl: true},
 	{group: "acl remove", subs: []string{"table"}, acl: true},
+	{group: "feature", subs: []string{"state"}, igmp: true},
 }
 
 // helpCommand is how a group's help is read: `config` needs root even for
@@ -53,9 +55,10 @@ func (c *Collector) verifyCommands(ctx context.Context) error {
 	c.mu.Lock()
 	stp := c.state != nil && c.state.stpFeature
 	acl := c.state != nil && c.state.aclKnown
+	igmp := c.igmpOn(c.state)
 	c.mu.Unlock()
 	for _, chk := range commandChecks {
-		if chk.stp && !stp || chk.acl && !acl {
+		if chk.stp && !stp || chk.acl && !acl || chk.igmp && !igmp {
 			continue
 		}
 		out, err := c.run(ctx, helpCommand(chk.group), "")

@@ -108,6 +108,13 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	default:
 		return nil, fmt.Errorf("sonic: l2d must be on or off, got %q", v)
 	}
+	switch v := strings.ToLower(strings.TrimSpace(cfg.Options["igmp"])); v {
+	case "on", "true", "yes":
+		c.IGMP = true
+	case "", "off", "false", "no":
+	default:
+		return nil, fmt.Errorf("sonic: igmp must be on or off, got %q", v)
+	}
 	c.configHost = c.Dial
 	if err := c.loadManaged(); err != nil {
 		return nil, err

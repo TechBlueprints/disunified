@@ -126,6 +126,8 @@ devices:                             # "switches:" is still accepted (the pre-re
       known_hosts: /etc/disunified/ssh/known_hosts
       # native_vlan: "4094"          # the SONiC VLAN that stands in for UniFi's VLAN 1 (SONiC cannot create VLAN 1)
       # l2d: "off"                   # no spanning tree / loop protection through disunified-l2d (on by default)
+      # igmp: "on"                   # IGMP snooping through l2mcd on an image with the series (contrib/sonic-image);
+      #                              # off by default until the traffic test on hardware (docs/drivers/sonic.md §8.14)
       # transport: local             # the bridge runs on the switch itself (the .deb, docs/install.md §7):
       #                              # commands run locally as the service's user, which must be the user in
       #                              # ssh:; ssh_key/known_hosts are then ignored, and state_dir is /host/disunified

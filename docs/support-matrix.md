@@ -300,10 +300,35 @@ removed, 512+ entries per table.
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules | an orchagent patch (an `L2` table type, `SRC_MAC`/`DST_MAC`) in the custom image series (§8, §11.7.5) |
 
+### IGMP snooping (the custom image only)
+
+The controller's per-VLAN snooping settings as `L2MC` rows for l2mcd, the
+Micas series built into the repo's 202511 image (`contrib/sonic-image`), and
+the seven reserved groups as static groups on every member of a snooping
+VLAN ([`drivers/sonic.md`](drivers/sonic.md) §8.10, §8.14). Built 2026-11-03,
+fixture- and replay-tested on the DX010's capture from the hardware test
+(`igmp_test.go`, `informloop/replay_sonic_igmp_test.go`, the ECS's real
+push); claims what the ECS claims (`feature_caps` 256 and
+`IGMP_SNOOPING_ADVANCED`, `igmp_snoop_caps` 31). **Behind `options.igmp:
+on`, off by default.** On the DX010 (§8.14 H2-H3, by hand): the IGMP traps,
+the per-VLAN flag and a (*,G) entry in the chip's IPMC table verified;
+optimised flood refused by the SAI, so `forward_unknown_multicast=false` is
+logged and the VLAN keeps flooding unknown multicast. The querier address,
+the router-port expiry and report suppression have no l2mcd setting and are
+logged.
+
+| Gap | What the PR needs |
+|---|---|
+| Traffic (§8.9 H4): a joined stream reaching only its port, the queries on the wire, a leave; IGMP of a VLAN without snooping still crossing the switch with the traps in place | two hosts cabled to the switch on a test VLAN, a source, `show interfaces counters` on the unjoined port; then `options.igmp` on by default |
+| The driver's own write path live (rows, statics, the feature enable) | `options.igmp: on` on the DX010 and the controller's push recorded (`controller-10.6.109/system_cfg-dx010-igmp.txt`) |
+| A querier source address on a VLAN where the switch has none (0.0.0.0 today) | the querier-address patch specified in §8.11 |
+| Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
+
 ### Refused (logged, not claimed)
 
-IGMP snooping, port isolation, 802.1X, LLDP-MED off (community SONiC has none
-of them); MAC ACL rules (no L2 table type in the stock orchagent); an IP ACL rule shape
+IGMP snooping on an image without l2mcd or with `options.igmp` off, port
+isolation, 802.1X, LLDP-MED off (community SONiC has none of them); MAC ACL
+rules (no L2 table type in the stock orchagent); an IP ACL rule shape
 no capture shows, or a set that would block the bridge's own SSH to the
 switch (the rules of that kind are held); breakout on a platform without `platform.json`
 (the VS), a speed no breakout mode runs, and a breakout of a cage in an

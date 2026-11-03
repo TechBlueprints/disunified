@@ -196,8 +196,8 @@ type deviceOp struct {
 }
 
 // ApplyDevice implements devicemodel.DeviceController: the switch-wide
-// settings, spanning tree through disunified-l2d (l2.go), then DHCP
-// guarding and the ACL rules (acl.go).
+// settings, spanning tree through disunified-l2d (l2.go), DHCP guarding
+// and the ACL rules (acl.go), then IGMP snooping (igmp.go).
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
 	n, err := c.applyDevice(ctx, d)
 	if err != nil {
@@ -221,6 +221,12 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		if err != nil {
 			return n, err
 		}
+	}
+	c.igmpSet(d)
+	m, err := c.applyIGMP(ctx)
+	n += m
+	if err != nil {
+		return n, err
 	}
 	return n, nil
 }
@@ -270,12 +276,6 @@ func (c *Collector) applyDevice(ctx context.Context, d devicemodel.DeviceDesired
 				p := strconv.Itoa(d.STPPriority)
 				add("config spanning-tree priority "+p, "", func(s *swState) { s.stpGlobal["priority"] = p })
 			}
-		}
-	}
-	for _, on := range d.IGMPSnooping {
-		if on {
-			note("IGMP snooping requested; community SONiC has none; not written")
-			break
 		}
 	}
 	// NTP and syslog: the controller's list is the switch's, as on UniFi's

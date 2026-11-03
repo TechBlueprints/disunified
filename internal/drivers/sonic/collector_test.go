@@ -296,8 +296,9 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	}
 	// The two spanning-tree groups are checked only with FEATURE|stp, the
 	// three acl groups only when the collector reads the ACL tables (this
-	// capture predates them).
-	if len(fr.Helps) != len(commandChecks)-5 {
+	// capture predates them), feature only when the driver writes IGMP
+	// snooping.
+	if len(fr.Helps) != len(commandChecks)-6 {
 		t.Errorf("Start read %d help texts: %v", len(fr.Helps), fr.Helps)
 	}
 }

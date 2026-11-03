@@ -30,7 +30,8 @@ const (
 	swCapLACP          = 8192
 	swCapFEC           = 65536
 	swCapJumbo         = 524288
-	swCapLoopProtect   = 1048576 // KEEPALIVE_LOOP_PROTECTION: the UI's per-port Loop Protection (switch.port.N.keepalive)
+	swCapLoopProtect   = 1048576  // KEEPALIVE_LOOP_PROTECTION: the UI's per-port Loop Protection (switch.port.N.keepalive)
+	swCapIGMPAdvanced  = 67108864 // IGMP_SNOOPING_ADVANCED: the per-VLAN querier, timers and switch.multicast.* (docs/drivers/sonic.md §8.10)
 )
 
 // switch_caps.vlan_caps
@@ -48,6 +49,13 @@ const (
 
 // switch_caps.storm_control_caps
 const stormCapInPercentage = 1
+
+// igmp_snoop_caps: unknown multicast to the router ports (1), flooding the
+// reserved groups (2), the query interval (4), fast leave per port (8) and
+// one more bit without a name in the controller's bundle (16). 31 is what
+// the ECS Aggregation, Ubiquiti's own SONiC switch, claims; a driver claims
+// it with IGMPSnoopingAdvanced and logs a key it cannot honour.
+const igmpSnoopCapsAdvanced = 1 | 2 | 4 | 8 | 16
 
 // port_table[].speed_caps
 const (
@@ -237,6 +245,11 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	set(c.DHCPSnooping, swCapDHCPSnooping)
 	set(c.PortIsolation, swCapPortIsolation)
 	set(c.LoopProtection, swCapLoopProtect)
+	set(c.IGMPSnooping && c.IGMPSnoopingAdvanced, swCapIGMPAdvanced)
+	igmp := 0
+	if c.IGMPSnooping && c.IGMPSnoopingAdvanced {
+		igmp = igmpSnoopCapsAdvanced
+	}
 	stp := 0
 	if c.BPDUGuard {
 		stp |= stpCapBPDUGuard
@@ -258,7 +271,7 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 		"vlan_caps":              vlanCapAccess | vlanCapTagging | 1,
 		"stp_caps":               stp,
 		"storm_control_caps":     storm,
-		"igmp_snoop_caps":        0,
+		"igmp_snoop_caps":        igmp,
 	}
 	// Custom ACLs have no feature bit: a UniFi switch claims them with
 	// these counts (the ECS Aggregation 512 each, docs/drivers/sonic.md

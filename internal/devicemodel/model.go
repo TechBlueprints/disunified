@@ -88,6 +88,17 @@ type DeviceDesired struct {
 
 	// IGMPSnooping: VLAN ID -> enabled, only for VLANs to manage.
 	IGMPSnooping map[int]bool
+	// IGMP carries, for the VLANs IGMPSnooping turns on, the rest of each
+	// one's snooping settings where the controller sent them (nil = none
+	// sent; a driver that honours only on/off ignores it). Read by a driver
+	// claiming Capabilities.IGMPSnoopingAdvanced.
+	IGMP map[int]IGMPVLAN
+	// IGMPFloodReserved: the well-known multicast groups (SSDP, NTP, PTP,
+	// H.323, SLP) reach every port of a snooping VLAN whatever its joins;
+	// IGMPUnknownToRouters: unregistered multicast reaches the
+	// multicast-router ports. nil = not in the push.
+	IGMPFloodReserved    *bool
+	IGMPUnknownToRouters *bool
 
 	NTPServers   []string // nil = leave alone; empty = remove managed servers
 	SyslogHosts  []string // same
@@ -124,6 +135,21 @@ type DeviceDesired struct {
 	// name without spaces), set only when the operator opted in
 	// (control.hostname); "" = leave the device's hostname alone.
 	Hostname string
+}
+
+// IGMPVLAN is one snooping VLAN's settings beside on/off. Times are in
+// seconds; 0 = not given.
+type IGMPVLAN struct {
+	Querier        bool   // the switch sends general queries on the VLAN
+	QuerierAddress string // the source address for them; "" = none named
+	FastLeave      bool   // a leave removes the port at once
+	MaxResponse    int    // the max response time queries carry
+	Membership     int    // the group membership interval
+	RouterExpiry   int    // how long a learned multicast-router port lasts
+	Suppression    bool   // report suppression
+	// FloodUnknown: unregistered multicast floods the VLAN (true) or goes to
+	// the multicast-router ports only (false); nil = not given.
+	FloodUnknown *bool
 }
 
 // DHCPGuard trusts one DHCP server on one VLAN (UniFi's id: 1 is the
@@ -761,10 +787,14 @@ type Capabilities struct {
 	LACP           bool // link aggregation (Controller honours PortDesired.LAG)
 	StormControl   bool // per-port storm control in percent
 	IGMPSnooping   bool // IGMP snooping (DeviceController honours IGMPSnooping)
-	LLDPMED        bool
-	DHCPSnooping   bool // DeviceController honours DHCPSnooping and DHCPGuards
-	PortIsolation  bool
-	SNMP           bool // DeviceController honours SNMPCommunity
+	// IGMPSnoopingAdvanced: the per-VLAN querier, timers and
+	// unknown-multicast handling and the reserved groups (DeviceDesired.IGMP,
+	// IGMPFloodReserved), as UniFi's own advanced-snooping switches take them.
+	IGMPSnoopingAdvanced bool
+	LLDPMED              bool
+	DHCPSnooping         bool // DeviceController honours DHCPSnooping and DHCPGuards
+	PortIsolation        bool
+	SNMP                 bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int

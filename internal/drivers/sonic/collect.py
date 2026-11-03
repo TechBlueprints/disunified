@@ -171,6 +171,10 @@ section("cfg_acl_table", "CONFIG_DB", "ACL_TABLE|DUI_*")
 section("cfg_acl_rule", "CONFIG_DB", "ACL_RULE|DUI_*")
 section("state_acl", "STATE_DB", "ACL_TABLE_TABLE|DUI_*", "ACL_RULE_TABLE|DUI_*")
 section("crm_acl", "COUNTERS_DB", "CRM:ACL_STATS:INGRESS:*", "CRM:ACL_TABLE_STATS:*")
+# IGMP snooping (the l2mcd series, docs/drivers/sonic.md 8.10): a snooping
+# VLAN's row, its unknown-multicast setting and its static groups, as the
+# CLI and the driver write them. Absent on an image without the series.
+section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP|*", "L2MC_STATIC_MEMBER|*", "L2MC_MROUTER|*")
 
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the

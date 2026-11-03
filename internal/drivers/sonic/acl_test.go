@@ -113,8 +113,9 @@ func TestACLClaimsAndCommandChecks(t *testing.T) {
 			t.Errorf("Start did not check %q: %v", h, r.fr.Helps)
 		}
 	}
-	// No FEATURE|stp on the DX010: every group but spanning-tree's two.
-	if len(r.fr.Helps) != len(commandChecks)-2 {
+	// No FEATURE|stp on the DX010: every group but spanning-tree's two and
+	// the IGMP one (no l2mcd on 202505).
+	if len(r.fr.Helps) != len(commandChecks)-3 {
 		t.Errorf("Start read %d help texts: %v", len(r.fr.Helps), r.fr.Helps)
 	}
 	off := false

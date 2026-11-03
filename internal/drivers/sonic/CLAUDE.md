@@ -153,7 +153,7 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   … description ''` (APPL_DB follows) then `hdel`; the description is read
   from CONFIG_DB only.
 - **Device level (§6.3), `device.go`.** STP is PVST only and only with
-  `FEATURE|stp`; IGMP and DHCP snooping are refused with a log. NTP and
+  `FEATURE|stp`; IGMP snooping only through l2mcd (below). NTP and
   syslog: the controller's list is the switch's -- add what it names,
   remove every other server, a hand-added one too (2026-10-31; until then
   only what the bridge had added). `<state_dir>/sonic-managed.json` still
@@ -489,6 +489,32 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   the next cycle's reconcile after a swss restart -- the loop reconciles
   whether or not the inform was answered (2026-11-02), so a bridge whose own
   informs the MTU breaks still repairs it.
+- **IGMP snooping (`igmp.go`, `docs/drivers/sonic.md` §8.10, end of §8.14;
+  built 2026-11-03) -- only on the repo's 202511 image (`FEATURE|l2mcd`)
+  and only with `options.igmp: on` (off until §8.9 H4, the traffic test with
+  cabled hosts).** Measured on the DX010 by hand the same day: the IGMP traps
+  install, the SAI takes the per-VLAN flag and programs (*,G) entries (the
+  chip's `ipmc table show`); **optimised flood is refused** (the wildcard
+  L2MC entry INVALID_PARAMETER, the VLAN's unknown-multicast group
+  NOT_IMPLEMENTED) and orchagent retries it twice a second while a row says
+  enable, so every `L2MC_SUPPRESS` row is deleted and
+  `forward_unknown_multicast=false` only logged. **l2mcd programs a member
+  only on an oper-up port**; `bcmcmd "port ceN lb=mac"` brings a cage up
+  with no cable (keep that port in a test VLAN only). Writes are whole rows
+  through one `sudo python3 - disunified-l2mc` script (`ConfigDBConnector`,
+  the ops as a JSON string on its last line), never a CLI call per field: a
+  32-port VLAN's reserved groups are 224 rows. **l2mcmgrd reads
+  `L2MC_STATIC_MEMBER`**; `L2MC_STATIC_GROUP` (`static-members@`) is the
+  CLI's bookkeeping, kept in step. **The CLI refuses `vlan member del` of a
+  port a static group names in that VLAN**, so the port plan deletes those
+  rows first (`vlanMembers`), and `ApplyPorts` re-runs `applyIGMP` after
+  the batch; the FixtureRunner models the refusal. `config vlan del` is
+  refused while snooping is on (the driver never deletes a VLAN). Version
+  3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
+  max response) / 2. The querier address has no l2mcd field (queries leave
+  from the VLAN's own address, or 0.0.0.0: the patch in §8.11). Fixture:
+  `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
+  `cfg_l2mc` section) and its `config-help.txt`.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

@@ -93,6 +93,14 @@ type swState struct {
 	// aclCRM the CRM ACL counters: read-only, shared by clones.
 	aclStatus map[string]string
 	aclCRM    table
+
+	// IGMP snooping (igmp.go, §8.10): the image has the l2mcd series
+	// (FEATURE|l2mcd) and the collector reads its tables (cfg_l2mc;
+	// captures before 2026-11-03 lack it); the feature's state; the L2MC,
+	// L2MC_SUPPRESS, static-group and router-port rows by CONFIG_DB key.
+	l2mcKnown   bool
+	l2mcFeature string
+	l2mc        map[string]map[string]string
 }
 
 // lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
@@ -258,6 +266,16 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 		s.aclCRM = db["crm_acl"]
 	}
+	s.l2mc = map[string]map[string]string{}
+	if f, ok := db["cfg_feature"]["FEATURE|l2mcd"]; ok {
+		s.l2mcFeature = f["state"]
+		if _, ok := sec["cfg_l2mc"]; ok {
+			s.l2mcKnown = true
+			for k, v := range db["cfg_l2mc"] {
+				s.l2mc[k] = copyFields(v)
+			}
+		}
+	}
 	if f, ok := db["state_switch_cap"]["SWITCH_CAPABILITY|switch"]; ok {
 		s.switchCap = copyFields(f)
 	}
@@ -298,6 +316,10 @@ func (s *swState) clone() *swState {
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
+		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{},
+	}
+	for k, v := range s.l2mc {
+		c.l2mc[k] = copyFields(v)
 	}
 	for k, v := range s.aclTables {
 		c.aclTables[k] = v.clone()

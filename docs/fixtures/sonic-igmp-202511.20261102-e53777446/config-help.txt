@@ -1,0 +1,436 @@
+@@@ config interface --help
+Usage: config interface [OPTIONS] COMMAND [ARGS]...
+
+  Interface-related configuration tasks
+
+Options:
+  -n, --namespace []  Namespace name
+  -h, -?, --help      Show this message and exit.
+
+Commands:
+  advertised-speeds     Set interface advertised speeds
+  advertised-types      Set interface advertised types
+  autoneg               Set interface auto negotiation mode
+  breakout              Set interface breakout mode
+  buffer                Set or clear buffer configuration
+  cable-length          Set interface cable length
+  dhcp-mitigation-rate  Set interface DHCP rate limit attribute
+  fec                   Set interface fec
+  ip                    Set IP interface attributes
+  ipv6                  Enable or Disable IPv6 processing on interface
+  link-training         Set interface link training mode
+  mpls                  Add or remove MPLS
+  mtu                   Set interface mtu
+  pfc                   Set PFC configuration.
+  shutdown              Shut down interface
+  speed                 Set interface speed
+  startup               Start up interface
+  storm-control         Configure storm-control
+  tpid                  Set interface tpid
+  transceiver           SFP transceiver configuration
+  type                  Set interface type
+  vrf                   Bind or unbind VRF
+  vrrp                  Vrrp configuration
+  vrrp6                 Vrrpv6 configuration
+@@@ config vlan --help
+Usage: config vlan [OPTIONS] COMMAND [ARGS]...
+
+  VLAN-related configuration tasks
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add         Add VLAN
+  del         Delete VLAN
+  dhcp_relay
+  member
+  proxy_arp   Configure proxy ARP for a VLAN
+@@@ config vlan member --help
+Usage: config vlan member [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add VLAN member
+  del  Delete VLAN member
+@@@ config portchannel --help
+Usage: config portchannel [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -n, --namespace []  Namespace name
+  -h, -?, --help      Show this message and exit.
+
+Commands:
+  add          Add port channel
+  del          Remove port channel
+  member
+  retry-count
+@@@ config portchannel member --help
+Usage: config portchannel member [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add  Add member to port channel
+  del  Remove member from portchannel
+@@@ config mirror_session --help
+Usage: config mirror_session [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add     Add ERSPAN mirror session.(Legacy support)
+  erspan  ERSPAN mirror_session
+  remove  Delete mirror session
+  span    SPAN mirror session
+@@@ config mirror_session span --help
+Usage: config mirror_session span [OPTIONS] COMMAND [ARGS]...
+
+  SPAN mirror session
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add SPAN mirror session
+@@@ config interface storm-control --help
+Usage: config interface storm-control [OPTIONS] COMMAND [ARGS]...
+
+  Configure storm-control
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add
+  del
+@@@ config spanning-tree --help
+Usage: config spanning-tree [OPTIONS] COMMAND [ARGS]...
+
+  STP command line
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  disable             disable STP
+  enable              enable STP
+  forward_delay       Configure STP global forward delay
+  hello               Configure STP global hello interval
+  interface           Configure STP for interface
+  max_age             Configure STP global max_age
+  max_hops            Configure STP global max_hops
+  mst                 Configure MSTP region, instance, show, clear &...
+  priority            Configure STP global bridge priority
+  root_guard_timeout  Configure STP global root guard timeout value
+  vlan                Configure STP for a VLAN
+@@@ config spanning-tree interface --help
+Usage: config spanning-tree interface [OPTIONS] COMMAND [ARGS]...
+
+  Configure STP for interface
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  bpdu-guard   Configure STP bpdu guard for interface
+  cost         Configure STP port cost for interface
+  disable      Disable STP for interface
+  edge_port    Enable/Disable edge port on interface
+  enable       Enable STP for interface
+  link-type    Configure STP link type for interface
+  link_type    Configure STP link type for interface
+  portfast     Configure STP portfast for interface
+  priority     Configure STP port priority for interface
+  root-guard   Root guard subcommands under interface
+  root_guard   Configure STP root guard for interface
+  uplink_fast  Configure STP uplink fast for interface
+@@@ config ntp --help
+Usage: config ntp [OPTIONS] COMMAND [ARGS]...
+
+  NTP server configuration tasks
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add NTP server IP
+  del  Delete NTP server IP
+@@@ config syslog --help
+Usage: config syslog [OPTIONS] COMMAND [ARGS]...
+
+  Configure syslog server
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add                   Add object to SYSLOG_SERVER table
+  del                   Delete object from SYSLOG_SERVER table
+  level                 Configure log level
+  rate-limit-container  Configure syslog rate limit for containers
+  rate-limit-feature    Configure syslog rate limit feature
+  rate-limit-host       Configure syslog rate limit for host
+@@@ config snmp community --help
+Usage: config snmp community [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add      Add snmp community string
+  del      Delete snmp community string
+  replace  Replace snmp community string
+@@@ config interface ip --help
+Usage: config interface ip [OPTIONS] COMMAND [ARGS]...
+
+  Set IP interface attributes
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add              Add an IP address towards the interface
+  loopback-action  Set IP interface loopback action
+  remove           Remove an IP address from the interface
+@@@ config route --help
+Usage: config route [OPTIONS] COMMAND [ARGS]...
+
+  route-related configuration tasks
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add  Add route command
+  del  Del route command
+@@@ config dns nameserver --help
+Usage: config dns nameserver [OPTIONS] COMMAND [ARGS]...
+
+  Static DNS nameservers configuration
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add  Add static DNS nameserver entry
+  del  Delete static DNS nameserver entry
+@@@ config clock --help
+Usage: config clock [OPTIONS] COMMAND [ARGS]...
+
+  Configuring system clock
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  date      Set system date and time
+  timezone  Set system timezone
+@@@ config acl --help
+Usage: config acl [OPTIONS] COMMAND [ARGS]...
+
+  ACL-related configuration tasks
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  add     Add ACL configuration.
+  remove  Remove ACL configuration.
+  update  ACL-related configuration tasks
+@@@ config acl add --help
+Usage: config acl add [OPTIONS] COMMAND [ARGS]...
+
+  Add ACL configuration.
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  table  Add ACL table
+@@@ config acl remove --help
+Usage: config acl remove [OPTIONS] COMMAND [ARGS]...
+
+  Remove ACL configuration.
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  table  Remove ACL table
+@@@ config acl add table --help
+Usage: config acl add table [OPTIONS] <table_name> <table_type>
+
+  Add ACL table
+
+Options:
+  -d, --description TEXT
+  -p, --ports TEXT
+  -s, --stage [ingress|egress]
+  -?, -h, --help                Show this message and exit.
+@@@ config acl remove table --help
+Usage: config acl remove table [OPTIONS] <table_name>
+
+  Remove ACL table
+
+Options:
+  -h, -?, --help  Show this message and exit.
+@@@ config --help
+Usage: config [OPTIONS] COMMAND [ARGS]...
+
+  SONiC command line - 'config' command
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  aaa                       AAA command line
+  acl                       ACL-related configuration tasks
+  apply-patch               Apply given patch of updates to Config.
+  asic-sdk-health-event     Configuring asic-sdk-health-event
+  auto-techsupport          AUTO_TECHSUPPORT part of config_db.json
+  auto-techsupport-feature  AUTO_TECHSUPPORT_FEATURE part of config_db.json
+  banner                    Configuring system banner messages
+  bgp                       BGP-related configuration tasks
+  bmp                       BMP-related configuration
+  buffer                    Configure buffer_profile
+  cbf                       CBF-related configuration tasks
+  chassis                   Configure chassis commands group
+  checkpoint                Take a checkpoint of the whole current config...
+  clock                     Configuring system clock
+  console                   Console-related configuration tasks
+  delete-checkpoint         Delete a checkpoint with the specified...
+  dhcp_relay                config DHCP_Relay information
+  dhcpv4_relay
+  dns                       Static DNS configuration
+  dropcounters              Drop counter related configuration tasks
+  ecn                       ECN-related configuration tasks
+  fabric                    FABRIC-related configuration tasks
+  feature                   Configure features
+  fg-nhg                    FG_NHG part of config_db.json
+  fg-nhg-member             FG_NHG_MEMBER part of config_db.json
+  fg-nhg-prefix             FG_NHG_PREFIX part of config_db.json
+  flowcnt-route             Route flow counter related configuration tasks
+  hostname                  Change device hostname without impacting the...
+  igmp-snooping             igmp-snooping configuration tasks
+  interface                 Interface-related configuration tasks
+  interface_naming_mode     Modify interface naming mode for interacting...
+  ipv6                      IPv6 configuration
+  kdump                     Configure the KDUMP mechanism
+  kubernetes                kubernetes command line
+  ldap
+  ldap-server
+  list-checkpoints          List the config checkpoints available.
+  load                      Import a previous saved config DB dump file.
+  load_mgmt_config          Reconfigure hostname and mgmt interface based...
+  load_minigraph            Reconfigure based on minigraph.
+  loopback                  Loopback-related configuration tasks
+  macsec                    MACsec-related configuration tasks
+  mclag
+  member
+  mirror_session
+  mld-snooping              mld-snooping configuration tasks
+  mmu                       mmuconfig configuration tasks
+  muxcable                  Show muxcable information
+  nat                       NAT-related configuration tasks
+  ntp                       NTP server configuration tasks
+  nvgre-tunnel              NVGRE_TUNNEL part of config_db.json
+  nvgre-tunnel-map          NVGRE_TUNNEL_MAP part of config_db.json
+  override-config-table     Override current configDB with input config.
+  passw-hardening           PASSWORD HARDENING part of config_db.json
+  pbh                       Configure PBH (Policy based hashing) feature
+  pfcwd                     Configure pfc watchdog
+  platform                  Platform-related configuration tasks
+  portchannel
+  qos                       QoS-related configuration tasks
+  radius                    RADIUS server configuration
+  rate                      Set port rates configuration.
+  reload                    Clear current configuration and import a...
+  replace                   Replace the whole config with the specified...
+  rollback                  Rollback the whole config to the specified...
+  route                     route-related configuration tasks
+  save                      Export current config DB to a file on disk.
+  serial_console            Configuring system serial-console behavior
+  sflow                     sFlow-related configuration tasks
+  snmp                      SNMP configuration tasks
+  snmpagentaddress          SNMP agent listening IP address, port, vrf...
+  snmptrap                  SNMP Trap server configuration to send traps
+  spanning-tree             STP command line
+  ssh                       Configuring system ssh behavior
+  subinterface              subinterface-related configuration tasks
+  suppress-fib-pending      Enable or disable pending FIB suppression.
+  switch-hash               Configure switch hash feature
+  switch-trimming           Configure switch trimming feature
+  switchport                Switchport mode configuration tasks
+  synchronous_mode          Enable or disable synchronous mode between...
+  syslog                    Configure syslog server
+  tacacs                    TACACS+ server configuration
+  unique-ip                 Configure Unique IP on MCLAG Vlan interface
+  vlan                      VLAN-related configuration tasks
+  vnet                      VNET-related configuration tasks
+  vrf                       VRF-related configuration tasks
+  vxlan
+  warm_restart              warm_restart-related configuration tasks
+  watermark                 Configure watermark
+  yang_config_validation
+  ztp                       Configure Zero Touch Provisioning
+@@@ config feature --help
+Usage: config feature [OPTIONS] COMMAND [ARGS]...
+
+  Configure features
+
+Options:
+  -h, -?, --help  Show this message and exit.
+
+Commands:
+  autorestart  Enable/disable autosrestart of a feature
+  fallback     set fallback for a feature
+  owner        set owner for a feature
+  state        Enable/disable a feature
+@@@ config feature state --help
+Usage: config feature state [OPTIONS] <feature-name> <state>
+
+  Enable/disable a feature
+
+Options:
+  --block         Wait till operation is finished
+  -?, -h, --help  Show this message and exit.
+@@@ config igmp-snooping --help
+Usage: config igmp-snooping [OPTIONS] COMMAND [ARGS]...
+
+  igmp-snooping configuration tasks
+
+Options:
+  -s, --redis-unix-socket-path TEXT
+                                  unix socket path for redis connection
+  -h, -?, --help                  Show this message and exit.
+
+Commands:
+  disable                        Disable for a VLAN
+  enable                         Enable for a VLAN
+  fast-leave                     Configure IGMP snooping fast-leave
+  last-member-query-interval     Last Member Query Interval for a VLAN
+  link_local_groups_suppression  IGMP link local groups suppression
+  mrouter                        Configure IGMP snooping mrouter
+  optimised_multicast_flood      IGMP optimised multicast flood
+  querier                        Configure IGMP snooping querier
+  query-interval                 IGMP Query Interval for a VLAN
+  query-max-response-time        Query Max Response Time for a VLAN
+  static-group                   Configure IGMP snooping static-group
+  version                        IGMP Version
+@@@ config igmp-snooping static-group --help
+Usage: config igmp-snooping static-group [OPTIONS] COMMAND [ARGS]...
+
+  Configure IGMP snooping static-group
+
+Options:
+  -?, -h, --help  Show this message and exit.
+
+Commands:
+  add  Add static-group for VLAN
+  del  Del static-group for VLAN
+@@@ end

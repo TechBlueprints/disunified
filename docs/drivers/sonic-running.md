@@ -36,6 +36,7 @@ the procedure; the device entry is the one in
       known_hosts: /etc/disunified/ssh/known_hosts
       # native_vlan: "4094"          # the VLAN that stands in for UniFi's VLAN 1 (SONiC cannot create VLAN 1)
       # l2d: "off"                   # no RSTP / loop protection through disunified-l2d (on by default)
+      # igmp: "on"                   # IGMP snooping through l2mcd (the series' image only; off until §8.9 H4)
 ```
 
 What is specific to this shape:
@@ -146,7 +147,7 @@ image. Two things do not, and one platform needs help:
 | RSTP, BPDU guard, edge ports, loop protection | yes, through **disunified-l2d** (mstpd built on the switch by the driver; no patch, §4) | yes, the same | yes, the same |
 | Rogue DHCP Server Detection, switch IP ACL rules | yes, the driver's own ACL tables (no patch, §4) | yes | yes |
 | **Port mirroring** | yes: 202505's orchagent binds without asking (verified on the VS; expected on the DX010, not run there) | **no on Broadcom SAIs that answer the capability query wrongly** (the DX010's legacy-TH SAI, Tomahawk-5 per upstream #28139): the CLI refuses, orchagent creates the session unbound; the driver refuses with a note | **yes, verified live on the DX010 2026-11-02**: `sonic-swss 0002` takes the gate out and the chip binds both directions (`sonic.md` §11.10) |
-| **IGMP snooping** | no: community SONiC has no snooping daemon; the driver logs the keys | no | the Micas l2mcd series built in and verified on the virtual switch; **not yet enabled on the DX010, and the driver does not write the keys yet** (§3.3) |
+| **IGMP snooping** | no: community SONiC has no snooping daemon; the driver logs the keys | no | the Micas l2mcd series built in and verified on the virtual switch; on the DX010 the chip takes snooping and group entries and refuses optimised flood (§8.14); the driver writes the keys behind `options.igmp` (§3.3) |
 | **The DX010 itself on 202511** | n/a | **does not run**: orchagent's telemetry query crashes the Tomahawk-1 SAI, the CPLD driver panics kernel 6.12 on its first write, pmon has no platform (no fans, PSUs, temperatures) | runs: the four platform patches (§3.1) |
 | Port isolation, 802.1X, LLDP-MED off, MAC ACL rules | no (refused with a log; MAC rules need an orchagent patch no one has written) | no | no |
 
@@ -240,7 +241,7 @@ The arrival-day procedure for a DX010 is [`sonic.md`](sonic.md) §3; what the
 first install on the hardware exposed (two failed boots and their cause,
 the CPLD watchdog, the trace that found it) is §8.14.
 
-### 3.3 Status on the DX010, 2026-11-02
+### 3.3 Status on the DX010, 2026-11-03
 
 - Running: `igmp-202511.20261102-e53777446`, the full series of §3.1
   (installed and confirmed 2026-11-02 evening; port mirroring verified on
@@ -251,10 +252,17 @@ the CPLD watchdog, the trace that found it) is §8.14.
   `USWF07D`, the bridge on the switch (§2). Every image the unit has run,
   with checksums and manifests, is kept on the deployment host.
 - IGMP snooping: in the image, `l2mcd` shipped disabled, verified on the
-  virtual switch with two test hosts (§8.14 V1-V7); the hardware steps
-  (§8.9 H2-H5) and the driver's write path for the controller's
-  `igmp_*` keys (§8.10) are not done, so the driver does not claim the
-  feature and UniFi does not offer it yet.
+  virtual switch with two test hosts (§8.14 V1-V7). **On the DX010
+  (2026-11-03, §8.14 H2-H3):** the IGMP traps install, the Tomahawk-1 SAI
+  accepts the per-VLAN snooping flag and programs a (*,G) group entry into
+  the chip's IPMC table (`ipmc table show`, `mc show` and
+  `show igmp-snooping groups` agree), and it **refuses optimised flood**
+  (unknown multicast to the router ports only). H4 (traffic between two
+  hosts) waits for test hosts cabled to the switch; nothing of the test was
+  saved, and `l2mcd` is disabled again. The driver writes the controller's
+  snooping settings (§8.10) behind **`options.igmp: on`**, off by default
+  until H4 passes; with it off, nothing is claimed and the keys are only
+  logged.
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
   DX010; confirmations there are due. The mirror finding is on #28139,
   where the egress result (both directions bind) still needs adding.

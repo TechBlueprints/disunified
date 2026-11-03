@@ -52,6 +52,11 @@ are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 2026-11-01 from the ECS's and the DX010's captured pushes and verified live
 on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`);
 MAC ACL rules need an orchagent patch and are refused.
+IGMP snooping runs through l2mcd on the repo's 202511 image: the chip half
+verified by hand on the DX010 2026-11-03 (group entries program, optimised
+flood is refused by the SAI), the driver's write path built behind
+`options.igmp: on`, off until the traffic test with cabled hosts
+(`docs/drivers/sonic.md` §8.14).
 **Since 2026-11-02 the DX010's bridge runs on the switch itself**
 (`options.transport: local`, a `.deb` whose config and state live in
 `/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two

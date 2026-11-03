@@ -34,6 +34,8 @@ type FixtureRunner struct {
 	// SNMPYmlScripts are the /etc/sonic/snmp.yml rewrites, as sent; the
 	// capture's snmp_yml section is the file (§10.1).
 	SNMPYmlScripts []string
+	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
+	L2MCScripts []string
 	// DialFails makes a runner from Dial fail its first command, as a
 	// switch that does not answer at the new address would.
 	DialFails bool
@@ -181,6 +183,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		in.Deadman = "inactive"
 		f.setL2Inst(in)
 		return "", nil
+	case command == l2mcCommand:
+		f.Commands = append(f.Commands, command)
+		f.L2MCScripts = append(f.L2MCScripts, stdin)
+		return "", f.applyL2MCScript(stdin)
 	case command == snmpYmlCommand:
 		f.Commands = append(f.Commands, command)
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
@@ -384,6 +390,10 @@ func (f *FixtureRunner) apply(line string) error {
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
 		return f.applyDevice(w)
 
+	case len(w) == 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && w[2] == "del" && strings.HasPrefix(w[3], "L2MC"):
+		return f.l2mcDel(w[3])
+	case len(w) == 5 && cmd == "config feature state":
+		return f.featureState(w[3], w[4])
 	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_RULE|"):
 		return f.aclRuleWrite(w)
 	case cmd == "config acl add" && at(3) == "table":
@@ -807,6 +817,9 @@ func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error
 	case "del":
 		if _, ok := members[k]; !ok {
 			return fmt.Errorf("%s is not a member of Vlan%s", port, vid)
+		}
+		if f.staticNames(vid, port) {
+			return fmt.Errorf("Batch delete failed: Port %s cannot be removed from Vlan%s. Please remove all associated static Layer 2 multicast group entries first.", port, vid)
 		}
 		return f.update("cfg_vlan_member", func(t table) error { delete(t, k); return nil })
 	}

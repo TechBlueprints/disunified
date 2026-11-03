@@ -112,6 +112,11 @@ type Collector struct {
 	// (logged by the next collect).
 	acl        aclWant
 	aclWritten bool
+	// IGMP snooping through l2mcd (igmp.go): off unless options.igmp is on
+	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
+	// and the snooping intent of the last push.
+	IGMP bool
+	igmp igmpWant
 	// sshFrom / sshTo are the last collect's SSH connection as the switch
 	// saw it (collect.py's ssh section): the bridge's address and the
 	// switch address it dialled; "" when not reported.
@@ -183,7 +188,9 @@ func (c *Collector) Close() error {
 // DHCP snooping (as hardware DHCP guarding) and IP ACL rules through the
 // driver's own ACL tables wherever the collector reads them (§11.7.5); MAC
 // ACL rules never (no L2 table type in the stock orchagent). IGMP
-// snooping, LLDP-MED and isolation never: community SONiC has none of them.
+// snooping, advanced (querier, timers, reserved groups) as the ECS claims
+// it, through l2mcd on an image with the series when options.igmp is on
+// (igmp.go). LLDP-MED and isolation never: community SONiC has neither.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	caps := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
 	c.mu.Lock()
@@ -198,6 +205,9 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	}
 	if st != nil && st.aclKnown {
 		caps.DHCPSnooping, caps.IPACLs = true, ipACLRules
+	}
+	if c.igmpOn(st) {
+		caps.IGMPSnooping, caps.IGMPSnoopingAdvanced = true, true
 	}
 	return caps
 }
@@ -235,8 +245,8 @@ var redisSections = []string{
 // §11.4, the hardware tables; §11.5, disunified-l2d's tables; §11.7.5, the
 // driver's ACL tables); the captures before that lack them, which reads as
 // empty. state_switch_cap (the SAI's SWITCH_CAPABILITY, §11.8) joined on
-// 2026-11-02.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap"}
+// 2026-11-02, cfg_l2mc (IGMP snooping's tables, §8.10) on 2026-11-03.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
@@ -298,6 +308,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
 		l2System(&sys, db, now)
 	}
+	sys.IGMPSnooping = igmpReport(db["cfg_l2mc"], c.NativeVLAN)
 	if sys.MACTableCapacity == 0 {
 		sys.MACTableUsed = len(macs) // CRM's count goes with its capacity
 	}
