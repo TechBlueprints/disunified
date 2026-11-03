@@ -485,8 +485,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   driver writes both with the ports' MTU -- the CONFIG_DB field and `ip
   link set dev Vlan<id> mtu`, capped at the Bridge's MTU -- diffed against
   CONFIG_DB and `ip -j addr`'s `mtu`. The kernel half is lost on a swss
-  restart or reboot; the start-up reconcile restores it after a reboot, but
-  a swss restart under a running on-switch bridge is not covered (open, §12).
+  restart or reboot; the start-up reconcile restores it after a reboot, and
+  the next cycle's reconcile after a swss restart -- the loop reconciles
+  whether or not the inform was answered (2026-11-02), so a bridge whose own
+  informs the MTU breaks still repairs it.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

@@ -325,11 +325,25 @@ func (l *Loop) Run(ctx context.Context) {
 // queued for a device nobody has adopted. It is logged on transition only.
 // The ADOPTING -> CONNECTED transition is taken when a reply arrives to an
 // inform that was *sent* adopted, so the state is sampled before Apply.
+//
+// The cycle reconciles whether or not the controller answered: a failed
+// POST, an unreadable reply or an error status must not leave the device
+// drifting from the last applied push. The bridge on a SONiC switch found
+// it (2026-11-02): a swss restart recreated the VLAN netdevs at an MTU the
+// uplink could not carry, every inform from then on failed, and the
+// reconcile that would have restored the MTU ran only after an answered
+// inform. The reconcile is a diff, so a converged device costs nothing.
 func (l *Loop) informOnce(ctx context.Context) {
 	l.collect(ctx)
 	if l.stale() {
 		return
 	}
+	replied := false
+	defer func() {
+		if !replied && ctx.Err() == nil {
+			l.reconcile(ctx)
+		}
+	}()
 	now := time.Now()
 	enc, err := l.session.EncodeInform(now)
 	if l.cfg.RecordDir != "" {
@@ -480,6 +494,7 @@ func (l *Loop) informOnce(ctx context.Context) {
 	if connectedNow && l.cfg.OnConnected != nil {
 		l.cfg.OnConnected(l.session.Snapshot())
 	}
+	replied = true
 	l.cyclePorts(ctx)
 	if !l.applyPending(ctx) {
 		l.reconcile(ctx)

@@ -3559,11 +3559,13 @@ to CONFIG_DB and 9100 to the netdev). A VLAN `EnsureVLANs` makes behind
 ports at another MTU is made with theirs in the same batch; its netdev
 follows on the next apply. The kernel half does not survive a swss restart
 or a reboot (the netdevs are recreated at 9100). After a reboot the
-bridge's start-up reconcile (before its first inform) restores it. **Open:**
-a swss restart while the bridge keeps running leaves the netdevs at 9100
-and the informs failing, and the loop reconciles only after an answered
-inform, so nothing restores them until the bridge restarts. What
-UniFi's own SONiC (the ECS) keeps in `VLAN|…` `mtu` is not in any capture.
+bridge's start-up reconcile (before its first inform) restores it, and so
+does the next cycle after a swss restart under a running bridge: since
+2026-11-02 the loop reconciles every cycle whether or not the controller
+answered the inform (`informloop.Loop.informOnce`; until then it reconciled
+only after an answered one, so a bridge whose informs the netdev MTU had
+broken could never repair it). What UniFi's own SONiC (the ECS) keeps in
+`VLAN|…` `mtu` is not in any capture.
 
 ## Sources
 

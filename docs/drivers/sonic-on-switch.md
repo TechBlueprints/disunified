@@ -504,10 +504,12 @@ written to CONFIG_DB and to the netdev (vlanmgrd never applies the table's
 field to the kernel). Landed in main the same evening. The on-box
 bridge's start-up reconcile (`informloop.Loop.Run` reconciles before the
 first inform) applies it on the next service start, so installing the deb
-built from that commit is the whole repair. **Open:** a swss restart
-under a running on-box bridge recreates the netdevs at 9100 and the loop
-reconciles only after an answered inform; `PartOf=swss.service` or a
-reconcile after N failed informs would close it.
+built from that commit is the whole repair. The same evening the loop was
+changed to reconcile every cycle whether or not the controller answered
+(`informloop.Loop.informOnce`): a swss restart under a running on-box
+bridge recreates the netdevs at 9100 and breaks the bridge's own informs,
+and until then the reconcile that restores them ran only after an answered
+inform. Now the next cycle restores them.
 
 Steps 4-5 of §10 ran once that deb was installed: the start-up reconcile
 logged the VLAN MTU batch (0 ports changed), the next inform was answered
