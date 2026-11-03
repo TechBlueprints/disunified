@@ -320,3 +320,105 @@ cage 2 split, the replay of the child's push through the parent's plan
 (the PortChannel on lanes 1-3, the fourth lane plain), and the live run
 on a free cage with a breakout DAC to a bonded host.
 
+
+### 6.7 The placement capture, planned (2026-11-02)
+
+One run that answers all four questions of §6.6, plus shape 1's first
+question (§5.1) for free. Nothing on any switch is changed; the only
+writes are reported values and one adoption that is forgotten afterwards.
+
+**What is already known, which lowers the stakes.** A bridged switch's
+*reported* MAC table does place another bridged device: the Podman host
+(a bridge) was placed under its Proxmox node's VM port on 2026-09-27, and
+that port's MAC table is what the proxmox driver reports from guest tags,
+not a hardware FDB (`CLAUDE.md` §1). What is unproven is narrower: a MAC
+with no other trace on the LAN (no ARP entry, no lease, no client record),
+and an address shared with the parent.
+
+**The parent for the run is whichever bridged switch is cheapest to
+redeploy with an idle cage**, since the controller's behaviour is the same
+for any parent. The DX010's bridge runs on the switch itself (a `.deb`
+rebuild and install per change, `sonic-on-switch.md`); the Arista's runs
+in the container, whose redeploy is routine (ships `HEAD`, bounces every
+bridged device for about a minute), and the Arista has a down QSFP cage
+named as a test port in `local-information/site.md`. Use the Arista. The
+knob is generic, so the DX010 gets it without a rebuild for the test.
+
+**Pieces to build** (real code, kept):
+
+1. **A reported child, vendor-neutral**, in the loop, not in a driver: a
+   per-device config list `children: [{port: N, mac: M, name: X}]`
+   (loaded like `control`). Before the snapshot is rendered, port N's
+   `MACs` gains `{M, native VLAN, N, now}` and, when the port has no LLDP
+   neighbour of its own, `Port.Neighbor` becomes `{ChassisID: M,
+   SystemName: X, PortID: "eth0", IsBridge: true}`; a port that already
+   has a neighbour is logged and left alone. One line in the start log
+   per child. This is the parent half of shape 2 itself, not a test hook.
+2. **A `stub` driver** (`internal/drivers/stub`): read-only, `Collect`
+   returns a snapshot described in a file named by `options.snapshot`
+   (ports with index, up, speed, media, speed caps, FEC, optic present;
+   the device's hostname, serial, version), with the UPS driver's
+   `options.mac`, `netmask`, `gateway_mac` for identity and
+   reachability. No `Controller` interface, so no push can write
+   anything; a pushed `system_cfg` is logged and recorded in the reply
+   log as on every device. Documented as the instrument for UI and
+   controller experiments (the 75000-speed question of §5.1 is its
+   second job); `docs/adding-a-device.md` gets a line.
+3. **The Mac-side config** `config.local.stub.yaml` (gitignored by
+   pattern): `model: USFXG`, five ports -- 1..4 the lanes (SFP28, 25000,
+   caps 10G/25G, FEC rs-fec, up on 1..3, port 4 up with no neighbour),
+   5 the uplink (QSFP28, 100000, `is_uplink`); MAC M locally
+   administered; `connect_request_ip`, netmask and `gateway_mac` the
+   parent's. A second snapshot file for the 2x50G look (two lanes, two
+   empty) and a third for §5.1 (one port at 75000).
+
+**Procedure** (site addresses, names, the cage and M live in
+`local-information/`; the results come back here scrubbed):
+
+1. Build, `go test ./...`, `scripts/check-site-info.sh --staged`, commit
+   on `main` (the container ships `HEAD`).
+2. Add `children: [{port: <idle cage>, mac: M, name: <stub name>}]` to
+   the Arista's entry in the deployed `config.yaml`; redeploy; confirm
+   from the state volume's `payload-last.json` that the cage's
+   `mac_table` and `lldp_table` carry M.
+3. Start the stub from the Mac (`config.local.stub.yaml`; a Mac
+   instance is otherwise forbidden and this one is stopped at the end);
+   it goes pending; adopt it by exact MAC with `cmd/devmgr adopt`, never
+   Adopt All.
+4. Watch the stub's `rest/device` record for `uplink.uplink_mac` and
+   `uplink_remote_port` (the UPS was placed 20 s after CONNECTED, the
+   UPS 2U Pro in 40 s; give it five inform cycles). Save the stub's and
+   the parent's records before and after (scrubbed) -- the parent's must
+   be unchanged, and the stub's `ip` is the parent's.
+5. Which half places: restart the parent with the LLDP entry only, then
+   with the MAC entry only (two more redeploys, about a minute each);
+   record whether the placement is kept, lost, or regained.
+6. The UI walk, in Clint's Chrome tab: device overview (parent, picture,
+   uplink), Ports list, a lane's port drawer (speed picker, FEC, media),
+   the uplink's drawer, the two-empty-ports snapshot. Screenshots to
+   `local-information/`, findings to §6.6.
+7. The aggregate: on the stub's Ports, mark 2-4 Aggregate (the UI
+   decides whether a USFXG with our `switch_caps` offers it); the pushed
+   `system_cfg` lands in the reply log -> scrubbed into
+   `docs/fixtures/controller-<ver>/system_cfg-flexxg-aggregate.txt`;
+   undo in the UI. Then the §5.1 snapshot: one inform at 75000, what the
+   drawer and list print.
+8. Teardown: forget the stub (`cmd/sitemgr delete-device`, exact MAC),
+   stop the Mac instance, remove `children:` from the deployed config and
+   redeploy, delete the stub's state dir. Write the outcome into §6.6,
+   `docs/topology-placement.md` (a new fact either way) and the support
+   matrix.
+
+**Outcomes.** Placed with both entries: shape 2 is live; step 5 says
+which entry the real feature must carry (it will carry both). Placed by
+the MAC entry alone or the LLDP entry alone: the same, noted. Not placed
+at all, with the fields verified in the record as the UPS's were: shape
+2 is dead and shape 1 stands, and the run has still answered §5.1.
+
+**Guards.** The stub cannot write (no `Controller`); the parent's knob
+adds reported entries and nothing else; the UI edit in step 7 is on the
+stub only; adopting M deletes no client record (M was never a client);
+the redeploys bounce every bridged device for about a minute, three
+times in all (steps 2, 5, 8 -- step 5 twice). The one real-network risk
+is the UI aggregate edit landing on the wrong device: the Ports page must
+be the stub's.
