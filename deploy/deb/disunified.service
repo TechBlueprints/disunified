@@ -1,0 +1,17 @@
+[Unit]
+Description=disunified bridge: this device as an adopted UniFi switch
+Documentation=https://github.com/TechBlueprints/disunified
+# On SONiC: the Redis databases and swss must be up before a collect can
+# succeed; Start retries with backoff anyway (main.go).
+After=network-online.target database.service swss.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/sbin/disunified -config /etc/disunified/config.yaml
+EnvironmentFile=-/etc/disunified/env
+WorkingDirectory=/etc/disunified
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+#!/bin/sh
+# disunified's postrm: purge removes what postinst made on a SONiC host --
+# the drop-in and the /etc/disunified symlink -- and never /host/disunified
+# (the config, the API key, the adopted state).
+set -e
+
+case "$1" in
+purge)
+    rm -rf /etc/systemd/system/disunified.service.d
+    if [ -L /etc/disunified ]; then rm -f /etc/disunified; fi
+    ;;
+esac
+if [ -d /run/systemd/system ]; then systemctl daemon-reload >/dev/null 2>&1 || true; fi
+exit 0

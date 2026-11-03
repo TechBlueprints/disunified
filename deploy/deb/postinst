@@ -1,0 +1,27 @@
+#!/bin/sh
+# disunified's postinst: runs on install and upgrade (and on a SONiC
+# image's first boot, when rc.local installs the deb carried into the new
+# image's platform directory: docs/drivers/sonic-on-switch.md §5).
+set -e
+
+case "$1" in
+configure) ;;
+*) exit 0 ;;
+esac
+
+if [ -f /host/machine.conf ]; then            # a SONiC host: persist in /host
+    u=admin                                   # SONiC's login user
+    [ -d /host/disunified ] || install -d -m 0700 -o "$u" -g "$u" /host/disunified
+    [ -e /etc/disunified ] || ln -s /host/disunified /etc/disunified
+    install -d /etc/systemd/system/disunified.service.d
+    printf '[Service]\nUser=%s\nGroup=%s\n' "$u" "$u" > /etc/systemd/system/disunified.service.d/sonic.conf
+fi
+systemctl enable disunified >/dev/null 2>&1 || true
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    # Start only with a config in place: a fresh install has none yet.
+    # --no-block: on a SONiC first boot this runs inside rc.local, and a
+    # restart that waited for swss (After=) could wait on rc.local itself.
+    if [ -f /etc/disunified/config.yaml ]; then systemctl --no-block restart disunified; fi
+fi
+exit 0

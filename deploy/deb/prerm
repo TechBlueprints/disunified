@@ -1,0 +1,12 @@
+#!/bin/sh
+# disunified's prerm: stops the service when the package goes (an upgrade
+# leaves it running; the new postinst restarts it).
+set -e
+
+case "$1" in
+remove|deconfigure)
+    if [ -d /run/systemd/system ]; then systemctl stop disunified >/dev/null 2>&1 || true; fi
+    systemctl disable disunified >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0

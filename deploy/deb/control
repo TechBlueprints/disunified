@@ -1,0 +1,10 @@
+Package: disunified
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: TechBlueprints <https://github.com/TechBlueprints/disunified>
+Section: net
+Priority: optional
+Depends: systemd
+Description: presents a non-UniFi device to a UniFi Network controller as an adopted UniFi switch
+ Independent project, not affiliated with or endorsed by Ubiquiti Inc.
+ On a SONiC switch, run it on the switch itself: docs/install.md.

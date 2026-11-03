@@ -3,7 +3,9 @@
 #   push of a tag v*  -> ghcr.io/techblueprints/disunified:v1.2.3, :1.2.3,
 #                        :1.2 and :latest (a prerelease, v1.2.3-rc1, gets only
 #                        its own tag), plus a GitHub release with the static
-#                        binaries and their checksums
+#                        binaries, the .debs (linux/amd64, linux/arm64: the
+#                        bridge on a SONiC switch, docs/install.md §7) and
+#                        their checksums
 #   push to main      -> :edge and :edge-<sha>, for testing before a release
 #
 # Both platforms (linux/amd64, linux/arm64) come from one Go cross-compile per
@@ -105,7 +107,15 @@ jobs:
             tar -C dist -czf "dist/disunified-$VERSION-$os-$arch.tar.gz" disunified
             rm dist/disunified
           done
-          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
+        env:
+          VERSION: ${{ needs.image.outputs.version }}
+
+      - name: Build the .debs
+        run: |
+          set -eu
+          for arch in amd64 arm64; do ./scripts/build-deb.sh "$arch"; done
+          rm -rf dist/deb   # the staged trees; the packages are in dist/
+          (cd dist && sha256sum ./*.tar.gz ./*.deb > SHA256SUMS)
         env:
           VERSION: ${{ needs.image.outputs.version }}
 
@@ -126,6 +136,8 @@ jobs:
             echo "[deploy/](https://github.com/$GITHUB_REPOSITORY/tree/$VERSION/deploy)."
             echo
             echo "The binaries below are static; no runtime dependencies."
+            echo
+            echo "On a SONiC switch: the \`.deb\`, [docs/install.md §7](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/install.md#7-on-a-sonic-switch)."
             if [ -n "$prev" ]; then
               echo
               echo "Changes: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$VERSION"

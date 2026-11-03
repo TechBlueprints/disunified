@@ -26,6 +26,24 @@ jobs:
       - name: The checker's own rules (e-mail addresses, SSH key comments)
         run: ./scripts/check-site-info_test.sh
 
+  deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git describe, for the package version
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the amd64 .deb and list it (a broken control file fails here, not in a release)
+        run: |
+          set -eu
+          ./scripts/build-deb.sh amd64
+          deb=$(ls dist/disunified_*_amd64.deb)
+          dpkg-deb -I "$deb"
+          dpkg-deb -c "$deb"
+
   image:
     runs-on: ubuntu-latest
     steps:
