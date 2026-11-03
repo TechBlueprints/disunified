@@ -199,7 +199,7 @@ two SONiC-specific things when it sees `/host/machine.conf`.
 | Path | From | Survives an image install? |
 |---|---|---|
 | `/usr/sbin/disunified` | the deb | no -- reinstalled (§5) |
-| `/lib/systemd/system/disunified.service` | the deb | no -- reinstalled |
+| `/usr/lib/systemd/system/disunified.service` | the deb | no -- reinstalled |
 | `/etc/systemd/system/disunified.service.d/sonic.conf` (`User=`/`Group=` the login user) | postinst on SONiC | no -- postinst re-creates it |
 | `/etc/disunified` → `/host/disunified` (symlink) | postinst on SONiC | no -- postinst re-creates it |
 | `/host/disunified/config.yaml` | the operator (§8) | **yes** |
@@ -253,6 +253,13 @@ systemctl enable disunified >/dev/null 2>&1 || true
 if [ -f /etc/disunified/config.yaml ]; then systemctl restart disunified; fi
 ```
 
+As built (`deploy/deb/postinst`), the script acts only on `configure`,
+reloads and restarts only when systemd is running (`/run/systemd/system`),
+and restarts with `--no-block`: on an image's first boot it runs inside
+`rc.local`, and a blocking restart of a unit ordered after swss could wait
+on rc.local itself. The unit ships in `/usr/lib/systemd/system` (trixie is
+merged-`/usr`).
+
 `prerm` stops the service on remove; `postrm purge` removes the drop-in and
 the symlink, never `/host/disunified`. On a non-SONiC Debian the deb is a
 plain service as root with `/etc/disunified/` as a directory the operator
@@ -274,9 +281,10 @@ Description: presents a non-UniFi device to a UniFi Network controller as an ado
  On a SONiC switch, run it on the switch itself: docs/install.md.
 ```
 
-The version is the tag without `v` (`1.2.3`), or `0.0.0+<yyyymmdd>.<sha>`
-for an untagged build (there is no tag yet; Debian versions sort these
-below any `1.x`). `-X main.buildVersion` carries the same string.
+The version is the tag without `v` (`1.2.3`; a prerelease `v1.2.3-rc1`
+becomes `1.2.3~rc1`, below `1.2.3`), `<tag>+<yyyymmdd>.<sha>` for a build
+after a tag, or `0.0.0+<yyyymmdd>.<sha>` when there is no tag at all
+(there is none yet; Debian versions sort these below any `1.x`). `-X main.buildVersion` carries the same string.
 
 ## 5. Surviving an image install: why rc.local's first boot, not the image kit
 

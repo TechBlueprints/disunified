@@ -113,3 +113,18 @@ devices:                             # "switches:" is still accepted (the pre-re
       gateway: 192.0.2.1             # written with a static address: the controller's push for a UPS carries no route
     control:
       outlets: "3,4"                 # the switched groups (rows 3-4); the main groups (1-2) are refused regardless
+
+  - name: sonic-1                    # a community SONiC switch (docs/drivers/sonic.md)
+    driver: sonic                    # Redis tables read through swsscommon, one SSH exec per poll; writes via `config`
+    ssh: admin@192.0.2.10            # the login user (passwordless sudo) and the switch's in-band address
+    model: USWF07D                   # ECS Core, 32 ports
+    options:
+      ssh_key: /etc/disunified/ssh/id_ed25519
+      known_hosts: /etc/disunified/ssh/known_hosts
+      # native_vlan: "4094"          # the SONiC VLAN that stands in for UniFi's VLAN 1 (SONiC cannot create VLAN 1)
+      # l2d: "off"                   # no spanning tree / loop protection through disunified-l2d (on by default)
+      # transport: local             # the bridge runs on the switch itself (the .deb, docs/install.md §7):
+      #                              # commands run locally as the service's user, which must be the user in
+      #                              # ssh:; ssh_key/known_hosts are then ignored, and state_dir is /host/disunified
+      # probe: 192.0.2.1:8080        # host:port the switch must keep reaching; with transport local it proves an
+      #                              # address move and the first STP enable (default: the controller's inform host:port)

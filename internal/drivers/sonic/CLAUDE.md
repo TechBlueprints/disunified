@@ -455,6 +455,26 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   gateway/prefix CIDR. Fixtures: `collect-acl.txt` (with the `ssh`
   section), and the DX010's own `config-help.txt` beside it (the older
   DX010 captures' rigs still borrow the VS's).
+- **On the switch itself (`options.transport: local`, built 2026-11-02;
+  `docs/drivers/sonic-on-switch.md`).** `sshrun.Local` runs every command
+  through `bash -c` as the service's own user, and **that user must be the
+  one `ssh:` names** (`Open` checks `user.Current()`): the keys script
+  writes `$HOME/.ssh/authorized_keys` and `collect.py` reads the managed
+  block from `$HOME`. `ssh:`'s host stays the switch's own in-band address
+  (reported, and where a move starts). Nothing is dialled, so **the probe
+  is the proof**: `options.probe` (main fills it from the inform URL's
+  host:port for every driver; sonic uses it only on `local`) gets a TCP
+  connect bound to the new address in `ApplyAddress` and an unbound one in
+  `confirmL2` before the dead-man cancel; a failure undoes or keeps the
+  timer, as a failed dial does. Without `SSH_CONNECTION` `collect.py`'s
+  `ssh` section is empty, so the ACL hold takes the probe's host as the far
+  end. **Only `/host` and `/etc/sonic` survive an image install**: the
+  config, `env` and state live in `/host/disunified` (`/etc/disunified` is
+  postinst's symlink to it), and the package comes back because
+  **`rc.local`'s first boot installs every deb in the new image's
+  `platform/<platform>/`** -- the upgrade script copies
+  `/host/disunified/disunified_*.deb` there. postinst restarts with
+  `--no-block` for that reason: it runs inside rc.local.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

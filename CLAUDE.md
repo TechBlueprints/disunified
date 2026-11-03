@@ -71,7 +71,7 @@ reply, and the reported address following an applied move
 | `internal/informloop` | collect → inform → apply pending → reconcile | apply is a diff; reconcile runs every cycle |
 | `internal/unifimodel` | choose the UniFi model from the port layout | `docs/unifi-models.md` |
 | `internal/unifiapi` | controller REST API: naming, seeding port/outlet overrides, `PowerPath` for `usp` records | touches only controller-default names and unconfigured overrides |
-| `internal/sshrun` | the SSH transport the host drivers share (`Runner`, `SSH`, `ShellQuote`) | drivers take a `Runner` so tests serve captures |
+| `internal/sshrun` | the SSH transport the host drivers share (`Runner`, `SSH`, `ShellQuote`), and `Local` for a bridge on the device itself | drivers take a `Runner` so tests serve captures |
 | `internal/nutd` | the NUT server behind a UPS's "NUT Server" switch (read-only upsd protocol) | driven only by the controller's `nutserver.*` push |
 | `docs/` | protocol notes, `drivers/<name>.md`, feature map, `support-matrix.md` (verified/untested per driver; every gap says what a PR needs), fixtures | scrub fixtures with `scripts/sanitize-<driver>.py` / `sanitize-controller.py` |
 

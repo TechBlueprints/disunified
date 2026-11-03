@@ -3521,6 +3521,20 @@ two cabled devices on the DX010 (a sender on the source cage, a capture
 host on the destination); the SDK's mirror table is the proof available
 without them.
 
+## 12. The bridge on the switch itself (2026-11-02)
+
+Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH
+through the very links it configures is a dependency to remove: the bridge
+runs **on** the switch as a systemd service from a `.deb`, executing the
+driver's commands locally (`options.transport: local`, `sshrun.Local`) as
+the login user, with its config, API key and state in `/host/disunified`.
+With nothing to dial, an address move and the first STP enable are proven
+by a TCP connection to `options.probe` (the controller's inform host:port
+by default), and the deb rides SONiC's own first-boot install across an
+image upgrade. The specification, the verification plan and the cutover
+are [`sonic-on-switch.md`](sonic-on-switch.md); the install steps are
+[`docs/install.md`](../install.md) §7. Over SSH nothing changed.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>

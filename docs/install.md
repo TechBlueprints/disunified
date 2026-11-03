@@ -198,6 +198,87 @@ off on every network not enabled in UniFi). Read
 and the controller never showed the device as disconnected for more than
 one inform interval.
 
+## 7. On a SONiC switch
+
+A SONiC switch can run its own bridge, as a systemd service on the switch,
+instead of being reached over SSH from somewhere behind its own links
+(the design: [`docs/drivers/sonic-on-switch.md`](drivers/sonic-on-switch.md)).
+The bridge then runs as the login user (`admin`), executes the driver's
+commands locally (`options.transport: local`) and keeps its config, API key
+and state under `/host/disunified`, which survives an image install.
+
+1. **Get the deb.** From a release: `disunified_<version>_amd64.deb` (the
+   DX010 and most SONiC switches are x86_64; `arm64` for an Arm one). Or
+   build it: `scripts/build-deb.sh amd64` writes `dist/disunified_*.deb`;
+   on a host without `dpkg-deb` (a Mac) it stages the tree and prints the
+   one `dpkg-deb` command to run on the switch, which has it.
+2. **Install it** on the switch, and keep the file beside the config:
+
+   ```sh
+   scp disunified_<version>_amd64.deb admin@192.0.2.10:
+   ssh admin@192.0.2.10
+   sudo dpkg -i disunified_<version>_amd64.deb
+   cp disunified_<version>_amd64.deb /host/disunified/
+   ```
+
+   The package installs `/usr/sbin/disunified` and the unit, enabled but not
+   started (there is no config yet). On SONiC (`/host/machine.conf`) its
+   postinst also makes `/host/disunified` (owner `admin`, mode 0700), links
+   `/etc/disunified` to it and adds a drop-in that runs the service as
+   `admin`. On another Debian the service runs as root and `/etc/disunified`
+   is a directory you create (not verified).
+3. **Write the two files** in `/host/disunified`, as `admin`:
+   `config.yaml` (the sonic entry below; `state_dir: /host/disunified`) and
+   `env` (mode 0600) with `DUI_UNIFI_API_KEY=…` and nothing else.
+
+   ```yaml
+   controller:
+     host: 192.0.2.1
+     api_url: https://unifi.example.net
+     api_key_env: DUI_UNIFI_API_KEY
+     site: default
+
+   state_dir: /host/disunified
+
+   devices:
+     - name: dx010
+       driver: sonic
+       ssh: admin@192.0.2.10      # the user the service runs as, and the switch's in-band address
+       model: USWF07D
+       options:
+         transport: local         # exec on this switch; no key, no known_hosts
+         # probe: 192.0.2.1:8080  # default: the controller's inform host:port
+   ```
+
+   `ssh:` must name the user the service runs as (`admin`), or the driver
+   refuses to start. `options.probe` is the address the switch must keep
+   reaching: with nothing to dial, an address move is proven by a TCP
+   connection to it from the new address, and the first spanning-tree
+   enable by one from anywhere. The bridge fills it from the controller's
+   inform address; set it only to point elsewhere.
+4. **Check it before it informs:** as `admin`,
+   `disunified -config /host/disunified/config.yaml -collect-once` prints
+   the switch's snapshot (ports, VLANs, addresses -- the configured one
+   first) and sends nothing to the controller.
+5. **Start it:** `sudo systemctl start disunified`, then
+   `journalctl -u disunified -f`. A device already adopted from another
+   bridge keeps its key when its `state/<name>/device.json` is copied into
+   `/host/disunified/state/<name>/` first (and that bridge is stopped: one
+   running bridge per adopted key).
+
+**Check:** `systemctl is-active disunified` says `active`, the log says
+`transport local: commands run on this switch as admin` and, for an adopted
+device, `resuming adopted state`; the controller shows the switch connected.
+
+**Image installs.** Only `/host` and `/etc/sonic` survive a SONiC image
+install; the package itself is in the image's overlay and does not. SONiC
+installs every deb found in the new image's `platform/<platform>/`
+directory on its first boot (`rc.local`), so an upgrade that copies
+`/host/disunified/disunified_*.deb` there before rebooting brings the
+bridge back with its config and state (`sonic-on-switch.md` §5). Keep
+exactly one deb in `/host/disunified`: the one installed. Updating the
+bridge is `sudo dpkg -i` of the new deb and replacing that file.
+
 ## Troubleshooting
 
 - Device never appears: the inform URL must contain an IP literal, and the

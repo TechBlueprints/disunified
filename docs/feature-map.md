@@ -301,7 +301,7 @@ would do it inside the same commit-timer session, confirming once the lease is f
 | Remote syslog host → the card | `syslog.remote.*` → `config.ini` syslog section over FTP, the apc-pdu write (`internal/drivers/apcnmc`) | **done, verified live** 2026-10-30, no key: AOS 6.0.1 spells the section `[NetworkSYSLOG]` too (plus `Protocol`/`Language` slots), with syslog on and every server empty; one upload, the card's file read back 90 s later, and a wrong-community SNMP read reached the log host. Only keys the card's own file has are written; a card without them is left alone with one log line |
 | UPS off / reboot, outlet names, backup/watchdog settings | -- | deliberately not written |
 
-## Switches — `sonic` (community SONiC 202505, virtual switch build 1238524 and the Celestica DX010 on build 1238526, over SSH)
+## Switches — `sonic` (community SONiC 202505, virtual switch build 1238524 and the Celestica DX010 on build 1238526, over SSH or on the switch itself: [`drivers/sonic-on-switch.md`](drivers/sonic-on-switch.md))
 
 Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build 1238524, driven from the controller UI; each push reached the switch within one inform cycle and the next reconcile reported zero changes). "Verified live" below means on that build, on the virtual switch, unless a row names the DX010. The DX010 (build `202505.1238526-ff3c0c9f6`, the same commit) was adopted on 2026-10-31; what its first run fixed is §10 there.
 
