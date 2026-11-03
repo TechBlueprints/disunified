@@ -8,7 +8,7 @@ and the build tree agree.
 
 | Series | Upstream source | Base (202511 head) | Source's merge base | Base is newer by |
 |---|---|---|---|---|
-| sonic-buildimage (10) | sonic-net/sonic-buildimage#24327 @ `80aa33e2de01` (draft, 10 commits) + 9 of ours | `1354e0ce4630` 2026-11-01 | `97a82c196d` 2026-06-11 | 154 commits |
+| sonic-buildimage (12) | sonic-net/sonic-buildimage#24327 @ `80aa33e2de01` (draft, 10 commits) + 10 of ours + #26983 unchanged (0011); 0012 (the DX010 fan floor, 2026-11-03) touches only `fancontrol-F2B` | `1354e0ce4630` 2026-11-01 | `97a82c196d` 2026-06-11 | 154 commits |
 | sonic-swss (1) | sonic-net/sonic-swss#3950 @ `0a10a61735df` (draft, 13 commits) | `177c7a009f5e` 2026-09-19 | `d43da01824` 2026-06-07 | 14 commits |
 | sonic-swss-common (2) | sonic-net/sonic-swss-common#1093 @ `a78b0db83f5e` (draft, 7 commits, 5 of them L2MC); 0002 upstream `1431c3d` (libyang 3) | `e59457c6da43` 2026-07-21 | `7e5d563980` 2025-12-17 | 7 commits |
 | sonic-utilities (1) | sonic-net/sonic-utilities#4100 @ `226ec54abc25` (draft, 19 commits) | `73f8c019ff7c` 2026-10-20 | `ae048e7021` 2026-06-03 | 21 commits |

@@ -3513,8 +3513,9 @@ once under a 20-minute dead-man, and `confirm` makes it the default. The
 image's own `install.sh` deletes every image but the running one and the
 new one, so the 202505 image leaves `/host` (a copy is kept off the
 switch); `sonic-installer cleanup` is never run. After `confirm`, redo the
-settings that live in the image's overlay (the fan floor; the follow-up
-register lists them).
+settings that live in the image's overlay (the fan floor, on an image
+built before series patch 0012 carried it; the follow-up register lists
+them).
 
 **Installed and verified 2026-11-02 (03:53-04:05Z).** The image went in
 with `sonic-upgrade.sh arm` (the 202505 image deleted as announced, its

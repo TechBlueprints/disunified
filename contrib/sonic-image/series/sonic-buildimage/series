@@ -9,3 +9,4 @@
 0009-rules-retire-libyang3-dev-done-nothing-installs-liby.patch
 0010-yang-snooping-models-without-references-into-sonic-v.patch
 0011-Fix-VLA-size-in-setreg_store-for-DX010.patch
+0012-seastone-fancontrol-F2B-a-20-floor-MINPWM-MINSTOP-51-and-MINTEMP-35.patch

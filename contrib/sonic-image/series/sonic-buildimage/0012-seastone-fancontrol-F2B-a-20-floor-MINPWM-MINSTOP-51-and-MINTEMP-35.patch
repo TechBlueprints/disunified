@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Tue, 03 Nov 2026 11:17:44 -0700
+Subject: [PATCH] seastone: fancontrol-F2B: a 20 % fan floor (MINPWM/MINSTOP 51)
+ and MINTEMP 35
+
+The stock DX010 fan table (2017, pwmconfig) never lets the ten chassis
+fans below PWM 89 (35 % duty, about 7,400 rpm): at MINTEMP 26 C on the
+intake sensor the curve is already above its floor in any room, so the
+fans run at 35 % or more all the time and the switch is loud for a home
+rack. This lowers the floor to PWM 51 (20 %, about 3,900-4,300 rpm) and
+starts the ramp at an intake of 35 C instead of 26, so the fans sit at
+the floor in a room up to 35 C and ramp as before above it. MINSTART
+(the spin-up kick), MAXTEMP, MAXPWM and the hysteresis are unchanged,
+and so are thermalctld's own policies (any sensor over its high
+threshold still means full speed, over critical a power cycle).
+
+Measured on a DX010 (C0 stepping, one 100G link, room at 23-25 C): at
+PWM 51 all ten fans stay OK at 3,866-4,278 rpm and the ASIC settles at
+about 56 C (52 C at PWM 64, 45 C at 89; high threshold 70, critical
+75). PWM 38 (15 %) was tried and rejected: the fans held, but the ASIC
+climbed past 62 C without levelling.
+
+Why the F2B file: /etc/init.d/fancontrol.sh copies fancontrol-F2B (or
+-B2F, by the fan direction read from the CPLD) over fancontrol at every
+boot, and pmon copies that into its /etc/fancontrol at every start, so
+only the direction file persists. Editing fancontrol alone lasts until
+the next reboot. The B2F table (reversed airflow units) is left stock:
+nothing here was measured on one.
+---
+ device/celestica/x86_64-cel_seastone-r0/fancontrol-F2B | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/device/celestica/x86_64-cel_seastone-r0/fancontrol-F2B b/device/celestica/x86_64-cel_seastone-r0/fancontrol-F2B
+index dc67e2623..53342c59d 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/fancontrol-F2B
++++ b/device/celestica/x86_64-cel_seastone-r0/fancontrol-F2B
+@@ -2,11 +2,11 @@
+ INTERVAL=2
+ FCTEMPS=13-002e/pwm1=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-002e/pwm2=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-002e/pwm3=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-002e/pwm4=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-002e/pwm5=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-004d/pwm1=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-004d/pwm2=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-004d/pwm3=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-004d/pwm4=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input 13-004d/pwm5=/sys/bus/i2c/devices/5-0048/hwmon/hwmon*/temp1_input
+ FCFANS=13-004d/pwm5=13-004d/fan5_input 13-004d/pwm4=13-004d/fan4_input 13-004d/pwm3=13-004d/fan3_input 13-004d/pwm2=13-004d/fan2_input 13-004d/pwm1=13-004d/fan1_input 13-002e/pwm5=13-002e/fan5_input 13-002e/pwm4=13-002e/fan4_input 13-002e/pwm3=13-002e/fan3_input 13-002e/pwm2=13-002e/fan2_input 13-002e/pwm1=13-002e/fan1_input
+-MINTEMP=13-002e/pwm1=26 13-002e/pwm2=26 13-002e/pwm3=26 13-002e/pwm4=26 13-002e/pwm5=26 13-004d/pwm1=26 13-004d/pwm2=26 13-004d/pwm3=26 13-004d/pwm4=26 13-004d/pwm5=26
++MINTEMP=13-002e/pwm1=35 13-002e/pwm2=35 13-002e/pwm3=35 13-002e/pwm4=35 13-002e/pwm5=35 13-004d/pwm1=35 13-004d/pwm2=35 13-004d/pwm3=35 13-004d/pwm4=35 13-004d/pwm5=35
+ MAXTEMP=13-002e/pwm1=45 13-002e/pwm2=45 13-002e/pwm3=45 13-002e/pwm4=45 13-002e/pwm5=45 13-004d/pwm1=45 13-004d/pwm2=45 13-004d/pwm3=45 13-004d/pwm4=45 13-004d/pwm5=45
+ MINSTART=13-002e/pwm1=89 13-002e/pwm2=89 13-002e/pwm3=89 13-002e/pwm4=89 13-002e/pwm5=89 13-004d/pwm1=89 13-004d/pwm2=89 13-004d/pwm3=89 13-004d/pwm4=89 13-004d/pwm5=89
+-MINSTOP=13-002e/pwm1=89 13-002e/pwm2=89 13-002e/pwm3=89 13-002e/pwm4=89 13-002e/pwm5=89 13-004d/pwm1=89 13-004d/pwm2=89 13-004d/pwm3=89 13-004d/pwm4=89 13-004d/pwm5=89
+-MINPWM=13-002e/pwm1=89 13-002e/pwm2=89 13-002e/pwm3=89 13-002e/pwm4=89 13-002e/pwm5=89 13-004d/pwm1=89 13-004d/pwm2=89 13-004d/pwm3=89 13-004d/pwm4=89 13-004d/pwm5=89
++MINSTOP=13-002e/pwm1=51 13-002e/pwm2=51 13-002e/pwm3=51 13-002e/pwm4=51 13-002e/pwm5=51 13-004d/pwm1=51 13-004d/pwm2=51 13-004d/pwm3=51 13-004d/pwm4=51 13-004d/pwm5=51
++MINPWM=13-002e/pwm1=51 13-002e/pwm2=51 13-002e/pwm3=51 13-002e/pwm4=51 13-002e/pwm5=51 13-004d/pwm1=51 13-004d/pwm2=51 13-004d/pwm3=51 13-004d/pwm4=51 13-004d/pwm5=51
+ MAXPWM=13-002e/pwm1=255 13-002e/pwm2=255 13-002e/pwm3=255 13-002e/pwm4=255 13-002e/pwm5=255 13-004d/pwm1=255 13-004d/pwm2=255 13-004d/pwm3=255 13-004d/pwm4=255 13-004d/pwm5=255
+ THYST=13-002e/pwm1=3 13-002e/pwm2=3 13-002e/pwm3=3 13-002e/pwm4=3 13-002e/pwm5=3 13-004d/pwm1=3 13-004d/pwm2=3 13-004d/pwm3=3 13-004d/pwm4=3 13-004d/pwm5=3
+ 

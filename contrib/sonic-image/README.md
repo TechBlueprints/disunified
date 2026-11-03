@@ -49,6 +49,8 @@ The why, the validation plan and the hard unknowns are in
 | | 0008 | swss-common, sonic-mgmt-common, sonic-gnmi and sonic-mgmt-framework build against libyang-dev 3 (as master and 202605); with libyang-dev 1 and 3 one package, the old rules let a compile meet the wrong one |
 | | 0009 | the libyang3-dev-done gate retired: nothing installs libyang-dev 1 any more (master: #27629) |
 | | 0010 | the two snooping YANG models without imports of sonic-vlan/port/portchannel (they changed the generic config updater's behaviour and broke 7 sonic-utilities tests) |
+| | 0011 | sonic-net/sonic-buildimage#26983 (open, unchanged): `dx010_cpld` `setreg_store` one byte short; kernel 6.12's FORTIFY_SOURCE traps it at the watchdog disarm, so a 202511 DX010 never finishes booting |
+| | 0012 | Seastone `fancontrol-F2B`: the fan floor PWM 89 -> 51 (35 % -> 20 %) and the ramp starting at an intake of 35 C instead of 26; measured on a DX010 (ASIC ~56 C in a 23-25 C room, fans OK; 15 % rejected). The direction file is what the boot script copies over `fancontrol`, so it is the only file that persists a floor |
 | sonic-swss | 0001 | sonic-net/sonic-swss#3950: `l2mcorch`, `l2mcmgrd` (includes the upstream fix of the reviewed `memcpy` bug) |
 | | 0002 | port mirroring recorded as supported when the SAI answers no to `SAI_PORT_ATTR_INGRESS/EGRESS_MIRROR_SESSION`: the legacy-TH SAI says no and binds anyway (disunified `docs/drivers/sonic.md` §11.9-11.10) |
 | sonic-swss-common | 0001 | the `schema.h` table names from sonic-net/sonic-swss-common#1093 |
