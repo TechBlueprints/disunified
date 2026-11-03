@@ -95,7 +95,7 @@ func main() {
 		listModels  = flag.Bool("list-models", false, "print the switch models the bundled catalogue knows and exit")
 		listDrivers = flag.Bool("list-drivers", false, "print the registered device drivers and exit")
 		showBuild   = flag.Bool("build-version", false, "print this bridge's own build version and exit (-version is the firmware version reported to the controller)")
-		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the device, print it as JSON with the suggested model, and exit")
+		collectOnce = flag.Bool("collect-once", false, "collect one snapshot from the device (or, with -config, from each device in the file), print it as JSON with the suggested model, and exit; nothing is informed")
 	)
 	// Retired: UniFi owns the device's address (IP Settings), IGMP
 	// snooping, NTP, the hostname, the syslog host, Restart, SSH keys and
@@ -147,10 +147,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if *configPath != "" && !*collectOnce {
+	if *configPath != "" {
 		f, err := config.Load(*configPath)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if *collectOnce {
+			if err := collectConfig(ctx, f); err != nil {
+				log.Fatal(err)
+			}
+			return
 		}
 		runConfig(ctx, f)
 		return
@@ -210,31 +216,50 @@ type options struct {
 func runConfig(ctx context.Context, f *config.File) {
 	var wg sync.WaitGroup
 	for _, sw := range f.Devices {
-		sw := sw
-		logger := log.New(os.Stderr, "["+sw.Name+"] ", log.LstdFlags|log.Lmicroseconds)
-		o := options{
-			controller: f.Controller.Host, informURL: f.Controller.InformURL,
-			model: sw.Model, udapiVersion: sw.UDAPIVersion, interval: 10 * time.Second,
-			recordDir: filepath.Join(f.StateDir, "inform-log", sw.Name),
-			stateFile: filepath.Join(f.StateDir, "state", sw.Name, "device.json"),
-			ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
-			driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
-			driverOptions: sw.Options,
-			controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
-			allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
-			applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
-			unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
-			logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
-		}
+		o := configOptions(f, sw)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := runOne(ctx, o); err != nil {
-				logger.Printf("FAILED: %v", err)
+				o.logger.Printf("FAILED: %v", err)
 			}
 		}()
 	}
 	wg.Wait()
+}
+
+// collectConfig is -collect-once with -config: each device in the file is
+// opened and started as the service would (its options, its state_dir) and
+// its snapshot printed, one after the other; nothing is informed and the
+// adopted key is not read. The first device that fails stops the run.
+func collectConfig(ctx context.Context, f *config.File) error {
+	for _, sw := range f.Devices {
+		o := configOptions(f, sw)
+		o.collectOnce = true
+		if err := runOne(ctx, o); err != nil {
+			return fmt.Errorf("%s: %w", sw.Name, err)
+		}
+	}
+	return nil
+}
+
+// configOptions is one config-file device as runOne takes it.
+func configOptions(f *config.File, sw config.Device) options {
+	logger := log.New(os.Stderr, "["+sw.Name+"] ", log.LstdFlags|log.Lmicroseconds)
+	return options{
+		controller: f.Controller.Host, informURL: f.Controller.InformURL,
+		model: sw.Model, udapiVersion: sw.UDAPIVersion, interval: 10 * time.Second,
+		recordDir: filepath.Join(f.StateDir, "inform-log", sw.Name),
+		stateFile: filepath.Join(f.StateDir, "state", sw.Name, "device.json"),
+		ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
+		driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
+		driverOptions: sw.Options,
+		controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
+		allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
+		applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
+		unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
+		logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
+	}
 }
 
 // openAndStart opens a driver and takes its first snapshot, closing the
@@ -297,6 +322,17 @@ func runOne(ctx context.Context, o options) error {
 		for k, v := range o.driverOptions {
 			opts[k] = v
 		}
+		// options.probe: an address this bridge must keep reaching, which a
+		// driver with nothing to dial (sonic on the switch itself) proves
+		// reachability against. The controller's inform host:port, unless
+		// the device names its own.
+		if opts["probe"] == "" {
+			if u, err := informURLFor(o); err == nil {
+				if p := probeAddr(u); p != "" {
+					opts["probe"] = p
+				}
+			}
+		}
 		if o.stateDir != "" {
 			opts["state_dir"] = o.stateDir // drivers with their own persistent state keep it next to device.json
 		} else if o.stateFile != "" && !o.collectOnce {
@@ -341,6 +377,9 @@ func runOne(ctx context.Context, o options) error {
 			return errors.New("-collect-once needs -device-url or -device-ssh")
 		}
 		out := map[string]any{"snapshot": snap, "layout": unifimodel.LayoutOf(snap)}
+		if o.name != "" {
+			out["device"] = o.name
+		}
 		if c, err := unifimodel.SuggestFor(snap); err == nil {
 			out["suggested_model"] = c
 		} else {
@@ -437,16 +476,9 @@ func runOne(ctx context.Context, o options) error {
 	}
 
 	// --- Controller URL ---
-	url := o.informURL
-	if url == "" {
-		if o.controller == "" {
-			return errors.New("one of -controller or -inform is required")
-		}
-		ipLit, err := resolveIPv4(o.controller)
-		if err != nil {
-			return fmt.Errorf("resolve controller %q: %v", o.controller, err)
-		}
-		url = "http://" + ipLit + ":8080/inform"
+	url, err := informURLFor(o)
+	if err != nil {
+		return err
 	}
 
 	desc, err := device.DescriptorFor(profile.Model, snap, device.Identity{
@@ -705,6 +737,39 @@ func defaultPortNames(ports []inform.Port, snap *devicemodel.Snapshot, namer dev
 		}
 	}
 	return out
+}
+
+// informURLFor is the inform URL: -inform (controller.inform_url) as
+// given, else http://<the controller's IPv4>:8080/inform.
+func informURLFor(o options) (string, error) {
+	if o.informURL != "" {
+		return o.informURL, nil
+	}
+	if o.controller == "" {
+		return "", errors.New("one of -controller or -inform is required")
+	}
+	ipLit, err := resolveIPv4(o.controller)
+	if err != nil {
+		return "", fmt.Errorf("resolve controller %q: %v", o.controller, err)
+	}
+	return "http://" + ipLit + ":8080/inform", nil
+}
+
+// probeAddr is an inform URL's host:port (the scheme's port when the URL
+// names none); "" when it has no host.
+func probeAddr(informURL string) string {
+	u, err := url.Parse(informURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		port = "80"
+		if u.Scheme == "https" {
+			port = "443"
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 // hostOf extracts an IP literal from a switch URL or user@host target; ""

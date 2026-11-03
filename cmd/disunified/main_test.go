@@ -20,3 +20,27 @@ func TestFlagDriverOptions(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+// options.probe defaults to the inform URL's host:port (docs/drivers/
+// sonic-on-switch.md §2): the controller's address and port, or the port of
+// the URL's scheme when it names none.
+func TestProbeAddr(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://192.0.2.1:8080/inform": "192.0.2.1:8080",
+		"http://192.0.2.1/inform":      "192.0.2.1:80",
+		"https://192.0.2.1/inform":     "192.0.2.1:443",
+		"http://[2001:db8::1]:8080/":   "[2001:db8::1]:8080",
+		"not a url":                    "",
+	} {
+		if got := probeAddr(in); got != want {
+			t.Errorf("probeAddr(%q) = %q, want %q", in, got, want)
+		}
+	}
+	u, err := informURLFor(options{controller: "192.0.2.1"})
+	if err != nil || probeAddr(u) != "192.0.2.1:8080" {
+		t.Errorf("controller.host 192.0.2.1: %q %v", u, err)
+	}
+	if _, err := informURLFor(options{}); err == nil {
+		t.Error("no controller: want an error")
+	}
+}
