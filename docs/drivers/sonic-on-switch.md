@@ -481,6 +481,37 @@ copy `state/dx010/` back into the volume, restore the container's
 `config.yaml` from the backup, `podman restart disunified`. The adopted
 key is the same file either way; the rule is one running bridge per key.
 
+## 10a. What ran live (2026-11-02)
+
+§9 steps 1-5 all ran: tests and vet clean; the deb staged on the Mac and
+packed with `dpkg-deb` on the switch (the Mac has none); installed as
+spec'd (unit enabled, `User=admin` drop-in, `/etc/disunified` symlink);
+`-collect-once` over the local runner matched the container bridge's
+snapshot; the probe logged at `Open`. §10 steps 1-3 ran: the container's
+`dx010` entry removed and the container restarted, the state and the reply
+log copied to `/host/disunified`, the service started and resuming the
+adopted state at 12 MB RSS.
+
+**Step 3 then failed on a fact nothing in this document foresaw**: every
+inform POST ended in `EOF`. The switch's VLAN netdev (`Vlan<native>`) was
+at SONiC's default MTU 9100 while the ports ran 1500 (jumbo off); the
+gateway advertises a jumbo MSS, so the kernel sent the 60 KB inform in
+segments the 1500-byte uplink dropped. A bridge over SSH never sends
+such segments *from* the switch, which is why two days in the container
+never showed it. The fix is a driver rule, not an on-box one
+(`sonic.md` §12, `vlanMTUs`): each managed VLAN's MTU follows the ports',
+written to CONFIG_DB and to the netdev (vlanmgrd never applies the table's
+field to the kernel). Landed in main the same evening. The on-box
+bridge's start-up reconcile (`informloop.Loop.Run` reconciles before the
+first inform) applies it on the next service start, so installing the deb
+built from that commit is the whole repair. **Open:** a swss restart
+under a running on-box bridge recreates the netdevs at 9100 and the loop
+reconciles only after an answered inform; `PartOf=swss.service` or a
+reconcile after N failed informs would close it.
+
+Steps 4-5 of §10 (the controller showing the switch connected, a push
+round-trip on a test port) wait on that install.
+
 ## 11. What this specification does not do
 
 - It does not change the SSH transport, any other driver, or the container
