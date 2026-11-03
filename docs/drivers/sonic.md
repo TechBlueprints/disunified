@@ -3449,9 +3449,23 @@ the existing branch for a query that fails:
 
 and the same for egress. Nothing else: MirrorOrch reads
 `m_portIngress/EgressMirrorSupported` and the CLI reads the STATE_DB rows,
-so both follow. The query arrived with sonic-net/sonic-swss#4137 (2026-03);
-202505's orchagent has none and asks every SAI to bind, and so does the
-ECS's 202106. The swss unit tests (`switchorch_ut.cpp`) check only that the
+so both follow. The query arrived with sonic-net/sonic-swss#3934
+(2025-11-21; the 202511 backport is #4137) and the CLI's gate with
+sonic-net/sonic-utilities#4089 (202511: #4204); #4323 later made the CLI
+skip the flags for ERSPAN and treat an absent key as supported, but an
+explicit `false` still refuses SPAN. The port-mirroring HLD
+(`doc/port-mirroring/SONiC_Port_Mirroring_HLD.md`, rev 0.2) has the system
+assume full support only when detection *fails*. 202505's orchagent has no
+query and asks every SAI to bind, and so does the ECS's 202106.
+
+**A known upstream defect, not a new one.** sonic-net/sonic-buildimage#28139
+(open, Triaged) is the same false answer on Broadcom Tomahawk-5 (Micas
+M2-W6940), with Broadcom's reply "fixed in SAI 15.2, backport to 14.3".
+That does not reach the DX010: it is on the separate legacy-Tomahawk SAI
+train (`platform/broadcom/sai-legacy-th.mk`: 13.2.1.100 on 202511,
+13.2.1.120 on master via sonic-net/sonic-buildimage#27875, an ABI rebuild
+against OCP SAI 1.18.1 only), so the orchagent patch stays the route for
+this unit. No PR upstream; a comment on #28139 is Clint's. The swss unit tests (`switchorch_ut.cpp`) check only that the
 two rows exist. The orchagent log line keeps the SAI's own answer
 (`port ingress mirror capability 0 (recorded as supported)`), so a boot log
 still shows that the SAI said no.
