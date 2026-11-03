@@ -225,6 +225,7 @@ type ipAddr struct {
 	Flags     []string `json:"flags"`
 	Operstate string   `json:"operstate"`
 	Address   string   `json:"address"`
+	MTU       int      `json:"mtu"`
 	AddrInfo  []struct {
 		Family    string `json:"family"`
 		Local     string `json:"local"`

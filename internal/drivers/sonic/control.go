@@ -145,7 +145,52 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 	}
 	pl.lagJoins(ds)
 	pl.mirrorAdds(ds)
+	pl.vlanMTUs(ds)
 	return pl, nil
+}
+
+// vlanMTUs brings the VLANs the driver manages -- the site's and the
+// native stand-in -- to the ports' MTU when the push sets one (jumbo; the
+// lowest pushed MTU should ports ever differ). SONiC creates every VLAN at
+// 9100 and leaves it there: the VLAN table's mtu reaches APPL_DB and the
+// router interface (orchagent), but vlanmgrd never applies it to the
+// kernel netdev (a TODO in 202505 and 202511), so the switch's own TCP
+// over Vlan<id> ran at MSS 9048 behind 1500-byte ports and lost every full
+// segment -- the on-switch bridge's inform never got out (live, 2026-11-02,
+// docs/drivers/sonic.md §12). Both are written: the CONFIG_DB field, which
+// config save keeps, and the kernel netdev through `ip link set`, capped at
+// the Bridge's MTU (a VLAN device cannot exceed its parent), which a swss
+// restart or a reboot resets and the next apply restores. A netdev the
+// last collect did not see (a VLAN made this cycle) waits for the next.
+func (pl *plan) vlanMTUs(ds []devicemodel.PortDesired) {
+	want := 0
+	for _, d := range ds {
+		if d.MTU > 0 && (want == 0 || d.MTU < want) {
+			want = d.MTU
+		}
+	}
+	if want == 0 {
+		return
+	}
+	kernel := want
+	if b := pl.sim.netMTU["Bridge"]; b > 0 && b < kernel {
+		kernel = b
+	}
+	ids := append([]int{pl.native}, pl.site...)
+	sort.Ints(ids)
+	for _, id := range ids {
+		if !pl.sim.vlans[id] {
+			continue
+		}
+		dev := "Vlan" + strconv.Itoa(id)
+		if cur := atoi(pl.sim.vlanMTU[id]); cur != want && (cur != 0 || want != defaultMTU) {
+			m := strconv.Itoa(want)
+			pl.add(0, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("VLAN|"+dev)+" mtu "+m, func(s *swState) { s.vlanMTU[id] = m })
+		}
+		if cur := pl.sim.netMTU[dev]; cur > 0 && cur != kernel {
+			pl.add(0, fmt.Sprintf("ip link set dev %s mtu %d", dev, kernel), func(s *swState) { s.netMTU[dev] = kernel })
+		}
+	}
 }
 
 // collides: the native-id hazard of §5.2a. A desired port that names
@@ -989,7 +1034,26 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 	if len(missing) > 1 {
 		add = "sudo config vlan add -m " + joinInts(missing)
 	}
-	cmds := []string{add, "sudo config save -y"}
+	cmds := []string{add}
+	// A new VLAN is 9100; behind ports at another MTU (jumbo off) it takes
+	// theirs from the start (vlanMTUs; the kernel netdev follows on the
+	// next apply, once a collect has seen it).
+	mtu := 0
+	c.mu.Lock()
+	if c.last != nil {
+		for _, p := range c.last.Ports {
+			if p.MTU > 0 && (mtu == 0 || p.MTU < mtu) {
+				mtu = p.MTU
+			}
+		}
+	}
+	c.mu.Unlock()
+	if mtu > 0 && mtu != defaultMTU {
+		for _, id := range missing {
+			cmds = append(cmds, fmt.Sprintf("sudo sonic-db-cli CONFIG_DB hset %s mtu %d", sshrun.ShellQuote("VLAN|Vlan"+strconv.Itoa(id)), mtu))
+		}
+	}
+	cmds = append(cmds, "sudo config save -y")
 	c.Log.Printf("sonic: creating VLANs %v", missing)
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic create vlans %v: %w", missing, err)
@@ -999,6 +1063,9 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 		next := st.clone()
 		for _, id := range missing {
 			next.vlans[id] = true
+			if mtu > 0 && mtu != defaultMTU {
+				next.vlanMTU[id] = strconv.Itoa(mtu)
+			}
 		}
 		c.state = next
 	}

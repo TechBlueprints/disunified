@@ -13,6 +13,11 @@ import (
 type swState struct {
 	port    map[string]map[string]string // CONFIG_DB PORT fields by interface (mtu from APPL_DB when CONFIG has none)
 	vlans   map[int]bool                 // SONiC VLAN ids
+	vlanMTU map[int]string               // VLAN id -> its CONFIG_DB mtu ("" = absent: SONiC's 9100)
+	// netMTU is the kernel's MTU per netdev (`ip -j addr`): Vlan<id>, which
+	// vlanmgrd never changes from its parent Bridge's 9100 whatever the
+	// VLAN table says, and Bridge itself.
+	netMTU  map[string]int
 	members map[string]map[int]bool      // interface or PortChannel -> SONiC VLAN id -> tagged
 	lags    map[string]map[string]bool   // PortChannel -> member interfaces
 	lagMTU  map[string]string            // PortChannel -> its CONFIG_DB mtu
@@ -95,7 +100,7 @@ type lacp struct{ fastRate, minLinks string }
 
 func newState(db map[string]table, sec map[string]string) *swState {
 	s := &swState{
-		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
+		port: map[string]map[string]string{}, vlans: map[int]bool{}, vlanMTU: map[int]string{}, netMTU: map[string]int{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: stormTable(db["cfg_storm"]), stp: map[string]map[string]string{},
 	}
@@ -107,10 +112,11 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 		s.port[name] = m
 	}
-	for k := range db["cfg_vlan"] {
+	for k, f := range db["cfg_vlan"] {
 		_, n, _ := strings.Cut(k, "|")
 		if id := atoi(strings.TrimPrefix(n, "Vlan")); id > 0 {
 			s.vlans[id] = true
+			s.vlanMTU[id] = f["mtu"]
 		}
 	}
 	for k, f := range db["cfg_vlan_member"] {
@@ -169,6 +175,9 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	if decodeJSON("addr", sec["addr"], &addrs) == nil {
 		for _, a := range addrs {
 			s.carrier[a.Ifname] = a.carrier()
+			if a.MTU > 0 {
+				s.netMTU[a.Ifname] = a.MTU
+			}
 		}
 	}
 	for k, f := range db["cfg_syslog"] {
@@ -312,6 +321,13 @@ func (s *swState) clone() *swState {
 	}
 	for k := range s.vlans {
 		c.vlans[k] = true
+	}
+	c.vlanMTU, c.netMTU = map[int]string{}, map[string]int{}
+	for k, v := range s.vlanMTU {
+		c.vlanMTU[k] = v
+	}
+	for k, v := range s.netMTU {
+		c.netMTU[k] = v
 	}
 	for k, v := range s.members {
 		m := map[int]bool{}

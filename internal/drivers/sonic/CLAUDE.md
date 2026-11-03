@@ -475,6 +475,18 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `platform/<platform>/`** -- the upgrade script copies
   `/host/disunified/disunified_*.deb` there. postinst restarts with
   `--no-block` for that reason: it runs inside rc.local.
+- **A VLAN's MTU is two things, and SONiC sets only one** (`vlanMTUs`,
+  2026-11-02, `docs/drivers/sonic.md` §12). `vlanmgrd` makes the kernel
+  `Bridge` at a fixed 9100 and every `Vlan<id>` netdev inherits it; the
+  VLAN table's `mtu` reaches APPL_DB and the router interface but never the
+  netdev (`setHostVlanMtu` in `cfgmgr/vlanmgr.cpp` is never called, 202505
+  and 202511). With jumbo off that left the switch's own TCP at MSS 9048
+  behind 1500-byte ports: the on-switch bridge's inform never got out. The
+  driver writes both with the ports' MTU -- the CONFIG_DB field and `ip
+  link set dev Vlan<id> mtu`, capped at the Bridge's MTU -- diffed against
+  CONFIG_DB and `ip -j addr`'s `mtu`. The kernel half is lost on a swss
+  restart or reboot; the start-up reconcile restores it after a reboot, but
+  a swss restart under a running on-switch bridge is not covered (open, §12).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

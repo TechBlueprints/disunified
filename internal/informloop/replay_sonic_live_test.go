@@ -70,6 +70,21 @@ func TestReplaySonicLabSession(t *testing.T) {
 		return out
 	}
 	save := "sudo config save -y"
+	// The VLANs follow the ports' MTU (docs/drivers/sonic.md §12, a fix
+	// after the lab session): the CONFIG_DB field on every VLAN, the kernel
+	// netdev where the capture has one (Vlan4094; the site's VLANs are made
+	// during the session), capped at the Bridge's 9100.
+	siteVLANs := []string{"2", "8", "9", "10", "69", "1000", "2000", "3000", "4000", "4010"}
+	vlanMTU := func(mtu, kernel string, ids ...string) []string {
+		var out []string
+		for _, id := range ids {
+			out = append(out, "sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan"+id+"' mtu "+mtu)
+			if id == "4094" {
+				out = append(out, "sudo ip link set dev Vlan4094 mtu "+kernel)
+			}
+		}
+		return out
+	}
 	want := map[int][]string{
 		// Device-wide settings follow UniFi without port control: the
 		// first push after adoption brings its NTP servers and time zone
@@ -78,10 +93,10 @@ func TestReplaySonicLabSession(t *testing.T) {
 		// they waited for port control at record 95.)
 		2:  {"sudo config ntp add 192.0.2.10", "sudo config ntp add 192.0.2.123", "sudo config snmp community del 'community-1'", "sudo config clock timezone MST7MDT", save},
 		3:  {"sudo config hostname SONiCSeastone-DX010", save},
-		95: append(jumbo("1500"), save),
+		95: append(append(jumbo("1500"), vlanMTU("1500", "1500", "4094")...), save),
 		99: {"sudo config interface shutdown Ethernet4", "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet4' description 'lab-2'", save},
-		101: {"sudo config vlan add -m 2,8,9,10,69,1000,2000,3000,4000,4010", save,
-			"sudo config interface startup Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet12", save},
+		101: append(append(append([]string{"sudo config vlan add -m 2,8,9,10,69,1000,2000,3000,4000,4010"}, vlanMTU("1500", "", siteVLANs...)...), save),
+			"sudo config interface startup Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet4", "sudo config vlan member add -e -m 4094 Ethernet12", save),
 		102: {"sudo config vlan member del -e -m 4094 Ethernet4", save},
 		103: {"sudo config vlan member add -m 2,69 Ethernet8", save},
 		104: {"sudo config portchannel add PortChannel1 --fast-rate true --min-links 1", "sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel1' mtu 1500",
@@ -95,7 +110,7 @@ func TestReplaySonicLabSession(t *testing.T) {
 		121: {"sudo config portchannel member del PortChannel1 Ethernet16", "sudo config portchannel member del PortChannel1 Ethernet20",
 			"sudo config vlan member add -u 4094 Ethernet16", "sudo config vlan member add -u 4094 Ethernet20",
 			"sudo config vlan member del 4094 PortChannel1", "sudo config portchannel del PortChannel1", save},
-		126: append(jumbo("9216"), save),
+		126: append(append(jumbo("9216"), vlanMTU("9216", "9100", append(siteVLANs, "4094")...)...), save),
 		145: {"sudo config interface ip add Vlan4094 192.0.2.201/16", "sudo config dns nameserver add 192.0.2.10",
 			"echo 1 | sudo tee /proc/sys/net/ipv4/conf/Vlan4094/promote_secondaries >/dev/null",
 			"sudo config interface ip remove Vlan4094 192.0.2.1/16", "ip -4 -o addr show dev Vlan4094 | grep -q ' 192.0.2.201/16 '", save},

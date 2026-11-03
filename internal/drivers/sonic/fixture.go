@@ -377,6 +377,8 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.RebootErr
 	case len(w) == 1 && w[0] == "true":
 		return nil
+	case len(w) == 7 && cmd == "ip link set" && w[3] == "dev" && w[5] == "mtu":
+		return f.kernelMTU(w[4], w[6])
 	case strings.HasPrefix(cmd, "config ntp") || strings.HasPrefix(cmd, "config syslog") || cmd == "config snmp community" ||
 		cmd == "config dns nameserver" || strings.HasPrefix(cmd, "config route") || cmd == "config interface ip" ||
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
@@ -429,6 +431,22 @@ func (f *FixtureRunner) apply(line string) error {
 				for i := 0; i < len(fv); i += 2 {
 					t[key][fv[i]] = fv[i+1]
 				}
+				return nil
+			})
+		}
+		if v, ok := strings.CutPrefix(key, "VLAN|"); ok {
+			// A VLAN's MTU. vlanmgrd passes it to APPL_DB and orchagent's
+			// router interface, never to the kernel netdev (a TODO in
+			// cfgmgr/vlanmgr.cpp, 202505 and 202511): the addr section
+			// keeps Vlan<id> at its MTU.
+			if w[2] != "hset" || len(w) != 6 || w[4] != "mtu" {
+				return fmt.Errorf("unmodelled VLAN write")
+			}
+			return f.update("cfg_vlan", func(t table) error {
+				if t[key] == nil {
+					return fmt.Errorf("Vlan %s does not exist", v)
+				}
+				t[key]["mtu"] = w[5]
 				return nil
 			})
 		}

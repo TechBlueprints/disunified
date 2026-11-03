@@ -341,6 +341,8 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 		"sudo config vlan member del 4094 Ethernet12",
 		"sudo config portchannel member add PortChannel3 Ethernet12",
 		"sudo config vlan member add -u 4094 PortChannel3",
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan4094' mtu 1500",
+		"sudo ip link set dev Vlan4094 mtu 1500",
 		save,
 	})
 	for _, idx := range []int{3, 4} {
@@ -352,6 +354,8 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 9216",
 		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet8' mtu 9216",
 		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet12' mtu 9216",
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan4094' mtu 9216",
+		"sudo ip link set dev Vlan4094 mtu 9100", // the Bridge's: a VLAN device cannot exceed it
 		save,
 	})
 	for _, idx := range []int{3, 4} {
@@ -363,6 +367,8 @@ func TestLAGMTUFollowsTheMembers(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel3' mtu 1500",
 		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet8' mtu 1500",
 		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet12' mtu 1500",
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan4094' mtu 1500",
+		"sudo ip link set dev Vlan4094 mtu 1500",
 		save,
 	})
 
@@ -558,6 +564,8 @@ func TestApplyFECAndJumbo(t *testing.T) {
 		"sudo config interface mtu Ethernet0 1500",
 		"sudo config interface mtu Ethernet4 1500",
 		"sudo config interface mtu Ethernet8 1500",
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan4094' mtu 1500",
+		"sudo ip link set dev Vlan4094 mtu 1500",
 		save,
 	})
 	if p := port(snap, 1); p.MTU != 1500 {
@@ -567,6 +575,8 @@ func TestApplyFECAndJumbo(t *testing.T) {
 		"sudo config interface mtu Ethernet0 9216",
 		"sudo config interface mtu Ethernet4 9216",
 		"sudo config interface mtu Ethernet8 9216",
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan4094' mtu 9216",
+		"sudo ip link set dev Vlan4094 mtu 9100",
 		save,
 	})
 	if !r.c.SwitchesJumbo() {

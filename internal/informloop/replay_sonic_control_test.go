@@ -165,9 +165,18 @@ func TestReplaySonicPort2NameSpeedVLANs(t *testing.T) {
 	if !contains(cmds, "sudo config clock timezone MST7MDT") {
 		t.Error("the pushed time zone was not written")
 	}
+	// The VLANs follow the ports to 1500 (docs/drivers/sonic.md §12): the
+	// nine new ones and the native stand-in in CONFIG_DB, Vlan4094's kernel
+	// netdev too (the new ones' netdevs are not in the capture yet).
+	if n := count(cmds, regexp.MustCompile(`^sudo sonic-db-cli CONFIG_DB hset 'VLAN\|Vlan\d+' mtu 1500$`)); n != 10 {
+		t.Errorf("%d VLANs set to MTU 1500, want 10", n)
+	}
+	if !contains(cmds, "sudo ip link set dev Vlan4094 mtu 1500") {
+		t.Error("Vlan4094's netdev not set to 1500")
+	}
 	// The whole push: VLANs + save, the time zone + save, then 32 MTUs, 1
-	// name, 32 memberships + save.
-	if want := 2 + 2 + 32 + 1 + 32 + 1; len(cmds) != want {
+	// name, 32 memberships, 10 VLAN MTUs and 1 netdev MTU + save.
+	if want := 2 + 2 + 32 + 1 + 32 + 10 + 1 + 1; len(cmds) != want {
 		t.Errorf("%d commands in all, want %d", len(cmds), want)
 	}
 	if cmds[len(cmds)-1] != "sudo config save -y" {

@@ -3535,6 +3535,36 @@ image upgrade. The specification, the verification plan and the cutover
 are [`sonic-on-switch.md`](sonic-on-switch.md); the install steps are
 [`docs/install.md`](../install.md) §7. Over SSH nothing changed.
 
+**The VLANs' MTU (found at the cutover, 2026-11-02).** With UniFi's jumbo
+off the driver set every port to 1500, but SONiC's VLAN netdevs
+(`Vlan<id>`) stayed at 9100: `vlanmgrd` creates the kernel `Bridge` at a
+fixed 9100 and every VLAN device under it inherits that. The gateway's LAN
+side runs jumbo and advertises MSS 9176, so the switch's own TCP socket to
+the controller ran at `mss:9048 pmtu:9100` (`ss -tni`), and every segment
+over 1500 bytes was dropped on the 1500-byte uplink: the on-switch
+bridge's 60 KB inform never got out (`bytes_retrans` growing, `cwnd 1`),
+while a one-byte POST was answered. A bridge reaching the switch over SSH
+never saw it -- SSH sessions never sent such segments from the switch. The
+VLAN table's own `mtu` field does **not** fix the kernel: in
+`cfgmgr/vlanmgr.cpp` (202505 and the 202511 tree alike) `vlanmgrd` passes
+it to APPL_DB `VLAN_TABLE`, where orchagent sets the router interface's
+MTU, and leaves the netdev with a `TODO` (`setHostVlanMtu` exists and is
+never called). The rule: whenever a push carries the ports' MTU, every VLAN
+the driver manages (the site's and the native stand-in) gets it twice, in
+the same batch before `config save` -- `sonic-db-cli CONFIG_DB hset
+'VLAN|Vlan<id>' mtu <mtu>` (absent = 9100) and `ip link set dev Vlan<id>
+mtu <mtu>` against the kernel's own value from `ip -j addr`, capped at the
+Bridge's MTU (a VLAN device cannot exceed its parent: jumbo on writes 9216
+to CONFIG_DB and 9100 to the netdev). A VLAN `EnsureVLANs` makes behind
+ports at another MTU is made with theirs in the same batch; its netdev
+follows on the next apply. The kernel half does not survive a swss restart
+or a reboot (the netdevs are recreated at 9100). After a reboot the
+bridge's start-up reconcile (before its first inform) restores it. **Open:**
+a swss restart while the bridge keeps running leaves the netdevs at 9100
+and the informs failing, and the loop reconciles only after an answered
+inform, so nothing restores them until the bridge restarts. What
+UniFi's own SONiC (the ECS) keeps in `VLAN|…` `mtu` is not in any capture.
+
 ## Sources
 
 - SONiC build pipelines: <https://sonic-build.azurewebsites.net/ui/sonic/pipelines>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -314,6 +315,43 @@ func (f *FixtureRunner) kernelAddress(iface, ip string, plen int, add bool) erro
 			kept = append(kept, map[string]any{"family": "inet", "local": ip, "prefixlen": plen, "scope": "global", "label": iface})
 		}
 		l["addr_info"] = kept
+	}
+	b, err := json.Marshal(links)
+	if err != nil {
+		return err
+	}
+	f.setSection("addr", string(b))
+	return nil
+}
+
+// kernelMTU is `ip link set dev <iface> mtu <m>` on the capture's `ip -j
+// addr` section. The kernel refuses a VLAN device above its parent's MTU
+// (Vlan<id> under Bridge): "RTNETLINK answers: Invalid argument".
+func (f *FixtureRunner) kernelMTU(iface, m string) error {
+	n, err := strconv.Atoi(m)
+	if err != nil {
+		return fmt.Errorf("ip link set: bad mtu %q", m)
+	}
+	var links []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(f.section("addr"))), &links); err != nil {
+		return fmt.Errorf("addr section: %w", err)
+	}
+	found := false
+	for _, l := range links {
+		if l["ifname"] == "Bridge" && strings.HasPrefix(iface, "Vlan") {
+			if b, ok := l["mtu"].(float64); ok && n > int(b) {
+				return fmt.Errorf("exit status 2: RTNETLINK answers: Invalid argument")
+			}
+		}
+	}
+	for _, l := range links {
+		if l["ifname"] == iface {
+			l["mtu"] = n
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("exit status 1: Cannot find device %q", iface)
 	}
 	b, err := json.Marshal(links)
 	if err != nil {
