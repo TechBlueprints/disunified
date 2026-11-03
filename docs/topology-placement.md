@@ -42,6 +42,23 @@ any port.
   under the real MAC the same day: `uplink_mac` was set 20 s after
   CONNECTED** -- `access` port 24, where the cable goes. Same payload, same
   fields; only the MAC changed.
+- **…or a MAC one of our own bridged switches reports (2026-11-02,
+  Network 10.6.109).** "Seen" means *reported by an adopted switch*, not
+  learned in hardware: a stub device under a locally administered MAC with
+  no other trace on the LAN (no ARP entry, lease or client record) was
+  placed within 30 s of CONNECTED on the port where a bridged switch's
+  inform listed it (`children:`, `docs/install.md` §3) -- on a port that
+  was down, with the parent's own address as its `connect_request_ip`.
+  **Either entry places it on its own:** the port's LLDP neighbour
+  (chassis id = the MAC; `uplink_source: lldp_downlink`, the controller's
+  preference; the parent's record lists it in `downlink_lldp_macs`) or the
+  port's MAC table (`uplink_source: legacy` / `legacy_only_sta`; listed in
+  the parent's `downlink_table`). And a placement **outlives the report**:
+  with both entries gone the device stayed placed (`last_uplink` kept) for
+  as long as it was watched. So the UPS's synthetic MAC failed only
+  because nothing reported it, not because it was synthetic. The run is
+  `docs/breakout-lag.md` §6.7, the records
+  `docs/fixtures/controller-10.6.109/rest-device-flexxg-placement.json`.
 - **The address must be in-band**, behind the same port the MAC is seen on.
   An OOB management address puts the IP behind one switch and the identity
   behind another, and the controller places nothing (the Arista lesson,
@@ -84,6 +101,8 @@ handshake in ~10 s. Never adopt by "Adopt All": a stray device may be pending.
 ```
 stat/device[mac=<bridged mac>].uplink.uplink_mac        # set => placed
 stat/device[mac=<bridged mac>].uplink.uplink_remote_port
+stat/device[mac=<bridged mac>].uplink.uplink_source      # lldp_downlink | legacy | legacy_only_sta: which report placed it
+stat/device[mac=<parent>].downlink_lldp_macs / .downlink_table   # the children the parent's LLDP / MAC tables place
 stat/device[mac=<bridged mac>].gateway_mac              # what it stored, vs what you sent
 stat/sta[mac=<real mac>].sw_mac / .sw_port              # where the LAN actually sees the real port
 ```

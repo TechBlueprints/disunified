@@ -229,7 +229,11 @@ stay stopped** (one bridge per adopted key).
   the log host and was simply quiet (it syslogs outlet, load, PSU, restart
   and unauthorised-access events, not logins). Both stamp lines in local
   time with daylight saving off: an hour behind from March to November.
-- **Topology parent = the upstream switch seeing the device's MAC on a port.**
+- **Topology parent = the upstream switch seeing the device's MAC on a port**
+  -- or one of our bridged switches *reporting* it there (`children:`): its
+  LLDP entry or its MAC-table entry places a device on its own, even on a
+  down port with a shared address, and the placement outlives the report
+  (10.6.109, 2026-11-02, `docs/breakout-lag.md` §6.6).
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not
   sufficient; a synthetic MAC is never placed. `docs/topology-placement.md`.

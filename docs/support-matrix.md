@@ -337,6 +337,26 @@ daemon while `l2d` is off, or on a switch with neither mstpd nor docker.
 
 ---
 
+## `stub` — a device described by a file, and `children:`
+
+An instrument, not a device ([`drivers/stub.md`](drivers/stub.md)), and the
+loop's reported child (`children:` on any device, [`install.md`](install.md) §3).
+
+| What | Verified | How |
+|---|---|---|
+| `stub` adopted as `USFXG` from a file (4x25G lanes + a 100G uplink, then 2x50G, then one port at 75000), re-read every cycle, nothing written for any push | live, Network 10.6.109, 2026-11-02 | `docs/breakout-lag.md` §6.6-6.7; `internal/drivers/stub/stub_test.go` over `docs/fixtures/stub/` |
+| `children:` placing a separately bridged device on a parent's port: both entries, LLDP only, MAC only (each places), neither (the placement is kept) | live on the `podman` driver as the parent, port down, 2026-11-02 | `docs/fixtures/controller-10.6.109/rest-device-flexxg-placement.json`; `internal/informloop/children_test.go` over the DX010 capture |
+| The controller's push for a UniFi aggregate on the stub's lanes | captured | `docs/fixtures/controller-10.6.109/system_cfg-flexxg-aggregate.txt` |
+
+Untested — PRs welcome: `children:` with an `arista-eos` or `sonic`
+parent (the loop does the same for every driver; the proof is one
+placement in the parent's record), and a child on a port that is up with
+its own LLDP neighbour (the child is then reported in the MAC table only;
+whether the controller places by that alone next to another neighbour is
+the open question).
+
+---
+
 ## How to close a gap
 
 1. **Open an issue** naming the row in this file, your device/OS version,

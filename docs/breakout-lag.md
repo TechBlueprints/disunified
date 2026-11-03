@@ -162,6 +162,15 @@ switch:
    the bundle lives in the log and the LACP fields -- or 50/100 only.
    (Could also be answered from the UI bundle's speed-label table, as the
    UPS picture was.)
+   **Answer (2026-11-02, Network 10.6.109, the stub of §6.7):** the
+   controller stores `speed: 75000` as sent, and the Ports list prints
+   **"75 GbE"**. Nothing else knows the speed: the text is grey (no legend
+   colour), the port's tile in the picture is drawn like a disconnected
+   port, the Link Speed filter files the port under **"40 GbE"**, and the
+   drawer (auto-negotiation on, as reported) shows no speed or FEC row.
+   50000 is a real UI speed (its own legend colour and label). So A can
+   print the sum, but the picture and the filters misread it; reporting
+   the lane speed, or 50/100 only, is the honest form.
 2. **Option B's keys on a non-aggregate port**: one inform with
    `lag_member`, `aggregate_num_ports: 1`, `lacp_state`,
    `partner_system_id` on an idle port; what the controller stores
@@ -310,18 +319,66 @@ representation of breakout itself, LAG or not.
    test's payload with the Flex XG profile) adopted from the Mac while a
    temporary option makes the deployed DX010 bridge report its MAC on an
    idle cage; forgotten afterwards. This decides the shape.
+   **Answer (2026-11-02, Network 10.6.109): placed. Shape 2 is live.** The
+   stub (`USFXG`, a locally administered MAC with no other trace on the
+   LAN) was CONNECTED 10 s after `cmd/devmgr adopt` and placed within
+   30 s more: `uplink.uplink_mac` = the parent, `uplink_remote_port` = the
+   port its `children:` entry names, `uplink_source: lldp_downlink`, on a
+   port that is **down**. The parent's record gained the child in
+   `downlink_lldp_macs` (from the LLDP entry) and `downlink_table` (from
+   the MAC entry, `{mac, port_idx, speed: 0}`). Which entry places, with
+   the parent restarted on one at a time: **either does.** LLDP only: kept,
+   source still `lldp_downlink`, `downlink_table` emptied. MAC only: kept,
+   and re-derived -- the source went `legacy` then `legacy_only_sta` within
+   two cycles. Neither: still placed after four cycles
+   (`legacy_only_sta`, `last_uplink` kept), so a placement outlives the
+   report, which is what a joined cage (§6.4) will show until the child is
+   forgotten. LLDP is what the controller prefers; the feature carries
+   both. Records: `docs/fixtures/controller-10.6.109/rest-device-flexxg-placement.json`
+   (parent and child per step, reduced to the placement fields).
 2. **A shared address.** The stub reports the parent's
    `connect_request_ip`; the controller must adopt and place it and leave
    the parent's record alone.
+   **Answer: fine.** The stub's `ip` and `connect_request_ip` were the
+   parent's throughout; the parent's `ip`, name, state, `uplink`,
+   `gateway_mac`, `connect_request_ip` and hostname were unchanged before
+   and after, its only new fields the two downlink lists.
 3. **The Flex XG profile under our tables:** which index it treats as
    the uplink, how it draws a 25G SFP28 lane and a 100G QSFP28 uplink on
    its 10G copper picture, and what it does with two empty ports (the
    2x50G case). If the picture fights the data, USMINI2 (five plain
    ports) is the fallback.
+   **Answer: the Flex XG works; no fallback needed.** Port 5 is the
+   profile's uplink (`Connected Via: Port 5 (Uplink)`, the tile drawn with
+   the uplink mark); the picture is the profile's (port 1 apart, 2-4
+   grouped, 5) with our media on the tiles (SFP, QSFP) coloured by speed
+   (25 GbE, 100 GbE). A lane's drawer: speed picker 25/10 GbE full duplex
+   (our `speed_caps`), the FEC box, Operation Switching/Aggregating, and a
+   profile note that the SFP28 ports cannot mix speeds in 25G mode. The
+   uplink's drawer: 100 GbE only, FEC unticked, no Operation field. 2x50G:
+   the two lanes are QSFP tiles at 50 GbE, the two spares "Not Connected".
+   One quirk, seen on the lanes the aggregate test had left forced at
+   25000: **the stored `speed` follows a forced override, not the
+   inform** (50000 sent, 25000 stored; the port without an override
+   stored 50000) -- the child must seed its lanes' speeds so overrides
+   never disagree with the hardware.
 4. **A UniFi aggregate on a cascaded switch's ports**, pushed to the
    stub as `opmode=aggregate` -- that the UI offers it on a Flex XG
    profile (the profile's own capability claims may gate the LAG editor;
    `switch_caps`/`feature_caps` are ours to claim) and what it pushes.
+   **Answer: offered and pushed as on any switch.** With the stub
+   claiming LACP and `max_aggregate_sessions: 8`, a lane's Operation
+   offers Aggregating (behind a "Confirm Aggregation" note), the member
+   picker greys out the uplink, and saving ports 2-4 pushes, per member,
+   `opmode=aggregate`, `lag=1`, `autoneg=disabled`, `speed=25000`,
+   `duplex=enabled`, `fec=cl-91`, `ld_mode=disabled`
+   (`docs/fixtures/controller-10.6.109/system_cfg-flexxg-aggregate.txt`).
+   The undo ("Remove Aggregation?", then the drawer applies the head's
+   settings to all three) pushes `opmode=switch` and leaves the members'
+   forced speed. After the aggregate push the record went provisioning,
+   then disconnected for about 90 s (`last_seen` frozen while the stub
+   informed every 30 s), then connected at the next push, with nothing
+   done; seen once, cause not chased.
 
 Then: the child driver fixture-tested against the DX010 capture with its
 cage 2 split, the replay of the child's push through the parent's plan
@@ -416,6 +473,15 @@ knob is generic, so the DX010 gets it without a rebuild for the test.
    redeploy, delete the stub's state dir. Write the outcome into §6.6,
    `docs/topology-placement.md` (a new fact either way) and the support
    matrix.
+
+**The run (2026-11-02).** The Arista has been unplugged since
+2026-10-31, so the parent was the Podman bridge (the same `UDC48X6`
+profile, in the same container, with empty QSFP ports): `children:` on
+its idle port 50. To restart the parent on one entry at a time the
+knob gained `report: lldp|mac` (unset = both). Everything else ran as
+written; the answers are in §6.6 and §5.1, the screenshots in
+`local-information/`. Teardown: stub stopped, forgotten (`cmd/sitemgr`),
+its state deleted, the deployed config byte-identical to its backup.
 
 **Outcomes.** Placed with both entries: shape 2 is live; step 5 says
 which entry the real feature must carry (it will carry both). Placed by
