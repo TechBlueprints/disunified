@@ -36,34 +36,7 @@ func TestReplaySonicIGMPSnooping(t *testing.T) {
 	}
 	text := strings.TrimRight(readECSPush(t, "system_cfg-dx010-held.txt"), "\n") + "\n" + strings.Join(extra, "\n") + "\n"
 
-	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261102-e53777446", "collect-snooping.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var buf strings.Builder
-	logger := log.New(&buf, "", 0)
-	coll := sonic.NewCollector(fr)
-	coll.Log = logger
-	coll.L2 = false // spanning tree is TestReplaySonicSpanningTree's
-	coll.IGMP = true
-	snap, err := coll.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if caps := coll.Capabilities(); !caps.IGMPSnooping || !caps.IGMPSnoopingAdvanced {
-		t.Fatalf("the controller pushes these keys only to a device that claims them: %+v", caps)
-	}
-	defaults := map[int][]string{}
-	for _, p := range snap.Ports {
-		defaults[p.Index] = coll.DefaultPortNames(p)
-	}
-	desc := inform.Descriptor{MAC: snap.System.MAC}
-	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: text}
-	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
-	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults, ControlIGMP: true})
-	if err != nil {
-		t.Fatal(err)
-	}
+	fr, coll, l, buf := igmpLoopRig(t, text)
 	ctx := context.Background()
 	if !l.applyPending(ctx) {
 		t.Fatal("the push was not consumed")
@@ -101,10 +74,92 @@ func TestReplaySonicIGMPSnooping(t *testing.T) {
 			t.Errorf("log lacks %q:\n%s", want, logText)
 		}
 	}
-	if snap, err = coll.Collect(ctx); err != nil {
+	snap, err := coll.Collect(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := snap.System.IGMPSnooping; len(got) != 3 || !got[1] || !got[2] || !got[69] {
+		t.Errorf("reported snooping %v", got)
+	}
+	n := len(fr.Recorded())
+	l.reconcile(ctx)
+	if got := fr.Recorded()[n:]; len(got) != 0 {
+		t.Errorf("reconcile wrote %q", got)
+	}
+}
+
+// igmpLoopRig is the loop over the DX010 captured during the hardware test
+// (§8.14), snooping on (options.igmp), with text pending.
+func igmpLoopRig(t *testing.T, text string) (*sonic.FixtureRunner, *sonic.Collector, *Loop, *strings.Builder) {
+	t.Helper()
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261102-e53777446", "collect-snooping.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := &strings.Builder{}
+	logger := log.New(buf, "", 0)
+	coll := sonic.NewCollector(fr)
+	coll.Log = logger
+	coll.L2 = false // spanning tree is TestReplaySonicSpanningTree's
+	coll.IGMP = true
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caps := coll.Capabilities(); !caps.IGMPSnooping || !caps.IGMPSnoopingAdvanced {
+		t.Fatalf("the controller pushes these keys only to a device that claims them: %+v", caps)
+	}
+	defaults := map[int][]string{}
+	for _, p := range snap.Ports {
+		defaults[p.Index] = coll.DefaultPortNames(p)
+	}
+	desc := inform.Descriptor{MAC: snap.System.MAC}
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: text}
+	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults, ControlIGMP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fr, coll, l, buf
+}
+
+// The DX010's own push once it claimed snooping (2026-11-05, after the
+// deploy with options.igmp on and a force-provision): VLAN 1 only (the
+// other networks are not on the switch), the querier on with no address,
+// unknown multicast flooded, both switch.multicast keys on. Against the
+// H3 capture it writes VLAN 1's row and the reserved groups, drops the
+// test VLAN, logs only the router-port expiry, and a reconcile is quiet --
+// what the deployed bridge did live (§8.14).
+func TestReplaySonicDX010IGMPPush(t *testing.T) {
+	fr, coll, l, buf := igmpLoopRig(t, readECSPush(t, "system_cfg-dx010-igmp.txt"))
+	ctx := context.Background()
+	if !l.applyPending(ctx) {
+		t.Fatal("the push was not consumed")
+	}
+	all := strings.Join(fr.L2MCScripts, "\n")
+	for _, want := range []string{
+		`L2MC|Vlan4094\",\"fields\":{\"enabled\":\"true\",\"fast-leave\":\"false\",\"last-member-query-interval\":\"1000\",\"querier\":\"true\",\"query-interval\":\"125\",\"query-max-response-time\":\"10\",\"version\":\"3\"}`,
+		`{\"key\":\"L2MC|Vlan3999\"}`,
+		`L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet0`,
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("scripts lack %s:\n%s", want, all)
+		}
+	}
+	logText := buf.String()
+	if !strings.Contains(logText, "the multicast-router expiry (VLANs 1) has no l2mcd setting") {
+		t.Errorf("router expiry not logged:\n%s", logText)
+	}
+	for _, not := range []string{"refused by this switch's SAI", "querier address", "options.igmp is off"} {
+		if strings.Contains(logText, not) {
+			t.Errorf("log has %q for a push without it:\n%s", not, logText)
+		}
+	}
+	snap, err := coll.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snap.System.IGMPSnooping; len(got) != 1 || !got[1] {
 		t.Errorf("reported snooping %v", got)
 	}
 	n := len(fr.Recorded())

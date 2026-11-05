@@ -310,7 +310,11 @@ fixture- and replay-tested on the DX010's capture from the hardware test
 (`igmp_test.go`, `informloop/replay_sonic_igmp_test.go`, the ECS's real
 push); claims what the ECS claims (`feature_caps` 256 and
 `IGMP_SNOOPING_ADVANCED`, `igmp_snoop_caps` 31). **Behind `options.igmp:
-on`, off by default.** On the DX010 (§8.14 H2-H3, by hand): the IGMP traps,
+on`, off by default.** **The driver's path verified live on the DX010
+2026-11-05** with it on (§8.14): the claim, the controller's push after a
+force-provision (`system_cfg-dx010-igmp.txt`, replayed), l2mcd enabled,
+VLAN 1's row and the reserved groups written, the chip holding them and
+three LAN groups, quiet reconciles. On the DX010 (§8.14 H2-H3, by hand): the IGMP traps,
 the per-VLAN flag and a (*,G) entry in the chip's IPMC table verified;
 optimised flood refused by the SAI, so `forward_unknown_multicast=false` is
 logged and the VLAN keeps flooding unknown multicast. The querier address,
@@ -320,8 +324,8 @@ logged.
 | Gap | What the PR needs |
 |---|---|
 | Traffic (§8.9 H4): a joined stream reaching only its port, the queries on the wire, a leave; IGMP of a VLAN without snooping still crossing the switch with the traps in place | two hosts cabled to the switch on a test VLAN, a source, `show interfaces counters` on the unjoined port; then `options.igmp` on by default |
-| The driver's own write path live (rows, statics, the feature enable) | `options.igmp: on` on the DX010 and the controller's push recorded (`controller-10.6.109/system_cfg-dx010-igmp.txt`) |
-| A querier source address on a VLAN where the switch has none (0.0.0.0 today) | the querier-address patch specified in §8.11 |
+| A querier source address (l2mcd sends from 0.0.0.0 even on a VLAN with an address, so it wins every election; live 2026-11-05) | the querier-address patch of §8.11, with the address lookup and the election fixed; a capture of the switch deferring to a lower querier |
+| A multicast-router port learned from the LAN's querier (none learned live, with the gateway's queries reaching l2mcd) | the cause in l2mcd's query path, then `show igmp-snooping vlan` listing the uplink |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 
 ### Refused (logged, not claimed)

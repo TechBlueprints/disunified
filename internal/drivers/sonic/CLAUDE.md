@@ -512,7 +512,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   refused while snooping is on (the driver never deletes a VLAN). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
-  from the VLAN's own address, or 0.0.0.0: the patch in §8.11). Fixture:
+  from the VLAN's own address, or 0.0.0.0: the patch in §8.11). **Live on
+  the DX010 since 2026-11-05 (`options.igmp: on`):** the controller pushed
+  the keys only after a `cmd/devmgr force-provision`; the DX010's push has
+  `igmp_querier` empty; **l2mcd queries from 0.0.0.0 even with
+  `INTERFACE_TABLE|Vlan4094|<addr>` present, wins every election, and learned
+  no mrouter port** from the gateway's queries; the traps hand it every
+  VLAN's IGMP. Push fixture: `controller-10.6.109/system_cfg-dx010-igmp.txt`.
+  Fixture:
   `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
   `cfg_l2mc` section) and its `config-help.txt`.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are

@@ -1971,6 +1971,53 @@ ECS keeps its own: whole rows, never the CLI per field.
   networks and snooping keys through unificfg and the loop;
   `TestSwitchCapsIGMPAdvancedAsTheECS` holds the claim to the ECS's inform.
 
+**Live through the driver (2026-11-05, deb `f0accd9`, `options.igmp: on` on
+the DX010; Clint: on without H4).** The new claim was in the next inform
+(`feature_caps` with 256 and 67108864, `igmp_snoop_caps` 31), but the
+controller pushed nothing new until a `cmd/devmgr force-provision`, as with
+STP (§11.5). That push (`controller-10.6.109/system_cfg-dx010-igmp.txt`,
+replayed in `TestReplaySonicDX010IGMPPush`) carries VLAN 1 only, the DX010
+being on no other network: snooping, querier on with **`igmp_querier`
+empty** (the ECS's VLAN 1 names the gateway), max response 10, membership
+260, router expiry 180, `forward_unknown_multicast=true`, and both
+`switch.multicast.*` keys on. The bridge applied it in 4 s: `config feature
+state l2mcd enabled`, `L2MC|Vlan4094` (v3, querier, 125/10), the reserved
+groups' 7 rows and 224 members, `config save`; the router expiry logged;
+0 ports changed; every reconcile after it wrote nothing. On the switch:
+l2mcd and l2mcmgrd running (0.4 % CPU), 18 hostif traps, no ERR in syslog,
+the saved config with l2mcd enabled. `show igmp-snooping groups vlan 4094`,
+APPL_DB, ASIC_DB and the chip's `ipmc table show` agree on 10 entries: the 7
+reserved groups (static, Ethernet0) and 3 learned from the LAN on Ethernet0
+(233.89.188.1, 239.254.127.63, 224.0.1.60 -- the groups the ECS holds).
+
+What the uplink showed in two minutes of `tcpdump` on Ethernet0, and what
+it means:
+
+- The traps hand l2mcd the IGMP of **every** VLAN the trunk carries (2, 8,
+  9, 69, 4094 seen), not only the snooping one or the ones Ethernet0 is a
+  member of. Trapped frames show the ingress VLAN as an 802.1Q tag (4094
+  for the native one), as BPDUs do (§11.5).
+- The gateway is VLAN 1's querier; its general
+  queries reach l2mcd on Vlan4094. **l2mcd learned no mrouter port from
+  them** (`Multicast Router ports:` empty throughout).
+- **l2mcd queries from 0.0.0.0 although Vlan4094 has an address**
+  (`INTERFACE_TABLE|Vlan4094|<addr>/16` in STATE_DB, the same in
+  VLAN_INTERFACE and INTF_TABLE). §8.11 assumed it uses the VLAN interface's
+  lowest IPv4; on this build it does not. At 0.0.0.0 it wins every
+  election, so with UniFi's querier on it never defers to the gateway: it
+  sent group-specific queries for 233.89.188.1 (v3, 1 s max response,
+  untagged into VLAN 1) about six a minute, after the leaves UniFi devices
+  send for that group -- by the count, leaves seen on other VLANs as well.
+  The LAN already carries such 0.0.0.0 group queries on VLANs 2 and 69 from
+  two other switches. No general query from the DX010 was seen in the
+  window.
+- With only Ethernet0 linked nothing transits the switch, so none of this
+  has yet decided where a stream goes. It will once ports carry hosts:
+  without a learned mrouter port, a group joined behind the DX010 reaches
+  the upstream router only by flooding or the static groups. That is H4's
+  question, and the querier-address patch (§8.11) now also has to fix the
+  address lookup and the election.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is

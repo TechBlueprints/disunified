@@ -55,7 +55,9 @@ MAC ACL rules need an orchagent patch and are refused.
 IGMP snooping runs through l2mcd on the repo's 202511 image: the chip half
 verified by hand on the DX010 2026-11-03 (group entries program, optimised
 flood is refused by the SAI), the driver's write path built behind
-`options.igmp: on`, off until the traffic test with cabled hosts
+`options.igmp: on` (off by default until the traffic test with cabled
+hosts), and on for the DX010 since 2026-11-05: verified live through the
+driver; l2mcd queries from 0.0.0.0 and learns no mrouter port
 (`docs/drivers/sonic.md` §8.14).
 **Since 2026-11-02 the DX010's bridge runs on the switch itself**
 (`options.transport: local`, a `.deb` whose config and state live in

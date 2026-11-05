@@ -258,11 +258,14 @@ the CPLD watchdog, the trace that found it) is §8.14.
   the chip's IPMC table (`ipmc table show`, `mc show` and
   `show igmp-snooping groups` agree), and it **refuses optimised flood**
   (unknown multicast to the router ports only). H4 (traffic between two
-  hosts) waits for test hosts cabled to the switch; nothing of the test was
-  saved, and `l2mcd` is disabled again. The driver writes the controller's
-  snooping settings (§8.10) behind **`options.igmp: on`**, off by default
-  until H4 passes; with it off, nothing is claimed and the keys are only
-  logged.
+  hosts) waits for test hosts cabled to the switch. The driver writes the
+  controller's snooping settings (§8.10) behind **`options.igmp: on`**, off
+  by default until H4 passes. **The DX010 runs with it on since 2026-11-05**
+  (Clint, ahead of H4; deb `f0accd9`): VLAN 1 snooping, the reserved groups
+  and three LAN groups in the chip, every reconcile quiet. Found live
+  (§8.14): l2mcd queries from 0.0.0.0 although Vlan4094 has an address,
+  wins the querier election against the gateway, and learns no mrouter
+  port.
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
   DX010; confirmations there are due. The mirror finding is on #28139,
   where the egress result (both directions bind) still needs adding.
