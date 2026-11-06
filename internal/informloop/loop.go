@@ -57,8 +57,16 @@ func (s State) String() string {
 
 // Config is everything the loop needs beyond the session.
 type Config struct {
-	Interval       time.Duration         // initial inform cadence; the controller may change it
-	RecordDir      string                // "" disables reply recording
+	Interval  time.Duration // initial inform cadence; the controller may change it
+	RecordDir string        // "" disables reply recording
+	// RecordMaxSize caps the live reply log, <RecordDir>/<mac>.ndjson: a
+	// record that would take it past this many bytes first rotates it to
+	// <mac>.ndjson.1 (.1 -> .2 and so on). 0 = DefaultRecordMaxSize; < 0 =
+	// no cap (the file grows without bound, as before 2026-11-05).
+	RecordMaxSize int64
+	// RecordKeep is how many rotated generations are kept (.1 .. .N); the
+	// oldest is dropped. 0 = DefaultRecordKeep.
+	RecordKeep     int
 	Collector      devicemodel.Collector // nil = report the model's synthetic table
 	CollectTimeout time.Duration
 	// ApplyTimeout bounds one write to the device -- a port/VLAN/device
@@ -296,7 +304,7 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 		l.power = &powerevent.Tracker{Device: name, Name: l.controllerName, Settings: ps.PowerEvents(), Logf: cfg.Logger.Printf}
 	}
 	if cfg.RecordDir != "" {
-		r, err := newRecorder(cfg.RecordDir, desc.MAC)
+		r, err := newRecorder(cfg.RecordDir, desc.MAC, cfg.RecordMaxSize, cfg.RecordKeep)
 		if err != nil {
 			return nil, err
 		}
@@ -1529,51 +1537,6 @@ func (l *Loop) record(r record) {
 	if err := l.recorder.write(r); err != nil {
 		l.cfg.Logger.Printf("[%s] record reply: %v", l.desc.MAC, err)
 	}
-}
-
-// recorder appends NDJSON records to <dir>/<mac>.ndjson. Consecutive plain
-// 404s are collapsed into a counter so a device that sits pending overnight
-// does not write a line every ten seconds.
-type recorder struct {
-	f        *os.File
-	enc      *json.Encoder
-	quiet404 int
-}
-
-func newRecorder(dir, mac string) (*recorder, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	name := filepath.Join(dir, filepath.Base(mac)+".ndjson")
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	return &recorder{f: f, enc: json.NewEncoder(f)}, nil
-}
-
-func (r *recorder) write(rec record) error {
-	if rec.Status == http.StatusNotFound && rec.Error == "" {
-		r.quiet404++
-		if r.quiet404 > 1 {
-			return nil
-		}
-		return r.enc.Encode(rec)
-	}
-	if r.quiet404 > 1 {
-		if err := r.enc.Encode(map[string]any{"at": rec.At, "collapsed_404s": r.quiet404 - 1}); err != nil {
-			return err
-		}
-	}
-	r.quiet404 = 0
-	return r.enc.Encode(rec)
-}
-
-func (r *recorder) Close() {
-	if r.quiet404 > 1 {
-		_ = r.enc.Encode(map[string]any{"at": time.Now(), "collapsed_404s": r.quiet404 - 1})
-	}
-	_ = r.f.Close()
 }
 
 // warnOOB logs, loudly and on every change of state, when the switch's

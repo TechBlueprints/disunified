@@ -317,7 +317,11 @@ bridge is `sudo dpkg -i` of the new deb and replacing that file.
 - A UI setting has no effect: look for `UNSUPPORTED` / `NOTE` lines in the
   log; the feature map says what that driver cannot do.
 - Every reply from the controller is in `inform-log/<name>/*.ndjson`; that
-  is the first thing to read when something unexpected happens.
+  is the first thing to read when something unexpected happens. The file is
+  capped (a device's `reply_log.max_size`, default `8MB`): past the cap it
+  moves to `<mac>.ndjson.1`, older ones to `.2`, `.3` (`reply_log.keep`,
+  default 3, the oldest dropped), always between two whole lines, and a
+  fresh file starts. `max_size: off` lets it grow as before.
 - The controller's own log is the second: on a UniFi OS console,
   `/usr/lib/unifi/logs/server.log` (root over SSH), lines shaped
   `[<time>] <thread> LEVEL  category - message`. `grep -a "> ERROR "` and

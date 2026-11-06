@@ -33,6 +33,10 @@ devices:                             # "switches:" is still accepted (the pre-re
       #                              # snooping, NTP, the remote syslog host, the hostname, SSH keys,
       #                              # SNMP and Restart (a real reload) -- the device's own settings for
       #                              # them are replaced. A driver applies what its device can take.
+    # reply_log:                     # every controller reply, one JSON line each: inform-log/<name>/<mac>.ndjson
+    #   max_size: 8MB                # the default cap; past it the file moves to <mac>.ndjson.1 (.1 -> .2 ...)
+    #                                # and a fresh one starts. "512KB", "1GB", bytes, or "off" (no cap)
+    #   keep: 3                      # rotated files kept (default 3); the oldest is dropped
     # children:                      # devices reported below a port: the MAC in its MAC table and, while
     #   - {port: 54, mac: "02:00:00:00:00:a5", name: lane-switch}   # it has no LLDP neighbour, as the
     #                                # neighbour -- so the controller places them there (docs/install.md §3)
