@@ -53,8 +53,10 @@ are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`);
 MAC ACL rules are `DUI_MAC_ACL`, an `L2` table that needs the image kit's
 sonic-swss 0003 (orchagent's outer-MAC match; claimed only when Start finds
-it): written, Active in the chip and removed live on the DX010 2026-11-06,
-traffic not yet tested (§11.7.8).
+it): written, Active in the chip and removed live on the DX010 2026-11-06;
+the chip's entry matched exactly the blocked MAC's frames, a dropped switched
+frame is unseen (one linked port), and frames to the switch itself still
+reach its CPU through the traps' copy (§11.7.8).
 IGMP snooping runs through l2mcd on the repo's 202511 image: the chip half
 verified by hand on the DX010 2026-11-03 (group entries program, optimised
 flood is refused by the SAI), the driver's write path built behind

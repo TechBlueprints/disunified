@@ -3429,14 +3429,42 @@ above):
   `config_db.json` and ASIC_DB then hold no `DUI_` key and no ACL table.
 - **The site afterwards.** The controller's ACL rules are `[]`.
 
+**Traffic check** (2026-11-06 07:07-07:13 MST, Clint's go). No UI rule can
+reach a frame on this switch: its one link carries only the native VLAN,
+which is the management network the UI refuses for a MAC rule. So a
+hand-made table stood in.
+- **The setup.** A table `MACTEST` of type `L2`, bound to Ethernet0 alone,
+  with one rule: `SRC_MAC 02:00:00:00:00:01/ff:ff:ff:ff:ff:ff`,
+  `VLAN_ID 4094`, `DROP`. A 300 s systemd timer on the switch removed it.
+- **The traffic.** A LAN host sent raw UDP frames from the test MAC and
+  from a control MAC (`02:00:00:00:00:02`): three to the switch's own MAC
+  and address, then three to broadcast. `tcpdump` watched `Vlan4094`, the
+  switch's CPU.
+- **The match works in the chip.** The rule's field-processor entry
+  (`bcmcmd "fp show group"`: qualifiers SrcMac and OuterVlanId, action Drop)
+  counted **6 packets, 384 bytes**. Those are exactly the six frames from
+  the test MAC; none of the control MAC's six hit it.
+- **Frames addressed to the switch still reached its CPU**, the blocked
+  MAC's included. The to-CPU traps are field-processor entries in other
+  groups whose action is `GpCopyToCpu`. On Broadcom a Drop in one group
+  does not cancel a CPU copy made by another, so the drop removes only the
+  forwarding copy. The broadcast frames reached the CPU from neither MAC,
+  so they show nothing either way.
+- **Not observed: a dropped switched frame.** That is the case UniFi's MAC
+  rules are for ("traffic between devices on the same VLAN"), and seeing
+  it needs a second port with a link. Every other port of the DX010 is
+  down, so the check stops at the hit counter.
+- **Open difference.** In §11.7.7 an L3 rule (`DUI_DHCP_GUARD`) did keep
+  DHCP replies from the switch's CPU. Whether that trap's action differs,
+  or the L3 table's drop does, was not traced.
+- **Afterwards.** The timer removed the table (no `MACTEST` key in any DB,
+  no ACL table or entry in ASIC_DB). Ethernet0 stayed up and the bridge
+  informed every minute throughout.
+
 **Not verified live:**
-- **Traffic.** The DX010's one link carries only the native VLAN, which is
-  the management network the UI refuses for a MAC rule. No UI rule can
-  therefore match a frame that reaches this switch. A traffic check needs a
-  hand-made `L2` table on the uplink (a root write on Ethernet0) and has
-  not been run. That a SAI entry with an outer-MAC field drops what it
-  matches is the chip's part, seen in ASIC_DB but not on the wire.
-- **A rule on the native stand-in**, which the UI does not offer here.
+- **A switched frame dropped**, which needs two linked ports (above).
+- **A rule on the native stand-in from the UI**, which the UI does not
+  offer here.
 
 Tested from fixtures: `acl_mac_test.go` (the ECS's push, refusal without the
 patch, VLANs and holds, the management guard) and
