@@ -1690,9 +1690,10 @@ anyway. On a switch the receive buffer is a 1 MB static ring (500 slots of 2 KB)
 most over-reads land in other packets' bytes rather than faulting; the in-place
 source conversion can write past the ring.
 
-**Fixed in sonic-l2mcd 0002-0007** (the build kit's series; nothing posted
-upstream, a register item for the daemon's author once the image has run on the
-hardware):
+**Fixed in sonic-l2mcd 0002-0007** (the build kit's series; posted to the
+daemon's author 2026-11-05 as PRs against the Micas `l2mcd-pre` branch once the
+image had run on the hardware -- links and the prior art found for each in
+[`prior-art.md`](../prior-art.md) §6.1):
 
 - 0002: a malformed packet is dropped, counted (`malformed-igmp`/`malformed-mld` in
   the daemon's debug dump) and logged at most once per family every 10 s with the

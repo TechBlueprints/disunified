@@ -169,7 +169,8 @@ IPC buffers of at least that size and are left alone.
 
 ## The receive path (sonic-l2mcd 0002-0007)
 
-Reported against the daemon (not upstream; nothing posted) and confirmed in-process
+Reported against the daemon (posted 2026-11-05 as PRs on the Micas `l2mcd-pre`
+branch: `docs/prior-art.md` §6.1) and confirmed in-process
 with the harness in `../l2mcd-fuzz/` (ASan + UBSan, the daemon's own receive path,
 one heap buffer per packet of exactly the received size): every IGMPv3 and MLDv2
 record walk trusted the packet's own counts, and the receive paths trusted the IP
