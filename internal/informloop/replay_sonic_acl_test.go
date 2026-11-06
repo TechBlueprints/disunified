@@ -167,3 +167,75 @@ func TestReplaySonicDX010ACLPush(t *testing.T) {
 		t.Errorf("reconcile wrote %q", got)
 	}
 }
+
+// The DX010's own MAC rule push (2026-11-06) through the loop into the
+// driver, on an image whose orchagent has the L2 table type (the image
+// kit's sonic-swss 0003): the L2 table bound like the IP one and the two
+// rules as the bridge wrote them live, the /45 mask included; the verdict
+// read back; nothing rewritten on reconcile. docs/drivers/sonic.md 11.7.8.
+func TestReplaySonicDX010MACACLPush(t *testing.T) {
+	text := readECSPush(t, "system_cfg-dx010-mac-acl.txt")
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-202505.1238526-ff3c0c9f6", "collect-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.OrchL2 = "1"
+	var buf strings.Builder
+	logger := log.New(&buf, "", 0)
+	coll := sonic.NewCollector(fr)
+	coll.Log = logger
+	coll.L2 = false
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caps := coll.Capabilities(); caps.MACACLs != 128 {
+		t.Fatalf("claim = %d, want 128 on a patched orchagent", caps.MACACLs)
+	}
+	defaults := map[int][]string{}
+	for _, p := range snap.Ports {
+		defaults[p.Index] = coll.DefaultPortNames(p)
+	}
+	desc := inform.Descriptor{MAC: snap.System.MAC}
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v1", PendingSystemCfg: text}
+	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, DefaultPortNames: defaults})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if !l.applyPending(ctx) {
+		t.Fatal("the push was not consumed")
+	}
+	var acl []string
+	for _, c := range fr.Recorded() {
+		if strings.Contains(c, "acl") || strings.Contains(c, "ACL_") {
+			acl = append(acl, c)
+		}
+	}
+	if len(acl) != 3 || !strings.HasPrefix(acl[0], "sudo config acl add table DUI_MAC_ACL L2 -p Ethernet0,") {
+		t.Fatalf("want the L2 table and two rules, got %q\nlog:\n%s", acl, buf.String())
+	}
+	for i, want := range []string{
+		"'ACL_RULE|DUI_MAC_ACL|RULE_1' PACKET_ACTION 'DROP' PRIORITY '9998' SRC_MAC '02:00:00:00:00:01/ff:ff:ff:ff:ff:ff' VLAN_ID '2'",
+		"'ACL_RULE|DUI_MAC_ACL|RULE_2' DST_MAC '02:00:00:00:00:02/ff:ff:ff:ff:ff:f8' PACKET_ACTION 'FORWARD' PRIORITY '9997' SRC_MAC '02:00:00:00:00:03/ff:ff:ff:ff:ff:ff' VLAN_ID '2'",
+	} {
+		if !strings.HasSuffix(acl[i+1], want) {
+			t.Errorf("rule %d:\n got  %s\n want ...%s", i+1, acl[i+1], want)
+		}
+	}
+	if strings.Contains(buf.String(), "HELD") || strings.Contains(buf.String(), "DUI_IP_ACL") || strings.Contains(buf.String(), "MAC ACL rules (") || strings.Contains(buf.String(), "MAC ACL rules: ") {
+		t.Errorf("nothing is held or refused:\n%s", buf.String())
+	}
+	if _, err := coll.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "DUI_MAC_ACL 2 of 2 rules active") {
+		t.Errorf("verdict not logged:\n%s", buf.String())
+	}
+	n := len(fr.Recorded())
+	l.reconcile(ctx)
+	if got := fr.Recorded()[n:]; len(got) != 0 {
+		t.Errorf("reconcile wrote %q", got)
+	}
+}

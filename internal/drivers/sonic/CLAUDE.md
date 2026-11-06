@@ -444,8 +444,16 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   table is missing gets no status (orchagent waits). `ApplyPorts` re-runs
   the ACL apply after its batch (breakout children, a new PortChannel).
   `collect.py` reads only `DUI_*` and CRM's ACL counters; the DX010 has
-  three free ingress tables per PORT and LAG bind point. MAC rules are
-  refused (no L2 table type, no outer-MAC match on 202505 or 202511).
+  three free ingress tables per PORT and LAG bind point. MAC rules go to
+  `DUI_MAC_ACL`, type literally `L2` (sonic-acl.yang allows SRC_MAC/DST_MAC
+  on no other type), only on an image with the kit's sonic-swss 0003: stock
+  202505 and 202511 have no L2 table type and no outer-MAC match. `Start`
+  greps the running orchagent for the patch's error string and claims
+  `max_custom_mac_acls` 128 only then; without it a MAC push is refused
+  with a log. A MAC set whose Block would drop the switch's own management
+  frames is held (`cutsManagementMAC`). The UI refuses the management
+  network for a MAC rule, and the DX010's one link carries only that
+  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8).
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client

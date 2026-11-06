@@ -298,7 +298,7 @@ removed, 512+ entries per table.
 |---|---|
 | A rebind on a live breakout or aggregate (the guard and an IP rule were written, enforced and removed live on 2026-11-01, §11.7.7) | a split or a two-member aggregate while a `DUI_` table exists: the logged `config acl add table` with the new list, STATE_DB `Active`, no PortChannel member in `ports@` |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
-| MAC rules | an orchagent patch (an `L2` table type, `SRC_MAC`/`DST_MAC`) in the custom image series (§8, §11.7.5) |
+| MAC rules: traffic (written, `Active` in the chip and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003, §11.7.8; the DX010's one link carries only the management VLAN, which the UI refuses for a MAC rule) | a MAC rule on a VLAN a cabled port carries: frames from the blocked MAC dropped and a control MAC's passed, then the rule's removal |
 
 ### IGMP snooping (the custom image only)
 
@@ -333,7 +333,7 @@ logged.
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off, port
 isolation, 802.1X, LLDP-MED off (community SONiC has none of them); MAC ACL
-rules (no L2 table type in the stock orchagent); an IP ACL rule shape
+rules on an image without the kit's sonic-swss 0003 (no L2 table type in the stock orchagent); an IP ACL rule shape
 no capture shows, or a set that would block the bridge's own SSH to the
 switch (the rules of that kind are held); breakout on a platform without `platform.json`
 (the VS), a speed no breakout mode runs, and a breakout of a cage in an

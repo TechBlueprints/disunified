@@ -51,7 +51,10 @@ UniFi's DHCP guarding (Rogue DHCP Server Detection) and switch IP ACL rules
 are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 2026-11-01 from the ECS's and the DX010's captured pushes and verified live
 on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`);
-MAC ACL rules need an orchagent patch and are refused.
+MAC ACL rules are `DUI_MAC_ACL`, an `L2` table that needs the image kit's
+sonic-swss 0003 (orchagent's outer-MAC match; claimed only when Start finds
+it): written, Active in the chip and removed live on the DX010 2026-11-06,
+traffic not yet tested (§11.7.8).
 IGMP snooping runs through l2mcd on the repo's 202511 image: the chip half
 verified by hand on the DX010 2026-11-03 (group entries program, optimised
 flood is refused by the SAI), the driver's write path built behind

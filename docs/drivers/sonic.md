@@ -727,7 +727,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | NTP (`ManageNTP`, `NTPServers`) | `config ntp add\|del <ip>` (restarts chrony) | `NTP_SERVER\|<ip>` | manage the set as the Arista does: add the controller's, remove the ones the bridge added earlier (remembered per run + persisted in the state dir), leave others. Hostnames: SONiC accepts IPs; a hostname is resolved by the bridge first or logged. |
 | syslog (`ManageSyslog`, `SyslogHosts`) | `config syslog add <ip> --port <n>` / `del` (restarts rsyslog) | `SYSLOG_SERVER\|<ip> {port}` | same ownership rule |
 | SNMP (`SNMPSet`, `SNMPCommunity`) | `config snmp community add <name> RO` / `del` (restarts snmp) | `SNMP_COMMUNITY\|<name> {TYPE RO}` | UniFi's community is the only one: the image's `public` and any other are removed, and the site's SNMP off leaves none (2026-10-31; until then only the previously managed one was replaced); `public` from the image is left alone unless it is the managed one |
-| DHCP snooping (`DHCPSnooping`, `DHCPGuards`) and the switch ACL rules (`IPACLs`, `MACACLs`) | `config acl add table` / `remove table`, `sonic-db-cli CONFIG_DB hset\|del 'ACL_RULE\|DUI_…'` | the driver's own `ACL_TABLE\|DUI_DHCP_GUARD`, `ACL_TABLE\|DUI_IP_ACL` and their rules | built 2026-11-01 (§11.7.6); MAC rules refused with a log (no L2 table type in the stock orchagent) |
+| DHCP snooping (`DHCPSnooping`, `DHCPGuards`) and the switch ACL rules (`IPACLs`, `MACACLs`) | `config acl add table` / `remove table`, `sonic-db-cli CONFIG_DB hset\|del 'ACL_RULE\|DUI_…'` | the driver's own `ACL_TABLE\|DUI_DHCP_GUARD`, `ACL_TABLE\|DUI_IP_ACL` and their rules | built 2026-11-01 (§11.7.6); MAC rules into `DUI_MAC_ACL` (type `L2`) on an image with the kit's sonic-swss 0003, refused with a log on any other (§11.7.8) |
 | timezone | not written (as the Arista) | | |
 
 ### 6.4 Other interfaces
@@ -3052,8 +3052,9 @@ the one before apart from the two lines its new claims add). The last push is
   follows it.
 - **A MAC rule cannot target the DX010**: with `max_custom_mac_acls` 0 the
   UI lists the switch under "ACL Rules are not applied to" for type MAC and
-  greys it out in the Specific picker. The UI's Device side of a MAC rule
-  stays uncaptured.
+  greys it out in the Specific picker. (Since 2026-11-06 the DX010 claims
+  MAC rules on the patched image; their push and the Device side are
+  §11.7.8.)
 
 **What reached the DX010.** The snooping save gave every switch a new
 cfgversion. The DX010's push was otherwise byte-identical, with no
@@ -3101,7 +3102,8 @@ CRM):
   - `sonic-acl.yang` on the switch already defines an `L2` table type with
     `SRC_MAC`/`DST_MAC` (`mac-addr-and-mask`), so YANG would accept a MAC
     rule. orchagent would not create it.
-  - **MAC rules therefore cannot be honoured on a stock image.**
+  - **MAC rules therefore cannot be honoured on a stock image.** The
+    image kit's sonic-swss 0003 adds both (§11.7.8).
 - **Three ingress ACL tables are free.** CRM shows `acl_table_available 3`
   for each of the PORT and LAG bind points, none used.
 - **`config acl update full|incremental` must not be used.** It runs
@@ -3183,7 +3185,8 @@ mac/mask parsing. SAI has the attributes (`SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC`,
 `..._DST_MAC`), and the YANG model is already in place. The patch belongs in
 the custom-image series (§8) and would use the third free ingress table.
 Until then a `switch.acl.mac` push is logged and refused, and the claim
-below keeps the controller from sending one.
+below keeps the controller from sending one. (Built 2026-11-06 as the
+kit's sonic-swss 0003; §11.7.8.)
 
 **Claims.**
 - **DHCP snooping** is `feature_caps` 128
@@ -3284,7 +3287,8 @@ details the spec left open:
   `Active` is logged once per status; the first collect after a write logs
   the tally and CRM's counters (the entry capacity once a table exists).
 - **Claims**: `feature_caps` 128, `max_custom_ip_acls` 128,
-  `max_custom_mac_acls` 0, wherever the collector reads the ACL sections
+  `max_custom_mac_acls` 0 (128 since 2026-11-06 when Start finds the
+  kit's sonic-swss 0003 in orchagent, §11.7.8), wherever the collector reads the ACL sections
   (and Start then checks `config acl add|remove table`). `max_global_acls`
   and `max_acl_port_range` are not claimed: the capture showed the IP count
   alone gates the push (§11.7.5).
@@ -3342,6 +3346,102 @@ Detection off, the three networks' DHCP Guarding as before; the DX010's
 push identical to its push before the checks (with the two lines its
 claims add); no switch rebooted.
 
+#### 11.7.8 MAC rules on the patched image (2026-11-06)
+
+**The patch.** The image kit's `sonic-swss` 0003, a reduced port of
+sonic-net/sonic-swss#2554 (open since 2022, approved, never merged). It adds
+`SRC_MAC`/`DST_MAC` to orchagent's match lookup, parsed as `<mac>` or
+`<mac>/<mask>`, and a built-in table type `L2`: bind PORT and LAG, match
+`SRC_MAC`, `DST_MAC`, `ETHER_TYPE` and `OUTER_VLAN_ID`, with packet action
+and redirect, ingress and egress.
+- **Why the type is literally `L2`.** `sonic-acl.yang` allows
+  `SRC_MAC`/`DST_MAC` only when the table's type is `L2`, and 202511
+  validates the whole CONFIG_DB with sonic-yang before a breakout.
+- **Why no `ACL_TABLE_TYPE` instead.** A CONFIG_DB `ACL_TABLE_TYPE` cannot
+  stand in, because its matches are looked up in the same table the patch
+  extends.
+- **Its test.** The mock test `AclOrchTest.L2Acl_Mac_Matches` covers a
+  masked source, an exact destination and refused malformed values. All
+  19 `AclOrchTest` cases pass in the build's slave container. The package
+  build does not run the mock tests.
+- **The image.** `igmp-202511.20261106-f2e25f54c` (legacy-th), built from
+  the kit with sonic-swss 0001-0003, sonic-l2mcd 0001-0010 and
+  sonic-buildimage 0001-0012.
+
+**The driver** (`internal/drivers/sonic/acl.go`).
+- **Detecting the patch.** `Start` checks for it read-only:
+  `docker exec swss grep -c -a -F 'expected <mac> or <mac>/<mask>' /usr/bin/orchagent`
+  looks for the patch's own error string.
+  - **Found:** the driver claims `max_custom_mac_acls` 128 and writes the
+    rules to `DUI_MAC_ACL` (type `L2`, every port, ingress) beside
+    `DUI_IP_ACL`, with the same batch, reconcile and verdict.
+  - **Not found:** nothing is claimed, so no push should come; a push that
+    does is refused with a log naming the patch.
+- **Rule shape**, from the ECS's push (§11.7.3):
+  - `RULE_N` with `PRIORITY` 9999-N, so the first rule in the UI's order
+    wins;
+  - `PACKET_ACTION` `FORWARD`/`DROP`;
+  - `VLAN_ID`, with UniFi's VLAN 1 written as the native stand-in;
+  - `SRC_MAC`/`DST_MAC` as `<mac>/<mask>`, a side that is Any being no
+    field at all.
+- **Holds.** More than 128 rules, a rule on the stand-in's own VLAN number,
+  or a VLAN out of range holds the whole MAC set with a log.
+- **Management guard** (`cutsManagementMAC`, like the IP one). A Block
+  that would match frames from the gateway or from the far end of the
+  bridge's connection, sent to the switch's MAC or to broadcast on its
+  management VLAN, holds the whole MAC set unless an Allow matches first.
+  The UI already refuses the management network for a MAC rule ("The
+  network used to manage UniFi devices cannot be selected"). The guard is
+  a second line, for a push that reaches the switch some other way.
+
+**Captured** (2026-11-06, `controller-10.6.109/system_cfg-dx010-mac-acl.txt`;
+`TestParseDX010MACACLRules`).
+- **The picker.** The claim alone lists the DX010 in the Specific picker
+  for type MAC. The rule save produced the push.
+- **The groups** are the ECS's shape (§11.7.2), in UI order:
+  - a Block from a typed MAC to Any (`dst.mac=any`,
+    `dst.mask=00:00:00:00:00:00`);
+  - an Allow from a Device to a typed MAC under a /45 netmask, a mask not
+    on a byte boundary (`ff:ff:ff:ff:ff:f8`).
+- **A Device side is just its MAC.** It is pushed as the client's MAC with
+  mask `ff:ff:ff:ff:ff:ff`. The v2 API stores both kinds of side as
+  `CLIENT_MAC` with `specific_mac_addresses`, and the editor redraws a
+  typed MAC as a Device.
+- **The fixture's MACs.** The typed MACs are kept as entered. The Device's
+  real MAC is mapped to `02:00:00:00:00:03`.
+
+**Verified live on the DX010** (2026-11-06, bridge `cc276ad` on the image
+above):
+- **The claim.** The controller stored `switch_caps.max_custom_mac_acls`
+  128.
+- **The write.** The push was applied 3 s after it arrived: `config acl add
+  table DUI_MAC_ACL L2` on all 32 ports, then the rules.
+- **The state.** CONFIG_DB, the saved `config_db.json`, STATE_DB `Active`
+  for the table and both rules, and `show acl rule` all agree.
+- **The chip.** The ASIC_DB entry holds `SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC`
+  `02:00:00:00:00:01&mask:FF:FF:FF:FF:FF:FF`, `FIELD_OUTER_VLAN_ID`
+  `2&mask:0xfff` and `PACKET_ACTION_DROP`. The /45 destination mask was
+  accepted as written.
+- **Deleting the first rule** renumbered the other (`del RULE_2`, then
+  `RULE_1` rewritten, still `Active`).
+- **Deleting the last** removed the rule and the table. CONFIG_DB, STATE_DB,
+  `config_db.json` and ASIC_DB then hold no `DUI_` key and no ACL table.
+- **The site afterwards.** The controller's ACL rules are `[]`.
+
+**Not verified live:**
+- **Traffic.** The DX010's one link carries only the native VLAN, which is
+  the management network the UI refuses for a MAC rule. No UI rule can
+  therefore match a frame that reaches this switch. A traffic check needs a
+  hand-made `L2` table on the uplink (a root write on Ethernet0) and has
+  not been run. That a SAI entry with an outer-MAC field drops what it
+  matches is the chip's part, seen in ASIC_DB but not on the wire.
+- **A rule on the native stand-in**, which the UI does not offer here.
+
+Tested from fixtures: `acl_mac_test.go` (the ECS's push, refusal without the
+patch, VLANs and holds, the management guard) and
+`TestReplaySonicDX010MACACLPush` (the captured push through the loop: the L2
+table, both rules as written live, the verdict, a quiet reconcile).
+
 ### 11.8 Full retest on the 202511 IGMP image (2026-11-02)
 
 The DX010 was reinstalled with the custom 202511 image (§8,
@@ -3396,7 +3496,8 @@ around):** the `MGMT_PORT\|eth0` hand fix, the redeploy of the fixes, the
 orphan `PortChannel1`'s removal, and `Ethernet8`'s `fec: none` leftover
 (CONFIG_DB keeps the explicit `none` from test 3; harmless). **Cannot be
 closed on this unit yet:** the second core cable (LACP state), IGMP
-snooping's hosts (§8), MAC ACL rules (an orchagent patch). What tonight
+snooping's hosts (§8), MAC ACL rules (an orchagent patch; built and
+verified 2026-11-06 on the next image, §11.7.8). What tonight
 left on the switch: the ten site VLANs, `fec none` on Ethernet8,
 `dhcp_rate_limit 300` on every written port (202511's CLI adds it), and
 `PortChannel1` without members.

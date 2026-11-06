@@ -149,11 +149,12 @@ image. Two things do not, and one platform needs help:
 | **Port mirroring** | yes: 202505's orchagent binds without asking (verified on the VS; expected on the DX010, not run there) | **no on Broadcom SAIs that answer the capability query wrongly** (the DX010's legacy-TH SAI, Tomahawk-5 per upstream #28139): the CLI refuses, orchagent creates the session unbound; the driver refuses with a note | **yes, verified live on the DX010 2026-11-02**: `sonic-swss 0002` takes the gate out and the chip binds both directions (`sonic.md` §11.10) |
 | **IGMP snooping** | no: community SONiC has no snooping daemon; the driver logs the keys | no | the Micas l2mcd series built in and verified on the virtual switch; on the DX010 the chip takes snooping and group entries and refuses optimised flood (§8.14); the driver writes the keys behind `options.igmp` (§3.3) |
 | **The DX010 itself on 202511** | n/a | **does not run**: orchagent's telemetry query crashes the Tomahawk-1 SAI, the CPLD driver panics kernel 6.12 on its first write, pmon has no platform (no fans, PSUs, temperatures) | runs: the four platform patches (§3.1) |
-| Port isolation, 802.1X, LLDP-MED off, MAC ACL rules | no (refused with a log; MAC rules need an orchagent patch no one has written) | no | no |
+| **Switch MAC ACL rules** | no: no L2 table type or outer-MAC match in orchagent; refused with a log | no | **yes, written and `Active` in the chip on the DX010 2026-11-06** (traffic untested): `sonic-swss 0003` (`sonic.md` §11.7.8) |
+| Port isolation, 802.1X, LLDP-MED off | no (refused with a log) | no | no |
 
 The patched image is **not** required for the driver. It is required for
 IGMP snooping anywhere, for port mirroring on a 202511 Broadcom image whose
-SAI lies about it, and for a Tomahawk-1 on 202511 at all.
+SAI lies about it, for switch MAC ACL rules, and for a Tomahawk-1 on 202511 at all.
 
 ### 3.1 The patch series, by what it enables
 
@@ -213,6 +214,12 @@ needed:
 |---|---|---|
 | sonic-swss 0002 | `SwitchOrch::querySwitchPortMirrorCapability` records `PORT_INGRESS/EGRESS_MIRROR_CAPABLE` as `true` when the SAI answers `set_implemented=false`, the same as the existing branch for a failed query. MirrorOrch and the CLI follow the rows, so the driver's existing SPAN path (`config mirror_session span add … both`) runs; a set the SAI really refuses is logged, not fatal | the gate: sonic-swss #3934 (202511: #4137) and sonic-utilities #4089 (#4204, #4323). The same false answer on Tomahawk-5 is **sonic-buildimage #28139**, with Broadcom's fix in SAI 15.2/14.3 -- trains that do not include the legacy-TH 13.2.1.x the DX010 runs; the proof that the legacy-TH SAI binds a port anyway (a `SAI_PORT_ATTR_INGRESS_MIRROR_SESSION` set pushed through ASIC_DB by hand answered `SAI_STATUS_SUCCESS` and `bcmcmd "mirror show"` listed it) is in [`sonic.md`](sonic.md) §11.9-11.10 and in the comments on #28139. Not proposed upstream: it defeats the query for every platform |
 
+**Switch MAC ACL rules** -- one patch, a port of an open upstream PR:
+
+| Patch | What | Upstream |
+|---|---|---|
+| sonic-swss 0003 | orchagent's outer `SRC_MAC`/`DST_MAC` matches (`<mac>` or `<mac>/<mask>`, sonic-acl.yang's `mac-addr-and-mask`) and a built-in table type `L2` (PORT/LAG; `SRC_MAC`, `DST_MAC`, `ETHER_TYPE`, `OUTER_VLAN_ID`), with the mock test `AclOrchTest.L2Acl_Mac_Matches`. The driver finds it by its error string and only then claims MAC rules | a reduced port of sonic-net/sonic-swss#2554 (open since 2022, approved, not merged) to 202511 |
+
 ### 3.2 Getting the image onto a switch
 
 The build takes a Debian 12 x86_64 host with Docker, 16 cores, 64 GB and
@@ -243,14 +250,18 @@ The arrival-day procedure for a DX010 is [`sonic.md`](sonic.md) §3; what the
 first install on the hardware exposed (two failed boots and their cause,
 the CPLD watchdog, the trace that found it) is §8.14.
 
-### 3.3 Status on the DX010, 2026-11-03
+### 3.3 Status on the DX010, 2026-11-06
 
-- Running: `igmp-202511.20261102-e53777446`, the full series of §3.1
-  (installed and confirmed 2026-11-02 evening; port mirroring verified on
-  it the same hour, §11.10). The image before it,
-  `igmp-202511.20261101-22cac574e` (the series through sonic-buildimage
-  0010, with the CPLD fix as a hand-swapped platform deb), carried the full
-  driver retest (§11.8) and stays installed as the other slot. Adopted as
+- Running: `igmp-202511.20261106-f2e25f54c`, the full series of §3.1
+  (installed and confirmed 2026-11-06 06:50 UTC with bridge `cc276ad`;
+  switch MAC ACL rules verified on it, `sonic.md` §11.7.8). It is the first
+  image with sonic-swss 0003, sonic-l2mcd 0008-0010 and the fan floor
+  (sonic-buildimage 0012) built in. The other slot is
+  `igmp-202511.20261102-e53777446`, the series through sonic-swss 0002
+  (installed 2026-11-02; port mirroring verified on it, §11.10), which
+  carried snooping until 2026-11-06. The image before that,
+  `igmp-202511.20261101-22cac574e`, carried the full driver retest (§11.8)
+  and was removed by the 2026-11-06 install (install.sh keeps two). Adopted as
   `USWF07D`, the bridge on the switch (§2). Every image the unit has run,
   with checksums and manifests, is kept on the deployment host.
 - IGMP snooping: in the image, `l2mcd` shipped disabled, verified on the
@@ -268,9 +279,10 @@ the CPLD watchdog, the trace that found it) is §8.14.
   (§8.14): l2mcd queries from 0.0.0.0 although Vlan4094 has an address,
   wins the querier election against the gateway, and learns no mrouter
   port; the cause is l2mcd's query path, fixed by `sonic-l2mcd/0008` and
-  `0009`, and its syslog flood by `0010` (§8.14). All three run on the unit
-  since 2026-11-05 20:37 MST, installed by hand into the l2mcd container
-  until the next image build: Ethernet0 the router port, the gateway the
+  `0009`, and its syslog flood by `0010` (§8.14). All three ran on the unit
+  from 2026-11-05 20:37 MST, installed by hand into the l2mcd container,
+  and are built into the image since 2026-11-06 (the same binary, sha256
+  `1387c2e9…`): Ethernet0 the router port, the gateway the
   querier, the switch's group queries from the VLAN's address, no l2mcd
   lines to the log host at the default level.
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
@@ -296,4 +308,6 @@ itself and work on any image:
   `ACL_RULE|DUI_*` hashes in CONFIG_DB, orchagent's verdict read back from
   STATE_DB. [`sonic.md`](sonic.md) §11.7.
 
-MAC ACL rules would need an orchagent patch (§11.7.4) and are refused.
+Switch MAC ACL rules are not one of them: they need orchagent's outer-MAC
+match, which only the patched image has (`sonic-swss 0003`, §3.1); on any
+other image they are refused with a log.
