@@ -92,6 +92,42 @@ func TestApplyTimeout(t *testing.T) {
 	}
 }
 
+func TestReplyLog(t *testing.T) {
+	load := func(block string) (*File, error) {
+		p := filepath.Join(t.TempDir(), "c.yaml")
+		os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: s\n    driver: sonic\n    ssh: admin@192.0.2.40\n"+block), 0o644)
+		return Load(p)
+	}
+	// Unset: the loop's defaults (8 MB, 3 generations).
+	f, err := load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rl := f.Devices[0].ReplyLog; rl.Bytes() != 0 || rl.Keep != 0 {
+		t.Errorf("unset reply_log = %d bytes, keep %d; want 0, 0 (the loop's defaults)", rl.Bytes(), rl.Keep)
+	}
+	f, err = load("    reply_log:\n      max_size: 2MB\n      keep: 5\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rl := f.Devices[0].ReplyLog; rl.Bytes() != 2<<20 || rl.Keep != 5 {
+		t.Errorf("reply_log 2MB/5 = %d bytes, keep %d", rl.Bytes(), rl.Keep)
+	}
+	for in, want := range map[string]int64{"off": -1, "OFF": -1, "8MB": 8 << 20, "8M": 8 << 20, "8MiB": 8 << 20, "512KB": 512 << 10, "1GB": 1 << 30, "1048576": 1 << 20, "100B": 100, " 4 kb ": 4 << 10} {
+		if got, err := ParseSize(in); err != nil || got != want {
+			t.Errorf("ParseSize(%q) = %d, %v; want %d", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"8 parsecs", "-1MB", "0", "0MB", "MB", "1.5MB", "99999999999G"} {
+		if _, err := load("    reply_log:\n      max_size: \"" + bad + "\"\n"); err == nil {
+			t.Errorf("reply_log.max_size %q accepted", bad)
+		}
+	}
+	if _, err := load("    reply_log:\n      keep: -1\n"); err == nil {
+		t.Error("reply_log.keep -1 accepted")
+	}
+}
+
 func TestAuthRejectsUnknownValues(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.yaml")
 	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: u\n    driver: apc-ups\n    url: 192.0.2.30\n    auth: maybe\n"), 0o644)

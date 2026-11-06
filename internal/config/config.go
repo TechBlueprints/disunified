@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,6 +68,9 @@ type Device struct {
 
 	Control Control `yaml:"control"`
 
+	// ReplyLog caps this device's reply log, inform-log/<name>/<mac>.ndjson.
+	ReplyLog ReplyLog `yaml:"reply_log"`
+
 	// Children are devices reported below this one's ports: each child's MAC
 	// is added to its port's MAC table and, when the port has no LLDP
 	// neighbour of its own, reported as the port's neighbour, so the
@@ -120,6 +124,54 @@ type Control struct {
 	// NoSeed skips seeding the controller's port config from the switch on
 	// adoption (default: seed when api_url is set).
 	NoSeed bool `yaml:"no_seed"`
+}
+
+// ReplyLog is the size cap on a device's reply log (every controller reply,
+// one JSON line each). When a record would take the live file past MaxSize
+// it is renamed to <mac>.ndjson.1 (.1 to .2 and so on, Keep generations, the
+// oldest dropped) and a fresh file started; the live file keeps its name.
+type ReplyLog struct {
+	// MaxSize: bytes, or a number with a binary unit -- "8MB", "512KB",
+	// "1GB" (K/M/G, KB/MB/GB and KiB/MiB/GiB all count in 1024s). Unset =
+	// 8MB; "off" = no cap.
+	MaxSize string `yaml:"max_size"`
+	// Keep is the number of rotated files kept. Unset (0) = 3.
+	Keep int `yaml:"keep"`
+}
+
+// Bytes is MaxSize as the inform loop takes it: 0 = its default (8 MB),
+// -1 = no cap. Load has already validated it.
+func (r ReplyLog) Bytes() int64 {
+	n, _ := ParseSize(r.MaxSize)
+	return n
+}
+
+// ParseSize reads a reply_log.max_size: "" = 0 (the default), "off" = -1,
+// else a positive byte count, bare or with a binary unit (K, M, G, with or
+// without a trailing B or iB).
+func ParseSize(s string) (int64, error) {
+	t := strings.ToUpper(strings.TrimSpace(s))
+	switch t {
+	case "":
+		return 0, nil
+	case "OFF":
+		return -1, nil
+	}
+	mult := int64(1)
+	for _, u := range []struct {
+		suffix string
+		mult   int64
+	}{{"GIB", 1 << 30}, {"MIB", 1 << 20}, {"KIB", 1 << 10}, {"GB", 1 << 30}, {"MB", 1 << 20}, {"KB", 1 << 10}, {"G", 1 << 30}, {"M", 1 << 20}, {"K", 1 << 10}, {"B", 1}} {
+		if strings.HasSuffix(t, u.suffix) {
+			t, mult = strings.TrimSpace(strings.TrimSuffix(t, u.suffix)), u.mult
+			break
+		}
+	}
+	n, err := strconv.ParseInt(t, 10, 64)
+	if err != nil || n <= 0 || n > (1<<62)/mult {
+		return 0, fmt.Errorf("%q is not a size (e.g. \"8MB\", \"512KB\", \"off\")", s)
+	}
+	return n * mult, nil
 }
 
 // Load reads and validates a config file.
@@ -186,6 +238,12 @@ func Load(path string) (*File, error) {
 			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {
 				return nil, fmt.Errorf("%s: device %q: control.apply_timeout %q is not a positive duration (e.g. \"90s\")", path, s.Name, s.Control.ApplyTimeout)
 			}
+		}
+		if _, err := ParseSize(s.ReplyLog.MaxSize); err != nil {
+			return nil, fmt.Errorf("%s: device %q: reply_log.max_size: %w", path, s.Name, err)
+		}
+		if s.ReplyLog.Keep < 0 {
+			return nil, fmt.Errorf("%s: device %q: reply_log.keep %d: must be 1 or more (unset = 3)", path, s.Name, s.ReplyLog.Keep)
 		}
 		ports := map[int]bool{}
 		for j := range s.Children {
