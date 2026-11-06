@@ -36,6 +36,11 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
+	// OrchL2 answers macACLCheckCommand: "0" (the default) as on every
+	// image without the kit's sonic-swss 0003, "1" as on one with it (both
+	// read on the DX010, docs/drivers/sonic.md §11.7.8). With "1",
+	// orchagent's verdict takes L2 tables and their MAC rules.
+	OrchL2 string
 	// DialFails makes a runner from Dial fail its first command, as a
 	// switch that does not answer at the new address would.
 	DialFails bool
@@ -172,6 +177,11 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.Builds++
 		return "", f.buildMstpd(stdin)
+	case command == macACLCheckCommand:
+		if f.OrchL2 == "" {
+			return "0\n", nil
+		}
+		return f.OrchL2 + "\n", nil
 	case command == l2CheckCommand:
 		return f.l2Check(), nil
 	case command == l2DeadmanCancel:

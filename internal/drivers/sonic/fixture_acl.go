@@ -25,6 +25,14 @@ var aclL3Fields = map[string]bool{
 	"TCP_FLAGS": true, "L4_SRC_PORT_RANGE": true, "L4_DST_PORT_RANGE": true,
 }
 
+// aclL2Fields are the fields aclorch takes on a rule in an L2 table (the
+// kit's sonic-swss 0003: TABLE_TYPE_L2's matches), the priority and the
+// packet action.
+var aclL2Fields = map[string]bool{
+	"PRIORITY": true, "PACKET_ACTION": true,
+	"SRC_MAC": true, "DST_MAC": true, "ETHER_TYPE": true, "VLAN_ID": true,
+}
+
 // aclAddTable: config acl add table [-d desc] [-p ports] [-s stage] <name> <type>.
 // The CLI writes the whole entry (set_entry), so a second add replaces
 // the first; orchagent updates a table whose type and stage are unchanged.
@@ -189,9 +197,11 @@ func (f *FixtureRunner) orchACL() error {
 	}
 	out := table{}
 	active := map[string]bool{}
+	typ := map[string]string{}
 	for k, v := range f.table("cfg_acl_table") {
 		name := strings.TrimPrefix(k, "ACL_TABLE|")
-		ok := v["type"] == "L3" && (v["stage"] == "ingress" || v["stage"] == "egress")
+		l2 := v["type"] == "L2" && strings.TrimSpace(f.OrchL2) != "" && f.OrchL2 != "0"
+		ok := (v["type"] == "L3" || l2) && (v["stage"] == "ingress" || v["stage"] == "egress")
 		for _, p := range strings.Split(v["ports@"], ",") {
 			if members[p] {
 				ok = false // "Bind table to LAG member ... is not allowed"
@@ -201,6 +211,7 @@ func (f *FixtureRunner) orchACL() error {
 		if ok {
 			status, active[name] = "Active", true
 		}
+		typ[name] = v["type"]
 		out["ACL_TABLE_TABLE|"+name] = map[string]string{"status": status}
 	}
 	for k, v := range f.table("cfg_acl_rule") {
@@ -210,7 +221,7 @@ func (f *FixtureRunner) orchACL() error {
 			continue // "Wait for ACL table to be created"
 		}
 		status := "Inactive"
-		if validL3Rule(v) {
+		if typ[tbl] == "L2" && validL2Rule(v) || typ[tbl] == "L3" && validL3Rule(v) {
 			status = "Active"
 		}
 		out["ACL_RULE_TABLE|"+name] = map[string]string{"status": status}
@@ -249,6 +260,43 @@ func validL3Rule(v map[string]string) bool {
 			}
 		case "IP_TYPE":
 			if val != "IPV4ANY" && val != "ANY" && val != "IP" && val != "NON_IP" && val != "IPV4" && val != "NON_IPV4" && val != "ARP" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// validL2Rule is validL3Rule for an L2 table: SRC_MAC/DST_MAC as <mac> or
+// <mac>/<mask> (sonic-acl.yang's mac-addr-and-mask, 0003's parser).
+func validL2Rule(v map[string]string) bool {
+	if v["PACKET_ACTION"] != "FORWARD" && v["PACKET_ACTION"] != "DROP" {
+		return false
+	}
+	if _, err := strconv.ParseUint(v["PRIORITY"], 10, 32); err != nil {
+		return false
+	}
+	for k, val := range v {
+		if !aclL2Fields[k] {
+			return false
+		}
+		switch k {
+		case "VLAN_ID":
+			if n, err := strconv.Atoi(val); err != nil || n < 1 || n > 4094 {
+				return false
+			}
+		case "SRC_MAC", "DST_MAC":
+			parts := strings.Split(val, "/")
+			if len(parts) > 2 {
+				return false
+			}
+			for _, p := range parts {
+				if hw, err := net.ParseMAC(p); err != nil || len(hw) != 6 {
+					return false
+				}
+			}
+		case "ETHER_TYPE":
+			if n, err := strconv.ParseUint(val, 0, 16); err != nil || n < 0x600 {
 				return false
 			}
 		}

@@ -232,7 +232,8 @@ func TestDHCPGuardOnlyWhereItApplies(t *testing.T) {
 
 // The ECS's ACL push: three IP rules become DUI_IP_ACL's RULE_1..3 in the
 // controller's order; the two MAC rules are refused with a log (no L2 table
-// on the stock image).
+// on an image without the kit's sonic-swss 0003; macACLsFromTheECSPush is
+// the same push on one with it).
 func TestIPACLsFromTheECSPush(t *testing.T) {
 	r := newACLRig(t, nil)
 	cfg := ecsPush(t, "system_cfg-ecs-acl.txt")
@@ -254,7 +255,7 @@ func TestIPACLsFromTheECSPush(t *testing.T) {
 	if s := st.aclStatus[ipACLTable+"|RULE_2"]; s != "Active" {
 		t.Errorf("RULE_2 status %q", s)
 	}
-	if !strings.Contains(r.log.String(), "MAC ACL rules (2): community SONiC's orchagent has no L2 table type") {
+	if !strings.Contains(r.log.String(), "MAC ACL rules (2): this image's orchagent has no L2 table type") {
 		t.Errorf("MAC rules must be refused with a log:\n%s", r.log.String())
 	}
 
