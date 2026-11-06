@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Thu, 5 Nov 2026 17:01:01 -0700
+Subject: [PATCH] igmp: elect against an older-version querier and query from
+ the VLAN's address
+
+Two faults left a snooping VLAN with no router port and the switch querying
+as if it were alone, seen on a Celestica DX010 (SONiC 202511) at IGMPv3 on a
+LAN whose router queries in IGMPv2:
+
+- igmp_process_query() returned on any version mismatch before the
+  querier election and the router-port learning. A v3 snooper (the
+  version that takes the IGMPv3 reports Linux hosts send) therefore never
+  saw an IGMPv2 querier: rtr_port_list stayed empty, the switch stayed
+  querier, and it answered leaves with its own group-specific queries.
+  An older-version query is still a querier (RFC 3376 section 7, RFC 4541
+  section 2.1.1); only a query newer than the VLAN's version, or one whose
+  version cannot be told, is dropped now. Both are still counted.
+
+- ip_get_lowest_ip_address_on_port() and igmp_send_general_query() looked
+  for the VLAN's address only through vlan_node->ve_ifindex, which SONiC
+  never sets (it has no VE binding). l2mcmgrd's INTERFACE_TABLE update
+  stores the address in ve_portdb_tree under the VLAN id, so look there
+  when no VE is bound. Queries left from 0.0.0.0 on a VLAN with an
+  address, and an address of 0 lost every election.
+---
+ src/igmp_io.c | 26 ++++++++++++++++++++++++--
+ 1 file changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/src/igmp_io.c b/src/igmp_io.c
+index d38f33e..f9bb14c 100644
+--- a/src/igmp_io.c
++++ b/src/igmp_io.c
+@@ -251,12 +251,22 @@ void igmp_process_query(MCGRP_CLASS *igmp,
+     // Update our operating version if needed
+     myver = igmp_vport->oper_version;
+ 
++    /* A query of an older version than ours is still a querier on the
++     * VLAN (RFC 3376 section 7, RFC 4541 section 2.1.1): elect against it
++     * and learn its port as a router port. Only a query we cannot parse,
++     * or one newer than our version, is dropped. Dropping every
++     * mismatch left a v3 snooper beside an IGMPv2 querier with no router
++     * port and querying as if alone. */
+     if (igmpver != igmp_vport->oper_version)
+     {
+         igmp->igmp_stats[vir_port_id].igmp_wrong_ver_query++;
+         igmp_warn_version_mismatch(igmp_pport, igmpver, clnt_src_ip);
+-        L2MCD_VLAN_LOG_ERR(vir_port_id, "%s:%d IGMP version mismatch %d !=%d",FN,LN,igmp_vport->oper_version,igmpver);
+-        return;
++        if (igmpver == IGMP_VERSION_NONE || igmpver > igmp_vport->oper_version)
++        {
++            L2MCD_VLAN_LOG_ERR(vir_port_id, "%s:%d IGMP version mismatch %d !=%d",FN,LN,igmp_vport->oper_version,igmpver);
++            return;
++        }
++        L2MCD_VLAN_LOG_DEBUG(vir_port_id, "%s:%d IGMPv%d query on a v%d VLAN processed",FN,LN,igmpver,igmp_vport->oper_version);
+     }
+ 
+ 
+@@ -999,6 +1009,12 @@ UINT32 ip_get_lowest_ip_address_on_port(UINT16 port_number, uint8_t type)
+         else 
+             ip_address = mld_portdb_get_port_lowest_ipv4_addr_from_list(port_number);
+     }
++    else if (vlan_node) {
++        /* SONiC binds no VE to the VLAN: l2mcmgrd's INTERFACE_TABLE update
++         * keeps the VLAN interface's addresses in ve_portdb_tree under the
++         * VLAN id itself. */
++        ip_address = ve_mld_portdb_get_port_lowest_ipv4_addr_from_list(gvid);
++    }
+     if(ip_address < lowest_ip_address)
+         lowest_ip_address = ip_address;
+     return (lowest_ip_address);
+@@ -1504,6 +1520,12 @@ void igmp_send_general_query( MCGRP_CLASS *igmp,
+             L2MCD_VLAN_LOG_DEBUG(tx_port_number, "%s:%d:[vlan:%d] Router ifindex:0x%x port:0x%x ", FN, LN, tx_port_number, vlan_node->ifindex,port_id);
+         }
+     }
++    else if (vlan_node) {
++        /* No VE on SONiC: the VLAN interface's addresses, by VLAN id (see
++         * ip_get_lowest_ip_address_on_port). Without this every general
++         * query left from 0.0.0.0. */
++        sptr_addr_entry = (port_link_list_t *)(portdb_get_port_lowest_ipv4_addr_from_list(ve_mld_portdb_tree, gvid));
++    }
+ 
+ 
+     L2MCD_VLAN_LOG_DEBUG(tx_port_number, "%s:%d:[vlan:%d] phy_port:0x%x version:%d vlan:%d ", 

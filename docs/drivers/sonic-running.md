@@ -265,7 +265,8 @@ the CPLD watchdog, the trace that found it) is §8.14.
   and three LAN groups in the chip, every reconcile quiet. Found live
   (§8.14): l2mcd queries from 0.0.0.0 although Vlan4094 has an address,
   wins the querier election against the gateway, and learns no mrouter
-  port.
+  port; the cause is l2mcd's query path, fixed by `sonic-l2mcd/0008`
+  (§8.14; built and regression-tested, not yet on the unit).
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
   DX010; confirmations there are due. The mirror finding is on #28139,
   where the egress result (both directions bind) still needs adding.

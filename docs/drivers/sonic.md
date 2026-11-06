@@ -2018,6 +2018,32 @@ it means:
   question, and the querier-address patch (§8.11) now also has to fix the
   address lookup and the election.
 
+**The cause, and `sonic-l2mcd/0008` (2026-11-05).** Two faults, both in
+`src/igmp_io.c`; l2mcd's own dump (`l2mcd_ctl -v 4094`) showed `querier : 1`,
+`rtr_port_list` nil, and `querier_router` the switch's own address:
+
+- **The gateway queries in IGMPv2** (every general query captured was v2),
+  and `igmp_process_query()` returned on any version mismatch *before* the
+  election and the router-port learning. The driver runs every snooping
+  VLAN at version 3 (§8.10: at 2 l2mcd ignores hosts' v3 reports), so an
+  IGMPv2 querier was invisible: no router port, the switch querier for
+  good, answering leaves with its own group-specific queries. 0008 processes
+  an older-version query (RFC 3376 §7, RFC 4541 §2.1.1) and drops only one
+  newer than the VLAN's version or of no version; both are still counted.
+- **The source address** was looked up only through `vlan_node->ve_ifindex`,
+  which SONiC never sets (no VE binding), although l2mcmgrd's INTERFACE_TABLE
+  update stores the VLAN interface's addresses in `ve_portdb_tree` under the
+  VLAN id. 0008 looks there when no VE is bound, for the election and for the
+  general query's source. A VLAN without an address still queries from
+  0.0.0.0: that is the querier-address field of §8.11, still to write.
+
+Built on VM 116 as the series' l2mcd package (the tree's
+`target/debs/bookworm/l2mcd_1.0.0_amd64.deb`; the binary differs from the
+0007 build the DX010 runs, which matched byte for byte, only by the patch).
+The harness's 25 regression cases pass on it (`l2mcd-fuzz/run.sh regress`).
+Not yet on the switch: a swap of the binary into the running container is
+the test; the next image build carries it.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is

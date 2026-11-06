@@ -324,8 +324,8 @@ logged.
 | Gap | What the PR needs |
 |---|---|
 | Traffic (§8.9 H4): a joined stream reaching only its port, the queries on the wire, a leave; IGMP of a VLAN without snooping still crossing the switch with the traps in place | two hosts cabled to the switch on a test VLAN, a source, `show interfaces counters` on the unjoined port; then `options.igmp` on by default |
-| A querier source address (l2mcd sends from 0.0.0.0 even on a VLAN with an address, so it wins every election; live 2026-11-05) | the querier-address patch of §8.11, with the address lookup and the election fixed; a capture of the switch deferring to a lower querier |
-| A multicast-router port learned from the LAN's querier (none learned live, with the gateway's queries reaching l2mcd) | the cause in l2mcd's query path, then `show igmp-snooping vlan` listing the uplink |
+| Querier election and router-port learning beside an IGMPv2 router (live 2026-11-05: none, the switch querier from 0.0.0.0) | `sonic-l2mcd/0008` (built, regression-tested, not yet on the unit) live: `show igmp-snooping vlan` listing the uplink as a router port, `Querier - false`, queries from the VLAN's address while querier |
+| A querier source address on a VLAN where the switch has none (0.0.0.0) | the querier-address field of §8.11 |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 
 ### Refused (logged, not claimed)

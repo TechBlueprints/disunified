@@ -64,6 +64,7 @@ The why, the validation plan and the hard unknowns are in
 | | 0005 | the MLD receive path and MLDv2 parsers held to the bytes received |
 | | 0006 | the group state machine read one source past every record's list |
 | | 0007 | one IGMP receive socket per port: every port-list resend or link change opened another, each parsing and forwarding every packet |
+| | 0008 | an older-version querier is elected against and its port learned as a router port (a v3 VLAN dropped every IGMPv2 query); queries leave from the VLAN interface's address, which SONiC keeps under the VLAN id, not from 0.0.0.0 (found live on the DX010 2026-11-05, `docs/drivers/sonic.md` §8.14) |
 
 ## `l2mcd-fuzz/`: the daemon's packet parsers under ASan, UBSan and libFuzzer
 
