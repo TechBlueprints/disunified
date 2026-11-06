@@ -129,6 +129,69 @@ What that means for work here:
   power devices as a payload shape — **ours are the verified ones**, taken from
   real informs on 10.6.106. PROTOCOL.md still documents the emulator's stub.
 
+### 6.1 SONiC: the IGMP/MLD snooping drafts (posted 2026-11-05)
+
+The `sonic` driver's IGMP snooping runs on an image built from Micas
+Networks' draft series (`contrib/sonic-image/`,
+[`drivers/sonic.md`](drivers/sonic.md) §8). That build's fixes went back to
+the drafts as contributions to their work, not as competing PRs. Clint
+approved the posts in the posting session. They were made from his account
+(`cgoudie`), each commit signed off by him and with no Claude co-author line,
+as on sonic-net/sonic-buildimage#30483 (the libyang set of 2026-11-01,
+§8.12).
+
+The daemon's review happens in
+[jasper-hou-micas/sonic-l2mcd-micas#1](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/1)
+(`l2mcd-pre` → `master`). So the daemon fixes are six independent PRs into
+`l2mcd-pre`, each based on `651a13b` (= `dev`). They are cut from series
+`sonic-l2mcd` 0001-0010 and merge in any order without conflicts:
+
+| PR | Series | What |
+|---|---|---|
+| [jasper-hou-micas/sonic-l2mcd-micas#6](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/6) | 0001 | `dumpL2mcVlanEntry`'s fixed-size `memcpy` from `c_str()`: the daemon-side twin of the l2mcmgr.cpp bug aidan-gallagher found on sonic-net/sonic-swss#3950 (credited) |
+| [jasper-hou-micas/sonic-l2mcd-micas#5](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/5) | 0002-0006 | the receive-path bounds (IGMPv3/MLDv2 walks, IP lengths, MLD drops, the `i <= src_cnt` read), with the harness's 24 cases before and after and the 4-hour fuzz run |
+| [jasper-hou-micas/sonic-l2mcd-micas#2](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/2) | 0007 | one IGMP receive socket per port |
+| [jasper-hou-micas/sonic-l2mcd-micas#3](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/3) | 0008, election half | a v3 VLAN elects against an IGMPv2 querier |
+| [jasper-hou-micas/sonic-l2mcd-micas#7](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/7) | 0008 address half + 0009 | the VLAN's address as the query source, whatever `ve_ifindex` holds |
+| [jasper-hou-micas/sonic-l2mcd-micas#4](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/4) | 0010 (counters on their own lines, so it stands alone) | per-packet lines out of syslog at the default level |
+
+The four sonic-net drafts each got a comment linking a rebase branch on
+Clint's forks (`igmp-snp-202511`, on the commits `series/BASES` pins):
+
+- [sonic-net/sonic-buildimage#24327](https://github.com/sonic-net/sonic-buildimage/pull/24327#issuecomment-6677001592):
+  - the squash plus three fixes: the submodule (series 0002), the unrelated
+    changes taken out (0003) and the YANG imports (0010);
+  - the CoPP (0006) and `-n 1` points offered as notes, not commits.
+- [sonic-net/sonic-swss#3950](https://github.com/sonic-net/sonic-swss/pull/3950#issuecomment-6676995453):
+  - the clean rebase;
+  - on the Tomahawk-1, optimised flood is refused and orchagent retries it
+    twice a second.
+- [sonic-net/sonic-swss-common#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093#issuecomment-6676995806).
+- [sonic-net/sonic-utilities#4100](https://github.com/sonic-net/sonic-utilities/pull/4100#issuecomment-6676996171).
+
+The tracking issue is Micas' own feature request,
+[sonic-net/SONiC#2528](https://github.com/sonic-net/SONiC/issues/2528#issuecomment-6677010084)
+("IGMP MLD Snooping"); it has no HLD. It carries the status comment.
+
+**Prior art found before posting** (the posting session searched for each
+patch): none of the fixes exists anywhere.
+
+- The IGMP bugs are already in the 2020 Broadcom daemon,
+  [Azure/sonic-l2mcd#11](https://github.com/Azure/sonic-l2mcd/pull/11),
+  which was closed without a merge; that repository is archived and empty.
+- 0007 is a regression from the split of `sock_fd` into
+  `igmp_sock_fd`/`mld_sock_fd`.
+- The MLD path came into the Micas tree in `0297ac8` (2025-11).
+- No CVE or advisory names l2mcd.
+- The Micas review (sonic-l2mcd-micas#1, 2026-02-20) covers other functions.
+
+**Not posted:**
+
+- the query-source harness cases (in 7b17313) are not in the published copy
+  the PRs link (`0f185fa`);
+- the DX010-only patches (sonic-buildimage 0004, 0005, 0007-0009, 0011,
+  0012; swss 0002) are not part of the snooping drafts.
+
 ## Sources
 
 - <https://github.com/jamesbraid/unifi-emu> / <https://pkg.go.dev/github.com/jamesbraid/unifi-emu/inform>
