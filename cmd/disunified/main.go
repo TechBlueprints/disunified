@@ -204,6 +204,8 @@ type options struct {
 	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
 	applyTimeout                               time.Duration // 0 = the loop's default
+	recordMaxSize                              int64         // 0 = the loop's default (8 MB), -1 = no cap
+	recordKeep                                 int           // 0 = the loop's default (3)
 	unifiURL, unifiSite, unifiKey              string
 	provision                                  bool
 	collectOnce                                bool
@@ -258,8 +260,9 @@ func configOptions(f *config.File, sw config.Device) options {
 		driverOptions: sw.Options,
 		controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
 		allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
-		applyTimeout: parseApplyTimeout(sw.Control.ApplyTimeout),
-		unifiURL:     f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
+		applyTimeout:  parseApplyTimeout(sw.Control.ApplyTimeout),
+		recordMaxSize: sw.ReplyLog.Bytes(), recordKeep: sw.ReplyLog.Keep,
+		unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 		logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
 		children: childrenOf(sw.Children),
 	}
@@ -630,15 +633,17 @@ func runOne(ctx context.Context, o options) error {
 
 	// --- Loop ---
 	loopCfg := informloop.Config{
-		Logger:       log,
-		DeviceName:   o.name,
-		Children:     o.children,
-		NUT:          nutApplier(nut),
-		Interval:     o.interval,
-		ApplyTimeout: o.applyTimeout,
-		RecordDir:    o.recordDir,
-		DeviceHost:   hostOf(o.deviceURL, o.deviceSSH),
-		GatewayIP:    o.controller,
+		Logger:        log,
+		DeviceName:    o.name,
+		Children:      o.children,
+		NUT:           nutApplier(nut),
+		Interval:      o.interval,
+		ApplyTimeout:  o.applyTimeout,
+		RecordDir:     o.recordDir,
+		RecordMaxSize: o.recordMaxSize,
+		RecordKeep:    o.recordKeep,
+		DeviceHost:    hostOf(o.deviceURL, o.deviceSSH),
+		GatewayIP:     o.controller,
 		OnLayoutChange: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)

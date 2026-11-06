@@ -375,9 +375,11 @@ l2d pieces are reinstalled by the driver within a cycle.
   covers a boot where swss is not up yet.
 - **Logging** goes to the journal (`journalctl -u disunified`, 50 MB cap
   shared with everything else; the bridge logs a few lines per cycle).
-  The reply log `inform-log/<name>/*.ndjson` grows on `/host` with no
-  rotation (as in the container; the DX010's size is measured at the
-  cutover and noted). The state dir is 0700.
+  The reply log `inform-log/<name>/*.ndjson` grew on `/host` with no
+  rotation (as in the container) at about 40 MB a month; since 2026-11-05
+  the recorder rotates it at 8 MB and keeps three generations, 32 MB at
+  most (`reply_log.max_size`/`keep`, docs/install.md). The state dir is
+  0700.
 - **The API key** sits on the switch in `env` (0600, the login user's). The
   login user has passwordless root, so nothing is lost that the switch did
   not already hold.
