@@ -403,6 +403,36 @@ func TestParseDX010ACLRules(t *testing.T) {
 	}
 }
 
+// The DX010's own MAC rule push (2026-11-06, the image with sonic-swss 0003
+// and the claim max_custom_mac_acls 128; docs/drivers/sonic.md 11.7.8): a
+// Block from a typed MAC to Any, and an Allow from a Device (the UI stores
+// it as the client's MAC, the same CLIENT_MAC shape as a typed one) to a
+// typed MAC under a /45 netmask -- a mask not on a byte boundary.
+func TestParseDX010MACACLRules(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-mac-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	want := []MACACL{
+		{Name: "dui-test-mac-block-1", Permit: false, VLAN: 2,
+			Src: MACMatch{"02:00:00:00:00:01", "ff:ff:ff:ff:ff:ff"}, Dst: MACMatch{"any", "00:00:00:00:00:00"}},
+		{Name: "dui-test-mac-allow-device-1", Permit: true, VLAN: 2,
+			Src: MACMatch{"02:00:00:00:00:03", "ff:ff:ff:ff:ff:ff"}, Dst: MACMatch{"02:00:00:00:00:02", "ff:ff:ff:ff:ff:f8"}},
+	}
+	if !reflect.DeepEqual(c.MACACLs, want) {
+		t.Errorf("mac acls:\n got  %+v\n want %+v", c.MACACLs, want)
+	}
+	for _, a := range c.MACACLs {
+		if why := a.Uncaptured(); why != "" {
+			t.Errorf("captured rule %s: %s", a.Name, why)
+		}
+	}
+	if c.IPACLs != nil {
+		t.Errorf("ip acls = %+v", c.IPACLs)
+	}
+}
+
 // The pushes of the DX010 retest on the 202511 image (docs/drivers/sonic.md
 // 11.8), each the one that failed or misbehaved live: forced 40G with FC-FEC
 // on a QSFP28 cage, 25G saved through the REST API without a fec_mode (the

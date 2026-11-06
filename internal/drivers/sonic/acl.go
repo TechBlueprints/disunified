@@ -22,14 +22,18 @@ import (
 // it loads (UniFi's ACLs are default-allow). Rules are a diff of the
 // ACL_RULE|DUI_* hashes, written into CONFIG_DB, and orchagent's verdict on
 // each is read back from STATE_DB on the next collect. Nothing else in
-// ACL_* is read or touched. MAC rules need an L2 table type the stock
-// orchagent lacks (§11.7.4) and are refused.
+// ACL_* is read or touched. The controller's MAC rules go into an L2 table
+// of the driver's own, DUI_MAC_ACL, on an image whose orchagent has the L2
+// table type (the image kit's sonic-swss 0003, §11.7.8); the stock
+// orchagent has none (§11.7.4) and they are refused there.
 
 const (
-	guardTable = "DUI_DHCP_GUARD"
-	ipACLTable = "DUI_IP_ACL"
-	aclType    = "L3"
-	aclStage   = "ingress"
+	guardTable  = "DUI_DHCP_GUARD"
+	ipACLTable  = "DUI_IP_ACL"
+	macACLTable = "DUI_MAC_ACL"
+	aclType     = "L3"
+	macACLType  = "L2"
+	aclStage    = "ingress"
 
 	// ipACLRules is how many IP rules the driver claims
 	// (max_custom_ip_acls): the one table holds them with room to spare
@@ -39,12 +43,54 @@ const (
 	// ipACLTop: the controller's rule N is RULE_N at priority ipACLTop-N
 	// (a higher priority is matched first).
 	ipACLTop = 9999
+	// macACLRules is how many MAC rules the driver claims
+	// (max_custom_mac_acls) where the image has the L2 table type: like
+	// the IP rules, a quarter of the entries CRM gives one table
+	// (§11.7.8). The controller's MAC rule N is RULE_N at macACLTop-N, as
+	// the ECS numbers them.
+	macACLRules = 128
+	macACLTop   = 9999
 	// guardForward / guardDrop: a trusted server's replies are forwarded
 	// above the drop of every other reply on its VLAN. Rules of one
 	// priority never overlap (one VLAN, one server each).
 	guardForward = 9000
 	guardDrop    = 8000
 )
+
+// macACLCheckCommand finds the image kit's sonic-swss 0003 in the running
+// orchagent: its SRC_MAC/DST_MAC parser's refusal text, which no other
+// orchagent carries. Read-only, in the swss container (the bridge user is
+// in the docker group on SONiC); prints how many lines hold it, 0 without.
+const macACLCheckCommand = "docker exec swss grep -c -a -F 'expected <mac> or <mac>/<mask>' /usr/bin/orchagent || true"
+
+// checkMACACL runs macACLCheckCommand once, where the collector reads the
+// ACL tables at all, and logs the answer.
+func (c *Collector) checkMACACL(ctx context.Context) {
+	c.mu.Lock()
+	acl := c.state != nil && c.state.aclKnown
+	c.mu.Unlock()
+	if !acl {
+		return
+	}
+	out, err := c.run(ctx, macACLCheckCommand, "")
+	l2 := err == nil && atoi(strings.TrimSpace(out)) > 0
+	c.mu.Lock()
+	c.macACL = l2
+	c.mu.Unlock()
+	if l2 {
+		c.Log.Printf("sonic: orchagent has the L2 ACL table type: MAC ACL rules claimed (%d), written to %s", macACLRules, macACLTable)
+	} else {
+		c.Log.Printf("sonic: orchagent has no L2 ACL table type (the image kit's sonic-swss 0003): MAC ACL rules not claimed")
+	}
+}
+
+// tableType is the ACL table type each of the driver's tables has.
+func tableType(name string) string {
+	if name == macACLTable {
+		return macACLType
+	}
+	return aclType
+}
 
 // aclTable is an ACL_TABLE entry: its type, stage and the ports it is
 // bound to (the CLI stores them in set order, so compared as a set).
@@ -110,8 +156,26 @@ func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
 			want[ipACLTable] = rules
 		}
 	}
-	if d.MACACLSet && len(d.MACACLs) > 0 {
-		note("MAC ACL rules (%d): community SONiC's orchagent has no L2 table type and no outer-MAC match (docs/drivers/sonic.md §11.7.4); not written", len(d.MACACLs))
+	if d.MACACLSet {
+		c.mu.Lock()
+		l2 := c.macACL
+		c.mu.Unlock()
+		switch {
+		case !l2:
+			if len(d.MACACLs) > 0 {
+				note("MAC ACL rules (%d): this image's orchagent has no L2 table type and no outer-MAC match (the image kit's sonic-swss 0003, docs/drivers/sonic.md §11.7.8); not written", len(d.MACACLs))
+			}
+		default:
+			rules, why := macRules(d.MACACLs, c.NativeVLAN)
+			if why == "" {
+				why = cutsManagementMAC(d.MACACLs, c.NativeVLAN, c.mgmtL2())
+			}
+			if why != "" {
+				note("MAC ACL rules: %s; the switch's rules are left as they are", why)
+			} else {
+				want[macACLTable] = rules
+			}
+		}
 	}
 	for _, n := range notes {
 		c.warnOnce("acl: "+n, "%s", n)
@@ -238,6 +302,181 @@ func ipRules(acls []devicemodel.IPACL) (map[string]map[string]string, string) {
 		rules["RULE_"+strconv.Itoa(n)] = r
 	}
 	return rules, ""
+}
+
+// macRules are DUI_MAC_ACL's rules: the controller's rule N is RULE_N at
+// priority macACLTop-N, matching its VLAN (UniFi's VLAN 1 is
+// Vlan<native_vlan>) and each side's MAC under its mask, written
+// <mac>/<mask> as sonic-acl.yang and the ECS write them; an Any side is no
+// match. As with the IP rules, one rule the table cannot express holds the
+// set.
+func macRules(acls []devicemodel.MACACL, native int) (map[string]map[string]string, string) {
+	if len(acls) > macACLRules {
+		return nil, fmt.Sprintf("%d rules, more than the %d this switch claims", len(acls), macACLRules)
+	}
+	rules := map[string]map[string]string{}
+	for i, a := range acls {
+		n := i + 1
+		r := map[string]string{"PRIORITY": strconv.Itoa(macACLTop - n), "PACKET_ACTION": "DROP"}
+		if a.Permit {
+			r["PACKET_ACTION"] = "FORWARD"
+		}
+		v := a.VLAN
+		switch {
+		case v == 1:
+			v = native
+		case v == native:
+			return nil, fmt.Sprintf("rule %d (%q): VLAN %d is this switch's native_vlan (UniFi's VLAN 1 is Vlan%d here)", n, a.Name, a.VLAN, native)
+		case v < 1 || v > 4094:
+			return nil, fmt.Sprintf("rule %d (%q): VLAN %d", n, a.Name, a.VLAN)
+		}
+		r["VLAN_ID"] = strconv.Itoa(v)
+		for _, end := range []struct {
+			side string
+			e    devicemodel.MACACLEnd
+		}{{"SRC", a.Src}, {"DST", a.Dst}} {
+			if end.e.MAC == "" {
+				continue
+			}
+			mac, mask, err := macAndMask(end.e)
+			if err != nil {
+				return nil, fmt.Sprintf("rule %d (%q): %v", n, a.Name, err)
+			}
+			r[end.side+"_MAC"] = mac.String() + "/" + mask.String()
+		}
+		rules["RULE_"+strconv.Itoa(n)] = r
+	}
+	return rules, ""
+}
+
+// macAndMask parses one side of a MAC rule; no mask is an exact match.
+func macAndMask(e devicemodel.MACACLEnd) (net.HardwareAddr, net.HardwareAddr, error) {
+	mac, err := net.ParseMAC(e.MAC)
+	if err != nil || len(mac) != 6 {
+		return nil, nil, fmt.Errorf("%q is not a MAC address", e.MAC)
+	}
+	mask := net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+	if e.Mask != "" {
+		if mask, err = net.ParseMAC(e.Mask); err != nil || len(mask) != 6 {
+			return nil, nil, fmt.Errorf("%q is not a MAC mask", e.Mask)
+		}
+	}
+	return mac, mask, nil
+}
+
+// macCovers says whether a rule side matches mac ("" side = any).
+func macCovers(e devicemodel.MACACLEnd, mac net.HardwareAddr) bool {
+	if e.MAC == "" {
+		return true
+	}
+	m, mask, err := macAndMask(e)
+	if err != nil {
+		return false
+	}
+	for i := range m {
+		if m[i]&mask[i] != mac[i]&mask[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// l2Path is how the switch's management traffic looks at layer 2: the
+// SONiC VLAN its address is on (0: not on a VLAN, so no VLAN_ID rule can
+// match it; -1: unknown, every VLAN counts), the MACs that traffic arrives
+// from (the gateway, and the far end itself where the switch has resolved
+// it; none = unknown) and the destinations it arrives on (the switch's own
+// MAC, and broadcast for ARP).
+type l2Path struct {
+	vlan        int
+	peers, dsts []net.HardwareAddr
+}
+
+// mgmtL2 is the l2Path from the last collect.
+func (c *Collector) mgmtL2() l2Path {
+	c.mu.Lock()
+	snap, from := c.last, c.sshFrom
+	c.mu.Unlock()
+	if from == "" {
+		from = c.probeHost()
+	}
+	var p l2Path
+	if snap == nil {
+		return l2Path{vlan: -1}
+	}
+	sys := snap.System
+	if len(sys.Addresses) == 0 {
+		p.vlan = -1 // nothing known: every VLAN may carry it
+	} else if v, ok := strings.CutPrefix(sys.Addresses[0].Iface, "Vlan"); ok {
+		p.vlan = atoi(v)
+	}
+	add := func(list *[]net.HardwareAddr, s string) {
+		if hw, err := net.ParseMAC(s); err == nil && len(hw) == 6 {
+			for _, x := range *list {
+				if x.String() == hw.String() {
+					return
+				}
+			}
+			*list = append(*list, hw)
+		}
+	}
+	add(&p.peers, sys.GatewayMAC)
+	add(&p.peers, sys.ARP[from])
+	add(&p.dsts, sys.MAC)
+	add(&p.dsts, "ff:ff:ff:ff:ff:ff")
+	return p
+}
+
+// cutsManagementMAC is cutsManagement for MAC rules: a Block on the VLAN
+// the switch's address is on that matches frames from the gateway (or the
+// far end) to the switch's MAC or broadcast would cut the switch off from
+// the bridge and the controller -- and from the push that would remove the
+// rule again. The first rule that matches decides; with no peer known,
+// every source counts and an Allow counts only with source Any.
+func cutsManagementMAC(acls []devicemodel.MACACL, native int, p l2Path) string {
+	if p.vlan == 0 {
+		return ""
+	}
+	peers := p.peers
+	unknown := len(peers) == 0
+	if unknown {
+		peers = []net.HardwareAddr{nil}
+	}
+	dsts := p.dsts
+	if len(dsts) == 0 {
+		dsts = []net.HardwareAddr{{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}}
+	}
+	for _, src := range peers {
+		for _, dst := range dsts {
+			for i, a := range acls {
+				v := a.VLAN
+				if v == 1 {
+					v = native
+				}
+				if p.vlan > 0 && v != p.vlan {
+					continue
+				}
+				if !macCovers(a.Dst, dst) {
+					continue
+				}
+				if src != nil && !macCovers(a.Src, src) {
+					continue
+				}
+				if a.Permit {
+					if src != nil || a.Src.MAC == "" {
+						break // the first match decides: this Allow lets it in
+					}
+					continue
+				}
+				what := "the switch's management traffic"
+				if src != nil {
+					what = "frames from " + src.String()
+				}
+				return fmt.Sprintf("rule %d (%q) would block %s to %s on VLAN %d, the switch's management VLAN, on every port, the uplink included", i+1, a.Name, what, dst, a.VLAN)
+			}
+		}
+	}
+	return ""
 }
 
 // mgmtPort is the port the bridge reaches the switch on (SSH).
@@ -430,7 +669,7 @@ func (pl *plan) aclUnbind(idx int, ifaces []string) {
 		if !binds {
 			continue
 		}
-		if cur.typ != aclType || cur.stage != aclStage {
+		if cur.typ != tableType(t) || cur.stage != aclStage {
 			pl.note("ACL table %s (%s %s) binds a port that is to join an aggregate; not the driver's table, left alone", t, cur.typ, cur.stage)
 			continue
 		}
@@ -438,9 +677,9 @@ func (pl *plan) aclUnbind(idx int, ifaces []string) {
 			pl.note("ACL table %s binds only ports that are to join an aggregate; cannot be rebound to nothing, left alone", t)
 			continue
 		}
-		name, bound := t, keep
-		pl.add(idx, "config acl add table "+name+" "+aclType+" -p "+strings.Join(sortIfnames(keep), ",")+" -s "+aclStage, func(s *swState) {
-			s.aclTables[name] = aclTable{typ: aclType, stage: aclStage, ports: copySet(bound)}
+		name, bound, typ := t, keep, tableType(t)
+		pl.add(idx, "config acl add table "+name+" "+typ+" -p "+strings.Join(sortIfnames(keep), ",")+" -s "+aclStage, func(s *swState) {
+			s.aclTables[name] = aclTable{typ: typ, stage: aclStage, ports: copySet(bound)}
 		})
 	}
 }
@@ -493,7 +732,8 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 		rules := want[t]
 		cur, exists := sim.aclTables[t]
 		have := sim.rulesOf(t)
-		ours := exists && cur.typ == aclType && cur.stage == aclStage
+		typ := tableType(t)
+		ours := exists && cur.typ == typ && cur.stage == aclStage
 		if len(rules) == 0 || (exists && !ours) {
 			// The table goes (or is not the driver's shape): its rules first.
 			dropRules(t, byPriority(have))
@@ -513,8 +753,8 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 		}
 		if !exists || !equalSets(cur.ports, ports) {
 			name, bound := t, copySet(ports)
-			add("config acl add table "+name+" "+aclType+" -p "+plist+" -s "+aclStage, func(s *swState) {
-				s.aclTables[name] = aclTable{typ: aclType, stage: aclStage, ports: copySet(bound)}
+			add("config acl add table "+name+" "+typ+" -p "+plist+" -s "+aclStage, func(s *swState) {
+				s.aclTables[name] = aclTable{typ: typ, stage: aclStage, ports: copySet(bound)}
 			})
 			changed[t] = true
 		}

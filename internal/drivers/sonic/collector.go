@@ -112,6 +112,10 @@ type Collector struct {
 	// (logged by the next collect).
 	acl        aclWant
 	aclWritten bool
+	// macACL: this image's orchagent has the L2 table type with the outer
+	// MAC matches (the image kit's sonic-swss 0003), checked once at Start
+	// (macACLCheckCommand); MAC rules are claimed and written only then.
+	macACL bool
 	// IGMP snooping through l2mcd (igmp.go): off unless options.igmp is on
 	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
 	// and the snooping intent of the last push.
@@ -169,6 +173,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	if err := c.verifyCommands(ctx); err != nil {
 		return nil, err
 	}
+	c.checkMACACL(ctx)
 	c.Log.Printf("sonic: %s, %s %s, SONiC %s, %d ports (%d up), %d MACs, uplink hint %d", snap.System.Hostname, snap.System.Vendor, snap.System.Model, snap.System.Version, len(snap.Ports), up, len(snap.MACTable), snap.UplinkHint)
 	return snap, nil
 }
@@ -187,7 +192,8 @@ func (c *Collector) Close() error {
 // the switch can run it (mstpd installed, or docker to build it; §11.5).
 // DHCP snooping (as hardware DHCP guarding) and IP ACL rules through the
 // driver's own ACL tables wherever the collector reads them (§11.7.5); MAC
-// ACL rules never (no L2 table type in the stock orchagent). IGMP
+// ACL rules where the image's orchagent has the L2 table type (§11.7.8;
+// the stock orchagent has none). IGMP
 // snooping, advanced (querier, timers, reserved groups) as the ECS claims
 // it, through l2mcd on an image with the series when options.igmp is on
 // (igmp.go). LLDP-MED and isolation never: community SONiC has neither.
@@ -205,6 +211,11 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	}
 	if st != nil && st.aclKnown {
 		caps.DHCPSnooping, caps.IPACLs = true, ipACLRules
+		c.mu.Lock()
+		if c.macACL {
+			caps.MACACLs = macACLRules
+		}
+		c.mu.Unlock()
 	}
 	if c.igmpOn(st) {
 		caps.IGMPSnooping, caps.IGMPSnoopingAdvanced = true, true

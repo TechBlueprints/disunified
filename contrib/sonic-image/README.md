@@ -53,6 +53,7 @@ The why, the validation plan and the hard unknowns are in
 | | 0012 | Seastone `fancontrol-F2B`: the fan floor PWM 89 -> 51 (35 % -> 20 %) and the ramp starting at an intake of 35 C instead of 26; measured on a DX010 (ASIC ~56 C in a 23-25 C room, fans OK; 15 % rejected). The direction file is what the boot script copies over `fancontrol`, so it is the only file that persists a floor |
 | sonic-swss | 0001 | sonic-net/sonic-swss#3950: `l2mcorch`, `l2mcmgrd` (includes the upstream fix of the reviewed `memcpy` bug) |
 | | 0002 | port mirroring recorded as supported when the SAI answers no to `SAI_PORT_ATTR_INGRESS/EGRESS_MIRROR_SESSION`: the legacy-TH SAI says no and binds anyway (disunified `docs/drivers/sonic.md` §11.9-11.10) |
+| | 0003 | orchagent's outer `SRC_MAC`/`DST_MAC` matches (`<mac>` or `<mac>/<mask>`) and a built-in `L2` table type (PORT/LAG; `SRC_MAC`, `DST_MAC`, `ETHER_TYPE`, `OUTER_VLAN_ID`), with `AclOrchTest.L2Acl_Mac_Matches`: a reduced port of sonic-net/sonic-swss#2554 (open since 2022) for UniFi's switch MAC ACL rules (disunified `docs/drivers/sonic.md` §11.7.8). The package build does not run the mock tests; run them in the slave container |
 | sonic-swss-common | 0001 | the `schema.h` table names from sonic-net/sonic-swss-common#1093 |
 | | 0002 | upstream `1431c3d`: DefaultValueProvider on libyang 3 (libyang 1 fallback kept) |
 | sonic-mgmt-common | 0001 | upstream `cdb612e` (#157): CVL on libyang 3, CI hunk on 202511's bookworm paths |

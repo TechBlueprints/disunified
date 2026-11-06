@@ -1,0 +1,204 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Thu, 5 Nov 2026 20:29:02 -0700
+Subject: [PATCH] aclorch: L2 table type with outer SRC_MAC/DST_MAC matches
+
+orchagent has no match for the outer Ethernet addresses: aclMatchLookup
+knows only the tunnel-inner INNER_SRC_MAC/INNER_DST_MAC, so neither a
+built-in table type nor an ACL_TABLE_TYPE defined in CONFIG_DB can match a
+packet's source or destination MAC. sonic-acl.yang already models the rule
+side: an ACL_TABLE of type L2 takes SRC_MAC and DST_MAC as
+mac-addr-and-mask (<mac> or <mac>/<mask>), and the YANG allows those two
+leaves on no other table type, so a custom type under another name would
+fail CONFIG_DB validation.
+
+Add SRC_MAC and DST_MAC to the match lookup (SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC
+and _DST_MAC), parsed as the YANG writes them: a MAC alone matches exactly,
+<mac>/<mask> with the mask given; anything else is refused. Add the built-in
+table type L2 (bind points PORT and LAG; matches SRC_MAC, DST_MAC,
+ETHER_TYPE and OUTER_VLAN_ID; default actions PACKET_ACTION and REDIRECT at
+both stages), so `config acl add table <name> L2 -p <ports>` creates it.
+
+A reduced form of sonic-net/sonic-swss#2554 (open since 2022, approved, not
+merged), rebased on 202511: the match parsing and the table type, without
+VLAN_PCP/VLAN_DEI (the YANG names those PCP/DEI) and without ACL_IP_TYPE in
+the table.
+
+Test: AclOrchTest.L2Acl_Mac_Matches (an L2 table, a rule with a masked
+source, an exact destination, VLAN and ether type, the SAI attributes read
+back; malformed values refused).
+---
+ orchagent/aclorch.cpp           | 50 +++++++++++++++++++++++++++++++++
+ orchagent/aclorch.h             |  2 ++
+ orchagent/acltable.h            |  1 +
+ tests/mock_tests/aclorch_ut.cpp | 47 +++++++++++++++++++++++++++++++
+ 4 files changed, 100 insertions(+)
+
+diff --git a/orchagent/aclorch.cpp b/orchagent/aclorch.cpp
+index d0cf8a1..726797b 100755
+--- a/orchagent/aclorch.cpp
++++ b/orchagent/aclorch.cpp
+@@ -83,6 +83,8 @@ acl_rule_attr_lookup_t aclMatchLookup =
+     { MATCH_INNER_IP_PROTOCOL, SAI_ACL_ENTRY_ATTR_FIELD_INNER_IP_PROTOCOL },
+     { MATCH_INNER_SRC_MAC,     SAI_ACL_ENTRY_ATTR_FIELD_INNER_SRC_MAC },
+     { MATCH_INNER_DST_MAC,     SAI_ACL_ENTRY_ATTR_FIELD_INNER_DST_MAC },
++    { MATCH_SRC_MAC,           SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC },
++    { MATCH_DST_MAC,           SAI_ACL_ENTRY_ATTR_FIELD_DST_MAC },
+     { MATCH_INNER_SRC_IP,      SAI_ACL_ENTRY_ATTR_FIELD_INNER_SRC_IP},
+     { MATCH_INNER_L4_SRC_PORT, SAI_ACL_ENTRY_ATTR_FIELD_INNER_L4_SRC_PORT },
+     { MATCH_INNER_L4_DST_PORT, SAI_ACL_ENTRY_ATTR_FIELD_INNER_L4_DST_PORT },
+@@ -213,6 +215,26 @@ static acl_table_action_list_lookup_t defaultAclActionList =
+             }
+         }
+     },
++    {
++        // L2
++        TABLE_TYPE_L2,
++        {
++            {
++                ACL_STAGE_INGRESS,
++                {
++                    SAI_ACL_ACTION_TYPE_PACKET_ACTION,
++                    SAI_ACL_ACTION_TYPE_REDIRECT
++                }
++            },
++            {
++                ACL_STAGE_EGRESS,
++                {
++                    SAI_ACL_ACTION_TYPE_PACKET_ACTION,
++                    SAI_ACL_ACTION_TYPE_REDIRECT
++                }
++            }
++        }
++    },
+     {
+         // L3V6
+         TABLE_TYPE_L3V6,
+@@ -934,6 +956,21 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
+             memcpy(matchData.data.mac, mac.getMac(), sizeof(sai_mac_t));
+             memcpy(matchData.mask.mac, mask.getMac(), sizeof(sai_mac_t));
+         }
++        else if (attr_name == MATCH_SRC_MAC || attr_name == MATCH_DST_MAC)
++        {
++            // <mac> or <mac>/<mask>, as sonic-acl.yang's mac-addr-and-mask
++            // allows; a MAC alone matches exactly.
++            auto macAndMask = tokenize(attr_value, '/');
++            if (macAndMask.empty() || macAndMask.size() > 2)
++            {
++                SWSS_LOG_ERROR("Invalid %s %s: expected <mac> or <mac>/<mask>", attr_name.c_str(), attr_value.c_str());
++                return false;
++            }
++            swss::MacAddress mac(macAndMask[0]);
++            swss::MacAddress mask(macAndMask.size() == 2 ? macAndMask[1] : MAC_EXACT_MATCH);
++            memcpy(matchData.data.mac, mac.getMac(), sizeof(sai_mac_t));
++            memcpy(matchData.mask.mac, mask.getMac(), sizeof(sai_mac_t));
++        }
+         else if (attr_name == MATCH_IN_PORTS)
+         {
+             auto ports = tokenize(attr_value, ',');
+@@ -3717,6 +3754,19 @@ void AclOrch::initDefaultTableTypes(const string& platform, const string& sub_pl
+             .build()
+     );
+ 
++    // L2: Ethernet header fields only, every packet type (sonic-acl.yang
++    // allows SRC_MAC/DST_MAC only on a table of this type).
++    addAclTableType(
++        builder.withName(TABLE_TYPE_L2)
++            .withBindPointType(SAI_ACL_BIND_POINT_TYPE_PORT)
++            .withBindPointType(SAI_ACL_BIND_POINT_TYPE_LAG)
++            .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_SRC_MAC))
++            .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_DST_MAC))
++            .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_ETHER_TYPE))
++            .withMatch(make_shared<AclTableMatch>(SAI_ACL_TABLE_ATTR_FIELD_OUTER_VLAN_ID))
++            .build()
++    );
++
+     addAclTableType(
+         builder.withName(TABLE_TYPE_L3V6)
+             .withBindPointType(SAI_ACL_BIND_POINT_TYPE_PORT)
+diff --git a/orchagent/aclorch.h b/orchagent/aclorch.h
+index 32dc172..a2e00a5 100755
+--- a/orchagent/aclorch.h
++++ b/orchagent/aclorch.h
+@@ -53,6 +53,8 @@
+ #define MATCH_INNER_L4_DST_PORT "INNER_L4_DST_PORT"
+ #define MATCH_INNER_SRC_MAC     "INNER_SRC_MAC"
+ #define MATCH_INNER_DST_MAC     "INNER_DST_MAC"
++#define MATCH_SRC_MAC           "SRC_MAC"
++#define MATCH_DST_MAC           "DST_MAC"
+ #define MATCH_INNER_SRC_IP      "INNER_SRC_IP"
+ #define MATCH_BTH_OPCODE        "BTH_OPCODE"
+ #define MATCH_AETH_SYNDROME     "AETH_SYNDROME"
+diff --git a/orchagent/acltable.h b/orchagent/acltable.h
+index 8f51fd9..e15c021 100644
+--- a/orchagent/acltable.h
++++ b/orchagent/acltable.h
+@@ -35,6 +35,7 @@ extern "C" {
+ #define TABLE_TYPE_MCLAG                "MCLAG"
+ #define TABLE_TYPE_MUX                  "MUX"
+ #define TABLE_TYPE_DROP                 "DROP"
++#define TABLE_TYPE_L2                   "L2"
+ #define TABLE_TYPE_MARK_META            "MARK_META"
+ #define TABLE_TYPE_MARK_META_V6         "MARK_METAV6"
+ #define TABLE_TYPE_EGR_SET_DSCP         "EGR_SET_DSCP"
+diff --git a/tests/mock_tests/aclorch_ut.cpp b/tests/mock_tests/aclorch_ut.cpp
+index cc8018f..3e0f8a7 100755
+--- a/tests/mock_tests/aclorch_ut.cpp
++++ b/tests/mock_tests/aclorch_ut.cpp
+@@ -2056,6 +2056,53 @@ namespace aclorch_test
+         ASSERT_TRUE(validateAclRuleByConfOp(*it_rule->second, kfvFieldsValues(kvfAclRule.front())));
+     }
+ 
++    // An L2 table matches the outer SRC_MAC/DST_MAC, each a MAC alone (exact)
++    // or <mac>/<mask>, with the outer VLAN and the ether type.
++    TEST_F(AclOrchTest, L2Acl_Mac_Matches)
++    {
++        string acl_table_id = "l2_table_1";
++        string acl_rule_id = "l2_rule_1";
++
++        auto orch = createAclOrch();
++
++        auto kvfAclTable = deque<KeyOpFieldsValuesTuple>(
++            { { acl_table_id,
++                SET_COMMAND,
++                { { ACL_TABLE_DESCRIPTION, "filter MAC" },
++                  { ACL_TABLE_TYPE, TABLE_TYPE_L2 },
++                  { ACL_TABLE_STAGE, STAGE_INGRESS },
++                  { ACL_TABLE_PORTS, "1,2" } } } });
++
++        orch->doAclTableTask(kvfAclTable);
++
++        auto acl_table_oid = orch->getTableById(acl_table_id);
++        ASSERT_NE(acl_table_oid, SAI_NULL_OBJECT_ID);
++        const auto &acl_tables = orch->getAclTables();
++        auto it_table = acl_tables.find(acl_table_oid);
++        ASSERT_NE(it_table, acl_tables.end());
++
++        auto rule = make_shared<AclRulePacket>(orch->m_aclOrch, acl_rule_id, acl_table_id, true);
++        ASSERT_TRUE(rule->validateAddPriority(RULE_PRIORITY, "9998"));
++        ASSERT_TRUE(rule->validateAddMatch(MATCH_SRC_MAC, "02:00:00:00:00:00/ff:ff:ff:ff:ff:00"));
++        ASSERT_TRUE(rule->validateAddMatch(MATCH_DST_MAC, "02:00:00:00:00:02"));
++        ASSERT_TRUE(rule->validateAddMatch(MATCH_VLAN_ID, "4010"));
++        ASSERT_TRUE(rule->validateAddMatch(MATCH_ETHER_TYPE, "0x0806"));
++        ASSERT_TRUE(rule->validateAddAction(ACTION_PACKET_ACTION, PACKET_ACTION_DROP));
++
++        ASSERT_TRUE(orch->m_aclOrch->addAclRule(rule, acl_table_id));
++        ASSERT_EQ(getAclRuleSaiAttribute(*rule, SAI_ACL_ENTRY_ATTR_FIELD_SRC_MAC), "02:00:00:00:00:00&mask:FF:FF:FF:FF:FF:00");
++        ASSERT_EQ(getAclRuleSaiAttribute(*rule, SAI_ACL_ENTRY_ATTR_FIELD_DST_MAC), "02:00:00:00:00:02&mask:FF:FF:FF:FF:FF:FF");
++        ASSERT_EQ(getAclRuleSaiAttribute(*rule, SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION), "SAI_PACKET_ACTION_DROP");
++
++        // Malformed values are refused, not matched loosely.
++        auto bad = make_shared<AclRulePacket>(orch->m_aclOrch, "l2_rule_bad", acl_table_id, true);
++        ASSERT_FALSE(bad->validateAddMatch(MATCH_SRC_MAC, "02:00:00:00:00:01/ff:ff"));
++        ASSERT_FALSE(bad->validateAddMatch(MATCH_SRC_MAC, "02:00:00:00:00:01/ff:ff:ff:ff:ff:ff/00"));
++        ASSERT_FALSE(bad->validateAddMatch(MATCH_DST_MAC, "any"));
++
++        ASSERT_TRUE(orch->m_aclOrch->removeAclRule(acl_table_id, acl_rule_id));
++    }
++
+     TEST_F(AclOrchTest, AclInnerSourceMacRewriteTableValidation)
+     {
+         const string aclTableTypeName = "INNER_SRC_MAC_REWRITE_TABLE_TYPE";
+-- 
+2.50.1 (Apple Git-155)
+
