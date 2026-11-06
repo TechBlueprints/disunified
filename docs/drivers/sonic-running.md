@@ -194,6 +194,8 @@ two of them upstream's own fixes carried unchanged:
 | sonic-utilities 0001 | `config igmp-snooping …`, `show igmp-snooping …`, the MLD equivalents | sonic-utilities #4100 (draft), squashed |
 | sonic-l2mcd 0001 | the daemon's own copy of the `memcpy`-from-`c_str()` bug (`l2mcd_sync.cpp`), which upstream did not fix | -- |
 | sonic-l2mcd 0002-0007 | the receive path hardened: malformed packets dropped, counted and rate-limited in the log; the IGMPv3 and MLDv2 parsers held to the message length and the bytes received; a one-past read in the group state machine; one receive socket per port instead of one per resend | -- ([`sonic.md`](sonic.md) §8.13; fuzzed under ASan/UBSan/libFuzzer, the harness is in the kit) |
+| sonic-l2mcd 0008-0009 | the querier election against an IGMPv2 router (its port learned as the router port) and queries from the VLAN's address, not 0.0.0.0 | -- ([`sonic.md`](sonic.md) §8.14; found live on the DX010) |
+| sonic-l2mcd 0010 | l2mcd's per-packet debug lines kept out of syslog at the default level (they reached the remote log host at ~75 lines/s) | -- ([`sonic.md`](sonic.md) §8.14) |
 
 **Building 202511 with those in** -- not features, fixes the build itself
 needed:
@@ -265,8 +267,12 @@ the CPLD watchdog, the trace that found it) is §8.14.
   and three LAN groups in the chip, every reconcile quiet. Found live
   (§8.14): l2mcd queries from 0.0.0.0 although Vlan4094 has an address,
   wins the querier election against the gateway, and learns no mrouter
-  port; the cause is l2mcd's query path, fixed by `sonic-l2mcd/0008`
-  (§8.14; built and regression-tested, not yet on the unit).
+  port; the cause is l2mcd's query path, fixed by `sonic-l2mcd/0008` and
+  `0009`, and its syslog flood by `0010` (§8.14). All three run on the unit
+  since 2026-11-05 20:37 MST, installed by hand into the l2mcd container
+  until the next image build: Ethernet0 the router port, the gateway the
+  querier, the switch's group queries from the VLAN's address, no l2mcd
+  lines to the log host at the default level.
 - Upstream: #27355 and #26983 are carried unchanged and have now run on a
   DX010; confirmations there are due. The mirror finding is on #28139,
   where the egress result (both directions bind) still needs adding.

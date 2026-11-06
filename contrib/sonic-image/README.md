@@ -65,6 +65,8 @@ The why, the validation plan and the hard unknowns are in
 | | 0006 | the group state machine read one source past every record's list |
 | | 0007 | one IGMP receive socket per port: every port-list resend or link change opened another, each parsing and forwarding every packet |
 | | 0008 | an older-version querier is elected against and its port learned as a router port (a v3 VLAN dropped every IGMPv2 query); queries leave from the VLAN interface's address, which SONiC keeps under the VLAN id, not from 0.0.0.0 (found live on the DX010 2026-11-05, `docs/drivers/sonic.md` §8.14) |
+| | 0009 | the VLAN's address found whatever `ve_ifindex` holds: on the DX010 it is the bare VLAN id, which 0008's fallback missed (group-specific queries still from 0.0.0.0); also the MLD query source, static reports to router ports and the querier's own address |
+| | 0010 | the per-VLAN debug lines that `-n 1` routes to syslog go at INFO, not NOTICE (l2mcmgrd sets l2mcd to its swss level, NOTICE, at start, so ~75 lines/s reached the remote log host); the per-frame IPv6 ERRs of a VLAN without MLD snooping are counted (`mld-off`, `non-mld` in `l2mcd_ctl -c 10`) |
 
 ## `l2mcd-fuzz/`: the daemon's packet parsers under ASan, UBSan and libFuzzer
 
@@ -82,6 +84,10 @@ HARNESS_LOGARGS=/dev/null ./run.sh regress src-fixed    # with the per-VLAN debu
 ```
 
 `run.sh regress` writes each case's packet to `corpus/`, the fuzzers' seeds.
+The three `query-src-*` cases (0009) are not packet cases: each sends Vlan100's
+address before or after the snooping enable, or forces `ve_ifindex` to the bare
+VLAN id the DX010 runs with, and checks the source of the group queries and of a
+general query; each must be run by name (`run.sh regress` does).
 
 ## The build host
 

@@ -6,3 +6,5 @@
 0006-igmp_fsm-read-each-reported-source-once-not-one-past.patch
 0007-l2mcd-open-a-port-s-IGMP-receive-socket-once-not-on-.patch
 0008-igmp-elect-against-an-older-version-querier-and-quer.patch
+0009-igmp-mld-find-the-VLAN-s-address-whatever-ve_ifindex.patch
+0010-l2mcd-keep-per-packet-lines-out-of-syslog-at-the-def.patch

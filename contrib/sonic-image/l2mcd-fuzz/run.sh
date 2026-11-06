@@ -29,7 +29,8 @@ case "$cmd" in
            igmp-aux-claimed igmp-type-0 igmp-type-200 igmp-totlen-beyond-packet igmp-totlen-forwarded
            igmp-ihl-beyond-totlen igmp-short-message igmp-v3-query-sources igmp-v1-query-group port-list-repeated mld-valid mld-65535-sources
            mld-65535-groups mld-zero-sources-with-aux mld-type-0 mld-type-200 mld-no-hbh
-           mld-hbh-oversized mld-payload-beyond-packet mld-v2-query-sources"
+           mld-hbh-oversized mld-payload-beyond-packet mld-v2-query-sources
+           query-src-addr-before query-src-addr-after query-src-bare-vid"
     [ -n "$only" ] && cases=$only
     cases=$(echo $cases)
     in_ctr "mkdir -p corpus/igmp corpus/mld

@@ -1,0 +1,129 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Thu, 5 Nov 2026 18:49:36 -0700
+Subject: [PATCH] l2mcd: keep per-packet lines out of syslog at the default
+ level
+
+docker-l2mcd starts l2mcd -n 1, which routes every per-VLAN debug line
+(L2MCD_VLAN_LOG_*, L2MCD_PKT_PRINT) to syslog at NOTICE. l2mcmgrd sets
+l2mcd's level to its own swss level right after start, NOTICE by default,
+so all of them were written, and SONiC forwards syslog to the remote log
+host: about 75 lines a second with IGMP snooping on one VLAN of a Celestica
+DX010 (SONiC 202511), enough to trip the log host's error-rate alert.
+
+- The routed per-VLAN lines go at INFO (L2MCD_VLAN_LOG_SYSLOG_LEVEL).
+  -n 1 and the level knob are unchanged: swssloglevel -l INFO -c l2mcmgrd
+  and an l2mcd restart, or l2mcd_ctl -s <file> -d 6, show them again.
+- The IPv6 receive path logged ERR for every IPv6 multicast frame the chip
+  traps on a VLAN that snoops IGMP only ("vlan_node is not set") and for
+  every frame that is neither ICMPv6 nor hop-by-hop ("hbh nexthdr is not
+  ..."). Both are counted now (mld-off, non-mld in l2mcd_ctl -c 10) and
+  logged at DEBUG.
+---
+ include/l2mcd.h     | 16 ++++++++++++----
+ port/l2mcd_cli.c    |  4 ++--
+ port/l2mcd_system.c |  8 ++++++--
+ 3 files changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/include/l2mcd.h b/include/l2mcd.h
+index 81b6415..73af938 100644
+--- a/include/l2mcd.h
++++ b/include/l2mcd.h
+@@ -225,6 +225,7 @@ typedef struct
+     uint32_t inv_tags;
+     uint32_t malformed_igmp;    /* dropped: lengths or records past the packet */
+     uint32_t malformed_mld;
++    uint32_t mld_off;           /* IPv6 frames on a VLAN without MLD snooping, or not ICMPv6 */
+ } L2MCD_RX_SOCK_STATS;
+ 
+ typedef struct L2MCD_CONTEXT {
+@@ -332,6 +333,7 @@ extern L2MCD_CONTEXT l2mcd_context;
+ #define g_rx_stats_no_tag                 l2mcd_context.rx_stats.no_tag
+ #define g_rx_stats_malformed_igmp         l2mcd_context.rx_stats.malformed_igmp
+ #define g_rx_stats_malformed_mld          l2mcd_context.rx_stats.malformed_mld
++#define g_rx_stats_mld_off                l2mcd_context.rx_stats.mld_off
+ #define g_rx_stats_inv_tags               l2mcd_context.rx_stats.inv_tags
+ #define g_portdb_pending_count            l2mcd_context.portdb_pending_count
+ #define g_port_init_done                  l2mcd_context.port_init_done
+@@ -352,29 +354,35 @@ extern L2MCD_CONTEXT l2mcd_context;
+ 
+ #define L2MCD_INIT_LOG(...)        applog_write(APP_LOG_LEVEL_NOTICE, __VA_ARGS__)
+ #define L2MCD_INIT_LOG_INFO(...)        applog_write(APP_LOG_LEVEL_INFO, __VA_ARGS__)
++/* The per-VLAN debug lines (l2mcd -n 1, "vlan debug all") reach syslog at
++ * INFO. They are per packet, and l2mcmgrd sets l2mcd's level to its own swss
++ * level (NOTICE by default) at start: at NOTICE every one of them went to the
++ * remote log host. swssloglevel -l INFO -c l2mcmgrd (then an l2mcd restart)
++ * or l2mcd_ctl -s <file> -d 6 shows them again. */
++#define L2MCD_VLAN_LOG_SYSLOG_LEVEL APP_LOG_LEVEL_INFO
+ #define L2MCD_VLAN_LOG_ERR(vlan,...)        do {\
+             if (g_l2mcd_pkt_fp && g_l2mcd_pkt_log[vlan&0xFFF]) {\
+             fprintf(g_l2mcd_pkt_fp,"[%d] ", vlan);fprintf(g_l2mcd_pkt_fp, ##__VA_ARGS__);fprintf(g_l2mcd_pkt_fp,"\n"); fflush(g_l2mcd_pkt_fp);}\
+             if (g_l2mcd_vlan_dbg_to_sys_log && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_INFO)) {\
+-                applog_write(APP_LOG_LEVEL_NOTICE, __VA_ARGS__);}\
++                applog_write(L2MCD_VLAN_LOG_SYSLOG_LEVEL, __VA_ARGS__);}\
+             }while(0)
+ #define L2MCD_VLAN_LOG_INFO(vlan,...)        do {\
+             if (g_l2mcd_pkt_fp && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_INFO)) {\
+             fprintf(g_l2mcd_pkt_fp,"[%d] ", vlan);fprintf(g_l2mcd_pkt_fp, ##__VA_ARGS__);fprintf(g_l2mcd_pkt_fp,"\n"); fflush(g_l2mcd_pkt_fp);}\
+             if (g_l2mcd_vlan_dbg_to_sys_log && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_INFO)) {\
+-                applog_write(APP_LOG_LEVEL_NOTICE, __VA_ARGS__);}\
++                applog_write(L2MCD_VLAN_LOG_SYSLOG_LEVEL, __VA_ARGS__);}\
+             }while(0)
+ #define L2MCD_PKT_PRINT(vlan, ...)        do {\
+             if (g_l2mcd_pkt_fp && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_PKT)) {\
+             fprintf(g_l2mcd_pkt_fp,"[%d] ", vlan);fprintf(g_l2mcd_pkt_fp, ##__VA_ARGS__);fprintf(g_l2mcd_pkt_fp,"\n"); fflush(g_l2mcd_pkt_fp);}\
+             if (g_l2mcd_vlan_dbg_to_sys_log && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_PKT)) {\
+-                applog_write(APP_LOG_LEVEL_NOTICE, __VA_ARGS__);}\
++                applog_write(L2MCD_VLAN_LOG_SYSLOG_LEVEL, __VA_ARGS__);}\
+             }while(0)
+ #define L2MCD_VLAN_LOG_DEBUG(vlan,...)        do {\
+             if (g_l2mcd_pkt_fp && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_DEBUG)) {\
+             fprintf(g_l2mcd_pkt_fp,"[%d] ", vlan);fprintf(g_l2mcd_pkt_fp, ##__VA_ARGS__);fprintf(g_l2mcd_pkt_fp,"\n"); fflush(g_l2mcd_pkt_fp);}\
+             if (g_l2mcd_vlan_dbg_to_sys_log && g_l2mcd_pkt_log[vlan&0xFFF] && (g_l2mcd_vlan_log_mask&L2MCD_LOG_MASK_DEBUG)) {\
+-                applog_write(APP_LOG_LEVEL_NOTICE,__VA_ARGS__);}\
++                applog_write(L2MCD_VLAN_LOG_SYSLOG_LEVEL,__VA_ARGS__);}\
+             }while(0)
+ 
+ static inline L2MCD_AVL_TREE L2MCD_AVL_CREATE(avl_comparison_func *func, void *ptr, void *a)
+diff --git a/port/l2mcd_cli.c b/port/l2mcd_cli.c
+index 8fca7f3..5110da5 100644
+--- a/port/l2mcd_cli.c
++++ b/port/l2mcd_cli.c
+@@ -415,9 +415,9 @@ void l2mcd_print_global_var()
+ 	L2MCD_CLI_PRINT("Global Config Version=%d",gIgmp.cfg_version);
+ 	L2MCD_CLI_PRINT("Snooping Vlan Count=%d",gIgmp.mld_snp_vlan_count);
+ 	L2MCD_CLI_PRINT("Global Mac=0x%x:0x%x:0x%x:0x%x:0x%x:0x%x",gIgmp.mac[0],gIgmp.mac[1],gIgmp.mac[2],gIgmp.mac[3],gIgmp.mac[4],gIgmp.mac[5]);
+-	L2MCD_CLI_PRINT("Pkt Recv-Stats: Total:%d igmp:%d, pim:%d, non-igmp:%d, no_aux:%d, no_tag:%d, inv-tag:%d, malformed-igmp:%u, malformed-mld:%u",
++	L2MCD_CLI_PRINT("Pkt Recv-Stats: Total:%d igmp:%d, pim:%d, non-igmp:%d, no_aux:%d, no_tag:%d, inv-tag:%d, malformed-igmp:%u, malformed-mld:%u, non-mld:%u, mld-off:%u",
+ 		 g_rx_stats_tot_pkts, g_rx_stats_igmp_pkts, g_rx_stats_pim_pkts, g_rx_stats_non_igmp_pkts,  g_rx_stats_no_aux, g_rx_stats_no_tag, g_rx_stats_inv_tags,
+-		 g_rx_stats_malformed_igmp, g_rx_stats_malformed_mld);
++		 g_rx_stats_malformed_igmp, g_rx_stats_malformed_mld, g_rx_stats_non_mld_pkts, g_rx_stats_mld_off);
+     L2MCD_CLI_PRINT("Log Level : %d, Flags: vlanlog_to_syslog:%d, vlanlog_mask:0x%x, vlan_dbg_log_all:%d g_l2mcd_pkt_fp:%p",
+      g_curr_dbg_level, g_l2mcd_vlan_dbg_to_sys_log,g_l2mcd_vlan_log_mask,g_l2mcd_dbg_vlan_log_all,g_l2mcd_pkt_fp);
+     L2MCD_CLI_PRINT("g_portdb_pending_count:%d, libev_no_of_sockets:%d",g_portdb_pending_count,g_l2mcd_stats_libev_no_of_sockets);
+diff --git a/port/l2mcd_system.c b/port/l2mcd_system.c
+index c1c1416..2056745 100644
+--- a/port/l2mcd_system.c
++++ b/port/l2mcd_system.c
+@@ -1949,7 +1949,8 @@ void l2mcd_recv_mld_msg(evutil_socket_t fd, short what, void *arg)
+         uint8_t nexthdr = ip6h->next_header;
+         if (nexthdr != IPPROTO_ICMPV6 && nexthdr != IPPROTO_HOPOPTS) // 0 is HOPOPT
+         {
+-            L2MCD_LOG_ERR("hbh nexthdr is not IPPROTO_ICMPV6 or IPPROTO_HOPOPTS, payload_len %d, next %d", ip6h->payload_length, nexthdr);
++            /* per frame: counted (non-mld), not an error to syslog */
++            L2MCD_LOG_DEBUG("hbh nexthdr is not IPPROTO_ICMPV6 or IPPROTO_HOPOPTS, payload_len %d, next %d", ip6h->payload_length, nexthdr);
+             g_rx_stats_non_mld_pkts++;
+             continue;
+         }
+@@ -2025,7 +2026,10 @@ void l2mcd_recv_mld_msg(evutil_socket_t fd, short what, void *arg)
+         }
+         if (!mld_is_flag_set(vlan_node, L2MCD_IPV6_AFI, MLD_SNOOPING_ENABLED))
+         {
+-            L2MCD_LOG_ERR("vlan_node is not set");
++            /* every IPv6 multicast frame the chip traps on a VLAN that snoops
++             * IGMP only: counted, not an error to syslog */
++            g_rx_stats_mld_off++;
++            L2MCD_LOG_DEBUG("vlan %d: MLD snooping off, IPv6 frame not snooped", vlan_id);
+             continue;
+         }
+         if (len < l2_len + sizeof(IPV6_HEADER) + sizeof(struct ipv6_hopopt_hdr) + sizeof(ICMP6_PSEUDO_HDR_MESSAGE))

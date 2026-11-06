@@ -314,7 +314,7 @@ on`, off by default.** **The driver's path verified live on the DX010
 2026-11-05** with it on (§8.14): the claim, the controller's push after a
 force-provision (`system_cfg-dx010-igmp.txt`, replayed), l2mcd enabled,
 VLAN 1's row and the reserved groups written, the chip holding them and
-three LAN groups, quiet reconciles. On the DX010 (§8.14 H2-H3, by hand): the IGMP traps,
+three LAN groups, quiet reconciles; with the series' l2mcd fixes (0008-0010, installed by hand) the uplink learned as the router port beside the gateway's IGMPv2 queries, the switch's group queries from the VLAN's address, and no per-packet lines to the log host. On the DX010 (§8.14 H2-H3, by hand): the IGMP traps,
 the per-VLAN flag and a (*,G) entry in the chip's IPMC table verified;
 optimised flood refused by the SAI, so `forward_unknown_multicast=false` is
 logged and the VLAN keeps flooding unknown multicast. The querier address,
@@ -324,7 +324,8 @@ logged.
 | Gap | What the PR needs |
 |---|---|
 | Traffic (§8.9 H4): a joined stream reaching only its port, the queries on the wire, a leave; IGMP of a VLAN without snooping still crossing the switch with the traps in place | two hosts cabled to the switch on a test VLAN, a source, `show interfaces counters` on the unjoined port; then `options.igmp` on by default |
-| Querier election and router-port learning beside an IGMPv2 router (live 2026-11-05: none, the switch querier from 0.0.0.0) | `sonic-l2mcd/0008` (built, regression-tested, not yet on the unit) live: `show igmp-snooping vlan` listing the uplink as a router port, `Querier - false`, queries from the VLAN's address while querier |
+| The fixed l2mcd (0008-0010) in an image: on the DX010 it is a binary installed by hand into the running l2mcd container (2026-11-05: Ethernet0 learned as the router port, the gateway the querier, group queries from the VLAN's address, no per-packet syslog), lost on a container recreate | the next image build with the series' l2mcd, installed, and the same checks after a reboot (`docs/drivers/sonic.md` §8.14) |
+| The switch as querier from the VLAN's address (with no other querier on the VLAN) | a VLAN without a router's queries, a general query captured from the switch: never seen live, only in the harness (`query-src-*`) |
 | A querier source address on a VLAN where the switch has none (0.0.0.0) | the querier-address field of §8.11 |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 

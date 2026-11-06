@@ -1,0 +1,172 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Thu, 5 Nov 2026 18:49:36 -0700
+Subject: [PATCH] igmp, mld: find the VLAN's address whatever ve_ifindex
+ holds
+
+The previous change looked for a VLAN's address in ve_portdb_tree only when
+vlan_node->ve_ifindex was 0. On a Celestica DX010 (SONiC 202511) it is not:
+mld_if_snoop_set() creates the VLAN node as a forward reference, through the
+router-port path of mld_vdb_vlan_create() (ifindex and ve_ifindex both the
+bare VLAN id), and then rewrites ifindex alone to the SVI index, leaving
+ve_ifindex the bare id (l2mcd_ctl -c 3: "4094 0x48000ffe 0xffe"). The bare
+id fails l2mcd_ifindex_is_svi(), so every reader took the router-port branch
+and searched mld_portdb_tree, which holds no address: group-specific queries
+left from 0.0.0.0 while ve_portdb_tree held the VLAN's address under 4094
+(l2mcd_ctl -c 9). That is the state when the address update arrives after
+snooping is enabled; when it arrives before, the snoop-enable handler sets
+ve_ifindex to the SVI index (0x48000ffe).
+
+The SVI branch is not right by design either: it keys ve_portdb_tree by
+l3_get_port_from_ifindex(ve_ifindex), which on SONiC returns the ifindex
+unchanged, and finds the entry only because the result is cut to a 16-bit
+port id (0x48000ffe -> 0x0ffe = 4094). It is left as it is; the fallback
+below does not depend on it.
+
+l2mcmgrd keeps a VLAN interface's addresses in ve_portdb_tree under the VLAN
+id, so every reader now falls back to that entry when its own lookup misses,
+for a VLAN node only and whatever ve_ifindex holds (0, the SVI index or the
+bare id):
+
+- ip_get_lowest_ip_address_on_port() (group queries, the querier election)
+  and igmp_send_general_query(), replacing the previous change's
+  ve_ifindex == 0 branches;
+- ip_get_lowest_ipv6_address_on_port() and the MLD general query, whose
+  source was read uninitialised when no VE was bound;
+- mld_tx_static_report_leave_on_mrtr_port() (static joins and leaves sent
+  to router ports), IPv4 and IPv6;
+- the address mcgrp_vport_start_querier_process() elects with.
+
+A lookup that already finds an address is unchanged.
+---
+ port/l2mcd_mld_port.c |  4 ++++
+ port/mld_pkt.c        | 14 ++++++++++++++
+ src/igmp_io.c         | 23 +++++++++++++----------
+ src/mld_io.c          | 12 +++++++++++-
+ 4 files changed, 42 insertions(+), 11 deletions(-)
+
+diff --git a/port/l2mcd_mld_port.c b/port/l2mcd_mld_port.c
+index 841a132..48fdf13 100644
+--- a/port/l2mcd_mld_port.c
++++ b/port/l2mcd_mld_port.c
+@@ -1149,6 +1149,8 @@ void mcgrp_vport_start_querier_process(MCGRP_CLASS * mcgrp, MCGRP_L3IF * mcgrp_v
+ 				//L2MCD_LOG_INFO("%s(%d): VE DB lookup port_id:%d ipv4_addr:0%x ", FN, LN, port_id, ipv4_addr);
+ 			}
+ 		}
++		if (!ipv4_addr && vlan_node->type == MLD_VLAN)	/* by VLAN id (see ip_get_lowest_ip_address_on_port) */
++			ipv4_addr = ve_mld_portdb_get_port_lowest_ipv4_addr_from_list(vlan_node->gvid);
+ 
+ 
+ 		if (!IPV4_ADDR_SAME(&ipv4_addr, &mcgrp_vport->querier_router.ip.v4addr)) {
+@@ -1175,6 +1177,8 @@ void mcgrp_vport_start_querier_process(MCGRP_CLASS * mcgrp, MCGRP_L3IF * mcgrp_v
+ 				//L2MCD_LOG_INFO("%s(%d): VE DB lookup port_id:%d ipv4_addr:0%x ", FN, LN, port_id, ipv4_addr);
+ 			}
+ 		}
++		if (IP6_IS_ADDRESS_UNSPECIFIED(ipv6_addr.address) && vlan_node->type == MLD_VLAN)
++			ipv6_addr = ve_mld_portdb_get_port_lowest_ipv6_addr_from_list(vlan_node->gvid);
+ 
+ 
+ 		if (!IPV6_ADDR_SAME(&ipv6_addr, &mcgrp_vport->querier_router.ip.v6addr)) {
+diff --git a/port/mld_pkt.c b/port/mld_pkt.c
+index 1ca3c31..61332ea 100644
+--- a/port/mld_pkt.c
++++ b/port/mld_pkt.c
+@@ -138,6 +138,20 @@ void mld_tx_static_report_leave_on_mrtr_port(MCGRP_CLASS  *mld, MADDR_ST *grp_ad
+ 			}
+ 		}
+ 	}
++	if (vlan_node && vlan_node->type == MLD_VLAN) {
++		/* the VLAN interface's addresses by VLAN id (see
++		 * ip_get_lowest_ip_address_on_port in igmp_io.c) */
++		if (MCAST_IPV4_AFI == afi && !src_addr) {
++			port_link_list_t *ve_entry = (port_link_list_t *)portdb_get_port_lowest_ipv4_addr_from_list(ve_mld_portdb_tree, vlan_node->gvid);
++			if (ve_entry)
++				src_addr = ve_entry->value.ipaddress;
++		}
++		if (MCAST_IPV6_AFI == afi && IP6_IS_ADDRESS_UNSPECIFIED(src_addr6.address)) {
++			PORTDB_IP6_ADDRESS_ENTRY *ve_entry6 = (PORTDB_IP6_ADDRESS_ENTRY *)portdb_get_port_lowest_ipv6_addr_from_list(ve_mld_portdb_tree, vlan_node->gvid);
++			if (ve_entry6)
++				src_addr6 = ve_entry6->ipaddress;
++		}
++	}
+ 
+ 
+ 	source = rx_phy_port;
+diff --git a/src/igmp_io.c b/src/igmp_io.c
+index f9bb14c..867eb20 100644
+--- a/src/igmp_io.c
++++ b/src/igmp_io.c
+@@ -1009,11 +1009,14 @@ UINT32 ip_get_lowest_ip_address_on_port(UINT16 port_number, uint8_t type)
+         else 
+             ip_address = mld_portdb_get_port_lowest_ipv4_addr_from_list(port_number);
+     }
+-    else if (vlan_node) {
+-        /* SONiC binds no VE to the VLAN: l2mcmgrd's INTERFACE_TABLE update
+-         * keeps the VLAN interface's addresses in ve_portdb_tree under the
+-         * VLAN id itself. */
+-        ip_address = ve_mld_portdb_get_port_lowest_ipv4_addr_from_list(gvid);
++    if (!ip_address && vlan_node && vlan_node->type == MLD_VLAN) {
++        /* SONiC binds no VE to a VLAN: l2mcmgrd's INTERFACE_TABLE update keeps
++         * the VLAN interface's addresses in ve_portdb_tree under the VLAN id,
++         * while ve_ifindex ends up 0, the SVI ifindex or the bare VLAN id
++         * depending on the order of the VLAN, address and snooping updates
++         * (the bare id fails the SVI test and is looked up in mld_portdb_tree,
++         * which holds no address). Fall back to the VLAN id's entry. */
++        ip_address = ve_mld_portdb_get_port_lowest_ipv4_addr_from_list(vlan_node->gvid);
+     }
+     if(ip_address < lowest_ip_address)
+         lowest_ip_address = ip_address;
+@@ -1520,11 +1523,11 @@ void igmp_send_general_query( MCGRP_CLASS *igmp,
+             L2MCD_VLAN_LOG_DEBUG(tx_port_number, "%s:%d:[vlan:%d] Router ifindex:0x%x port:0x%x ", FN, LN, tx_port_number, vlan_node->ifindex,port_id);
+         }
+     }
+-    else if (vlan_node) {
+-        /* No VE on SONiC: the VLAN interface's addresses, by VLAN id (see
+-         * ip_get_lowest_ip_address_on_port). Without this every general
+-         * query left from 0.0.0.0. */
+-        sptr_addr_entry = (port_link_list_t *)(portdb_get_port_lowest_ipv4_addr_from_list(ve_mld_portdb_tree, gvid));
++    if (!sptr_addr_entry && vlan_node && vlan_node->type == MLD_VLAN) {
++        /* the VLAN interface's addresses by VLAN id, whatever ve_ifindex
++         * holds (see ip_get_lowest_ip_address_on_port). Without this every
++         * general query left from 0.0.0.0. */
++        sptr_addr_entry = (port_link_list_t *)(portdb_get_port_lowest_ipv4_addr_from_list(ve_mld_portdb_tree, vlan_node->gvid));
+     }
+ 
+ 
+diff --git a/src/mld_io.c b/src/mld_io.c
+index dfceaad..fa5a9d7 100644
+--- a/src/mld_io.c
++++ b/src/mld_io.c
+@@ -149,6 +149,11 @@ IPV6_ADDRESS ip_get_lowest_ipv6_address_on_port(UINT16 port_number, uint8_t type
+             ip6_address = mld_portdb_get_port_lowest_ipv6_addr_from_list(port_number);
+         }
+     }
++    if (vlan_node && vlan_node->type == MLD_VLAN && IP6_IS_ADDRESS_UNSPECIFIED(ip6_address.address)) {
++        /* the VLAN interface's addresses by VLAN id (see
++         * ip_get_lowest_ip_address_on_port) */
++        ip6_address = ve_mld_portdb_get_port_lowest_ipv6_addr_from_list(vlan_node->gvid);
++    }
+     if (memcmp(&ip6_address, &lowest_ip6_address, 16))
+         lowest_ip6_address = ip6_address;
+     return lowest_ip6_address;
+@@ -1374,7 +1379,7 @@ void mld_send_general_query(
+     MCGRP_L3IF *mld_vport = NULL;
+ 
+     IPV6_ADDRESS src_addr;
+-    IPV6_ADDRESS src_address;
++    IPV6_ADDRESS src_address = IP6_ADDRESS_UNSPECIFIED_INIT;
+ 
+     mld_vport = gMld.port_list[tx_port_number];
+     if (mld_vport == NULL)
+@@ -1411,6 +1416,11 @@ void mld_send_general_query(
+                 FN, LN, tx_port_number);
+         }
+     }
++    if (vlan_node && vlan_node->type == MLD_VLAN && IP6_IS_ADDRESS_UNSPECIFIED(src_address.address)) {
++        /* the VLAN interface's addresses by VLAN id (see
++         * ip_get_lowest_ip_address_on_port) */
++        src_address = ve_mld_portdb_get_port_lowest_ipv6_addr_from_list(vlan_node->gvid);
++    }
+ 
+     L2MCD_VLAN_LOG_DEBUG(tx_port_number,
+         "%s:%d:[vlan:%d] phy_port:0x%x version:%d",

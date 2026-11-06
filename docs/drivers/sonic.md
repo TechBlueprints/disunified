@@ -1166,7 +1166,7 @@ rebase record -- `build.sh` (unattended, for the build host), `dry-run.sh`,
 | sonic-swss-common | `e59457c6da43` (2026-07-21) | 0001 the `schema.h` part of [#1093](https://github.com/sonic-net/sonic-swss-common/pull/1093) (L2MC and MLD_L2MC table names; a fourth Micas draft §8.1 did not list, and swss does not compile without it); 0002 upstream's port to libyang 3 (`1431c3d`, §8.12) |
 | sonic-mgmt-common | `b5f84b0644d9` (2025-12-05) | upstream's port to libyang 3 (#157, `cdb612e`; §8.12) |
 | sonic-utilities | `73f8c019ff7c` (2026-10-20) | #4100 squashed |
-| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0007 the receive path: packet parsers and a socket leak (§8.13) |
+| sonic-l2mcd | `651a13bdf036` (dev = l2mcd-pre, 2026-08-14) | 0001 the memcpy bug, see below; 0002-0007 the receive path: packet parsers and a socket leak (§8.13); 0008-0009 the querier election and the query source address, 0010 the per-packet syslog lines (§8.14) |
 
 **Conflicts: none textual.** Each PR, squashed, three-way merged onto its base
 cleanly (the PR merge bases are 7-154 commits behind). The semantic checks
@@ -2031,18 +2031,85 @@ it means:
   an older-version query (RFC 3376 §7, RFC 4541 §2.1.1) and drops only one
   newer than the VLAN's version or of no version; both are still counted.
 - **The source address** was looked up only through `vlan_node->ve_ifindex`,
-  which SONiC never sets (no VE binding), although l2mcmgrd's INTERFACE_TABLE
-  update stores the VLAN interface's addresses in `ve_portdb_tree` under the
-  VLAN id. 0008 looks there when no VE is bound, for the election and for the
-  general query's source. A VLAN without an address still queries from
-  0.0.0.0: that is the querier-address field of §8.11, still to write.
+  although SONiC binds no VE and l2mcmgrd's INTERFACE_TABLE update stores the
+  VLAN interface's addresses in `ve_portdb_tree` under the VLAN id. 0008
+  looks there when `ve_ifindex` is 0, for the election and for the general
+  query's source -- which turned out not to be the DX010's state (0009,
+  below). A VLAN without an address still queries from 0.0.0.0: that is the
+  querier-address field of §8.11, still to write.
 
 Built on VM 116 as the series' l2mcd package (the tree's
 `target/debs/bookworm/l2mcd_1.0.0_amd64.deb`; the binary differs from the
 0007 build the DX010 runs, which matched byte for byte, only by the patch).
 The harness's 25 regression cases pass on it (`l2mcd-fuzz/run.sh regress`).
-Not yet on the switch: a swap of the binary into the running container is
-the test; the next image build carries it.
+
+**0008 on the DX010 (2026-11-05 17:48 MST, installed by hand into the
+running l2mcd container).** `cp` over the running binary fails ("Text file
+busy"); `mv` works. Ethernet0 was learned as the multicast-router port
+within 30 s, and over 135 s (more than the 125 s query interval) the switch
+sent no general query of its own: the gateway, querying in IGMPv2 every
+30 s, is the querier. `show igmp-snooping vlan` still prints `Querier -
+true`: that is the configured flag, not the election (l2mcd's own dump,
+`querier : 0`, is the election). But the group-specific queries the switch
+sends after a leave still left from 0.0.0.0.
+
+**Why, and `sonic-l2mcd/0009`.** l2mcd's VLAN table (`l2mcd_ctl -s <file>
+-c 3`) showed `4094 0x48000ffe 0xffe`: `ve_ifindex` is the bare VLAN id, not
+0 and not the SVI index. `mld_if_snoop_set()` creates the VLAN node as a
+forward reference through the router-port path (both fields the bare id)
+and then rewrites `ifindex` alone. The bare id fails
+`l2mcd_ifindex_is_svi()`, so every reader took the router-port branch and
+searched `mld_portdb_tree`, which holds no address, while
+`ve_portdb_tree` held `4094 <address>/16` (`-c 9`). That is the state when
+the address update arrives after snooping is enabled, the DX010's order; in
+the other order the snoop-enable handler sets `ve_ifindex` to the SVI index
+and the SVI branch finds the address, though only because
+`l3_get_port_from_ifindex()` is the identity on SONiC and the result is cut
+to a 16-bit port id (0x48000ffe -> 4094). 0009 falls back to the VLAN id's
+entry in every reader of the address (group queries and the election,
+general queries, the MLD query source, static reports sent to router ports,
+the querier's own address) whatever `ve_ifindex` holds. The harness has a
+case for each order and one that forces the DX010's state: on the 0008 tree
+the after-order and the forced case query from 0.0.0.0, on 0009 all three
+from the VLAN's address; the 25 packet cases stay clean.
+
+**The log flood, and `sonic-l2mcd/0010`.** With snooping on, l2mcd sent
+~75 lines/s to the remote log host (820 in 11 s; ~20/s tagged ERR), which
+tripped the log host's error-rate alert. docker-l2mcd starts `l2mcd -n 1`
+-- so does the ECS (read 2026-11-05) -- and `-n 1` routes every per-VLAN
+debug line to syslog at NOTICE. l2mcd starts at DEBUG, but l2mcmgrd sends it
+its own swss level (`L2MCD_CFG:PARAMS loglevel:5`, NOTICE by default) about
+a second later, so a start-up level in l2mcd would not hold; at NOTICE every
+routed line passes. The ECS logs the same way (~30 lines/s) but only to its
+own `/var/log/syslog`: its rsyslog has no remote rule. SONiC forwards to the
+syslog host the controller pushes, which the driver writes. 0010 routes the per-VLAN lines at INFO and
+counts the IPv6 receive path's two per-frame ERRs ("vlan_node is not set"
+for every IPv6 multicast frame on a VLAN without MLD snooping, "hbh nexthdr
+is not ...") as `mld-off` and `non-mld` in `l2mcd_ctl -c 10`; `-n 1` is
+unchanged. To see the lines again: `swssloglevel -l INFO -c l2mcmgrd` and an
+l2mcd restart, or `l2mcd_ctl -s <file> -d 6` until the next restart. The
+runtime mitigation before it was `l2mcd_ctl -s /tmp/l2mcd_ctl.out -d 4`:
+**`-s` is required** in the container (the default output file is
+`/dev/pts/1`, which it lacks), the output file is opened in append mode, and
+the `debug IGMP-Snooping loglevel` CLI of the sonic-utilities patch is not on
+the DX010's image. l2mcd writes to `/var/log/l2mcd.log` on the host, not
+`/var/log/syslog`.
+
+**0009+0010 on the DX010 (2026-11-05 20:37 MST, by `mv`; `l2mcd.0007` and
+`l2mcd.0008` kept beside it in the container).** The deb from the series
+tree differs from the 0008 build in `l2mcd` and `l2mcd_ctl` only; the daemon
+was swapped. After `supervisorctl restart l2mcd l2mcmgrd`, with no runtime
+level: l2mcd at level 5 with `-n 1`'s routing on, **0 l2mcd lines to the
+remote host in 10 s** and about 9 a minute in `l2mcd.log` (port-state
+refreshes), one ERR; a one-off burst of ~3300 lines at the restart itself
+(l2mcmgrd replaying the static members at NOTICE, and l2mcd's DEBUG lines in
+the second before l2mcmgrd's level arrives). 605 IPv6 frames counted as
+`mld-off` in the first two minutes, each formerly an ERR line. Over 150 s:
+every IGMP frame the switch sent was a group-specific query from the VLAN's
+address, none from 0.0.0.0, and no general query; Ethernet0 the router
+port, l2mcd `querier : 0` with the gateway as `querier_router`; all 10
+groups in l2mcd and 10 `L2MC_ENTRY` objects in ASIC_DB. The install lives in
+the container's writable layer until the next image build carries 0008-0010.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 

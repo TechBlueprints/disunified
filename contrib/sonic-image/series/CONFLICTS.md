@@ -183,14 +183,30 @@ debug log's arguments evaluated; the two that never do are an MLD misparse and a
 MLD record type MLD does not index by), and all 25 pass on the series either way. Details and the fuzzing result:
 `docs/drivers/sonic.md` section 8.
 
-## Querier behaviour (sonic-l2mcd 0008)
+## Querier behaviour (sonic-l2mcd 0008, 0009)
 
 Not a parser fix: found with the series live on a DX010 beside an IGMPv2 router
 (2026-11-05). At version 3 `igmp_process_query()` returned on the version mismatch
 before the election and the router-port learning, so no IGMPv2 querier was ever seen;
-and the VLAN's own address was looked up only through a VE binding SONiC never makes,
-so queries left from 0.0.0.0, which wins every election. Touches the query path only
-(`src/igmp_io.c`); the harness's cases are unaffected.
+and the VLAN's own address was looked up only through `vlan_node->ve_ifindex`, while
+SONiC binds no VE and l2mcmgrd keeps the address in `ve_portdb_tree` under the VLAN
+id, so queries left from 0.0.0.0, which wins every election. 0008 fell back to the
+VLAN id only for `ve_ifindex` 0; the DX010 runs with the bare VLAN id there (the
+address arrives after the snooping enable), which 0009 covers, in every reader of
+the address (IGMP and MLD). Upstream, 0008's address hunks and 0009 go as one
+change. Query path only; the harness's packet cases are unaffected, and its three
+`query-src-*` cases cover both start-up orders and the DX010's state.
+
+## Logging (sonic-l2mcd 0010)
+
+docker-l2mcd starts `l2mcd -n 1`, as the ECS image does. `-n 1` routes every
+per-VLAN debug line to syslog at NOTICE, and l2mcmgrd sets l2mcd's level to its own
+swss level, NOTICE by default, right after start: so all of them were written. The
+ECS writes them only to its local syslog (its rsyslog has no remote rule); SONiC
+forwards syslog to the remote host the controller pushes, which received ~75 lines/s.
+0010 routes those lines at INFO and turns the IPv6 receive path's per-frame ERRs
+into counters; `-n 1` and the start line stay the ECS's. A start-up level in l2mcd
+itself would not hold: l2mcmgrd overrides it within a second.
 
 ## The review comments on #3950, checked against the PR head
 

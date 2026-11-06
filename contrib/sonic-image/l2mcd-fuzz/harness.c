@@ -29,15 +29,34 @@ static const char *ports[] = { "Ethernet4", "Ethernet8" };
 static mld_vlan_node_t *vnode;
 static unsigned int port_idx[2];        /* l2mcd's port index per port */
 static size_t tx_count, tx_bytes;       /* what l2mcd_fwd_pkt would have sent */
+static uint32_t tx_igmp_src;            /* source address of the last IGMP frame sent */
+static int tx_igmp_type = -1;           /* and its IGMP type */
+static int addr_order;                  /* query-src cases: Vlan100's address 1 before, 2 after the snooping enable */
+#define VLAN_ADDR "192.0.2.200"
+#define VLAN_ADDR_U32 0xc00002c8u
 
 ssize_t __real_sendto(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
 ssize_t __wrap_sendto(int fd, const void *buf, size_t len, int flags,
                       const struct sockaddr *to, socklen_t tolen)
 {
     /* packet transmits are counted and dropped; the IPC socket is not used */
-    (void)fd; (void)buf; (void)flags; (void)to; (void)tolen;
+    const uint8_t *b = buf;
+    size_t off;
+
+    (void)fd; (void)flags; (void)to; (void)tolen;
     tx_count++;
     tx_bytes += len;
+    /* an untagged or 802.1Q-tagged IPv4 frame carrying IGMP: keep its source */
+    for (off = 12; off <= 16 && off + 2 + 24 <= len; off += 4) {
+        const uint8_t *ip = b + off + 2;
+        if (b[off] != 0x08 || b[off + 1] != 0x00)
+            continue;
+        if (ip[9] == 2 && (size_t)(off + 2 + (ip[0] & 0x0f) * 4) < len) {
+            tx_igmp_src = (uint32_t)ip[12] << 24 | ip[13] << 16 | ip[14] << 8 | ip[15];
+            tx_igmp_type = ip[(ip[0] & 0x0f) * 4];
+        }
+        break;
+    }
     return len;
 }
 
@@ -77,6 +96,26 @@ static void cfg(int type, int afi, int version, int opcode, int nports)
         strncpy(c->ports[i].pnames, ports[i], L2MCD_IFNAME_SIZE - 1);
         c->ports[i].oper_state = 1;
     }
+    l2mcd_process_ipc_msg(m, sizeof(L2MCD_IPC_MSG) + dlen, none);
+    free(m);
+}
+
+/* Vlan100's address as l2mcmgrd sends it from INTERFACE_TABLE (Vlan100|<addr>/24) */
+static void vlan_addr(void)
+{
+    size_t dlen = sizeof(L2MCD_CONFIG_MSG);
+    L2MCD_IPC_MSG *m = calloc(1, sizeof(L2MCD_IPC_MSG) + dlen);
+    L2MCD_CONFIG_MSG *c = (L2MCD_CONFIG_MSG *)m->data;
+    struct sockaddr_un none;
+
+    memset(&none, 0, sizeof(none));
+    m->msg_type = L2MCD_INTERFACE_TABLE_UPDATE;
+    m->msg_len = dlen;
+    c->op_code = L2MCD_OP_ENABLE;
+    c->afi = MLD_IP_IPV4_AFI;
+    c->vlan_id = VID;
+    c->prefix_length = 24;
+    strncpy(c->gaddr, VLAN_ADDR, L2MCD_IP_ADDR_STR_SIZE - 1);
     l2mcd_process_ipc_msg(m, sizeof(L2MCD_IPC_MSG) + dlen, none);
     free(m);
 }
@@ -313,9 +352,13 @@ static int setup_daemon(void)
     g_l2mcd_rx_is_l2_sock = TRUE;
 
     cfg(L2MCD_SNOOP_PORT_LIST_MSG, L2MCD_IPV4_AFI, 0, 1, 2);
+    if (addr_order == 1)
+        vlan_addr();
     cfg(L2MCD_SNOOP_CONFIG_MSG, L2MCD_IPV4_AFI, 3, 1, 2);
     cfg(L2MCD_SNOOP_CONFIG_MSG, L2MCD_IPV6_AFI, 2, 1, 2);
     cfg(L2MCD_VLAN_MEM_TABLE_UPDATE, L2MCD_IPV4_AFI, 0, 1, 2);
+    if (addr_order == 2)
+        vlan_addr();
 
     vnode = mld_vdb_vlan_get(VID, MLD_VLAN);
     port_idx[0] = portdb_get_portindex_from_ifname((char *)ports[0]);
@@ -505,8 +548,36 @@ int main(int argc, char **argv)
     size_t n;
 
     only = argc > 1 ? argv[1] : NULL;
+    if (only && !strncmp(only, "query-src-", 10))
+        addr_order = strcmp(only, "query-src-addr-after") ? 1 : 2;
     if (setup() < 0)
         return 2;
+
+    /* found on the DX010: queries left from 0.0.0.0 although l2mcd held the
+     * VLAN's address (ve_portdb_tree under the VLAN id). Each order of the
+     * address and snooping updates, and the live state (ve_ifindex the bare
+     * VLAN id, l2mcd_ctl -c 3), must give the address as the source of the
+     * group queries (ip_get_lowest_ip_address_on_port) and of a general
+     * query. Only when named: the address is set up before the other cases. */
+    if (only && (!strcmp(only, "query-src-addr-before") || !strcmp(only, "query-src-addr-after") ||
+                 !strcmp(only, "query-src-bare-vid"))) {
+        MCGRP_CLASS *igmp = IGMP_GET_INSTANCE_FROM_VRFINDEX(IPVRF_DEFAULT_VRF_IDX);
+        UINT16 vir = (USHORT)vnode->ifindex;
+        uint32_t lowest;
+
+        run(only);
+        if (!strcmp(only, "query-src-bare-vid"))
+            vnode->ve_ifindex = VID;
+        lowest = ip_get_lowest_ip_address_on_port(vir, MLD_VLAN);
+        tx_igmp_src = 0; tx_igmp_type = -1;
+        igmp_send_general_query(igmp, vir, PORT_INDEX_INVALID, 3, 0, 100);
+        fprintf(stderr, "  Vlan%d ifindex 0x%x ve_ifindex 0x%x: lowest address 0x%08x, general query type 0x%x from 0x%08x (want 0x%08x)\n",
+                VID, vnode->ifindex, vnode->ve_ifindex, lowest, tx_igmp_type, tx_igmp_src, VLAN_ADDR_U32);
+        if (lowest != VLAN_ADDR_U32 || tx_igmp_type != 0x11 || tx_igmp_src != VLAN_ADDR_U32)
+            abort();
+        fprintf(stderr, "harness: all cases ran\n");
+        return 0;
+    }
 
     /* sanity: well-formed traffic still flows (and is forwarded to the router port) */
     if (run("igmp-valid")) {
