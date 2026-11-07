@@ -55,6 +55,7 @@ type plan struct {
 	// port's state to re-apply on every cycle.
 	controllerOnly bool
 	notes          []string // refusals, logged once each by ApplyPorts
+	appl           []applOp // APPL_DB writes, run together at the end (portfeat.go)
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
@@ -92,6 +93,7 @@ func lanesOf(p devicemodel.Port) []string {
 // newPlan diffs desired against the collector's state without writing;
 // controllerOnly leaves out the module-driven writes (plan.controllerOnly).
 func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
+	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
 	c.mu.Unlock()
@@ -146,6 +148,7 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 	pl.lagJoins(ds)
 	pl.mirrorAdds(ds)
 	pl.vlanMTUs(ds)
+	pl.portFeatures(ds, caps)
 	return pl, nil
 }
 
@@ -978,7 +981,7 @@ func (c *Collector) applyPorts(ctx context.Context, desired []devicemodel.PortDe
 			n++
 		}
 	}
-	c.Log.Printf("sonic apply (%d ports): %s", n, strings.Join(cmds, " ; "))
+	c.Log.Printf("sonic apply (%d ports): %s", n, strings.ReplaceAll(strings.Join(cmds, " ; "), applCommand, applLogged))
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic apply (%d ports): %w", n, err)
 	}

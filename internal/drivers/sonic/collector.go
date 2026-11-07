@@ -120,7 +120,9 @@ type Collector struct {
 	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
 	// and the snooping intent of the last push.
 	IGMP bool
-	igmp igmpWant
+	// CaptureClaims: options.capture_claims (driver.go).
+	CaptureClaims bool
+	igmp          igmpWant
 	// sshFrom / sshTo are the last collect's SSH connection as the switch
 	// saw it (collect.py's ssh section): the bridge's address and the
 	// switch address it dialled; "" when not reported.
@@ -220,6 +222,17 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if c.igmpOn(st) {
 		caps.IGMPSnooping, caps.IGMPSnoopingAdvanced = true, true
 	}
+	// Isolation, port security and egress shaping need the collector's
+	// sections (portfeat.go); LLDP-MED needs lldpcli to answer.
+	if st != nil && st.pf.known {
+		caps.PortIsolation, caps.PortSecurity, caps.EgressRateLimit = true, true, true
+	}
+	if st != nil && st.pf.medKnown {
+		caps.LLDPMED = true
+	}
+	if c.CaptureClaims {
+		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, 64, 256
+	}
 	return caps
 }
 
@@ -257,7 +270,7 @@ var redisSections = []string{
 // driver's ACL tables); the captures before that lack them, which reads as
 // empty. state_switch_cap (the SAI's SWITCH_CAPABILITY, §11.8) joined on
 // 2026-11-02, cfg_l2mc (IGMP snooping's tables, §8.10) on 2026-11-03.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc"}
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
@@ -304,7 +317,13 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	for name, idx := range lagPorts(db, byIfname) {
 		byIfname[name] = idx
 	}
-	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN)
+	applPort, applLAG := db["appl_port"].byName(":"), db["appl_lag"].byName(":")
+	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN, func(port string) bool {
+		if f, ok := applLAG[port]; ok {
+			return f["oper_status"] != "up"
+		}
+		return applPort[port]["oper_status"] != "up"
+	})
 	pi := map[int]int{}
 	for i := range ports {
 		pi[ports[i].Index] = i
@@ -333,6 +352,10 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.prevCPU = cpu
 	c.host = sys.Hostname
 	c.state = newState(db, sec)
+	macsBy := staticMACs(c.state.pf)
+	for i := range ports {
+		readBackPortFeat(c.state, &ports[i].Port, macsBy)
+	}
 	c.sshFrom, c.sshTo = "", ""
 	if f := strings.Fields(sec["ssh"]); len(f) == 2 {
 		c.sshFrom, c.sshTo = f[0], f[1]

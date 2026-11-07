@@ -106,6 +106,12 @@ type swState struct {
 	l2mcKnown   bool
 	l2mcFeature string
 	l2mc        map[string]map[string]string
+
+	// pf: isolation, port security, egress shapers and LLDP-MED
+	// (portfeat.go, §11.11); lagLearn is each PortChannel's CONFIG_DB
+	// learn_mode ("" = absent).
+	pf       portFeat
+	lagLearn map[string]string
 }
 
 // lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
@@ -284,6 +290,13 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	if f, ok := db["state_switch_cap"]["SWITCH_CAPABILITY|switch"]; ok {
 		s.switchCap = copyFields(f)
 	}
+	s.pf = readPortFeat(db, sec)
+	s.lagLearn = map[string]string{}
+	for name, f := range db["cfg_lag"].byName("|") {
+		if f["learn_mode"] != "" {
+			s.lagLearn[name] = f["learn_mode"]
+		}
+	}
 	s.fecs = map[string]map[string]bool{}
 	s.laneSpeeds = map[string][]int{}
 	for name, f := range db["state_port"].byName("|") {
@@ -326,6 +339,7 @@ func (s *swState) clone() *swState {
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{},
+		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
 	}
 	for k, v := range s.l2mc {
 		c.l2mc[k] = copyFields(v)

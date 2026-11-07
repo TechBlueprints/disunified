@@ -2510,9 +2510,9 @@ feature the DX010 does not claim:
 | Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
 | IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | with `options.igmp: on` on the l2mcd image (§8.14), off until H4 | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
 | DHCP snooping (128) | yes | yes since the 2026-11-01 build (§11.7.6) | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
-| Port isolation (4), port security (512) | yes | no | `switch.port.N.port-security` (isolation keys only when set) |
-| LLDP-MED (16) | yes | no | `switch.port.N.lldpmed.opmode/topology_notify` |
-| Egress rate limit (32) | yes | no | none while unset |
+| Port isolation (4), port security (512) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.port-security` (isolation keys only when set) |
+| LLDP-MED (16) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.lldpmed.opmode/topology_notify` |
+| Egress rate limit (32) | yes | yes since 2026-11-07 (§11.12) | none while unset |
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | no | `switch.routing_enabled` only while no L3 network is on the switch |
 | Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
@@ -2539,9 +2539,9 @@ changes nothing that breaks the system_cfg path.
 | **Loop protection** | Ubiquiti's `MAC_MOVE_GUARD` semantics (threshold 10 moves in 5 s → errdisable for 150 s) on the switch, from FDB move events, driven by `ld_mode`; `ld_status` reported. With RSTP in place this is the second line of defence, as on the ECS. **Built 2026-11-01 in disunified-l2d, driven by `switch.port.N.keepalive` (not `ld_mode`); verified live by hand that night: §11.5.** | stock | medium |
 | **LACP state** | teamd's per-member state, which tlm_teamd copies out of `teamdctl <pc> state dump` into STATE_DB `LAG_MEMBER_TABLE` → `lag_member`, and on the aggregate's lowest member `aggregate_num_ports`, `lacp_state[]`, `partner_system_id`. `aggregate_members`, `lag_idx` and `link_aggregation_groups[]` are the controller's own (from its port overrides; the ECS's inform carries none of them). Needed for the planned two-cable aggregate from the core. | stock | **built 2026-11-01** (§11.4), held to the ECS's own inform on the ECS's own tables; live on the DX010 once the second cable is in |
 | **Hardware tables** | PSU, fan, MAC-table capacity, IPv6 and firmware fields from pmon's STATE_DB tables, `crm`, the kernel. | stock | **built 2026-11-01** (§11.4), fixture- and contract-tested on a second DX010 capture |
-| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security not yet captured. **The guard and the IP rules built 2026-11-01 (§11.7.6) and verified live on the DX010 the same evening (§11.7.7).** | stock (MAC rules: custom) | medium each |
-| **LLDP-MED** | SONiC's `lldpd` speaks LLDP-MED (`configure med ...`); the `lldp` container's config is the write path. | stock | small |
-| **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` (YANG present, §7.2); capture the push first. | stock | small |
+| **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security captured, built and verified live 2026-11-07 (§11.12: an isolation group and learn mode drop + static FDB, not ACLs). **The guard and the IP rules built 2026-11-01 (§11.7.6) and verified live on the DX010 the same evening (§11.7.7).** | stock (MAC rules: custom) | medium each |
+| **LLDP-MED** | lldpd's custom TLVs per port, as the ECS's lldp manager writes them. **Built and verified live 2026-11-07, with the Voice VLAN (§11.12).** | stock | small |
+| **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` port shaper. **Built and verified live 2026-11-07 (§11.12).** | stock | small |
 | **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
 | **IGMP snooping** | §8: the Micas l2mcorch/l2mcd series on a **custom 202511 image**. Needs a build host (sonic-buildimage wants ~200 GB disk, 8+ cores, Docker). | custom | large |
 
@@ -4011,6 +4011,139 @@ every address) and `sonic-igmp-202511.20261106-f2e25f54c/` (the switch with
 the eth0 row gone, whole and split, with its `config --help` and zone
 list). **Still hardware-only:** link at each speed, which needs a 4x25G /
 2x50G breakout cable and a far end.
+
+### 11.12 Port isolation, MAC filter, egress limit, LLDP-MED and Voice VLAN (2026-11-07)
+
+Clint, 2026-11-07: build what a UniFi switch does and the DX010 does not.
+Each feature was claimed, its push captured from the UI on empty cages
+29-31, built against the capture, and verified live on the DX010
+(image `igmp-202511.20261106-f2e25f54c`), following what the ECS does
+where community SONiC 202511 has the same mechanism.
+
+**What the ECS does (read-only, described, not copied).** Port security
+there is `learn_mode cpu_trap` on the port plus a software-learning daemon
+of Ubiquiti's (a `PORT_SECURITY` table in CONFIG_DB, kernel bridge rules
+admitting the listed MACs). LLDP-MED and the voice VLAN are lldpd custom
+TLVs under the TIA OUI 00-12-BB, set per port by Ubiquiti's lldp manager
+(`lldpcli configure ports <p> lldp custom-tlv ...`), because lldpd's own
+`-M` would need a restart. The ECS carries no isolation or shaping state
+while both are off.
+
+**The claims.** `feature_caps` gains PORT_ISOLATION (4), LLDP_MED (16),
+EGRESS_RATE_LIMIT (32) and PORT_SECURITY (512) once the collector reads the
+new sections (LLDP-MED once lldpcli answers). With them the controller
+pushes `switch.port.N.lldpmed.opmode` (and `topology_notify` while on) and
+`port-security` for every port.
+
+**The captured keys** (`docs/fixtures/controller-10.6.109/system_cfg-dx010-portfeat-*.txt`):
+
+| UI | Key | Off |
+|---|---|---|
+| Port Isolation | `switch.port.N.isolation=enabled` | absent |
+| MAC Address Filter | `switch.port.N.port-security=enabled`, `switch.port.N.port-security.mac.K=<mac>` | `port-security=disabled` |
+| Egress Rate Limit | `switch.port.N.egress_rate_limit_kbps=<kbps>` (the UI's Mb/s x 1000) | absent |
+| LLDP-MED | `switch.port.N.lldpmed.opmode=enabled\|disabled`, `lldpmed.topology_notify=disabled` | `opmode=disabled` |
+| Voice VLAN (needs a tagged VLAN) | `switch.vlan.<slot>.port.N.voice=enabled` beside that VLAN's `mode=tagged` | absent |
+
+The device record's fields (the UI's code): `isolation`,
+`port_security_enabled` + `port_security_mac_address`,
+`egress_rate_limit_kbps_enabled` + `egress_rate_limit_kbps`,
+`lldpmed_enabled` + `lldpmed_notify_enabled`, `voice_networkconf_id`.
+
+**The mechanisms on 202511, probed on cages 30/31 first (§11.3 rules):**
+
+- **Isolation**: one SAI isolation group of type port, `DUI_ISOLATION`,
+  through orchagent's `isolationgrouporch`, which reads APPL_DB
+  `ISOLATION_GROUP_TABLE` only (no CONFIG_DB table, no YANG, no CLI): the
+  isolated ports are both members and bind ports, so a frame entering one
+  cannot leave by another, and reaches every other port. A PortChannel
+  member is represented by its PortChannel. The Tomahawk-1 SAI programs it
+  (ASIC_DB `ISOLATION_GROUP` and `_MEMBER`, `SAI_PORT_ATTR_ISOLATION_GROUP`
+  on each bind port).
+- **MAC filter**: `learn_mode drop` on the port (or on its PortChannel,
+  which teammgrd hands to the LAG) -- the SAI's
+  `SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP`: an unknown source is not
+  learnt and not forwarded -- and one static FDB entry per allowed MAC in
+  every VLAN the port carries (APPL_DB `FDB_TABLE`, fdborch;
+  `SAI_FDB_ENTRY_TYPE_STATIC`). An empty list blocks everything, as on a
+  UniFi switch. Going off is `learn_mode hardware` first: removing the
+  field alone never reaches the ASIC (portmgrd passes only the fields that
+  remain).
+- **Egress limit**: a port shaper, `SCHEDULER|DUI_EGRESS_<kbps>`
+  (`meter_type bytes`, `pir` = kbps x 125 bytes/s, `pbs` 10 ms of the rate
+  and at least two jumbo frames) named by `PORT_QOS_MAP|<p> scheduler`
+  (qosorch, `SAI_PORT_ATTR_QOS_SCHEDULER_PROFILE_ID`; one profile per rate,
+  deleted once nothing names it). The DX010's L2 preset has no QoS maps, so
+  the row holds only the scheduler. Every lane of a cage gets it.
+- **LLDP-MED**: the capabilities TLV (subtype 1, `00,01,04`: LLDP-MED
+  capabilities, network connectivity device) per port, on by default as
+  UniFi's is; with a Voice VLAN it is `00,03,04` and a network policy TLV
+  (subtype 2: application voice, tagged, the VLAN, priority 5, DSCP 0 --
+  the ECS's values) follows. `topology_notify` (SNMP traps) is not
+  modelled.
+
+**APPL_DB is written through ProducerStateTable.** A plain `sonic-db-cli
+APPL_DB hset` never reaches orchagent: its consumers wait on the table's
+key set and notification channel (probed: nothing programmed, nothing
+logged). The plan collects the APPL_DB writes and runs them as one
+`python3` call at the end of the batch (`disunified-appl`, the operations
+as a JSON argument; the log shows it by that name).
+
+**What does not survive a restart, and what restores it.** The isolation
+group, the static FDB entries and lldpd's TLVs live in APPL_DB and in the
+lldp container: a swss or lldp restart drops them, and the loop's
+reconcile on the next cycle writes them again. `learn_mode` and the shaper
+are CONFIG_DB and kept by `config save`, so a secured port stays closed
+across a reboot (its allowed MACs come back with the first reconcile).
+
+**`learn_mode` is in neither `sonic-port.yang` nor
+`sonic-portchannel.yang`**, and sonic-yang leaves an entry with an unknown
+leaf untranslated (`_xlateList`'s leaf lookup), so a breakout -- which
+validates all of CONFIG_DB first (§11.8) -- would be refused while any port
+is secured. The breakout's batch takes every `learn_mode` out just before
+`config interface breakout` and puts it back right after; the ASIC keeps
+dropping meanwhile. Modelled from the source, not from an observed
+refusal.
+
+**A provisioned FDB entry is not a station.** STATE_DB lists the allowed
+MACs like learnt ones, and on an empty cage UniFi showed them as connected
+clients; static entries on a port without link are no longer reported.
+
+**Live, 2026-11-07** (`replay_sonic_portfeat_test.go` replays the five
+pushes over the capture taken before the claims, `collect-portfeat.txt`):
+the push for port 30 (isolation, two allowed MACs, 100 Mb/s, LLDP-MED off)
+and port 31 (isolation) wrote `learn_mode drop`, the shaper, the
+unconfigure of port 30's TLV and one ProducerStateTable call (the group,
+two FDB entries). Read back: CONFIG_DB, APPL_DB, ASIC_DB (group with two
+members bound to both ports, `FDB_LEARNING_MODE_DROP`, two static entries
+on port 30's bridge port, the scheduler at 12500000 bytes/s on port 30)
+and lldpd (31 of 32 ports sending the TLV); the next cycle wrote nothing;
+the two removal pushes took all of it out in order (learning back to
+hardware). Port 29 with VLAN 69 tagged as its Voice VLAN: `00,03,04` and
+the policy `01,40,8b,40` in lldpd. Ethernet0 stayed up throughout.
+
+**Not proven, needs a second linked port** (Clint's rack day): an
+isolated port's frames not reaching another isolated port while reaching
+the uplink; a non-listed source dropped on a secured port and a listed one
+forwarded; the shaper's measured rate; an LLDP-MED phone or switch reading
+the TLVs.
+
+**Multicast Router Port** (IGMP family, found unclaimed while capturing):
+the UI's per-port setting arrives as `switch.vlan.<slot>.igmp_mroute_port.K=
+<port>` in each snooping VLAN, and becomes `L2MC_MROUTER|Vlan<id>|<iface>
+{mrouter_port}`, the row the CLI's `igmp-snooping mrouter add` writes and
+l2mcmgrd reads (a PortChannel member as its PortChannel); the controller's
+list is the switch's, a row made by hand goes. Written and removed live on
+cage 28; l2mcd lists it in APPL_DB only once the port is oper up (its rule
+for members, §8.14), so the empty cage stayed out of
+`L2MC_MROUTER_TABLE`.
+
+**Fan mode is not offered for a `USWF07D`.** The UI has a Fan Mode setting
+(Default / Quiet) for a device whose `sys_fan_mode.caps` is non-zero
+(DEFAULT 1 | QUIET 2). The DX010's inform carried `sys_fan_mode: {caps: 3}`;
+the controller (10.6.109) kept no `sys_fan_mode` on the device record and
+showed no Fan Mode in the settings panel, so the claim was dropped. The
+fancontrol floor (20 %, image patch 0012) stays as it is.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

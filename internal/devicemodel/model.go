@@ -62,6 +62,32 @@ type PortDesired struct {
 	// 1500 with it disabled; 0 = not in the push, leave the MTU alone. Only
 	// a JumboSwitcher reads it.
 	MTU int
+
+	// Isolation: UniFi's port isolation -- the port reaches the switch's
+	// other ports but no other isolated one. Read by a driver claiming
+	// Capabilities.PortIsolation.
+	Isolation bool
+	// PortSecurity: only the source MACs in AllowedMACs (lower-case,
+	// colon form) may send through the port; with none listed, none. Read
+	// by a driver claiming Capabilities.PortSecurity.
+	PortSecurity bool
+	AllowedMACs  []string
+	// EgressKbps limits what the port sends to that many kbit/s; 0 = no
+	// limit. Read by a driver claiming Capabilities.EgressRateLimit.
+	EgressKbps int
+	// LLDPMED is the port's LLDP-MED setting; nil = not in the push. Read
+	// by a driver claiming Capabilities.LLDPMED.
+	LLDPMED *bool
+	// VoiceVLAN is the VLAN LLDP-MED's network policy advertises for voice
+	// (UniFi's Voice VLAN); 0 = none. Read with LLDPMED.
+	VoiceVLAN int
+}
+
+// LLDPMEDSwitcher is an optional Controller capability: the driver turns
+// LLDP-MED on and off per port (PortDesired.LLDPMED). Without it the loop
+// notes that a port's LLDP-MED off is left as the switch has it.
+type LLDPMEDSwitcher interface {
+	SwitchesLLDPMED() bool
 }
 
 // JumboSwitcher is an optional Controller capability: the driver honours
@@ -150,6 +176,9 @@ type IGMPVLAN struct {
 	// FloodUnknown: unregistered multicast floods the VLAN (true) or goes to
 	// the multicast-router ports only (false); nil = not given.
 	FloodUnknown *bool
+	// RouterPorts are the ports the operator made static multicast-router
+	// ports in this VLAN (the UI's Multicast Router Port), by index.
+	RouterPorts []int
 }
 
 // DHCPGuard trusts one DHCP server on one VLAN (UniFi's id: 1 is the
@@ -575,6 +604,16 @@ type Port struct {
 	Media       Media
 	Lanes       int // 1, or the number of lanes a breakout slot was folded from
 
+	// Settings a driver reads back where it applies them (nil/zero = the
+	// switch's default: not isolated, no MAC restriction, no egress limit,
+	// LLDP-MED on).
+	Isolated     bool
+	PortSecurity bool
+	AllowedMACs  []string
+	EgressKbps   int
+	LLDPMEDOff   bool
+	VoiceVLAN    int
+
 	Present    bool   // an optic/cable is present (always true for copper)
 	Enabled    bool   // administratively up
 	Fault      string // vendor fault state keeping the port down, e.g. "errdisabled: speed-misconfigured"; "" = none
@@ -793,8 +832,19 @@ type Capabilities struct {
 	IGMPSnoopingAdvanced bool
 	LLDPMED              bool
 	DHCPSnooping         bool // DeviceController honours DHCPSnooping and DHCPGuards
-	PortIsolation        bool
-	SNMP                 bool // DeviceController honours SNMPCommunity
+	PortIsolation        bool // PortDesired.Isolation
+	// PortSecurity: the per-port MAC allow list (PortDesired.PortSecurity,
+	// AllowedMACs) is honoured.
+	PortSecurity bool
+	// EgressRateLimit: PortDesired.EgressKbps is honoured.
+	EgressRateLimit bool
+	// L3Routing: VLAN interfaces and static routes owned by the controller
+	// (DeviceDesired.L3Interfaces / StaticRoutes); L3Interfaces and
+	// StaticRoutes are the counts the controller is told.
+	L3Routing    bool
+	L3Interfaces int
+	StaticRoutes int
+	SNMP         bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int

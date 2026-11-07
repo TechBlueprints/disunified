@@ -299,6 +299,23 @@ type Port struct {
 	STPPortMode bool  // switch.port.N.stp.port_mode (default enabled)
 	BPDUGuard   bool  // switch.port.N.stp.bpdu_guard
 	LLDPMED     *bool // switch.port.N.lldpmed.opmode, nil if absent
+	// LLDPMEDNotify is switch.port.N.lldpmed.topology_notify == enabled
+	// (the UI's LLDP-MED notify; pushed only with opmode enabled).
+	LLDPMEDNotify bool
+	// Isolation is switch.port.N.isolation == enabled (absent when off).
+	Isolation bool
+	// PortSecurity is switch.port.N.port-security == enabled, and
+	// SecurityMACs its switch.port.N.port-security.mac.K list in K order,
+	// lower case (captured 2026-11-07, docs/drivers/sonic.md 11.12).
+	PortSecurity bool
+	SecurityMACs []string
+	// EgressKbps is switch.port.N.egress_rate_limit_kbps (absent = no
+	// limit; the UI's Mbps x 1000).
+	EgressKbps int
+	// VoiceVLAN is the VLAN whose switch.vlan.<slot>.port.N.voice is
+	// enabled (the UI's Voice VLAN; the VLAN is tagged on the port too); 0 =
+	// none (captured 2026-11-07).
+	VoiceVLAN int
 	// STPEdge is switch.port.N.stp.edge as pushed: "auto", "enabled" or
 	// "disabled" (Edge Port in the UI; the ECS push carries auto and
 	// disabled); "" when absent.
@@ -365,6 +382,10 @@ type IGMP struct {
 	Suppression  bool   // igmp_supression (the controller's spelling)
 	// FloodUnknown is forward_unknown_multicast; nil = absent.
 	FloodUnknown *bool
+	// RouterPorts are the switch.vlan.N.igmp_mroute_port.K port indexes, in
+	// K order (the UI's per-port Multicast Router Port; captured
+	// 2026-11-07, docs/drivers/sonic.md 11.12).
+	RouterPorts []int
 }
 
 // Multicast is switch.multicast.*; nil = absent.
@@ -374,9 +395,10 @@ type Multicast struct {
 }
 
 var (
-	portRe     = regexp.MustCompile(`^switch\.port\.(\d+)\.([\w.]+)$`)
+	portRe     = regexp.MustCompile(`^switch\.port\.(\d+)\.([\w.-]+)$`)
 	vlanRe     = regexp.MustCompile(`^switch\.vlan\.(\d+)\.(\w+)$`)
-	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.mode$`)
+	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.(mode|voice)$`)
+	mrouterRe  = regexp.MustCompile(`^switch\.vlan\.(\d+)\.igmp_mroute_port\.(\d+)$`)
 	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
 	guardRe    = regexp.MustCompile(`^switch\.dhcp_guard\.(\d+)\.(\w+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
@@ -392,6 +414,7 @@ func Parse(text string) *Config {
 		mode       string
 	}
 	var members []membership
+	var voice []membership // switch.vlan.<slot>.port.N.voice=enabled
 	type ntpEntry struct {
 		server  string
 		enabled bool
@@ -417,9 +440,27 @@ func Parse(text string) *Config {
 			continue
 		}
 		c.Raw[k] = v
+		if m := mrouterRe.FindStringSubmatch(k); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			vl, seen := vlans[n]
+			if !seen {
+				vl = &VLAN{Enabled: true}
+				vlans[n] = vl
+			}
+			if port, err := strconv.Atoi(v); err == nil && port > 0 {
+				vl.igmp.RouterPorts = append(vl.igmp.RouterPorts, port)
+			}
+			continue
+		}
 		if m := vlanPortRe.FindStringSubmatch(k); m != nil {
 			slot, _ := strconv.Atoi(m[1])
 			port, _ := strconv.Atoi(m[2])
+			if m[3] == "voice" {
+				if v == "enabled" {
+					voice = append(voice, membership{slot, port, v})
+				}
+				continue
+			}
 			members = append(members, membership{slot, port, v})
 			continue
 		}
@@ -579,6 +620,23 @@ func Parse(text string) *Config {
 			case "lldpmed.opmode":
 				b := v == "enabled"
 				p.LLDPMED = &b
+			case "lldpmed.topology_notify":
+				p.LLDPMEDNotify = v == "enabled"
+			case "isolation":
+				p.Isolation = v == "enabled"
+			case "port-security":
+				p.PortSecurity = v == "enabled"
+			case "egress_rate_limit_kbps":
+				p.EgressKbps, _ = strconv.Atoi(v)
+			default:
+				if n, ok := strings.CutPrefix(m[2], "port-security.mac."); ok {
+					if k, err := strconv.Atoi(n); err == nil && k > 0 {
+						for len(p.SecurityMACs) < k {
+							p.SecurityMACs = append(p.SecurityMACs, "")
+						}
+						p.SecurityMACs[k-1] = strings.ToLower(v)
+					}
+				}
 			case "stormctrl.status":
 				p.StormCtrl.Enabled = v == "enabled"
 			case "stormctrl.type":
@@ -785,6 +843,13 @@ func Parse(text string) *Config {
 			p.TaggedVLANs = append(p.TaggedVLANs, vl.ID)
 		}
 		c.Ports[mb.port] = p
+	}
+	for _, mb := range voice {
+		if vl, ok := vlans[mb.slot]; ok && vl.ID != 0 {
+			p := c.port(mb.port)
+			p.VoiceVLAN = vl.ID
+			c.Ports[mb.port] = p
+		}
 	}
 	for idx, p := range c.Ports {
 		sort.Ints(p.TaggedVLANs)

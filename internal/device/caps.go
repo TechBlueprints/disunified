@@ -21,12 +21,15 @@ const (
 
 // switch_caps.feature_caps
 const (
+	swCapL3Routing     = 1
 	swCapPortIsolation = 4
 	swCapStormControl  = 8
 	swCapLLDPMED       = 16
+	swCapEgressRate    = 32 // EGRESS_RATE_LIMIT: switch.port.N egress rate limit
 	swCapSTP           = 64
 	swCapDHCPSnooping  = 128
 	swCapIGMPSnooping  = 256
+	swCapPortSecurity  = 512 // PORT_SECURITY: the per-port MAC allow list
 	swCapLACP          = 8192
 	swCapFEC           = 65536
 	swCapJumbo         = 524288
@@ -244,6 +247,9 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	set(c.LLDPMED, swCapLLDPMED)
 	set(c.DHCPSnooping, swCapDHCPSnooping)
 	set(c.PortIsolation, swCapPortIsolation)
+	set(c.PortSecurity, swCapPortSecurity)
+	set(c.EgressRateLimit, swCapEgressRate)
+	set(c.L3Routing, swCapL3Routing)
 	set(c.LoopProtection, swCapLoopProtect)
 	set(c.IGMPSnooping && c.IGMPSnoopingAdvanced, swCapIGMPAdvanced)
 	igmp := 0
@@ -278,6 +284,12 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	// §11.7.5). Sent only by a driver that honours some, so no other
 	// driver's payload changes. Which count gates the controller's push is
 	// recorded in §11.7.
+	// Layer 3: the ECS Aggregation claims max_l3_intf 64 and
+	// max_static_routes 256 beside the L3_ROUTING bit.
+	if c.L3Routing {
+		caps["max_l3_intf"] = c.L3Interfaces
+		caps["max_static_routes"] = c.StaticRoutes
+	}
 	if c.IPACLs > 0 || c.MACACLs > 0 {
 		caps["max_custom_ip_acls"] = c.IPACLs
 		caps["max_custom_mac_acls"] = c.MACACLs

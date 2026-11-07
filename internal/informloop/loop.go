@@ -799,6 +799,18 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 		d.STPEdge = !p.STPPortMode
 		d.STPEdgeMode = p.STPEdge
 		d.LoopProtect = p.Keepalive
+		d.Isolation = p.Isolation
+		d.EgressKbps = p.EgressKbps
+		d.LLDPMED = p.LLDPMED
+		d.VoiceVLAN = p.VoiceVLAN
+		if p.PortSecurity {
+			d.PortSecurity = true
+			for _, m := range p.SecurityMACs {
+				if m != "" {
+					d.AllowedMACs = append(d.AllowedMACs, m)
+				}
+			}
+		}
 		switch p.OpMode {
 		case "aggregate":
 			d.LAG = p.LAG
@@ -817,10 +829,10 @@ var unsupportedFeatures = map[string]string{
 	".isolation":        "port isolation",
 	".dot1x":            "802.1X",
 	".egress_rate":      "egress rate limit",
-	".port_security":    "port security (MAC restriction)",
+	".port-security":    "port security (MAC restriction)",
 	".poe":              "PoE",
-	".voice_vlan":       "voice VLAN",
-	".lldpmed.opmode=":  "", // handled below (informational)
+	".voice_vlan":       "voice VLAN", // never seen: the voice VLAN arrives as switch.vlan.<slot>.port.N.voice (2026-11-07)
+	".lldpmed.opmode=":  "",           // handled below (informational)
 	"switch.dot1x":      "802.1X",
 	"switch.dhcp_snoop": "DHCP snooping (rogue DHCP server detection)",
 }
@@ -833,8 +845,13 @@ func (l *Loop) warnUnsupported(ver, text string) {
 			feats[k] = v
 		}
 	}
-	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().DHCPSnooping {
-		delete(feats, "switch.dhcp_snoop")
+	if c, ok := deviceAs[devicemodel.Capable](l); ok {
+		caps := c.Capabilities()
+		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity} {
+			if on {
+				delete(feats, key)
+			}
+		}
 	}
 	for feature, keys := range cfg.Unsupported(feats) {
 		l.cfg.Logger.Printf("[%s] UNSUPPORTED by this switch: %s requested in system_cfg %s (%s) — the UI setting has no effect", l.desc.MAC, feature, ver, strings.Join(keys, ", "))
@@ -843,6 +860,9 @@ func (l *Loop) warnUnsupported(ver, text string) {
 		l.cfg.Logger.Printf("[%s] NOTE: controller has jumbo frames off; this switch always forwards jumbo frames at layer 2 and cannot turn that off", l.desc.MAC)
 	}
 	for _, idx := range cfg.PortIndexes() {
+		if _, ok := deviceAs[devicemodel.LLDPMEDSwitcher](l); ok {
+			break
+		}
 		if p := cfg.Ports[idx]; p.LLDPMED != nil && !*p.LLDPMED {
 			l.cfg.Logger.Printf("[%s] NOTE: LLDP-MED disabled on port %d in the controller; EOS 4.26 has no per-port LLDP-MED toggle, left as is", l.desc.MAC, idx)
 			break
@@ -891,7 +911,7 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 			d.IGMP[id] = devicemodel.IGMPVLAN{
 				Querier: g.Querier, QuerierAddress: g.QuerierAddr, FastLeave: g.FastLeave,
 				MaxResponse: g.MaxResponse, Membership: g.Membership, RouterExpiry: g.RouterExpiry,
-				Suppression: g.Suppression, FloodUnknown: g.FloodUnknown,
+				Suppression: g.Suppression, FloodUnknown: g.FloodUnknown, RouterPorts: g.RouterPorts,
 			}
 		}
 		d.IGMPFloodReserved = cfg.Multicast.FloodKnownProtocols

@@ -116,10 +116,14 @@ by capture before implementing.
 | `switch.port.N.autoneg=disabled` + `speed=10000` + `duplex=enabled` **obs** (absent = auto) | link speed | `speed forced 10gfull` (keyword table in `eos/vlan.go`); auto → `speed auto` on copper only — optical ports run forced by hand and are never set to auto by the bridge | **done, verified live** | n/a (not claimed; virtio has no speed) |
 | `switch.port.N.fec=cl-91\|cl-74` **obs** (absent = leave alone) | FEC | `error-correction encoding reed-solomon\|fire-code`; `no error-correction encoding` on explicit disable | **done, verified live** (port 54) | n/a (not claimed) |
 | `switch.port.N.flowctrl.*` **verify** | flow control | `flowcontrol receive/send on\|off` | todo | n/a |
-| `switch.port.N.isolation` **verify** | port isolation | `switchport port-security`? / protected ports — EOS lacks a direct equivalent; ACL-based | verify | n/a |
+| `switch.port.N.isolation=enabled` **obs** (2026-11-07, Network 10.6.109, absent when off; `controller-10.6.109/system_cfg-dx010-portfeat-*.txt`) | port isolation | EOS lacks a direct equivalent | not claimed | n/a (`sonic`: an isolation group, verified live, [`drivers/sonic.md`](drivers/sonic.md) §11.12) |
+| `switch.port.N.port-security=enabled\|disabled` + `switch.port.N.port-security.mac.K` **obs** (2026-11-07) | MAC address filter (allow list) | -- | not claimed | n/a (`sonic`: learn mode drop + static FDB entries, verified live, §11.12) |
+| `switch.port.N.egress_rate_limit_kbps` **obs** (2026-11-07; absent = no limit) | egress rate limit | -- | not claimed | n/a (`sonic`: a port shaper, verified live, §11.12) |
+| `switch.vlan.<slot>.port.N.voice=enabled` **obs** (2026-11-07; the VLAN tagged on the port too) | Voice VLAN (LLDP-MED network policy) | -- | not claimed | n/a (`sonic`: lldpd's network policy TLV, verified live, §11.12) |
+| `switch.vlan.<slot>.igmp_mroute_port.K=<port>` **obs** (2026-11-07) | Multicast Router Port | -- | not claimed | n/a (`sonic`: `L2MC_MROUTER`, §11.12) |
 | `switch.stp.status/version/priority`, `switch.port.N.stp.port_mode`, `.stp.bpdu_guard` **obs** | STP | `spanning-tree mode rstp\|none`, `spanning-tree priority N`; port_mode=disabled → `spanning-tree portfast` + `bpdufilter enable`; bpdu_guard → `spanning-tree bpduguard enable` | **done, verified live** | under mstpd: version follows (`mstpctl setforcevers`), priority pinned at 61440, per-port BPDU guard; otherwise logged and ignored |
 | `switch.port.N.stormctrl.status/type/bcast/mcast/ucast` **obs** | storm control (percent) | `storm-control broadcast\|multicast\|unknown-unicast level X` | **done, verified live** | n/a (not claimed) |
-| `switch.port.N.lldpmed.opmode` **obs** | LLDP-MED | no per-port MED toggle on EOS 4.26; logged when disabled | report only | n/a |
+| `switch.port.N.lldpmed.opmode`, `.lldpmed.topology_notify` **obs** | LLDP-MED | no per-port MED toggle on EOS 4.26; logged when disabled | report only | n/a (`sonic`: lldpd's LLDP-MED TLV per port, verified live, §11.12; notify not modelled) |
 | `switch.port.N.dot1x.*`, `switch.dot1x.*` **verify** | 802.1X | out of scope unless asked | n/a | n/a |
 | `switch.port.N.poe.*` | PoE | n/a | n/a | n/a |
 | `switch.vlan.<slot>.igmp_*` **obs** | IGMP snooping per VLAN | `[no] ip igmp snooping vlan N` (UniFi's setting) | **done, verified live** | done, bridge-wide (`multicast_snooping`) |

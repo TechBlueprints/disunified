@@ -329,10 +329,32 @@ logged.
 | A querier source address on a VLAN where the switch has none (0.0.0.0) | the querier-address field of §8.11 |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 
+### Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN, router ports (2026-11-07)
+
+Claimed once the collector reads the switch's side (PORT_ISOLATION,
+PORT_SECURITY, EGRESS_RATE_LIMIT, LLDP_MED), each push captured from the UI
+on the DX010's empty cages and replayed (`informloop/replay_sonic_portfeat_test.go`),
+**written, read back from CONFIG_DB, APPL_DB, ASIC_DB and lldpd, and
+removed live on the DX010** ([`drivers/sonic.md`](drivers/sonic.md) §11.12):
+isolation as one SAI isolation group (APPL_DB, ProducerStateTable), the MAC
+filter as learn mode drop plus static FDB entries in the port's VLANs, the
+egress limit as a port shaper (`SCHEDULER` + `PORT_QOS_MAP`), LLDP-MED and
+the Voice VLAN as lldpd's TIA TLVs per port, the Multicast Router Port as
+`L2MC_MROUTER` (IGMP on). The group, the FDB entries and the TLVs do not
+survive a swss or lldp restart; the next cycle's reconcile writes them
+again. A breakout takes `learn_mode` (in no YANG model) out of CONFIG_DB
+for its validation and puts it back.
+
+| Gap | What the PR needs |
+|---|---|
+| Enforcement: an isolated port's frames kept from another isolated port, a non-listed source dropped on a secured port, the shaper's rate, an LLDP-MED phone taking the voice VLAN | two or more linked ports (hosts on rack day) |
+| The router port in l2mcd (APPL_DB `L2MC_MROUTER_TABLE`): l2mcd lists a port only once it is oper up, and the cage used was empty | a linked port made a router port, its row in `L2MC_MROUTER_TABLE` |
+| LLDP-MED topology notify | an SNMP trap path; not modelled |
+
 ### Refused (logged, not claimed)
 
-IGMP snooping on an image without l2mcd or with `options.igmp` off, port
-isolation, 802.1X, LLDP-MED off (community SONiC has none of them); MAC ACL
+IGMP snooping on an image without l2mcd or with `options.igmp` off,
+802.1X (community SONiC has no authenticator); MAC ACL
 rules on an image without the kit's sonic-swss 0003 (no L2 table type in the stock orchagent); an IP ACL rule shape
 no capture shows, or a set that would block the bridge's own SSH to the
 switch (the rules of that kind are held); breakout on a platform without `platform.json`
