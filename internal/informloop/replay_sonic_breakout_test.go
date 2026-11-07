@@ -34,7 +34,14 @@ type breakoutRig struct {
 
 func newBreakoutRig(t *testing.T) *breakoutRig {
 	t.Helper()
-	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", "collect.txt"))
+	return newBreakoutRigFrom(t, "collect.txt", "system_cfg-dx010-brk-0-baseline.txt", "13da591370c88d31")
+}
+
+// newBreakoutRigFrom: the capture in the 20261106 fixture dir, following
+// the given push.
+func newBreakoutRigFrom(t *testing.T, capture, applied, ver string) *breakoutRig {
+	t.Helper()
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", capture))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +63,7 @@ func newBreakoutRig(t *testing.T) *breakoutRig {
 	// Adopted and following the controller's baseline (cage 2 on auto), as
 	// the switch was before the run: no first-push hold, and the fresh-port
 	// withholding live (AllowInitialChanges off, as deployed).
-	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", CfgVersion: "13da591370c88d31", SystemCfg: readECSPush(t, "system_cfg-dx010-brk-0-baseline.txt")}
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", CfgVersion: ver, SystemCfg: readECSPush(t, applied)}
 	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
 	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, DefaultPortNames: defaults, ControlIGMP: true})
 	if err != nil {
@@ -66,7 +73,7 @@ func newBreakoutRig(t *testing.T) *breakoutRig {
 	r.l.collect(context.Background())
 	r.l.reconcile(context.Background())
 	if got := r.writes(); len(got) != 0 {
-		t.Fatalf("the baseline push is the switch as captured, but the reconcile wrote %q", got)
+		t.Fatalf("%s is the switch as captured, but the reconcile wrote %q", applied, got)
 	}
 	return r
 }
@@ -221,4 +228,18 @@ func containsInOrder(got []string, want ...string) bool {
 		}
 	}
 	return i == len(want)
+}
+
+// 1G on the split cage (2026-11-07 12:35, after the deploy of the fix): the
+// controller took the speed only once an inform had carried the split
+// cage's caps, which include 1G from the lanes' supported_speeds (before
+// that: api.err.InvalidInterfaceSpeedDuplex). The bridge wrote it as a lane
+// speed, no breakout; APPL_DB followed on all four lanes.
+func TestReplaySonicDX010LanesAt1G(t *testing.T) {
+	r := newBreakoutRigFrom(t, "collect-4x25g.txt", "system_cfg-dx010-brk-1-4x25g.txt", "9dd96649cb883082")
+	wantWrites(t, "1G", r.push("system_cfg-dx010-brk-5-lanes-1g.txt", "661258697247e150"), []string{
+		"sudo config interface speed Ethernet4 1000", "sudo config interface speed Ethernet5 1000",
+		"sudo config interface speed Ethernet6 1000", "sudo config interface speed Ethernet7 1000", brkSave})
+	r.cycle("1G")
+	wantWrites(t, "join from 1G", r.push("system_cfg-dx010-brk-4-join.txt", "7e75422bf845c58e")[:1], []string{"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null"})
 }
