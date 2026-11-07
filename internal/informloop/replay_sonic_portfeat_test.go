@@ -15,7 +15,7 @@ import (
 )
 
 // The DX010's port-feature captures of 2026-11-07 (docs/drivers/sonic.md
-// 11.11), replayed: the switch as captured before the claims (no isolation
+// 11.12), replayed: the switch as captured before the claims (no isolation
 // group, no provisioned FDB entry, no shaper, lldpd sending no LLDP-MED TLV
 // anywhere) under the push it was following, then the controller's push
 // after the UI set port 30 to isolation, a two-MAC allow list, a 100 Mb/s
@@ -157,6 +157,33 @@ func TestReplaySonicDX010PortFeatures(t *testing.T) {
 			t.Errorf("port 29 reads back voice VLAN %d, LLDP-MED off %v", p.VoiceVLAN, p.LLDPMEDOff)
 		}
 	}
+
+	// And off again: the VLAN leaves the port, the policy goes before the
+	// capabilities drop back to plain LLDP-MED.
+	got = r.push("system_cfg-dx010-portfeat-5-voice-off.txt", "68314f17b08c1079")
+	if !containsInOrder(got,
+		"sudo config vlan member del 69 Ethernet112",
+		"sudo docker exec lldp lldpcli unconfigure ports Ethernet112 lldp custom-tlv oui 00,12,bb subtype 2",
+		medOn("Ethernet112"),
+		brkSave) {
+		t.Errorf("the voice VLAN off wrote %q", got)
+	}
+	r.cycle("the voice VLAN off")
+
+	// Port 28 as a Multicast Router Port in every snooping VLAN: the
+	// L2MC_MROUTER row l2mcmgrd reads, as the CLI writes it.
+	n := len(r.fr.L2MCScripts)
+	r.push("system_cfg-dx010-portfeat-6-mrouter.txt", "9b0a28686a76be00")
+	if l2mc := strings.Join(r.fr.L2MCScripts[n:], "\n"); !strings.Contains(l2mc, `L2MC_MROUTER|Vlan4094|Ethernet108\", \"fields\": {\"mrouter_port\": \"Ethernet108\"}`) && !strings.Contains(l2mc, `L2MC_MROUTER|Vlan4094|Ethernet108\",\"fields\":{\"mrouter_port\":\"Ethernet108\"}`) {
+		t.Errorf("the router port was not written:\n%s", l2mc)
+	}
+	r.cycle("the router port")
+	n = len(r.fr.L2MCScripts)
+	r.push("system_cfg-dx010-portfeat-5-voice-off.txt", "68314f17b08c1079")
+	if l2mc := strings.Join(r.fr.L2MCScripts[n:], "\n"); !strings.Contains(l2mc, `L2MC_MROUTER|Vlan4094|Ethernet108\"}`) {
+		t.Errorf("the router port was not removed:\n%s", l2mc)
+	}
+	r.cycle("the router port off")
 
 	if s := r.log.String(); strings.Contains(s, "UNSUPPORTED") {
 		t.Errorf("a claimed feature was logged as unsupported:\n%s", s)

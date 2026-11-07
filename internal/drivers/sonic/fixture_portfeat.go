@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// The FixtureRunner's model of portfeat.go's writes (§11.11): APPL_DB's
+// The FixtureRunner's model of portfeat.go's writes (§11.12): APPL_DB's
 // isolation group and static FDB entries, CONFIG_DB's shaper profiles and
 // port QoS maps, and lldpd's per-port LLDP-MED TLV (the lldp_med section,
 // one "<interface> on" line per port that sends it).

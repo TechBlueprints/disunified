@@ -13,7 +13,7 @@ import (
 )
 
 // Port isolation, port security, egress rate limits and LLDP-MED
-// (docs/drivers/sonic.md §11.11). Each follows what Ubiquiti's own SONiC
+// (docs/drivers/sonic.md §11.12). Each follows what Ubiquiti's own SONiC
 // switch does where community SONiC 202511 has the same mechanism:
 //
 //   - Isolation is one SAI isolation group of type port, DUI_ISOLATION,
@@ -358,7 +358,7 @@ func fdbKey(k string) string { return "V" + strings.TrimPrefix(k, "v") }
 
 // APPL_DB rows reach orchagent only through ProducerStateTable (its
 // consumers wait on the table's key set and channel; a plain HSET is never
-// seen -- probed on the DX010, §11.11), so these writes are collected and
+// seen -- probed on the DX010, §11.12), so these writes are collected and
 // run as one python3 call at the end of the batch: the script, base64 so
 // the batch stays one line per command, then the marker and the operations
 // as a JSON argument.

@@ -116,7 +116,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		return nil, fmt.Errorf("sonic: igmp must be on or off, got %q", v)
 	}
 	// capture_claims: on claims the features whose push is still to be
-	// captured (docs/drivers/sonic.md §11.11) so the controller sends their
+	// captured (docs/drivers/sonic.md §11.12) so the controller sends their
 	// keys; the loop logs them unhandled. An instrument for a capture
 	// session only, never left on.
 	c.CaptureClaims = strings.EqualFold(strings.TrimSpace(cfg.Options["capture_claims"]), "on")

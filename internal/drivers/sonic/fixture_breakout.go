@@ -85,7 +85,7 @@ func (f *FixtureRunner) breakout(args []string) error {
 	// untranslated (sonic_yang_ext _xlateList: KeyError in the leaf lookup),
 	// so everything that references the port dangles: learn_mode is in
 	// neither sonic-port.yang nor sonic-portchannel.yang on 202511. Modelled
-	// from that source, not from an observed refusal (§11.11).
+	// from that source, not from an observed refusal (§11.12).
 	for k, fv := range f.table("cfg_port") {
 		if fv["learn_mode"] != "" {
 			return fmt.Errorf("sonic_yang: %s: learn_mode is not in the YANG model; the entry is not translated", k)

@@ -177,7 +177,7 @@ section("crm_acl", "COUNTERS_DB", "CRM:ACL_STATS:INGRESS:*", "CRM:ACL_TABLE_STAT
 section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP|*", "L2MC_STATIC_MEMBER|*", "L2MC_MROUTER|*")
 
 # Port isolation, port security and egress shaping (docs/drivers/sonic.md
-# 11.11): the driver's isolation group, the provisioned FDB entries (only
+# 11.12): the driver's isolation group, the provisioned FDB entries (only
 # provisioning writes APPL_DB FDB_TABLE; learnt MACs are STATE_DB's), the
 # driver's shaper profiles and every port's QoS map.
 section("appl_iso", "APPL_DB", "ISOLATION_GROUP_TABLE:DUI_*")

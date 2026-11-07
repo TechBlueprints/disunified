@@ -306,7 +306,7 @@ type Port struct {
 	Isolation bool
 	// PortSecurity is switch.port.N.port-security == enabled, and
 	// SecurityMACs its switch.port.N.port-security.mac.K list in K order,
-	// lower case (captured 2026-11-07, docs/drivers/sonic.md 11.11).
+	// lower case (captured 2026-11-07, docs/drivers/sonic.md 11.12).
 	PortSecurity bool
 	SecurityMACs []string
 	// EgressKbps is switch.port.N.egress_rate_limit_kbps (absent = no
@@ -382,6 +382,10 @@ type IGMP struct {
 	Suppression  bool   // igmp_supression (the controller's spelling)
 	// FloodUnknown is forward_unknown_multicast; nil = absent.
 	FloodUnknown *bool
+	// RouterPorts are the switch.vlan.N.igmp_mroute_port.K port indexes, in
+	// K order (the UI's per-port Multicast Router Port; captured
+	// 2026-11-07, docs/drivers/sonic.md 11.12).
+	RouterPorts []int
 }
 
 // Multicast is switch.multicast.*; nil = absent.
@@ -394,6 +398,7 @@ var (
 	portRe     = regexp.MustCompile(`^switch\.port\.(\d+)\.([\w.-]+)$`)
 	vlanRe     = regexp.MustCompile(`^switch\.vlan\.(\d+)\.(\w+)$`)
 	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.(mode|voice)$`)
+	mrouterRe  = regexp.MustCompile(`^switch\.vlan\.(\d+)\.igmp_mroute_port\.(\d+)$`)
 	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
 	guardRe    = regexp.MustCompile(`^switch\.dhcp_guard\.(\d+)\.(\w+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
@@ -435,6 +440,18 @@ func Parse(text string) *Config {
 			continue
 		}
 		c.Raw[k] = v
+		if m := mrouterRe.FindStringSubmatch(k); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			vl, seen := vlans[n]
+			if !seen {
+				vl = &VLAN{Enabled: true}
+				vlans[n] = vl
+			}
+			if port, err := strconv.Atoi(v); err == nil && port > 0 {
+				vl.igmp.RouterPorts = append(vl.igmp.RouterPorts, port)
+			}
+			continue
+		}
 		if m := vlanPortRe.FindStringSubmatch(k); m != nil {
 			slot, _ := strconv.Atoi(m[1])
 			port, _ := strconv.Atoi(m[2])

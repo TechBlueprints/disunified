@@ -210,7 +210,7 @@ func TestParseECSIGMPSnooping(t *testing.T) {
 			t.Errorf("VLAN %d forward_unknown_multicast = %v, want %v", id, got.FloodUnknown, *want.FloodUnknown)
 		}
 		got.FloodUnknown, want.FloodUnknown = nil, nil
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("VLAN %d = %+v, want %+v", id, got, want)
 		}
 	}

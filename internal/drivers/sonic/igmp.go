@@ -164,6 +164,22 @@ func (c *Collector) l2mcPlan(w igmpWant, sim *swState) (map[string]map[string]st
 		if g.RouterExpiry > 0 {
 			routerExpiry = append(routerExpiry, strconv.Itoa(id))
 		}
+		// Static multicast-router ports, as the CLI's `igmp-snooping
+		// mrouter add` writes them (l2mcmgrd reads L2MC_MROUTER): a
+		// PortChannel member is its PortChannel, a split cage every lane.
+		for _, idx := range g.RouterPorts {
+			ifs := c.ifnamesOf(idx)
+			if len(ifs) == 0 {
+				notes = append(notes, fmt.Sprintf("IGMP VLAN %d: router port %d is not a port of this switch; skipped", id, idx))
+				continue
+			}
+			if pc := sim.lagOf(ifs[0]); pc != "" {
+				ifs = []string{pc}
+			}
+			for _, iface := range ifs {
+				rows[l2mcRouter+vlan+"|"+iface] = map[string]string{"mrouter_port": iface}
+			}
+		}
 		if g.Suppression {
 			suppression = append(suppression, strconv.Itoa(id))
 		}
@@ -240,10 +256,9 @@ func l2mcOps(want map[string]map[string]string, have map[string]map[string]strin
 			// and a row with it on makes orchagent retry for good.
 			dels[2] = append(dels[2], k)
 		case strings.HasPrefix(k, l2mcRouter):
-			// A router port UniFi cannot express; it goes with its VLAN.
-			if v, _, _ := strings.Cut(strings.TrimPrefix(k, l2mcRouter), "|"); going[v] {
-				dels[3] = append(dels[3], k)
-			}
+			// UniFi's Multicast Router Port: the controller's list is the
+			// switch's, a hand-made row goes too.
+			dels[3] = append(dels[3], k)
 		case strings.HasPrefix(k, l2mcRow):
 			dels[4] = append(dels[4], k)
 		}
@@ -459,4 +474,12 @@ func (s *swState) vlanAddress(vlan string) string {
 		return ""
 	}
 	return out[0]
+}
+
+// ifnamesOf is the switch interfaces of a front-panel port from the last
+// collect (every lane of a split cage).
+func (c *Collector) ifnamesOf(idx int) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.ifnames[idx]...)
 }

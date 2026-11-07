@@ -911,7 +911,7 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 			d.IGMP[id] = devicemodel.IGMPVLAN{
 				Querier: g.Querier, QuerierAddress: g.QuerierAddr, FastLeave: g.FastLeave,
 				MaxResponse: g.MaxResponse, Membership: g.Membership, RouterExpiry: g.RouterExpiry,
-				Suppression: g.Suppression, FloodUnknown: g.FloodUnknown,
+				Suppression: g.Suppression, FloodUnknown: g.FloodUnknown, RouterPorts: g.RouterPorts,
 			}
 		}
 		d.IGMPFloodReserved = cfg.Multicast.FloodKnownProtocols

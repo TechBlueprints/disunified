@@ -176,6 +176,9 @@ type IGMPVLAN struct {
 	// FloodUnknown: unregistered multicast floods the VLAN (true) or goes to
 	// the multicast-router ports only (false); nil = not given.
 	FloodUnknown *bool
+	// RouterPorts are the ports the operator made static multicast-router
+	// ports in this VLAN (the UI's Multicast Router Port), by index.
+	RouterPorts []int
 }
 
 // DHCPGuard trusts one DHCP server on one VLAN (UniFi's id: 1 is the

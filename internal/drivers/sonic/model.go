@@ -420,7 +420,7 @@ func buildMACTable(fdb table, byIfname map[string]int, native int, linkDown func
 	for k, f := range fdb {
 		// A provisioned (static) entry is an allowed MAC of port security,
 		// not a station that was seen: on a port with no link it would show
-		// as a connected client in UniFi (live, 2026-11-07, §11.11).
+		// as a connected client in UniFi (live, 2026-11-07, §11.12).
 		if f["type"] == "static" && linkDown != nil && linkDown(f["port"]) {
 			continue
 		}

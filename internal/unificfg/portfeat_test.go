@@ -9,7 +9,7 @@ import (
 
 // The DX010's push after the UI set port 30 to isolation, a two-MAC filter,
 // a 100 Mb/s egress limit and LLDP-MED off, and port 31 to isolation
-// (Network 10.6.109, 2026-11-07, docs/drivers/sonic.md 11.11).
+// (Network 10.6.109, 2026-11-07, docs/drivers/sonic.md 11.12).
 func TestParsePortFeatures(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-portfeat-1-set.txt"))
 	if err != nil {
@@ -51,5 +51,18 @@ func TestParseVoiceVLAN(t *testing.T) {
 	}
 	if p := c.Ports[30]; p.VoiceVLAN != 0 {
 		t.Errorf("port 30 voice %d", p.VoiceVLAN)
+	}
+}
+
+// Port 28 made a Multicast Router Port (all IGMP VLANs): the push adds
+// switch.vlan.<slot>.igmp_mroute_port.K=28 to each snooping VLAN.
+func TestParseMulticastRouterPort(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-portfeat-6-mrouter.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if g := c.IGMP[1]; len(g.RouterPorts) != 1 || g.RouterPorts[0] != 28 {
+		t.Errorf("VLAN 1 router ports %v", g.RouterPorts)
 	}
 }

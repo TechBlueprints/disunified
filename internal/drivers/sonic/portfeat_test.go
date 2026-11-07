@@ -8,7 +8,7 @@ import (
 )
 
 // The DX010 as captured before the port-feature claims (2026-11-07,
-// docs/drivers/sonic.md 11.11): no isolation group, no provisioned FDB
+// docs/drivers/sonic.md 11.12): no isolation group, no provisioned FDB
 // entry, no shaper, and lldpd sending the LLDP-MED TLV on no port.
 const fixturePortFeat = "../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/collect-portfeat.txt"
 
