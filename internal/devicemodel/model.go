@@ -793,8 +793,19 @@ type Capabilities struct {
 	IGMPSnoopingAdvanced bool
 	LLDPMED              bool
 	DHCPSnooping         bool // DeviceController honours DHCPSnooping and DHCPGuards
-	PortIsolation        bool
-	SNMP                 bool // DeviceController honours SNMPCommunity
+	PortIsolation        bool // PortDesired.Isolation
+	// PortSecurity: the per-port MAC allow list (PortDesired.PortSecurity,
+	// AllowedMACs) is honoured.
+	PortSecurity bool
+	// EgressRateLimit: PortDesired.EgressKbps is honoured.
+	EgressRateLimit bool
+	// L3Routing: VLAN interfaces and static routes owned by the controller
+	// (DeviceDesired.L3Interfaces / StaticRoutes); L3Interfaces and
+	// StaticRoutes are the counts the controller is told.
+	L3Routing    bool
+	L3Interfaces int
+	StaticRoutes int
+	SNMP         bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int

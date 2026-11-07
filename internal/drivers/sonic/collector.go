@@ -120,7 +120,9 @@ type Collector struct {
 	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
 	// and the snooping intent of the last push.
 	IGMP bool
-	igmp igmpWant
+	// CaptureClaims: options.capture_claims (driver.go).
+	CaptureClaims bool
+	igmp          igmpWant
 	// sshFrom / sshTo are the last collect's SSH connection as the switch
 	// saw it (collect.py's ssh section): the bridge's address and the
 	// switch address it dialled; "" when not reported.
@@ -219,6 +221,10 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	}
 	if c.igmpOn(st) {
 		caps.IGMPSnooping, caps.IGMPSnoopingAdvanced = true, true
+	}
+	if c.CaptureClaims {
+		caps.PortIsolation, caps.PortSecurity, caps.EgressRateLimit, caps.LLDPMED = true, true, true, true
+		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, 64, 256
 	}
 	return caps
 }
