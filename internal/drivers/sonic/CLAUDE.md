@@ -309,7 +309,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   sync used to be lost (a down port's BPDU guard never reached mstpd, live). Live facts: tcpdump shows the trapped BPDUs tagged 4094 and mstpd
   parses them anyway; a transient unit holding mstpd in its cgroup cannot be
   started again under the same name; `docker rmi` needs the `name@digest`
-  form. Facts that shape it, from the 202505 source: StpOrch
+  form; never `pidof` in l2d (sysvinit's logs a mid-scan exit to syslog at
+  ERR, past any stderr redirect): mstpd's liveness is its pid file and
+  `/proc`, read in-process. Facts that shape it, from the 202505 source: StpOrch
   creates a SAI STP object per instance id on first use and a VLAN mapped into
   one blocks every port without a state there, so port states go first (ASIC_DB
   `STP_PORT` count checked) and the VLAN after; deleting a VLAN removes every

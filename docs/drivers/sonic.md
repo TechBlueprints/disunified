@@ -2761,7 +2761,21 @@ instances), the port keys dropped, mstpd stopped, every kernel bridge port set
 forwarding (the kernel leaves user-space ports as they were when STP stops),
 `stp_state 0`, the trap removed. Stopping the service does **not** tear down
 (`KillMode=process`): mstpd keeps running and the next start adopts it, so a
-restart or an upgrade of l2d never runs the LAN without spanning tree.
+restart or an upgrade of l2d never runs the LAN without spanning tree. The
+script is embedded in the bridge (`l2.go`) and reinstalled whenever its sha256
+differs from the switch's copy, which restarts the unit: so a new bridge
+deb that carries a changed `l2d.py` restarts l2d, and the restart adopts
+mstpd -- `stp_up` finds it running, `stp_state` already 2 and `Bridge` already
+mstpd's, so nothing is started, `addbridge` is skipped and no sysfs is
+written; the first sync rewrites each port's kernel state (the state it
+holds) and re-maps the VLANs after the settle (`TestL2dRestartAdoptsRunningMstpd`,
+from the capture with l2d running). **mstpd's liveness is read in-process**
+(`/run/mstpd.pid` and `/proc/<pid>/comm`, else a `/proc` scan), not with
+`pidof`: sysvinit's pidof logs a process that exits between its `/proc`
+listing and its read of `<pid>/stat` (`can't read from <pid>/stat`) straight
+to syslog at ERR -- `_TRANSPORT=syslog` in the journal, so redirecting its
+stderr would not have helped. Three such lines in 36 h on the DX010, every one
+a false alarm (mstpd found, NRestarts 0); fixed 2026-11-07.
 
 **The controller's keys** (the ECS's real push,
 `fixtures/controller-10.6.109/system_cfg-ecs-aggregation.txt`, scrubbed):
@@ -3862,8 +3876,16 @@ image's own `install.sh` deletes every image but the running one and the
 new one, so the 202505 image leaves `/host` (a copy is kept off the
 switch); `sonic-installer cleanup` is never run. After `confirm`, redo the
 settings that live in the image's overlay (the fan floor, on an image
-built before series patch 0012 carried it; the follow-up register lists
-them).
+built before series patch 0012 carried it; the DIMM sensor's limits, before
+0013; the follow-up register lists them). Then accept the controller's update
+badge once: the emulated version (`4.0.1.995`) is dropped whenever the
+switch's own version changes (`internal/device/session.go`), so after every
+install the controller offers the upgrade again. The UI's Upgrade, or
+`cmd/devmgr {"cmd": "upgrade", "mac": <mac>}` through the API, arrives as a
+reply `_type: upgrade`: the bridge records the version and reports it, and
+writes nothing to the switch (2026-11-07 after the `20261106` image: the
+controller went upgrading (state 4) -> provisioning (5), the next informs
+carried `4.0.1.995`, its push changed 0 of 32 ports, the badge cleared).
 
 **Installed and verified 2026-11-02 (03:53-04:05Z).** The image went in
 with `sonic-upgrade.sh arm` (the 202505 image deleted as announced, its
