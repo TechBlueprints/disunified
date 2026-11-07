@@ -37,6 +37,12 @@ const (
 	swCapIGMPAdvanced  = 67108864 // IGMP_SNOOPING_ADVANCED: the per-VLAN querier, timers and switch.multicast.* (docs/drivers/sonic.md §8.10)
 )
 
+// sys_fan_mode.caps: the fan modes the UI may offer.
+const (
+	sysFanModeDefault = 1
+	sysFanModeQuiet   = 2
+)
+
 // switch_caps.vlan_caps
 const (
 	vlanCapAccess  = 2

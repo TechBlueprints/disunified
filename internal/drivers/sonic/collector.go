@@ -224,7 +224,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	}
 	if c.CaptureClaims {
 		caps.PortIsolation, caps.PortSecurity, caps.EgressRateLimit, caps.LLDPMED = true, true, true, true
-		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, 64, 256
+		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes, caps.FanModes = true, 64, 256, true
 	}
 	return caps
 }
