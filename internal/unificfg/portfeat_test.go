@@ -37,3 +37,19 @@ func TestParsePortFeatures(t *testing.T) {
 		t.Errorf("baseline port 30 = %+v", p)
 	}
 }
+
+// Port 29 with VLAN 69 tagged and set as its Voice VLAN: the push marks the
+// membership switch.vlan.<slot>.port.29.voice=enabled.
+func TestParseVoiceVLAN(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-portfeat-4-voice.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if p := c.Ports[29]; p.VoiceVLAN != 69 || len(p.TaggedVLANs) != 1 || p.TaggedVLANs[0] != 69 || p.NativeVLAN != 1 {
+		t.Errorf("port 29 = voice %d tagged %v native %d", p.VoiceVLAN, p.TaggedVLANs, p.NativeVLAN)
+	}
+	if p := c.Ports[30]; p.VoiceVLAN != 0 {
+		t.Errorf("port 30 voice %d", p.VoiceVLAN)
+	}
+}

@@ -144,43 +144,73 @@ func (f *FixtureRunner) qosWrite(op, key string, fv []string) error {
 }
 
 // lldpcli models `configure|unconfigure ports <p> lldp custom-tlv ... oui
-// 00,12,bb subtype 1 ...`, the only lldpcli writes the driver makes.
+// 00,12,bb subtype 1|2 ...`, the only lldpcli writes the driver makes, in
+// the lldp_med section's "<port> <caps>|- <policy>|-" lines.
 func (f *FixtureRunner) lldpcli(a []string) error {
 	line := strings.Join(a, " ")
-	if len(a) < 6 || a[1] != "ports" || a[3] != "lldp" || a[4] != "custom-tlv" || !strings.Contains(line, "oui 00,12,bb subtype 1") {
+	if len(a) < 6 || a[1] != "ports" || a[3] != "lldp" || a[4] != "custom-tlv" || !strings.Contains(line, "oui 00,12,bb subtype ") {
 		return fmt.Errorf("unmodelled lldpcli %s", line)
 	}
 	port := a[2]
 	if !f.hasPort(port) {
 		return fmt.Errorf("lldpcli: no such port %s", port) // lldpd 0001: an error for a missing port
 	}
-	f.ensureSection("lldp_med")
-	on := map[string]bool{}
-	for _, l := range strings.Split(sections(f.Fixture)["lldp_med"], "\n") {
-		if fs := strings.Fields(l); len(fs) == 2 {
-			on[fs[0]] = fs[1] == "on"
+	sub, info := "", "-"
+	for i := 0; i+1 < len(a); i++ {
+		switch a[i] {
+		case "subtype":
+			sub = a[i+1]
+		case "oui-info":
+			info = a[i+1]
 		}
 	}
-	switch a[0] {
-	case "configure":
-		on[port] = true
-	case "unconfigure":
-		on[port] = false
-	default:
+	f.ensureSection("lldp_med")
+	type tlvs struct{ caps, pol string }
+	ports := map[string]tlvs{}
+	for _, l := range strings.Split(sections(f.Fixture)["lldp_med"], "\n") {
+		fs := strings.Fields(l)
+		if len(fs) < 2 {
+			continue
+		}
+		t := tlvs{caps: "-", pol: "-"}
+		switch fs[1] {
+		case "on":
+			t.caps = medCaps
+		case "off", "-":
+		default:
+			t.caps = fs[1]
+		}
+		if len(fs) > 2 {
+			t.pol = fs[2]
+		}
+		ports[fs[0]] = t
+	}
+	t, ok := ports[port]
+	if !ok {
+		t = tlvs{caps: "-", pol: "-"}
+	}
+	if a[0] == "unconfigure" {
+		info = "-"
+	} else if a[0] != "configure" {
 		return fmt.Errorf("unmodelled lldpcli %s", a[0])
 	}
-	names := make([]string, 0, len(on))
-	for p := range on {
+	switch sub {
+	case "1":
+		t.caps = info
+	case "2":
+		t.pol = info
+	default:
+		return fmt.Errorf("unmodelled lldpcli subtype %s", sub)
+	}
+	ports[port] = t
+	names := make([]string, 0, len(ports))
+	for p := range ports {
 		names = append(names, p)
 	}
 	sort.Strings(names)
 	var b strings.Builder
 	for _, p := range names {
-		v := "off"
-		if on[p] {
-			v = "on"
-		}
-		b.WriteString(p + " " + v + "\n")
+		b.WriteString(p + " " + ports[p].caps + " " + ports[p].pol + "\n")
 	}
 	f.UseSection("lldp_med", b.String())
 	return nil

@@ -136,6 +136,28 @@ func TestReplaySonicDX010PortFeatures(t *testing.T) {
 	}
 	r.cycle("port 31 off")
 
+	// Port 29: VLAN 69 tagged and set as its Voice VLAN. LLDP-MED's
+	// capabilities announce the network policy, and the policy names VLAN
+	// 69 tagged, priority 5, DSCP 0 (01,40,8b,40).
+	got = r.push("system_cfg-dx010-portfeat-4-voice.txt", "da4411aa7d487500")
+	if !containsInOrder(got,
+		"sudo config vlan member add 69 Ethernet112",
+		"sudo docker exec lldp lldpcli configure ports Ethernet112 lldp custom-tlv replace oui 00,12,bb subtype 1 oui-info 00,03,04",
+		"sudo docker exec lldp lldpcli configure ports Ethernet112 lldp custom-tlv replace oui 00,12,bb subtype 2 oui-info 01,40,8b,40",
+		brkSave) {
+		t.Errorf("the voice VLAN wrote %q", got)
+	}
+	r.cycle("the voice VLAN")
+	snap, err = coll.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range snap.Ports {
+		if p.Index == 29 && (p.VoiceVLAN != 69 || p.LLDPMEDOff) {
+			t.Errorf("port 29 reads back voice VLAN %d, LLDP-MED off %v", p.VoiceVLAN, p.LLDPMEDOff)
+		}
+	}
+
 	if s := r.log.String(); strings.Contains(s, "UNSUPPORTED") {
 		t.Errorf("a claimed feature was logged as unsupported:\n%s", s)
 	}

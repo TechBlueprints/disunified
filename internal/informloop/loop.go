@@ -802,6 +802,7 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 		d.Isolation = p.Isolation
 		d.EgressKbps = p.EgressKbps
 		d.LLDPMED = p.LLDPMED
+		d.VoiceVLAN = p.VoiceVLAN
 		if p.PortSecurity {
 			d.PortSecurity = true
 			for _, m := range p.SecurityMACs {
@@ -830,7 +831,7 @@ var unsupportedFeatures = map[string]string{
 	".egress_rate":      "egress rate limit",
 	".port-security":    "port security (MAC restriction)",
 	".poe":              "PoE",
-	".voice_vlan":       "voice VLAN",
+	".voice_vlan":       "voice VLAN", // never seen: the voice VLAN arrives as switch.vlan.<slot>.port.N.voice (2026-11-07)
 	".lldpmed.opmode=":  "", // handled below (informational)
 	"switch.dot1x":      "802.1X",
 	"switch.dhcp_snoop": "DHCP snooping (rogue DHCP server detection)",

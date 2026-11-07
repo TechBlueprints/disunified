@@ -312,6 +312,10 @@ type Port struct {
 	// EgressKbps is switch.port.N.egress_rate_limit_kbps (absent = no
 	// limit; the UI's Mbps x 1000).
 	EgressKbps int
+	// VoiceVLAN is the VLAN whose switch.vlan.<slot>.port.N.voice is
+	// enabled (the UI's Voice VLAN; the VLAN is tagged on the port too); 0 =
+	// none (captured 2026-11-07).
+	VoiceVLAN int
 	// STPEdge is switch.port.N.stp.edge as pushed: "auto", "enabled" or
 	// "disabled" (Edge Port in the UI; the ECS push carries auto and
 	// disabled); "" when absent.
@@ -389,7 +393,7 @@ type Multicast struct {
 var (
 	portRe     = regexp.MustCompile(`^switch\.port\.(\d+)\.([\w.-]+)$`)
 	vlanRe     = regexp.MustCompile(`^switch\.vlan\.(\d+)\.(\w+)$`)
-	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.mode$`)
+	vlanPortRe = regexp.MustCompile(`^switch\.vlan\.(\d+)\.port\.(\d+)\.(mode|voice)$`)
 	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
 	guardRe    = regexp.MustCompile(`^switch\.dhcp_guard\.(\d+)\.(\w+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
@@ -405,6 +409,7 @@ func Parse(text string) *Config {
 		mode       string
 	}
 	var members []membership
+	var voice []membership // switch.vlan.<slot>.port.N.voice=enabled
 	type ntpEntry struct {
 		server  string
 		enabled bool
@@ -433,6 +438,12 @@ func Parse(text string) *Config {
 		if m := vlanPortRe.FindStringSubmatch(k); m != nil {
 			slot, _ := strconv.Atoi(m[1])
 			port, _ := strconv.Atoi(m[2])
+			if m[3] == "voice" {
+				if v == "enabled" {
+					voice = append(voice, membership{slot, port, v})
+				}
+				continue
+			}
 			members = append(members, membership{slot, port, v})
 			continue
 		}
@@ -815,6 +826,13 @@ func Parse(text string) *Config {
 			p.TaggedVLANs = append(p.TaggedVLANs, vl.ID)
 		}
 		c.Ports[mb.port] = p
+	}
+	for _, mb := range voice {
+		if vl, ok := vlans[mb.slot]; ok && vl.ID != 0 {
+			p := c.port(mb.port)
+			p.VoiceVLAN = vl.ID
+			c.Ports[mb.port] = p
+		}
 	}
 	for idx, p := range c.Ports {
 		sort.Ints(p.TaggedVLANs)

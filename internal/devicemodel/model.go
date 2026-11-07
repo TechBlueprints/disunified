@@ -78,6 +78,9 @@ type PortDesired struct {
 	// LLDPMED is the port's LLDP-MED setting; nil = not in the push. Read
 	// by a driver claiming Capabilities.LLDPMED.
 	LLDPMED *bool
+	// VoiceVLAN is the VLAN LLDP-MED's network policy advertises for voice
+	// (UniFi's Voice VLAN); 0 = none. Read with LLDPMED.
+	VoiceVLAN int
 }
 
 // LLDPMEDSwitcher is an optional Controller capability: the driver turns
@@ -606,6 +609,7 @@ type Port struct {
 	AllowedMACs  []string
 	EgressKbps   int
 	LLDPMEDOff   bool
+	VoiceVLAN    int
 
 	Present    bool   // an optic/cable is present (always true for copper)
 	Enabled    bool   // administratively up

@@ -45,14 +45,40 @@ const (
 	learnHardware = "hardware"
 )
 
-// medTLV and medUnTLV are the lldpcli commands for a port's LLDP-MED
-// capabilities TLV.
-func medTLV(ln string) string {
-	return "docker exec lldp lldpcli configure ports " + ln + " lldp custom-tlv replace oui 00,12,bb subtype 1 oui-info 00,01,04"
+// The LLDP-MED TLVs (TIA OUI 00-12-BB): subtype 1, capabilities -- "00,01"
+// LLDP-MED capabilities, "00,03" with network policy too -- and device class
+// 4 (network connectivity); subtype 2, the voice network policy: application
+// 1 (voice), then tagged, the VLAN, L2 priority 5 and DSCP 0, the values the
+// ECS's own lldp manager sends. lldpcli takes and reports them as comma-
+// separated hex bytes.
+const (
+	medCaps      = "00,01,04"
+	medCapsVoice = "00,03,04"
+)
+
+func medPolicy(vlan int) string {
+	v := 1<<22 | (vlan&0xfff)<<9 | 5<<6
+	return fmt.Sprintf("01,%02x,%02x,%02x", v>>16&0xff, v>>8&0xff, v&0xff)
 }
 
-func medUnTLV(ln string) string {
-	return "docker exec lldp lldpcli unconfigure ports " + ln + " lldp custom-tlv oui 00,12,bb subtype 1"
+func medSet(ln string, subtype int, info string) string {
+	return fmt.Sprintf("docker exec lldp lldpcli configure ports %s lldp custom-tlv replace oui 00,12,bb subtype %d oui-info %s", ln, subtype, info)
+}
+
+func medUnset(ln string, subtype int) string {
+	return fmt.Sprintf("docker exec lldp lldpcli unconfigure ports %s lldp custom-tlv oui 00,12,bb subtype %d", ln, subtype)
+}
+
+// normHex lower-cases and zero-pads lldpcli's comma-separated hex bytes so
+// what the driver writes compares with what lldpcli reports.
+func normHex(s string) string {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(s)), ",")
+	for i, p := range parts {
+		if n, err := strconv.ParseUint(p, 16, 8); err == nil {
+			parts[i] = fmt.Sprintf("%02x", n)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 // portFeat is the switch's side of the four features, read by collect.py.
@@ -64,14 +90,16 @@ type portFeat struct {
 	fdb   map[string]string // APPL_DB FDB_TABLE static entries: "Vlan<id>:<mac>" -> port
 	sched map[string]string // DUI_EGRESS_* scheduler -> its pir
 	qos   map[string]string // PORT_QOS_MAP: interface -> scheduler
-	// medKnown: the lldp_med section was read; med are the interfaces
-	// lldpd sends the LLDP-MED capabilities TLV on.
+	// medKnown: the lldp_med section was read; med is each interface's
+	// LLDP-MED capabilities TLV and medPol its network policy TLV, as
+	// normalised hex ("" = not sent).
 	medKnown bool
-	med      map[string]bool
+	med      map[string]string
+	medPol   map[string]string
 }
 
 func (f portFeat) clone() portFeat {
-	c := portFeat{known: f.known, medKnown: f.medKnown, iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]bool{}}
+	c := portFeat{known: f.known, medKnown: f.medKnown, iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]string{}, medPol: map[string]string{}}
 	for k := range f.iso {
 		c.iso[k] = true
 	}
@@ -84,8 +112,11 @@ func (f portFeat) clone() portFeat {
 	for k, v := range f.qos {
 		c.qos[k] = v
 	}
-	for k := range f.med {
-		c.med[k] = true
+	for k, v := range f.med {
+		c.med[k] = v
+	}
+	for k, v := range f.medPol {
+		c.medPol[k] = v
 	}
 	return c
 }
@@ -93,7 +124,7 @@ func (f portFeat) clone() portFeat {
 // readPortFeat fills portFeat from collect.py's appl_iso, appl_fdb,
 // cfg_qos and lldp_med sections.
 func readPortFeat(db map[string]table, sec map[string]string) portFeat {
-	f := portFeat{iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]bool{}}
+	f := portFeat{iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]string{}, medPol: map[string]string{}}
 	_, a := sec["appl_iso"]
 	_, b := sec["appl_fdb"]
 	_, q := sec["cfg_qos"]
@@ -120,12 +151,23 @@ func readPortFeat(db map[string]table, sec map[string]string) portFeat {
 	}
 	// An empty section is lldpcli unread (the lldp container down): known
 	// only once it lists a port.
+	// Each line: "<port> <caps>|- [<policy>|-]" (before 2026-11-07's voice
+	// VLAN, "<port> on|off": on was the plain capabilities TLV).
 	for _, line := range strings.Split(sec["lldp_med"], "\n") {
-		if fs := strings.Fields(line); len(fs) == 2 {
-			f.medKnown = true
-			if fs[1] == "on" {
-				f.med[fs[0]] = true
-			}
+		fs := strings.Fields(line)
+		if len(fs) < 2 {
+			continue
+		}
+		f.medKnown = true
+		switch c := fs[1]; c {
+		case "on":
+			f.med[fs[0]] = medCaps
+		case "off", "-":
+		default:
+			f.med[fs[0]] = normHex(c)
+		}
+		if len(fs) > 2 && fs[2] != "-" {
+			f.medPol[fs[0]] = normHex(fs[2])
 		}
 	}
 	return f
@@ -418,15 +460,32 @@ func (pl *plan) egress(ds []devicemodel.PortDesired) {
 func (pl *plan) lldpMED(ds []devicemodel.PortDesired) {
 	for _, d := range ds {
 		on := d.LLDPMED == nil || *d.LLDPMED
-		for _, ln := range lanesOf(pl.ports[d.Index]) {
-			if pl.sim.pf.med[ln] == on {
-				continue
+		wantCaps, wantPol := "", ""
+		if on {
+			wantCaps = medCaps
+			if d.VoiceVLAN > 0 {
+				wantCaps, wantPol = medCapsVoice, medPolicy(d.VoiceVLAN)
 			}
+		}
+		for _, ln := range lanesOf(pl.ports[d.Index]) {
 			lane := ln
-			if on {
-				pl.add(d.Index, medTLV(lane), func(s *swState) { s.pf.med[lane] = true })
-			} else {
-				pl.add(d.Index, medUnTLV(lane), func(s *swState) { delete(s.pf.med, lane) })
+			// The policy goes first when it goes, last when it comes: a
+			// network policy is never sent without the capabilities that
+			// announce it.
+			if wantPol == "" && pl.sim.pf.medPol[lane] != "" {
+				pl.add(d.Index, medUnset(lane, 2), func(s *swState) { delete(s.pf.medPol, lane) })
+			}
+			if pl.sim.pf.med[lane] != wantCaps {
+				if wantCaps == "" {
+					pl.add(d.Index, medUnset(lane, 1), func(s *swState) { delete(s.pf.med, lane) })
+				} else {
+					w := wantCaps
+					pl.add(d.Index, medSet(lane, 1, w), func(s *swState) { s.pf.med[lane] = w })
+				}
+			}
+			if wantPol != "" && pl.sim.pf.medPol[lane] != wantPol {
+				w := wantPol
+				pl.add(d.Index, medSet(lane, 2, w), func(s *swState) { s.pf.medPol[lane] = w })
 			}
 		}
 	}
@@ -476,7 +535,10 @@ func readBackPortFeat(st *swState, p *devicemodel.Port, macsByIface map[string][
 		p.EgressKbps = atoi(n)
 	}
 	if st.pf.medKnown {
-		p.LLDPMEDOff = !st.pf.med[ifs[0]]
+		p.LLDPMEDOff = st.pf.med[ifs[0]] == ""
+		if pol := st.pf.medPol[ifs[0]]; pol != "" {
+			p.VoiceVLAN = policyVLAN(pol)
+		}
 	}
 }
 
@@ -519,3 +581,20 @@ func (pl *plan) learnModesHeld() []heldLearn {
 
 // SwitchesLLDPMED implements devicemodel.LLDPMEDSwitcher.
 func (c *Collector) SwitchesLLDPMED() bool { return true }
+
+// policyVLAN reads the VLAN back out of a network policy TLV's bytes.
+func policyVLAN(info string) int {
+	b := strings.Split(info, ",")
+	if len(b) != 4 {
+		return 0
+	}
+	var v uint64
+	for _, x := range b[1:] {
+		n, err := strconv.ParseUint(x, 16, 8)
+		if err != nil {
+			return 0
+		}
+		v = v<<8 | n
+	}
+	return int(v>>9) & 0xfff
+}
