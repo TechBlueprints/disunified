@@ -243,6 +243,18 @@ func (s *swState) applyBreakout(parent string, pp platformPort, idx int, childre
 		delete(fecs, ch.name)
 	}
 	s.fecs = fecs
+	// supported_speeds likewise: the SAI answers per lane at the new mode.
+	speeds := map[string][]int{}
+	for name, sp := range s.laneSpeeds {
+		speeds[name] = sp
+	}
+	for _, name := range s.cagePorts(idx) {
+		delete(speeds, name)
+	}
+	for _, ch := range children {
+		delete(speeds, ch.name)
+	}
+	s.laneSpeeds = speeds
 	for _, name := range s.cagePorts(idx) {
 		delete(s.port, name)
 		delete(s.members, name)
@@ -290,8 +302,8 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 	fits := func(m brkMode) bool {
 		return containsInt(m.speeds, want.speed) && (want.ports == 0 || m.ports == want.ports)
 	}
+	var target *brkMode
 	if !fits(cur) {
-		var target *brkMode
 		for _, m := range pp.modes() {
 			if !fits(m) {
 				continue
@@ -301,10 +313,19 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 				target = &mm
 			}
 		}
-		if target == nil {
+		switch {
+		case target != nil:
+		case pl.lanesRun(p.Index, want):
+			// No mode lists the speed, but every lane of the current one
+			// does in STATE_DB (1G on a DX010 lane in 4x25G, 2026-11-07):
+			// what `config interface speed` checks (portconfig), and what
+			// the cage claims while split. A lane speed, below.
+		default:
 			pl.note("port %d: %d Mb/s is not among the cage's breakout speeds %v; speed not written", d.Index, want.speed, pp.speeds())
 			return
 		}
+	}
+	if target != nil {
 		if why := pl.breakoutBlocked(d, p.Index); why != "" {
 			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want.speed, target.name, why)
 			return
@@ -372,6 +393,22 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			write(d.Index, fmt.Sprintf("config interface speed %s %s", lane, v), func(s *swState) { s.setField(lane, "speed", v) })
 		}
 	}
+}
+
+// lanesRun: the cage's current lanes all run speed by STATE_DB's
+// supported_speeds (known only once the SAI has answered for them: not
+// right after a breakout in the same plan), with the asked port count.
+func (pl *plan) lanesRun(idx int, want laneCfg) bool {
+	lanes := pl.sim.cagePorts(idx)
+	if len(lanes) == 0 || (want.ports > 0 && want.ports != len(lanes)) {
+		return false
+	}
+	for _, ln := range lanes {
+		if !containsInt(pl.sim.laneSpeeds[ln], want.speed) {
+			return false
+		}
+	}
+	return true
 }
 
 // breakoutBlocked says why a cage cannot be broken out now: SONiC's -f

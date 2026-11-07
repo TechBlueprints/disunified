@@ -46,7 +46,7 @@ orchagent's StpOrch, one STP instance per VLAN; `docs/drivers/sonic.md`
 §11.5): built 2026-11-01, verified live on the DX010 by hand and then
 through the deployed driver; on by default (`options.l2d: off` opts out);
 hardware-only parts wait for the unit, and
-time zone, hostname, locate and breakout (§7.5) are fixture-tested only.
+time zone, hostname and locate (§7.5) are fixture-tested only; breakout ran every mode live on the DX010's 202511 image on 2026-11-07, once eth0's gateway-less address row was removed (`docs/drivers/sonic.md` §11.11).
 UniFi's DHCP guarding (Rogue DHCP Server Detection) and switch IP ACL rules
 are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 2026-11-01 from the ECS's and the DX010's captured pushes and verified live

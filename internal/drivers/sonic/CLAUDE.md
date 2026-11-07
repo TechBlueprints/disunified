@@ -76,8 +76,11 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   recorded lease minutes after boot -- `dynamic` address plus a `linkdown`
   default route with no metric that beat Vlan4094's metric 20
   (`ignore_routes_with_linkdown=0`), black-holing everything off the LAN.
-  The unit now has `config interface ip add eth0 169.254.1.1/16`
-  (MGMT_INTERFACE: no DHCP on eth0 ever), and the loop does not warn about
+  The unit had `config interface ip add eth0 169.254.1.1/16`
+  (MGMT_INTERFACE: no DHCP on eth0 ever) from 2026-11-01 to 2026-11-07, when
+  it was removed again for 202511's breakout (a gateway-less MGMT_INTERFACE
+  row fails sonic-yang; a DHCP eth0 has `metric 202` there, §11.11); the
+  loop does not warn about
   an IPv4 link-local OOB address without carrier (with carrier: the
   "connected" note). Fixture: `collect-20261101.txt`; the sanitiser keeps
   169.254/16.
@@ -362,7 +365,7 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   dict; `complianceName` parses it (`'Extended Specification Compliance'`
   when the 10/40G code says Extended). UniFi's own SONiC switch reports
   the same string (`100G CWDM4`) as `sfp_compliance`.
-- **Breakout (`breakout.go`) -- built 2026-10-27; 4x25G split and the join back verified live on the DX010 2026-11-01 (no swss/syncd restart, the uplink unaffected).** A
+- **Breakout (`breakout.go`) -- built 2026-10-27; 4x25G split and the join back verified live on the DX010 2026-11-01 (no swss/syncd restart, the uplink unaffected); on 202511 every mode, the lanes at 10G and 1G, and the ACL rebind on a split and a join, 2026-11-07 (§11.11).** A speed no mode lists that every current lane's STATE_DB `supported_speeds` has (1G on a 25G lane) is a lane speed: portconfig checks only that, and the split cage claims it. **The loop must not take a split it wrote for a new port**: `informloop.applyPorts` records the ports a push writes, or a join pushed in the cycle after the split is withheld for good (live, 2026-11-07). The controller refuses a speed outside the port's stored `speed_caps` (`api.err.InvalidInterfaceSpeedDuplex`) until an inform after the split has carried the new caps. A
   cage speed its current `BREAKOUT_CFG` mode does not run picks the mode
   that runs it (its default speed preferred): DX010 100G/40G `1x100G[40G]`,
   50G `2x50G`, 25G/10G `4x25G[10G]`; a speed the mode runs is a lane-speed
@@ -547,7 +550,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   name becomes `host-1.example.net` once a DNS domain is set (it is the
   FQDN then).
 - **202511 (the custom IGMP image, `igmp-202511.20261101-22cac574e`;
-  `docs/drivers/sonic.md` §11.8, 2026-11-02).** `config interface breakout`
+  `docs/drivers/sonic.md` §11.8, 2026-11-02; every mode verified live
+  2026-11-07 once eth0's row was gone, §11.11).** `config interface breakout`
   validates CONFIG_DB with sonic-yang first: a dangling leafref anywhere
   refuses the split (`COPP_TRAP|stp` needs `COPP_GROUP|queue4_group1`, which
   l2d now writes with the trap; `MGMT_INTERFACE|eth0|...` needs

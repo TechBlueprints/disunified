@@ -63,6 +63,11 @@ type swState struct {
 	// fecs is STATE_DB's supported_fecs per interface ("none,rs" on the
 	// DX010; absent on the VS); read-only, shared by clones.
 	fecs map[string]map[string]bool
+	// laneSpeeds is STATE_DB's supported_speeds per interface, the SAI's
+	// answer for the lane at its current breakout ("1000,10000,25000" on a
+	// DX010 lane in 4x25G): what `config interface speed` checks; read-only,
+	// shared by clones.
+	laneSpeeds map[string][]int
 	// switchCap is STATE_DB's SWITCH_CAPABILITY|switch, the SAI's answers
 	// about the switch as orchagent publishes them (nil on a capture
 	// without the section, from a collect.py before 2026-11-02).
@@ -293,7 +298,11 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	s.fecs = map[string]map[string]bool{}
+	s.laneSpeeds = map[string][]int{}
 	for name, f := range db["state_port"].byName("|") {
+		if sp := speedList(f["supported_speeds"]); len(sp) > 0 {
+			s.laneSpeeds[name] = sp
+		}
 		for _, m := range strings.Split(f["supported_fecs"], ",") {
 			if m = strings.TrimSpace(m); m != "" {
 				if s.fecs[name] == nil {
@@ -325,7 +334,7 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
+		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
