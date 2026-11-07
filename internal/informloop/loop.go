@@ -228,8 +228,13 @@ type Loop struct {
 	freshPorts   map[int]string // port -> interface name, for the log
 	freshWarned  map[int]bool
 	layoutByPort map[int]string
-	faultSig     string
-	childNoted   map[int]string // per child's port, the condition last logged (children.go)
+	// wrotePorts are the ports a port apply wrote from the controller's
+	// config since the last collect: a layout change on one of them (a
+	// breakout the push asked for) is the controller's own doing, not a
+	// port it knows nothing about, so it does not make the port fresh.
+	wrotePorts map[int]bool
+	faultSig   string
+	childNoted map[int]string // per child's port, the condition last logged (children.go)
 	// power logs a power device's transitions when its driver asks for it
 	// (devicemodel.PowerEventSource); nil otherwise.
 	power *powerevent.Tracker
@@ -639,7 +644,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.installSSHKeys(cctx, text)
 	l.applyAddress(cctx, "", text)
 	desired := l.withholdFreshPorts(l.desiredPorts(text))
-	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
+	changed, err := l.applyPorts(cctx, desired)
 	if err != nil {
 		l.cfg.Logger.Printf("[%s] reconcile system_cfg %s: %v", l.desc.MAC, ver, err)
 		return
@@ -1206,7 +1211,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	l.applyNUT(text)
 	l.installSSHKeys(cctx, text)
 	l.applyAddress(cctx, prevText, text)
-	changed, err := l.cfg.Controller.ApplyPorts(cctx, desired)
+	changed, err := l.applyPorts(cctx, desired)
 	if err != nil {
 		l.applyFailures++
 		if l.applyFailures == 1 || l.applyFailures%10 == 0 {
@@ -1292,6 +1297,27 @@ func (l *Loop) holdInitialOutletPush(ver string, desired []devicemodel.OutletDes
 		l.cfg.OnHeld(l.session.Snapshot())
 	}
 	return true
+}
+
+// applyPorts is the driver's ApplyPorts, remembering which ports the plan
+// says the controller's config writes (Loop.wrotePorts): the next collect
+// may find their layout changed -- a split or a join the push asked for --
+// and that is not a new port. Without it the first collect after a split
+// marked the cage fresh, and a join pushed in that cycle was withheld for
+// good (the controller wants one port, the switch has four, so the two never
+// match; found live on the DX010, 2026-11-07, docs/drivers/sonic.md 11.11).
+// Recorded whether or not the apply succeeds: a batch that fails after the
+// breakout still changed the layout at the controller's request.
+func (l *Loop) applyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	if planner, ok := l.cfg.Controller.(devicemodel.Planner); ok {
+		for _, idx := range planner.PlanPorts(desired) {
+			if l.wrotePorts == nil {
+				l.wrotePorts = map[int]bool{}
+			}
+			l.wrotePorts[idx] = true
+		}
+	}
+	return l.cfg.Controller.ApplyPorts(ctx, desired)
 }
 
 // withholdFreshPorts drops from desired the fresh ports (see Loop.freshPorts)
@@ -1403,6 +1429,8 @@ func (l *Loop) collect(ctx context.Context) {
 			l.cfg.Logger.Printf("[%s] port faults cleared", l.desc.MAC)
 		}
 	}
+	wrote := l.wrotePorts
+	l.wrotePorts = nil // a write shows in the collect right after it, or not at all
 	if sig := layoutSignature(snap); sig != l.layoutSig {
 		changed := l.layoutSig != ""
 		l.layoutSig = sig
@@ -1419,9 +1447,15 @@ func (l *Loop) collect(ctx context.Context) {
 			byPort[p.Index] = p.IfName + "/" + strings.Join(p.Interfaces, ",")
 		}
 		if changed {
-			var fresh []string
+			var fresh, written []string
 			for idx, name := range byPort {
 				if name != "" && l.layoutByPort[idx] != name {
+					if wrote[idx] {
+						// The controller's own split or join: its config
+						// for the port is the push that made the layout.
+						written = append(written, fmt.Sprintf("%d(%s)", idx, name))
+						continue
+					}
 					if l.freshPorts == nil {
 						l.freshPorts = map[int]string{}
 					}
@@ -1430,7 +1464,13 @@ func (l *Loop) collect(ctx context.Context) {
 				}
 			}
 			sort.Strings(fresh)
-			l.cfg.Logger.Printf("[%s] port layout changed: new, changed or arrived ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
+			sort.Strings(written)
+			if len(written) > 0 {
+				l.cfg.Logger.Printf("[%s] port layout changed as the controller's config asked: %v", l.desc.MAC, written)
+			}
+			if len(fresh) > 0 || len(written) == 0 {
+				l.cfg.Logger.Printf("[%s] port layout changed: new, changed or arrived ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
+			}
 			if l.cfg.OnLayoutChange != nil {
 				l.cfg.OnLayoutChange(snap)
 			}

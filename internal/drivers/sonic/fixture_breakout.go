@@ -240,6 +240,16 @@ func (f *FixtureRunner) breakout(args []string) error {
 // laneSpeedOK: on a platform with breakout modes, a port runs the speeds its
 // cage's current mode allows (4x25G[10G]: 25G or 10G per lane).
 func (f *FixtureRunner) laneSpeedOK(port, speed string) error {
+	// portconfig's set_speed (202511): the port's STATE_DB supported_speeds,
+	// when the SAI has filled it, and nothing else -- not the breakout mode.
+	if sup := f.table("state_port")["PORT_TABLE|"+port]["supported_speeds"]; sup != "" {
+		if !containsInt(speedList(sup), atoi(speed)) {
+			return fmt.Errorf("Invalid speed specified: %s\nValid speeds:%s", speed, sup)
+		}
+		return nil
+	}
+	// Right after a breakout the capture has no row yet: the mode's speeds
+	// stand in for what the SAI answers a moment later.
 	_, plat := parsePlatform(f.section("platform_json"))
 	if plat == nil {
 		return nil

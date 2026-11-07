@@ -261,18 +261,24 @@ The factory image stays in its slot after the upgrade.
    this order:
    - **Keep `eth0` off the LAN segment**: unplug it, or disable the switch
      port it is cabled to.
-   - **Give it a static link-local address**: `sudo config interface ip
-     add eth0 169.254.1.1/16`, `sudo config save -y`. That is
+   - **On 202505 only, give it a static link-local address**: `sudo config
+     interface ip add eth0 169.254.1.1/16`, `sudo config save -y`. That is
      MGMT_INTERFACE, so SONiC runs no DHCP on `eth0` again, and no lease
-     dhclient recorded can bring back a default route through it; a laptop
-     on the OOB jack (169.254/16) still reaches the switch -- the rescue
-     path. `sudo ip link set eth0 down` alone does not survive a reboot.
-     **Add the port row too**: `sudo sonic-db-cli CONFIG_DB hset
-     'MGMT_PORT|eth0' alias eth0 admin_status up`, `sudo config save -y`.
-     `config interface ip add` writes MGMT_INTERFACE alone, and 202511's
-     `config interface breakout` validates CONFIG_DB with sonic-yang, whose
-     MGMT_INTERFACE leafref needs the MGMT_PORT row (§10.6, §11.8); the
-     driver adds the row itself before its first breakout if it is missing.
+     dhclient recorded can bring back a default route through it (202505's
+     DHCP route had no metric, §10.6); a laptop on the OOB jack (169.254/16)
+     still reaches the switch. `sudo ip link set eth0 down` alone does not
+     survive a reboot. **On 202511 leave eth0 on DHCP**: the CLI writes the
+     row without a gateway (`{"NULL": "NULL"}`), and sonic-yang, which every
+     `config interface breakout` runs over the whole CONFIG_DB, refuses
+     every breakout while it is there (§11.8); 202511's template gives a
+     DHCP eth0 `metric 202`, behind the in-band default's 20. The rescue
+     path is then eth0 plugged into a LAN port, which takes a lease. A unit
+     upgraded from 202505 with the row has it removed (`sudo config
+     interface ip remove eth0 169.254.1.1/16`, `sudo config save -y`, then
+     `sudo systemctl restart interfaces-config`, which hostcfgd skips for
+     a field-less row: §11.11). If a row is kept, it needs `MGMT_PORT|eth0`
+     too (`sudo sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0
+     admin_status up`), which the driver adds itself before a breakout.
    - **Source NTP from the in-band interface**: `sudo sonic-db-cli
      CONFIG_DB hset 'NTP|global' src_intf Vlan4094` (202505 has no CLI for
      it), `sudo config save -y`. The image's default is `eth0`, and chrony
@@ -694,7 +700,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | `MirrorSource` (this port is the destination) | session name `dui<dst>`: `config vlan member del` every membership of the destination, `config mirror_session span add dui<dst> <dst> <src> both`; removal: `config mirror_session remove dui<dst>` then the destination's VLAN intent | `MIRROR_SESSION\|dui<dst> {type SPAN, dst_port, src_port, direction BOTH}`; `STATE_DB MIRROR_SESSION_TABLE\|dui<dst> status active` | SONiC refuses a destination with VLAN config ("Destination Interface … has vlan config"); the driver strips it and restores it when the session goes. Report `MirrorFrom` from `MIRROR_SESSION`. |
 | storm control (`StormCtrl`, percent) | `config interface storm-control add <p> broadcast\|unknown-multicast\|unknown-unicast <kbps>`; `del` to clear | `PORT_STORM_CONTROL\|<p>\|<type> kbps` | kbps = pct/100 × port speed (Mbps) × 1000, rounded; report back as a percent of the configured speed; UniFi's multicast = `unknown-multicast` |
 | `BPDUGuard`, `STPEdge`, `STPPathCost` | `config spanning-tree interface bpdu_guard enable\|disable <p>`, `portfast enable\|disable <p>`, `cost <p> <n>`; "STP disabled on the port" (`STPEdge`) = `portfast enable` **and** `config spanning-tree interface disable <p>` | `STP_PORT\|<p> {bpdu_guard, portfast, enabled, path_cost}` | **only when `FEATURE\|stp` exists**; otherwise refuse with a log (not claimed, so not pushed) |
-| breakout (speed on lane 1) | `config interface breakout <cage> <mode>` with the mode from `platform.json` (`1x100G[40G]`, `4x25G[10G]`, `2x50G`…) | `BREAKOUT_CFG\|<cage> brkout_mode`; child ports `Ethernet<n+1..3>` appear in `PORT` | **hardware only** (`platform.json` absent on the VS): refused with a log where absent; on the DX010 the first live test is on an empty cage with a 4x25G DAC |
+| breakout (speed on lane 1) | `config interface breakout <cage> <mode>` with the mode from `platform.json` (`1x100G[40G]`, `4x25G[10G]`, `2x50G`…) | `BREAKOUT_CFG\|<cage> brkout_mode`; child ports `Ethernet<n+1..3>` appear in `PORT` | **hardware only** (`platform.json` absent on the VS): refused with a log where absent; on the DX010 every mode verified live on an empty cage (§11.6, §11.11); a speed no mode runs that every current lane supports (1G on a 25G lane, STATE_DB `supported_speeds`) is a lane speed |
 | `PortCycler` | not implemented: no PoE, the controller never issues it | | |
 
 **Corrections after pass 1 (2026-10-27), probed:**
@@ -950,7 +956,7 @@ does not expose.
 ### 7.5 Implemented (2026-10-27)
 
 The four 7.1 rows are built and fixture-tested; time zone and hostname
-await a live check on the VS; locate and the 4x25G breakout with its join were verified on the DX010 on 2026-11-01 (§11.6), 2x50G and lane speeds on a split cage are still hardware-untested.
+await a live check on the VS; locate and the 4x25G breakout with its join were verified on the DX010 on 2026-11-01 (§11.6); on the 202511 image every mode -- 4x25G, the lanes at 10G and at 1G, 2x50G, the join -- and the ACL rebind on a split and a join were verified live on 2026-11-07 (§11.11).
 What each emits (from the tests), and where the build differs from 7.1:
 
 | Feature | Commands | Notes |
@@ -2318,7 +2324,12 @@ address chrony bound to the dead port and every source went unreachable
 laptop on the OOB jack still reaches the switch) and `sonic-db-cli
 CONFIG_DB hset 'NTP|global' src_intf Vlan4094` (202505 has no CLI for it),
 which regenerated chrony.conf with `bindacqdevice Vlan4094`; it synced. The
-arrival checklist is §3 B3 step 5. What the driver does about it:
+arrival checklist is §3 B3 step 5. **The address row was removed again on
+2026-11-07** (§11.11): on 202511 a gateway-less MGMT_INTERFACE row fails
+the YANG check every breakout runs, NTP no longer binds to eth0 (below),
+and on 202511's template a DHCP eth0 has `metric 202` behind the in-band
+default's 20 -- the trap above needed a route with no metric. eth0 is on
+DHCP now, without carrier. What the driver does about it:
 
 - **NTP from the in-band interface.** When it applies UniFi's NTP servers
   it also sets `NTP|global src_intf` to the interface that carries the
@@ -3563,7 +3574,7 @@ alone, and no other device got a push. The live lines are
 | 3 | FC-FEC at 40G on cage 3 (REST: speed 40000, `fec_mode fc-fec`), then auto | the note "the controller asks for FEC fc, which Ethernet8 does not support (none,rs); FEC left as it is" and `config interface speed Ethernet8 40000`, save (3.5 s); no failed batch, no re-push; auto: `speed 100000` | **pass** (fixed, verified live) |
 | 5a | Storm control Rate mode on cage 3 (Multicast 100 pkts/s), then off | one NOTE ("storm control in Rate mode (packets/s) is not something this switch can apply ...; storm control left off on the port"), 0 of 32 changed; off: 0 changed | **pass** (fixed, verified live) |
 | 5b | Mirror of cage 5 onto cage 4 (REST: `op_mode mirror`, `mirror_port_idx 5`), then off | the row went in past the CLI (`hset 'MIRROR_SESSION\|dui4' ...`, 3 s) and the controller read the mirror back; removal through the CLI restored the destination's VLAN. **But nothing was mirrored:** orchagent logged `setUnsetPortMirror: Port ingress mirror is not supported by the ASIC`, `Failed to configure mirror session dui4 port Ethernet16`, `Failed to activate port mirror session dui4`, then `Created mirror session dui4` -- 202511's MirrorOrch applies the same SAI answer (`querySwitchPortMirrorCapability` 0/0) and creates the SAI session without binding the source port. STATE_DB's `inactive` meant that, not "destination down". The session object stayed in ASIC_DB after the removal (orchagent skips deactivating a session that never activated). The hand test of the night before (`duitest`) had failed the same way | **fail, not fixable in the driver on this image**: b26fb67 refuses the mirror with one note where SWITCH_CAPABILITY says no; port mirroring needs an ACL-based mirror or a SAI that answers the capability query (follow-up) |
-| 4 | Breakout of cage 2 to 4x25G (REST, no `fec_mode`) | the driver added `MGMT_PORT\|eth0` (logged once) and the split was **refused by the next sonic-yang rule**: `Must condition "(contains(current(), ':') and contains(../gwaddr, ':')) or (contains(current(), '.') and contains(../gwaddr, '.'))" not satisfied` on `MGMT_INTERFACE\|eth0\|169.254.1.1/16` -- every MGMT_INTERFACE row needs a gateway of its family, and `config interface ip add eth0 <ip>` without one writes `{"NULL": "NULL"}`. One attempt, nothing else written; reverted through REST. A read-only `sonic_yang.loadData()` then showed the next refusal behind it: the driver's own `NTP\|global src_intf Vlan4094` (sonic-ntp.yang allows no VLAN there). With both changed in memory the unit's config validates | **fail**: 7dca204 clears `src_intf` for a VLAN instead of setting it (chrony then sources from the kernel's route, in-band); b26fb67 refuses the breakout with a note while eth0's row has no gateway. **The eth0 row is a site decision** (a gateway becomes a default route on eth0 in the management table, which the syslog server's forced rule follows; removing the row returns eth0 to DHCP, `metric 202` on 202511). The lanes at 10G, 2x50G and the join still never ran |
+| 4 | Breakout of cage 2 to 4x25G (REST, no `fec_mode`) | the driver added `MGMT_PORT\|eth0` (logged once) and the split was **refused by the next sonic-yang rule**: `Must condition "(contains(current(), ':') and contains(../gwaddr, ':')) or (contains(current(), '.') and contains(../gwaddr, '.'))" not satisfied` on `MGMT_INTERFACE\|eth0\|169.254.1.1/16` -- every MGMT_INTERFACE row needs a gateway of its family, and `config interface ip add eth0 <ip>` without one writes `{"NULL": "NULL"}`. One attempt, nothing else written; reverted through REST. A read-only `sonic_yang.loadData()` then showed the next refusal behind it: the driver's own `NTP\|global src_intf Vlan4094` (sonic-ntp.yang allows no VLAN there). With both changed in memory the unit's config validates | **fail**: 7dca204 clears `src_intf` for a VLAN instead of setting it (chrony then sources from the kernel's route, in-band); b26fb67 refuses the breakout with a note while eth0's row has no gateway. **The eth0 row is a site decision** (a gateway becomes a default route on eth0 in the management table, which the syslog server's forced rule follows; removing the row returns eth0 to DHCP, `metric 202` on 202511). The lanes at 10G, 2x50G and the join still never ran. **Closed 2026-11-07**: the row removed, every mode run live (§11.11) |
 | 9c | Aggregation of cages 5+6 while `DUI_IP_ACL` was bound (UI) | **`config acl add table DUI_IP_ACL L3 -p <30 ports, without Ethernet16/20>` first**, then the PortChannel, its MTU, the members, the native VLAN, save (11 s); then `DUI_IP_ACL` rebound with `PortChannel1` (31 entries); table and rule Active, LAG in STATE_DB. Removal: members out, back in VLAN 4094, `portchannel del`, the table rebound to all 32. The controller deleted port 6's override when it joined (the UI showed "QSFP28 6"); restored by REST | **pass** (fixed, verified live) |
 
 Not deployed: b26fb67 and 7dca204 (the session's permission check refused
@@ -3913,6 +3924,93 @@ its VLAN. No new fixture was captured: the build differs from
 proof is out of scope**: it needs two cabled devices on the DX010 (a
 sender on the source cage, a capture host on the destination); the SDK's
 mirror table is the proof available without them.
+
+### 11.11 Breakout on the 202511 image, every mode live (2026-11-07)
+
+**eth0's address row removed.** Every breakout on 202511 had been refused
+by sonic-yang on `MGMT_INTERFACE|eth0|169.254.1.1/16` = `{"NULL": "NULL"}`
+(§11.8: a row needs a gateway of its family). Of the two ways out, a gateway
+or no row, the row went: a gateway becomes `default via <gw> dev eth0 table
+default metric 201` in the management table. The template's forced rule
+`to <syslog server>/32 lookup default` (pref 32764, skipped only for a
+server with a `vrf`) would then have sent syslog out an eth0 without
+carrier. Checked first, read-only:
+- `sonic_yang.loadData()` over `sonic-cfggen -d --print-data` passes with
+  the row removed in memory, with and without an in-memory 4x25G split of
+  `Ethernet4`.
+- `interfaces.j2` then renders `iface eth0 inet dhcp` with `metric 202`
+  (against the in-band default's 20), without the policy-routing rules.
+- Nothing binds to eth0: `NTP|global` has no `src_intf` (§10.6),
+  `SYSLOG_SERVER` has no `vrf`, `TELEMETRY|gnmi` names no interface, no
+  `SNMP_AGENT_ADDRESS_CONFIG`, `DNS_NAMESERVER` is static (so
+  `resolv-config.sh` keeps it).
+
+Then `sudo config interface ip remove eth0 169.254.1.1/16 && sudo config
+save -y`. **On 202511 that removes the row and nothing else.** The CLI no
+longer restarts any service, and hostcfgd's `MgmtIfaceCfg` compares the
+deleted row's data (`{}`) with what it loaded at start, where
+`ConfigDBConnector` had already turned `{"NULL": "NULL"}` into `{}`. It sees
+no change, so `interfaces-config` is not restarted, and eth0 kept its
+address, routes and rules until `sudo systemctl restart interfaces-config`
+was run by hand: an hostcfgd bug for any field-less MGMT_INTERFACE row. The
+restart regenerated `/etc/network/interfaces` and restarted networking
+(lo and eth0 only). eth0 now runs dhclient (no carrier, no lease, no
+route), the forced syslog rule and the `from 169.254.1.1` rule are gone,
+and syslog to its server leaves from Vlan4094. The in-band default (FRR,
+metric 20), chrony (two sources online), DNS and the bridge's informs were
+untouched; the next push changed 0 ports. `MGMT_PORT|eth0` (§10.6) stays:
+harmless and valid. **Rescue path from now on:** plug eth0 into a LAN port
+and it takes a DHCP lease (in the in-band subnet: a second connected
+route, for rescue only).
+
+**The run, from the controller's REST exactly as the UI sends it** (port
+2's override: `setting_preference manual`, `autoneg false`, `speed`; no
+`fec_mode`), on cage 2 (`Ethernet4`, empty), deployed build bf64692. Each
+step checked in CONFIG_DB, APPL_DB and STATE_DB, in mstpd and the STP
+port-state tables, in the L2MC static tables, and in the controller's
+port table. Each was followed by a cycle whose reconcile wrote nothing.
+
+| # | Push | What the switch did | Result |
+|---|---|---|---|
+| 1 | 25G | `config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null`, then per child `startup` + `mtu 1500`, `vlan member add -u 4094` x4, save (20 s); IGMP: the 7 reserved groups extended to the three new lanes (21 rows). Children `Eth2/1`-`Eth2/4`, lanes 69-72, 25G; STATE_DB `supported_speeds 1000,10000,25000`, `supported_fecs none,fc`; mstpd added the four ports, each with a state in all 11 VLANs' instances; Ethernet0 stayed the root port, forwarding. mstpd's "Couldn't set kernel bridge state blocking" for each new port is the kernel refusing a state on a down port, logged for every down port at boot too. Controller: "Eth2" at 25G, `speed_caps` gained 1G | pass |
+| 2 | 10G | `config interface speed Ethernet4..7 10000`, save (8 s) | pass (first time on hardware) |
+| 3 | 50G | `… '2x50G'`, children `Ethernet4` (lanes 69,70) and `Ethernet6` (71,72) at 50G, no `fec` field, `supported_speeds 20000,40000,50000`, `supported_fecs none,rs`; IGMP removed the 14 rows of the lanes that went; Ethernet5/7 gone from mstpd and the STP tables (15 s) | pass (first time on hardware) |
+| 4 | 100G | `… '1x100G[40G]'`, `startup`, `mtu`, `vlan member add -u 4094 Ethernet4`, save; IGMP removed 7; CONFIG_DB, APPL_DB, STATE_DB, VLAN and L2MC rows identical to before the run (field order aside) | pass |
+| 5 | one IP ACL rule (Allow, 192.0.2.0/24 → 198.51.100.0/24, `specific_enforcers` = the DX010 only) | `config acl add table DUI_IP_ACL L3 -p <32 ports> -s ingress`, `RULE_1`; table and rule `Active` | pass |
+| 6 | 25G with the table bound | the breakout's `-f`: `ConfigMgmt: Deleting …/ACL_TABLE_LIST[ACL_TABLE_NAME='DUI_IP_ACL']/ports[.='Ethernet4']` (the FixtureRunner's model); then `applyACL` rebound the table to 35 ports with `Ethernet4`-`Ethernet7`; `Active` throughout; orchagent logged warnings only ("Cannot remove port as bridge port OID is present", retried; FDB-flush noise) | pass |
+| 7 | 100G pushed within a cycle of 6 | **withheld for good**: "port 2 … is new since the controller's config and would be changed by it; not written". The first collect after the split marked the cage fresh (its interfaces changed). The join arrived in that same cycle, so the planner said port 2 would change. The switch (four lanes) and the controller (one port) never come to match, so it stayed. Unstuck by setting 25G (matches, clears the flag), then 100G a cycle later: the join and the rebind to 32 ports, `Active` | fail: **fixed** (below) |
+| 8 | the rule deleted | rule `del`, `config acl remove table DUI_IP_ACL`, save; no `DUI_` row left in CONFIG_DB or STATE_DB | pass |
+
+**Fixed, deployed (29e71ae) and verified live the same hour:**
+
+- *The join after a split* (`informloop`): `applyPorts` records the ports
+  the plan writes from the controller's config, and the next collect does
+  not mark a layout change on one of them fresh ("port layout changed as
+  the controller's config asked"). Live: a split, then the join pushed at
+  once, ran in the next cycle. Tests: `TestReplaySonicDX010BreakoutSeries`
+  and `TestReplaySonicDX010BreakoutUnderACL`, on the run's own pushes;
+  both fail on the old loop.
+- *1G on a split cage* (`breakout.go`): a split cage claims 1G (its lanes'
+  `supported_speeds`, merged into the claim), but the plan knew only the
+  platform modes' speeds and refused it. A speed no mode runs that every
+  current lane supports is now a lane speed. That is what `config
+  interface speed` checks: portconfig looks at `supported_speeds` alone,
+  not the mode, and the FixtureRunner now models that. A speed some mode
+  runs keeps the mode path, so 40G on a 2x50G cage is still the join to
+  1x40G. Live: the controller refused 1G (`api.err.InvalidInterfaceSpeedDuplex`) until an
+  inform had carried the split cage's caps, then the bridge wrote
+  `config interface speed Ethernet4..7 1000` (APPL_DB followed, no
+  orchagent error), a quiet cycle, and the join from 1G. Tests:
+  `TestSplitCageRunsTheLanesOwnSpeeds`, `TestReplaySonicDX010LanesAt1G`.
+
+Port 2's override is back to its pre-test value (all 32 equal to the
+record saved before the run), and the restoring push changed 0 ports.
+Fixtures: `controller-10.6.109/system_cfg-dx010-brk-*.txt` (the run's
+pushes; the rule's RFC 5737 prefixes put back after the scrub, which maps
+every address) and `sonic-igmp-202511.20261106-f2e25f54c/` (the switch with
+the eth0 row gone, whole and split, with its `config --help` and zone
+list). **Still hardware-only:** link at each speed, which needs a 4x25G /
+2x50G breakout cable and a far end.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
