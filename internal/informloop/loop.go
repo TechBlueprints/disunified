@@ -832,7 +832,7 @@ var unsupportedFeatures = map[string]string{
 	".port-security":    "port security (MAC restriction)",
 	".poe":              "PoE",
 	".voice_vlan":       "voice VLAN", // never seen: the voice VLAN arrives as switch.vlan.<slot>.port.N.voice (2026-11-07)
-	".lldpmed.opmode=":  "", // handled below (informational)
+	".lldpmed.opmode=":  "",           // handled below (informational)
 	"switch.dot1x":      "802.1X",
 	"switch.dhcp_snoop": "DHCP snooping (rogue DHCP server detection)",
 }
