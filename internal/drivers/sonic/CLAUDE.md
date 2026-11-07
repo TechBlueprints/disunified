@@ -538,6 +538,32 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   Fixture:
   `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
   `cfg_l2mc` section) and its `config-help.txt`.
+- **Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN,
+  router ports (`portfeat.go`, `docs/drivers/sonic.md` §11.12, built and
+  verified live on the DX010 2026-11-07).** Isolation is one SAI isolation
+  group `DUI_ISOLATION` (members = bind ports = the isolated ports, a member
+  as its PortChannel); the MAC filter is `learn_mode drop` on the port or
+  its PortChannel plus static FDB entries per allowed MAC in every VLAN the
+  port carries, off is `learn_mode hardware` **then** the hdel (portmgrd
+  never passes a removed field on); the egress limit is
+  `SCHEDULER|DUI_EGRESS_<kbps>` (bytes, pir = kbps x 125) named by
+  `PORT_QOS_MAP|<lane> scheduler`; LLDP-MED and the Voice VLAN are lldpd
+  custom TLVs (OUI 00,12,bb subtype 1 `00,01,04` / with voice `00,03,04`,
+  subtype 2 the network policy) through `docker exec lldp lldpcli`, read
+  back by collect.py's `lldp_med` (`<port> <caps>|- <policy>|-`). **APPL_DB
+  only through ProducerStateTable**: a plain `sonic-db-cli APPL_DB hset`
+  is never seen by orchagent (probed); the plan collects those writes into
+  one `python3 ... disunified-appl '<json>'` call at the end of the batch.
+  The group, the FDB entries and the TLVs are lost on a swss or lldp
+  restart and come back with the next reconcile. **`learn_mode` is in no
+  YANG model**: a breakout's batch hdels every `learn_mode` before `config
+  interface breakout` and sets it again after (the ASIC keeps dropping). A
+  static FDB entry on a port without link is not reported in the MAC table
+  (UniFi showed allowed MACs as clients). The Multicast Router Port is
+  `switch.vlan.<slot>.igmp_mroute_port.K` and becomes `L2MC_MROUTER` in
+  `igmp.go`. The controller keeps no `sys_fan_mode` for a `USWF07D`, so the
+  UI offers no Fan Mode. Fixtures: `collect-portfeat.txt`,
+  `controller-10.6.109/system_cfg-dx010-portfeat-*.txt`.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name
