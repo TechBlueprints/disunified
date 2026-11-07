@@ -1,0 +1,39 @@
+package unificfg
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The DX010's push after the UI set port 30 to isolation, a two-MAC filter,
+// a 100 Mb/s egress limit and LLDP-MED off, and port 31 to isolation
+// (Network 10.6.109, 2026-11-07, docs/drivers/sonic.md 11.11).
+func TestParsePortFeatures(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-portfeat-1-set.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	p := c.Ports[30]
+	if !p.Isolation || !p.PortSecurity || strings.Join(p.SecurityMACs, ",") != "02:00:00:00:00:01,02:00:00:00:00:02" || p.EgressKbps != 100000 || p.LLDPMED == nil || *p.LLDPMED || p.LLDPMEDNotify {
+		t.Errorf("port 30 = isolation %v security %v %q egress %d lldpmed %v notify %v", p.Isolation, p.PortSecurity, p.SecurityMACs, p.EgressKbps, p.LLDPMED, p.LLDPMEDNotify)
+	}
+	p = c.Ports[31]
+	if !p.Isolation || p.PortSecurity || len(p.SecurityMACs) != 0 || p.EgressKbps != 0 || p.LLDPMED == nil || !*p.LLDPMED {
+		t.Errorf("port 31 = %+v", p)
+	}
+	p = c.Ports[29]
+	if p.Isolation || p.PortSecurity || p.EgressKbps != 0 {
+		t.Errorf("port 29 = %+v", p)
+	}
+	// The baseline before the claims carries none of the keys.
+	b, err = os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-portfeat-0-baseline.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := Parse(string(b)).Ports[30]; p.LLDPMED != nil || p.Isolation || p.PortSecurity {
+		t.Errorf("baseline port 30 = %+v", p)
+	}
+}

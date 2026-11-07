@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -316,13 +317,14 @@ func fdbKey(k string) string { return "V" + strings.TrimPrefix(k, "v") }
 // APPL_DB rows reach orchagent only through ProducerStateTable (its
 // consumers wait on the table's key set and channel; a plain HSET is never
 // seen -- probed on the DX010, §11.11), so these writes are collected and
-// run as one python3 call at the end of the batch: applCommand plus the
-// operations as a JSON argument.
-const applScript = `import json, sys  # disunified-appl
+// run as one python3 call at the end of the batch: the script, base64 so
+// the batch stays one line per command, then the marker and the operations
+// as a JSON argument.
+const applScript = `import json, sys
 import swsscommon.swsscommon as sw
 db = sw.DBConnector("APPL_DB", 0, True)
 tables = {}
-for op in json.loads(sys.argv[1]):
+for op in json.loads(sys.argv[2]):
     t = tables.setdefault(op["table"], sw.ProducerStateTable(db, op["table"]))
     if op["op"] == "set":
         fv = op["fv"]
@@ -330,6 +332,10 @@ for op in json.loads(sys.argv[1]):
     else:
         t._del(op["key"])
 `
+
+// applCommand runs applScript; its first argument names it in the process
+// list and the journal.
+var applCommand = "sudo python3 -c " + sshrun.ShellQuote("import base64; exec(base64.b64decode('"+base64.StdEncoding.EncodeToString([]byte(applScript))+"'))") + " disunified-appl"
 
 type applOp struct {
 	Op    string   `json:"op"`
@@ -363,7 +369,7 @@ func (pl *plan) applFlush() {
 		return
 	}
 	b, _ := json.Marshal(pl.appl)
-	pl.ops = append(pl.ops, op{cmd: "sudo python3 -c " + sshrun.ShellQuote(applScript) + " " + sshrun.ShellQuote(string(b))})
+	pl.ops = append(pl.ops, op{cmd: applCommand + " " + sshrun.ShellQuote(string(b))})
 	pl.appl = nil
 }
 
@@ -507,3 +513,6 @@ func (pl *plan) learnModesHeld() []heldLearn {
 	}
 	return out
 }
+
+// SwitchesLLDPMED implements devicemodel.LLDPMEDSwitcher.
+func (c *Collector) SwitchesLLDPMED() bool { return true }

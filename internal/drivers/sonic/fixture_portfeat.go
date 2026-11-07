@@ -16,9 +16,9 @@ import (
 // any other command.
 func (f *FixtureRunner) portFeatWrite(w []string) (ok bool, err error) {
 	switch {
-	case len(w) == 4 && w[0] == "python3" && w[1] == "-c" && strings.Contains(w[2], "disunified-appl"):
+	case len(w) == 5 && w[0] == "python3" && w[1] == "-c" && w[3] == "disunified-appl":
 		var ops []applOp
-		if err := json.Unmarshal([]byte(w[3]), &ops); err != nil {
+		if err := json.Unmarshal([]byte(w[4]), &ops); err != nil {
 			return true, err
 		}
 		for _, o := range ops {

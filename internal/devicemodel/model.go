@@ -80,6 +80,13 @@ type PortDesired struct {
 	LLDPMED *bool
 }
 
+// LLDPMEDSwitcher is an optional Controller capability: the driver turns
+// LLDP-MED on and off per port (PortDesired.LLDPMED). Without it the loop
+// notes that a port's LLDP-MED off is left as the switch has it.
+type LLDPMEDSwitcher interface {
+	SwitchesLLDPMED() bool
+}
+
 // JumboSwitcher is an optional Controller capability: the driver honours
 // PortDesired.MTU (it can turn jumbo frames off). Without it the loop
 // notes that the switch forwards jumbo frames unconditionally.
