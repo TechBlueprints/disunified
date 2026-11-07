@@ -3876,8 +3876,16 @@ image's own `install.sh` deletes every image but the running one and the
 new one, so the 202505 image leaves `/host` (a copy is kept off the
 switch); `sonic-installer cleanup` is never run. After `confirm`, redo the
 settings that live in the image's overlay (the fan floor, on an image
-built before series patch 0012 carried it; the follow-up register lists
-them).
+built before series patch 0012 carried it; the DIMM sensor's limits, before
+0013; the follow-up register lists them). Then accept the controller's update
+badge once: the emulated version (`4.0.1.995`) is dropped whenever the
+switch's own version changes (`internal/device/session.go`), so after every
+install the controller offers the upgrade again. The UI's Upgrade, or
+`cmd/devmgr {"cmd": "upgrade", "mac": <mac>}` through the API, arrives as a
+reply `_type: upgrade`: the bridge records the version and reports it, and
+writes nothing to the switch (2026-11-07 after the `20261106` image: the
+controller went upgrading (state 4) -> provisioning (5), the next informs
+carried `4.0.1.995`, its push changed 0 of 32 ports, the badge cleared).
 
 **Installed and verified 2026-11-02 (03:53-04:05Z).** The image went in
 with `sonic-upgrade.sh arm` (the 202505 image deleted as announced, its
