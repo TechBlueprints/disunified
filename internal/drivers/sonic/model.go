@@ -415,9 +415,15 @@ func opticOf(x, d map[string]string) *devicemodel.Optic {
 // buildMACTable reads STATE_DB FDB_TABLE: key FDB_TABLE|Vlan<id>:<mac>,
 // value {port, type}. No timestamps. An address learned in Vlan<native> is
 // on UniFi's VLAN 1, like the ports' untagged membership.
-func buildMACTable(fdb table, byIfname map[string]int, native int) []devicemodel.MACEntry {
+func buildMACTable(fdb table, byIfname map[string]int, native int, linkDown func(port string) bool) []devicemodel.MACEntry {
 	var out []devicemodel.MACEntry
 	for k, f := range fdb {
+		// A provisioned (static) entry is an allowed MAC of port security,
+		// not a station that was seen: on a port with no link it would show
+		// as a connected client in UniFi (live, 2026-11-07, §11.11).
+		if f["type"] == "static" && linkDown != nil && linkDown(f["port"]) {
+			continue
+		}
 		_, rest, ok := strings.Cut(k, "|")
 		if !ok {
 			continue

@@ -837,9 +837,6 @@ type Capabilities struct {
 	L3Routing    bool
 	L3Interfaces int
 	StaticRoutes int
-	// FanModes: the UI's Fan Mode (Default / Quiet) is offered
-	// (sys_fan_mode.caps); DeviceDesired.FanMode is honoured.
-	FanModes bool
 	SNMP     bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.

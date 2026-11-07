@@ -114,6 +114,28 @@ func TestReplaySonicDX010PortFeatures(t *testing.T) {
 			}
 		}
 	}
+	// Port 30 back to defaults in the UI: learning back to hardware before
+	// the field goes, the shaper's reference then the profile, LLDP-MED on
+	// again, its FDB entries out and the group down to port 31.
+	got = r.push("system_cfg-dx010-portfeat-2-port30-off.txt", "8fad86d25811befc")
+	if !containsInOrder(got,
+		"sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet116' learn_mode hardware",
+		"sudo sonic-db-cli CONFIG_DB hdel 'PORT|Ethernet116' learn_mode",
+		"sudo sonic-db-cli CONFIG_DB hdel 'PORT_QOS_MAP|Ethernet116' scheduler",
+		"sudo sonic-db-cli CONFIG_DB del 'SCHEDULER|DUI_EGRESS_100000'",
+		medOn("Ethernet116"),
+		brkSave,
+	) || !strings.Contains(strings.Join(got, "\n"), `{"op":"del","table":"FDB_TABLE","key":"Vlan4094:02:00:00:00:00:01"}`) ||
+		!strings.Contains(strings.Join(got, "\n"), `"MEMBERS","Ethernet120"]`) {
+		t.Errorf("port 30 off wrote %q", got)
+	}
+	r.cycle("port 30 off")
+	got = r.push("system_cfg-dx010-portfeat-3-port31-off.txt", "eaa63276ed0fcea0")
+	if len(got) != 2 || !strings.Contains(got[0], `[{"op":"del","table":"ISOLATION_GROUP_TABLE","key":"DUI_ISOLATION"}]`) || got[1] != brkSave {
+		t.Errorf("port 31 off wrote %q", got)
+	}
+	r.cycle("port 31 off")
+
 	if s := r.log.String(); strings.Contains(s, "UNSUPPORTED") {
 		t.Errorf("a claimed feature was logged as unsupported:\n%s", s)
 	}

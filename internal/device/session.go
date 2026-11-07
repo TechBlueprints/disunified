@@ -329,11 +329,6 @@ func (s *Session) buildPayload(now time.Time) []byte {
 			m["has_temperature"] = false // no sensor (a VM host): said outright, as a sensorless device does
 		}
 		m["switch_caps"] = switchCaps(s.caps)
-		if s.caps.FanModes {
-			// The UI offers Fan Mode when sys_fan_mode.caps is non-zero;
-			// DEFAULT 1 | QUIET 2 (unifi-emu's capability_bits.json).
-			m["sys_fan_mode"] = map[string]any{"caps": sysFanModeDefault | sysFanModeQuiet}
-		}
 		pt := portTable(s.desc, s.snap, s.st.Provisioned["port_table"], s.prevHistory)
 		m["port_table"] = pt
 		// Device-level satisfaction (the Experience column): the mean of the

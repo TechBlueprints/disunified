@@ -981,7 +981,7 @@ func (c *Collector) applyPorts(ctx context.Context, desired []devicemodel.PortDe
 			n++
 		}
 	}
-	c.Log.Printf("sonic apply (%d ports): %s", n, strings.Join(cmds, " ; "))
+	c.Log.Printf("sonic apply (%d ports): %s", n, strings.ReplaceAll(strings.Join(cmds, " ; "), applCommand, applLogged))
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic apply (%d ports): %w", n, err)
 	}

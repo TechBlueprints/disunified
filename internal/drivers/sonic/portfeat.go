@@ -337,6 +337,9 @@ for op in json.loads(sys.argv[2]):
 // list and the journal.
 var applCommand = "sudo python3 -c " + sshrun.ShellQuote("import base64; exec(base64.b64decode('"+base64.StdEncoding.EncodeToString([]byte(applScript))+"'))") + " disunified-appl"
 
+// applLogged stands for applCommand in the apply log line.
+const applLogged = "sudo python3 <ProducerStateTable> disunified-appl"
+
 type applOp struct {
 	Op    string   `json:"op"`
 	Table string   `json:"table"`

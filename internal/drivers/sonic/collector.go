@@ -231,7 +231,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 		caps.LLDPMED = true
 	}
 	if c.CaptureClaims {
-		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes, caps.FanModes = true, 64, 256, true
+		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, 64, 256
 	}
 	return caps
 }
@@ -317,7 +317,13 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	for name, idx := range lagPorts(db, byIfname) {
 		byIfname[name] = idx
 	}
-	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN)
+	applPort, applLAG := db["appl_port"].byName(":"), db["appl_lag"].byName(":")
+	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN, func(port string) bool {
+		if f, ok := applLAG[port]; ok {
+			return f["oper_status"] != "up"
+		}
+		return applPort[port]["oper_status"] != "up"
+	})
 	pi := map[int]int{}
 	for i := range ports {
 		pi[ports[i].Index] = i
