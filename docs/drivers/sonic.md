@@ -2761,7 +2761,21 @@ instances), the port keys dropped, mstpd stopped, every kernel bridge port set
 forwarding (the kernel leaves user-space ports as they were when STP stops),
 `stp_state 0`, the trap removed. Stopping the service does **not** tear down
 (`KillMode=process`): mstpd keeps running and the next start adopts it, so a
-restart or an upgrade of l2d never runs the LAN without spanning tree.
+restart or an upgrade of l2d never runs the LAN without spanning tree. The
+script is embedded in the bridge (`l2.go`) and reinstalled whenever its sha256
+differs from the switch's copy, which restarts the unit: so a new bridge
+deb that carries a changed `l2d.py` restarts l2d, and the restart adopts
+mstpd -- `stp_up` finds it running, `stp_state` already 2 and `Bridge` already
+mstpd's, so nothing is started, `addbridge` is skipped and no sysfs is
+written; the first sync rewrites each port's kernel state (the state it
+holds) and re-maps the VLANs after the settle (`TestL2dRestartAdoptsRunningMstpd`,
+from the capture with l2d running). **mstpd's liveness is read in-process**
+(`/run/mstpd.pid` and `/proc/<pid>/comm`, else a `/proc` scan), not with
+`pidof`: sysvinit's pidof logs a process that exits between its `/proc`
+listing and its read of `<pid>/stat` (`can't read from <pid>/stat`) straight
+to syslog at ERR -- `_TRANSPORT=syslog` in the journal, so redirecting its
+stderr would not have helped. Three such lines in 36 h on the DX010, every one
+a false alarm (mstpd found, NRestarts 0); fixed 2026-11-07.
 
 **The controller's keys** (the ECS's real push,
 `fixtures/controller-10.6.109/system_cfg-ecs-aggregation.txt`, scrubbed):
