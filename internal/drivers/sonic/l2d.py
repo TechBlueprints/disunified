@@ -64,6 +64,8 @@ BRIDGE = "Bridge"
 CONF = "/etc/sonic/disunified/l2.json"
 MSTPD = "/usr/local/sbin/mstpd"
 MSTPCTL = "/usr/local/sbin/mstpctl"
+MSTPD_PID = "/run/mstpd.pid"  # mstpd writes it when it daemonizes
+PROC = "/proc"
 HOOK = "/usr/sbin/bridge-stp"
 SYS = "/sys/class/net"
 SYNC = 2.0  # seconds between full reconciliations
@@ -287,7 +289,18 @@ class Mstp(object):
     """mstpd and mstpctl."""
 
     def running(self):
-        return run(["pidof", "mstpd"]).returncode == 0
+        """Whether mstpd runs: its pid file, else a scan of /proc, read here.
+        Not pidof: sysvinit's pidof logs a process that exits between its
+        /proc listing and its read of <pid>/stat ("can't read from
+        <pid>/stat") straight to syslog at ERR, past any stderr redirect --
+        three times in 36 h on the DX010, every one a false alarm."""
+        if rd("%s/%s/comm" % (PROC, rd(MSTPD_PID, "-"))) == "mstpd":
+            return True
+        try:
+            pids = [p for p in os.listdir(PROC) if p.isdigit()]
+        except OSError:
+            return False
+        return any(rd("%s/%s/comm" % (PROC, p)) == "mstpd" for p in pids)  # a gone pid reads ""
 
     def start(self):
         if self.running():

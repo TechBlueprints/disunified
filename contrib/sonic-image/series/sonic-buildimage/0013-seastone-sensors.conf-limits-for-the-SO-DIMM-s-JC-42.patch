@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sat, 7 Nov 2026 11:51:53 -0700
+Subject: [PATCH] seastone: sensors.conf: limits for the SO-DIMM's JC-42.4
+ thermal sensor
+
+The DX010's SO-DIMM carries a JEDEC JC-42.4 temperature sensor on the
+SMBus (jc42-i2c-1-18). Its limit registers come up at 0 C, so with the
+DIMM at its normal ~35 C libsensors reports HIGH and CRIT, and pmon's
+sensord logs it about once a minute:
+
+  ALERT pmon#sensord: Sensor alarm: Chip jc42-i2c-1-18: temp1: 35.8 C
+  (min = 0.0 C, max = 0.0 C) [ALARM]
+
+-- about 1,400 syslog lines a day, on the stock image and every build
+since. This gives the chip the limits of JEDEC's DRAM temperature range,
+85 C (normal) and 95 C (extended), and a label. The registers take the
+write (no event lock set), and lm-sensors.sh applies the platform file
+with `sensors -s` at every pmon start, so no other change is needed.
+
+Measured on a DX010 (202511, applied by hand through pmon's lm-sensors
+program): temp1_max 85000, temp1_crit 95000, every alarm bit 0, and no
+sensord alarm line in syslog over the following 11 minutes (before: one
+a minute); `show platform temperature` unchanged.
+---
+ device/celestica/x86_64-cel_seastone-r0/sensors.conf | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/device/celestica/x86_64-cel_seastone-r0/sensors.conf b/device/celestica/x86_64-cel_seastone-r0/sensors.conf
+index d92d6534e..f8e14cac6 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/sensors.conf
++++ b/device/celestica/x86_64-cel_seastone-r0/sensors.conf
+@@ -71,3 +71,12 @@ chip "emc2305-i2c-*-4d"
+     label fan5 "fan3"
+     label fan3 "fan4"
+     label fan1 "fan5"
++
++# The SO-DIMM's SPD thermal sensor (JEDEC JC-42.4 TSE, i2c-1-0018). Its
++# limit registers come up at 0 C, so sensord reported its normal reading
++# as HIGH/CRIT about once a minute. JEDEC's normal DRAM range ends at 85 C
++# (extended to 95 C).
++chip "jc42-*"
++    label temp1 "SO-DIMM temp sensor"
++    set temp1_max 85
++    set temp1_crit 95
+-- 
+2.50.1 (Apple Git-155)
+

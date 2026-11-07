@@ -33,7 +33,7 @@ The why, the validation plan and the hard unknowns are in
 |---|---|
 | `build.sh` | the unattended build (preflight, prepare, fail-fast packages, vs image, broadcom images, manifest and checksums) |
 | `series/` | the patches, one directory per repository, each with a `series` file; `series/BASES` pins the commit each applies to; `series/CONFLICTS.md` is the rebase record |
-| `dry-run.sh` | every check that does not need the build host (the series applies, templates render, YANG parses, rules resolve, CLI compiles); it passed on 2026-11-01 (`dry-run.log`) |
+| `dry-run.sh` | every check that does not need the build host (the series applies, templates render, YANG parses, rules resolve, CLI compiles); it passed on 2026-11-01 (`dry-run.log`) and again on 2026-11-07 with sonic-buildimage 0013 (the Mac's work clones of sonic-swss and sonic-l2mcd lag the series, so that run fetched those two from upstream; it needs bash 4+, e.g. Homebrew's) |
 
 ## The series in one table
 
@@ -51,6 +51,7 @@ The why, the validation plan and the hard unknowns are in
 | | 0010 | the two snooping YANG models without imports of sonic-vlan/port/portchannel (they changed the generic config updater's behaviour and broke 7 sonic-utilities tests) |
 | | 0011 | sonic-net/sonic-buildimage#26983 (open, unchanged): `dx010_cpld` `setreg_store` one byte short; kernel 6.12's FORTIFY_SOURCE traps it at the watchdog disarm, so a 202511 DX010 never finishes booting |
 | | 0012 | Seastone `fancontrol-F2B`: the fan floor PWM 89 -> 51 (35 % -> 20 %) and the ramp starting at an intake of 35 C instead of 26; measured on a DX010 (ASIC ~56 C in a 23-25 C room, fans OK; 15 % rejected). The direction file is what the boot script copies over `fancontrol`, so it is the only file that persists a floor |
+| | 0013 | Seastone `sensors.conf`: the SO-DIMM's JC-42.4 thermal sensor (`jc42-i2c-1-18`) given limits of 85/95 C (JEDEC's normal and extended DRAM range). Its registers come up at 0 C, and sensord logged its normal ~35 C as an ALARM once a minute, ~1,400 syslog lines a day; the registers take the write, and `sensors -s` at pmon start applies it |
 | sonic-swss | 0001 | sonic-net/sonic-swss#3950: `l2mcorch`, `l2mcmgrd` (includes the upstream fix of the reviewed `memcpy` bug) |
 | | 0002 | port mirroring recorded as supported when the SAI answers no to `SAI_PORT_ATTR_INGRESS/EGRESS_MIRROR_SESSION`: the legacy-TH SAI says no and binds anyway (disunified `docs/drivers/sonic.md` §11.9-11.10) |
 | | 0003 | orchagent's outer `SRC_MAC`/`DST_MAC` matches (`<mac>` or `<mac>/<mask>`) and a built-in `L2` table type (PORT/LAG; `SRC_MAC`, `DST_MAC`, `ETHER_TYPE`, `OUTER_VLAN_ID`), with `AclOrchTest.L2Acl_Mac_Matches`: a reduced port of sonic-net/sonic-swss#2554 (open since 2022) for UniFi's switch MAC ACL rules (disunified `docs/drivers/sonic.md` §11.7.8). The package build does not run the mock tests; run them in the slave container |

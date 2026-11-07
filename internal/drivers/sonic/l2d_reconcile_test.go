@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -98,5 +99,59 @@ func TestL2dWritesTheTrapGroupWithTheTrap(t *testing.T) {
 	}
 	if got := run(cfg); got[0] != strings.Replace(stock, "cbs=6000 cir=6000", "cbs=600 cir=600", 1) || got[1] != trap {
 		t.Errorf("with the image's copp_cfg.json:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// An update of l2d.py restarts disunified-l2d (l2.go: the script's sha
+// changed), and the restart must adopt the running mstpd (§11.5): on the
+// DX010 Ethernet0 is the only link, so a port taken back through
+// discarding cuts the switch off. A fresh L2d against the capture's
+// running spanning tree starts nothing, writes nothing to sysfs, asks
+// mstpd for nothing, and writes the root port's state as forwarding --
+// the state it holds. mstpd's liveness is read from its pid file and /proc
+// in-process, never with pidof: sysvinit's pidof logs a process that exits
+// mid-scan straight to syslog at ERR, past any stderr redirect (three
+// false alarms in 36 h on the DX010, 2026-11-07).
+func TestL2dRestartAdoptsRunningMstpd(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not found")
+	}
+	out, err := exec.Command(py, "-I", filepath.Join("testdata", "l2d_adopt.py"), "l2d.py", l2RunningFixture, t.TempDir()).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	var runs, puts []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		switch {
+		case strings.HasPrefix(line, "RUN "):
+			runs = append(runs, line[4:])
+		case strings.HasPrefix(line, "WR "):
+			t.Errorf("sysfs written on a restart: %s", line)
+		case strings.HasPrefix(line, "PUT "):
+			puts = append(puts, line[4:])
+		}
+	}
+	if !strings.Contains(string(out), "STP_ON True") {
+		t.Fatalf("spanning tree not adopted:\n%s", out)
+	}
+	for _, r := range runs {
+		if !strings.HasPrefix(r, "/usr/local/sbin/mstpctl -f json show") && r != "/usr/local/sbin/mstpctl showbridge Bridge" {
+			t.Errorf("a restart ran %q: only mstpctl's reports, nothing started or set", r)
+		}
+	}
+	root := "STP_PORT_STATE_TABLE Ethernet0:4094 state=4"
+	if !slices.Contains(puts, root) {
+		t.Errorf("the root port's state %q not written as forwarding:\n%s", root, strings.Join(puts, "\n"))
+	}
+	for _, p := range puts {
+		if strings.HasPrefix(p, "STP_PORT_STATE_TABLE Ethernet0:") && p != root {
+			t.Errorf("the root port written as %q", p)
+		}
+	}
+	for _, want := range []string{"ALIVE pidfile True", "ALIVE scan True", "ALIVE gone False"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("liveness: want %q in\n%s", want, out)
+		}
 	}
 }
