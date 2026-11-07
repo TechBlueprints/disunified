@@ -183,6 +183,25 @@ section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP
 section("appl_iso", "APPL_DB", "ISOLATION_GROUP_TABLE:DUI_*")
 section("appl_fdb", "APPL_DB", "FDB_TABLE:*")
 section("cfg_qos", "CONFIG_DB", "SCHEDULER|DUI_*", "PORT_QOS_MAP|*")
+# LLDP-MED: which ports lldpd sends the TIA capabilities TLV on (the
+# driver's custom TLV, OUI 00-12-BB subtype 1), one "<port> on|off" line
+# per local interface; empty when lldpcli cannot be read.
+s("lldp_med")
+try:
+    _out = subprocess.run(["docker", "exec", "lldp", "lldpcli", "-f", "json", "show", "interfaces", "details"],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10).stdout
+    _ifs = (json.loads(_out or b"{}").get("lldp") or {}).get("interface") or {}
+    if isinstance(_ifs, list):
+        _ifs = {k: v for d in _ifs for k, v in d.items()}
+    for _n in sorted(_ifs):
+        _u = (_ifs[_n] or {}).get("unknown-tlvs") or {}
+        _u = _u.get("unknown-tlv") or []
+        if isinstance(_u, dict):
+            _u = [_u]
+        _on = any(str(t.get("oui", "")).lower() == "00,12,bb" and str(t.get("subtype")) == "1" for t in _u)
+        sys.stdout.write("%s %s\n" % (_n, "on" if _on else "off"))
+except Exception:
+    pass
 
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the

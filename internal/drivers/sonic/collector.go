@@ -222,8 +222,15 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if c.igmpOn(st) {
 		caps.IGMPSnooping, caps.IGMPSnoopingAdvanced = true, true
 	}
+	// Isolation, port security and egress shaping need the collector's
+	// sections (portfeat.go); LLDP-MED needs lldpcli to answer.
+	if st != nil && st.pf.known {
+		caps.PortIsolation, caps.PortSecurity, caps.EgressRateLimit = true, true, true
+	}
+	if st != nil && st.pf.medKnown {
+		caps.LLDPMED = true
+	}
 	if c.CaptureClaims {
-		caps.PortIsolation, caps.PortSecurity, caps.EgressRateLimit, caps.LLDPMED = true, true, true, true
 		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes, caps.FanModes = true, 64, 256, true
 	}
 	return caps

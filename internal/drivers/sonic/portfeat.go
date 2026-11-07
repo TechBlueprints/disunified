@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -116,10 +117,12 @@ func readPortFeat(db map[string]table, sec map[string]string) portFeat {
 			f.qos[n] = v["scheduler"]
 		}
 	}
-	if body, ok := sec["lldp_med"]; ok {
-		f.medKnown = true
-		for _, line := range strings.Split(body, "\n") {
-			if fs := strings.Fields(line); len(fs) == 2 && fs[1] == "on" {
+	// An empty section is lldpcli unread (the lldp container down): known
+	// only once it lists a port.
+	for _, line := range strings.Split(sec["lldp_med"], "\n") {
+		if fs := strings.Fields(line); len(fs) == 2 {
+			f.medKnown = true
+			if fs[1] == "on" {
 				f.med[fs[0]] = true
 			}
 		}
@@ -214,6 +217,7 @@ func (pl *plan) portFeatures(ds []devicemodel.PortDesired, caps devicemodel.Capa
 	if caps.LLDPMED && pl.sim.pf.medKnown {
 		pl.lldpMED(ds)
 	}
+	pl.applFlush()
 }
 
 func (pl *plan) isolation(ds []devicemodel.PortDesired) {
@@ -244,11 +248,11 @@ func (pl *plan) isolation(ds []devicemodel.PortDesired) {
 		}
 	}
 	if len(want) == 0 {
-		pl.add(idx, "sonic-db-cli APPL_DB del "+isoKey, func(s *swState) { s.pf.iso = map[string]bool{} })
+		pl.applDel(idx, "ISOLATION_GROUP_TABLE", isoGroup, func(s *swState) { s.pf.iso = map[string]bool{} })
 		return
 	}
 	list := strings.Join(sortedSet(want), ",")
-	pl.add(idx, fmt.Sprintf("sonic-db-cli APPL_DB hset %s TYPE port PORTS %s MEMBERS %s", isoKey, list, list), func(s *swState) {
+	pl.applSet(idx, "ISOLATION_GROUP_TABLE", isoGroup, []string{"TYPE", "port", "PORTS", list, "MEMBERS", list}, func(s *swState) {
 		s.pf.iso = map[string]bool{}
 		for k := range want {
 			s.pf.iso[k] = true
@@ -289,7 +293,7 @@ func (pl *plan) portSecurity(ds []devicemodel.PortDesired) {
 			continue
 		}
 		key := k
-		pl.add(owner[pl.sim.pf.fdb[k]], "sonic-db-cli APPL_DB del "+sshrun.ShellQuote(fdbKey(key)), func(s *swState) { delete(s.pf.fdb, key) })
+		pl.applDel(owner[pl.sim.pf.fdb[k]], "FDB_TABLE", fdbKey(key), func(s *swState) { delete(s.pf.fdb, key) })
 	}
 	keys = keys[:0]
 	for k := range wantFDB {
@@ -301,12 +305,67 @@ func (pl *plan) portSecurity(ds []devicemodel.PortDesired) {
 			continue
 		}
 		key, port := k, wantFDB[k]
-		pl.add(owner[port], fmt.Sprintf("sonic-db-cli APPL_DB hset %s port %s type static", sshrun.ShellQuote(fdbKey(key)), port), func(s *swState) { s.pf.fdb[key] = port })
+		pl.applSet(owner[port], "FDB_TABLE", fdbKey(key), []string{"port", port, "type", "static"}, func(s *swState) { s.pf.fdb[key] = port })
 	}
 }
 
-// fdbKey turns the lower-case map key back into APPL_DB's "Vlan<id>:<mac>".
-func fdbKey(k string) string { return "FDB_TABLE:V" + strings.TrimPrefix(k, "v") }
+// fdbKey turns the lower-case map key back into the FDB_TABLE key
+// "Vlan<id>:<mac>".
+func fdbKey(k string) string { return "V" + strings.TrimPrefix(k, "v") }
+
+// APPL_DB rows reach orchagent only through ProducerStateTable (its
+// consumers wait on the table's key set and channel; a plain HSET is never
+// seen -- probed on the DX010, §11.11), so these writes are collected and
+// run as one python3 call at the end of the batch: applCommand plus the
+// operations as a JSON argument.
+const applScript = `import json, sys  # disunified-appl
+import swsscommon.swsscommon as sw
+db = sw.DBConnector("APPL_DB", 0, True)
+tables = {}
+for op in json.loads(sys.argv[1]):
+    t = tables.setdefault(op["table"], sw.ProducerStateTable(db, op["table"]))
+    if op["op"] == "set":
+        fv = op["fv"]
+        t.set(op["key"], sw.FieldValuePairs([(fv[i], fv[i + 1]) for i in range(0, len(fv), 2)]))
+    else:
+        t._del(op["key"])
+`
+
+type applOp struct {
+	Op    string   `json:"op"`
+	Table string   `json:"table"`
+	Key   string   `json:"key"`
+	FV    []string `json:"fv,omitempty"`
+}
+
+func (pl *plan) applSet(idx int, table, key string, fv []string, effect func(*swState)) {
+	pl.appl = append(pl.appl, applOp{Op: "set", Table: table, Key: key, FV: fv})
+	pl.applEffect(idx, effect)
+}
+
+func (pl *plan) applDel(idx int, table, key string, effect func(*swState)) {
+	pl.appl = append(pl.appl, applOp{Op: "del", Table: table, Key: key})
+	pl.applEffect(idx, effect)
+}
+
+func (pl *plan) applEffect(idx int, effect func(*swState)) {
+	if effect != nil {
+		effect(pl.sim)
+	}
+	if idx > 0 {
+		pl.changed[idx] = true
+	}
+}
+
+// applFlush appends the collected APPL_DB writes to the batch as one call.
+func (pl *plan) applFlush() {
+	if len(pl.appl) == 0 {
+		return
+	}
+	b, _ := json.Marshal(pl.appl)
+	pl.ops = append(pl.ops, op{cmd: "sudo python3 -c " + sshrun.ShellQuote(applScript) + " " + sshrun.ShellQuote(string(b))})
+	pl.appl = nil
+}
 
 func (pl *plan) egress(ds []devicemodel.PortDesired) {
 	used := map[string]bool{}

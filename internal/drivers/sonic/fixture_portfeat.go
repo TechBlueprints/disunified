@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,8 +16,23 @@ import (
 // any other command.
 func (f *FixtureRunner) portFeatWrite(w []string) (ok bool, err error) {
 	switch {
-	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "APPL_DB":
-		return true, f.applWrite(w[2], w[3], w[4:])
+	case len(w) == 4 && w[0] == "python3" && w[1] == "-c" && strings.Contains(w[2], "disunified-appl"):
+		var ops []applOp
+		if err := json.Unmarshal([]byte(w[3]), &ops); err != nil {
+			return true, err
+		}
+		for _, o := range ops {
+			op := "hset"
+			if o.Op == "del" {
+				op = "del"
+			}
+			if err := f.applWrite(op, o.Table+":"+o.Key, o.FV); err != nil {
+				return true, err
+			}
+		}
+		return true, nil
+	case len(w) >= 2 && w[0] == "sonic-db-cli" && w[1] == "APPL_DB":
+		return true, fmt.Errorf("a plain APPL_DB write never reaches orchagent (no ProducerStateTable notify): %s", strings.Join(w, " "))
 	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (strings.HasPrefix(w[3], "SCHEDULER|") || strings.HasPrefix(w[3], "PORT_QOS_MAP|")):
 		return true, f.qosWrite(w[2], w[3], w[4:])
 	case len(w) >= 6 && w[0] == "docker" && w[1] == "exec" && w[2] == "lldp" && w[3] == "lldpcli":
@@ -141,15 +157,15 @@ func (f *FixtureRunner) lldpcli(a []string) error {
 	f.ensureSection("lldp_med")
 	on := map[string]bool{}
 	for _, l := range strings.Split(sections(f.Fixture)["lldp_med"], "\n") {
-		if fs := strings.Fields(l); len(fs) == 2 && fs[1] == "on" {
-			on[fs[0]] = true
+		if fs := strings.Fields(l); len(fs) == 2 {
+			on[fs[0]] = fs[1] == "on"
 		}
 	}
 	switch a[0] {
 	case "configure":
 		on[port] = true
 	case "unconfigure":
-		delete(on, port)
+		on[port] = false
 	default:
 		return fmt.Errorf("unmodelled lldpcli %s", a[0])
 	}
@@ -160,7 +176,11 @@ func (f *FixtureRunner) lldpcli(a []string) error {
 	sort.Strings(names)
 	var b strings.Builder
 	for _, p := range names {
-		b.WriteString(p + " on\n")
+		v := "off"
+		if on[p] {
+			v = "on"
+		}
+		b.WriteString(p + " " + v + "\n")
 	}
 	f.UseSection("lldp_med", b.String())
 	return nil

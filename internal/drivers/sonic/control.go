@@ -55,6 +55,7 @@ type plan struct {
 	// port's state to re-apply on every cycle.
 	controllerOnly bool
 	notes          []string // refusals, logged once each by ApplyPorts
+	appl           []applOp // APPL_DB writes, run together at the end (portfeat.go)
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
