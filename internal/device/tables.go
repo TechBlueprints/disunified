@@ -320,12 +320,19 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 		}
 		setDefault("stp_port_mode", !p.STPEdge)
 		setDefault("stp_edge_port", p.STPEdge || p.STPOperEdge)
-		setDefault("lldpmed_enabled", true)
+		setDefault("lldpmed_enabled", !p.LLDPMEDOff)
 		setDefault("port_keepalive_enabled", false)
-		setDefault("isolation", false)
-		setDefault("egress_rate_limit_kbps_enabled", false)
-		setDefault("port_security_enabled", false)
-		setDefault("port_security_mac_address", []string{})
+		setDefault("isolation", p.Isolated)
+		setDefault("egress_rate_limit_kbps_enabled", p.EgressKbps > 0)
+		if p.EgressKbps > 0 {
+			setDefault("egress_rate_limit_kbps", p.EgressKbps)
+		}
+		setDefault("port_security_enabled", p.PortSecurity)
+		macs := p.AllowedMACs
+		if macs == nil {
+			macs = []string{}
+		}
+		setDefault("port_security_mac_address", macs)
 		setDefault("locating", false)
 		table = append(table, e)
 	}

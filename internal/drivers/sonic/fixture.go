@@ -379,6 +379,9 @@ func (f *FixtureRunner) apply(line string) error {
 		return ""
 	}
 	cmd := strings.Join(w[:min(len(w), 3)], " ")
+	if ok, err := f.portFeatWrite(w); ok {
+		return err
+	}
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
 		return nil
@@ -436,11 +439,20 @@ func (f *FixtureRunner) apply(line string) error {
 			// The probed way to set a PortChannel's MTU, and the LACP fields
 			// the driver brings in line on a PortChannel made without them.
 			fv := w[4:]
+			if w[2] == "hdel" && len(fv) == 1 && fv[0] == "learn_mode" {
+				return f.update("cfg_lag", func(t table) error {
+					if t[key] == nil {
+						return fmt.Errorf("%s does not exist", pc)
+					}
+					delete(t[key], "learn_mode")
+					return nil
+				})
+			}
 			if w[2] != "hset" || len(fv)%2 != 0 {
 				return fmt.Errorf("unmodelled PORTCHANNEL write")
 			}
 			for i := 0; i < len(fv); i += 2 {
-				if fv[i] != "mtu" && fv[i] != "fast_rate" && fv[i] != "min_links" {
+				if fv[i] != "mtu" && fv[i] != "fast_rate" && fv[i] != "min_links" && fv[i] != "learn_mode" {
 					return fmt.Errorf("unmodelled PORTCHANNEL field %s", fv[i])
 				}
 			}

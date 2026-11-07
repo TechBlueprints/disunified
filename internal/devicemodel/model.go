@@ -62,6 +62,22 @@ type PortDesired struct {
 	// 1500 with it disabled; 0 = not in the push, leave the MTU alone. Only
 	// a JumboSwitcher reads it.
 	MTU int
+
+	// Isolation: UniFi's port isolation -- the port reaches the switch's
+	// other ports but no other isolated one. Read by a driver claiming
+	// Capabilities.PortIsolation.
+	Isolation bool
+	// PortSecurity: only the source MACs in AllowedMACs (lower-case,
+	// colon form) may send through the port; with none listed, none. Read
+	// by a driver claiming Capabilities.PortSecurity.
+	PortSecurity bool
+	AllowedMACs  []string
+	// EgressKbps limits what the port sends to that many kbit/s; 0 = no
+	// limit. Read by a driver claiming Capabilities.EgressRateLimit.
+	EgressKbps int
+	// LLDPMED is the port's LLDP-MED setting; nil = not in the push. Read
+	// by a driver claiming Capabilities.LLDPMED.
+	LLDPMED *bool
 }
 
 // JumboSwitcher is an optional Controller capability: the driver honours
@@ -574,6 +590,15 @@ type Port struct {
 	Description string
 	Media       Media
 	Lanes       int // 1, or the number of lanes a breakout slot was folded from
+
+	// Settings a driver reads back where it applies them (nil/zero = the
+	// switch's default: not isolated, no MAC restriction, no egress limit,
+	// LLDP-MED on).
+	Isolated     bool
+	PortSecurity bool
+	AllowedMACs  []string
+	EgressKbps   int
+	LLDPMEDOff   bool
 
 	Present    bool   // an optic/cable is present (always true for copper)
 	Enabled    bool   // administratively up

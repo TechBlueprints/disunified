@@ -81,6 +81,21 @@ func (f *FixtureRunner) breakout(args []string) error {
 	if v := f.table("cfg_ntp_global")["NTP|global"]["src_intf"]; strings.HasPrefix(v, "Vlan") {
 		return fmt.Errorf(`libyang[0]: Invalid value "%s" in "src_intf" element. (path: /sonic-ntp:sonic-ntp/NTP/global/src_intf[.='%s'])`, v, v)
 	}
+	// ... and a field the YANG model lacks leaves its whole entry
+	// untranslated (sonic_yang_ext _xlateList: KeyError in the leaf lookup),
+	// so everything that references the port dangles: learn_mode is in
+	// neither sonic-port.yang nor sonic-portchannel.yang on 202511. Modelled
+	// from that source, not from an observed refusal (§11.11).
+	for k, fv := range f.table("cfg_port") {
+		if fv["learn_mode"] != "" {
+			return fmt.Errorf("sonic_yang: %s: learn_mode is not in the YANG model; the entry is not translated", k)
+		}
+	}
+	for k, fv := range f.table("cfg_lag") {
+		if fv["learn_mode"] != "" {
+			return fmt.Errorf("sonic_yang: %s: learn_mode is not in the YANG model; the entry is not translated", k)
+		}
+	}
 	if _, ok := pp.BreakoutModes[mode]; !ok {
 		return fmt.Errorf("[ERROR] Target mode %s is not available for the port %s", mode, parent)
 	}

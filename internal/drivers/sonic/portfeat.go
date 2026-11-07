@@ -1,0 +1,450 @@
+package sonic
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/sshrun"
+)
+
+// Port isolation, port security, egress rate limits and LLDP-MED
+// (docs/drivers/sonic.md §11.11). Each follows what Ubiquiti's own SONiC
+// switch does where community SONiC 202511 has the same mechanism:
+//
+//   - Isolation is one SAI isolation group of type port, DUI_ISOLATION,
+//     written to APPL_DB ISOLATION_GROUP_TABLE (orchagent's
+//     isolationgrouporch; no CONFIG_DB table, no CLI): the isolated ports are
+//     both its members and its bind ports, so traffic entering an isolated
+//     port cannot leave through another isolated one.
+//   - Port security is the ECS's learn mode: the port stops learning
+//     (PORT|<p> or PORTCHANNEL|<pc> learn_mode drop: unknown source MACs are
+//     dropped, not learnt, not forwarded), and each allowed MAC gets a static
+//     FDB entry on the port in every VLAN the port carries (APPL_DB
+//     FDB_TABLE, fdborch; the ECS learns them in software instead).
+//   - The egress rate limit is a port shaper: a SCHEDULER profile
+//     DUI_EGRESS_<kbps> (meter_type bytes, pir in bytes/s) named by
+//     PORT_QOS_MAP|<p> scheduler (qosorch, SAI_PORT_ATTR_QOS_SCHEDULER_PROFILE_ID).
+//   - LLDP-MED is lldpd's custom TLV for the TIA OUI's capabilities TLV
+//     (00-12-BB subtype 1: capabilities "LLDP-MED capabilities", device
+//     class 4 "network connectivity"), set per port with lldpcli, as the
+//     ECS's lldp manager does.
+//
+// The APPL_DB rows and lldpd's settings do not survive a swss or lldp
+// restart; the loop reconciles every cycle, so the next cycle restores
+// them. learn_mode and the shaper are CONFIG_DB and kept by config save.
+const (
+	isoGroup      = "DUI_ISOLATION"
+	isoKey        = "ISOLATION_GROUP_TABLE:" + isoGroup
+	egressPrefix  = "DUI_EGRESS_"
+	learnDrop     = "drop"
+	learnHardware = "hardware"
+)
+
+// medTLV and medUnTLV are the lldpcli commands for a port's LLDP-MED
+// capabilities TLV.
+func medTLV(ln string) string {
+	return "docker exec lldp lldpcli configure ports " + ln + " lldp custom-tlv replace oui 00,12,bb subtype 1 oui-info 00,01,04"
+}
+
+func medUnTLV(ln string) string {
+	return "docker exec lldp lldpcli unconfigure ports " + ln + " lldp custom-tlv oui 00,12,bb subtype 1"
+}
+
+// portFeat is the switch's side of the four features, read by collect.py.
+type portFeat struct {
+	// known: the collector printed the sections (captures before
+	// 2026-11-07 lack them, and nothing is written then).
+	known bool
+	iso   map[string]bool   // DUI_ISOLATION's members ("" key absent = no group)
+	fdb   map[string]string // APPL_DB FDB_TABLE static entries: "Vlan<id>:<mac>" -> port
+	sched map[string]string // DUI_EGRESS_* scheduler -> its pir
+	qos   map[string]string // PORT_QOS_MAP: interface -> scheduler
+	// medKnown: the lldp_med section was read; med are the interfaces
+	// lldpd sends the LLDP-MED capabilities TLV on.
+	medKnown bool
+	med      map[string]bool
+}
+
+func (f portFeat) clone() portFeat {
+	c := portFeat{known: f.known, medKnown: f.medKnown, iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]bool{}}
+	for k := range f.iso {
+		c.iso[k] = true
+	}
+	for k, v := range f.fdb {
+		c.fdb[k] = v
+	}
+	for k, v := range f.sched {
+		c.sched[k] = v
+	}
+	for k, v := range f.qos {
+		c.qos[k] = v
+	}
+	for k := range f.med {
+		c.med[k] = true
+	}
+	return c
+}
+
+// readPortFeat fills portFeat from collect.py's appl_iso, appl_fdb,
+// cfg_qos and lldp_med sections.
+func readPortFeat(db map[string]table, sec map[string]string) portFeat {
+	f := portFeat{iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]bool{}}
+	_, a := sec["appl_iso"]
+	_, b := sec["appl_fdb"]
+	_, q := sec["cfg_qos"]
+	f.known = a && b && q
+	if g, ok := db["appl_iso"][isoKey]; ok {
+		for _, p := range splitList(g["MEMBERS"]) {
+			f.iso[p] = true
+		}
+	}
+	for k, v := range db["appl_fdb"] {
+		if v["type"] != "static" {
+			continue
+		}
+		if key, ok := strings.CutPrefix(k, "FDB_TABLE:"); ok {
+			f.fdb[strings.ToLower(key)] = v["port"]
+		}
+	}
+	for k, v := range db["cfg_qos"] {
+		if n, ok := strings.CutPrefix(k, "SCHEDULER|"); ok {
+			f.sched[n] = v["pir"]
+		} else if n, ok := strings.CutPrefix(k, "PORT_QOS_MAP|"); ok && v["scheduler"] != "" {
+			f.qos[n] = v["scheduler"]
+		}
+	}
+	if body, ok := sec["lldp_med"]; ok {
+		f.medKnown = true
+		for _, line := range strings.Split(body, "\n") {
+			if fs := strings.Fields(line); len(fs) == 2 && fs[1] == "on" {
+				f.med[fs[0]] = true
+			}
+		}
+	}
+	return f
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// egressSched names the shaper profile for a rate; pir is bytes per second.
+func egressSched(kbps int) string { return egressPrefix + strconv.Itoa(kbps) }
+func egressPIR(kbps int) string   { return strconv.Itoa(kbps * 125) }
+
+// egressPBS is the shaper's burst in bytes: 10 ms at the rate, at least
+// two jumbo frames so a 9216-byte frame always fits.
+func egressPBS(kbps int) string {
+	return strconv.Itoa(max(kbps*125/100, 2*9216))
+}
+
+// learnTarget is where a port's learn mode lives: its PortChannel when it
+// is a member (teammgrd hands PORTCHANNEL learn_mode to the LAG), else
+// each lane.
+func (pl *plan) secureTargets(d devicemodel.PortDesired) []string {
+	if d.LAG > 0 {
+		return []string{pcName(d.LAG)}
+	}
+	if pc := pl.sim.lagOf(lanesOf(pl.ports[d.Index])[0]); pc != "" {
+		return []string{pc}
+	}
+	return lanesOf(pl.ports[d.Index])
+}
+
+// learnMode reads an interface's or PortChannel's CONFIG_DB learn_mode.
+func (pl *plan) learnMode(iface string) string {
+	if strings.HasPrefix(iface, "PortChannel") {
+		return pl.sim.lagLearn[iface]
+	}
+	return pl.sim.field(iface, "learn_mode")
+}
+
+func (pl *plan) setLearnMode(idx int, iface, mode string) {
+	tbl := "PORT|"
+	if strings.HasPrefix(iface, "PortChannel") {
+		tbl = "PORTCHANNEL|"
+	}
+	key := sshrun.ShellQuote(tbl + iface)
+	set := func(s *swState, v string) {
+		if strings.HasPrefix(iface, "PortChannel") {
+			if v == "" {
+				delete(s.lagLearn, iface)
+			} else {
+				s.lagLearn[iface] = v
+			}
+			return
+		}
+		s.setField(iface, "learn_mode", v)
+	}
+	if mode == "" {
+		// Removing the field does not reach the ASIC (portmgrd passes only
+		// the fields that remain), so the port goes back to hardware
+		// learning first.
+		pl.add(idx, "sonic-db-cli CONFIG_DB hset "+key+" learn_mode "+learnHardware, nil)
+		pl.add(idx, "sonic-db-cli CONFIG_DB hdel "+key+" learn_mode", func(s *swState) { set(s, "") })
+		return
+	}
+	pl.add(idx, "sonic-db-cli CONFIG_DB hset "+key+" learn_mode "+mode, func(s *swState) { set(s, mode) })
+}
+
+// portFeatures plans the four features for the pushed ports, after their
+// VLANs and aggregates (the static FDB entries follow the VLANs).
+func (pl *plan) portFeatures(ds []devicemodel.PortDesired, caps devicemodel.Capabilities) {
+	if !pl.sim.pf.known {
+		return
+	}
+	if caps.PortIsolation {
+		pl.isolation(ds)
+	}
+	if caps.PortSecurity {
+		pl.portSecurity(ds)
+	}
+	if caps.EgressRateLimit {
+		pl.egress(ds)
+	}
+	if caps.LLDPMED && pl.sim.pf.medKnown {
+		pl.lldpMED(ds)
+	}
+}
+
+func (pl *plan) isolation(ds []devicemodel.PortDesired) {
+	want := map[string]bool{}
+	first := 0
+	for _, d := range ds {
+		if !d.Isolation {
+			continue
+		}
+		if first == 0 {
+			first = d.Index
+		}
+		for _, t := range pl.secureTargets(d) {
+			want[t] = true
+		}
+	}
+	if sameSet(want, pl.sim.pf.iso) {
+		return
+	}
+	idx := first
+	if idx == 0 {
+		for _, d := range ds {
+			for _, t := range pl.secureTargets(d) {
+				if pl.sim.pf.iso[t] {
+					idx = d.Index
+				}
+			}
+		}
+	}
+	if len(want) == 0 {
+		pl.add(idx, "sonic-db-cli APPL_DB del "+isoKey, func(s *swState) { s.pf.iso = map[string]bool{} })
+		return
+	}
+	list := strings.Join(sortedSet(want), ",")
+	pl.add(idx, fmt.Sprintf("sonic-db-cli APPL_DB hset %s TYPE port PORTS %s MEMBERS %s", isoKey, list, list), func(s *swState) {
+		s.pf.iso = map[string]bool{}
+		for k := range want {
+			s.pf.iso[k] = true
+		}
+	})
+}
+
+func (pl *plan) portSecurity(ds []devicemodel.PortDesired) {
+	wantFDB := map[string]string{}
+	owner := map[string]int{}
+	for _, d := range ds {
+		for _, t := range pl.secureTargets(d) {
+			owner[t] = d.Index
+			mode := ""
+			if d.PortSecurity {
+				mode = learnDrop
+			}
+			if have := pl.learnMode(t); have != mode && !(mode == "" && have == learnHardware) {
+				pl.setLearnMode(d.Index, t, mode)
+			}
+			if !d.PortSecurity {
+				continue
+			}
+			for _, mac := range d.AllowedMACs {
+				for v := range pl.sim.members[t] {
+					wantFDB[fmt.Sprintf("vlan%d:%s", v, strings.ToLower(mac))] = t
+				}
+			}
+		}
+	}
+	keys := make([]string, 0, len(pl.sim.pf.fdb))
+	for k := range pl.sim.pf.fdb {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if wantFDB[k] == pl.sim.pf.fdb[k] {
+			continue
+		}
+		key := k
+		pl.add(owner[pl.sim.pf.fdb[k]], "sonic-db-cli APPL_DB del "+sshrun.ShellQuote(fdbKey(key)), func(s *swState) { delete(s.pf.fdb, key) })
+	}
+	keys = keys[:0]
+	for k := range wantFDB {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if pl.sim.pf.fdb[k] == wantFDB[k] {
+			continue
+		}
+		key, port := k, wantFDB[k]
+		pl.add(owner[port], fmt.Sprintf("sonic-db-cli APPL_DB hset %s port %s type static", sshrun.ShellQuote(fdbKey(key)), port), func(s *swState) { s.pf.fdb[key] = port })
+	}
+}
+
+// fdbKey turns the lower-case map key back into APPL_DB's "Vlan<id>:<mac>".
+func fdbKey(k string) string { return "FDB_TABLE:V" + strings.TrimPrefix(k, "v") }
+
+func (pl *plan) egress(ds []devicemodel.PortDesired) {
+	used := map[string]bool{}
+	for _, d := range ds {
+		for _, ln := range lanesOf(pl.ports[d.Index]) {
+			want := ""
+			if d.EgressKbps > 0 {
+				want = egressSched(d.EgressKbps)
+				used[want] = true
+				if pl.sim.pf.sched[want] != egressPIR(d.EgressKbps) {
+					name, pir := want, egressPIR(d.EgressKbps)
+					pl.add(d.Index, fmt.Sprintf("sonic-db-cli CONFIG_DB hset %s meter_type bytes pir %s pbs %s", sshrun.ShellQuote("SCHEDULER|"+name), pir, egressPBS(d.EgressKbps)), func(s *swState) { s.pf.sched[name] = pir })
+				}
+			}
+			have := pl.sim.pf.qos[ln]
+			if have == want || (want == "" && !strings.HasPrefix(have, egressPrefix)) {
+				continue
+			}
+			lane, key := ln, sshrun.ShellQuote("PORT_QOS_MAP|"+ln)
+			if want == "" {
+				pl.add(d.Index, "sonic-db-cli CONFIG_DB hdel "+key+" scheduler", func(s *swState) { delete(s.pf.qos, lane) })
+				continue
+			}
+			w := want
+			pl.add(d.Index, "sonic-db-cli CONFIG_DB hset "+key+" scheduler "+w, func(s *swState) { s.pf.qos[lane] = w })
+		}
+	}
+	// Profiles nothing names any more go after the ports moved off them.
+	for _, ln := range keysOf(pl.sim.pf.qos) {
+		used[pl.sim.pf.qos[ln]] = true
+	}
+	for _, name := range keysOf(pl.sim.pf.sched) {
+		if used[name] {
+			continue
+		}
+		n := name
+		pl.add(0, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote("SCHEDULER|"+n), func(s *swState) { delete(s.pf.sched, n) })
+	}
+}
+
+func (pl *plan) lldpMED(ds []devicemodel.PortDesired) {
+	for _, d := range ds {
+		on := d.LLDPMED == nil || *d.LLDPMED
+		for _, ln := range lanesOf(pl.ports[d.Index]) {
+			if pl.sim.pf.med[ln] == on {
+				continue
+			}
+			lane := ln
+			if on {
+				pl.add(d.Index, medTLV(lane), func(s *swState) { s.pf.med[lane] = true })
+			} else {
+				pl.add(d.Index, medUnTLV(lane), func(s *swState) { delete(s.pf.med, lane) })
+			}
+		}
+	}
+}
+
+func sameSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
+}
+
+func keysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// readBackPortFeat fills the ports' read-side settings from portFeat.
+func readBackPortFeat(st *swState, p *devicemodel.Port, macsByIface map[string][]string) {
+	if st == nil || !st.pf.known {
+		return
+	}
+	ifs := lanesOf(*p)
+	target := ifs[0]
+	if pc := st.lagOf(target); pc != "" {
+		target = pc
+	}
+	p.Isolated = st.pf.iso[target]
+	learn := st.field(target, "learn_mode")
+	if strings.HasPrefix(target, "PortChannel") {
+		learn = st.lagLearn[target]
+	}
+	if learn == learnDrop {
+		p.PortSecurity = true
+		p.AllowedMACs = macsByIface[target]
+	}
+	if n, ok := strings.CutPrefix(st.pf.qos[ifs[0]], egressPrefix); ok {
+		p.EgressKbps = atoi(n)
+	}
+	if st.pf.medKnown {
+		p.LLDPMEDOff = !st.pf.med[ifs[0]]
+	}
+}
+
+// staticMACs groups portFeat's static entries by port, each MAC once.
+func staticMACs(f portFeat) map[string][]string {
+	seen := map[string]map[string]bool{}
+	for k, port := range f.fdb {
+		_, mac, ok := strings.Cut(k, ":")
+		if !ok {
+			continue
+		}
+		if seen[port] == nil {
+			seen[port] = map[string]bool{}
+		}
+		seen[port][mac] = true
+	}
+	out := map[string][]string{}
+	for port, m := range seen {
+		out[port] = keysOf(m)
+	}
+	return out
+}
+
+// heldLearn is a learn_mode row a breakout takes out of CONFIG_DB and puts
+// back (breakout.go); lane is "" for a PortChannel's.
+type heldLearn struct{ key, lane, mode string }
+
+func (pl *plan) learnModesHeld() []heldLearn {
+	var out []heldLearn
+	for _, ln := range keysOf(pl.sim.port) {
+		if m := pl.sim.port[ln]["learn_mode"]; m != "" {
+			out = append(out, heldLearn{key: "PORT|" + ln, lane: ln, mode: m})
+		}
+	}
+	for _, pc := range keysOf(pl.sim.lagLearn) {
+		out = append(out, heldLearn{key: "PORTCHANNEL|" + pc, mode: pl.sim.lagLearn[pc]})
+	}
+	return out
+}

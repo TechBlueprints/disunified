@@ -92,6 +92,7 @@ func lanesOf(p devicemodel.Port) []string {
 // newPlan diffs desired against the collector's state without writing;
 // controllerOnly leaves out the module-driven writes (plan.controllerOnly).
 func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
+	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
 	c.mu.Unlock()
@@ -146,6 +147,7 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 	pl.lagJoins(ds)
 	pl.mirrorAdds(ds)
 	pl.vlanMTUs(ds)
+	pl.portFeatures(ds, caps)
 	return pl, nil
 }
 

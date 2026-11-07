@@ -176,6 +176,14 @@ section("crm_acl", "COUNTERS_DB", "CRM:ACL_STATS:INGRESS:*", "CRM:ACL_TABLE_STAT
 # CLI and the driver write them. Absent on an image without the series.
 section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP|*", "L2MC_STATIC_MEMBER|*", "L2MC_MROUTER|*")
 
+# Port isolation, port security and egress shaping (docs/drivers/sonic.md
+# 11.11): the driver's isolation group, the provisioned FDB entries (only
+# provisioning writes APPL_DB FDB_TABLE; learnt MACs are STATE_DB's), the
+# driver's shaper profiles and every port's QoS map.
+section("appl_iso", "APPL_DB", "ISOLATION_GROUP_TABLE:DUI_*")
+section("appl_fdb", "APPL_DB", "FDB_TABLE:*")
+section("cfg_qos", "CONFIG_DB", "SCHEDULER|DUI_*", "PORT_QOS_MAP|*")
+
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the
 # VS): "no", or its interfaces block reduced to what breakout needs -- each

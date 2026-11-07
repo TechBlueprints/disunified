@@ -340,7 +340,21 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			pl.note("port %d: eth0 has an address (MGMT_INTERFACE) and no MGMT_PORT row, which the breakout's config validation needs; adding the row", d.Index)
 			write(d.Index, "sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0 admin_status up", func(s *swState) { s.mgmtPortMissing = false })
 		}
+		// learn_mode is not in sonic-port.yang or sonic-portchannel.yang, so
+		// port security's rows would fail the same whole-config check: they
+		// leave CONFIG_DB for the breakout and come back after it. The ASIC
+		// keeps dropping meanwhile (portmgrd passes only fields that remain).
+		held := pl.learnModesHeld()
+		for _, h := range held {
+			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote(h.key)+" learn_mode", nil)
+		}
 		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
+		for _, h := range held {
+			if h.lane != "" && pl.sim.port[h.lane] == nil {
+				continue // a lane the breakout replaced; its children get theirs below
+			}
+			write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote(h.key)+" learn_mode "+h.mode, nil)
+		}
 		port := pl.ports[d.Index]
 		port.Interfaces = pl.sim.cagePorts(idx)
 		port.IfName = port.Interfaces[0]
