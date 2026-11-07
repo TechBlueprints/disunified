@@ -864,7 +864,7 @@ func (l *Loop) warnUnsupported(ver, text string) {
 			break
 		}
 		if p := cfg.Ports[idx]; p.LLDPMED != nil && !*p.LLDPMED {
-			l.cfg.Logger.Printf("[%s] NOTE: LLDP-MED disabled on port %d in the controller; EOS 4.26 has no per-port LLDP-MED toggle, left as is", l.desc.MAC, idx)
+			l.cfg.Logger.Printf("[%s] NOTE: LLDP-MED disabled on port %d in the controller; this switch has no per-port LLDP-MED toggle, left as is", l.desc.MAC, idx)
 			break
 		}
 	}
