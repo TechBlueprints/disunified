@@ -288,7 +288,7 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	// Claimed from the switch: no FEATURE|stp on a community image, so no
 	// STP claims; FRR runs (FEATURE|bgp enabled), so L3 routing.
 	want := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8,
-		L3Routing: true, L3Interfaces: l3Interfaces, StaticRoutes: l3Routes, BGP: true, OSPF: true}
+		L3Routing: true, L3Interfaces: l3Interfaces, StaticRoutes: l3Routes, BGP: true}
 	if got := c.Capabilities(); got != want {
 		t.Errorf("capabilities = %+v, want %+v", got, want)
 	}

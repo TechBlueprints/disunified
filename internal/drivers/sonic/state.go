@@ -124,6 +124,12 @@ type swState struct {
 	dhcpd      map[string]dhcpdUnit
 	dhcpdKnown bool
 	l3Hop      string
+
+	// BGP (bgp.go, §11.14): the top-level objects bgpd runs (collect.py's
+	// frr_bgp: "router bgp 65010", "route-map X", ...); frrKnown false on a
+	// capture without the section or when bgpd could not be read.
+	frrKnown bool
+	frrBGP   map[string]bool
 }
 
 // dhcpdUnit is one routed interface's DHCP server: its unit's state
@@ -164,6 +170,15 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		for _, line := range strings.Split(body, "\n") {
 			if f := strings.Fields(line); len(f) == 3 {
 				s.dhcpd[f[0]] = dhcpdUnit{active: f[1], sum: f[2]}
+			}
+		}
+	}
+	s.frrBGP = map[string]bool{}
+	if body, ok := sec["frr_bgp"]; ok && strings.TrimSpace(body) != "error" {
+		s.frrKnown = true
+		for _, line := range strings.Split(body, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				s.frrBGP[line] = true
 			}
 		}
 	}
@@ -368,6 +383,7 @@ func copyFields(f map[string]string) map[string]string {
 func (s *swState) clone() *swState {
 	c := &swState{
 		vlanRelay: map[int][]string{}, dhcpd: map[string]dhcpdUnit{}, dhcpdKnown: s.dhcpdKnown, l3Hop: s.l3Hop, bgp: s.bgp,
+		frrKnown: s.frrKnown, frrBGP: copySet(s.frrBGP),
 		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},

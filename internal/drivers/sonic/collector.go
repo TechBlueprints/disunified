@@ -92,6 +92,11 @@ type Collector struct {
 	// l3 is the routing the last push asked for (ApplyDevice), the
 	// reconcile's target; nil before the first push.
 	l3 *devicemodel.DeviceDesired
+	// managedBGP is the BGP file the driver loaded into FRR and the
+	// objects it added (bgp.go); bgp the BGP router the last push asked
+	// for, nil before the first push.
+	managedBGP bgpManaged
+	bgp        *devicemodel.DeviceDesired
 
 	zones []zone // the switch's time zones and their POSIX rules, read once per run (zones.go)
 
@@ -241,7 +246,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	// the ASIC only through bgpcfgd and zebra.
 	if st != nil && st.bgpOn() {
 		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, l3Interfaces, l3Routes
-		caps.BGP, caps.OSPF = true, true
+		caps.BGP = true
 	}
 	return caps
 }

@@ -120,3 +120,25 @@ func (l *Loop) noteL3(notes []string) {
 		l.cfg.Logger.Printf("[%s] L3 routing: %s", l.desc.MAC, note)
 	}
 }
+
+// desiredBGP fills the switch's BGP router from the push (switch.bgp.1.*,
+// docs/drivers/sonic.md §11.14): the uploaded FRR file while the router is
+// enabled, nothing when it is off or the push names none. Every push to a
+// switch claiming L3 routing carries switch.routing_enabled, so a push with
+// it and no switch.bgp means no BGP router. A file that does not decode
+// leaves the device's BGP alone.
+func desiredBGP(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []string) {
+	b := cfg.BGP
+	if b == nil {
+		d.BGPSet = cfg.Routing != nil
+		return nil
+	}
+	if b.DecodeErr != nil {
+		return []string{fmt.Sprintf("BGP: the configuration file is not base64 (%v); the switch's BGP left as it is", b.DecodeErr)}
+	}
+	d.BGPSet = true
+	if b.Enabled {
+		d.BGPConfig = b.Config
+	}
+	return nil
+}

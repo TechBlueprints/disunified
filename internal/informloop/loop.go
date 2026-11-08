@@ -837,6 +837,9 @@ var unsupportedFeatures = map[string]string{
 	"switch.dot1x":              "802.1X",
 	"switch.dhcp_snoop":         "DHCP snooping (rogue DHCP server detection)",
 	"switch.routing_interface.": "L3 routing (a network routed on this switch)",
+	"switch.bgp.":               "BGP",
+	"switch.ospf.":              "OSPF",
+	".ospf":                     "OSPF",
 }
 
 func (l *Loop) warnUnsupported(ver, text string) {
@@ -849,7 +852,7 @@ func (l *Loop) warnUnsupported(ver, text string) {
 	}
 	if c, ok := deviceAs[devicemodel.Capable](l); ok {
 		caps := c.Capabilities()
-		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity, "switch.routing_interface.": caps.L3Routing} {
+		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity, "switch.routing_interface.": caps.L3Routing, "switch.bgp.": caps.BGP, "switch.ospf.": caps.OSPF, ".ospf": caps.OSPF} {
 			if on {
 				delete(feats, key)
 			}
@@ -885,7 +888,11 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 	}
 	l.noteHeldACLs(desiredACLs(cfg, &d))
 	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().L3Routing {
-		l.noteL3(desiredL3(cfg, &d))
+		notes := desiredL3(cfg, &d)
+		if c.Capabilities().BGP {
+			notes = append(notes, desiredBGP(cfg, &d)...)
+		}
+		l.noteL3(notes)
 	}
 	if l.cfg.ControlHostname {
 		d.Hostname = cfg.Hostname

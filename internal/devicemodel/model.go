@@ -169,6 +169,13 @@ type DeviceDesired struct {
 	L3Set        bool
 	L3Interfaces []L3Interface
 	StaticRoutes []StaticRoute
+
+	// BGPSet: the push said whether the switch runs a BGP router; false
+	// leaves the device's BGP alone. BGPConfig is the operator's FRR bgpd
+	// configuration file, applied whole ("" with BGPSet = no BGP: the router
+	// is off or gone). Read by a driver claiming Capabilities.BGP.
+	BGPSet    bool
+	BGPConfig string
 }
 
 // L3Interface is one network the switch routes: its own address on the
