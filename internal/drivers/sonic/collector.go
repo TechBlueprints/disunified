@@ -246,7 +246,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	// the ASIC only through bgpcfgd and zebra.
 	if st != nil && st.bgpOn() {
 		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, l3Interfaces, l3Routes
-		caps.BGP = true
+		caps.BGP, caps.OSPF = true, true
 	}
 	return caps
 }
