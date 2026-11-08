@@ -166,6 +166,18 @@ partner's system id (`partner_system_id`) is not reported: it needs `show
 lacp neighbor` captured on 4.26.14M first. A PR needs that capture and a
 live aggregate's `lacp_state` in the controller's record.
 
+**Built, untested live (2026-11-07): Fan Mode** through the device's
+`fan_mode: default | quiet` (the controller keeps Fan Mode only for a
+gateway, so no switch gets it from the UI). Default is EOS's automatic
+control (`no environment fan-speed`). Quiet is `environment fan-speed
+override 30`, a fixed speed: EOS 4.26 has no fan floor that its thermal
+control can raise, and 30 % is the lowest override in Arista's manual.
+Fixture- and loop-tested over the auto capture; the override's read-back
+(`overrideFanSpeed` 30), its 4.26.14M syntax and range, and the
+temperatures under it wait for the switch's return
+([`drivers/arista-eos.md`](drivers/arista-eos.md) §8). A PR for another
+model needs its `show system environment cooling` under an override.
+
 ---
 
 ## `apc-pdu`, `apc-ups`, `apc-backups` — APC power devices

@@ -179,3 +179,25 @@ func TestChildren(t *testing.T) {
 		}
 	}
 }
+
+func TestFanMode(t *testing.T) {
+	for _, tc := range []struct {
+		v  string
+		ok bool
+	}{{"", true}, {"quiet", true}, {"Default", true}, {"silent", false}} {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "c.yaml")
+		body := "controller:\n  host: 192.0.2.1\ndevices:\n  - name: sw\n    driver: sonic\n    ssh: admin@192.0.2.2\n    fan_mode: " + tc.v + "\n"
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Load(p)
+		if (err == nil) != tc.ok {
+			t.Errorf("fan_mode %q: err %v, want ok=%v", tc.v, err, tc.ok)
+			continue
+		}
+		if err == nil && f.Devices[0].FanMode != tc.v {
+			t.Errorf("fan_mode %q loaded as %q", tc.v, f.Devices[0].FanMode)
+		}
+	}
+}

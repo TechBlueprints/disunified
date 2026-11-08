@@ -33,6 +33,9 @@ devices:                             # "switches:" is still accepted (the pre-re
       #                              # snooping, NTP, the remote syslog host, the hostname, SSH keys,
       #                              # SNMP and Restart (a real reload) -- the device's own settings for
       #                              # them are replaced. A driver applies what its device can take.
+    # fan_mode: quiet                # default | quiet, for a driver that can set its fans (sonic on a DX010,
+    #                                # arista-eos); unset leaves them alone. A per-device setting: the controller
+    #                                # keeps Fan Mode only for a gateway, so a switch gets no UI for it.
     # reply_log:                     # every controller reply, one JSON line each: inform-log/<name>/<mac>.ndjson
     #   max_size: 8MB                # the default cap; past it the file moves to <mac>.ndjson.1 (.1 -> .2 ...)
     #                                # and a fresh one starts. "512KB", "1GB", bytes, or "off" (no cap)

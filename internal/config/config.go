@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
 // File is the whole YAML document.
@@ -67,6 +69,14 @@ type Device struct {
 	Firmware string `yaml:"firmware"`
 
 	Control Control `yaml:"control"`
+
+	// FanMode is the device's fan mode, "default" or "quiet", for a driver
+	// that can set it (devicemodel.FanModeController); unset leaves the
+	// fans as the device has them. A per-device setting because the
+	// controller (Network 10.6.109) keeps Fan Mode only for a gateway:
+	// a switch's sys_fan_mode is never stored, so the UI offers no Fan Mode
+	// and pushes no system.fan.mode for it (docs/drivers/sonic.md §11.12).
+	FanMode string `yaml:"fan_mode"`
 
 	// ReplyLog caps this device's reply log, inform-log/<name>/<mac>.ndjson.
 	ReplyLog ReplyLog `yaml:"reply_log"`
@@ -233,6 +243,11 @@ func Load(path string) (*File, error) {
 		}
 		if s.Model == "" {
 			s.Model = "auto"
+		}
+		if s.FanMode != "" {
+			if _, ok := devicemodel.ParseFanMode(s.FanMode); !ok {
+				return nil, fmt.Errorf("%s: device %q: fan_mode %q: must be \"default\" or \"quiet\"", path, s.Name, s.FanMode)
+			}
 		}
 		if s.Control.ApplyTimeout != "" {
 			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {

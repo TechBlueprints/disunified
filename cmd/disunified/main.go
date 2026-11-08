@@ -203,9 +203,10 @@ type options struct {
 	controlOutlets                             string
 	controlNUT                                 bool
 	allowInitialChanges, noSeed                bool
-	applyTimeout                               time.Duration // 0 = the loop's default
-	recordMaxSize                              int64         // 0 = the loop's default (8 MB), -1 = no cap
-	recordKeep                                 int           // 0 = the loop's default (3)
+	applyTimeout                               time.Duration       // 0 = the loop's default
+	fanMode                                    devicemodel.FanMode // config fan_mode; "" = leave the fans alone
+	recordMaxSize                              int64               // 0 = the loop's default (8 MB), -1 = no cap
+	recordKeep                                 int                 // 0 = the loop's default (3)
 	unifiURL, unifiSite, unifiKey              string
 	provision                                  bool
 	collectOnce                                bool
@@ -261,6 +262,7 @@ func configOptions(f *config.File, sw config.Device) options {
 		controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
 		allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,
 		applyTimeout:  parseApplyTimeout(sw.Control.ApplyTimeout),
+		fanMode:       fanModeOf(sw.FanMode),
 		recordMaxSize: sw.ReplyLog.Bytes(), recordKeep: sw.ReplyLog.Keep,
 		unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 		logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
@@ -639,6 +641,7 @@ func runOne(ctx context.Context, o options) error {
 		NUT:           nutApplier(nut),
 		Interval:      o.interval,
 		ApplyTimeout:  o.applyTimeout,
+		FanMode:       o.fanMode,
 		RecordDir:     o.recordDir,
 		RecordMaxSize: o.recordMaxSize,
 		RecordKeep:    o.recordKeep,
@@ -792,6 +795,12 @@ func probeAddr(informURL string) string {
 
 // hostOf extracts an IP literal from a switch URL or user@host target; ""
 // when the host is a name (the operator then passes -ip).
+// fanModeOf reads a config fan_mode (validated by config.Load); "" = unset.
+func fanModeOf(s string) devicemodel.FanMode {
+	m, _ := devicemodel.ParseFanMode(s)
+	return m
+}
+
 // parseApplyTimeout reads control.apply_timeout (validated by config.Load);
 // "" leaves the loop's default.
 func parseApplyTimeout(s string) time.Duration {
