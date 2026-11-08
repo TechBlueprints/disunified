@@ -887,7 +887,13 @@ type Capabilities struct {
 	L3Routing    bool
 	L3Interfaces int
 	StaticRoutes int
-	SNMP         bool // DeviceController honours SNMPCommunity
+	// BGP: the controller's BGP router for this switch (an uploaded FRR
+	// configuration, DeviceDesired.BGP) is honoured.
+	BGP bool
+	// OSPF: the controller's OSPF router for this switch
+	// (DeviceDesired.OSPF) is honoured.
+	OSPF bool
+	SNMP bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int
