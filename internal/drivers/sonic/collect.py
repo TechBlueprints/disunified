@@ -258,6 +258,22 @@ try:
 except Exception:
     sys.stdout.write("error\n")
 
+# The driver's ospfd (ospf.go, docs/drivers/sonic.md 11.14): "running" when
+# ospfd runs in the bgp container, "conf <sha256>" of the driver's file
+# (never its content: it holds the authentication keys); "error" when the
+# container cannot be read.
+s("frr_ospf")
+try:
+    _r = subprocess.run(["docker", "exec", "bgp", "sh", "-c",
+                         "pgrep -x ospfd >/dev/null && echo running; "
+                         "f=/etc/frr/disunified-ospfd.conf; [ -f $f ] && echo conf $(sha256sum < $f | cut -d' ' -f1); true"],
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15)
+    if _r.returncode != 0:
+        raise IOError("docker exec")
+    sys.stdout.write(_r.stdout.decode("utf-8", "replace"))
+except Exception:
+    sys.stdout.write("error\n")
+
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the
 # VS): "no", or its interfaces block reduced to what breakout needs -- each

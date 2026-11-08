@@ -42,6 +42,9 @@ type FixtureRunner struct {
 	// and changes nothing.
 	BGPFiles  []string
 	BGPRefuse string
+	// OSPFFiles are the ospfd files the driver started ospfd on (ospf.go),
+	// as sent; the capture's frr_ospf section follows each start and stop.
+	OSPFFiles []string
 	// DHCPdConf is each interface's udhcpd config the driver's DHCP server
 	// script last wrote (l3.go).
 	DHCPdConf map[string]string
@@ -210,6 +213,15 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.FanScripts = append(f.FanScripts, stdin)
 		return "", f.applyFan(stdin)
+	case command == ospfStartCommand:
+		f.Commands = append(f.Commands, command)
+		f.OSPFFiles = append(f.OSPFFiles, stdin)
+		f.UseSection("frr_ospf", "running\nconf "+sha256Hex(stdin))
+		return "", nil
+	case command == ospfStopCommand:
+		f.Commands = append(f.Commands, command)
+		f.UseSection("frr_ospf", "")
+		return "", nil
 	case command == bgpCommand:
 		f.Commands = append(f.Commands, command)
 		f.BGPFiles = append(f.BGPFiles, stdin)

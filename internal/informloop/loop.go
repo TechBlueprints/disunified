@@ -898,6 +898,9 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		if c.Capabilities().BGP {
 			notes = append(notes, desiredBGP(cfg, &d)...)
 		}
+		if c.Capabilities().OSPF {
+			notes = append(notes, desiredOSPF(cfg, &d)...)
+		}
 		l.noteL3(notes)
 	}
 	if l.cfg.ControlHostname {

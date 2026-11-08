@@ -98,6 +98,9 @@ type Collector struct {
 	// for, nil before the first push.
 	managedBGP bgpManaged
 	bgp        *devicemodel.DeviceDesired
+	// ospf is the OSPF router the last push asked for (ospf.go), nil
+	// before the first push.
+	ospf *devicemodel.DeviceDesired
 
 	zones []zone // the switch's time zones and their POSIX rules, read once per run (zones.go)
 

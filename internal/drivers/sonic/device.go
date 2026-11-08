@@ -246,6 +246,12 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if err != nil {
 		return n, err
 	}
+	c.ospfSet(d)
+	m, err = c.applyOSPF(ctx)
+	n += m
+	if err != nil {
+		return n, err
+	}
 	c.mu.Lock()
 	st = c.state
 	c.mu.Unlock()

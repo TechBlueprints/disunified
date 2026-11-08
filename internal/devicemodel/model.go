@@ -177,6 +177,51 @@ type DeviceDesired struct {
 	// is off or gone). Read by a driver claiming Capabilities.BGP.
 	BGPSet    bool
 	BGPConfig string
+
+	// OSPFSet: the push said whether the switch runs an OSPF router; false
+	// leaves the device's OSPF alone. OSPF nil with OSPFSet = no OSPF. Read
+	// by a driver claiming Capabilities.OSPF.
+	OSPFSet bool
+	OSPF    *OSPFRouter
+}
+
+// OSPFRouter is the switch's OSPF router: its id, whether it announces its
+// default route, which routes it redistributes ("" = none, "e1"/"e2" = as
+// external routes of that metric type), the areas and the routed networks
+// in them.
+type OSPFRouter struct {
+	RouterID        string
+	AnnounceDefault bool
+	RedistStatic    string
+	RedistConnected string
+	Areas           []OSPFArea
+	Interfaces      []OSPFInterface
+}
+
+// OSPFArea is an area id (dotted) and its type: "normal", "stub", "nssa".
+type OSPFArea struct {
+	ID   string
+	Type string
+}
+
+// OSPFInterface is one routed network in an area, by its VLAN (UniFi's id).
+// Auth is "" (none), "plaintext" (Password) or "md5" (MD5Keys).
+type OSPFInterface struct {
+	Name           string // the network's name, for logs
+	VLAN           int
+	Area           string
+	Passive        bool
+	Cost, Priority int
+	Hello, Dead    int // seconds
+	Auth           string
+	Password       string
+	MD5Keys        []OSPFKey
+}
+
+// OSPFKey is one MD5 key: its id and the key.
+type OSPFKey struct {
+	ID  int
+	Key string
 }
 
 // L3Interface is one network the switch routes: its own address on the

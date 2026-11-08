@@ -142,3 +142,61 @@ func desiredBGP(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []str
 	}
 	return nil
 }
+
+// desiredOSPF fills the switch's OSPF router from the push (switch.ospf.*
+// and each routed network's ospf.*, docs/drivers/sonic.md §11.14). A push
+// with switch.routing_enabled and no switch.ospf means no OSPF router.
+func desiredOSPF(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []string) {
+	o := cfg.OSPF
+	if o == nil {
+		d.OSPFSet = cfg.Routing != nil
+		return nil
+	}
+	for _, u := range o.Unmodelled {
+		notes = append(notes, fmt.Sprintf("OSPF: %s not translated", u))
+	}
+	redist := func(what, v string) string {
+		switch v {
+		case "e1", "e2":
+			return v
+		case "none", "":
+			return ""
+		}
+		notes = append(notes, fmt.Sprintf("OSPF: %s redistribution %q not translated; not redistributed", what, v))
+		return ""
+	}
+	r := &devicemodel.OSPFRouter{RouterID: o.RouterID, AnnounceDefault: o.AnnounceDefault,
+		RedistStatic: redist("static", o.RedistStatic), RedistConnected: redist("connected", o.RedistConnected)}
+	for _, a := range o.Areas {
+		r.Areas = append(r.Areas, devicemodel.OSPFArea{ID: a.ID, Type: a.Type})
+	}
+	if cfg.Routing != nil {
+		for _, ri := range cfg.Routing.Interfaces {
+			oi := ri.OSPF
+			if oi == nil {
+				continue
+			}
+			for _, u := range oi.Unmodelled {
+				notes = append(notes, fmt.Sprintf("OSPF on %q: %s not translated", ri.Name, u))
+			}
+			in := devicemodel.OSPFInterface{Name: ri.Name, VLAN: ri.VLAN, Area: oi.Area, Passive: oi.Passive,
+				Cost: oi.Cost, Priority: oi.Priority, Hello: oi.Hello, Dead: oi.Dead}
+			switch oi.Auth {
+			case "none", "":
+			case "plaintext":
+				in.Auth, in.Password = "plaintext", oi.Password
+			case "md5":
+				in.Auth = "md5"
+				for _, k := range oi.MD5Keys {
+					in.MD5Keys = append(in.MD5Keys, devicemodel.OSPFKey{ID: k.ID, Key: k.Key})
+				}
+			default:
+				notes = append(notes, fmt.Sprintf("OSPF on %q: authentication %q not translated; the network left out of OSPF", ri.Name, oi.Auth))
+				continue
+			}
+			r.Interfaces = append(r.Interfaces, in)
+		}
+	}
+	d.OSPFSet, d.OSPF = true, r
+	return notes
+}

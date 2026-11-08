@@ -96,6 +96,9 @@ type Config struct {
 	// docs/fixtures/controller-10.6.109/system_cfg-dx010-bgp-*.txt). nil
 	// when the push carries no switch.bgp key: no BGP router for the switch.
 	BGP *BGP
+	// OSPF is switch.ospf.*, nil when the push carries no switch.ospf.id:
+	// no OSPF router for the switch.
+	OSPF *OSPF
 }
 
 // BGP is the controller's BGP router for a switch. UniFi has no BGP form
@@ -136,9 +139,55 @@ type RoutingInterface struct {
 	DHCPServer   RoutingDHCPServer
 	Relays       []string // dhcp_relay.K.ip, in slot order
 	Routes       []Route  // route.K, in slot order
+	// OSPF is ospf.*: the network's interface in the switch's OSPF router
+	// (captured 2026-11-07, system_cfg-dx010-ospf-*.txt); nil when the
+	// network is in no OSPF area.
+	OSPF *OSPFInterface
 	// Unmodelled: the keys after switch.routing_interface.N. no capture
 	// has shown, as key=value.
 	Unmodelled []string
+}
+
+// OSPF is switch.ospf.*: the OSPF router the operator set up for this
+// switch under Settings -> Routing -> OSPF, pushed only to a device claiming
+// SWITCH_CAP_OSPF (feature_caps2 4; captured 2026-11-07 on 10.6.109,
+// docs/fixtures/controller-10.6.109/system_cfg-dx010-ospf-*.txt). The
+// redistributions are "e1", "e2" (the external metric type) or "none".
+// Each routed network in an area carries its interface settings as
+// RoutingInterface.OSPF.
+type OSPF struct {
+	RouterID        string
+	AnnounceDefault bool
+	RedistStatic    string
+	RedistConnected string
+	Areas           []OSPFArea
+	Unmodelled      []string
+}
+
+// OSPFArea is switch.ospf.area.N: the area id (dotted) and its type
+// ("normal", "stub", "nssa").
+type OSPFArea struct {
+	ID   string
+	Type string
+}
+
+// OSPFInterface is switch.routing_interface.N.ospf.*. Auth is "none",
+// "plaintext" (Password) or "md5" (MD5Keys).
+type OSPFInterface struct {
+	Area           string
+	Passive        bool
+	Cost, Priority int
+	Hello, Dead    int
+	Auth           string
+	Password       string
+	MD5Keys        []OSPFKey
+	Unmodelled     []string
+}
+
+// OSPFKey is one ospf.md5_keys.K: the key id and the key.
+type OSPFKey struct {
+	ID  int
+	Key string
 }
 
 // RoutingDHCPServer is switch.routing_interface.N.dhcp_server.*.
@@ -486,6 +535,8 @@ var (
 	riRouteRe  = regexp.MustCompile(`^route\.(\d+)\.(\w+)$`)
 	riRelayRe  = regexp.MustCompile(`^dhcp_relay\.(\d+)\.(\w+)$`)
 	riDNSRe    = regexp.MustCompile(`^dhcp_server\.dns\.(\d+)$`)
+	riMD5Re    = regexp.MustCompile(`^md5_keys\.(\d+)\.(\w+)$`)
+	ospfAreaRe = regexp.MustCompile(`^switch\.ospf\.area\.(\d+)\.(\w+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
 )
 
@@ -518,6 +569,7 @@ func Parse(text string) *Config {
 		routes map[int]*Route
 		relays map[int]string
 		dns    map[int]string
+		md5    map[int]*OSPFKey
 	}
 	routing := map[int]*riEntry{}
 	syslogEnabled, syslogIP, syslogPort := false, "", ""
@@ -601,7 +653,7 @@ func Parse(text string) *Config {
 			n, _ := strconv.Atoi(m[1])
 			ri := routing[n]
 			if ri == nil {
-				ri = &riEntry{routes: map[int]*Route{}, relays: map[int]string{}, dns: map[int]string{}}
+				ri = &riEntry{routes: map[int]*Route{}, relays: map[int]string{}, dns: map[int]string{}, md5: map[int]*OSPFKey{}}
 				routing[n] = ri
 			}
 			if r := riRouteRe.FindStringSubmatch(m[2]); r != nil {
@@ -641,6 +693,51 @@ func Parse(text string) *Config {
 			if r := riDNSRe.FindStringSubmatch(m[2]); r != nil {
 				rn, _ := strconv.Atoi(r[1])
 				ri.dns[rn] = v
+				continue
+			}
+			if f, ok := strings.CutPrefix(m[2], "ospf."); ok {
+				if ri.OSPF == nil {
+					ri.OSPF = &OSPFInterface{}
+				}
+				o := ri.OSPF
+				atoi := func() int { i, _ := strconv.Atoi(v); return i }
+				if r := riMD5Re.FindStringSubmatch(f); r != nil {
+					kn, _ := strconv.Atoi(r[1])
+					key := ri.md5[kn]
+					if key == nil {
+						key = &OSPFKey{}
+						ri.md5[kn] = key
+					}
+					switch r[2] {
+					case "id":
+						key.ID = atoi()
+					case "password":
+						key.Key = v
+					default:
+						o.Unmodelled = append(o.Unmodelled, f+"="+v)
+					}
+					continue
+				}
+				switch f {
+				case "area":
+					o.Area = v
+				case "passive":
+					o.Passive = v == "true"
+				case "cost":
+					o.Cost = atoi()
+				case "priority":
+					o.Priority = atoi()
+				case "hello_interval":
+					o.Hello = atoi()
+				case "dead_interval":
+					o.Dead = atoi()
+				case "authentication_type":
+					o.Auth = v
+				case "password":
+					o.Password = v
+				default:
+					o.Unmodelled = append(o.Unmodelled, f+"="+v)
+				}
 				continue
 			}
 			switch m[2] {
@@ -1081,6 +1178,45 @@ func Parse(text string) *Config {
 	for _, n := range ikeys {
 		c.IPACLs = append(c.IPACLs, *ipACLs[n])
 	}
+	if id, ok := c.Raw["switch.ospf.id"]; ok {
+		o := &OSPF{RouterID: id}
+		areas := map[int]*OSPFArea{}
+		for k, v := range c.Raw {
+			switch k {
+			case "switch.ospf.id":
+			case "switch.ospf.announce_default_route":
+				o.AnnounceDefault = v == "true"
+			case "switch.ospf.redistribute_static_route":
+				o.RedistStatic = v
+			case "switch.ospf.redistribute_connected_route":
+				o.RedistConnected = v
+			default:
+				if m := ospfAreaRe.FindStringSubmatch(k); m != nil {
+					n, _ := strconv.Atoi(m[1])
+					a := areas[n]
+					if a == nil {
+						a = &OSPFArea{}
+						areas[n] = a
+					}
+					switch m[2] {
+					case "number":
+						a.ID = v
+					case "type":
+						a.Type = v
+					default:
+						o.Unmodelled = append(o.Unmodelled, strings.TrimPrefix(k, "switch.ospf.")+"="+v)
+					}
+				} else if strings.HasPrefix(k, "switch.ospf.") {
+					o.Unmodelled = append(o.Unmodelled, strings.TrimPrefix(k, "switch.ospf.")+"="+v)
+				}
+			}
+		}
+		for _, n := range sortedKeys(areas) {
+			o.Areas = append(o.Areas, *areas[n])
+		}
+		sort.Strings(o.Unmodelled)
+		c.OSPF = o
+	}
 	if v, ok := c.Raw["switch.bgp.1.enabled"]; ok {
 		c.BGP = &BGP{Enabled: v == "enabled"}
 		if raw := c.Raw["switch.bgp.1.raw_config_base64"]; raw != "" {
@@ -1107,6 +1243,11 @@ func Parse(text string) *Config {
 			for _, rn := range sortedKeys(ri.dns) {
 				if ri.dns[rn] != "" {
 					ri.DHCPServer.DNS = append(ri.DHCPServer.DNS, ri.dns[rn])
+				}
+			}
+			if ri.OSPF != nil {
+				for _, kn := range sortedKeys(ri.md5) {
+					ri.OSPF.MD5Keys = append(ri.OSPF.MD5Keys, *ri.md5[kn])
 				}
 			}
 			c.Routing.Interfaces = append(c.Routing.Interfaces, ri.RoutingInterface)

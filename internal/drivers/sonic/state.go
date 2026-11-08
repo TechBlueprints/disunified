@@ -130,6 +130,9 @@ type swState struct {
 	// capture without the section or when bgpd could not be read.
 	frrKnown bool
 	frrBGP   map[string]bool
+	// ospf: whether the driver's ospfd runs and its file's sha256
+	// (collect.py's frr_ospf, ospf.go).
+	ospf ospfState
 }
 
 // dhcpdUnit is one routed interface's DHCP server: its unit's state
@@ -173,6 +176,8 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			}
 		}
 	}
+	body, ok := sec["frr_ospf"]
+	s.ospf = parseOSPFSection(body, ok)
 	s.frrBGP = map[string]bool{}
 	if body, ok := sec["frr_bgp"]; ok && strings.TrimSpace(body) != "error" {
 		s.frrKnown = true
@@ -383,7 +388,7 @@ func copyFields(f map[string]string) map[string]string {
 func (s *swState) clone() *swState {
 	c := &swState{
 		vlanRelay: map[int][]string{}, dhcpd: map[string]dhcpdUnit{}, dhcpdKnown: s.dhcpdKnown, l3Hop: s.l3Hop, bgp: s.bgp,
-		frrKnown: s.frrKnown, frrBGP: copySet(s.frrBGP),
+		frrKnown: s.frrKnown, frrBGP: copySet(s.frrBGP), ospf: s.ospf,
 		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},

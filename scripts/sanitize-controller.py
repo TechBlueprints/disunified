@@ -81,6 +81,10 @@ def map_ip(s):
         return s
     if ip.is_loopback or ip.is_multicast or ip.is_unspecified or s.startswith('255.'):
         return s
+    # 0.0.0.0/8 is never a host's address; a dotted id there (an OSPF area,
+    # switch.ospf.area.N.number=0.0.0.1) is kept.
+    if ip.version == 4 and ip in ipaddress.ip_network('0.0.0.0/8'):
+        return s
     for real, test in subnets:
         if ip.version == 4 and ip in real:
             return str(test.network_address + (int(ip) - int(real.network_address)))
