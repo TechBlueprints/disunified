@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 )
@@ -30,6 +31,12 @@ func (f *FixtureRunner) l3Write(w []string) (bool, error) {
 		return true, f.relayWrite(w[3], w[4], w[5:])
 	case len(w) == 5 && w[0] == "python3" && w[1] == "-c" && w[3] == "disunified-dhcpd":
 		return true, f.dhcpdWrite(w[4])
+	case len(w) == 4 && w[0] == "sh" && w[1] == "-c" && w[3] == "disunified-rif-wait":
+		return true, nil // FRR follows CONFIG_DB at once here
+	case len(w) == 6 && w[0] == "config" && w[1] == "interface" && w[2] == "ip" && w[3] == "remove":
+		if why := f.rifBound(w[4], w[5]); why != "" {
+			return true, fmt.Errorf("Error: Cannot remove the last IP entry of interface %s. A static ip route is still bound to the RIF.%s", w[4], why)
+		}
 	case len(w) == 6 && w[0] == "config" && w[1] == "interface" && w[2] == "ip" && w[3] == "add" && strings.HasPrefix(w[4], "Vlan"):
 		if _, ok := f.table("cfg_vlan")["VLAN|"+at(4)]; !ok {
 			return true, fmt.Errorf("Error: Interface name %s is invalid. Please enter a valid interface name!!", at(4))
@@ -160,4 +167,38 @@ func (f *FixtureRunner) dhcpdWrite(arg string) error {
 	}
 	f.UseSection("dhcpd", strings.Join(lines, "\n"))
 	return nil
+}
+
+// rifBound models the CLI's check before it removes an interface's last
+// address: a static route FRR would list through the interface -- one out
+// of it, or via a next hop in its subnet -- refuses the removal. "" when
+// the removal may go ahead.
+func (f *FixtureRunner) rifBound(iface, cidr string) string {
+	var nets []*net.IPNet
+	for k := range f.table("cfg_mgmt") {
+		parts := strings.Split(k, "|")
+		if len(parts) != 3 || parts[1] != iface {
+			continue
+		}
+		if parts[2] != cidr {
+			return "" // not the last address
+		}
+		if _, n, err := net.ParseCIDR(parts[2]); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	for k, r := range f.table("cfg_route") {
+		for _, h := range hopsOf(r) {
+			ip := net.ParseIP(h.nexthop)
+			if h.ifname == iface {
+				return " (" + k + ")"
+			}
+			for _, n := range nets {
+				if ip != nil && n.Contains(ip) {
+					return " (" + k + ")"
+				}
+			}
+		}
+	}
+	return ""
 }

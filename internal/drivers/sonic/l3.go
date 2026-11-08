@@ -366,15 +366,38 @@ type l3Plan struct {
 	notes   []string
 }
 
-func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed) l3Plan {
+func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed) (pl l3Plan) {
 	sim := st.clone()
-	pl := l3Plan{sim: sim}
-	add := func(cmd string, eff func(*swState)) {
-		pl.ops = append(pl.ops, deviceOp{cmd: "sudo " + cmd, logged: "sudo " + cmd, effect: eff})
+	pl = l3Plan{sim: sim}
+	// Three phases (live, 2026-11-07): `config interface ip remove` refuses
+	// the last address of an interface while FRR still lists a static route
+	// through it ("A static ip route is still bound to the RIF"; it greps
+	// `show ip route vrf all static` for the name), and FRR drops a deleted
+	// STATIC_ROUTE row only once bgpcfgd has passed it on. So removals of
+	// routes and relays go first, then a wait until FRR no longer names
+	// each interface losing its address, then those addresses, then
+	// everything added.
+	const (
+		unbind = iota
+		strip
+		build
+	)
+	var phases [3][]deviceOp
+	var stripped []string
+	add := func(phase int, cmd string, eff func(*swState)) {
+		phases[phase] = append(phases[phase], deviceOp{cmd: "sudo " + cmd, logged: "sudo " + cmd, effect: eff})
 		if eff != nil {
 			eff(sim)
 		}
 	}
+	defer func() {
+		pl.ops = append(pl.ops, phases[unbind]...)
+		for _, iface := range stripped {
+			w := rifWait(iface)
+			pl.ops = append(pl.ops, deviceOp{cmd: w, logged: w})
+		}
+		pl.ops = append(append(pl.ops, phases[strip]...), phases[build]...)
+	}()
 	note := func(format string, args ...any) { pl.notes = append(pl.notes, fmt.Sprintf(format, args...)) }
 	ours := map[string]bool{}
 	for _, a := range m.Addrs {
@@ -415,15 +438,18 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		}
 		iface, cidr, _ := strings.Cut(k, "|")
 		key := k
-		add("config interface ip remove "+iface+" "+cidr, func(s *swState) { delete(s.ifaddrs, key) })
+		if !containsString(stripped, iface) {
+			stripped = append(stripped, iface)
+		}
+		add(strip, "config interface ip remove "+iface+" "+cidr, func(s *swState) { delete(s.ifaddrs, key) })
 	}
 	for _, r := range want {
 		if id := r.in.VLAN; id != 1 && !sim.vlans[id] {
-			add("config vlan add "+strconv.Itoa(id), func(s *swState) { s.vlans[id] = true })
+			add(build, "config vlan add "+strconv.Itoa(id), func(s *swState) { s.vlans[id] = true })
 		}
 		if !sim.ifaddrs[r.key] {
 			key := r.key
-			add("config interface ip add "+r.iface+" "+r.in.Address, func(s *swState) { s.ifaddrs[key] = true })
+			add(build, "config interface ip add "+r.iface+" "+r.in.Address, func(s *swState) { s.ifaddrs[key] = true })
 		}
 	}
 	for k := range wantAddr {
@@ -464,7 +490,7 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		}
 		vid := id
 		if len(del) > 0 && sim.vlans[id] {
-			add("config vlan dhcp_relay del "+strconv.Itoa(id)+" "+strings.Join(del, " "), func(s *swState) {
+			add(unbind, "config vlan dhcp_relay del "+strconv.Itoa(id)+" "+strings.Join(del, " "), func(s *swState) {
 				var keep []string
 				for _, x := range s.vlanRelay[vid] {
 					if !containsString(del, x) {
@@ -475,7 +501,7 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 			})
 		}
 		if len(plus) > 0 {
-			add("config vlan dhcp_relay add "+strconv.Itoa(id)+" "+strings.Join(plus, " "), func(s *swState) {
+			add(build, "config vlan dhcp_relay add "+strconv.Itoa(id)+" "+strings.Join(plus, " "), func(s *swState) {
 				s.vlanRelay[vid] = append(s.vlanRelay[vid], plus...)
 			})
 		}
@@ -537,7 +563,7 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		}
 		if _, ok := sim.routes["default|"+p]; ok {
 			prefix := p
-			add("sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote(routeKey(p)), func(s *swState) { delete(s.routes, "default|"+prefix) })
+			add(unbind, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote(routeKey(p)), func(s *swState) { delete(s.routes, "default|"+prefix) })
 		}
 	}
 	for _, p := range sortedKeysOf(rows) {
@@ -547,7 +573,7 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 			continue
 		}
 		prefix := p
-		add(hsetRoute(p, row), func(s *swState) { s.routes["default|"+prefix] = row })
+		add(build, hsetRoute(p, row), func(s *swState) { s.routes["default|"+prefix] = row })
 	}
 	// The default row: the management hops (every hop but the driver's
 	// transit), demoted while a transit carries the default, restored
@@ -581,10 +607,15 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 	}
 	switch {
 	case len(next) == 0 && cur != nil && m.Hop != "":
-		add("sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote(routeKey("0.0.0.0/0")), func(s *swState) { delete(s.routes, "default|0.0.0.0/0") })
+		add(unbind, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote(routeKey("0.0.0.0/0")), func(s *swState) { delete(s.routes, "default|0.0.0.0/0") })
 	case len(next) > 0 && !sameRow(cur, rowOf(next)):
-		row := rowOf(next)
-		add(hsetRoute("0.0.0.0/0", row), func(s *swState) { s.routes["default|0.0.0.0/0"] = row })
+		// The management gateway back on its own goes before a transit
+		// address leaves; the transit hop added waits for its address.
+		row, phase := rowOf(next), build
+		if transit == "" {
+			phase = unbind
+		}
+		add(phase, hsetRoute("0.0.0.0/0", row), func(s *swState) { s.routes["default|0.0.0.0/0"] = row })
 	}
 	sim.l3Hop = pl.managed.Hop
 
@@ -632,6 +663,14 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		delete(sim.dhcpd, i)
 	}
 	return pl
+}
+
+// rifWait waits (up to 30 s, never failing) until FRR lists no static
+// route through iface: the condition `config interface ip remove` checks
+// before it removes an interface's last address.
+func rifWait(iface string) string {
+	script := fmt.Sprintf(`for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" | grep -qw %s || exit 0; sleep 0.5; done; exit 0`, iface)
+	return "sh -c " + sshrun.ShellQuote(script) + " disunified-rif-wait"
 }
 
 func sortedInts(m map[int]bool) []int {

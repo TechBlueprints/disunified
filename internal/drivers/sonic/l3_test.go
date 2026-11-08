@@ -62,14 +62,15 @@ func TestTransitCarriesTheDefaultRoute(t *testing.T) {
 		t.Errorf("the IP Settings apply beside the transit: moved %v, %v; wrote %q", moved, err, r.fr.Commands)
 	}
 
-	// Routing off: the transit hop goes, the management gateway is the
-	// default again at its own distance, and the driver's address goes.
+	// Routing off: the transit hop goes and the management gateway is the
+	// default again at its own distance, then -- once FRR lists no route
+	// through it -- the driver's address goes.
 	r.fr.Commands = nil
 	if _, err := r.c.ApplyDevice(ctx, devicemodel.DeviceDesired{L3Set: true}); err != nil {
 		t.Fatal(err)
 	}
 	want = "sudo sonic-db-cli CONFIG_DB hset 'STATIC_ROUTE|default|0.0.0.0/0' nexthop '" + mgmt + "' ifname '' distance '0' blackhole 'false' nexthop-vrf ''"
-	if got := r.fr.Commands; !containsInOrder(got, "sudo config interface ip remove Vlan4040 198.18.253.2/24", want, save) {
+	if got := r.fr.Commands; !containsInOrder(got, want, rifWait("Vlan4040"), "sudo config interface ip remove Vlan4040 198.18.253.2/24", save) {
 		t.Errorf("routing off wrote\n  %s", strings.Join(got, "\n  "))
 	}
 	if _, err := r.c.Collect(ctx); err != nil {

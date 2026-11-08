@@ -93,7 +93,33 @@ func TestReplaySonicDX010L3(t *testing.T) {
 	}
 	r.cycle("DHCP none")
 
+	// The network removed in the UI: the controller removed its transit
+	// with it and pushed routing off. The routes go, then -- once FRR lists
+	// nothing through them -- the two addresses (the CLI refuses the last
+	// address of an interface a static route still uses; live, 2026-11-07).
+	got = r.push("system_cfg-dx010-l3-5-off.txt", "08a61d94a987a7ca")
+	wantWrites(t, "routing off", got, []string{
+		"sudo sonic-db-cli CONFIG_DB del 'STATIC_ROUTE|default|198.51.100.0/24'",
+		"sudo sonic-db-cli CONFIG_DB del 'STATIC_ROUTE|default|203.0.113.0/25'",
+		"sudo sonic-db-cli CONFIG_DB del 'STATIC_ROUTE|default|203.0.113.128/25'",
+		sonicRIFWait("Vlan3999"),
+		sonicRIFWait("Vlan4040"),
+		"sudo config interface ip remove Vlan3999 198.18.3.1/24",
+		"sudo config interface ip remove Vlan4040 198.18.253.2/24",
+		brkSave,
+		// The VLAN the network left behind (the driver never deletes a
+		// VLAN) takes the ports' MTU, as every VLAN on the switch does
+		// (vlanMTUs; the same write followed live).
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan3999' mtu 1500",
+		brkSave,
+	})
+	r.cycle("routing off")
+
 	if s := r.log.String(); strings.Contains(s, "UNSUPPORTED") || strings.Contains(s, "not translated") {
 		t.Errorf("a routing key was left unhandled:\n%s", s)
 	}
+}
+
+func sonicRIFWait(iface string) string {
+	return `sh -c 'for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" | grep -qw ` + iface + ` || exit 0; sleep 0.5; done; exit 0' disunified-rif-wait`
 }
