@@ -585,6 +585,22 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   rest of a `bash -s` batch and bash exits 0 -- live, 2026-11-07). Fixtures:
   `collect-l3.txt`, `controller-10.6.109/system_cfg-dx010-l3-*.txt`
   (scrubbed with `sanitize-controller.py --subnet`).
+- **BGP (`bgp.go`, `docs/drivers/sonic.md` §11.14, built and verified live
+  on the DX010 2026-11-07).** UniFi's BGP on a switch is the operator's
+  uploaded FRR file (`switch.bgp.1.raw_config_base64`); claimed beside L3
+  routing. Loaded with `docker exec -i bgp sh -c '… mktemp … cat > "$f" &&
+  vtysh -f "$f" …'`: **never `vtysh -f /dev/stdin`** -- FRR 10's vtysh forks
+  a child per daemon and each reads the file, so only the first got it
+  (live: exit 0, bgpd untouched). The driver owns the top-level objects the
+  file opens (`sonic-managed.json` `bgp`), never one bgpd already ran
+  (`LOCAL_VLAN_IPV4_PREFIX` is SONiC's), replaces them whole when the file
+  changes, and loads the file again when collect.py's `frr_bgp` (object
+  names only) lacks one (a bgp container restart renders bgpd from its
+  templates). vtysh exits 2 on a bad line and echoes it: log line numbers
+  only. A refused stanza's note carries its first word (a second after
+  `interface`/`router`/`ip`…): two words would have logged `password <secret>`
+  (caught by the test before any deploy).
+  OSPF is offered (`feature_caps2` 4) but not claimed: no capture yet.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

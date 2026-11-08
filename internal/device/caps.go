@@ -34,13 +34,20 @@ const (
 	swCapFEC           = 65536
 	swCapJumbo         = 524288
 	swCapLoopProtect   = 1048576  // KEEPALIVE_LOOP_PROTECTION: the UI's per-port Loop Protection (switch.port.N.keepalive)
+	swCapBGP           = 33554432 // BGP: Settings -> Routing -> BGP offers the switch as a Device (switch.bgp.1.*)
 	swCapIGMPAdvanced  = 67108864 // IGMP_SNOOPING_ADVANCED: the per-VLAN querier, timers and switch.multicast.* (docs/drivers/sonic.md §8.10)
 )
+
+// switch_caps.feature_caps2 (Network 10.6.109's UI bundle: LINK_DEBOUNCE 1,
+// OSPF 4, PORT_ROUTING 16, POE_STAGING 32, TRUSTED_PORT 64,
+// MAC_TABLE_PRESSURE 128). Sent only when a bit is claimed, so no driver's
+// payload changes without one.
+const swCap2OSPF = 4 // OSPF: Settings -> Routing -> OSPF offers the switch as a Device (switch.ospf.*)
 
 // sys_fan_mode.caps: the fan modes a device can be set to, as the
 // controller's own enum numbers them (DEFAULT 1, QUIET 2; Network 10.6.109,
 // devmgr.g.pLZcbZDS). The controller stores the block only from a gateway's
-// inform, never a switch's (docs/drivers/sonic.md §11.14); it is reported
+// inform, never a switch's (docs/drivers/sonic.md §11.15); it is reported
 // anyway because it is true, in the gateway's shape: caps and the current
 // mode, which the UI reads as sys_fan_mode.mode.
 const (
@@ -287,6 +294,7 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	set(c.EgressRateLimit, swCapEgressRate)
 	set(c.L3Routing, swCapL3Routing)
 	set(c.LoopProtection, swCapLoopProtect)
+	set(c.L3Routing && c.BGP, swCapBGP)
 	set(c.IGMPSnooping && c.IGMPSnoopingAdvanced, swCapIGMPAdvanced)
 	igmp := 0
 	if c.IGMPSnooping && c.IGMPSnoopingAdvanced {
@@ -325,6 +333,9 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	if c.L3Routing {
 		caps["max_l3_intf"] = c.L3Interfaces
 		caps["max_static_routes"] = c.StaticRoutes
+		if c.OSPF {
+			caps["feature_caps2"] = swCap2OSPF
+		}
 	}
 	if c.IPACLs > 0 || c.MACACLs > 0 {
 		caps["max_custom_ip_acls"] = c.IPACLs

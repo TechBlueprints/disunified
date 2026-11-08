@@ -43,6 +43,9 @@ type managedSet struct {
 	// L3 is what the driver added for routed networks (l3.go), so that a
 	// network leaving the push takes only what the driver made with it.
 	L3 *l3Managed `json:"l3,omitempty"`
+	// BGP is the controller's BGP file the driver loaded into FRR and the
+	// objects it added (bgp.go).
+	BGP *bgpManaged `json:"bgp,omitempty"`
 }
 
 func (c *Collector) loadManaged() error {
@@ -75,6 +78,9 @@ func (c *Collector) loadManaged() error {
 	c.savedDial, c.pendingDial = m.Dial, m.PendingDial
 	if m.L3 != nil {
 		c.managedL3 = m.L3.clone()
+	}
+	if m.BGP != nil {
+		c.managedBGP = m.BGP.clone()
 	}
 	return nil
 }
@@ -124,6 +130,10 @@ func (c *Collector) managedLocked() managedSet {
 	if !c.managedL3.empty() {
 		l3 := c.managedL3.clone()
 		m.L3 = &l3
+	}
+	if !c.managedBGP.empty() {
+		b := c.managedBGP.clone()
+		m.BGP = &b
 	}
 	return m
 }
@@ -226,6 +236,12 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	}
 	c.l3Set(d)
 	m, err := c.applyL3(ctx)
+	n += m
+	if err != nil {
+		return n, err
+	}
+	c.bgpSet(d)
+	m, err = c.applyBGP(ctx)
 	n += m
 	if err != nil {
 		return n, err

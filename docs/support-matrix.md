@@ -383,7 +383,27 @@ never the driver's.
 |---|---|
 | The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
 | Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
-| BGP (`feature_caps` 33554432), OSPF | a captured push; not claimed |
+| OSPF (`feature_caps2` 4) | offered by the controller for this model; a network routed on the switch to capture the push from, then the build (ospfd ships in the image) -- §11.14 |
+
+### BGP (2026-11-07)
+
+Claimed beside L3 routing (`feature_caps` 33554432): Settings -> Routing -> BGP
+offers the switch as a Device, and the controller pushes the operator's
+uploaded FRR file whole (`switch.bgp.1.raw_config_base64`). Every push
+captured on the DX010 (made, off, changed, deleted) and replayed
+(`informloop/replay_sonic_bgp_test.go`); **verified live** with an FRR peer
+in a container on the switch ([`drivers/sonic.md`](drivers/sonic.md)
+§11.14): the file loaded into the bgp container, the session Established,
+the file's route-map filtering the peer's routes, a learnt route in the
+kernel and APPL_DB, nothing written on the cycles after, the file loaded
+again after bgpd lost it, replaced whole when changed, removed when the
+router was deleted. Objects the switch runs on its own are never taken;
+stanzas for anything but bgpd are left out with a note.
+
+| Gap | What the PR needs |
+|---|---|
+| A real bgp container restart | `systemctl restart bgp` with a router loaded (simulated live by removing the objects) |
+| A session over a front-panel port, a `vrf` router | a peer cabled to a port; a VRF on the switch |
 
 ### Refused (logged, not claimed)
 

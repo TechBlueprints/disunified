@@ -37,6 +37,11 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
+	// BGPFiles are the files loaded into FRR (bgp.go), as sent. BGPRefuse,
+	// when set, is vtysh's complaint about a line: the load fails with it
+	// and changes nothing.
+	BGPFiles  []string
+	BGPRefuse string
 	// DHCPdConf is each interface's udhcpd config the driver's DHCP server
 	// script last wrote (l3.go).
 	DHCPdConf map[string]string
@@ -205,6 +210,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.FanScripts = append(f.FanScripts, stdin)
 		return "", f.applyFan(stdin)
+	case command == bgpCommand:
+		f.Commands = append(f.Commands, command)
+		f.BGPFiles = append(f.BGPFiles, stdin)
+		return "", f.loadBGP(stdin)
 	case command == snmpYmlCommand:
 		f.Commands = append(f.Commands, command)
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)

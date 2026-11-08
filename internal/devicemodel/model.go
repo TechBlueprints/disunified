@@ -170,6 +170,13 @@ type DeviceDesired struct {
 	L3Set        bool
 	L3Interfaces []L3Interface
 	StaticRoutes []StaticRoute
+
+	// BGPSet: the push said whether the switch runs a BGP router; false
+	// leaves the device's BGP alone. BGPConfig is the operator's FRR bgpd
+	// configuration file, applied whole ("" with BGPSet = no BGP: the router
+	// is off or gone). Read by a driver claiming Capabilities.BGP.
+	BGPSet    bool
+	BGPConfig string
 }
 
 // L3Interface is one network the switch routes: its own address on the
@@ -923,7 +930,13 @@ type Capabilities struct {
 	L3Routing    bool
 	L3Interfaces int
 	StaticRoutes int
-	SNMP         bool // DeviceController honours SNMPCommunity
+	// BGP: the controller's BGP router for this switch (an uploaded FRR
+	// configuration, DeviceDesired.BGP) is honoured.
+	BGP bool
+	// OSPF: the controller's OSPF router for this switch
+	// (DeviceDesired.OSPF) is honoured.
+	OSPF bool
+	SNMP bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int

@@ -75,7 +75,7 @@ type Device struct {
 	// fans as the device has them. A per-device setting because the
 	// controller (Network 10.6.109) keeps Fan Mode only for a gateway:
 	// a switch's sys_fan_mode is never stored, so the UI offers no Fan Mode
-	// and pushes no system.fan.mode for it (docs/drivers/sonic.md §11.14).
+	// and pushes no system.fan.mode for it (docs/drivers/sonic.md §11.15).
 	FanMode string `yaml:"fan_mode"`
 
 	// ReplyLog caps this device's reply log, inform-log/<name>/<mac>.ndjson.

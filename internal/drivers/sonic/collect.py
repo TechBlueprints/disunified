@@ -223,6 +223,41 @@ try:
 except Exception:
     pass
 
+# The BGP objects bgpd runs (bgp.go, docs/drivers/sonic.md 11.14): one line
+# per top-level object of `show running-config bgpd` -- "router bgp <asn>
+# [vrf <name>]", "route-map <name>", "ip prefix-list <name>", ... -- its
+# name only, never its body (a neighbor's password is in there); "error"
+# when bgpd cannot be read.
+s("frr_bgp")
+try:
+    _r = subprocess.run(["docker", "exec", "bgp", "vtysh", "-c", "show running-config bgpd"], stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL, timeout=15)
+    if _r.returncode != 0:
+        raise IOError("vtysh")
+    _seen = set()
+    for _line in _r.stdout.decode("utf-8", "replace").split("\n"):
+        if not _line or _line[0].isspace():
+            continue
+        _t = _line.split()
+        _k = None
+        if _t[:2] == ["router", "bgp"] and len(_t) >= 3:
+            _k = _t[:5] if len(_t) >= 5 and _t[3] == "vrf" else _t[:3]
+        elif _t[0] == "route-map" and len(_t) >= 2:
+            _k = _t[:2]
+        elif _t[0] in ("ip", "ipv6") and len(_t) >= 3 and _t[1] in ("prefix-list", "access-list"):
+            _k = _t[:3]
+        elif _t[0] == "access-list" and len(_t) >= 2:
+            _k = _t[:2]
+        elif _t[:3] == ["bgp", "as-path", "access-list"] and len(_t) >= 4:
+            _k = _t[:4]
+        elif _t[0] == "bgp" and len(_t) >= 3 and _t[1] in ("community-list", "extcommunity-list", "large-community-list"):
+            _k = _t[:4] if _t[2] in ("standard", "expanded") and len(_t) >= 4 else _t[:3]
+        if _k and " ".join(_k) not in _seen:
+            _seen.add(" ".join(_k))
+            sys.stdout.write(" ".join(_k) + "\n")
+except Exception:
+    sys.stdout.write("error\n")
+
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the
 # VS): "no", or its interfaces block reduced to what breakout needs -- each

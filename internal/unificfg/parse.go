@@ -7,6 +7,7 @@
 package unificfg
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"regexp"
@@ -88,6 +89,25 @@ type Config struct {
 	// system_cfg-dx010-l3-*.txt). nil when the push has no
 	// switch.routing_enabled.
 	Routing *Routing
+
+	// BGP is switch.bgp.1.*: the BGP router the operator set up for this
+	// switch under Settings -> Routing -> BGP, pushed only to a device
+	// claiming SWITCH_CAP_BGP (captured 2026-11-07 on 10.6.109,
+	// docs/fixtures/controller-10.6.109/system_cfg-dx010-bgp-*.txt). nil
+	// when the push carries no switch.bgp key: no BGP router for the switch.
+	BGP *BGP
+}
+
+// BGP is the controller's BGP router for a switch. UniFi has no BGP form
+// beyond the device and a name: the operator uploads an FRR bgpd
+// configuration file, which the controller pushes whole, base64-encoded
+// (raw_config_base64), beside enabled/disabled. A disabled router keeps its
+// file. Config is the decoded file; DecodeErr is set (and Config empty)
+// when raw_config_base64 is not base64.
+type BGP struct {
+	Enabled   bool
+	Config    string
+	DecodeErr error
 }
 
 // Routing is the switch's Layer 3 configuration. Interfaces are in slot
@@ -1060,6 +1080,17 @@ func Parse(text string) *Config {
 	sort.Ints(ikeys)
 	for _, n := range ikeys {
 		c.IPACLs = append(c.IPACLs, *ipACLs[n])
+	}
+	if v, ok := c.Raw["switch.bgp.1.enabled"]; ok {
+		c.BGP = &BGP{Enabled: v == "enabled"}
+		if raw := c.Raw["switch.bgp.1.raw_config_base64"]; raw != "" {
+			b, err := base64.StdEncoding.DecodeString(raw)
+			if err != nil {
+				c.BGP.DecodeErr = err
+			} else {
+				c.BGP.Config = string(b)
+			}
+		}
 	}
 	if v, ok := c.Raw["switch.routing_enabled"]; ok {
 		c.Routing = &Routing{Enabled: v == "true", DHCPServer: c.Raw["switch.dhcp_server"] == "true", DHCPRelay: c.Raw["switch.dhcp_relay"] == "true"}
