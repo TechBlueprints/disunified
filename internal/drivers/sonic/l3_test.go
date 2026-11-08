@@ -70,7 +70,7 @@ func TestTransitCarriesTheDefaultRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	want = "sudo sonic-db-cli CONFIG_DB hset 'STATIC_ROUTE|default|0.0.0.0/0' nexthop '" + mgmt + "' ifname '' distance '0' blackhole 'false' nexthop-vrf ''"
-	if got := r.fr.Commands; !containsInOrder(got, want, rifWait("Vlan4040"), "sudo config interface ip remove Vlan4040 198.18.253.2/24", save) {
+	if got := r.fr.Commands; !containsInOrder(got, want, rifWait("Vlan4040"), "sudo config interface ip remove Vlan4040 198.18.253.2/24 </dev/null", save) {
 		t.Errorf("routing off wrote\n  %s", strings.Join(got, "\n  "))
 	}
 	if _, err := r.c.Collect(ctx); err != nil {

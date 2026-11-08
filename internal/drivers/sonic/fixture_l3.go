@@ -33,9 +33,18 @@ func (f *FixtureRunner) l3Write(w []string) (bool, error) {
 		return true, f.dhcpdWrite(w[4])
 	case len(w) == 4 && w[0] == "sh" && w[1] == "-c" && w[3] == "disunified-rif-wait":
 		return true, nil // FRR follows CONFIG_DB at once here
-	case len(w) == 6 && w[0] == "config" && w[1] == "interface" && w[2] == "ip" && w[3] == "remove":
-		if why := f.rifBound(w[4], w[5]); why != "" {
+	case len(w) >= 6 && w[0] == "config" && w[1] == "interface" && w[2] == "ip" && w[3] == "remove":
+		last, why := f.rifBound(w[4], w[5])
+		if why != "" {
 			return true, fmt.Errorf("Error: Cannot remove the last IP entry of interface %s. A static ip route is still bound to the RIF.%s", w[4], why)
+		}
+		// For the last address the CLI asks vtysh, which inherits stdin:
+		// in a bash -s batch, the rest of the batch (live, 2026-11-07).
+		if last && at(6) != "</dev/null" {
+			return true, fmt.Errorf("config interface ip remove of %s's last address runs vtysh on the batch's stdin; it needs </dev/null", w[4])
+		}
+		if len(w) == 7 && at(6) == "</dev/null" {
+			return true, f.applyDevice(w[:6])
 		}
 	case len(w) == 6 && w[0] == "config" && w[1] == "interface" && w[2] == "ip" && w[3] == "add" && strings.HasPrefix(w[4], "Vlan"):
 		if _, ok := f.table("cfg_vlan")["VLAN|"+at(4)]; !ok {
@@ -170,10 +179,10 @@ func (f *FixtureRunner) dhcpdWrite(arg string) error {
 }
 
 // rifBound models the CLI's check before it removes an interface's last
-// address: a static route FRR would list through the interface -- one out
-// of it, or via a next hop in its subnet -- refuses the removal. "" when
-// the removal may go ahead.
-func (f *FixtureRunner) rifBound(iface, cidr string) string {
+// address (last): a static route FRR would list through the interface --
+// one out of it, or via a next hop in its subnet -- refuses the removal
+// (why). why is "" when the removal may go ahead.
+func (f *FixtureRunner) rifBound(iface, cidr string) (last bool, why string) {
 	var nets []*net.IPNet
 	for k := range f.table("cfg_mgmt") {
 		parts := strings.Split(k, "|")
@@ -181,24 +190,27 @@ func (f *FixtureRunner) rifBound(iface, cidr string) string {
 			continue
 		}
 		if parts[2] != cidr {
-			return "" // not the last address
+			return false, "" // not the last address
 		}
 		if _, n, err := net.ParseCIDR(parts[2]); err == nil {
 			nets = append(nets, n)
 		}
 	}
+	if len(nets) == 0 {
+		return false, ""
+	}
 	for k, r := range f.table("cfg_route") {
 		for _, h := range hopsOf(r) {
 			ip := net.ParseIP(h.nexthop)
 			if h.ifname == iface {
-				return " (" + k + ")"
+				return true, " (" + k + ")"
 			}
 			for _, n := range nets {
 				if ip != nil && n.Contains(ip) {
-					return " (" + k + ")"
+					return true, " (" + k + ")"
 				}
 			}
 		}
 	}
-	return ""
+	return true, ""
 }

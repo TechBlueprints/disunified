@@ -441,7 +441,9 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		if !containsString(stripped, iface) {
 			stripped = append(stripped, iface)
 		}
-		add(strip, "config interface ip remove "+iface+" "+cidr, func(s *swState) { delete(s.ifaddrs, key) })
+		// The CLI runs vtysh to check the last address of an interface, and
+		// vtysh would read the rest of the batch (live, 2026-11-07).
+		add(strip, "config interface ip remove "+iface+" "+cidr+" </dev/null", func(s *swState) { delete(s.ifaddrs, key) })
 	}
 	for _, r := range want {
 		if id := r.in.VLAN; id != 1 && !sim.vlans[id] {

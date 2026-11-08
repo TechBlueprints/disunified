@@ -104,8 +104,8 @@ func TestReplaySonicDX010L3(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB del 'STATIC_ROUTE|default|203.0.113.128/25'",
 		sonicRIFWait("Vlan3999"),
 		sonicRIFWait("Vlan4040"),
-		"sudo config interface ip remove Vlan3999 198.18.3.1/24",
-		"sudo config interface ip remove Vlan4040 198.18.253.2/24",
+		"sudo config interface ip remove Vlan3999 198.18.3.1/24 </dev/null",
+		"sudo config interface ip remove Vlan4040 198.18.253.2/24 </dev/null",
 		brkSave,
 		// The VLAN the network left behind (the driver never deletes a
 		// VLAN) takes the ports' MTU, as every VLAN on the switch does
