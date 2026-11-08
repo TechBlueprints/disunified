@@ -185,6 +185,16 @@ card's own syslog servers; `apc-ups` has none (the SmartConnect port has
 no syslog client). Older configs' `address`, `igmp`, `ntp`, `syslog`,
 `hostname`, `reboot`, `ssh_keys` and `snmp` keys are ignored.
 
+Fan Mode is the one UniFi setting a switch cannot get from the controller,
+which offers it only for a gateway. It is the device's own `fan_mode:
+default | quiet` in `config.yaml` (unset leaves the fans alone), applied
+each cycle where the driver can set it. What Quiet means differs by device.
+On `sonic` (DX010) it is a lower floor that the fan control still raises.
+On `arista-eos` it is EOS's fixed `environment fan-speed override 30`, and
+the switch does not speed the fans up as it heats under it; only the
+overheat shutdown is left
+([`docs/drivers/arista-eos.md`](drivers/arista-eos.md) §8).
+
 Things to know before you flip it: UniFi becomes the source of truth for
 port config and VLAN membership on that device; the device's own VLAN list
 is extended with the site's VLANs; IGMP snooping follows UniFi's

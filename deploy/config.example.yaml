@@ -36,6 +36,7 @@ devices:                             # "switches:" is still accepted (the pre-re
     # fan_mode: quiet                # default | quiet, for a driver that can set its fans (sonic on a DX010,
     #                                # arista-eos); unset leaves them alone. A per-device setting: the controller
     #                                # keeps Fan Mode only for a gateway, so a switch gets no UI for it.
+    #                                # arista-eos: quiet is a fixed 30 % that EOS does not raise when hot.
     # reply_log:                     # every controller reply, one JSON line each: inform-log/<name>/<mac>.ndjson
     #   max_size: 8MB                # the default cap; past it the file moves to <mac>.ndjson.1 (.1 -> .2 ...)
     #                                # and a fresh one starts. "512KB", "1GB", bytes, or "off" (no cap)
