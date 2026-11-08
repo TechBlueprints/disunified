@@ -561,8 +561,7 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   static FDB entry on a port without link is not reported in the MAC table
   (UniFi showed allowed MACs as clients). The Multicast Router Port is
   `switch.vlan.<slot>.igmp_mroute_port.K` and becomes `L2MC_MROUTER` in
-  `igmp.go`. The controller keeps no `sys_fan_mode` for a `USWF07D`, so the
-  UI offers no Fan Mode. Fixtures: `collect-portfeat.txt`,
+  `igmp.go`. Fan mode is a per-device setting (below). Fixtures: `collect-portfeat.txt`,
   `controller-10.6.109/system_cfg-dx010-portfeat-*.txt`.
 - **Layer 3 switching (`l3.go`, `docs/drivers/sonic.md` §11.13, built and
   verified live on the DX010 2026-11-07).** Claimed wherever `FEATURE|bgp`
@@ -601,6 +600,21 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `interface`/`router`/`ip`…): two words would have logged `password <secret>`
   (caught by the test before any deploy).
   OSPF is offered (`feature_caps2` 4) but not claimed: no capture yet.
+- **Fan mode (`fan.go`, `docs/drivers/sonic.md` §11.15, verified live on
+  the DX010 2026-11-07).** The device's `fan_mode: default | quiet` (the
+  controller keeps Fan Mode only for a gateway). Only
+  `x86_64-cel_seastone-r0` with F2B airflow: Default = the stock table
+  (MINTEMP 26, MINSTOP/MINPWM 89), Quiet = patch 0012's (35, 51/51 = 20 %;
+  never lower). **Write `fancontrol-<airflow>`, not just `fancontrol`**:
+  `/etc/init.d/fancontrol.sh` copies the direction file (from the CPLD's
+  GPIO, recorded in `fan_airflow`) over `fancontrol` at boot, and pmon
+  copies that into its `/etc/fancontrol` at start; the driver writes the
+  direction file, `cp`s it over `fancontrol`, `docker cp`s it into pmon and
+  `supervisorctl restart fancontrol` there (the fans run full for a few
+  seconds). The read-back is all three (`collect.py` `fancontrol`); any one
+  out of step reads as no mode and is rewritten. At Default the stock curve
+  runs the fans at ~41 % (PWM 102) even with the intake under MINTEMP, as it
+  did before 0012.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

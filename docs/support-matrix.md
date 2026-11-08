@@ -405,6 +405,24 @@ stanzas for anything but bgpd are left out with a note.
 | A real bgp container restart | `systemctl restart bgp` with a router loaded (simulated live by removing the objects) |
 | A session over a front-panel port, a `vrf` router | a peer cabled to a port; a VRF on the switch |
 
+### Fan mode (2026-11-07)
+
+The device's `fan_mode: default | quiet` (UniFi's Fan Mode panel exists
+only for gateways on Network 10.6.109: the controller never stores a
+switch's `sys_fan_mode`, checked live with the gateway's shape). On the
+DX010 (`x86_64-cel_seastone-r0`, F2B airflow): Default is the stock
+fancontrol floor (MINTEMP 26, PWM 89 = 35 %), Quiet patch 0012's (MINTEMP
+35, PWM 51 = 20 %), written to `fancontrol-F2B`, `fancontrol` and pmon's
+copy and read back from all three every cycle. **Verified live**
+([`drivers/sonic.md`](drivers/sonic.md) §11.15): each mode written once and
+zero writes after, fancontrol restarted in pmon, the fans at the new speed
+(Default ~41 %, Quiet 20 %, all OK), a bridge restart writing nothing, the
+ASIC 58 -> 53.75 °C at Default and back up 49.6 -> 54.1 °C over 9 min at
+Quiet, still rising toward the bench's 56-58 (high 70). Fixture- and loop-tested
+(`fan_test.go`, `replay_sonic_fan_test.go`). A B2F unit and other platforms
+offer nothing; a PR for one needs its fancontrol table and a measured floor
+(the ASIC's settled temperature at it).
+
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,

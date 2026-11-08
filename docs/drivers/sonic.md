@@ -4139,12 +4139,8 @@ cage 28; l2mcd lists it in APPL_DB only once the port is oper up (its rule
 for members, §8.14), so the empty cage stayed out of
 `L2MC_MROUTER_TABLE`.
 
-**Fan mode is not offered for a `USWF07D`.** The UI has a Fan Mode setting
-(Default / Quiet) for a device whose `sys_fan_mode.caps` is non-zero
-(DEFAULT 1 | QUIET 2). The DX010's inform carried `sys_fan_mode: {caps: 3}`;
-the controller (10.6.109) kept no `sys_fan_mode` on the device record and
-showed no Fan Mode in the settings panel, so the claim was dropped. The
-fancontrol floor (20 %, image patch 0012) stays as it is.
+**Fan mode** is §11.15: the controller keeps Fan Mode for no switch, so
+the DX010's mode is the device's `fan_mode` setting.
 
 ### 11.13 Layer 3 switching: routed networks, static routes, DHCP (2026-11-07)
 
@@ -4372,6 +4368,86 @@ which creates the controller's Inter-VLAN routing transit too -- a
 site-wide change that waits on Clint. The image ships `ospfd` (FRR 10.4.1)
 but SONiC's supervisord does not start it. For a switch the form drops
 "Redistribute BGP Routes" (gateway only).
+
+### 11.15 Fan mode: Default and Quiet as a per-device setting (2026-11-07)
+
+UniFi's Fan Mode (Default / Quiet) is in the UI for a device whose record
+holds `sys_fan_mode` with non-zero `caps`. **Network 10.6.109 stores that
+block only from a gateway's inform**, read-only from the console's
+`ace.jar` the same day:
+
+- the one method that copies `sys_fan_mode` from an inform into the record
+  is called by the UDM and UXG handlers only; the USW handler's own copy
+  list (`has_fan`, `hw_caps`, `switch_caps`, `smart_power_caps`,
+  `power_budget_table`, `igmp_snoop_table`, ...) has no `sys_fan_mode`, so
+  no switch model keeps it whatever it sends -- none of the site's 72
+  devices does, the ECS Aggregation included;
+- the REST API cannot add it: `sys_fan_mode` is not in the device's field
+  list (`api/fields/Device.json`, which has only `fan_mode_override:
+  default|quiet`) and the payload sanitizer drops an unknown key
+  (`Invalid key exists in Device payload`);
+- the rest of the chain exists for switches too: the UI reads `caps` (show
+  the panel, each option enabled by its bit, DEFAULT 1 | QUIET 2),
+  `sys_fan_mode.mode` (the current mode) and saves `fan_mode_override`;
+  the switch config generator emits `system.fan.mode=<default|quiet>` once
+  the record has caps and an override. With no caps on the record it never
+  does, so there is no push to capture.
+
+So the mode is the device's `fan_mode: default | quiet` in `config.yaml`
+(generic: `devicemodel.FanModeController`, applied by the loop after every
+collect as a diff against the read-back; unset = the fans are left alone).
+The inform still reports `sys_fan_mode {caps: 3, mode}` in the gateway's
+shape, because it is true and a later controller may store it.
+
+**The floors** (`fan.go`), on every one of the ten PWMs of the platform's
+fancontrol table, `x86_64-cel_seastone-r0` with F2B airflow only:
+
+| Mode | MINTEMP | MINSTOP / MINPWM | Duty at the floor | Source |
+|---|---|---|---|---|
+| Default | 26 | 89 | 35 % | the stock 2017 table (the lines patch 0012 removed) |
+| Quiet | 35 | 51 | 20 % | patch 0012 (Clint's standing choice; ASIC ~56 °C on the bench) |
+
+MINSTART 89, MAXTEMP 45, MAXPWM 255 and the hysteresis are the same in
+both; thermalctld's policies are untouched. A B2F unit offers nothing
+(nothing was measured on one) and logs why once; so does any other
+platform, and the VS has no table at all.
+
+**Read and write.** `collect.py`'s `fancontrol` section prints the airflow
+the boot script recorded (`fan_airflow`) and the floor lines of
+`fancontrol`, `fancontrol-<airflow>` and pmon's running `/etc/fancontrol`
+(`docker exec pmon cat`); the mode is the one all three match, so a file
+out of step (a hand-set 25 % in pmon, a boot file left at stock) reads as
+none and the configured mode is written again. The write rewrites
+`fancontrol-<airflow>` in place (the file `/etc/init.d/fancontrol.sh`
+copies over `fancontrol` at every boot), copies it over `fancontrol` and
+into pmon, and restarts only fancontrol there (`docker exec pmon
+supervisorctl restart fancontrol`). Patch 0012 stays: an image built from
+the kit boots at Quiet, and `fan_mode` moves it from there.
+
+Fixture: `sonic-igmp-202511.20261106-f2e25f54c/collect-fan.txt` (the DX010
+at Quiet); `fan_test.go`, and through the loop `TestReplaySonicFanMode`
+(a bridge restart included).
+
+**Verified live on the DX010, 2026-11-07 20:48-21:07 MST** (deb
+`f40f47f`, image `igmp-202511.20261106-f2e25f54c`, room ~24 °C at the
+intake):
+
+- before: Quiet in all three files (patch 0012), fans 20 %, ASIC 58 °C. The
+  inform carried `sys_fan_mode: {caps: 3, mode: "quiet"}`; the stored
+  record kept no `sys_fan_mode`, as the code predicts -- no panel.
+- `fan_mode: default`, bridge restarted: one write (`fan mode quiet ->
+  default`, ~12 s with the fancontrol restart), all ten PWMs at 26/89/89 in
+  `fancontrol`, `fancontrol-F2B` and pmon's copy, fancontrol RUNNING again
+  in pmon; the fans settled at 41-42 % (PWM 102: the stock curve sits above
+  its floor even with the intake at 24.5 °C, under MINTEMP 26, as it did
+  before 0012), all OK; the ASIC fell to 53.75 °C; the next cycles wrote
+  nothing and reported `mode: default`.
+- `fan_mode: quiet`, bridge restarted: one write (`default -> quiet`),
+  35/51/51 in all three, the fans at 20 %, all OK.
+- a bridge restart with no change: no write, `mode: quiet` reported.
+- the ASIC at Quiet, sampled each minute: 49.6, 50.9, 51.6, 52.1, 52.6,
+  53.3, 53.4, 53.8, 54.1 °C -- climbing toward the bench's 56-58 °C,
+  nothing near the 70 °C high threshold. The switch is left on Quiet.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
