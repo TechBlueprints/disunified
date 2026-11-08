@@ -69,7 +69,10 @@ type showPortChannelSummary struct {
 
 type showSystemEnvCooling struct {
 	SystemStatus string `json:"systemStatus"`
-	FanTraySlots []struct {
+	// OverrideFanSpeed is `environment fan-speed override`'s percentage,
+	// 0 under auto (4.26.14M capture: coolingMode "automatic", 0).
+	OverrideFanSpeed int `json:"overrideFanSpeed"`
+	FanTraySlots     []struct {
 		Label  string `json:"label"`
 		Speed  int    `json:"speed"`
 		Status string `json:"status"`

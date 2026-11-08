@@ -26,3 +26,8 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - The firmware version reported to the controller is EOS's own
   (`4.26.14M`), not the UniFi model profile's; `-version` overrides it, and
   an emulated upgrade from the controller masks it until EOS itself moves.
+- Fans on 4.26: `environment fan-speed auto` or a fixed `override
+  <30-100>` (held whatever the temperature), nothing else -- no floor the
+  thermal control can raise. `fan_mode: quiet` is `override 30`, read back
+  from `show system environment cooling`'s `overrideFanSpeed`; the
+  controller never offers Fan Mode for a switch (`docs/drivers/arista-eos.md` §8).
