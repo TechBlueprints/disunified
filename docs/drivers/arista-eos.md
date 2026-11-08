@@ -320,6 +320,10 @@ with `scripts/sanitize-arista-eos.py`, commit it under
    fan-speed`, the cooling output back
    to `overrideFanSpeed` 0 and `coolingMode` `automatic`, the fans back to
    the baseline from 1.
-6. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
+6. In the UI, open the Arista's device Settings and check for a Fan Mode
+   panel; also check `sys_fan_mode` on its stored record (CLAUDE.md §5).
+   On 10.6.109 neither is expected, because the switch handler drops the
+   field. Record what a newer Network release does.
+7. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
    idempotent) and mark the feature verified in this section, the support
    matrix and the feature map.
