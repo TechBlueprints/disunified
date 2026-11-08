@@ -10,7 +10,7 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// Fan mode (docs/drivers/sonic.md §11.14): the fancontrol floor of a
+// Fan mode (docs/drivers/sonic.md §11.15): the fancontrol floor of a
 // platform whose ten chassis fans are driven by lm-sensors' fancontrol in
 // pmon. The Celestica DX010 (x86_64-cel_seastone-r0) is the one platform
 // with measured floors:
