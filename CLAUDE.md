@@ -258,6 +258,21 @@ stay stopped** (one bridge per adopted key).
   the gateway's shape). A switch's mode is the device's `fan_mode:` in
   `config.yaml` (`devicemodel.FanModeController`; `docs/drivers/sonic.md`
   §11.15, `docs/drivers/arista-eos.md` §8).
+- **The controller's own code answers "what does this claim unlock and push"
+  before any capture** (2026-11-07, BGP/OSPF): the UI bundle is the
+  console's `/usr/lib/unifi/webapps/ROOT/app-unifi/react/js/*.js` (cap enums
+  as `SWITCH_CAP_*`, form help texts as `network.settings.*` waypoints); the
+  server is `/usr/lib/unifi/lib/ace.jar`, whose code is
+  `BOOT-INF/lib/internal-dependencies.jar` -- class names obfuscated, but each
+  class's constant pool keeps its strings, and the switch `system_cfg`
+  generators are `com/ubnt/service/config/ubntconf/*` (key prefixes such as
+  `switch.ospf.`). The Mac has no JRE: read constant pools with a few lines
+  of Python. A key found there still needs its capture before code.
+- **The v2 routing API** (`/proxy/network/v2/api/site/<site>/bgp/config/<mac>`,
+  `/ospf/router[/<id>]`) takes a write only with `X-Csrf-Token`, which any
+  GET returns as a response header (403 without it); the OSPF router's
+  `authentication_type` is `off`/`plain_text`/`md5` there but
+  `none`/`plaintext`/`md5` in the push.
 - **Topology parent = the upstream switch seeing the device's MAC on a port**
   -- or one of our bridged switches *reporting* it there (`children:`): its
   LLDP entry or its MAC-table entry places a device on its own, even on a

@@ -383,6 +383,8 @@ never the driver's.
 |---|---|
 | The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
 | Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
+| DHCP static reservations on a switch-routed network (`switch.routing_interface.N.dhcp_server.static_ip.K.{id,ip,mac}`, in the ECS firmware's key list; the parser logs them "not translated") | a capture with a fixed-IP client on a network the switch routes, then udhcpd's `static_lease` |
+| Routed ports and routed aggregates (`feature_caps2` 16, `PORT_ROUTING`; the port editor's routed op modes), VRRP (`feature_caps` 268435456; `routing_interface.N.vrrp.*` in the ECS firmware) | not claimed: the claim, a capture, then the build (SONiC: a port in no VLAN with an address; keepalived or FRR's vrrpd for VRRP) |
 
 ### BGP (2026-11-07)
 
