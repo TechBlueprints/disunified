@@ -249,6 +249,14 @@ stay stopped** (one bridge per adopted key).
   the log host and was simply quiet (it syslogs outlet, load, PSU, restart
   and unauthorised-access events, not logins). Both stamp lines in local
   time with daylight saving off: an hour behind from March to November.
+- **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
+  | QUIET 2, `mode`) is copied from an inform into the record only by the
+  UDM and UXG handlers; the USW handler never copies it and the REST
+  sanitizer drops it, so no switch gets the panel or a `system.fan.mode`
+  push (read from `ace.jar` 2026-11-07, confirmed live on the DX010 with
+  the gateway's shape). A switch's mode is the device's `fan_mode:` in
+  `config.yaml` (`devicemodel.FanModeController`; `docs/drivers/sonic.md`
+  §11.15, `docs/drivers/arista-eos.md` §8).
 - **Topology parent = the upstream switch seeing the device's MAC on a port**
   -- or one of our bridged switches *reporting* it there (`children:`): its
   LLDP entry or its MAC-table entry places a device on its own, even on a

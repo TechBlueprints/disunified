@@ -53,6 +53,7 @@ type Collector struct {
 	mu      sync.Mutex
 	host    string
 	prevCPU cpuTimes
+	fan     *fanState        // the last collect's fancontrol section (fan.go); nil = none
 	aliases map[int]string   // port index -> SONiC alias (the faceplate label, "Eth1")
 	ifnames map[int][]string // port index -> every interface folded into it
 	last    *devicemodel.Snapshot
@@ -357,8 +358,11 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	if sys.MACTableCapacity == 0 {
 		sys.MACTableUsed = len(macs) // CRM's count goes with its capacity
 	}
+	fan := parseFan(sec["fancontrol"])
+	c.fanReport(fan, &sys)
 	cpu := parseCPUTimes(sec["stat"])
 	c.mu.Lock()
+	c.fan = fan
 	if c.prevCPU.total > 0 && cpu.total > c.prevCPU.total {
 		dt := float64(cpu.total - c.prevCPU.total)
 		di := float64(cpu.idle - c.prevCPU.idle)

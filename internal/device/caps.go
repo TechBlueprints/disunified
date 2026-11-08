@@ -47,7 +47,7 @@ const swCap2OSPF = 4 // OSPF: Settings -> Routing -> OSPF offers the switch as a
 // sys_fan_mode.caps: the fan modes a device can be set to, as the
 // controller's own enum numbers them (DEFAULT 1, QUIET 2; Network 10.6.109,
 // devmgr.g.pLZcbZDS). The controller stores the block only from a gateway's
-// inform, never a switch's (docs/drivers/sonic.md §11.12); it is reported
+// inform, never a switch's (docs/drivers/sonic.md §11.15); it is reported
 // anyway because it is true, in the gateway's shape: caps and the current
 // mode, which the UI reads as sys_fan_mode.mode.
 const (
