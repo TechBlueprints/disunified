@@ -667,9 +667,10 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 
 // rifWait waits (up to 30 s, never failing) until FRR lists no static
 // route through iface: the condition `config interface ip remove` checks
-// before it removes an interface's last address.
+// before it removes an interface's last address. vtysh reads stdin, which
+// in a batch is the rest of the batch: it gets /dev/null.
 func rifWait(iface string) string {
-	script := fmt.Sprintf(`for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" | grep -qw %s || exit 0; sleep 0.5; done; exit 0`, iface)
+	script := fmt.Sprintf(`for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" </dev/null | grep -qw %s || exit 0; sleep 0.5; done; exit 0`, iface)
 	return "sh -c " + sshrun.ShellQuote(script) + " disunified-rif-wait"
 }
 

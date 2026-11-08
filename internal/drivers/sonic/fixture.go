@@ -205,16 +205,21 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
 		return "", f.applySNMPYml(stdin)
 	case command == batchCommand:
+		out := ""
 		for _, line := range strings.Split(stdin, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || line == "set -e" {
 				continue
 			}
+			if line == "echo "+batchDone {
+				out += batchDone + "\n"
+				continue
+			}
 			if err := f.apply(line); err != nil {
-				return "", fmt.Errorf("%s: %w", line, err) // set -e: the batch stops here
+				return out, fmt.Errorf("%s: %w", line, err) // set -e: the batch stops here
 			}
 		}
-		return "", nil
+		return out, nil
 	}
 	return "", f.apply(command)
 }

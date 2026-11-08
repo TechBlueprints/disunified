@@ -121,5 +121,5 @@ func TestReplaySonicDX010L3(t *testing.T) {
 }
 
 func sonicRIFWait(iface string) string {
-	return `sh -c 'for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" | grep -qw ` + iface + ` || exit 0; sleep 0.5; done; exit 0' disunified-rif-wait`
+	return `sh -c 'for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" </dev/null | grep -qw ` + iface + ` || exit 0; sleep 0.5; done; exit 0' disunified-rif-wait`
 }

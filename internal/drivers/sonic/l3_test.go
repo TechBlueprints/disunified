@@ -106,3 +106,20 @@ func TestRoutedNetworkLeavesTheManagementAddress(t *testing.T) {
 		t.Errorf("no note:\n%s", r.log.String())
 	}
 }
+
+// swallowed is a runner whose batch shell met end of input early: a
+// command in the batch read the rest of it from stdin, and bash exited 0.
+type swallowed struct{}
+
+func (swallowed) Run(context.Context, string, string) (string, error) { return "", nil }
+func (swallowed) Close() error                                        { return nil }
+
+// A batch that did not reach its last line is an error, never a success
+// whose remaining writes the plan then believes (live, 2026-11-07).
+func TestBatchThatStoppedEarlyIsAnError(t *testing.T) {
+	c := NewCollector(swallowed{})
+	err := c.runBatch(context.Background(), []string{"sudo config interface ip remove Vlan3999 198.18.3.1/24"})
+	if err == nil || !strings.Contains(err.Error(), "ended before its last line") {
+		t.Errorf("runBatch = %v", err)
+	}
+}

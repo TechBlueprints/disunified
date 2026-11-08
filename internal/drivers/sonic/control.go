@@ -1102,6 +1102,19 @@ func (c *Collector) SwitchesJumbo() bool { return true }
 const batchCommand = "bash -s"
 
 func (c *Collector) runBatch(ctx context.Context, cmds []string) error {
-	_, err := c.run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\n")
-	return err
+	out, err := c.run(ctx, batchCommand, "set -e\n"+strings.Join(cmds, "\n")+"\necho "+batchDone+"\n")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(out, batchDone) {
+		return fmt.Errorf("bash -s: the batch ended before its last line without an error (a command read the rest of it from stdin); what followed did not run")
+	}
+	return nil
 }
+
+// batchDone is echoed by a batch's last line. bash -s reads the batch from
+// stdin, which every command in it inherits: one that reads stdin swallows
+// the rest and bash exits 0 at the end of input (live, 2026-11-07: vtysh
+// in the RIF wait took an L3 batch's address removals and its save). A
+// batch whose output lacks the marker did not run to the end.
+const batchDone = "disunified-batch-done"
