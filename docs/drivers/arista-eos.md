@@ -225,3 +225,78 @@ nothing.
 
 After a successful move the bridge keeps working at the new address until it
 restarts; the operator then updates `url:` in the config file.
+
+## 8. Fan Mode (built 2026-11-07, untested live)
+
+UniFi's Fan Mode setting (Default / Quiet) mapped onto EOS 4.26. The switch
+was off the network when it was built, so nothing below has run on it yet.
+
+**What EOS offers.** Two settings and nothing else (Arista's manual,
+*Environment Commands*; the 4.26 syntax is the first return-day check):
+
+- `environment fan-speed auto` (the default; `no environment fan-speed` /
+  `default environment fan-speed` restore it) -- the switch's own thermal
+  control. Each temperature sensor has a target, overheat and critical
+  threshold, and the fans follow the sensors.
+- `environment fan-speed override <percent>` -- a **fixed** speed, 30 to 100
+  % of maximum, held "regardless of the switch temperature conditions".
+  Arista calls it unsupported outside its engineers' direction, and some
+  editions of the page say it can void the warranty (the 7160 is past its
+  end of software support).
+
+No minimum or ceiling form is documented. The 4.26.14M JSON of
+`show system environment cooling` carries `coolingMode` (`"automatic"`),
+`overrideFanSpeed` (0) and `minFanSpeed` (0); there is no CLI for the last.
+The manual does not say whether an override still lets the alert threshold
+("all fans run at maximum speed") raise the fans; the overheat shutdown
+(`environment overheat action`, shutdown by default) is separate and left
+alone.
+
+The capture under auto: all four fan trays at 42 %, the PSU fans at 32 %,
+29 °C ambient, the hottest sensor 63 °C against its 60 °C target (overheat
+90, critical 95).
+
+**The mapping** (Clint, 2026-11-07: "fixed override unless the arista can
+do stepping on top of the 30%"; EOS documents no stepping on top of an
+override):
+
+| UniFi | EOS | Read back from `show system environment cooling` |
+|---|---|---|
+| Default | `no environment fan-speed` (auto) | `overrideFanSpeed` 0 (captured) |
+| Quiet | `environment fan-speed override 30` | `overrideFanSpeed` 30 (not captured) |
+
+Both modes are claimed. The write is a diff against the poll: nothing when
+the switch is already in the pushed mode, and an override set by hand at
+any other speed is reported as neither mode and replaced by the next push.
+It runs in the switch-settings batch (`configure` … `end`, `write memory`).
+`coolingMode` is not read: its value under an override is not captured.
+
+**When the switch is back** (in this order; record each output, scrub it
+with `scripts/sanitize-arista-eos.py`, commit it under
+`docs/fixtures/arista-eos-4.26.14M/`):
+
+1. Read-only: `show system environment cooling` and `show system
+   environment temperature` under auto (the baseline for 3).
+2. The syntax on 4.26.14M, in a session that is aborted, not committed:
+   `configure session dui-fan-probe`, `environment fan-speed ?`,
+   `environment fan-speed override ?`, `abort`. Confirm `auto` and
+   `override` exist and that the range starts at 30; if it does not, change
+   `quietFanPct` in `fanmode.go` before step 3.
+3. Quiet from the UI (device Settings -> Fan Mode). The bridge log shows
+   one switch-settings batch with `environment fan-speed override 30`, and
+   it must not fail on the CLI's override warning (the SSH transport fails
+   a batch on any `% ` line; eAPI returns warnings apart). Capture `show
+   system environment cooling` (as `show-system-environment-cooling-
+   override30.json`) and `show running-config`; the next cycle writes
+   nothing and the controller shows Quiet.
+4. Watch `show system environment temperature` for 15 minutes under Quiet:
+   every sensor must stay below its overheat threshold. If the hottest
+   sensor climbs toward overheat, set Default and record the numbers here;
+   do not provoke the alert threshold to see whether it overrides the
+   override.
+5. Default from the UI: `no environment fan-speed`, the cooling output back
+   to `overrideFanSpeed` 0 and `coolingMode` `automatic`, the fans back to
+   the baseline from 1.
+6. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
+   idempotent) and mark the feature verified in this section, the support
+   matrix and the feature map.
