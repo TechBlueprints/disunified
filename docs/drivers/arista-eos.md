@@ -257,8 +257,16 @@ The capture under auto: all four fan trays at 42 %, the PSU fans at 32 %,
 90, critical 95).
 
 **The mapping** (Clint, 2026-11-07: "fixed override unless the arista can
-do stepping on top of the 30%"; EOS documents no stepping on top of an
-override):
+do stepping on top of the 30%", then "quiet is the floor you can set"; EOS
+documents no stepping on top of an override):
+
+> **Quiet is a fixed speed, not a floor.** The 7160 has no fan minimum that
+> EOS's thermal control can still raise. The only knob is the fixed
+> override, and the lowest value EOS accepts is **30 %** (the manual's
+> range, to be confirmed on 4.26.14M). Under Quiet, EOS's automatic control
+> does not raise the fans as the switch heats up. Only the undocumented
+> alert threshold and the overheat shutdown act. Clint was told this
+> before the merge (2026-11-07).
 
 | UniFi | EOS | Read back from `show system environment cooling` |
 |---|---|---|
