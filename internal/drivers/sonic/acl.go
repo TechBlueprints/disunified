@@ -156,6 +156,22 @@ func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
 			want[ipACLTable] = rules
 		}
 	}
+	// Isolated routed networks (l3.go) are rules of the IP table, below
+	// the controller's own: they go in only beside a translated rule set.
+	c.mu.Lock()
+	l3 := c.l3
+	c.mu.Unlock()
+	if l3 != nil {
+		if iso := c.isolationRules(*l3, st); len(iso) > 0 {
+			if rules, ok := want[ipACLTable]; ok {
+				for k, r := range iso {
+					rules[k] = r
+				}
+			} else {
+				note("Isolate Network: the IP ACL rules are held, so the isolation of %d routed network(s) is not written either", len(iso))
+			}
+		}
+	}
 	if d.MACACLSet {
 		c.mu.Lock()
 		l2 := c.macACL

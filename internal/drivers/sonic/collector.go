@@ -85,6 +85,13 @@ type Collector struct {
 	managedNTP    map[string]bool
 	managedSyslog map[string]bool
 	managedSNMP   string
+	// managedL3 is what the driver added for routed networks (l3.go):
+	// interface addresses, routes, relays, DHCP servers and the transit
+	// hop of the default route.
+	managedL3 l3Managed
+	// l3 is the routing the last push asked for (ApplyDevice), the
+	// reconcile's target; nil before the first push.
+	l3 *devicemodel.DeviceDesired
 
 	zones []zone // the switch's time zones and their POSIX rules, read once per run (zones.go)
 
@@ -120,9 +127,7 @@ type Collector struct {
 	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
 	// and the snooping intent of the last push.
 	IGMP bool
-	// CaptureClaims: options.capture_claims (driver.go).
-	CaptureClaims bool
-	igmp          igmpWant
+	igmp igmpWant
 	// sshFrom / sshTo are the last collect's SSH connection as the switch
 	// saw it (collect.py's ssh section): the bridge's address and the
 	// switch address it dialled; "" when not reported.
@@ -230,8 +235,10 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if st != nil && st.pf.medKnown {
 		caps.LLDPMED = true
 	}
-	if c.CaptureClaims {
-		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, 64, 256
+	// L3 routing needs FRR (l3.go): STATIC_ROUTE reaches the kernel and
+	// the ASIC only through bgpcfgd and zebra.
+	if st != nil && st.bgpOn() {
+		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, l3Interfaces, l3Routes
 	}
 	return caps
 }
@@ -352,6 +359,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.prevCPU = cpu
 	c.host = sys.Hostname
 	c.state = newState(db, sec)
+	c.state.l3Hop = c.managedL3.Hop
 	macsBy := staticMACs(c.state.pf)
 	for i := range ports {
 		readBackPortFeat(c.state, &ports[i].Port, macsBy)

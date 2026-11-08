@@ -213,6 +213,7 @@ type Loop struct {
 	// note is written once per setting, not once per cycle.
 	stormRateNoted map[string]bool
 	aclHeld        string // the switch ACL rules last logged as held, to log on change only
+	l3Held         string // what the push's routing could not translate, last logged
 	oobWarned      string // last out-of-band warning state, to log on change only
 	uplinkPort     int    // the port last marked as uplink from the snapshot
 	everApplied    bool   // a system_cfg has been applied to this device (this run or a previous one)
@@ -826,15 +827,16 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 // controller sends them the operator gets a log line naming the port and
 // feature, because the UI otherwise looks like it worked.
 var unsupportedFeatures = map[string]string{
-	".isolation":        "port isolation",
-	".dot1x":            "802.1X",
-	".egress_rate":      "egress rate limit",
-	".port-security":    "port security (MAC restriction)",
-	".poe":              "PoE",
-	".voice_vlan":       "voice VLAN", // never seen: the voice VLAN arrives as switch.vlan.<slot>.port.N.voice (2026-11-07)
-	".lldpmed.opmode=":  "",           // handled below (informational)
-	"switch.dot1x":      "802.1X",
-	"switch.dhcp_snoop": "DHCP snooping (rogue DHCP server detection)",
+	".isolation":                "port isolation",
+	".dot1x":                    "802.1X",
+	".egress_rate":              "egress rate limit",
+	".port-security":            "port security (MAC restriction)",
+	".poe":                      "PoE",
+	".voice_vlan":               "voice VLAN", // never seen: the voice VLAN arrives as switch.vlan.<slot>.port.N.voice (2026-11-07)
+	".lldpmed.opmode=":          "",           // handled below (informational)
+	"switch.dot1x":              "802.1X",
+	"switch.dhcp_snoop":         "DHCP snooping (rogue DHCP server detection)",
+	"switch.routing_interface.": "L3 routing (a network routed on this switch)",
 }
 
 func (l *Loop) warnUnsupported(ver, text string) {
@@ -847,7 +849,7 @@ func (l *Loop) warnUnsupported(ver, text string) {
 	}
 	if c, ok := deviceAs[devicemodel.Capable](l); ok {
 		caps := c.Capabilities()
-		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity} {
+		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity, "switch.routing_interface.": caps.L3Routing} {
 			if on {
 				delete(feats, key)
 			}
@@ -882,6 +884,9 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		Timezone:     cfg.Timezone,
 	}
 	l.noteHeldACLs(desiredACLs(cfg, &d))
+	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().L3Routing {
+		l.noteL3(desiredL3(cfg, &d))
+	}
 	if l.cfg.ControlHostname {
 		d.Hostname = cfg.Hostname
 	}

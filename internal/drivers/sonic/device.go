@@ -40,6 +40,9 @@ type managedSet struct {
 	// PendingDial the address a move was switching to when it was cut short.
 	Dial        string `json:"dial,omitempty"`
 	PendingDial string `json:"pending_dial,omitempty"`
+	// L3 is what the driver added for routed networks (l3.go), so that a
+	// network leaving the push takes only what the driver made with it.
+	L3 *l3Managed `json:"l3,omitempty"`
 }
 
 func (c *Collector) loadManaged() error {
@@ -70,6 +73,9 @@ func (c *Collector) loadManaged() error {
 		c.pinned[k] = v
 	}
 	c.savedDial, c.pendingDial = m.Dial, m.PendingDial
+	if m.L3 != nil {
+		c.managedL3 = m.L3.clone()
+	}
 	return nil
 }
 
@@ -114,6 +120,10 @@ func (c *Collector) managedLocked() managedSet {
 	m := managedSet{NTP: sortedSet(c.managedNTP), Syslog: sortedSet(c.managedSyslog), SNMP: c.managedSNMP, Dial: c.savedDial, PendingDial: c.pendingDial}
 	if len(c.pinned) > 0 {
 		m.Pinned = copyPins(c.pinned)
+	}
+	if !c.managedL3.empty() {
+		l3 := c.managedL3.clone()
+		m.L3 = &l3
 	}
 	return m
 }
@@ -214,6 +224,15 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			return n, err
 		}
 	}
+	c.l3Set(d)
+	m, err := c.applyL3(ctx)
+	n += m
+	if err != nil {
+		return n, err
+	}
+	c.mu.Lock()
+	st = c.state
+	c.mu.Unlock()
 	if st != nil {
 		c.aclSet(d, st)
 		m, err := c.applyACL(ctx)
@@ -223,7 +242,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		}
 	}
 	c.igmpSet(d)
-	m, err := c.applyIGMP(ctx)
+	m, err = c.applyIGMP(ctx)
 	n += m
 	if err != nil {
 		return n, err

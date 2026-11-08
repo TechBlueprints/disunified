@@ -204,6 +204,25 @@ try:
 except Exception:
     pass
 
+# The DHCP servers the driver runs on routed networks (l3.go, §11.13):
+# one "<iface> <active state> <sha256 of its udhcpd config>" line per
+# config file the driver keeps; empty when there is none.
+s("dhcpd")
+try:
+    import hashlib
+    _dir = "/etc/sonic/disunified-dhcpd"
+    for _f in sorted(os.listdir(_dir)) if os.path.isdir(_dir) else []:
+        if not _f.endswith(".conf"):
+            continue
+        _n = _f[:-5]
+        with open(os.path.join(_dir, _f), "rb") as _h:
+            _sum = hashlib.sha256(_h.read()).hexdigest()
+        _st = subprocess.run(["systemctl", "is-active", "disunified-dhcpd-" + _n], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=10).stdout.decode().strip() or "unknown"
+        sys.stdout.write("%s %s %s\n" % (_n, _st, _sum))
+except Exception:
+    pass
+
 # --- Linux ---
 # Dynamic port breakout needs the platform's platform.json (absent on the
 # VS): "no", or its interfaces block reduced to what breakout needs -- each

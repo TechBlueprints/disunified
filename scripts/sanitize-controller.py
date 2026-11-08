@@ -23,6 +23,10 @@ machine name) become key-N, numbered by first appearance within a file.
 
 Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            .ndjson = one reply per line, .txt = one system_cfg push, else JSON)
+       scripts/sanitize-controller.py [--subnet <real>/<n>=<test>/<n>]... <file>...
+           keeps a routing capture's subnets: every address in <real> becomes
+           the same host of <test> (a reserved test range: 198.18.0.0/15),
+           and addresses already in a test range stay
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -61,12 +65,26 @@ def map_mac(m):
         macs[key] = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'
     return macs[key]
 
+# --subnet A=B (repeatable): an address inside the real subnet A becomes the
+# same host of the test subnet B, so a routing capture keeps which addresses
+# share a subnet (a routed interface, its DHCP range, its next hops). With
+# any --subnet given, addresses already in a reserved test range are kept as
+# they are (a route to 198.51.100.0/24 stays one). Every other address is
+# numbered by first appearance, as without the option.
+subnets = []
+KEEP_NETS = [ipaddress.ip_network(n) for n in ('198.51.100.0/24', '203.0.113.0/24', '198.18.0.0/15')]
+
 def map_ip(s):
     try:
         ip = ipaddress.ip_address(s)
     except ValueError:
         return s
     if ip.is_loopback or ip.is_multicast or ip.is_unspecified or s.startswith('255.'):
+        return s
+    for real, test in subnets:
+        if ip.version == 4 and ip in real:
+            return str(test.network_address + (int(ip) - int(real.network_address)))
+    if subnets and any(ip in n for n in KEEP_NETS):
         return s
     if s not in ips:
         n = len(ips) + 1
@@ -181,6 +199,13 @@ def scrub(o, key=None):
     return o
 
 args = sys.argv[1:]
+while args and args[0] == '--subnet':
+    real, _, test = args[1].partition('=')
+    real, test = ipaddress.ip_network(real), ipaddress.ip_network(test)
+    if real.prefixlen != test.prefixlen:
+        sys.exit(f'--subnet {args[1]}: the two prefix lengths differ')
+    subnets.append((real, test))
+    args = args[2:]
 comments_only = bool(args) and args[0] == '--comments-only'
 if comments_only:
     args = args[1:]

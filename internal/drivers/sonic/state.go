@@ -108,11 +108,27 @@ type swState struct {
 	l2mc        map[string]map[string]string
 
 	// pf: isolation, port security, egress shapers and LLDP-MED
-	// (portfeat.go, §11.11); lagLearn is each PortChannel's CONFIG_DB
+	// (portfeat.go, §11.12); lagLearn is each PortChannel's CONFIG_DB
 	// learn_mode ("" = absent).
 	pf       portFeat
 	lagLearn map[string]string
+
+	// L3 (l3.go, §11.13): each VLAN's DHCP relay servers (VLAN
+	// dhcp_servers@), the driver's DHCP servers by interface (collect.py's
+	// dhcpd; dhcpdKnown false on a capture without it), and the next hop
+	// the driver added to the default route for a routed network's
+	// transit (from the managed record: not a CONFIG_DB fact, so the
+	// management gateway beside it is still found).
+	bgp        string // FEATURE|bgp state: FRR, which installs STATIC_ROUTE
+	vlanRelay  map[int][]string
+	dhcpd      map[string]dhcpdUnit
+	dhcpdKnown bool
+	l3Hop      string
 }
+
+// dhcpdUnit is one routed interface's DHCP server: its unit's state
+// (systemctl is-active) and its config file's sha256.
+type dhcpdUnit struct{ active, sum string }
 
 // lacp is a PortChannel's LACP setting as CONFIG_DB holds it ("" = absent).
 type lacp struct{ fastRate, minLinks string }
@@ -131,11 +147,24 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 		s.port[name] = m
 	}
+	s.vlanRelay = map[int][]string{}
 	for k, f := range db["cfg_vlan"] {
 		_, n, _ := strings.Cut(k, "|")
 		if id := atoi(strings.TrimPrefix(n, "Vlan")); id > 0 {
 			s.vlans[id] = true
 			s.vlanMTU[id] = f["mtu"]
+			if r := splitHops(f["dhcp_servers@"]); len(r) > 0 {
+				s.vlanRelay[id] = r
+			}
+		}
+	}
+	s.dhcpd = map[string]dhcpdUnit{}
+	if body, ok := sec["dhcpd"]; ok {
+		s.dhcpdKnown = true
+		for _, line := range strings.Split(body, "\n") {
+			if f := strings.Fields(line); len(f) == 3 {
+				s.dhcpd[f[0]] = dhcpdUnit{active: f[1], sum: f[2]}
+			}
 		}
 	}
 	for k, f := range db["cfg_vlan_member"] {
@@ -246,6 +275,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	_, s.stpFeature = db["cfg_feature"]["FEATURE|stp"]
+	s.bgp = db["cfg_feature"]["FEATURE|bgp"]["state"]
 	s.l2 = parseL2Inst(sec["l2d"])
 	s.platformJSON, s.platform = parsePlatform(sec["platform_json"])
 	s.brkout = map[string]string{}
@@ -315,9 +345,16 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	return s
 }
 
-// defaultRoute is the static default route's next hop(s), "" if none.
+// defaultRoute is the static default route's management next hop, "" if
+// none: the first hop that is not the routed networks' transit gateway
+// the driver added beside it (l3.go).
 func (s *swState) defaultRoute() string {
-	return s.routes["default|0.0.0.0/0"]["nexthop"]
+	for _, h := range strings.Split(s.routes["default|0.0.0.0/0"]["nexthop"], ",") {
+		if h = strings.TrimSpace(h); h != "" && h != s.l3Hop {
+			return h
+		}
+	}
+	return ""
 }
 
 func copyFields(f map[string]string) map[string]string {
@@ -330,6 +367,7 @@ func copyFields(f map[string]string) map[string]string {
 
 func (s *swState) clone() *swState {
 	c := &swState{
+		vlanRelay: map[int][]string{}, dhcpd: map[string]dhcpdUnit{}, dhcpdKnown: s.dhcpdKnown, l3Hop: s.l3Hop, bgp: s.bgp,
 		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
@@ -431,6 +469,12 @@ func (s *swState) clone() *swState {
 	}
 	for k, v := range s.routes {
 		c.routes[k] = copyFields(v)
+	}
+	for k, v := range s.vlanRelay {
+		c.vlanRelay[k] = append([]string(nil), v...)
+	}
+	for k, v := range s.dhcpd {
+		c.dhcpd[k] = v
 	}
 	c.keys = append([]string(nil), s.keys...)
 	c.ifaddrs = map[string]bool{}

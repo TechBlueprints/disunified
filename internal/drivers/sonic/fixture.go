@@ -36,6 +36,9 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
+	// DHCPdConf is each interface's udhcpd config the driver's DHCP server
+	// script last wrote (l3.go).
+	DHCPdConf map[string]string
 	// OrchL2 answers macACLCheckCommand: "0" (the default) as on every
 	// image without the kit's sonic-swss 0003, "1" as on one with it (both
 	// read on the DX010, docs/drivers/sonic.md §11.7.8). With "1",
@@ -380,6 +383,9 @@ func (f *FixtureRunner) apply(line string) error {
 	}
 	cmd := strings.Join(w[:min(len(w), 3)], " ")
 	if ok, err := f.portFeatWrite(w); ok {
+		return err
+	}
+	if ok, err := f.l3Write(w); ok {
 		return err
 	}
 	switch {

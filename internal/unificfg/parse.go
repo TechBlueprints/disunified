@@ -80,6 +80,67 @@ type Config struct {
 	// spaces removed, in every push. A real UniFi device takes it as its
 	// hostname (and sends it as its DHCP hostname). "" when absent.
 	Hostname string
+
+	// Routing is switch.routing_enabled with switch.routing_interface.*
+	// and switch.dhcp_server/dhcp_relay: the networks a Layer 3 switch
+	// routes, pushed only to a device claiming L3 routing (captured
+	// 2026-11-07 on 10.6.109, docs/fixtures/controller-10.6.109/
+	// system_cfg-dx010-l3-*.txt). nil when the push has no
+	// switch.routing_enabled.
+	Routing *Routing
+}
+
+// Routing is the switch's Layer 3 configuration. Interfaces are in slot
+// order. When the first network is routed on a switch the controller
+// creates "Inter-VLAN routing" itself: a transit network to the gateway
+// (opmode manual) whose routes carry the switch's default route.
+type Routing struct {
+	Enabled    bool
+	Interfaces []RoutingInterface
+	DHCPServer bool // switch.dhcp_server=true: some interface leases addresses
+	DHCPRelay  bool // switch.dhcp_relay=true: some interface relays
+}
+
+// RoutingInterface is one switch.routing_interface.N group: the switch's
+// address on a VLAN. OpMode is "manual" (no DHCP), "dhcp_server" or
+// "dhcp_relay"; Purpose "guest" is the UI's Isolate Network (ACL).
+type RoutingInterface struct {
+	ID           int
+	Name         string
+	VLAN         int
+	Type         string // "vlan" on a user network, absent on the transit
+	OpMode       string
+	IP, Mask     string
+	DefaultRoute string
+	Purpose      string
+	DHCPServer   RoutingDHCPServer
+	Relays       []string // dhcp_relay.K.ip, in slot order
+	Routes       []Route  // route.K, in slot order
+	// Unmodelled: the keys after switch.routing_interface.N. no capture
+	// has shown, as key=value.
+	Unmodelled []string
+}
+
+// RoutingDHCPServer is switch.routing_interface.N.dhcp_server.*.
+type RoutingDHCPServer struct {
+	Start, End string
+	Gateway    string
+	LeaseTime  int
+	DNS        []string // dns.K, in slot order
+}
+
+// Route is switch.routing_interface.N.route.K: Prefix/Mask via Gateway (an
+// address), into nothing (Gateway "Null0"), or out of the routed interface
+// whose id is Interface (no Gateway). A route is filed under some
+// interface whatever its kind (the black hole of the capture is under
+// interface 2 with interface=0).
+type Route struct {
+	ID           int
+	Name         string
+	Prefix, Mask string
+	Gateway      string
+	Interface    int
+	Unmodelled   []string
 }
 
 // NUTServer is nutserver.* as captured on Network 10.6.106
@@ -401,6 +462,10 @@ var (
 	mrouterRe  = regexp.MustCompile(`^switch\.vlan\.(\d+)\.igmp_mroute_port\.(\d+)$`)
 	outletRe   = regexp.MustCompile(`^outlet\.(\d+)\.([\w.]+)$`)
 	guardRe    = regexp.MustCompile(`^switch\.dhcp_guard\.(\d+)\.(\w+)$`)
+	routingRe  = regexp.MustCompile(`^switch\.routing_interface\.(\d+)\.(.+)$`)
+	riRouteRe  = regexp.MustCompile(`^route\.(\d+)\.(\w+)$`)
+	riRelayRe  = regexp.MustCompile(`^dhcp_relay\.(\d+)\.(\w+)$`)
+	riDNSRe    = regexp.MustCompile(`^dhcp_server\.dns\.(\d+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
 )
 
@@ -428,6 +493,13 @@ func Parse(text string) *Config {
 	}
 	guards := map[int]*guardEntry{}
 	macACLs, ipACLs := map[int]*MACACL{}, map[int]*IPACL{}
+	type riEntry struct {
+		RoutingInterface
+		routes map[int]*Route
+		relays map[int]string
+		dns    map[int]string
+	}
+	routing := map[int]*riEntry{}
 	syslogEnabled, syslogIP, syslogPort := false, "", ""
 	localeTZ := ""
 	for _, line := range strings.Split(text, "\n") {
@@ -503,6 +575,84 @@ func Parse(text string) *Config {
 				o.Name = v
 			}
 			c.Outlets[idx] = o
+			continue
+		}
+		if m := routingRe.FindStringSubmatch(k); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			ri := routing[n]
+			if ri == nil {
+				ri = &riEntry{routes: map[int]*Route{}, relays: map[int]string{}, dns: map[int]string{}}
+				routing[n] = ri
+			}
+			if r := riRouteRe.FindStringSubmatch(m[2]); r != nil {
+				rn, _ := strconv.Atoi(r[1])
+				rt := ri.routes[rn]
+				if rt == nil {
+					rt = &Route{}
+					ri.routes[rn] = rt
+				}
+				switch r[2] {
+				case "id":
+					rt.ID, _ = strconv.Atoi(v)
+				case "name":
+					rt.Name = v
+				case "prefix":
+					rt.Prefix = v
+				case "mask":
+					rt.Mask = v
+				case "gateway":
+					rt.Gateway = v
+				case "interface":
+					rt.Interface, _ = strconv.Atoi(v)
+				default:
+					rt.Unmodelled = append(rt.Unmodelled, r[2]+"="+v)
+				}
+				continue
+			}
+			if r := riRelayRe.FindStringSubmatch(m[2]); r != nil {
+				if r[2] == "ip" {
+					rn, _ := strconv.Atoi(r[1])
+					ri.relays[rn] = v
+				} else if r[2] != "id" {
+					ri.Unmodelled = append(ri.Unmodelled, m[2]+"="+v)
+				}
+				continue
+			}
+			if r := riDNSRe.FindStringSubmatch(m[2]); r != nil {
+				rn, _ := strconv.Atoi(r[1])
+				ri.dns[rn] = v
+				continue
+			}
+			switch m[2] {
+			case "id":
+				ri.ID, _ = strconv.Atoi(v)
+			case "name":
+				ri.Name = v
+			case "vlan":
+				ri.VLAN, _ = strconv.Atoi(v)
+			case "type":
+				ri.Type = v
+			case "opmode":
+				ri.OpMode = v
+			case "ip":
+				ri.IP = v
+			case "mask":
+				ri.Mask = v
+			case "default_route":
+				ri.DefaultRoute = v
+			case "purpose":
+				ri.Purpose = v
+			case "dhcp_server.ipstart":
+				ri.DHCPServer.Start = v
+			case "dhcp_server.ipend":
+				ri.DHCPServer.End = v
+			case "dhcp_server.gateway":
+				ri.DHCPServer.Gateway = v
+			case "dhcp_server.leasetime":
+				ri.DHCPServer.LeaseTime, _ = strconv.Atoi(v)
+			default:
+				ri.Unmodelled = append(ri.Unmodelled, m[2]+"="+v)
+			}
 			continue
 		}
 		if m := guardRe.FindStringSubmatch(k); m != nil {
@@ -911,6 +1061,26 @@ func Parse(text string) *Config {
 	for _, n := range ikeys {
 		c.IPACLs = append(c.IPACLs, *ipACLs[n])
 	}
+	if v, ok := c.Raw["switch.routing_enabled"]; ok {
+		c.Routing = &Routing{Enabled: v == "true", DHCPServer: c.Raw["switch.dhcp_server"] == "true", DHCPRelay: c.Raw["switch.dhcp_relay"] == "true"}
+		for _, n := range sortedKeys(routing) {
+			ri := routing[n]
+			for _, rn := range sortedKeys(ri.routes) {
+				ri.Routes = append(ri.Routes, *ri.routes[rn])
+			}
+			for _, rn := range sortedKeys(ri.relays) {
+				if ri.relays[rn] != "" {
+					ri.Relays = append(ri.Relays, ri.relays[rn])
+				}
+			}
+			for _, rn := range sortedKeys(ri.dns) {
+				if ri.dns[rn] != "" {
+					ri.DHCPServer.DNS = append(ri.DHCPServer.DNS, ri.dns[rn])
+				}
+			}
+			c.Routing.Interfaces = append(c.Routing.Interfaces, ri.RoutingInterface)
+		}
+	}
 	if syslogEnabled && syslogIP != "" {
 		h := syslogIP
 		if syslogPort != "" && syslogPort != "514" {
@@ -981,6 +1151,16 @@ func (c *Config) PortIndexes() []int {
 	out := make([]int, 0, len(c.Ports))
 	for i := range c.Ports {
 		out = append(out, i)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// sortedKeys is a map's int keys in order.
+func sortedKeys[V any](m map[int]V) []int {
+	out := make([]int, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
 	sort.Ints(out)
 	return out

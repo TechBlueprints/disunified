@@ -161,6 +161,49 @@ type DeviceDesired struct {
 	// name without spaces), set only when the operator opted in
 	// (control.hostname); "" = leave the device's hostname alone.
 	Hostname string
+
+	// L3Set: the push said whether the switch routes (UniFi's Layer 3
+	// switching, switch.routing_enabled); false leaves the device's routed
+	// interfaces and routes alone. Set with empty lists = route nothing.
+	// Read by a driver claiming Capabilities.L3Routing.
+	L3Set        bool
+	L3Interfaces []L3Interface
+	StaticRoutes []StaticRoute
+}
+
+// L3Interface is one network the switch routes: its own address on the
+// VLAN, the DHCP service it runs there and whether the network is
+// isolated (UniFi's Isolate Network: no traffic to or from the switch's
+// other networks).
+type L3Interface struct {
+	Name     string // the network's name, for logs
+	VLAN     int    // UniFi's id (1 is the untagged Default network)
+	Address  string // the switch's address with the prefix length, a.b.c.d/n
+	Isolated bool
+	DHCP     L3DHCP
+}
+
+// L3DHCP is a routed network's DHCP service: Mode "" = none, "server" =
+// the switch leases Start..End itself, "relay" = it forwards to Relays.
+type L3DHCP struct {
+	Mode      string
+	Start     string
+	End       string
+	Router    string   // the default gateway handed out
+	DNS       []string // the name servers handed out
+	LeaseSecs int
+	Relays    []string
+}
+
+// StaticRoute is one route the switch installs: Prefix via NextHop, out
+// of the routed interface on VLAN (an interface route, no next hop), or
+// into nothing (Blackhole). Exactly one of the three is set.
+type StaticRoute struct {
+	Name      string // for logs
+	Prefix    string // a.b.c.d/n, network address
+	NextHop   string
+	VLAN      int
+	Blackhole bool
 }
 
 // IGMPVLAN is one snooping VLAN's settings beside on/off. Times are in
