@@ -68,7 +68,10 @@ UniFi's Layer 3 switching -- routed networks, the controller's Inter-VLAN
 routing transit, switch static routes, DHCP server (busybox udhcpd) and
 relay, Isolate Network -- was captured, built and verified live on the
 DX010 2026-11-07 (`docs/drivers/sonic.md` §11.13); the transit's default
-route waits for VLAN 4040 on the uplink.
+route waits for VLAN 4040 on the uplink. UniFi's BGP on a switch (an
+uploaded FRR file) was captured, built and verified live with a peer the
+same evening (§11.14); OSPF is offered for the model (`feature_caps2` 4)
+but its push needs a network routed on the switch to capture, Clint's call.
 **Since 2026-11-02 the DX010's bridge runs on the switch itself**
 (`options.transport: local`, a `.deb` whose config and state live in
 `/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two
