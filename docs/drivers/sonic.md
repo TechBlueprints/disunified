@@ -4397,7 +4397,9 @@ So the mode is the device's `fan_mode: default | quiet` in `config.yaml`
 (generic: `devicemodel.FanModeController`, applied by the loop after every
 collect as a diff against the read-back; unset = the fans are left alone).
 The inform still reports `sys_fan_mode {caps: 3, mode}` in the gateway's
-shape, because it is true and a later controller may store it.
+shape, because it is true and a later controller may store it. Driving
+the mode from the UI once the controller keeps it for a switch is
+[TechBlueprints/disunified#2](https://github.com/TechBlueprints/disunified/issues/2).
 
 **The floors** (`fan.go`), on every one of the ten PWMs of the platform's
 fancontrol table, `x86_64-cel_seastone-r0` with F2B airflow only:
