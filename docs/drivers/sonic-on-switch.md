@@ -332,8 +332,11 @@ The decision is a third form of (b) that is SONiC's own mechanism:
   one rules file; not done now.
 
 What else lived in the overlay: the fan floor file, until series patch
-0012 (2026-11-03) put the 20 % floor into the image's own `fancontrol-F2B`;
-an image built without it still needs the floor re-applied by hand. The
+0012 (2026-11-03) put the 20 % floor into the image's own `fancontrol-F2B`.
+Since 2026-11-07 the device's `fan_mode` (sonic.md §11.15) does it on any
+image: once rc.local has reinstalled the deb, the bridge's first cycle
+writes the configured mode into `fancontrol-F2B`, `fancontrol` and pmon,
+and a floor copied in by hand is put back to it on the next cycle. The
 l2d pieces are reinstalled by the driver within a cycle.
 
 ## 6. Packaging and the release
