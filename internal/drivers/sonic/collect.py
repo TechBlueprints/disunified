@@ -328,6 +328,49 @@ try:
     sys.stdout.write(json.dumps(_l2, sort_keys=True) + "\n")
 except Exception:
     sys.stdout.write("error\n")
+# The fan floor (fan.go, docs/drivers/sonic.md 11.14): on a platform whose
+# fan control is fancontrol, the airflow the boot script detected and, for
+# the platform's fancontrol, its fancontrol-<airflow> (copied over it at
+# boot) and pmon's running /etc/fancontrol, the per-PWM values of the lines
+# the fan modes set, each as its distinct values joined by ",". Empty on a
+# platform without the files (the VS).
+s("fancontrol")
+_fc = {}
+try:
+    _plat = (DB.get_all("CONFIG_DB", "DEVICE_METADATA|localhost") or {}).get("platform", "")
+    _dir = "/usr/share/sonic/device/%s" % _plat
+    if _plat and os.path.isfile(os.path.join(_dir, "fancontrol")):
+        _fc["platform"] = _plat
+        try:
+            with open(os.path.join(_dir, "fan_airflow")) as _f:
+                _fc["airflow"] = _f.read().strip()
+        except Exception:
+            pass
+
+        def _floor(body):
+            _v = {}
+            for _l in body.splitlines():
+                _k, _eq, _rest = _l.partition("=")
+                if _eq and _k in ("MINTEMP", "MINSTART", "MINSTOP", "MINPWM", "MAXTEMP", "MAXPWM"):
+                    _v[_k] = ",".join(sorted(set(_t.rpartition("=")[2] for _t in _rest.split())))
+            return _v
+        _names = ["fancontrol"] + (["fancontrol-" + _fc["airflow"]] if _fc.get("airflow") else [])
+        for _n in _names:
+            try:
+                with open(os.path.join(_dir, _n)) as _f:
+                    _fc[_n] = _floor(_f.read())
+            except Exception:
+                pass
+        try:
+            _r = subprocess.run(["docker", "exec", "pmon", "cat", "/etc/fancontrol"], stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=10)
+            if _r.returncode == 0:
+                _fc["pmon"] = _floor(_r.stdout.decode("utf-8", "replace"))
+        except Exception:
+            pass
+except Exception:
+    pass
+dump(_fc)
 # The hardware monitors (sysfs hwmon), each chip reduced to its name, its
 # device ("<i2c bus>-<addr>" for a PMBus supply) and its *_input/*_label
 # readings: pmon's PSU_INFO keeps one supply temperature and the output

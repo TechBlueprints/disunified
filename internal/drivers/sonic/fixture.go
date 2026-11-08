@@ -31,6 +31,7 @@ type FixtureRunner struct {
 	Helps    []string          // the help commands Start ran
 
 	KeyScripts []string // the authorized_keys rewrites, as sent
+	FanScripts []string // the fancontrol rewrites, as sent (fixture_fan.go)
 	// SNMPYmlScripts are the /etc/sonic/snmp.yml rewrites, as sent; the
 	// capture's snmp_yml section is the file (§10.1).
 	SNMPYmlScripts []string
@@ -200,6 +201,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.L2MCScripts = append(f.L2MCScripts, stdin)
 		return "", f.applyL2MCScript(stdin)
+	case command == fanCommand:
+		f.Commands = append(f.Commands, command)
+		f.FanScripts = append(f.FanScripts, stdin)
+		return "", f.applyFan(stdin)
 	case command == snmpYmlCommand:
 		f.Commands = append(f.Commands, command)
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
