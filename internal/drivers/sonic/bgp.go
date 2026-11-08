@@ -31,9 +31,14 @@ import (
 // Anything else in the file (interfaces, static routes, other daemons) is
 // left out with a note: those belong to the controller's other settings.
 
-// bgpCommand loads a file into FRR: vtysh reads it from stdin. Run on its
-// own, never inside a `bash -s` batch (it would read the batch).
-const bgpCommand = "docker exec -i bgp vtysh -f /dev/stdin"
+// bgpCommand loads a file into FRR. The file arrives on stdin (so a
+// neighbor's password never sits on a command line) and is written to a
+// private temporary file in the container first: FRR 10's `vtysh -f` forks
+// one child per daemon and each reads the file itself, so with /dev/stdin
+// only the first child gets it -- live, 2026-11-07, the second load left
+// bgpd untouched with exit 0 (mgmtd had read the file). Run on its own,
+// never inside a `bash -s` batch (it would read the batch).
+const bgpCommand = `docker exec -i bgp sh -c 'umask 077 && f=$(mktemp /tmp/disunified-bgp.XXXXXX) && cat > "$f" && vtysh -f "$f"; rc=$?; rm -f "$f"; exit $rc'`
 
 // bgpManaged is what the driver loaded: the file's sha256 (of the stanzas
 // it applied) and the objects it added. Failed is the sum of a file vtysh
