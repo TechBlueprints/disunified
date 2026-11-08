@@ -147,14 +147,22 @@ func splitBGP(cfg string, running, owned map[string]bool) bgpFile {
 	return f
 }
 
-// firstWords is a refused line for a note: its first two words, so a
-// password line never reaches the log.
+// firstWords is a refused line for a note: its first word, and the second
+// only after a word that opens a named object (`interface Vlan3999`, `router
+// ospf`), so a secret on the line (`password <it>`, `enable password <it>`)
+// never reaches the log.
 func firstWords(line string) string {
 	t := strings.Fields(line)
-	if len(t) > 2 {
-		t = t[:2]
+	if len(t) == 0 {
+		return ""
 	}
-	return strings.Join(t, " ")
+	switch t[0] {
+	case "interface", "router", "ip", "ipv6", "line", "vrf", "segment-routing", "bfd", "mpls", "pbr-map", "nexthop-group":
+		if len(t) > 1 {
+			return t[0] + " " + t[1]
+		}
+	}
+	return t[0]
 }
 
 // bgpRemoveOrder: routers first (they name the lists), then the rest.

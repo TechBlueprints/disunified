@@ -36,8 +36,11 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
-	// BGPFiles are the files loaded into FRR (bgp.go), as sent.
-	BGPFiles []string
+	// BGPFiles are the files loaded into FRR (bgp.go), as sent. BGPRefuse,
+	// when set, is vtysh's complaint about a line: the load fails with it
+	// and changes nothing.
+	BGPFiles  []string
+	BGPRefuse string
 	// DHCPdConf is each interface's udhcpd config the driver's DHCP server
 	// script last wrote (l3.go).
 	DHCPdConf map[string]string

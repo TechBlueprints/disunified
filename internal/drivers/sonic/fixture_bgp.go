@@ -10,6 +10,9 @@ import (
 // does not have), any other top-level line opening an object adds it. A
 // capture without the section has no readable bgpd.
 func (f *FixtureRunner) loadBGP(file string) error {
+	if f.BGPRefuse != "" {
+		return fmt.Errorf("exit status 2: %s", f.BGPRefuse)
+	}
 	body, ok := sections(f.Fixture)["frr_bgp"]
 	if !ok || strings.TrimSpace(body) == "error" {
 		return fmt.Errorf("vtysh: bgpd is not running")
