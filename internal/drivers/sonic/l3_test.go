@@ -8,6 +8,8 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
+const fixtureL3 = "../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/collect-l3.txt"
+
 // transitDesired is the controller's Inter-VLAN routing network as the
 // 2026-11-07 capture pushes it (system_cfg-dx010-l3-1-dhcp-server.txt):
 // VLAN 4040, the switch .2, the default route via the gateway's .1.
@@ -25,8 +27,7 @@ func transitDesired() devicemodel.DeviceDesired {
 // gateway and changes nothing, and the routing taken away hands the
 // default back.
 func TestTransitCarriesTheDefaultRoute(t *testing.T) {
-	r := rig20261106(t, fixturePortFeat)
-	r.fr.UseSection("dhcpd", "")
+	r := rig20261106(t, fixtureL3)
 	ctx := context.Background()
 	mgmt := r.c.state.defaultRoute()
 	if mgmt == "" {
@@ -86,8 +87,7 @@ func TestTransitCarriesTheDefaultRoute(t *testing.T) {
 // the VLAN that carries it is refused with a note, and nothing is written
 // there.
 func TestRoutedNetworkLeavesTheManagementAddress(t *testing.T) {
-	r := rig20261106(t, fixturePortFeat)
-	r.fr.UseSection("dhcpd", "")
+	r := rig20261106(t, fixtureL3)
 	ctx := context.Background()
 	if _, err := r.c.Collect(ctx); err != nil {
 		t.Fatal(err)

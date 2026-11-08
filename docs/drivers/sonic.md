@@ -2513,7 +2513,7 @@ feature the DX010 does not claim:
 | Port isolation (4), port security (512) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.port-security` (isolation keys only when set) |
 | LLDP-MED (16) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.lldpmed.opmode/topology_notify` |
 | Egress rate limit (32) | yes | yes since 2026-11-07 (§11.12) | none while unset |
-| L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | no | `switch.routing_enabled` only while no L3 network is on the switch |
+| L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | L3 routing, 64/256, since 2026-11-07 (§11.13); BGP no | `switch.routing_enabled`, and `switch.routing_interface.N.*` once a network is routed on the switch (captured 2026-11-07, §11.13) |
 | Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
@@ -2542,7 +2542,7 @@ changes nothing that breaks the system_cfg path.
 | **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security captured, built and verified live 2026-11-07 (§11.12: an isolation group and learn mode drop + static FDB, not ACLs). **The guard and the IP rules built 2026-11-01 (§11.7.6) and verified live on the DX010 the same evening (§11.7.7).** | stock (MAC rules: custom) | medium each |
 | **LLDP-MED** | lldpd's custom TLVs per port, as the ECS's lldp manager writes them. **Built and verified live 2026-11-07, with the Voice VLAN (§11.12).** | stock | small |
 | **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` port shaper. **Built and verified live 2026-11-07 (§11.12).** | stock | small |
-| **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC; capture an L3 network and a static route pushed from the UI first. | stock | medium |
+| **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC. **Built and verified live 2026-11-07 (§11.13): routed networks, the transit to the gateway, switch static routes (next hop, interface, black hole), DHCP server (busybox udhcpd) and relay, Isolate Network.** BGP is not claimed (no UniFi push captured). | stock | medium |
 | **IGMP snooping** | §8: the Micas l2mcorch/l2mcd series on a **custom 202511 image**. Needs a build host (sonic-buildimage wants ~200 GB disk, 8+ cores, Docker). | custom | large |
 
 Order: RSTP and loop protection first -- the DX010 is to become the LAN's hub
@@ -4144,6 +4144,128 @@ for members, §8.14), so the empty cage stayed out of
 the controller (10.6.109) kept no `sys_fan_mode` on the device record and
 showed no Fan Mode in the settings panel, so the claim was dropped. The
 fancontrol floor (20 %, image patch 0012) stays as it is.
+
+### 11.13 Layer 3 switching: routed networks, static routes, DHCP (2026-11-07)
+
+UniFi's Layer 3 switching, captured on the DX010 and built the same
+evening. The ECS claims it (`feature_caps` 1, `max_l3_intf` 64,
+`max_static_routes` 256) and the DX010 now does wherever FRR runs
+(`FEATURE|bgp` enabled, every community image); the controller then offers
+the switch as a network's **Router** and as the device of a **switch**
+static route (Routing -> Create New Route -> Static -> Device: Switch).
+
+**The push** (`controller-10.6.109/system_cfg-dx010-l3-{1-dhcp-server,
+2-routes,3-relay-isolated,4-none,5-off}.txt`; scrubbed with
+`sanitize-controller.py --subnet` so the subnets survive, in 198.18.0.0/15).
+`switch.routing_enabled` is in every push (`false` with nothing routed).
+Each routed network is a `switch.routing_interface.N.*` group: `vlan`,
+`ip`/`mask` (the switch's own address), `default_route`, `opmode`
+(`manual` = no DHCP, `dhcp_server`, `dhcp_relay`), `purpose` (`guest` is the
+UI's **Isolate Network (ACL)**, with `switch.routing_interface.guest_network
+=true`), `dhcp_server.{ipstart,ipend,gateway,leasetime,dns.K}` or
+`dhcp_relay.K.{id,ip}`, and `switch.dhcp_server=true` / `switch.dhcp_relay=
+true` beside them. **Routing the first network on a switch makes the
+controller create a network of its own**, "Inter-VLAN routing" (VLAN 4040,
+a /24, routed by the gateway): a transit whose interface on the switch
+(`opmode manual`, no `type`) carries the switch's default route as
+`switch.routing_interface.1.route.1` = 0.0.0.0/0 via the gateway's address
+there; the VLAN joins `switch.vlan.*` but with every port `exclude` -- the
+operator must allow it on the uplink. Removing the last routed network
+removes the transit too. Switch routes are filed under some interface:
+`route.K.{prefix,mask}` with `gateway=<ip>` (next hop), `gateway=Null0`
+and `interface=0` (black hole), or `interface=<routing_interface id>` and
+no gateway (out of that network's VLAN). The gateway's own routing table
+shows none of them; `rest/routing` holds them with `gateway_device` = the
+switch.
+
+**On SONiC** (`l3.go`):
+
+- **Interfaces:** `config vlan add` when the VLAN is missing (no port need
+  carry a routed network), `config interface ip add Vlan<id> <ip>/<len>`.
+  An interface carrying an address the driver did not add -- the switch's
+  own management address on `Vlan<native_vlan>` -- is refused with a note.
+- **Routes:** STATIC_ROUTE rows written whole through `sonic-db-cli`
+  (`nexthop`, `ifname`, `distance`, `blackhole`, `nexthop-vrf` as aligned
+  comma lists: bgpcfgd drops a row whose lists differ), which bgpcfgd
+  hands to FRR in SONiC's separated routing mode (`ip route <p> <nh>`,
+  `... Vlan3999`, `... blackhole`). Several routes to one prefix are one
+  row's hops.
+- **The default route** shares `STATIC_ROUTE|default|0.0.0.0/0` with the
+  management gateway the IP Settings own (§6.4, `address.go`): the transit
+  hop goes beside it and the management hop drops to distance 200 (a
+  floating fallback, FRR's `distance` per hop -- verified live with a test
+  prefix: both hops listed, 200 and 1, the lower selected), and comes back
+  to its own distance when the transit goes. `defaultRoute()` skips the
+  driver's hop (the managed record's), so the IP Settings apply still
+  finds its gateway and changes nothing. **The transit hop is written only
+  while the transit VLAN reaches a port with link**: SONiC's `Vlan<id>`
+  netdevs are up with no member at all, so FRR would take the hop and
+  black-hole the switch's own traffic off the LAN; until the uplink carries
+  VLAN 4040 the switch keeps its management gateway and logs why.
+- **DHCP relay:** the VLAN's `dhcp_servers` list through `config vlan
+  dhcp_relay add|del <vid> <ip>...` (each call restarts the dhcp_relay
+  service, so one add and one del per VLAN); dhcprelayd starts `dhcrelay
+  -id Vlan<id> -iu <every other Vlan> <servers>`.
+- **DHCP server:** community SONiC has none (`config dhcp_server` is not in
+  the image); the host's busybox has `udhcpd`. The driver writes
+  `/etc/sonic/disunified-dhcpd/Vlan<id>.conf` (range, `max_leases`, subnet,
+  router, DNS, lease time; leases in `/var/lib/disunified-dhcpd/`) and runs
+  it as a transient unit `disunified-dhcpd-Vlan<id>` (`Restart=always`),
+  through one `sudo python3 … disunified-dhcpd '<json>'` call per apply;
+  collect.py's `dhcpd` section is each config's sha256 and the unit's
+  state, so a reboot (transient units vanish) or a changed config restarts
+  it. CoPP already traps DHCP to the CPU (`queue4_group3`).
+- **Isolate Network:** rules of `DUI_IP_ACL` (§11.7.6) below the
+  controller's own (`ISO_k` from priority 9870 down): a FORWARD of the
+  switch's own address in the isolated network (relay replies come to it),
+  then a DROP each way between the isolated subnet and every other subnet
+  the switch is connected to, the transit excepted (the gateway is the
+  network's way out and its DNS server). Written only beside a translated
+  IP rule set.
+- **Ownership** is the managed record (`sonic-managed.json` `l3`: addresses,
+  route prefixes, the transit hop, relay VLANs, DHCP servers): a network
+  leaving the push takes only what the driver made for it. A VLAN the
+  driver created stays (the driver never deletes a VLAN).
+
+**Order matters on removal** (both found live): `config interface ip
+remove` refuses the last address of an interface while FRR still lists a
+static route through it ("A static ip route is still bound to the RIF"; it
+greps `show ip route vrf all static`), and FRR drops a deleted row only
+once bgpcfgd has passed it on. The plan runs route, relay and default-row
+removals first, then waits (`sh -c '… vtysh … </dev/null | grep -qw
+Vlan<id> …' disunified-rif-wait`, 30 s at most), then the address removals,
+then every add. **The CLI's own vtysh call reads stdin**, which in a `bash
+-s` batch is the rest of the batch: the first fixed apply removed one
+address and silently swallowed the rest and the save. The removal now
+gets `</dev/null`, and **every batch ends in an `echo` marker that
+`runBatch` checks** -- output without it is an error, so a command that
+eats a batch can no longer pass for success (that check is what caught the
+CLI).
+
+**Live, 2026-11-07** (`replay_sonic_l3_test.go` replays all five pushes
+over the switch as captured after the run, `collect-l3.txt`;
+`l3_test.go` covers the transit default and the management VLAN refusal):
+the routed network (VLAN 3999) and the transit (VLAN 4040) got their
+addresses; the three routes reached CONFIG_DB, FRR, the kernel and APPL_DB,
+the interface and black-hole routes the ASIC (the next-hop route waits in
+APPL_DB for a neighbour that does not exist); the transit default was held
+(VLAN 4040 on no port) with the management default untouched; DHCP Server
+mode: udhcpd active, bound to `Vlan3999:67`, and **a client in a network
+namespace on VLAN 3999 of the kernel bridge (no front-panel port) leased
+an address from it**; DHCP Relay with Isolate Network: `dhcp_servers` set,
+dhcrelay started for Vlan3999, a DISCOVER from the namespace relayed from
+the switch's address to the server, the three `ISO_*` rules Active; the
+UI's removal of the network and both routes, in one push, took everything
+out (routes, wait, addresses, save, the DHCP server), `config_db.json`
+clean. The test VLANs 3999 and 4040 were then deleted by hand. Ethernet0
+stayed up throughout.
+
+**Not proven live:** the transit carrying the default route (needs VLAN
+4040 on the uplink, Ethernet0 -- the operator's change on both ends; the
+row it writes is fixture-tested and its distance handling proven with the
+test prefix); isolation dropping real traffic and a routed client reaching
+the gateway (needs a second linked port, as §11.12's checks); a relayed
+reply (the gateway has no scope for a network the switch routes).
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

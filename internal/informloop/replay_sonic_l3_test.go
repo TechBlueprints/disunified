@@ -7,8 +7,8 @@ import (
 )
 
 // The DX010's L3 captures of 2026-11-07 (docs/drivers/sonic.md §11.13),
-// replayed against the port-feature capture with its dhcpd section empty
-// (no DHCP server of the driver's): the UI routed a new network
+// replayed against the switch as captured after the run (collect-l3.txt:
+// no routed network, no DHCP server of the driver's): the UI routed a new network
 // (dui-l3-test, VLAN 3999, DHCP server) on the switch, and the controller
 // created "Inter-VLAN routing" (VLAN 4040) with the switch's default route
 // through the gateway; then three switch routes (a next hop, an interface,
@@ -16,11 +16,12 @@ import (
 // then DHCP none, isolation off.
 
 func TestReplaySonicDX010L3(t *testing.T) {
-	r, _ := newPortFeatRig(t)
-	r.fr.UseSection("dhcpd", "")
+	r, _ := newDX010Rig(t, "collect-l3.txt")
 	r.l.collect(context.Background())
 	r.l.reconcile(context.Background())
-	r.writes() // the first reconcile's LLDP-MED, TestReplaySonicDX010PortFeatures's
+	if got := r.writes(); len(got) != 0 {
+		t.Errorf("the capture under its own push wrote %q", got)
+	}
 
 	got := r.push("system_cfg-dx010-l3-1-dhcp-server.txt", "c62e71b7cbac2668")
 	if !containsInOrder(got,

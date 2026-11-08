@@ -203,7 +203,9 @@ func (c *Collector) Close() error {
 // the stock orchagent has none). IGMP
 // snooping, advanced (querier, timers, reserved groups) as the ECS claims
 // it, through l2mcd on an image with the series when options.igmp is on
-// (igmp.go). LLDP-MED and isolation never: community SONiC has neither.
+// (igmp.go). Port isolation, the MAC filter, the egress limit and
+// LLDP-MED where the collector reads their state (portfeat.go, §11.12);
+// L3 routing where FRR runs (l3.go, §11.13).
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	caps := devicemodel.Capabilities{FEC: true, Jumbo: true, LACP: true, StormControl: true, SNMP: true, MirrorSessions: 1, AggregateSessions: 8}
 	c.mu.Lock()

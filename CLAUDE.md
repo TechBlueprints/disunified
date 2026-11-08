@@ -64,6 +64,11 @@ flood is refused by the SAI), the driver's write path built behind
 hosts), and on for the DX010 since 2026-11-05: verified live through the
 driver; l2mcd queries from 0.0.0.0 and learns no mrouter port
 (`docs/drivers/sonic.md` §8.14).
+UniFi's Layer 3 switching -- routed networks, the controller's Inter-VLAN
+routing transit, switch static routes, DHCP server (busybox udhcpd) and
+relay, Isolate Network -- was captured, built and verified live on the
+DX010 2026-11-07 (`docs/drivers/sonic.md` §11.13); the transit's default
+route waits for VLAN 4040 on the uplink.
 **Since 2026-11-02 the DX010's bridge runs on the switch itself**
 (`options.transport: local`, a `.deb` whose config and state live in
 `/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two

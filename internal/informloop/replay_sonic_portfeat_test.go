@@ -23,7 +23,14 @@ import (
 
 func newPortFeatRig(t *testing.T) (*breakoutRig, *sonic.Collector) {
 	t.Helper()
-	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", "collect-portfeat.txt"))
+	return newDX010Rig(t, "collect-portfeat.txt")
+}
+
+// newDX010Rig is the DX010 on its 2026-11-06 image from one of that image's
+// captures, under the port-feature baseline push.
+func newDX010Rig(t *testing.T, capture string) (*breakoutRig, *sonic.Collector) {
+	t.Helper()
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", capture))
 	if err != nil {
 		t.Fatal(err)
 	}

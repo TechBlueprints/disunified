@@ -564,6 +564,27 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `igmp.go`. The controller keeps no `sys_fan_mode` for a `USWF07D`, so the
   UI offers no Fan Mode. Fixtures: `collect-portfeat.txt`,
   `controller-10.6.109/system_cfg-dx010-portfeat-*.txt`.
+- **Layer 3 switching (`l3.go`, `docs/drivers/sonic.md` §11.13, built and
+  verified live on the DX010 2026-11-07).** Claimed wherever `FEATURE|bgp`
+  is enabled. A routed network is `config interface ip add Vlan<id>`
+  (`config vlan add` first: no port need carry it); routes are whole
+  STATIC_ROUTE rows (aligned comma lists, or bgpcfgd drops the row); the
+  controller's Inter-VLAN routing transit puts its default route beside the
+  management gateway, which drops to distance 200 -- only while the transit
+  VLAN reaches a port with link (a `Vlan<id>` netdev is up with no member,
+  and FRR would black-hole the switch's own traffic); `defaultRoute()`
+  skips the driver's hop. DHCP server: busybox `udhcpd` in a transient unit
+  `disunified-dhcpd-Vlan<id>` (community SONiC has no DHCP server); relay:
+  `config vlan dhcp_relay` (each call restarts dhcp_relay); Isolate Network:
+  `ISO_k` rules in `DUI_IP_ACL`. Ownership is `sonic-managed.json`'s `l3`.
+  **`config interface ip remove` of an interface's last address refuses
+  while FRR lists a static route through it and runs vtysh on stdin**: the
+  plan removes routes first, waits for FRR (`disunified-rif-wait`), and
+  gives the removal `</dev/null`. **Every `runBatch` ends in an echo marker**;
+  output without it is an error (a command that reads stdin swallows the
+  rest of a `bash -s` batch and bash exits 0 -- live, 2026-11-07). Fixtures:
+  `collect-l3.txt`, `controller-10.6.109/system_cfg-dx010-l3-*.txt`
+  (scrubbed with `sanitize-controller.py --subnet`).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

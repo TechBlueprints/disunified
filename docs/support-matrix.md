@@ -351,6 +351,28 @@ for its validation and puts it back.
 | The router port in l2mcd (APPL_DB `L2MC_MROUTER_TABLE`): l2mcd lists a port only once it is oper up, and the cage used was empty | a linked port made a router port, its row in `L2MC_MROUTER_TABLE` |
 | LLDP-MED topology notify | an SNMP trap path; not modelled |
 
+### Layer 3 switching: routed networks, static routes, DHCP (2026-11-07)
+
+Claimed wherever FRR runs (`FEATURE|bgp`): L3 routing with 64 interfaces and
+256 static routes, the ECS's numbers. Every push captured from the UI on the
+DX010 and replayed (`informloop/replay_sonic_l3_test.go`), **written, read
+back and removed live** ([`drivers/sonic.md`](drivers/sonic.md) §11.13): a
+routed network as the switch's address on its VLAN, the controller's
+Inter-VLAN routing transit, switch static routes (next hop, interface,
+black hole) as STATIC_ROUTE rows for FRR, DHCP Server mode as busybox udhcpd
+in a transient unit (a client on the network leased an address), DHCP Relay
+through the VLAN's relay list (a DISCOVER relayed), Isolate Network as
+`DUI_IP_ACL` rules (Active). The transit's default route is written only
+while the transit VLAN reaches a port with link, the management gateway
+kept behind it at distance 200; the switch's own management address is
+never the driver's.
+
+| Gap | What the PR needs |
+|---|---|
+| The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
+| Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
+| BGP (`feature_caps` 33554432), OSPF | a captured push; not claimed |
+
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,
