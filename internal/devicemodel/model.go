@@ -6,6 +6,7 @@ package devicemodel
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -381,6 +382,35 @@ type AddressController interface {
 	ApplyAddress(ctx context.Context, desired AddressDesired) (changed bool, err error)
 }
 
+// FanMode is a device's fan behaviour as UniFi names it: Default (the
+// vendor's own fan control) or Quiet (a lower fan floor or a fixed lower
+// speed; each driver says what it writes).
+type FanMode string
+
+const (
+	FanModeDefault FanMode = "default"
+	FanModeQuiet   FanMode = "quiet"
+)
+
+// ParseFanMode reads a fan mode name ("default" or "quiet", any case).
+func ParseFanMode(s string) (FanMode, bool) {
+	switch m := FanMode(strings.ToLower(strings.TrimSpace(s))); m {
+	case FanModeDefault, FanModeQuiet:
+		return m, true
+	}
+	return "", false
+}
+
+// FanModeController sets a device's fan mode. The loop calls it from a
+// collect whose System.FanMode differs from the mode wanted (the device's
+// fan_mode setting) and System.FanModes holds that mode, so a converged
+// device is never written; the driver reads the mode back on its next
+// collect. Optional; a driver that cannot set the mode on the device in
+// hand leaves System.FanModes empty and logs why at Start.
+type FanModeController interface {
+	ApplyFanMode(ctx context.Context, mode FanMode) error
+}
+
 // SyslogController gives the controller's remote syslog host to a device
 // without port control -- a power device whose management card keeps its own
 // list of syslog servers -- so the controller owns where it logs, as it does
@@ -502,6 +532,12 @@ type System struct {
 
 	Fans []Fan
 	PSUs []PSU
+
+	// FanModes are the fan modes the driver can set on this device (nil =
+	// it cannot set any); FanMode is the one the device runs now, read back
+	// from the device each collect ("" = unknown). See FanModeController.
+	FanModes []FanMode
+	FanMode  FanMode
 
 	// Aggregate power for a device that measures its whole load rather than
 	// each outlet (a switched rack PDU meters the phase, not the outlet).

@@ -180,6 +180,11 @@ type Config struct {
 
 	// Children are devices reported below this device's ports (children.go).
 	Children []Child
+
+	// FanMode is the operator's fan mode for the device (config fan_mode);
+	// "" leaves the fans alone. Applied from the collect through a driver
+	// implementing devicemodel.FanModeController (fanmode.go).
+	FanMode devicemodel.FanMode
 }
 
 // Loop is one device's inform loop.
@@ -236,6 +241,7 @@ type Loop struct {
 	wrotePorts map[int]bool
 	faultSig   string
 	childNoted map[int]string // per child's port, the condition last logged (children.go)
+	fanNoted   string         // the fan-mode refusal last logged, to log on change only (fanmode.go)
 	// power logs a power device's transitions when its driver asks for it
 	// (devicemodel.PowerEventSource); nil otherwise.
 	power *powerevent.Tracker
@@ -1440,6 +1446,7 @@ func (l *Loop) collect(ctx context.Context) {
 		l.session.SetUplinkPort(up)
 	}
 	l.warnOOB(snap)
+	l.applyFanMode(ctx, snap)
 	var faults []string
 	for _, p := range snap.Ports {
 		if p.Fault != "" {
