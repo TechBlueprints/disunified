@@ -4260,6 +4260,14 @@ out (routes, wait, addresses, save, the DHCP server), `config_db.json`
 clean. The test VLANs 3999 and 4040 were then deleted by hand. Ethernet0
 stayed up throughout.
 
+**SONiC's monit `routeCheck` flags a route whose next hop does not
+resolve**: while the test route via a host that did not exist (198.18.3.10 in the fixtures) stood,
+`route_check.py` reported it every 5 minutes as `missed_ROUTE_TABLE_routes`
+(in CONFIG_DB and FRR, not in APPL_DB/ASIC until a neighbour answers). That
+is SONiC's view of any UniFi switch route to an absent next hop, not a
+driver fault; it cleared with the route (`route_check.py` exit 0 after the
+run).
+
 **Not proven live:** the transit carrying the default route (needs VLAN
 4040 on the uplink, Ethernet0 -- the operator's change on both ends; the
 row it writes is fixture-tested and its distance handling proven with the
