@@ -285,6 +285,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	}
 	snap.System.Overheating = temp.SystemStatus != "" && temp.SystemStatus != "temperatureOk"
 	snap.System.Fans = fans(cool)
+	snap.System.FanModes, snap.System.FanMode = fanModes, fanModeOf(cool)
 	snap.System.PSUs = psus(pwr)
 	if snap.System.MemTotalKB == 0 {
 		snap.System.MemTotalKB = ver.MemTotal

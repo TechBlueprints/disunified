@@ -228,8 +228,17 @@ restarts; the operator then updates `url:` in the config file.
 
 ## 8. Fan Mode (built 2026-11-07, untested live)
 
-UniFi's Fan Mode setting (Default / Quiet) mapped onto EOS 4.26. The switch
-was off the network when it was built, so nothing below has run on it yet.
+UniFi's Fan Mode (Default / Quiet) mapped onto EOS 4.26. The switch was
+off the network when it was built, so nothing below has run on it yet.
+
+**Where the mode comes from.** Not from the controller: Network 10.6.109
+keeps `sys_fan_mode` only for a gateway (UDM, UXG), never for a switch, so
+no switch gets a Fan Mode panel or a `system.fan.mode` push
+(`docs/drivers/sonic.md` §11.12). It is the device's `fan_mode: default |
+quiet` in `config.yaml`; unset leaves the fans alone. The loop compares it
+with the mode the driver read back on every collect and calls
+`ApplyFanMode` only when they differ (`internal/informloop/fanmode.go`).
+The inform still reports `sys_fan_mode` (caps 3, the current mode).
 
 **What EOS offers.** Two settings and nothing else (Arista's manual,
 *Environment Commands*; the 4.26 syntax is the first return-day check):
@@ -273,16 +282,20 @@ documents no stepping on top of an override):
 | Default | `no environment fan-speed` (auto) | `overrideFanSpeed` 0 (captured) |
 | Quiet | `environment fan-speed override 30` | `overrideFanSpeed` 30 (not captured) |
 
-Both modes are claimed. The write is a diff against the poll: nothing when
-the switch is already in the pushed mode, and an override set by hand at
-any other speed is reported as neither mode and replaced by the next push.
-It runs in the switch-settings batch (`configure` … `end`, `write memory`).
+Both modes are offered (`System.FanModes`). The write is a diff against
+the poll: nothing when the switch is already in the configured mode, and an
+override set by hand at any other speed reads as neither mode and is put
+back to the configured one on the next collect. One batch: `enable`,
+`configure`, the command, `end`, `write memory` (`fanmode.go`; tests in
+`fanmode_test.go` and `internal/informloop/fanmode_arista_test.go`).
 `coolingMode` is not read: its value under an override is not captured.
 
 **When the switch is back** (in this order; record each output, scrub it
 with `scripts/sanitize-arista-eos.py`, commit it under
 `docs/fixtures/arista-eos-4.26.14M/`):
 
+0. The deployed container must carry this code (a rebuild needs Clint's
+   go), and the Arista's entry in `config.yaml` needs no `fan_mode` until 3.
 1. Read-only: `show system environment cooling` and `show system
    environment temperature` under auto (the baseline for 3).
 2. The syntax on 4.26.14M, in a session that is aborted, not committed:
@@ -290,19 +303,21 @@ with `scripts/sanitize-arista-eos.py`, commit it under
    `environment fan-speed override ?`, `abort`. Confirm `auto` and
    `override` exist and that the range starts at 30; if it does not, change
    `quietFanPct` in `fanmode.go` before step 3.
-3. Quiet from the UI (device Settings -> Fan Mode). The bridge log shows
-   one switch-settings batch with `environment fan-speed override 30`, and
+3. Quiet: `fan_mode: quiet` on the Arista in `config.yaml`, bridge
+   restarted. The bridge log shows `fan mode default -> quiet` and one batch
+   with `environment fan-speed override 30`, and
    it must not fail on the CLI's override warning (the SSH transport fails
    a batch on any `% ` line; eAPI returns warnings apart). Capture `show
    system environment cooling` (as `show-system-environment-cooling-
    override30.json`) and `show running-config`; the next cycle writes
-   nothing and the controller shows Quiet.
+   nothing.
 4. Watch `show system environment temperature` for 15 minutes under Quiet:
    every sensor must stay below its overheat threshold. If the hottest
    sensor climbs toward overheat, set Default and record the numbers here;
    do not provoke the alert threshold to see whether it overrides the
    override.
-5. Default from the UI: `no environment fan-speed`, the cooling output back
+5. Default: `fan_mode: default`, bridge restarted: `no environment
+   fan-speed`, the cooling output back
    to `overrideFanSpeed` 0 and `coolingMode` `automatic`, the fans back to
    the baseline from 1.
 6. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
