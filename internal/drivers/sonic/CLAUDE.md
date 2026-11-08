@@ -599,7 +599,18 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   only. A refused stanza's note carries its first word (a second after
   `interface`/`router`/`ip`…): two words would have logged `password <secret>`
   (caught by the test before any deploy).
-  OSPF is offered (`feature_caps2` 4) but not claimed: no capture yet.
+- **OSPF (`ospf.go`, §11.14, built and verified live 2026-11-07).** Claimed
+  beside L3 (`feature_caps2` 4). SONiC's separated routing mode never starts
+  ospfd (only frrcfgd's mode, `frr_mgmt_framework_config true`, does -- the
+  driver refuses there), so the driver renders the router into
+  `/etc/frr/disunified-ospfd.conf` in the bgp container (`/etc/sonic/frr` on
+  the host; frr's, 0600: it holds the keys) and runs `ospfd -d -A 127.0.0.1
+  -P 0 -f` on it; collect.py's `frr_ospf` is "running" and the file's sha256
+  only. Changed router = restart ospfd; ospfd gone (bgp restart) = start;
+  router deleted = stop + rm. A test peer on the kernel `Bridge` needs MTU
+  9100 like `Vlan<id>` or OSPF stalls in ExStart (MTU check); the peer's
+  ospfd needs zebra and mgmtd beside it. Area ids are dotted:
+  `sanitize-controller.py` keeps 0.0.0.0/8.
 - **Fan mode (`fan.go`, `docs/drivers/sonic.md` §11.15, verified live on
   the DX010 2026-11-07).** The device's `fan_mode: default | quiet` (the
   controller keeps Fan Mode only for a gateway). Only

@@ -2514,7 +2514,7 @@ feature the DX010 does not claim:
 | LLDP-MED (16) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.lldpmed.opmode/topology_notify` |
 | Egress rate limit (32) | yes | yes since 2026-11-07 (§11.12) | none while unset |
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | L3 routing, 64/256, and BGP since 2026-11-07 (§11.13, §11.14) | `switch.routing_enabled`, and `switch.routing_interface.N.*` once a network is routed on the switch (captured 2026-11-07, §11.13); `switch.bgp.1.*` once a BGP router names the switch (§11.14) |
-| OSPF (`feature_caps2` 4) | no (`feature_caps2` 128) | not yet (§11.14: offered; its push needs a routed network to capture) | `switch.ospf.*`, `switch.routing_interface.N.ospf.*` (from the controller's code, not captured) |
+| OSPF (`feature_caps2` 4) | no (`feature_caps2` 128) | yes since 2026-11-07 (§11.14) | `switch.ospf.*`, and `switch.routing_interface.N.ospf.*` for each routed network in an area (captured 2026-11-07, §11.14) |
 | Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
@@ -2543,7 +2543,7 @@ changes nothing that breaks the system_cfg path.
 | **DHCP snooping, isolation, port security, custom ACLs** | SONiC ACL tables (`ACL_TABLE`/`ACL_RULE`, `sonic-acl.yang`), the same shape Ubiquiti uses (`global_ip_acl`, `global_mac_acl`, §9); each needs its push captured from the UI first. **DHCP snooping and the ACL rules captured and specified 2026-11-01 (§11.7)**: the guard and the IP rules on the stock image, MAC rules only with an orchagent patch (custom image); isolation and port security captured, built and verified live 2026-11-07 (§11.12: an isolation group and learn mode drop + static FDB, not ACLs). **The guard and the IP rules built 2026-11-01 (§11.7.6) and verified live on the DX010 the same evening (§11.7.7).** | stock (MAC rules: custom) | medium each |
 | **LLDP-MED** | lldpd's custom TLVs per port, as the ECS's lldp manager writes them. **Built and verified live 2026-11-07, with the Voice VLAN (§11.12).** | stock | small |
 | **Egress rate limit** | `SCHEDULER` + `PORT_QOS_MAP` port shaper. **Built and verified live 2026-11-07 (§11.12).** | stock | small |
-| **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC. **Built and verified live 2026-11-07 (§11.13): routed networks, the transit to the gateway, switch static routes (next hop, interface, black hole), DHCP server (busybox udhcpd) and relay, Isolate Network.** BGP since the same evening (§11.14): the operator's uploaded FRR file loaded into the bgp container. OSPF is offered by the controller but not yet captured. | stock | medium |
+| **L3 routing, static routes, BGP** | VLAN interfaces and FRR are native to SONiC. **Built and verified live 2026-11-07 (§11.13): routed networks, the transit to the gateway, switch static routes (next hop, interface, black hole), DHCP server (busybox udhcpd) and relay, Isolate Network.** BGP and OSPF since the same evening (§11.14): the operator's uploaded FRR file loaded into the bgp container; ospfd run by the driver on the controller's router. | stock | medium |
 | **IGMP snooping** | §8: the Micas l2mcorch/l2mcd series on a **custom 202511 image**. Needs a build host (sonic-buildimage wants ~200 GB disk, 8+ cores, Docker). | custom | large |
 
 Order: RSTP and loop protection first -- the DX010 is to become the LAN's hub
@@ -4359,15 +4359,67 @@ were removed after; Ethernet0 stayed up throughout.
 the objects; the restart is the same state to the driver), a session over
 a front-panel port, a `vrf` router.
 
-**OSPF is offered but not yet claimed.** The OSPF form needs at least one
-area holding a network (the server answers `areas: must not be empty`),
-and for a switch the area's networks are the ones it routes: with nothing
-routed on the DX010 the form's Create New Area stays disabled. Capturing
-its push needs a network routed on the switch (as §11.13's test network),
-which creates the controller's Inter-VLAN routing transit too -- a
-site-wide change that waits on Clint. The image ships `ospfd` (FRR 10.4.1)
-but SONiC's supervisord does not start it. For a switch the form drops
-"Redistribute BGP Routes" (gateway only).
+**OSPF** (`ospf.go`, claimed with L3 routing wherever FRR runs; built the
+same evening with Clint's OK for a test network). The OSPF form needs at
+least one area holding a network (the server answers `areas: must not be
+empty`), and for a switch the area's networks are the ones it routes: with
+nothing routed on the DX010 the form's Create New Area stays disabled. For a
+switch the form drops "Redistribute BGP Routes" (gateway only).
+
+*The push* (`controller-10.6.109/system_cfg-dx010-ospf-{1-defaults,2-md5,
+3-plaintext,4-passive-stub,5-nssa,6-removed}.txt`; the test network
+`dui-ospf-test`, VLAN 3999, routed on the DX010 with its Inter-VLAN routing
+transit; scrubbed with `--subnet`, the keys as `<hash>`;
+`sanitize-controller.py` now keeps 0.0.0.0/8, where the area ids live):
+`switch.ospf.id`, `.announce_default_route` (true/false),
+`.redistribute_static_route` and `.redistribute_connected_route` (`e1`,
+`e2` or `none`), `switch.ospf.area.N.number/type` (`normal`, `stub`,
+`nssa`); per routed network in an area `switch.routing_interface.N.ospf.
+{area,passive,cost,priority,hello_interval,dead_interval,
+authentication_type}` with `none`, `plaintext` + `ospf.password`, or `md5`
++ `ospf.md5_keys.K.{id,password}`. The router deleted leaves the push.
+
+*On SONiC.* The bgp container ships FRR's `ospfd`, but in SONiC's
+separated routing mode supervisord never starts it; frrcfgd's mode
+(`DEVICE_METADATA frr_mgmt_framework_config true` -- what the ECS sets)
+starts it from CONFIG_DB's `OSPFV2_*` tables, but would also move the
+static routes and the management default route (§11.13, §6.4) onto
+another config daemon. So the driver runs ospfd itself and refuses with a
+note when frrcfgd's mode is on. It renders the router into one FRR file
+(`interface Vlan<id>` with `ip ospf area/passive/cost/priority/
+hello-interval/dead-interval` and the authentication, then `router ospf`
+with the router id, `redistribute connected|static metric-type 1|2`,
+`default-information originate`, `area <id> stub|nssa`), writes it as
+`/etc/frr/disunified-ospfd.conf` in the container (`/etc/sonic/frr` on the
+host: it outlives a container restart; frr's, mode 0600 -- it holds the
+keys) and starts `ospfd -d -A 127.0.0.1 -P 0 -f <file>`. `collect.py`'s
+`frr_ospf` says whether ospfd runs and the file's sha256 (never its
+content). A changed router restarts ospfd (its adjacencies with it); a
+bgp container restart leaves the file and no ospfd, and the next reconcile
+starts it; the router gone stops ospfd and removes the file.
+
+*Live, 2026-11-07* (`replay_sonic_ospf_test.go` replays the six pushes
+over the switch as captured during the run, `collect-ospf.txt`): the
+router started ospfd on Vlan3999 (cost 10, priority 2, hello 5 s, dead
+20 s, area 0, read back with `show ip ospf interface`). A peer -- zebra,
+mgmtd and ospfd from the switch's own FRR image in a throwaway
+`--network none` container, its veth on the kernel `Bridge` in VLAN 3999
+only, MTU 9100 to match Vlan3999 (OSPF compares MTUs), the same MD5 key --
+reached **Full**. The DX010 learnt the peer's 192.0.2.0/24 as an E2 route
+into the kernel, APPL_DB and the ASIC; the peer learnt the DX010's default
+route (announced) and its connected networks (E2). The cycles after wrote
+nothing. ospfd killed by hand was started again by the next reconcile
+(Full again within a minute); a cost changed in the controller restarted
+it with the new file (cost 20 read back); the router deleted stopped ospfd
+and removed the file, and the learnt route left the kernel and APPL_DB.
+Then the peer, the test network (its transit went with it) and VLANs 3999
+and 4040 were removed (the VLANs by hand: the driver never deletes one);
+route_check passes, Ethernet0 stayed up throughout.
+
+*Not proven live:* an adjacency over a front-panel port, a real bgp
+container restart (simulated by killing ospfd), a plain-text key longer
+than OSPF's 8 characters (FRR's limit; the UI does not cap it), a stub or
+NSSA area with a peer.
 
 ### 11.15 Fan mode: Default and Quiet as a per-device setting (2026-11-07)
 

@@ -383,7 +383,6 @@ never the driver's.
 |---|---|
 | The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
 | Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
-| OSPF (`feature_caps2` 4) | offered by the controller for this model; a network routed on the switch to capture the push from, then the build (ospfd ships in the image) -- §11.14 |
 
 ### BGP (2026-11-07)
 
@@ -404,6 +403,28 @@ stanzas for anything but bgpd are left out with a note.
 |---|---|
 | A real bgp container restart | `systemctl restart bgp` with a router loaded (simulated live by removing the objects) |
 | A session over a front-panel port, a `vrf` router | a peer cabled to a port; a VRF on the switch |
+
+### OSPF (2026-11-07)
+
+Claimed beside L3 routing (`feature_caps2` 4): Settings -> Routing -> OSPF
+offers the switch as a Device, its areas holding the networks the switch
+routes. Every push captured on the DX010 (defaults, MD5, plain text, a
+passive interface in a stub area, NSSA, deleted) and replayed
+(`informloop/replay_sonic_ospf_test.go`); **verified live** with an FRR
+peer on VLAN 3999 of the switch's kernel bridge
+([`drivers/sonic.md`](drivers/sonic.md) §11.14): ospfd started by the
+driver in the bgp container on the pushed router, the adjacency Full with
+MD5, routes learnt both ways (the peer's into the kernel, APPL_DB and the
+ASIC; the DX010's default and connected networks to the peer), nothing
+written on the cycles after, ospfd started again after it was killed,
+restarted on a change, stopped when the router was deleted. Refused with a
+note under frrcfgd's mode, which owns ospfd.
+
+| Gap | What the PR needs |
+|---|---|
+| An adjacency over a front-panel port; a stub or NSSA area with a peer | a peer cabled to a port |
+| A real bgp container restart | `systemctl restart bgp` with the router running (simulated live by killing ospfd) |
+| A plain-text key over 8 characters | FRR's limit; check what FRR does with the UI's longer key |
 
 ### Fan mode (2026-11-07)
 
