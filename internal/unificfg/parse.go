@@ -125,13 +125,22 @@ type Routing struct {
 }
 
 // RoutingInterface is one switch.routing_interface.N group: the switch's
-// address on a VLAN. OpMode is "manual" (no DHCP), "dhcp_server" or
-// "dhcp_relay"; Purpose "guest" is the UI's Isolate Network (ACL).
+// address on a VLAN, or on a routed port or aggregate (the port editor's
+// Routing and Routing + Aggregating, captured 2026-11-08). OpMode is
+// "manual" (no DHCP), "dhcp_server" or "dhcp_relay"; Purpose "guest" is the
+// UI's Isolate Network (ACL).
 type RoutingInterface struct {
-	ID           int
-	Name         string
-	VLAN         int
-	Type         string // "vlan" on a user network, absent on the transit
+	ID   int
+	Name string
+	VLAN int
+	// Type is "vlan" on a user network (absent on the transit), "port" on
+	// a routed port (Port) and "lag" on a routed aggregate (LAG).
+	Type string
+	// Port is the routed port's index (type=port).
+	Port int
+	// LAG is a routed aggregate's first member's port index (type=lag);
+	// the aggregate is that port's switch.port.N.lag.
+	LAG          int
 	OpMode       string
 	IP, Mask     string
 	DefaultRoute string
@@ -196,6 +205,17 @@ type RoutingDHCPServer struct {
 	Gateway    string
 	LeaseTime  int
 	DNS        []string // dns.K, in slot order
+	// Static is static_ip.K: the clients with a Fixed IP on the network
+	// (captured 2026-11-08), in slot order.
+	Static []StaticLease
+}
+
+// StaticLease is one dhcp_server.static_ip.K: a client's MAC and the
+// address it always gets.
+type StaticLease struct {
+	ID  int
+	MAC string
+	IP  string
 }
 
 // Route is switch.routing_interface.N.route.K: Prefix/Mask via Gateway (an
@@ -536,6 +556,7 @@ var (
 	riRelayRe  = regexp.MustCompile(`^dhcp_relay\.(\d+)\.(\w+)$`)
 	riDNSRe    = regexp.MustCompile(`^dhcp_server\.dns\.(\d+)$`)
 	riMD5Re    = regexp.MustCompile(`^md5_keys\.(\d+)\.(\w+)$`)
+	riStaticRe = regexp.MustCompile(`^dhcp_server\.static_ip\.(\d+)\.(\w+)$`)
 	ospfAreaRe = regexp.MustCompile(`^switch\.ospf\.area\.(\d+)\.(\w+)$`)
 	aclRe      = regexp.MustCompile(`^switch\.acl\.(mac|ip)\.(\d+)\.([\w.]+)$`)
 )
@@ -570,6 +591,7 @@ func Parse(text string) *Config {
 		relays map[int]string
 		dns    map[int]string
 		md5    map[int]*OSPFKey
+		static map[int]*StaticLease
 	}
 	routing := map[int]*riEntry{}
 	syslogEnabled, syslogIP, syslogPort := false, "", ""
@@ -653,7 +675,7 @@ func Parse(text string) *Config {
 			n, _ := strconv.Atoi(m[1])
 			ri := routing[n]
 			if ri == nil {
-				ri = &riEntry{routes: map[int]*Route{}, relays: map[int]string{}, dns: map[int]string{}, md5: map[int]*OSPFKey{}}
+				ri = &riEntry{routes: map[int]*Route{}, relays: map[int]string{}, dns: map[int]string{}, md5: map[int]*OSPFKey{}, static: map[int]*StaticLease{}}
 				routing[n] = ri
 			}
 			if r := riRouteRe.FindStringSubmatch(m[2]); r != nil {
@@ -693,6 +715,25 @@ func Parse(text string) *Config {
 			if r := riDNSRe.FindStringSubmatch(m[2]); r != nil {
 				rn, _ := strconv.Atoi(r[1])
 				ri.dns[rn] = v
+				continue
+			}
+			if r := riStaticRe.FindStringSubmatch(m[2]); r != nil {
+				rn, _ := strconv.Atoi(r[1])
+				sl := ri.static[rn]
+				if sl == nil {
+					sl = &StaticLease{}
+					ri.static[rn] = sl
+				}
+				switch r[2] {
+				case "id":
+					sl.ID, _ = strconv.Atoi(v)
+				case "mac":
+					sl.MAC = v
+				case "ip":
+					sl.IP = v
+				default:
+					ri.Unmodelled = append(ri.Unmodelled, m[2]+"="+v)
+				}
 				continue
 			}
 			if f, ok := strings.CutPrefix(m[2], "ospf."); ok {
@@ -749,6 +790,10 @@ func Parse(text string) *Config {
 				ri.VLAN, _ = strconv.Atoi(v)
 			case "type":
 				ri.Type = v
+			case "port":
+				ri.Port, _ = strconv.Atoi(v)
+			case "lag":
+				ri.LAG, _ = strconv.Atoi(v)
 			case "opmode":
 				ri.OpMode = v
 			case "ip":
@@ -1244,6 +1289,9 @@ func Parse(text string) *Config {
 				if ri.dns[rn] != "" {
 					ri.DHCPServer.DNS = append(ri.DHCPServer.DNS, ri.dns[rn])
 				}
+			}
+			for _, rn := range sortedKeys(ri.static) {
+				ri.DHCPServer.Static = append(ri.DHCPServer.Static, *ri.static[rn])
 			}
 			if ri.OSPF != nil {
 				for _, kn := range sortedKeys(ri.md5) {

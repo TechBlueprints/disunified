@@ -216,8 +216,34 @@ func (f *FixtureRunner) applyDevice(w []string) error {
 			sec, key = "cfg_mgmt", "VLAN_INTERFACE|"+iface+"|"+cidr
 		case iface == "eth0":
 			sec, key = "cfg_mgmt", "MGMT_INTERFACE|eth0|"+cidr
+		case strings.HasPrefix(iface, "PortChannel"):
+			sec, key = "cfg_mgmt", "PORTCHANNEL_INTERFACE|"+iface+"|"+cidr
 		default:
 			sec, key = "cfg_mgmt", "INTERFACE|"+iface+"|"+cidr
+		}
+		if at(3) == "add" && (strings.HasPrefix(iface, "Ethernet") || strings.HasPrefix(iface, "PortChannel")) {
+			// The 202511 CLI's checks before a port's or a PortChannel's
+			// address (config/main.py `ip add`): it must exist, be in no
+			// PortChannel and in no VLAN; a PORT whose mode is trunk or
+			// access gets a message and nothing, with exit 0.
+			if strings.HasPrefix(iface, "PortChannel") {
+				if _, ok := f.table("cfg_lag")["PORTCHANNEL|"+iface]; !ok {
+					return fmt.Errorf("Interface %s does not exist", iface)
+				}
+			} else if !f.hasPort(iface) {
+				return fmt.Errorf("Interface %s does not exist", iface)
+			}
+			if f.lagOf(iface) != "" {
+				return fmt.Errorf("%s is configured as a member of portchannel.", iface)
+			}
+			for k := range f.table("cfg_vlan_member") {
+				if strings.HasSuffix(k, "|"+iface) {
+					return fmt.Errorf("Interface %s is a member of vlan\nAborting!", iface)
+				}
+			}
+			if m := f.table("cfg_port")["PORT|"+iface]["mode"]; m == "trunk" || m == "access" {
+				return nil
+			}
 		}
 		if err := f.update(sec, func(t table) error {
 			_, ok := t[key]

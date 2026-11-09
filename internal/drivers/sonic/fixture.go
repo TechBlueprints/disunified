@@ -656,6 +656,12 @@ func (f *FixtureRunner) apply(line string) error {
 		if f.hasVLANConfig(pc) {
 			return fmt.Errorf("%s has vlan config", pc)
 		}
+		if f.routerIface(pc) {
+			// Not refused by the CLI itself, but the address rows would
+			// dangle (PORTCHANNEL_INTERFACE names the PortChannel): the
+			// driver removes the address first, and this holds it to that.
+			return fmt.Errorf("%s still has an address", pc)
+		}
 		return f.update("cfg_lag", func(t table) error { delete(t, "PORTCHANNEL|"+pc); return nil })
 	case cmd == "config portchannel member":
 		pc, p := at(4), at(5)
@@ -855,6 +861,9 @@ func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error
 		if f.lagOf(port) != "" {
 			return fmt.Errorf("%s is part of portchannel!", port)
 		}
+		if f.routerIface(port) {
+			return fmt.Errorf("%s is a router interface!", port)
+		}
 		if f.isMirrorDst(port) {
 			return fmt.Errorf("%s is configured as mirror destination port", port)
 		}
@@ -883,6 +892,17 @@ func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error
 		return f.update("cfg_vlan_member", func(t table) error { delete(t, k); return nil })
 	}
 	return fmt.Errorf("usage")
+}
+
+// routerIface: iface has an address in INTERFACE or PORTCHANNEL_INTERFACE
+// (the CLI's is_port_router_interface / is_pc_router_interface).
+func (f *FixtureRunner) routerIface(iface string) bool {
+	for k := range f.table("cfg_mgmt") {
+		if strings.HasPrefix(k, "INTERFACE|"+iface+"|") || strings.HasPrefix(k, "PORTCHANNEL_INTERFACE|"+iface+"|") {
+			return true
+		}
+	}
+	return false
 }
 
 // shellWords splits a command line the way the shell would for the forms

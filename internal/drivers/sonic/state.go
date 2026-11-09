@@ -507,6 +507,18 @@ func (s *swState) clone() *swState {
 
 func (s *swState) field(iface, key string) string { return s.port[iface][key] }
 
+// routerIface: iface carries an address in CONFIG_DB (INTERFACE or
+// PORTCHANNEL_INTERFACE for a port or a PortChannel): a router interface,
+// which SONiC refuses as a VLAN member.
+func (s *swState) routerIface(iface string) bool {
+	for k := range s.ifaddrs {
+		if strings.HasPrefix(k, iface+"|") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *swState) setField(iface, key, value string) {
 	if s.port[iface] == nil {
 		s.port[iface] = map[string]string{}

@@ -6,6 +6,7 @@ package devicemodel
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -55,7 +56,12 @@ type PortDesired struct {
 	// claiming Capabilities.LoopProtection reads it.
 	LoopProtect bool
 
-	LAG          int // >0: member of link aggregation group LAG (every lane of a cage joins)
+	LAG int // >0: member of link aggregation group LAG (every lane of a cage joins)
+	// Routed: the port -- or, with LAG, its aggregate -- is a routed
+	// interface (UniFi's Routing and Routing + Aggregating operations):
+	// it carries no VLAN, and its address is an L3Interface's
+	// (DeviceDesired.L3Interfaces). The VLAN fields are ignored.
+	Routed       bool
 	MirrorSource int // >0: this port is a mirror destination receiving a copy of port MirrorSource's traffic
 
 	// MTU is the controller's switch-wide jumbo-frames setting as a port
@@ -225,15 +231,33 @@ type OSPFKey struct {
 }
 
 // L3Interface is one network the switch routes: its own address on the
-// VLAN, the DHCP service it runs there and whether the network is
-// isolated (UniFi's Isolate Network: no traffic to or from the switch's
-// other networks).
+// VLAN -- or on a routed port or aggregate --, the DHCP service it runs
+// there and whether the network is isolated (UniFi's Isolate Network: no
+// traffic to or from the switch's other networks). Exactly one of VLAN,
+// Port and LAG is set.
 type L3Interface struct {
-	Name     string // the network's name, for logs
-	VLAN     int    // UniFi's id (1 is the untagged Default network)
+	Name string // the network's name, for logs
+	VLAN int    // UniFi's id (1 is the untagged Default network)
+	// Port is a routed port (UniFi's port index): the port carries no
+	// VLAN and the address is its own (PortDesired.Routed).
+	Port int
+	// LAG is a routed aggregate (PortDesired.LAG of its members, which
+	// are Routed): the address is the aggregate's own.
+	LAG      int
 	Address  string // the switch's address with the prefix length, a.b.c.d/n
 	Isolated bool
 	DHCP     L3DHCP
+}
+
+// Where names the interface for logs: "VLAN 10", "port 31", "aggregate 1".
+func (in L3Interface) Where() string {
+	switch {
+	case in.Port > 0:
+		return fmt.Sprintf("port %d", in.Port)
+	case in.LAG > 0:
+		return fmt.Sprintf("aggregate %d", in.LAG)
+	}
+	return fmt.Sprintf("VLAN %d", in.VLAN)
 }
 
 // L3DHCP is a routed network's DHCP service: Mode "" = none, "server" =
@@ -246,16 +270,28 @@ type L3DHCP struct {
 	DNS       []string // the name servers handed out
 	LeaseSecs int
 	Relays    []string
+	// Static are the clients with a Fixed IP on the network: each MAC
+	// always gets its IP from the switch's DHCP server.
+	Static []DHCPStatic
+}
+
+// DHCPStatic is one fixed address: MAC (aa:bb:cc:dd:ee:ff) gets IP.
+type DHCPStatic struct {
+	MAC string
+	IP  string
 }
 
 // StaticRoute is one route the switch installs: Prefix via NextHop, out
-// of the routed interface on VLAN (an interface route, no next hop), or
-// into nothing (Blackhole). Exactly one of the three is set.
+// of a routed interface (an interface route, no next hop: the network on
+// VLAN, the routed Port or the routed aggregate LAG), or into nothing
+// (Blackhole). Exactly one is set.
 type StaticRoute struct {
 	Name      string // for logs
 	Prefix    string // a.b.c.d/n, network address
 	NextHop   string
 	VLAN      int
+	Port      int
+	LAG       int
 	Blackhole bool
 }
 

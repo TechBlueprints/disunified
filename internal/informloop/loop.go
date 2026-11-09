@@ -731,6 +731,7 @@ func (l *Loop) desiredOutlets(text string) []devicemodel.OutletDesired {
 // this bridge is allowed to write.
 func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 	cfg := unificfg.Parse(text)
+	routed := routedPorts(cfg)
 	var desired []devicemodel.PortDesired
 	for _, idx := range cfg.PortIndexes() {
 		if l.cfg.ControlPorts != nil && !l.cfg.ControlPorts[idx] {
@@ -823,6 +824,13 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 			d.LAG = p.LAG
 		case "mirror":
 			d.MirrorSource = p.MirrorPort
+		}
+		if routed[idx] {
+			// A routed port or a routed aggregate's member: the controller
+			// pushes a routed port's keys as a switching port's, native
+			// VLAN included (2026-11-08); it carries no VLAN.
+			d.Routed = true
+			d.NativeVLAN, d.TaggedAll, d.TaggedVLANs, d.VoiceVLAN = 0, false, nil, 0
 		}
 		desired = append(desired, d)
 	}

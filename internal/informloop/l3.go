@@ -26,25 +26,66 @@ func desiredL3(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []stri
 	if !r.Enabled {
 		return nil
 	}
-	vlanOf := map[int]int{}
+	// The interface each routing_interface id names, for the routes filed
+	// under it: a VLAN, a routed port or a routed aggregate.
+	type ifRef struct{ vlan, port, lag int }
+	ifOf := map[int]ifRef{}
 	for _, ri := range r.Interfaces {
-		vlanOf[ri.ID] = ri.VLAN
-	}
-	for _, ri := range r.Interfaces {
+		addr, ok := withPrefix(ri.IP, ri.Mask)
+		var in devicemodel.L3Interface
+		switch ri.Type {
+		case "port":
+			// A routed port (the port editor's Routing): the controller
+			// still pushes the port's own keys as a switching port with
+			// its native VLAN (captured 2026-11-08); routedPorts takes
+			// the port out of every VLAN.
+			if !ok || ri.Port < 1 {
+				notes = append(notes, fmt.Sprintf("network %q: routed port %d, address %s mask %s is not a routed interface; left out", ri.Name, ri.Port, ri.IP, ri.Mask))
+				continue
+			}
+			in = devicemodel.L3Interface{Name: ri.Name, Port: ri.Port, Address: addr}
+		case "lag":
+			// A routed aggregate (Routing + Aggregating) is named by its
+			// first member's port; the aggregate is that port's lag. The
+			// controller (10.6.109) pushes only that first member: the
+			// other ports the operator aggregated are in no key at all.
+			agg := 0
+			if p, found := cfg.Ports[ri.LAG]; found && p.OpMode == "aggregate" {
+				agg = p.LAG
+			}
+			if !ok || agg < 1 {
+				notes = append(notes, fmt.Sprintf("network %q: routed aggregate on port %d (aggregate %d), address %s mask %s is not a routed interface; left out", ri.Name, ri.LAG, agg, ri.IP, ri.Mask))
+				continue
+			}
+			in = devicemodel.L3Interface{Name: ri.Name, LAG: agg, Address: addr}
+		default:
+			if !ok || ri.VLAN < 1 || ri.VLAN > 4094 {
+				notes = append(notes, fmt.Sprintf("network %q: VLAN %d, address %s mask %s is not a routed interface; left out", ri.Name, ri.VLAN, ri.IP, ri.Mask))
+				continue
+			}
+			in = devicemodel.L3Interface{Name: ri.Name, VLAN: ri.VLAN, Address: addr}
+		}
+		ifOf[ri.ID] = ifRef{in.VLAN, in.Port, in.LAG}
 		for _, u := range ri.Unmodelled {
 			notes = append(notes, fmt.Sprintf("network %q: %s not translated", ri.Name, u))
 		}
-		addr, ok := withPrefix(ri.IP, ri.Mask)
-		if !ok || ri.VLAN < 1 || ri.VLAN > 4094 {
-			notes = append(notes, fmt.Sprintf("network %q: VLAN %d, address %s mask %s is not a routed interface; left out", ri.Name, ri.VLAN, ri.IP, ri.Mask))
-			continue
-		}
-		in := devicemodel.L3Interface{Name: ri.Name, VLAN: ri.VLAN, Address: addr, Isolated: ri.Purpose == "guest"}
+		in.Isolated = ri.Purpose == "guest"
 		switch ri.OpMode {
 		case "manual", "":
 		case "dhcp_server":
 			s := ri.DHCPServer
 			in.DHCP = devicemodel.L3DHCP{Mode: "server", Start: s.Start, End: s.End, Router: s.Gateway, DNS: s.DNS, LeaseSecs: s.LeaseTime}
+			// Fixed IPs (a client's Fixed IP on the network, captured
+			// 2026-11-08): the MAC always gets the address.
+			for _, sl := range s.Static {
+				mac, err := net.ParseMAC(sl.MAC)
+				ip := net.ParseIP(sl.IP).To4()
+				if err != nil || len(mac) != 6 || ip == nil {
+					notes = append(notes, fmt.Sprintf("network %q: fixed IP %d (%s -> %s) is not a MAC and an IPv4 address; left out", ri.Name, sl.ID, sl.MAC, sl.IP))
+					continue
+				}
+				in.DHCP.Static = append(in.DHCP.Static, devicemodel.DHCPStatic{MAC: mac.String(), IP: ip.String()})
+			}
 		case "dhcp_relay":
 			in.DHCP = devicemodel.L3DHCP{Mode: "relay", Relays: ri.Relays}
 		default:
@@ -74,8 +115,9 @@ func desiredL3(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []stri
 					continue
 				}
 				s.NextHop = rt.Gateway
-			case vlanOf[rt.Interface] != 0:
-				s.VLAN = vlanOf[rt.Interface]
+			case ifOf[rt.Interface] != ifRef{}:
+				f := ifOf[rt.Interface]
+				s.VLAN, s.Port, s.LAG = f.vlan, f.port, f.lag
 			default:
 				notes = append(notes, fmt.Sprintf("route %q: no next hop and interface %d is no routed network; left out", rt.Name, rt.Interface))
 				continue
@@ -91,6 +133,36 @@ func desiredL3(cfg *unificfg.Config, d *devicemodel.DeviceDesired) (notes []stri
 	}
 	sort.SliceStable(d.StaticRoutes, func(i, j int) bool { return d.StaticRoutes[i].Prefix < d.StaticRoutes[j].Prefix })
 	return notes
+}
+
+// routedPorts are the ports the push makes routed interfaces: a routed
+// port's own, and every port in a routed aggregate (the aggregate of the
+// port a routing interface of type lag names). Nil without routing.
+func routedPorts(cfg *unificfg.Config) map[int]bool {
+	r := cfg.Routing
+	if r == nil || !r.Enabled {
+		return nil
+	}
+	out := map[int]bool{}
+	for _, ri := range r.Interfaces {
+		switch ri.Type {
+		case "port":
+			if ri.Port > 0 {
+				out[ri.Port] = true
+			}
+		case "lag":
+			head, ok := cfg.Ports[ri.LAG]
+			if !ok || head.OpMode != "aggregate" || head.LAG < 1 {
+				continue
+			}
+			for idx, p := range cfg.Ports {
+				if p.OpMode == "aggregate" && p.LAG == head.LAG {
+					out[idx] = true
+				}
+			}
+		}
+	}
+	return out
 }
 
 // withPrefix is a.b.c.d with a dotted mask as a.b.c.d/n; false for anything

@@ -141,7 +141,12 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 		if d.LAG > 0 || d.MirrorSource > 0 {
 			continue // VLANs live on the PortChannel; a mirror destination has none
 		}
-		for _, lane := range lanesOf(pl.ports[d.Index]) {
+		lanes := lanesOf(pl.ports[d.Index])
+		if d.Routed && len(lanes) > 1 {
+			pl.note("port %d: a routed port on a split cage (%d ports) is not something this driver writes; its VLANs are left as they are", d.Index, len(lanes))
+			continue
+		}
+		for _, lane := range lanes {
 			pl.syncVLANs(d.Index, lane, d)
 		}
 	}
@@ -449,6 +454,10 @@ func (pl *plan) emptiedHere(pc string) bool {
 // UniFi's native 1 is an untagged member of Vlan<native_vlan>; "Allow All"
 // tags every VLAN the controller lists; "Block All" is the native only.
 func (pl *plan) wantVLANs(idx int, d devicemodel.PortDesired) (map[int]bool, bool) {
+	if d.Routed {
+		// A routed port is a port in no VLAN (its address is l3.go's).
+		return map[int]bool{}, true
+	}
 	if !d.VLANSet || (d.NativeVLAN == 0 && !d.TaggedAll && len(d.TaggedVLANs) == 0) {
 		return nil, false
 	}
@@ -490,6 +499,14 @@ func (pl *plan) wantVLANs(idx int, d devicemodel.PortDesired) (map[int]bool, boo
 func (pl *plan) syncVLANs(idx int, iface string, d devicemodel.PortDesired) {
 	want, ok := pl.wantVLANs(idx, d)
 	if !ok {
+		return
+	}
+	if !d.Routed && len(want) > 0 && pl.sim.routerIface(iface) {
+		// `config vlan member add` refuses a router interface ("is a
+		// router interface!"), which under set -e would fail the batch: a
+		// routed port returning to switching keeps its VLANs off until
+		// the L3 apply has removed its address (it runs first, l3.go).
+		pl.note("port %d: %s still carries an address (a routed port returning to switching); its VLANs wait for the address to go", idx, iface)
 		return
 	}
 	have := pl.sim.members[iface]
@@ -954,6 +971,12 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	// The reserved groups' static members follow VLAN membership, which the
 	// batch may have changed (igmp.go).
 	if _, err := c.applyIGMP(ctx); err != nil {
+		return n, err
+	}
+	// A routed port's address waits until the port is in no VLAN, which
+	// this batch may just have made it (l3.go): the device-wide apply ran
+	// before it.
+	if _, err := c.applyL3(ctx); err != nil {
 		return n, err
 	}
 	return n, nil

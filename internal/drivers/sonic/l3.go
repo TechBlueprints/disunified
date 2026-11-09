@@ -169,6 +169,56 @@ func (c *Collector) l3Iface(vlan int) string {
 	return "Vlan" + strconv.Itoa(vlan)
 }
 
+// l3IfaceOf is the SONiC interface a routed network's address goes on:
+// Vlan<id> for a VLAN, the port's own interface for a routed port (a cage
+// split into several ports has no one interface: why says so), and
+// PortChannel<n> for a routed aggregate.
+func (c *Collector) l3IfaceOf(in devicemodel.L3Interface, ports map[int]devicemodel.Port) (string, string) {
+	switch {
+	case in.Port > 0:
+		p, ok := ports[in.Port]
+		if !ok {
+			return "", fmt.Sprintf("the switch has no port %d", in.Port)
+		}
+		lanes := lanesOf(p)
+		if len(lanes) != 1 {
+			return "", fmt.Sprintf("port %d is a split cage (%d ports)", in.Port, len(lanes))
+		}
+		return lanes[0], ""
+	case in.LAG > 0:
+		return pcName(in.LAG), ""
+	}
+	return c.l3Iface(in.VLAN), ""
+}
+
+// routedReady says why a routed port's or aggregate's address cannot be
+// added yet ("" when it can). `config interface ip add` refuses a VLAN
+// member and a PortChannel member, and on 202511 adds nothing -- with exit
+// 0 -- to a port whose PORT mode is trunk or access; the port apply takes
+// a routed port out of its VLANs, and re-runs this apply after its batch.
+func routedReady(in devicemodel.L3Interface, iface string, sim *swState) string {
+	if in.Port == 0 && in.LAG == 0 {
+		return ""
+	}
+	if in.LAG > 0 {
+		if _, ok := sim.lags[iface]; !ok {
+			return iface + " does not exist yet (the port apply makes it)"
+		}
+	}
+	if len(sim.members[iface]) > 0 {
+		return iface + " is still a VLAN member (the port apply takes it out)"
+	}
+	if in.Port > 0 {
+		if pc := sim.lagOf(iface); pc != "" {
+			return iface + " is a member of " + pc
+		}
+		if mode := sim.field(iface, "mode"); mode == "trunk" || mode == "access" {
+			return iface + " is in " + mode + " mode (SONiC adds an address only to a port in routed mode)"
+		}
+	}
+	return ""
+}
+
 // connected is each in-band interface's subnets (CONFIG_DB's addresses).
 func connected(ifaddrs map[string]bool) map[string][]*net.IPNet {
 	out := map[string][]*net.IPNet{}
@@ -215,19 +265,22 @@ func carried(iface string, st *swState) bool {
 	return false
 }
 
-// udhcpdConf is a routed network's udhcpd configuration.
-func udhcpdConf(iface string, in devicemodel.L3Interface) (string, string) {
-	_, n, err := net.ParseCIDR(in.Address)
+// udhcpdConf is a routed network's udhcpd configuration; why says why
+// there is none, skipped which fixed IPs were left out of it. A fixed IP
+// is udhcpd's static_lease: the MAC always gets the address, which udhcpd
+// never hands to another client even inside the range.
+func udhcpdConf(iface string, in devicemodel.L3Interface) (conf, why string, skipped []string) {
+	self, n, err := net.ParseCIDR(in.Address)
 	if err != nil {
-		return "", "address " + in.Address
+		return "", "address " + in.Address, nil
 	}
 	lo, hi := net.ParseIP(in.DHCP.Start).To4(), net.ParseIP(in.DHCP.End).To4()
 	if lo == nil || hi == nil || !n.Contains(lo) || !n.Contains(hi) {
-		return "", fmt.Sprintf("range %s-%s is not inside %s", in.DHCP.Start, in.DHCP.End, n)
+		return "", fmt.Sprintf("range %s-%s is not inside %s", in.DHCP.Start, in.DHCP.End, n), nil
 	}
 	size := int(ipU32(hi)) - int(ipU32(lo)) + 1
 	if size < 1 {
-		return "", fmt.Sprintf("range %s-%s is empty", in.DHCP.Start, in.DHCP.End)
+		return "", fmt.Sprintf("range %s-%s is empty", in.DHCP.Start, in.DHCP.End), nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# disunified: DHCP server of UniFi network %q (docs/drivers/sonic.md 11.13)\n", in.Name)
@@ -243,7 +296,23 @@ func udhcpdConf(iface string, in devicemodel.L3Interface) (string, string) {
 	if in.DHCP.LeaseSecs > 0 {
 		fmt.Fprintf(&b, "option lease %d\n", in.DHCP.LeaseSecs)
 	}
-	return b.String(), ""
+	ones, bits := n.Mask.Size()
+	bcast := ipU32(n.IP) | (1<<uint(bits-ones) - 1)
+	for _, sl := range in.DHCP.Static {
+		ip := net.ParseIP(sl.IP).To4()
+		mac, err := net.ParseMAC(sl.MAC)
+		switch {
+		case ip == nil || err != nil || len(mac) != 6:
+			skipped = append(skipped, fmt.Sprintf("%s -> %s is not a MAC and an IPv4 address", sl.MAC, sl.IP))
+		case !n.Contains(ip):
+			skipped = append(skipped, fmt.Sprintf("%s -> %s is not inside %s", sl.MAC, sl.IP, n))
+		case ip.Equal(self.To4()) || ipU32(ip) == ipU32(n.IP) || (bits-ones > 1 && ipU32(ip) == bcast):
+			skipped = append(skipped, fmt.Sprintf("%s -> %s is the switch's own, the network or the broadcast address", sl.MAC, sl.IP))
+		default:
+			fmt.Fprintf(&b, "static_lease %s %s\n", mac, ip)
+		}
+	}
+	return b.String(), "", skipped
 }
 
 func ipU32(ip net.IP) uint32 {
@@ -298,7 +367,7 @@ var dhcpdCommand = "sudo python3 -c " + sshrun.ShellQuote("import base64; exec(b
 // servers. Returns how many writes ran.
 func (c *Collector) applyL3(ctx context.Context) (int, error) {
 	c.mu.Lock()
-	st, d, m := c.state, c.l3, c.managedL3.clone()
+	st, d, m, snap := c.state, c.l3, c.managedL3.clone(), c.last
 	c.mu.Unlock()
 	if st == nil || d == nil {
 		return 0, nil
@@ -309,7 +378,13 @@ func (c *Collector) applyL3(ctx context.Context) (int, error) {
 		}
 		return 0, nil
 	}
-	pl := c.planL3(st, *d, m)
+	ports := map[int]devicemodel.Port{}
+	if snap != nil {
+		for _, p := range snap.Ports {
+			ports[p.Index] = p
+		}
+	}
+	pl := c.planL3(st, *d, m, ports)
 	for _, n := range pl.notes {
 		c.warnOnce("l3: "+n, "sonic: L3 routing: %s", n)
 	}
@@ -366,7 +441,7 @@ type l3Plan struct {
 	notes   []string
 }
 
-func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed) (pl l3Plan) {
+func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed, ports map[int]devicemodel.Port) (pl l3Plan) {
 	sim := st.clone()
 	pl = l3Plan{sim: sim}
 	// Three phases (live, 2026-11-07): `config interface ip remove` refuses
@@ -415,7 +490,11 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 	var want []routed
 	wantAddr := map[string]bool{}
 	for _, in := range d.L3Interfaces {
-		iface := c.l3Iface(in.VLAN)
+		iface, why := c.l3IfaceOf(in, ports)
+		if why != "" {
+			note("network %q (%s): %s; not routed", in.Name, in.Where(), why)
+			continue
+		}
 		key := iface + "|" + in.Address
 		foreign := ""
 		for k := range sim.ifaddrs {
@@ -424,7 +503,7 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 			}
 		}
 		if foreign != "" {
-			note("network %q (VLAN %d): %s carries %s, which the driver did not add (the switch's own address); not routed there", in.Name, in.VLAN, iface, foreign)
+			note("network %q (%s): %s carries %s, which the driver did not add (the switch's own address); not routed there", in.Name, in.Where(), iface, foreign)
 			continue
 		}
 		want = append(want, routed{in, iface, key})
@@ -446,13 +525,18 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		add(strip, "config interface ip remove "+iface+" "+cidr+" </dev/null", func(s *swState) { delete(s.ifaddrs, key) })
 	}
 	for _, r := range want {
-		if id := r.in.VLAN; id != 1 && !sim.vlans[id] {
+		if id := r.in.VLAN; id > 1 && !sim.vlans[id] {
 			add(build, "config vlan add "+strconv.Itoa(id), func(s *swState) { s.vlans[id] = true })
 		}
-		if !sim.ifaddrs[r.key] {
-			key := r.key
-			add(build, "config interface ip add "+r.iface+" "+r.in.Address, func(s *swState) { s.ifaddrs[key] = true })
+		if sim.ifaddrs[r.key] {
+			continue
 		}
+		if why := routedReady(r.in, r.iface, sim); why != "" {
+			note("network %q (%s): %s; its address waits", r.in.Name, r.in.Where(), why)
+			continue
+		}
+		key := r.key
+		add(build, "config interface ip add "+r.iface+" "+r.in.Address, func(s *swState) { s.ifaddrs[key] = true })
 	}
 	for k := range wantAddr {
 		pl.managed.Addrs = append(pl.managed.Addrs, k)
@@ -465,10 +549,16 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 	// dhcp_relay service).
 	wantRelay := map[int][]string{}
 	for _, r := range want {
-		if r.in.DHCP.Mode == "relay" {
-			id := atoi(strings.TrimPrefix(r.iface, "Vlan"))
-			wantRelay[id] = r.in.DHCP.Relays
+		if r.in.DHCP.Mode != "relay" {
+			continue
 		}
+		id, isVlan := strings.CutPrefix(r.iface, "Vlan")
+		if !isVlan {
+			// SONiC's relay CLI configures VLAN interfaces only.
+			note("network %q (%s): DHCP relay on a routed port is not something SONiC's relay configures; not relayed", r.in.Name, r.in.Where())
+			continue
+		}
+		wantRelay[atoi(id)] = r.in.DHCP.Relays
 	}
 	relayVLANs := map[int]bool{}
 	for _, id := range m.Relays {
@@ -525,8 +615,13 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		switch {
 		case r.Blackhole:
 			h.blackhole = "true"
-		case r.VLAN != 0:
-			h.ifname = c.l3Iface(r.VLAN)
+		case r.VLAN != 0 || r.Port != 0 || r.LAG != 0:
+			iface, why := c.l3IfaceOf(devicemodel.L3Interface{VLAN: r.VLAN, Port: r.Port, LAG: r.LAG}, ports)
+			if why != "" {
+				note("route %q: %s; left out", r.Name, why)
+				continue
+			}
+			h.ifname = iface
 		default:
 			h.nexthop = r.NextHop
 		}
@@ -628,10 +723,13 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		if r.in.DHCP.Mode != "server" {
 			continue
 		}
-		conf, why := udhcpdConf(r.iface, r.in)
+		conf, why, skipped := udhcpdConf(r.iface, r.in)
 		if why != "" {
 			note("network %q: DHCP server not started: %s", r.in.Name, why)
 			continue
+		}
+		for _, sk := range skipped {
+			note("network %q: fixed IP %s; left out of its DHCP server", r.in.Name, sk)
 		}
 		wantDHCPd[r.iface] = conf
 	}

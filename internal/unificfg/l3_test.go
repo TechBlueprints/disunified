@@ -70,3 +70,60 @@ func TestParseRouting(t *testing.T) {
 		}
 	}
 }
+
+// The DX010's routed-port and fixed-IP pushes of 2026-11-08: the port
+// editor's Routing on port 31, Routing + Aggregating on ports 30-31, and a
+// routed network's clients with a Fixed IP (one, then two with the first
+// moved).
+func TestParseRoutedPortsAndFixedIPs(t *testing.T) {
+	c := readL3(t, "system_cfg-dx010-routed-1-port.txt")
+	ri := c.Routing.Interfaces[1]
+	want := RoutingInterface{ID: 2, Name: "dui-routed-31", Type: "port", Port: 31, OpMode: "manual", IP: "198.18.4.1", Mask: "255.255.255.252", DefaultRoute: "198.18.253.1", Purpose: "corporate"}
+	if !reflect.DeepEqual(ri, want) {
+		t.Errorf("routed port = %+v\nwant          %+v", ri, want)
+	}
+	// The controller still pushes the routed port as a switching port in
+	// its native VLAN.
+	if p := c.Ports[31]; p.OpMode != "switch" || !p.VLANExplicit || p.NativeVLAN != 1 {
+		t.Errorf("port 31 = %+v", p)
+	}
+
+	c = readL3(t, "system_cfg-dx010-routed-3-aggregate.txt")
+	ri = c.Routing.Interfaces[1]
+	want = RoutingInterface{ID: 2, Name: "dui-routed-lag-30", Type: "lag", LAG: 30, OpMode: "manual", IP: "198.18.4.5", Mask: "255.255.255.252", DefaultRoute: "198.18.253.1", Purpose: "corporate"}
+	if !reflect.DeepEqual(ri, want) {
+		t.Errorf("routed aggregate = %+v\nwant               %+v", ri, want)
+	}
+	// Only the first member is pushed, with no VLAN; the second member
+	// the operator aggregated (31) is in no key at all.
+	if p := c.Ports[30]; p.OpMode != "aggregate" || p.LAG != 1 || p.VLANExplicit {
+		t.Errorf("port 30 = %+v", p)
+	}
+	if _, ok := c.Ports[31]; ok {
+		t.Errorf("port 31 is in the routed aggregate's push: %+v", c.Ports[31])
+	}
+
+	if c := readL3(t, "system_cfg-dx010-routed-2-removed.txt"); c.Routing == nil || c.Routing.Enabled {
+		t.Errorf("the routed port removed = %+v", c.Routing)
+	}
+
+	c = readL3(t, "system_cfg-dx010-fixedip-1-network.txt")
+	if s := c.Routing.Interfaces[1].DHCPServer; s.Start != "198.18.3.100" || s.End != "198.18.3.199" || len(s.Static) != 0 {
+		t.Errorf("the DHCP network = %+v", s)
+	}
+	c = readL3(t, "system_cfg-dx010-fixedip-2-one.txt")
+	if got, w := c.Routing.Interfaces[1].DHCPServer.Static, []StaticLease{{ID: 1, MAC: "02:00:00:00:00:01", IP: "198.18.3.50"}}; !reflect.DeepEqual(got, w) {
+		t.Errorf("one fixed IP = %+v, want %+v", got, w)
+	}
+	c = readL3(t, "system_cfg-dx010-fixedip-3-two.txt")
+	if got, w := c.Routing.Interfaces[1].DHCPServer.Static, []StaticLease{{ID: 1, MAC: "02:00:00:00:00:01", IP: "198.18.3.51"}, {ID: 2, MAC: "02:00:00:00:00:02", IP: "198.18.3.120"}}; !reflect.DeepEqual(got, w) {
+		t.Errorf("two fixed IPs = %+v, want %+v", got, w)
+	}
+	for _, f := range []string{"system_cfg-dx010-routed-1-port.txt", "system_cfg-dx010-routed-3-aggregate.txt", "system_cfg-dx010-fixedip-2-one.txt", "system_cfg-dx010-fixedip-3-two.txt"} {
+		for _, ri := range readL3(t, f).Routing.Interfaces {
+			if len(ri.Unmodelled) > 0 {
+				t.Errorf("%s: %s left %v", f, ri.Name, ri.Unmodelled)
+			}
+		}
+	}
+}
