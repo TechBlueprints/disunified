@@ -251,6 +251,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if st != nil && st.bgpOn() {
 		caps.L3Routing, caps.L3Interfaces, caps.StaticRoutes = true, l3Interfaces, l3Routes
 		caps.BGP, caps.OSPF = true, true
+		caps.PortRouting = true
 	}
 	return caps
 }

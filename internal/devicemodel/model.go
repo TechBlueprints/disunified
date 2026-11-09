@@ -981,7 +981,11 @@ type Capabilities struct {
 	// OSPF: the controller's OSPF router for this switch
 	// (DeviceDesired.OSPF) is honoured.
 	OSPF bool
-	SNMP bool // DeviceController honours SNMPCommunity
+	// PortRouting: the port editor's Routing and Routing + Aggregating
+	// operation modes (a port or an aggregate with an address of its own,
+	// in no VLAN) are honoured.
+	PortRouting bool
+	SNMP        bool // DeviceController honours SNMPCommunity
 	// IPACLs / MACACLs are how many switch ACL rules of each kind the
 	// DeviceController honours (DeviceDesired.IPACLs / MACACLs); 0 = none.
 	IPACLs  int

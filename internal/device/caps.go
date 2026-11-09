@@ -42,7 +42,10 @@ const (
 // OSPF 4, PORT_ROUTING 16, POE_STAGING 32, TRUSTED_PORT 64,
 // MAC_TABLE_PRESSURE 128). Sent only when a bit is claimed, so no driver's
 // payload changes without one.
-const swCap2OSPF = 4 // OSPF: Settings -> Routing -> OSPF offers the switch as a Device (switch.ospf.*)
+const (
+	swCap2OSPF        = 4  // OSPF: Settings -> Routing -> OSPF offers the switch as a Device (switch.ospf.*)
+	swCap2PortRouting = 16 // PORT_ROUTING: the port editor's Routing and Routing + Aggregating operations
+)
 
 // sys_fan_mode.caps: the fan modes a device can be set to, as the
 // controller's own enum numbers them (DEFAULT 1, QUIET 2; Network 10.6.109,
@@ -333,8 +336,15 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	if c.L3Routing {
 		caps["max_l3_intf"] = c.L3Interfaces
 		caps["max_static_routes"] = c.StaticRoutes
+		feat2 := 0
 		if c.OSPF {
-			caps["feature_caps2"] = swCap2OSPF
+			feat2 |= swCap2OSPF
+		}
+		if c.PortRouting {
+			feat2 |= swCap2PortRouting
+		}
+		if feat2 != 0 {
+			caps["feature_caps2"] = feat2
 		}
 	}
 	if c.IPACLs > 0 || c.MACACLs > 0 {
