@@ -73,6 +73,12 @@ uploaded FRR file) was captured, built and verified live with a peer the
 same evening (§11.14), and OSPF (`feature_caps2` 4; ospfd run by the driver
 in the bgp container) with Clint's OK for a test routed network, verified
 live with a peer on the kernel bridge.
+Routed ports and routed aggregates (`feature_caps2` 16, the port editor's
+Routing) and DHCP fixed IPs on a switch-routed network were captured,
+built and verified live 2026-11-08 (`docs/drivers/sonic.md` §11.16); the
+controller pushes only a routed aggregate's first member, and VRRP is
+offered only for an MC-LAG pair ("L3 Automatic Failover"), so a single
+switch never gets it.
 **Since 2026-11-02 the DX010's bridge runs on the switch itself**
 (`options.transport: local`, a `.deb` whose config and state live in
 `/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two
@@ -266,8 +272,11 @@ stay stopped** (one bridge per adopted key).
   `BOOT-INF/lib/internal-dependencies.jar` -- class names obfuscated, but each
   class's constant pool keeps its strings, and the switch `system_cfg`
   generators are `com/ubnt/service/config/ubntconf/*` (key prefixes such as
-  `switch.ospf.`). The Mac has no JRE: read constant pools with a few lines
-  of Python. A key found there still needs its capture before code.
+  `switch.ospf.`). Read constant pools with a few lines of Python; when the
+  strings are not enough, Homebrew's openjdk (`javap -c -p`, not on PATH)
+  disassembles a class -- that is how the port op-mode enum was read
+  (2026-11-08: Routing is pushed as `opmode=switch`, Routing + Aggregating as
+  `aggregate`). A key found there still needs its capture before code.
 - **The v2 routing API** (`/proxy/network/v2/api/site/<site>/bgp/config/<mac>`,
   `/ospf/router[/<id>]`) takes a write only with `X-Csrf-Token`, which any
   GET returns as a response header (403 without it); the OSPF router's

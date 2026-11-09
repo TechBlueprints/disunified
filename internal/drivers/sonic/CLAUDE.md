@@ -611,6 +611,24 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   9100 like `Vlan<id>` or OSPF stalls in ExStart (MTU check); the peer's
   ospfd needs zebra and mgmtd beside it. Area ids are dotted:
   `sanitize-controller.py` keeps 0.0.0.0/8.
+- **Routed ports and aggregates, DHCP fixed IPs (`l3.go`, `control.go`,
+  `docs/drivers/sonic.md` §11.16, captured, built and verified live
+  2026-11-08).** Claimed with L3 routing (`feature_caps2` 16). A routed port
+  is a routing interface `type=port`/`port=<idx>` whose own keys still say
+  `opmode=switch` and native VLAN untagged; a routed aggregate is
+  `type=lag`/`lag=<first member>`, and **the controller pushes only that
+  first member** (the rest are in no key). The loop sets
+  `PortDesired.Routed` (no VLAN). **The device-wide apply runs before the
+  ports**, so the address waits (note) while the port is a VLAN member, and
+  `ApplyPorts` re-runs `applyL3` after its batch: one cycle. 202511's CLI:
+  `ip add` refuses a VLAN or PortChannel member and silently does nothing
+  (exit 0) on a PORT `mode` trunk/access; `vlan member add` refuses a router
+  interface, so `syncVLANs` holds VLANs off an interface with an address
+  (note) until the L3 apply removes it. A fixed IP is udhcpd `static_lease`
+  (busybox keeps a static address from other clients, in range or not).
+  VRRP is an MC-LAG group's option only: not claimed. The FixtureRunner
+  models both refusals. Fixtures: `controller-10.6.109/
+  system_cfg-dx010-{routed,fixedip}-*.txt`.
 - **Fan mode (`fan.go`, `docs/drivers/sonic.md` §11.15, verified live on
   the DX010 2026-11-07).** The device's `fan_mode: default | quiet` (the
   controller keeps Fan Mode only for a gateway). Only

@@ -2516,6 +2516,8 @@ feature the DX010 does not claim:
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | L3 routing, 64/256, and BGP since 2026-11-07 (§11.13, §11.14) | `switch.routing_enabled`, and `switch.routing_interface.N.*` once a network is routed on the switch (captured 2026-11-07, §11.13); `switch.bgp.1.*` once a BGP router names the switch (§11.14) |
 | OSPF (`feature_caps2` 4) | no (`feature_caps2` 128) | yes since 2026-11-07 (§11.14) | `switch.ospf.*`, and `switch.routing_interface.N.ospf.*` for each routed network in an area (captured 2026-11-07, §11.14) |
 | Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
+| Routed ports and aggregates (`feature_caps2` 16, `PORT_ROUTING`) | no | yes since 2026-11-08 (§11.16) | `switch.routing_interface.N.type=port` / `=lag` with `port` / `lag` (captured 2026-11-08, §11.16) |
+| VRRP (268435456) | no | no: offered only as an MC-LAG group's L3 Automatic Failover (§11.16) | `switch.routing_interface.N.vrrp.*` from the MC-LAG group's context |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
 
@@ -4502,6 +4504,114 @@ intake):
 - the ASIC at Quiet, sampled each minute: 49.6, 50.9, 51.6, 52.1, 52.6,
   53.3, 53.4, 53.8, 54.1 °C -- climbing toward the bench's 56-58 °C,
   nothing near the 70 °C high threshold. The switch is left on Quiet.
+
+### 11.16 Routed ports and aggregates, DHCP fixed IPs, and VRRP (2026-11-08)
+
+The three Layer 3 items the controller's code showed after §11.14, read
+from Network 10.6.109's UI bundle and `ace.jar` first, then captured on the
+DX010 (Clint's OK for the test networks, 2026-11-08).
+
+**What the controller offers.**
+
+- **Routed ports** are `SWITCH_CAP_PORT_ROUTING` (`feature_caps2` 16). The
+  port editor's Operation gains Routing and Routing + Aggregating ("Routed
+  ports do not pass VLANs and other Layer 2 traffic and rely on OSPF or
+  static routes"). Saving one creates a network of its own
+  (`rest/networkconf`: `gateway_type switch`, `gateway_device` the switch,
+  `l3_interface_type port|lag`, `routed_port_idx` or `routed_lag_idx` -- the
+  aggregate's first member --, the address as `ip_subnet`, no DHCP) and sets
+  the port's override to `op_mode routed|routed_aggregate` with
+  `routed_networkconf_id`. For an aggregate the UI keeps only the first
+  member's override, listing every member. Leaving the mode deletes the
+  network. The first such network makes the Inter-VLAN routing transit
+  (§11.13), like any network routed on a switch.
+- **DHCP fixed IPs:** a client's Fixed IP on a network a switch routes with
+  DHCP Server mode ("Requires a UniFi Gateway or Layer 3 switch").
+- **VRRP is not a single switch's.** `SWITCH_CAP_VRRP` (`feature_caps`
+  268435456) appears in the UI only as an MC-LAG group's "L3 Automatic
+  Failover (VRRP)" between its Top and Bottom switches. The server's
+  routing-interface generator writes `routing_interface.N.vrrp.{enabled,
+  vrid,vip,priority,adv_int}` from that group's context (whether VRRP is on
+  for the group, and which peer is master). With it on, a routed VLAN's DHCP
+  Server mode is refused: the range is split between the two switches. So
+  VRRP comes with MC-LAG, which needs a second switch; the DX010 claims
+  neither.
+
+**The push** (`controller-10.6.109/system_cfg-dx010-routed-{1-port,
+2-removed,3-aggregate}.txt` and `system_cfg-dx010-fixedip-{1-network,
+2-one,3-two}.txt`; scrubbed with `--subnet`, the test subnets in
+198.18.3.0/24 and 198.18.4.0/24, the transit in 198.18.253.0/24):
+
+- A routed port is a routing interface with `type=port` and `port=<idx>`,
+  plus `ip`/`mask`, `opmode manual`, `default_route` and `purpose`. **The
+  port's own keys do not change**: it is still `opmode=switch` and an
+  untagged member of its native VLAN.
+- A routed aggregate is `type=lag` and `lag=<first member>`. That member is
+  `opmode=aggregate`, `lag=1`, with no VLAN keys. **The other members are in
+  no key at all**: the controller's port table shows them `aggregated_by` the
+  first, but the push leaves them out, with or without an override of their
+  own (the cfgversion was the same both ways). Any device, a UniFi one too,
+  gets a one-member aggregate from that push.
+- A fixed IP is `dhcp_server.static_ip.K.{id,mac,ip}` under the network's
+  routing interface, inside the DHCP range or outside it.
+
+**On SONiC.**
+
+- The loop marks a routed port, and each member of a routed aggregate the
+  push lists, `PortDesired.Routed`: a port in no VLAN. The port apply
+  removes every membership (the static L2MC rows first, as for any removal),
+  so the port leaves the kernel `Bridge` and mstpd drops it. The L3 apply
+  then adds `config interface ip add Ethernet<n>|PortChannel<n> <addr>`.
+  The device-wide apply runs before the ports, so the port apply re-runs the
+  L3 apply after its batch, and a routed port is done in one cycle.
+- **202511's CLI** (`config/main.py`, `config/vlan.py`): `ip add` refuses a
+  VLAN member and a PortChannel member. On a port whose `PORT` `mode` is
+  trunk or access it prints a line and adds nothing, with exit 0. `vlan
+  member add` refuses a router interface ("is a router interface!"), and
+  removing an interface's last address deletes its `INTERFACE` row. So the
+  address waits, with a note, while the port still has VLANs. A port
+  returning to switching gets no VLAN while it still carries an address,
+  again with a note. In practice the device-wide apply removes the address
+  first in the same cycle. The DX010's ports have no `mode`.
+- A routed port on a split cage is refused with a note (no one interface).
+  DHCP relay on a routed port is refused, because SONiC's relay CLI
+  configures VLANs only. A DHCP server on one runs like any other, and a
+  route out of one uses its interface name.
+- A fixed IP is udhcpd's `static_lease <mac> <ip>`. busybox never leases a
+  static address to another client, inside the range too. One outside the
+  network, or on the switch's own, the network or the broadcast address,
+  is left out with a note.
+
+**Live, 2026-11-08** (deb b092e26; `replay_sonic_routed_test.go` replays
+the six pushes over `collect-l3.txt`):
+
+- **Fixed IPs:** the next cycle restarted udhcpd with both static leases. A
+  client in a throwaway namespace on the kernel `Bridge`, in VLAN 3999 only
+  (no front-panel port), leased the fixed address for each test MAC, one
+  outside the range and one inside it. A third MAC got a dynamic address,
+  never the reserved one. Fixed IP off removed the leases.
+- **Routed port** (cage 31, Ethernet120, empty): in one cycle the port left
+  VLAN 4094 and got its address. It showed in CONFIG_DB `INTERFACE`, APPL_DB
+  `INTF_TABLE`, the kernel (out of the `Bridge`), and ASIC_DB as a
+  `SAI_ROUTER_INTERFACE_TYPE_PORT` router interface at MTU 1500 with the
+  /32 to the CPU. mstpd no longer listed it, and the cycles after wrote
+  nothing. Removing it took the address out first. The port then rejoined
+  VLAN 4094 untagged and the `Bridge`, with its seven reserved-group rows.
+- **Routed aggregate** (cage 30 as pushed): PortChannel1 at fast rate,
+  min-links 1 and MTU 1500, with Ethernet116, no VLAN, the address in
+  `PORTCHANNEL_INTERFACE`, `INTF_TABLE` and the kernel, and a router
+  interface on the LAG. Removing it took the address out, then the member,
+  then the PortChannel, and the port went back to VLAN 4094.
+- **Cleanup:** the test networks, their transit and the two test clients
+  were removed in the controller. VLANs 3999 and 4040 were deleted by hand.
+  The DX010's port overrides equal their pre-test copy, and
+  `config_db.json` holds no trace. Ethernet0 stayed up throughout.
+
+**Not proven live:** traffic over a routed port, since the test cages have
+no link (rack day). The subnet's connected route, which SONiC installs when
+the port comes up. An OSPF adjacency or a static route over a routed port.
+A routed aggregate of more than one member: the controller pushes only the
+first.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

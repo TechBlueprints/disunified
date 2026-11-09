@@ -379,12 +379,24 @@ while the transit VLAN reaches a port with link, the management gateway
 kept behind it at distance 200; the switch's own management address is
 never the driver's.
 
+**Routed ports and DHCP fixed IPs (2026-11-08).** Claimed with L3 routing
+(`feature_caps2` 16): the port editor's Routing and Routing + Aggregating,
+and a client's Fixed IP on a network the switch routes with DHCP Server
+mode. Every push captured on the DX010 and replayed
+(`informloop/replay_sonic_routed_test.go`), **verified live**
+([`drivers/sonic.md`](drivers/sonic.md) §11.16). A routed port leaves every
+VLAN and gets its address in one cycle, and returns to switching cleanly. A
+routed aggregate is a PortChannel with the address and no VLAN. A fixed IP is
+udhcpd's `static_lease`: each test MAC leased its address, and no other
+client got it.
+
 | Gap | What the PR needs |
 |---|---|
 | The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
 | Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
-| DHCP static reservations on a switch-routed network (`switch.routing_interface.N.dhcp_server.static_ip.K.{id,ip,mac}`, in the ECS firmware's key list; the parser logs them "not translated") | a capture with a fixed-IP client on a network the switch routes, then udhcpd's `static_lease` |
-| Routed ports and routed aggregates (`feature_caps2` 16, `PORT_ROUTING`; the port editor's routed op modes), VRRP (`feature_caps` 268435456; `routing_interface.N.vrrp.*` in the ECS firmware) | not claimed: the claim, a capture, then the build (SONiC: a port in no VLAN with an address; keepalived or FRR's vrrpd for VRRP) |
+| Traffic over a routed port, its connected route (installed when the port comes up), OSPF or a static route over one | a cabled peer on a routed port (rack day) |
+| A routed aggregate of two or more members | the controller (10.6.109) pushes only the aggregate's first member; a push naming the others, then a cabled peer |
+| VRRP (`feature_caps` 268435456) | not a single switch's: UniFi offers it only as an MC-LAG group's L3 Automatic Failover, so it needs MC-LAG (a second switch) first |
 
 ### BGP (2026-11-07)
 
