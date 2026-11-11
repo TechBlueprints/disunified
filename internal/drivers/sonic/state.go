@@ -53,6 +53,13 @@ type swState struct {
 	ifaddrs map[string]bool
 
 	meta map[string]string // DEVICE_METADATA|localhost (hostname, timezone)
+	// kernelHost is the Linux hostname (collect.py's hostname section),
+	// which hostcfgd sets from DEVICE_METADATA after `config hostname`;
+	// rsyslogHosts are the names rsyslog.conf's SONiC templates were
+	// rendered with (rsyslog_tmpl; nil when the section is absent or holds
+	// no template), which nothing re-renders on a rename.
+	kernelHost   string
+	rsyslogHosts []string
 
 	stpFeature   bool // FEATURE|stp exists: the image has the STP daemon
 	platformJSON bool // the platform has a platform.json: dynamic port breakout
@@ -176,6 +183,8 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			}
 		}
 	}
+	s.kernelHost = strings.TrimSpace(sec["hostname"])
+	s.rsyslogHosts = rsyslogHosts(sec["rsyslog_tmpl"])
 	body, ok := sec["frr_ospf"]
 	s.ospf = parseOSPFSection(body, ok)
 	s.frrBGP = map[string]bool{}
@@ -393,7 +402,7 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
+		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM,

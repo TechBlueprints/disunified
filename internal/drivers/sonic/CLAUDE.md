@@ -401,7 +401,17 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   2026-10-28): `config hostname <name>` then
   `config save -y` (hostcfgd sets the Linux hostname). SONiC's YANG caps
   the whole name at 63 characters, not per label. Verified live on the VS
-  (`docs/drivers/sonic.md` §6.6).
+  (`docs/drivers/sonic.md` §6.6). **A rename leaves syslog on the old
+  name** (DX010, 2026-11-11): `rsyslog-config.sh` renders `$(hostname)`
+  into rsyslog.conf's `$template SONiC*` lines as text, runs only at boot
+  or on a syslog-server change, and hostcfgd never re-runs it; a plain
+  `systemctl restart rsyslog` reloads the stale file. `collect.py`'s
+  `rsyslog_tmpl` prints those template lines; once the Linux hostname
+  equals CONFIG_DB's and a template still names another, the plan runs
+  `systemctl restart rsyslog-config` -- never in the renaming batch
+  (hostcfgd sets the Linux hostname after `config hostname` returns), so a
+  rename reaches syslog one cycle later. Fixture:
+  `sonic-igmp-202511.20261106-f2e25f54c/rsyslog-stale.txt`.
 - **Locate (`locate.go`) -- verified live on the DX010 2026-11-01 (LED toggles ~1/s, green after).** No LED in the `config`
   CLI; the platform API's `Chassis.set_status_led("off"|"green")` (DX010:
   `/sys/devices/platform/leds_dx010/leds/dx010:green:stat`) returns False

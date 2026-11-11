@@ -318,3 +318,27 @@ func (f *FixtureRunner) hostname(name string) error {
 	f.setSection("hostname", name)
 	return nil
 }
+
+// rsyslogConfig: systemctl restart rsyslog-config renders rsyslog.conf
+// again from the Linux hostname (rsyslog-config.sh's `hostname=$(hostname)`),
+// so every SONiC template in the capture's rsyslog_tmpl section takes the
+// hostname section's name.
+func (f *FixtureRunner) rsyslogConfig() error {
+	name := strings.TrimSpace(f.section("hostname"))
+	body := f.section("rsyslog_tmpl")
+	old := rsyslogHosts(body)
+	if name == "" || len(old) == 0 {
+		return nil
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "$template SONiC") {
+			for _, h := range old {
+				line = strings.Replace(line, " "+h+" ", " "+name+" ", 1)
+			}
+			lines[i] = line
+		}
+	}
+	f.setSection("rsyslog_tmpl", strings.Join(lines, "\n"))
+	return nil
+}

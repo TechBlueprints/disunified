@@ -569,6 +569,8 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.timezone(at(3))
 	case len(w) == 3 && w[0] == "config" && w[1] == "hostname":
 		return f.hostname(w[2])
+	case len(w) == 3 && w[0] == "systemctl" && w[1] == "restart" && w[2] == "rsyslog-config":
+		return f.rsyslogConfig()
 	case cmd == "config interface fec":
 		// portconfig checks the mode against STATE_DB's supported_fecs and
 		// prints the refusal to stdout, exit 1 (the DX010, FC on a QSFP28

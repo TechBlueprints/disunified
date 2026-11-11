@@ -476,6 +476,15 @@ func (c *Collector) applyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			name := h
 			add("config hostname "+name, "", func(s *swState) { s.meta["hostname"] = name })
 		}
+		// rsyslog-config.sh renders `hostname` into rsyslog.conf as text
+		// and only runs at boot or on a syslog-server change, so after a
+		// rename syslog keeps the old name. Once hostcfgd has set the
+		// Linux hostname (it runs after `config hostname` returns, so not
+		// in the batch that renamed), restart rsyslog-config: it renders
+		// again and restarts rsyslog when the file changed.
+		if want := sim.meta["hostname"]; want != "" && sim.kernelHost == want && rsyslogStale(sim.rsyslogHosts, want) {
+			add("systemctl restart rsyslog-config", "", func(s *swState) { s.rsyslogHosts = []string{want} })
+		}
 	}
 
 	for _, n := range notes {
@@ -648,6 +657,40 @@ func ntpSource(snap *devicemodel.Snapshot, st *swState, dial string) string {
 		}
 	}
 	return ""
+}
+
+// rsyslogHosts reads collect.py's rsyslog_tmpl section: the hostname each
+// `$template SONiC...` line was rendered with, the first word of the
+// template string with no rsyslog property in it ("%...%"). nil when the
+// section holds no template (absent, unreadable, or an older collect.py).
+func rsyslogHosts(body string) []string {
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "$template SONiC") {
+			continue
+		}
+		_, tmpl, ok := strings.Cut(line, ",")
+		if !ok {
+			continue
+		}
+		for _, w := range strings.Fields(tmpl) {
+			if !strings.Contains(w, "%") && !strings.Contains(w, `"`) && !strings.Contains(w, `\`) {
+				out = append(out, w)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// rsyslogStale: some SONiC template still carries another name than want.
+func rsyslogStale(hosts []string, want string) bool {
+	for _, h := range hosts {
+		if h != want {
+			return true
+		}
+	}
+	return false
 }
 
 // badHostname says why a name cannot be the switch's hostname, "" if it

@@ -452,6 +452,19 @@ s("ssh")
 _ssh = (os.environ.get("SSH_CONNECTION") or "").split()
 sys.stdout.write((_ssh[0] + " " + _ssh[2] + "\n") if len(_ssh) == 4 else "\n")
 text("hostname", ["hostname"])
+# rsyslog.conf's SONiC templates: rsyslog-config.sh renders the Linux
+# hostname into them as text, and a hostname change re-renders nothing, so
+# syslog keeps the old name until rsyslog-config runs again (device.go).
+# Only the template lines (the hostname and the build id); empty when the
+# file cannot be read.
+s("rsyslog_tmpl")
+try:
+    with open("/etc/rsyslog.conf") as _f:
+        for _line in _f:
+            if _line.startswith("$template SONiC"):
+                sys.stdout.write(_line if _line.endswith("\n") else _line + "\n")
+except Exception:
+    pass
 text("version", path="/etc/sonic/sonic_version.yml")
 text("uptime", path="/proc/uptime")
 text("stat", path="/proc/stat", first_line=True)

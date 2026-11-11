@@ -106,6 +106,62 @@ func TestApplyHostname(t *testing.T) {
 	r.device("off", devicemodel.DeviceDesired{}, nil)
 }
 
+// rsyslog-config renders the Linux hostname into rsyslog.conf's templates
+// as text and nothing re-renders it on a rename: the DX010 logged under
+// its old name after one (2026-11-11). rsyslog-stale.txt is that unit's
+// hostname and rsyslog_tmpl sections, read the same day. The driver
+// restarts rsyslog-config once the Linux hostname matches CONFIG_DB and a
+// template does not; not in the renaming batch (hostcfgd sets the Linux
+// hostname after `config hostname` returns), so a rename takes two cycles.
+func TestRsyslogFollowsHostname(t *testing.T) {
+	b, err := os.ReadFile("../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/rsyslog-stale.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := sections(string(b))
+	if got := rsyslogHosts(sec["rsyslog_tmpl"]); !reflect.DeepEqual(got, []string{"SONiCSeastone-DX010", "SONiCSeastone-DX010", "SONiCSeastone-DX010"}) {
+		t.Fatalf("rendered names %q", got)
+	}
+	r := rig202511(t, func(fr *FixtureRunner) {
+		fr.UseSection("hostname", sec["hostname"])
+		fr.UseSection("rsyslog_tmpl", sec["rsyslog_tmpl"])
+	})
+	const restart = "sudo systemctl restart rsyslog-config"
+	step := func(name string, d devicemodel.DeviceDesired, want []string) {
+		t.Helper()
+		n := len(r.fr.Commands)
+		if _, err := r.c.ApplyDevice(context.Background(), d); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := r.fr.Commands[n:]; !reflect.DeepEqual(got, want) && !(len(got) == 0 && len(want) == 0) {
+			t.Errorf("%s: commands\n  got  %q\n  want %q", name, got, want)
+		}
+		if _, err := r.c.Collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The unit as read: renamed, rsyslog still on the old name.
+	step("stale", devicemodel.DeviceDesired{Hostname: "host-1"}, []string{restart, save})
+	step("stale again", devicemodel.DeviceDesired{Hostname: "host-1"}, nil)
+	if got := rsyslogHosts(r.fr.section("rsyslog_tmpl")); !reflect.DeepEqual(got, []string{"host-1", "host-1", "host-1"}) {
+		t.Errorf("re-rendered names %q", got)
+	}
+	// A rename: CONFIG_DB first, rsyslog on the next cycle.
+	step("rename", devicemodel.DeviceDesired{Hostname: "lab-2"}, []string{"sudo config hostname lab-2", save})
+	step("rename, next cycle", devicemodel.DeviceDesired{Hostname: "lab-2"}, []string{restart, save})
+	step("renamed", devicemodel.DeviceDesired{Hostname: "lab-2"}, nil)
+	// hostcfgd has not set the Linux hostname yet: wait for it.
+	r.fr.setSection("hostname", "lab-3-pending")
+	r.fr.update("metadata", func(tb table) error { tb["DEVICE_METADATA|localhost"]["hostname"] = "lab-3"; return nil })
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	step("kernel behind", devicemodel.DeviceDesired{Hostname: "lab-3"}, nil)
+	// Hostname not managed: left alone.
+	r.fr.setSection("hostname", "lab-3")
+	step("off", devicemodel.DeviceDesired{}, nil)
+}
+
 // --- locate ---
 
 func waitFor(t *testing.T, what string, cond func() bool) {
