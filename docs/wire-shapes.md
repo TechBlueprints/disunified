@@ -169,4 +169,86 @@ wrong, and what it could not test without a live device.
 
 ### Package B
 
+Built (branch `claude/wire-shapes-b-658094`):
+
+- `device.WireVersion` (`internal/device/descriptor.go`) is §5.1's rule as
+  written, with `MaxVersionLen` 13 and four groups; `VersionFits` says
+  whether a string goes out unchanged. The rule gives the four results §5.1
+  names without bending.
+- `Session.buildPayload` reports `WireVersion` of the tracked version, or
+  the model profile's when it has no digits, and derives
+  `displayable_version` from that. `inform.Descriptor.Version`,
+  `Session.Version()`, `State.Firmware`/`FirmwareBase`, `deviceVersion()`
+  and the comparisons in `NewSession` and `SetSnapshot` keep the device's
+  own string, so a persisted `FirmwareBase` of `4.26.14M` still matches
+  the device after a restart on this build, and an upgrade requested now
+  records the same base the old build did. `Session.ReportedVersion()`
+  returns the wire form. Nothing else sends the version out: the API
+  client and the loop never read it.
+- `-version` that does not fit is refused at start next to the `-serial`
+  check, with the form it would have gone out as.
+- `internal/device/version_test.go`: every driver's version from its
+  capture, reduced and sent (table below); the rule on §5.1's examples and
+  its edges; a persisted emulated upgrade replayed through a `Store` across
+  a restart with `4.26.14M` underneath; a device with no upgrade left out of
+  one; and the device's version moving, under a running bridge and across a
+  restart, dropping the fiction.
+
+| Driver (capture) | Device's own | On the wire |
+|---|---|---|
+| arista-eos (`arista-eos-4.26.14M`) | `4.26.14M` | `4.26.14` |
+| proxmox (`proxmox-9.1.6`) | `9.1.6` | `9.1.6` |
+| podman (`podman-5.8.2`) | `5.8.2` | `5.8.2` |
+| apc-pdu (`apc-aos-3.9.2`) | `3.9.2` | `3.9.2` |
+| apc-ups (`apc-smtl-15.5`) | `15.5` | `15.5` |
+| apc-backups (`apc-backups-05.3`) | `05.3` | `05.3` |
+| sonic, VS guest (`sonic-202505.1238524-ff3c0c9f6`) | `202505.1238524-ff3c0c9f6` | `202505` |
+| sonic, DX010 first image (`sonic-202505.1238526-ff3c0c9f6`) | `202505.1238526-ff3c0c9f6` | `202505` |
+| sonic, DX010 202511 (`sonic-igmp-202511.20261106-f2e25f54c`) | `igmp-202511.20261106-f2e25f54c` | `202511` |
+
+What the spec had wrong or left out:
+
+- **The config file has no working version key.** `internal/config`'s
+  `Device.Firmware` (`firmware:`) has been parsed since the first commit and
+  never read: `configOptions` does not pass it on, so a config-file device
+  always reports its own version. There was nothing to refuse, and wiring it
+  would make a dead key live on every deployed device whose `config.yaml`
+  sets it. Left for the parent to decide (wire it with the same check, or
+  delete the key).
+- **One test outside the package's files asserted the old value.**
+  `contract_sonic_hw_test.go` held `displayable_version` to the 30-character
+  image name; its expectation is now `202505` (one line).
+- **A `v`-prefixed version loses its major.** `v4.26.14` (the `v<numeric>`
+  form the protocol notes used to demand) gives `26.14`: `v4` is a leading
+  token that does not start with a digit. No capture has one, and an
+  operator's is refused, so the rule was left as written.
+- Stale elsewhere, not this package's files: `docs/drivers/arista-eos.md`
+  (§ on the firmware string) still says `4.26.14M` goes out as `v4.26.14`,
+  and `docs/prior-art.md` names the `v<numeric>` quirk.
+- **The only captured upgrade reply's version is scrubbed to `device-1`**
+  (`controller-10.6.106/replies-pdu.ndjson`), which the rule reports as `1`:
+  a scrub that changes a value's shape, §4.4's kind. The tests use the model
+  profile's catalogue version as the upgrade target instead.
+- Two SONiC builds of one branch report the same wire version (`202505`):
+  the controller sees no change when the image moves within a branch. The
+  emulated upgrade still compares the full string and drops on the move.
+
+Not testable without a live device and controller:
+
+- **What the controller does when an adopted device's version changes from
+  `4.26.14M` to `4.26.14`** (and the DX010's from
+  `igmp-202511.20261106-f2e25f54c` to `202511`). Expected, not seen: it
+  takes the new `version` from the inform, moves the old one into
+  `previous_firmware_version` (so the stored 30-character value is replaced
+  by the DX010's next change, or by the correction §5 leaves to after the
+  merge), and may log a firmware-changed event. Whether the update badge
+  moves is open: `4.26.14` is still below the catalogue's `7.3.109.16640`,
+  but `202505`/`202511` compare above every catalogue version, so a SONiC
+  device may stop being offered an upgrade at all.
+- Whether any deployed `device.json` holds a `Firmware` that does not fit
+  (the controller's targets are catalogue versions, which do; one that does
+  not would now go out reduced).
+- The `-version` refusal end to end: `runOne` needs a driver, so only
+  `VersionFits` is tested.
+
 ### Package C

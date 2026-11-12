@@ -71,7 +71,7 @@ func main() {
 		serial   = flag.String("serial", envChain("", "DUI_SERIAL", "STU_SERIAL"), "device serial (default: the device's serial)")
 		ip       = flag.String("ip", envChain("", "DUI_IP", "STU_IP"), "device IP to report (default: the device address from -device-url/-device-ssh when it is an IP literal)")
 		hostname = flag.String("hostname", envChain("", "DUI_HOSTNAME", "STU_HOSTNAME"), "device hostname to report (default: the device's hostname)")
-		version  = flag.String("version", envChain("", "DUI_VERSION", "STU_VERSION"), "firmware version to report (default: the device's own, e.g. EOS 4.26.14M or PVE 9.1.6)")
+		version  = flag.String("version", envChain("", "DUI_VERSION", "STU_VERSION"), "firmware version to report, digits and dots such as 7.2.123.16565 (default: the device's own, reduced to digits and dots: EOS 4.26.14M goes out as 4.26.14, PVE 9.1.6 as it is)")
 		uplink   = flag.Int("uplink-port", envInt(0, "DUI_UPLINK_PORT", "STU_UPLINK_PORT"), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
 
 		// Device side. -device-url/-device-ssh are the current names;
@@ -422,6 +422,12 @@ func runOne(ctx context.Context, o options) error {
 	// (device.SerialFor). The device's own is only logged above.
 	if len(o.serial) > device.MaxSerialLen {
 		return fmt.Errorf("-serial %q is %d characters; the controller keeps at most %d", o.serial, len(o.serial), device.MaxSerialLen)
+	}
+	// The version goes on the wire as a real device's: digits and dots, at
+	// most four groups and device.MaxVersionLen characters. A device's own
+	// string is reduced to that; an operator's must already be it.
+	if o.version != "" && !device.VersionFits(o.version) {
+		return fmt.Errorf("-version %q is not a version the controller keeps: digits and dots, at most 4 groups and %d characters, such as 7.2.123.16565 (it would go out as %q)", o.version, device.MaxVersionLen, device.WireVersion(o.version))
 	}
 	if snap != nil {
 		if o.mac == "" {
