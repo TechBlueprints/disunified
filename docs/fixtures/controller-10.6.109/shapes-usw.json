@@ -1,0 +1,6319 @@
+{
+ "devices": 42,
+ "paths": {
+  "_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "_uptime": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "adopt_ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "adopt_url": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 27,
+   "types": [
+    "string"
+   ]
+  },
+  "adoptable_when_upgraded": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "adopted": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "adopted_at": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "adopted_by_client": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "adoption_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "adoption_completed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "anomalies": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": true,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "anon_id": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 36,
+   "types": [
+    "string"
+   ]
+  },
+  "architecture": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "ble_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "board_rev": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "cfgversion": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 16,
+   "types": [
+    "string"
+   ]
+  },
+  "config_network": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "config_network.bonding_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "config_network.ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "config_network.type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "connect_request_ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "connect_request_port": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "connected_at": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "connection_network_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "connection_network_name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "credential_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "current_firmware_url": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 110,
+   "types": [
+    "string"
+   ]
+  },
+  "default": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "detailed_states": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "detailed_states.device_near_effective_power_limit": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "detailed_states.device_near_power_limit": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "detailed_states.uplink_near_power_limit": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "device_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "dhcp_server_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "disconnected_at": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "discovered_via": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 2,
+   "types": [
+    "string"
+   ]
+  },
+  "displayable_version": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "dot1x_dyvlan_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "dot1x_portctrl_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "downlink_lldp_macs": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "downlink_lldp_macs[]": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "downlink_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "downlink_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "downlink_table[].full_duplex": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "downlink_table[].mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "downlink_table[].port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "downlink_table[].speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "ether_lighting": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "ether_lighting.behavior": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "ether_lighting.brightness": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "ether_lighting.led_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 13,
+   "types": [
+    "string"
+   ]
+  },
+  "ether_lighting.mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "ethernet_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "ethernet_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "ethernet_table[].mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "ethernet_table[].name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "ethernet_table[].num_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "ethernet_table[].other_macs": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "ethernet_table[].other_macs[]": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "external_id": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 36,
+   "types": [
+    "string"
+   ]
+  },
+  "fan_level": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fan_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "fan_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "fan_table[].critical_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fan_table[].direction": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "fan_table[].emergency": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "fan_table[].index": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fan_table[].label": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "fan_table[].present": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "fan_table[].speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fan_table[].status": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "fan_table[].target_speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "flowctrl_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "fw2_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fw3_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "fw_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": true,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "gateway_mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "general_temperature": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "guest-num_sta": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "guid": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 36,
+   "types": [
+    "string"
+   ]
+  },
+  "has_fan": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "has_temperature": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "hash_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 16,
+   "types": [
+    "string"
+   ]
+  },
+  "hostname": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "hw_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "igmp_snoop_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "igmp_snoop_table.querier": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "igmp_snoop_table.querier[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "igmp_snoop_table.querier[].is_querier": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "igmp_snoop_table.querier[].querier_ip": {
+   "charset": [
+    "ascii",
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 25,
+   "types": [
+    "string"
+   ]
+  },
+  "igmp_snoop_table.querier[].version": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "igmp_snoop_table.querier[].vlan": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "inform_ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "inform_url": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 27,
+   "types": [
+    "string"
+   ]
+  },
+  "internet": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "ipv4_lease_expiration_timestamp_seconds": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "ipv6": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "ipv6[]": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 42,
+   "types": [
+    "string"
+   ]
+  },
+  "is_access_point": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "jumboframe_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "kernel_version": {
+   "charset": [
+    "ascii",
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "known_cfgversion": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 16,
+   "types": [
+    "string"
+   ]
+  },
+  "last_config_applied_successfully": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "last_connection_network_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "last_connection_network_name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "last_seen": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "last_successful_config_application_time": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 19,
+   "types": [
+    "string"
+   ]
+  },
+  "last_uplink": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "last_uplink.port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "last_uplink.type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "last_uplink.uplink_device_name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 26,
+   "types": [
+    "string"
+   ]
+  },
+  "last_uplink.uplink_mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "last_uplink.uplink_remote_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "lcm_brightness": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "lcm_brightness_override": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "lcm_idle_timeout_override": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "lcm_night_mode_begins": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "lcm_night_mode_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "lcm_night_mode_ends": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "lcm_orientation_override": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "lcm_tracker_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "lcm_tracker_seed": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 35,
+   "types": [
+    "string"
+   ]
+  },
+  "led_override": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "led_override_color": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "led_override_color_brightness": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "link_aggregation_groups": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "link_aggregation_groups[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "link_aggregation_groups[].aggregate_members": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "link_aggregation_groups[].aggregate_members[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "link_aggregation_groups[].lag_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "link_aggregation_groups[].type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 3,
+   "types": [
+    "string"
+   ]
+  },
+  "lldp_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "lldp_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "lldp_table[].chassis_id": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "lldp_table[].is_wired": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "lldp_table[].local_port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "lldp_table[].local_port_name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 10,
+   "types": [
+    "string"
+   ]
+  },
+  "lldp_table[].mgmt_ips": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "lldp_table[].mgmt_ips[]": {
+   "charset": [
+    "ascii",
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 39,
+   "types": [
+    "string"
+   ]
+  },
+  "lldp_table[].port_id": {
+   "charset": [
+    "ascii",
+    "ascii-space",
+    "empty",
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "local_config_changed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "locating": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "mac_table_capability": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "mac_table_capability.capacity": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "mac_table_capability.count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "mac_table_capability.threshold_critical": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "mac_table_capability.threshold_warning": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "manufacturer_id": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "mgmt_network_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "min_inform_interval_seconds": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "model": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "model_in_eol": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "model_in_lts": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "model_incompatible": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 26,
+   "types": [
+    "string"
+   ]
+  },
+  "netmask": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 11,
+   "types": [
+    "string"
+   ]
+  },
+  "next_interval": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "num_sta": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outdoor_mode_override": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_ac_power_budget": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_ac_power_consumption": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "outlet_overrides": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "outlet_overrides[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "outlet_overrides[].cycle_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "outlet_overrides[].index": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outlet_overrides[].name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_overrides[].relay_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "outlet_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "outlet_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "outlet_table[].cycle_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "outlet_table[].index": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outlet_table[].name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_table[].outlet_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outlet_table[].outlet_current": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_table[].outlet_power": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_table[].outlet_power_factor": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_table[].outlet_type": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outlet_table[].outlet_voltage": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "outlet_table[].relay_group": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "outlet_table[].relay_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "overheating": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "pathmon": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "pathmon.ema_samples": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.interval": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "pathmon.targets[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "pathmon.targets[].family": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "pathmon.targets[].jitter_us": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].jitter_us_ema": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].last_update_ts": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].latency_us": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].latency_us_ema": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].loss_pcm_ema": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].resolved": {
+   "charset": [
+    "ascii",
+    "dotted-num",
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 30,
+   "types": [
+    "string"
+   ]
+  },
+  "pathmon.targets[].samples": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "pathmon.targets[].state": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 11,
+   "types": [
+    "string"
+   ]
+  },
+  "pathmon.targets[].type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_overrides[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_overrides[].aggregate_members": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_overrides[].aggregate_members[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].autoneg": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].dot1x_ctrl": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 16,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].dot1x_idle_timeout": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].eee_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].egress_rate_limit_kbps_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].excluded_networkconf_ids": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_overrides[].fec_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].forward": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].full_duplex": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].isolation": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].lag_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].ld_status": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].link_debounce_auto": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].lldpmed_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].mirror_port_idx": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 1,
+   "types": [
+    "num",
+    "string"
+   ]
+  },
+  "port_overrides[].multicast_router_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].multicast_router_networkconf_ids": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_overrides[].name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 45,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].native_networkconf_id": {
+   "charset": [
+    "empty",
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].op_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].poe_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 11,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].port_keepalive_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].port_security_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].port_security_mac_address": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_overrides[].portconf_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].sd_wan_underlay_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].setting_preference": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].stormctrl_bcast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].stormctrl_bcast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].stormctrl_mcast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].stormctrl_mcast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].stormctrl_ucast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].stormctrl_ucast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_overrides[].stp_bpdu_guard_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].stp_edge_state": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].stp_port_mode": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].stp_uplink": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_overrides[].tagged_vlan_mgmt": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_overrides[].voice_networkconf_id": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "port_system_overrides": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_system_overrides[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_system_overrides[].port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_system_overrides[].stp_edge_state_auto_detected": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_table[].aggregate_members": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].aggregate_members[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].aggregate_num_ports": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].aggregated_by": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool",
+    "num"
+   ]
+  },
+  "port_table[].anomalies": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].autoneg": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].bytes-r": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].custom_anomalies": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].dot1x_ctrl": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 16,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].dot1x_idle_timeout": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].dot1x_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 10,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].dot1x_status": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 10,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].eee_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].egress_rate_limit_kbps_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].enable": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].excluded_networkconf_ids": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].fec": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].fec_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].flowctrl_rx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].flowctrl_tx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].forward": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].full_duplex": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].is_uplink": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].isolation": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].jumbo": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].lacp_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].lacp_state[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_table[].lacp_state[].active": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].lacp_state[].member_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].lacp_state[].speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].lag_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].lag_member": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].last_connection": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_table[].last_connection.connected": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].last_connection.connected_at": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].last_connection.ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 15,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].last_connection.last_seen": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].last_connection.mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].ld_status": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].link_debounce_auto": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].link_down_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].link_flap_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].lldpmed_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].locating": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].mac_table_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].masked": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].max_poe_current": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].max_poe_power": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].max_poe_voltage": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].media": {
+   "charset": [
+    "HEX",
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].mirror_port_idx": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 1,
+   "types": [
+    "num",
+    "string"
+   ]
+  },
+  "port_table[].multicast_router_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].multicast_router_networkconf_ids": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].name": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 45,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].native_networkconf_id": {
+   "charset": [
+    "empty",
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].op_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].partner_system_id": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].poe_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].poe_class": {
+   "charset": [
+    "ascii",
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].poe_current": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].poe_enable": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].poe_good": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].poe_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 11,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].poe_power": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].poe_voltage": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].port_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].port_keepalive_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].port_poe": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].port_security_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].port_security_mac_address": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].portconf_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].rx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_bytes-r": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].rx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].satisfaction": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].satisfaction_reason": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].sd_wan_underlay_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].service_mac_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].service_mac_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_table[].service_mac_table[].mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].setting_preference": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_compliance": {
+   "charset": [
+    "ascii",
+    "ascii-space",
+    "empty",
+    "non-ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 33,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_current": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_found": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].sfp_part": {
+   "charset": [
+    "ascii",
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 15,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_rev": {
+   "charset": [
+    "HEX",
+    "ascii",
+    "digits",
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 2,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_rxfault": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].sfp_rxpower": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_serial": {
+   "charset": [
+    "HEX",
+    "ascii",
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 15,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_temperature": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_txfault": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].sfp_txpower": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_vendor": {
+   "charset": [
+    "ascii",
+    "ascii-space",
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 15,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].sfp_voltage": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].speed_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stormctrl_bcast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stormctrl_bcast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stormctrl_mcast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stormctrl_mcast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stormctrl_ucast_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stormctrl_ucast_rate": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stp_bpdu_guard_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stp_bridge_id": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].stp_edge_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stp_edge_state": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].stp_pathcost": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stp_port_mode": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].stp_role": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 10,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].stp_state": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 10,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].stp_state_change_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "port_table[].stp_state_change_count[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "port_table[].stp_state_change_count[].change_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stp_state_change_count[].mst": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].stp_uplink": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].tagged_vlan_mgmt": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "port_table[].tx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_bytes-r": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].tx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].up": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "port_table[].uptime": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "port_table[].voice_networkconf_id": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "power_budget_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "power_budget_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "power_budget_table[].avail_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budget_table[].is_default": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "power_budget_table[].max_cable_loss": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budget_table[].power_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budget_table[].power_source": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "power_budgets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "power_budgets.adapter_budgets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "power_budgets.adapter_budgets[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "power_budgets.adapter_budgets[].avail_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.adapter_budgets[].is_default": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "power_budgets.adapter_budgets[].max_cable_loss": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.adapter_budgets[].power_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.adapter_budgets[].power_source": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "power_budgets.poe_in_budgets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "power_budgets.poe_in_budgets[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "power_budgets.poe_in_budgets[].avail_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.poe_in_budgets[].is_default": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "power_budgets.poe_in_budgets[].max_cable_loss": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.poe_in_budgets[].power_budget": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "power_budgets.poe_in_budgets[].power_source": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "power_source": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "power_source_ctrl_enabled": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "power_source_voltage": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "string"
+   ]
+  },
+  "prev_non_busy_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "previous_firmware_url": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 113,
+   "types": [
+    "string"
+   ]
+  },
+  "previous_firmware_version": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 13,
+   "types": [
+    "string"
+   ]
+  },
+  "provisioned_at": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "provisioning_timeout": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "psu_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "psu_table[].datecode": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].fan": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "psu_table[].fan.<key>": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].invol_type": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].label": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].max_invol": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].maxwatt": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].min_invol": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].online": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "psu_table[].part_no": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].power": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].power_capacity": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].present": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "psu_table[].psu_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].psu_eeprom_valid": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "psu_table[].psu_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].psu_stat": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].psu_type": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].revision": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].serial_no": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "psu_table[].temp": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "psu_table[].temp.<key>": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "psu_table[].watt": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "reboot_duration": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "required_version": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "rollupgrade": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "root_switch": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "rps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "rps.power_management_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "rps.rps_port_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "rps.rps_port_table[]": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "rps.rps_port_table[].name": {
+   "charset": [
+    "ascii-space"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "rps.rps_port_table[].port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "rps.rps_port_table[].port_mode": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "rx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "safe_for_autoupgrade": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "satisfaction": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": true,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "serial": {
+   "charset": [
+    "HEX"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "service_mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "setup_id": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 36,
+   "types": [
+    "string"
+   ]
+  },
+  "shortname": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 9,
+   "types": [
+    "string"
+   ]
+  },
+  "site_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "slimcfg_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "smart_power_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "snmp_contact": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "snmp_location": {
+   "charset": [
+    "empty"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "string"
+   ]
+  },
+  "ssh_session_table": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "array"
+   ]
+  },
+  "start_connected_millis": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "start_disconnected_millis": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "startup_timestamp": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "stat.sw": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "stat.sw.bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.datetime": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 20,
+   "types": [
+    "string"
+   ]
+  },
+  "stat.sw.duration": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.o": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 2,
+   "types": [
+    "string"
+   ]
+  },
+  "stat.sw.oid": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "stat.sw.port_<n>-rx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-rx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-rx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-rx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-rx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-rx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-tx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-tx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-tx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-tx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.port_<n>-tx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_crypts": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_frags": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.rx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.site_id": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 24,
+   "types": [
+    "string"
+   ]
+  },
+  "stat.sw.sw": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "stat.sw.time": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_broadcast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stat.sw.tx_retries": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "stp_priority": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 5,
+   "types": [
+    "num",
+    "string"
+   ]
+  },
+  "stp_version": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 8,
+   "types": [
+    "string"
+   ]
+  },
+  "switch_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "switch_caps.etherlight_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.feature_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.feature_caps2": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.igmp_snoop_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_aggregate_sessions": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_class_maps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_custom_ip_acls": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_custom_mac_acls": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_global_acls": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_l3_intf": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_mirror_sessions": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_qos_profiles": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_reserved_routes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_static_routes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.max_vlan_count": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.port_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "switch_caps.port_caps.without_group_limit": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.storm_control_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.stp_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "switch_caps.vlan_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "sys_error_caps": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "sys_stats": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "sys_stats.loadavg_1": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "sys_stats.loadavg_15": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "sys_stats.loadavg_5": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "sys_stats.mem_buffer": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "sys_stats.mem_total": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "sys_stats.mem_used": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": true,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "sysid": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "syslog_key": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 64,
+   "types": [
+    "string"
+   ]
+  },
+  "system-stats": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "system-stats.cpu": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "system-stats.mem": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "system-stats.uptime": {
+   "charset": [
+    "digits"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 7,
+   "types": [
+    "string"
+   ]
+  },
+  "system_max_power_usage": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "total_max_effective_power": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "total_max_power": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "total_used_power": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "two_phase_adopt": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "tx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 3,
+   "types": [
+    "string"
+   ]
+  },
+  "unsupported": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "unsupported_reason": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "upgradable": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "upgrade_duration": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "upgrade_state": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "object"
+   ]
+  },
+  "uplink.full_duplex": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "uplink.ip": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 12,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.max_speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.max_vlan": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.media": {
+   "charset": [
+    "HEX",
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 6,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.netmask": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 11,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.num_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.port_idx": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_bytes-r": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_multicast": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.rx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.speed": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.tx_bytes": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.tx_bytes-r": {
+   "charset": [],
+   "frac": true,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.tx_dropped": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.tx_errors": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.tx_packets": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.type": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 4,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.up": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "uplink.uplink_device_name": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 26,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.uplink_mac": {
+   "charset": [
+    "mac"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 17,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink.uplink_remote_port": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uplink.uplink_source": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 13,
+   "types": [
+    "string"
+   ]
+  },
+  "uplink_depth": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "uptime": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "user-num_sta": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "num"
+   ]
+  },
+  "version": {
+   "charset": [
+    "dotted-num"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 13,
+   "types": [
+    "string"
+   ]
+  },
+  "x_aes_gcm": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "x_authkey": {
+   "charset": [
+    "hex"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 32,
+   "types": [
+    "string"
+   ]
+  },
+  "x_fingerprint": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 59,
+   "types": [
+    "string"
+   ]
+  },
+  "x_has_ssh_hostkey": {
+   "charset": [],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 0,
+   "types": [
+    "bool"
+   ]
+  },
+  "x_ssh_hostkey_fingerprint": {
+   "charset": [
+    "ascii"
+   ],
+   "frac": false,
+   "gt_int32": false,
+   "neg": false,
+   "strlen": 47,
+   "types": [
+    "string"
+   ]
+  }
+ },
+ "source": "stat/device",
+ "type": "usw"
+}
