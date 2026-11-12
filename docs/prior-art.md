@@ -102,6 +102,7 @@ order, #15 follows #13, #14 is independent.
 | [#13](https://github.com/jamesbraid/unifi-emu/pull/13) | `docs/PROTOCOL.md`: the power, UPS and gateway payloads (stacked on #12) | open, no review |
 | [#14](https://github.com/jamesbraid/unifi-emu/pull/14) | `emu`: record the inform exchange to a file when `SIM_CAPTURE` is set | open, no review |
 | [#15](https://github.com/jamesbraid/unifi-emu/pull/15) | `inform`, catalogue: gateway `network_table`, `usg_caps`, `hw_caps` on every path, `if_table` one row per layer-3 interface; measured against a real UniFi OS gateway's inform (branch `pr-gateway-reference`) | open, no review; a third party built on it (below) |
+| [#16](https://github.com/jamesbraid/unifi-emu/issues/16) | A `serial` longer than 12 characters blocks a console's update to Network 11: its PostgreSQL `device` table keeps 12, and one longer record halts the migration (found here 2026-11-12, [disunified#3](https://github.com/TechBlueprints/disunified/issues/3)). unifi-emu's default (the MAC) is safe; `DeviceSpec.Serial` passes any length through | open, filed 2026-11-12 |
 
 **The first outside response (2026-10-19).** A third party (GitHub
 `snooptheone`) built #15's branch and adopted an emulated UXGB on a UniFi OS
