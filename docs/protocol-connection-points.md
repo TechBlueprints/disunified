@@ -45,8 +45,8 @@ bridge sends is what real switches send, checked key by key against their
 informs by [`internal/device/contract_test.go`](../internal/device/contract_test.go);
 the last payload sent is `inform-log/<name>/payload-last.json`.
 
-- **Identity and protocol state**: `mac`, `serial` (at most 12 characters,
-  Network 11's PostgreSQL limit; real devices send the MAC's hex digits), `model`,
+- **Identity and protocol state**: `mac`, `serial` (the MAC's 12 hex digits,
+  as real devices send it; Network 11's PostgreSQL keeps at most 12), `model`,
   `model_display`, `version` (must be `v<numeric>`), `ip`, `hostname`,
   `inform_url` (an **IP literal**, never a name: the controller answers
   HTTP 400 `invalid inform_ip` otherwise), `uptime`, `time`, `cfgversion`,

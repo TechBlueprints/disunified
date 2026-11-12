@@ -81,7 +81,7 @@ func buildSonicContractPayload(t *testing.T) map[string]any {
 		t.Fatal(err)
 	}
 	ip := snap.System.Addresses[0].IP
-	desc, err := DescriptorFor("USWF07D", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("USWF07D", snap, Identity{MAC: snap.System.MAC, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

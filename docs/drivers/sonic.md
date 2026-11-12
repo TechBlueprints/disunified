@@ -145,7 +145,7 @@ raw dump that may carry secrets). Sources, all `sonic-db-cli` or `show …
 
 | Section | Source |
 |---|---|
-| identity | `show version` (SONiC build, platform, HwSKU, ASIC, serial), `CONFIG_DB DEVICE_METADATA|localhost` (hostname, mac, hwsku, platform); the DX010's chassis serial is 22 characters, more than the controller keeps, so the MAC's hex digits are reported (`device.SerialFor`, CLAUDE.md §5) |
+| identity | `show version` (SONiC build, platform, HwSKU, ASIC, serial), `CONFIG_DB DEVICE_METADATA|localhost` (hostname, mac, hwsku, platform); the chassis serial (22 characters on the DX010) is logged, and the MAC's hex digits are reported as the serial, as on every bridged device (`device.SerialFor`, CLAUDE.md §5) |
 | ports | `CONFIG_DB PORT|*` (index, lanes, alias, speed, fec, mtu, admin), `APPL_DB PORT_TABLE:*` (oper_status, speed), `STATE_DB PORT_TABLE|*` |
 | counters | `COUNTERS_DB COUNTERS_PORT_NAME_MAP` then `COUNTERS:<oid>` (SAI port stats incl. FEC codeword counters), `RATES:` for rates |
 | optics | `STATE_DB TRANSCEIVER_INFO|*`, `TRANSCEIVER_DOM_SENSOR|*` (hardware only) |

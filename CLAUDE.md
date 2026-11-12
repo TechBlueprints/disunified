@@ -264,11 +264,13 @@ stay stopped** (one bridge per adopted key).
   and UniFi OS rolls the Network app back to 10.6.109. 11.0.97 tried four
   times and failed each time on the Podman bridge's 36-character DMI UUID;
   the DX010's 22-character chassis serial was next. Every real UniFi
-  device's serial is its MAC's 12 hex digits, and `device.SerialFor`
-  reports a device's own serial only when it fits, else the MAC. The scrub
-  scripts had hidden it: their `SSJ00000000` stood in for an empty DMI
-  serial and a 22-character one alike. Whether the controller replaces a
-  stored serial from a later inform is not yet known.
+  device's serial is its MAC's 12 hex digits, so **every bridged device
+  now reports its MAC as its serial** (`device.SerialFor`; Clint: the MAC,
+  fleet-wide), never its own; an operator's `-serial` must fit. The
+  controller replaces a stored serial from the next inform -- no forget or
+  re-adoption (podman went from 36 characters to 12 on the first inform,
+  still adopted). The scrub scripts had hidden it: their `SSJ00000000`
+  stood in for an empty DMI serial and a 22-character one alike.
 - **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
   | QUIET 2, `mode`) is copied from an inform into the record only by the
   UDM and UXG handlers; the USW handler never copies it and the REST

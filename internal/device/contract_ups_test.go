@@ -40,7 +40,7 @@ func buildUPSContractPayload(t *testing.T) map[string]any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, err := DescriptorFor("USWDA25", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: "192.0.2.30", Hostname: "ups-1", UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("USWDA25", snap, Identity{MAC: snap.System.MAC, IP: "192.0.2.30", Hostname: "ups-1", UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

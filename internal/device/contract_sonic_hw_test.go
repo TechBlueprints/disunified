@@ -78,7 +78,7 @@ func sonicCaptureSnapshot(t *testing.T, capture string) (*sonic.Collector, *devi
 func sonicRender(t *testing.T, c *sonic.Collector, snap *devicemodel.Snapshot, model string) map[string]any {
 	t.Helper()
 	ip := snap.System.Addresses[0].IP
-	desc, err := DescriptorFor(model, snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor(model, snap, Identity{MAC: snap.System.MAC, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

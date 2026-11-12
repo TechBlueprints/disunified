@@ -417,17 +417,15 @@ func runOne(ctx context.Context, o options) error {
 	o.controlOutlets = controlScope(o.controlOutlets, isA[devicemodel.OutletController](sw))
 
 	// --- Identity ---
-	// A serial the operator names must fit the controller's; the device's
-	// own falls back to the MAC when it does not (device.SerialFor).
+	// The serial is the MAC's hex digits, as on every UniFi device, unless
+	// the operator names one, which must fit the controller's
+	// (device.SerialFor). The device's own is only logged above.
 	if len(o.serial) > device.MaxSerialLen {
 		return fmt.Errorf("-serial %q is %d characters; the controller keeps at most %d", o.serial, len(o.serial), device.MaxSerialLen)
 	}
 	if snap != nil {
 		if o.mac == "" {
 			o.mac = snap.System.MAC
-		}
-		if o.serial == "" {
-			o.serial = snap.System.Serial
 		}
 		if o.hostname == "" {
 			o.hostname = snap.System.Hostname
@@ -506,9 +504,7 @@ func runOne(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
-	if o.serial != "" && desc.Serial != o.serial {
-		log.Printf("serial: the device's %q is %d characters, more than the %d the controller keeps; reporting the MAC's %s, as a UniFi device does", o.serial, len(o.serial), device.MaxSerialLen, desc.Serial)
-	}
+	log.Printf("serial: reporting %s", desc.Serial)
 	versionPinned := o.version != "" // the operator named one; else the switch's own
 	o.version = desc.Version
 	// Capability claims come from the driver; they gate the UI, so a

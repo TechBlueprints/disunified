@@ -28,9 +28,13 @@ type Identity struct {
 // next). Every real UniFi device reports its MAC's 12 hex digits.
 const MaxSerialLen = 12
 
-// SerialFor is the serial a device reports: its own when it has one that
-// fits in MaxSerialLen, else the MAC's 12 hex digits in upper case, as a
-// real UniFi device reports.
+// SerialFor is the serial a device reports: the operator's (-serial) when
+// one is named and fits in MaxSerialLen, else the MAC's 12 hex digits in
+// upper case, as every real UniFi device reports. A device's own serial is
+// never reported (Clint, 2026-11-12: the MAC, fleet-wide): a DMI UUID or a
+// chassis serial can be longer than the controller keeps. The controller
+// replaces a stored serial from the next inform (podman, 2026-11-12: 36
+// characters to 12 on the first inform, still adopted).
 func SerialFor(serial, mac string) string {
 	if serial != "" && len(serial) <= MaxSerialLen {
 		return serial

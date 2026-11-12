@@ -2,11 +2,11 @@ package device
 
 import "testing"
 
-// The serial a device reports: its own while it fits the controller's
-// varchar(12), else the MAC's hex digits as a real UniFi device reports
-// (every UniFi device record on the console, 2026-11-12). The long shapes
-// are the two that do not fit: a DMI UUID (the Podman host, a QEMU guest
-// with no DMI serial) and a 22-character chassis serial (the DX010's).
+// The serial a device reports: the operator's -serial while it fits the
+// controller's varchar(12), else the MAC's hex digits as a real UniFi device
+// reports (every UniFi device record on the console, 2026-11-12). main
+// never passes the device's own serial; the long shapes are the two that
+// halted the migration: a DMI UUID and a 22-character chassis serial.
 func TestSerialFor(t *testing.T) {
 	const mac = "02:00:00:0a:0b:0c"
 	for _, c := range []struct{ serial, want string }{

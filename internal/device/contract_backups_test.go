@@ -25,7 +25,7 @@ func TestWireContractBackUPS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: snap.System.Addresses[0].IP, Hostname: "ups-2", UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, IP: snap.System.Addresses[0].IP, Hostname: "ups-2", UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

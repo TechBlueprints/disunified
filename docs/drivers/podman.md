@@ -61,10 +61,10 @@ virtio guest -- memory-bound, not a wire.
 ## 2. The host
 
 Identity: hostname, the OS (`PRETTY_NAME`) as the model, Podman's version as
-the firmware, the DMI product serial/UUID (or the machine id) as the serial -- reported
-only when it fits the controller's 12 characters, so a QEMU guest, which has
-no DMI serial, reports its MAC's hex digits instead of its 36-character UUID
-(`device.SerialFor`, CLAUDE.md §5) --
+the firmware, the DMI product serial/UUID (or the machine id) as the device's serial
+(logged at start; the bridge reports the MAC's hex digits as the serial, as
+every bridged device does: a QEMU guest has no DMI serial, and its
+36-character UUID halted Network 11's migration -- CLAUDE.md §5),
 the uplink NIC's MAC as the device MAC. Reachability: the uplink NIC's
 addresses and whether they are leases, the default gateway and its MAC from
 the neighbour table -- the podman bridges' own gateway addresses are

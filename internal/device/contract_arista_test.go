@@ -24,7 +24,7 @@ func buildContractPayload(t *testing.T) map[string]any {
 	if len(snap.System.Addresses) > 0 {
 		ip = snap.System.Addresses[0].IP // the switch's own address, so netmask resolves
 	}
-	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: "arista", UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, IP: ip, Hostname: "arista", UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,7 +42,7 @@ func buildPodmanContractPayload(t *testing.T) map[string]any {
 		t.Fatal(err)
 	}
 	ip := snap.System.Addresses[0].IP
-	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("UDC48X6", snap, Identity{MAC: snap.System.MAC, IP: ip, Hostname: snap.System.Hostname, UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +77,8 @@ func TestWireContractPodman(t *testing.T) {
 }
 
 // A QEMU guest has no DMI serial, so the collector takes the DMI UUID
-// (36 characters): the payload must carry the MAC's 12 hex digits instead,
-// or Network 11's migration halts on this device (11.0.97, 2026-11-12).
+// (36 characters), the shape that halted Network 11's migration (11.0.97,
+// 2026-11-12): the payload carries the MAC's 12 hex digits instead.
 func TestWireContractPodmanSerial(t *testing.T) {
 	fr, err := podman.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "podman-5.8.2", "collect.txt"))
 	if err != nil {

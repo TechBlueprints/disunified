@@ -248,7 +248,7 @@ func TestPlaceholderOutletsAreTheSlotsTheDeviceLacks(t *testing.T) {
 // anything else (an access point) is still refused.
 func TestDescriptorAcceptsThePowerDeviceType(t *testing.T) {
 	snap := &devicemodel.Snapshot{System: devicemodel.System{MAC: "02:00:00:00:00:01", Serial: "SSJ00000000"}}
-	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, Serial: snap.System.Serial, IP: "192.0.2.10", UDAPIVersion: "1.0.0"})
+	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, IP: "192.0.2.10", UDAPIVersion: "1.0.0"})
 	if err != nil {
 		t.Fatalf("USPDA2B: %v", err)
 	}

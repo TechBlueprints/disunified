@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -238,11 +239,13 @@ func runContractPorts(t *testing.T, driver string, ours map[string]any, extraOmi
 	checkSerial(t, driver, ours)
 }
 
-// checkSerial holds a payload's serial to what the controller can keep
-// (MaxSerialLen): one longer serial halts Network 11's migration.
+// checkSerial holds a payload's serial to a real UniFi device's: the MAC's
+// 12 hex digits, upper case (MaxSerialLen; a longer one halts Network 11's
+// migration).
 func checkSerial(t *testing.T, driver string, ours map[string]any) {
 	t.Helper()
-	if s, _ := ours["serial"].(string); s == "" || len(s) > MaxSerialLen {
-		t.Errorf("%s: serial %q must be 1..%d characters", driver, ours["serial"], MaxSerialLen)
+	mac, _ := ours["mac"].(string)
+	if want := strings.ToUpper(strings.ReplaceAll(mac, ":", "")); mac == "" || ours["serial"] != want {
+		t.Errorf("%s: serial %q, want the MAC's %s", driver, ours["serial"], want)
 	}
 }
