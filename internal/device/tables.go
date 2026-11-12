@@ -286,11 +286,18 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 				e["sfp_compliance"] = o.MediaType
 				e["sfp_rev"] = o.Revision
 				if o.HasDOM {
-					e["sfp_temperature"] = round1(o.TempC)
-					e["sfp_voltage"] = round2(o.VoltageV)
-					e["sfp_current"] = round2(o.TxBiasMA)
-					e["sfp_txpower"] = round2(o.TxPowerDBm)
-					e["sfp_rxpower"] = round2(o.RxPowerDBm)
+					// Strings, as real switches send them: the ECS
+					// Aggregation's inform (controller-10.6.109) has three
+					// decimals for temperature, voltage and bias current
+					// ("42.000", "3.000", "6.000") and two for the powers
+					// ("-1.64"). As numbers the controller's typed store
+					// would hold a value no real device sends
+					// (docs/wire-shapes.md §2, finding 1).
+					e["sfp_temperature"] = opticReading(o.TempC, 3)
+					e["sfp_voltage"] = opticReading(o.VoltageV, 3)
+					e["sfp_current"] = opticReading(o.TxBiasMA, 3)
+					e["sfp_txpower"] = opticReading(o.TxPowerDBm, 2)
+					e["sfp_rxpower"] = opticReading(o.RxPowerDBm, 2)
 				}
 			}
 		}
@@ -395,6 +402,16 @@ func lagFields(e map[string]any, p devicemodel.Port, members []devicemodel.Port)
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
 func round2(f float64) float64 { return float64(int(f*100+0.5)) / 100 }
+
+// opticReading formats an optic's DOM reading as the ECS sends it: fixed
+// decimals, never "-0.00" for a value that rounds to zero.
+func opticReading(f float64, decimals int) string {
+	s := strconv.FormatFloat(f, 'f', decimals, 64)
+	if strings.Trim(s, "-0.") == "" {
+		s = strings.TrimPrefix(s, "-")
+	}
+	return s
+}
 
 // macEntries renders learned addresses. age = seconds since the address was
 // learned/moved (0 if unknown); withPort adds port_idx for the top-level table.

@@ -1,6 +1,7 @@
 package device
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	apcbackups "github.com/TechBlueprints/disunified/internal/drivers/apc-backups"
 )
 
 // The wire contract: what we send must have the shape of what a real UniFi
@@ -184,6 +188,65 @@ func compareKeys(t *testing.T, what string, real, ours map[string]any, omit map[
 	}
 }
 
+// comparePortTypes holds every key that appears on any row of a table
+// (port_table) in the reference and on any row of ours to the reference's
+// JSON types for it. compareKeys sees two ports; a key that only a port with
+// a seated optic carries (the sfp_* readings, sent as numbers until
+// 2026-11-12) needs every port.
+func comparePortTypes(t *testing.T, what string, real, ours map[string]any) {
+	t.Helper()
+	compareRowTypes(t, what, real, ours, "port_table")
+}
+
+func compareRowTypes(t *testing.T, what string, real, ours map[string]any, table string) {
+	t.Helper()
+	rowTypes := func(m map[string]any) map[string]map[string]bool {
+		out := map[string]map[string]bool{}
+		rows, _ := m[table].([]any)
+		for _, r := range rows {
+			row, _ := r.(map[string]any)
+			for k, v := range row {
+				if jt := jsonType(v); jt != "null" {
+					if out[k] == nil {
+						out[k] = map[string]bool{}
+					}
+					out[k][jt] = true
+				}
+			}
+		}
+		return out
+	}
+	rt, ot := rowTypes(real), rowTypes(ours)
+	if len(rt) == 0 || len(ot) == 0 {
+		t.Fatalf("%s: no %s rows to compare (real %d keys, ours %d)", what, table, len(rt), len(ot))
+	}
+	var typed []string
+	for k, types := range ot {
+		want, shared := rt[k]
+		if !shared {
+			continue // a key no real row carries is compareKeys' business
+		}
+		for jt := range types {
+			if !want[jt] {
+				typed = append(typed, fmt.Sprintf("%s (real %s, ours %s)", k, strings.Join(sortedKeys(want), "/"), jt))
+			}
+		}
+	}
+	sort.Strings(typed)
+	if len(typed) > 0 {
+		t.Errorf("%s: %s keys with a JSON type no real row has, on some row: %v", what, table, typed)
+	}
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func mergeOmissions(ms ...map[string]string) map[string]string {
 	out := map[string]string{}
 	for _, m := range ms {
@@ -196,7 +259,7 @@ func mergeOmissions(ms ...map[string]string) map[string]string {
 
 // runContract checks one driver's payload against every reference inform:
 // the device level, the uplink port and a down port, plus the keys that
-// hid for a day. extraOmissions are the driver's own gaps, with reasons.
+// hid for a day. The types on every port are TestWireContractEveryPort's. extraOmissions are the driver's own gaps, with reasons.
 func runContract(t *testing.T, driver string, ours map[string]any, extraOmissions map[string]string) {
 	t.Helper()
 	runContractPorts(t, driver, ours, extraOmissions, nil)
@@ -247,5 +310,94 @@ func checkSerial(t *testing.T, driver string, ours map[string]any) {
 	mac, _ := ours["mac"].(string)
 	if want := strings.ToUpper(strings.ReplaceAll(mac, ":", "")); mac == "" || ours["serial"] != want {
 		t.Errorf("%s: serial %q, want the MAC's %s", driver, ours["serial"], want)
+	}
+}
+
+// contractPayload is one driver's contract payload and the class of real
+// device it is held to.
+type contractPayload struct {
+	driver string
+	power  bool // a power device: held to the USP-PDU-Pro, not the switches
+	build  func(t *testing.T) map[string]any
+}
+
+// contractPayloads are every driver's contract payloads, built by the real
+// drivers from their real captures (the contract_<driver>_test.go helpers).
+var contractPayloads = []contractPayload{
+	{"arista-eos", false, buildContractPayload},
+	{"proxmox", false, buildProxmoxContractPayload},
+	{"podman", false, buildPodmanContractPayload},
+	{"sonic", false, buildSonicContractPayload},
+	{"sonic-hw", false, func(t *testing.T) map[string]any {
+		m, _ := sonicCapturePayload(t, "sonic-202505.1238526-ff3c0c9f6/collect-hwtables.txt", "USWF07D")
+		return m
+	}},
+	{"sonic-l2", false, func(t *testing.T) map[string]any {
+		m, _ := sonicCapturePayload(t, "sonic-202505.1238526-ff3c0c9f6/collect-l2-running.txt", "USWF07D")
+		return m
+	}},
+	{"apc-pdu", true, buildPDUContractPayload},
+	{"apc-ups", true, buildUPSContractPayload},
+	{"apc-backups", true, buildBackUPSContractPayload},
+}
+
+// buildBackUPSContractPayload is TestWireContractBackUPS's payload: the
+// Back-UPS Pro driver over the card's real pages (docs/fixtures/apc-backups-05.3).
+func buildBackUPSContractPayload(t *testing.T) map[string]any {
+	t.Helper()
+	fr, err := apcbackups.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "apc-backups-05.3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := apcbackups.NewCollector(fr)
+	c.Addr, c.MAC, c.Netmask, c.GatewayMAC = "192.0.2.30", "02:00:00:00:00:01", "255.255.255.0", "02:00:00:00:00:fe"
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := DescriptorFor("USPDA2B", snap, Identity{MAC: snap.System.MAC, IP: snap.System.Addresses[0].IP, Hostname: "ups-2", UDAPIVersion: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc.FWCaps = FWCapsFor(c.Capabilities())
+	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "abc"}
+	sess := NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	sess.SetCapabilities(c.Capabilities())
+	sess.SetSnapshot(snap)
+	sess.SetGatewayIP("192.0.2.2")
+	var m map[string]any
+	if err := json.Unmarshal(sess.BuildPayload(time.Now()), &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// powerReferences are the real power-device informs a power payload is held to.
+var powerReferences = []string{"controller-10.6.106/inform-usp-pdu-pro-usppdup.json"}
+
+// TestWireContractEveryPort: for every key on any port of a reference
+// inform and on any port of a driver's payload, the JSON types agree (and
+// the same for a power device's outlet rows). The uplink-and-one-down-port
+// comparison of runContract missed the optic readings for two months: only
+// a port with a seated, DOM-capable optic carries them.
+func TestWireContractEveryPort(t *testing.T) {
+	for _, d := range contractPayloads {
+		t.Run(d.driver, func(t *testing.T) {
+			ours := d.build(t)
+			refs := powerReferences
+			if !d.power {
+				refs = nil
+				for _, r := range contractReferences {
+					refs = append(refs, r.path)
+				}
+			}
+			for _, ref := range refs {
+				real := loadFixtureJSON(t, ref)
+				comparePortTypes(t, d.driver+" "+ref+" every port", real, ours)
+				if d.power {
+					compareRowTypes(t, d.driver+" "+ref+" every outlet", real, ours, "outlet_table")
+				}
+			}
+		})
 	}
 }
