@@ -271,6 +271,17 @@ stay stopped** (one bridge per adopted key).
   re-adoption (podman went from 36 characters to 12 on the first inform,
   still adopted). The scrub scripts had hidden it: their `SSJ00000000`
   stood in for an empty DMI serial and a 22-character one alike.
+- **Values are held to a real device's shape, not only its keys
+  (2026-11-12, `docs/wire-shapes.md`).** The audit after the serial found
+  optic readings sent as numbers (real: strings), a `version` with letters
+  or an image name (real: digits and dots, at most 13 characters) and the
+  Podman ports' `ifname` carrying a label. All three are fixed, and
+  `internal/device/shapes_test.go` holds every driver's payload to
+  `docs/fixtures/controller-10.6.109/shapes-usw.json` (types, longest
+  string, character class, number range of 42 real devices; no values).
+  A difference needs an excusal with its reason. `scripts/wire-shapes.py
+  audit` repeats the comparison against a live controller. Scrub
+  placeholders keep a serial's length now; other scrubs still change shapes.
 - **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
   | QUIET 2, `mode`) is copied from an inform into the record only by the
   UDM and UXG handlers; the USW handler never copies it and the REST

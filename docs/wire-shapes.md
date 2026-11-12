@@ -1,7 +1,7 @@
 # Wire shapes: holding a bridged device's values to a real device's
 
-Status: **build spec** (2026-11-12). Three work packages, §4-§6; each
-records what it built in §7.
+Status: **built 2026-11-12**, not yet deployed: three work packages, §4-§6,
+each with its results in §7. Open after the merge: §8.
 
 ## 1. Why
 
@@ -463,3 +463,25 @@ moves; the only new value the controller sees is each container port's
 `ifname`); the live labels with spaces and up to 29 characters (covered by a
 constructed endpoint, not a capture); whether a `children:` entry sits on a
 container port in the live config.
+
+## 8. After the merge
+
+The three branches merged without a conflict; the only change at the merge
+was dropping package A's `version` and `displayable_version` excusals, which
+package B made unnecessary (an excusal that excuses nothing fails).
+
+Open, each a decision or a live check:
+
+- `hash_id` goes out as 16 characters of a UUID, dashes included; real
+  devices send 16 hex digits (found by package A; `session.go`).
+- The config file's `firmware:` key is parsed and never read (found by
+  package B): wire it with the `-version` check, or delete it.
+- The one stored `previous_firmware_version` that is an image name is the
+  controller's record; it is replaced by that device's next version change.
+- Live: the controller's port names for the adopted Podman host after the
+  deploy, the optic readings on a port's SFP tab, and what the controller
+  records when an adopted device's version changes from `4.26.14M` to
+  `4.26.14`.
+- The Proxmox driver's fan label is `Fan N` where the ECS has `FanN`.
+- Two more scrubs that change a shape: `hash_id` (32 digits for 16) and an
+  upgrade reply's version (`device-1`).

@@ -37,14 +37,6 @@ var shapeExcusalsAll = map[shapeExcusal]string{
 
 // Per driver.
 var (
-	excuseVersionB = map[shapeExcusal]string{
-		{"version", "charset"}:             "fixed by package B",
-		{"displayable_version", "charset"}: "fixed by package B",
-	}
-	excuseVersionLongerB = map[shapeExcusal]string{
-		{"version", "longer"}:             "fixed by package B",
-		{"displayable_version", "longer"}: "fixed by package B",
-	}
 	excuseOptics = map[shapeExcusal]string{
 		{"port_table[].sfp_current", "longer"}: "a 100G module's laser bias is near 40 mA (\"39.508\"); every module on the site's real switches draws under 10 mA. The format is the ECS's (three decimals)",
 		{"port_table[].sfp_part", "longer"}:    "SFF-8636's vendor part number is a 16-character field and this module fills it; the longest on the site's real switches is 15",
@@ -64,8 +56,7 @@ var (
 // difference not listed fails, and so does a listed one that no longer
 // differs.
 var shapeExcusals = map[string]map[shapeExcusal]string{
-	"arista-eos": mergeShapeExcusals(excuseVersionB, excuseOptics, map[shapeExcusal]string{
-		{"displayable_version", "longer"}:          "fixed by package B",
+	"arista-eos": mergeShapeExcusals(excuseOptics, map[shapeExcusal]string{
 		{"lldp_table[].local_port_name", "longer"}: "the EOS name of a breakout lane (Ethernet49/1, 12 characters); the ECS sends its own vendor names here too (Ethernet12), the longest on site is 10",
 		{"psu_table[].part_no", "longer"}:          "the 7160's supplies name their part, as the ECS's own inform does; the site's real switches report theirs blank (docs/wire-shapes.md §2)",
 		{"psu_table[].part_no", "charset"}:         "the 7160's supplies name their part, as the ECS's own inform does; the site's real switches report theirs blank",
@@ -76,9 +67,9 @@ var shapeExcusals = map[string]map[shapeExcusal]string{
 		{"fan_table[].label", "longer"}:           "the proxmox driver labels a node's hwmon fans \"Fan N\", where the ECS sends \"FanN\": a display label, the driver's file; a follow-up",
 		{"fan_table[].label", "charset"}:          "the proxmox driver labels a node's hwmon fans \"Fan N\", where the ECS sends \"FanN\": a display label, the driver's file; a follow-up",
 	},
-	"sonic":       mergeShapeExcusals(excuseVersionB, excuseVersionLongerB),
-	"sonic-hw":    mergeShapeExcusals(excuseVersionB, excuseVersionLongerB, excuseOptics, excuseSonicPSU),
-	"sonic-l2":    mergeShapeExcusals(excuseVersionB, excuseVersionLongerB, excuseOptics, excuseSonicPSU),
+	"sonic":       {},
+	"sonic-hw":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
+	"sonic-l2":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
 	"apc-ups":     excuseTestNetmask,
 	"apc-backups": excuseTestNetmask,
 }
