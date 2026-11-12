@@ -141,11 +141,22 @@ func (s *Session) Pending() (cfgversion, systemCfg string, ok bool) {
 	return s.st.PendingCfgVersion, s.st.PendingSystemCfg, s.st.PendingSystemCfg != ""
 }
 
-// Version is the firmware version currently reported.
+// Version is the firmware version the bridge tracks for the device: the
+// device's own string (EOS "4.26.14M"), an emulated upgrade's target, or the
+// operator's -version. The emulated-upgrade logic compares this one; the
+// payload carries ReportedVersion.
 func (s *Session) Version() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.desc.Version
+}
+
+// ReportedVersion is the version the payload carries: Version reduced to
+// digits and dots (WireVersion), or the model profile's when it has none.
+func (s *Session) ReportedVersion() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return reportedVersion(s.desc.Version, s.desc.Model)
 }
 
 // Applied returns the last system_cfg applied to the switch, if any.
@@ -248,12 +259,16 @@ func (s *Session) buildPayload(now time.Time) []byte {
 	if s.snap != nil && s.snap.System.Uptime > 0 {
 		uptime = int64(s.snap.System.Uptime.Seconds())
 	}
+	// The device's own version string stays in s.desc.Version (the
+	// emulated-upgrade logic compares it); the wire carries it as a real
+	// device's: digits and dots, at most 13 characters (WireVersion).
+	version := reportedVersion(s.desc.Version, s.desc.Model)
 	m := map[string]any{
 		"mac":            s.desc.MAC,
 		"serial":         s.desc.Serial,
 		"model":          s.desc.Model,
 		"model_display":  s.desc.ModelDisplay,
-		"version":        s.desc.Version,
+		"version":        version,
 		"ip":             s.desc.IP,
 		"hostname":       s.desc.Hostname,
 		"inform_url":     s.st.InformURL,
@@ -376,7 +391,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil && len(s.snap.System.IPv6) > 0 {
 			m["ipv6"] = s.snap.System.IPv6 // the management interface's, "<address>/<prefix>", as UniFi switches send them
 		}
-		m["displayable_version"] = displayableVersion(s.desc.Version)
+		m["displayable_version"] = displayableVersion(version)
 		// lldp_table is always sent, empty when there is no neighbour: that
 		// is what real devices do (a USP-PDU-Pro on 10.6.106 sends []), and
 		// an absent key reads as a device that does not speak LLDP at all.
@@ -418,10 +433,10 @@ func (s *Session) buildPayload(now time.Time) []byte {
 	return b
 }
 
-// displayableVersion is the version as the UI names it: a UniFi version
-// drops its build number ("4.0.1.995" -> "4.0.1", the ECS Aggregation's
-// pair); any other device's own version string ("4.26.14M",
-// "202505.1238526-ff3c0c9f6") is already what it calls itself.
+// displayableVersion is the version as the UI names it, derived from the
+// reported (wire) version: a four-group version drops its build number
+// ("4.0.1.995" -> "4.0.1", the ECS Aggregation's pair); a shorter one
+// ("4.26.14", "9.1.6", "202505") is already what it calls itself.
 func displayableVersion(v string) string {
 	parts := strings.Split(v, ".")
 	if len(parts) != 4 {

@@ -42,6 +42,73 @@ func SerialFor(serial, mac string) string {
 	return strings.ToUpper(strings.NewReplacer(":", "", "-", "").Replace(mac))
 }
 
+// MaxVersionLen is the longest version a real UniFi device reports: four
+// groups of digits and dots, such as 7.2.123.16565 (the site's 42 real
+// switches on Network 10.6.109, docs/wire-shapes.md §2). The controller keeps
+// the reported version, and the last one as previous_firmware_version, and
+// derives displayable_version from it.
+const MaxVersionLen = 13
+
+// maxVersionGroups is how many dot-separated groups a real version has.
+const maxVersionGroups = 4
+
+// WireVersion is v as it goes on the wire: digits and dots only
+// (docs/wire-shapes.md §5.1). v is split on every character that is not a
+// letter or digit; leading tokens that do not start with a digit are
+// skipped; from each following token its leading digits are taken, until
+// the first token that does not start with a digit; at most four groups are
+// kept, and trailing ones dropped until the result is at most MaxVersionLen
+// characters. "4.26.14M" is "4.26.14", "9.1.6" stays, a SONiC image name
+// ("igmp-202511.20261106-f2e25f54c", "202505.1238526-ff3c0c9f6") is its
+// branch ("202511", "202505"). Nothing is padded. A version with no digits
+// to take gives "": the caller falls back to the model profile's.
+func WireVersion(v string) string {
+	tokens := strings.FieldsFunc(v, func(r rune) bool { return !isASCIIDigit(r) && !isASCIILetter(r) })
+	var groups []string
+	for _, tok := range tokens {
+		n := 0
+		for n < len(tok) && isASCIIDigit(rune(tok[n])) {
+			n++
+		}
+		if n == 0 {
+			if len(groups) == 0 {
+				continue // a leading word ("igmp-"): skipped
+			}
+			break // a word after the numbers (a build hash): the end
+		}
+		groups = append(groups, tok[:n])
+		if len(groups) == maxVersionGroups {
+			break
+		}
+	}
+	for len(groups) > 0 && len(strings.Join(groups, ".")) > MaxVersionLen {
+		groups = groups[:len(groups)-1]
+	}
+	return strings.Join(groups, ".")
+}
+
+// VersionFits reports whether v goes on the wire as it is: an operator's
+// -version must, or it is refused at start (as an over-long -serial is).
+func VersionFits(v string) bool {
+	return v != "" && WireVersion(v) == v
+}
+
+// reportedVersion is the version the payload carries for a device tracked
+// at v (its own, an emulated upgrade, or -version): WireVersion(v), or the
+// model profile's when v has no digits.
+func reportedVersion(v, model string) string {
+	if w := WireVersion(v); w != "" {
+		return w
+	}
+	if p, ok := emu.Profile(model); ok {
+		return WireVersion(p.Version)
+	}
+	return ""
+}
+
+func isASCIIDigit(r rune) bool  { return r >= '0' && r <= '9' }
+func isASCIILetter(r rune) bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
+
 // DescriptorFor builds the inform.Descriptor for model (a UniFi model code
 // from the catalogue) presenting snap. The port list comes from the model's
 // profile; the uplink flag from id.UplinkPort or the snapshot.
@@ -73,7 +140,10 @@ func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (infor
 	// The firmware version is the switch's own ("4.26.14M", "9.1.6"): the
 	// UI's Version column should say what is really running (Clint,
 	// 2026-09-20). The model profile's UniFi version is the fallback for a
-	// driver that reports none, and -version overrides both.
+	// driver that reports none, and -version overrides both. The descriptor
+	// keeps the device's own string, which the emulated-upgrade logic
+	// compares; the payload carries it reduced to digits and dots
+	// (WireVersion, applied in Session.buildPayload).
 	version := id.Version
 	if version == "" && snap != nil {
 		version = snap.System.Version

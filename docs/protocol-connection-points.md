@@ -47,7 +47,18 @@ the last payload sent is `inform-log/<name>/payload-last.json`.
 
 - **Identity and protocol state**: `mac`, `serial` (the MAC's 12 hex digits,
   as real devices send it; Network 11's PostgreSQL keeps at most 12), `model`,
-  `model_display`, `version` (must be `v<numeric>`), `ip`, `hostname`,
+  `model_display`, `version` (digits and dots as a real device's: at most
+  four groups and 13 characters, such as `7.2.123.16565`; a device's own
+  string is reduced to that by
+  [`device.WireVersion`](../internal/device/descriptor.go) -- split on
+  every character that is not a letter or digit, skip leading tokens that
+  do not start with a digit, take each following token's leading digits
+  until one does not start with a digit, keep at most four groups and drop
+  trailing ones until it fits, so EOS `4.26.14M` goes out as `4.26.14` and
+  a SONiC image `202505.1238526-ff3c0c9f6` as `202505`; a version with no
+  digits falls back to the model profile's; `displayable_version` is
+  derived from it; an operator's `-version` must already fit;
+  [wire-shapes.md](wire-shapes.md) §5), `ip`, `hostname`,
   `inform_url` (an **IP literal**, never a name: the controller answers
   HTTP 400 `invalid inform_ip` otherwise), `uptime`, `time`, `cfgversion`,
   `x_authkey`, `default`, `_default_key`, `state` (4 once adopted),
