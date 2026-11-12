@@ -52,6 +52,26 @@ the bridge's redeploys. New endpoints take the lowest free slot in container
 creation order; slots below the NICs are all open to containers (one NIC =
 53 container slots).
 
+**Interface name.** A container port's interface name (`port_table[].ifname`)
+is `ct` and eight hex digits of a hash of its endpoint key, the
+`<container name>/<network>` the slot file keeps it by: `ctcce8b580`. The
+label a person reads -- the container's name, or `name network` for a
+container on several networks -- is the port's `Name` and `Description`,
+which is what the controller shows (the inform's `port_table[].name` comes
+from the description) and what the bridge names the port in the controller.
+Until 2026-11-12 the label was the interface name too, so the inform carried
+`ifname` values with spaces and up to 29 characters, where a real device's
+is an interface name (`eth30`; at most 15 characters, a Linux interface
+name's limit) -- one of the values a typed controller store may refuse
+(`docs/wire-shapes.md` §2, §6). The hash stands in for the Proxmox driver's
+guest id (`vm100-net0`): a container has no short id that survives a
+recreate (its id changes, its name does not), and the name tracks the
+endpoint, not the slot, so a different container taking a freed slot gets a
+different interface name -- the change the loop treats as a new port and
+names in the controller. Nothing else follows from it: slots, names and
+the overrides the bridge writes are the same as before
+(`internal/drivers/podman/ifname_test.go`).
+
 **Counters** are the container interface's, read inside its network
 namespace (`nsenter --net`), so bridge and macvlan endpoints alike have
 them; they are turned around to the switch's view (the container's tx is

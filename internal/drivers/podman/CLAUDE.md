@@ -16,6 +16,11 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   not. Written only on change (`mkdir -p && cat > tmp && mv`); the fixture
   runner applies that write to its own `slots` section so tests see the
   file read back. Removed container = slot freed; stopped = kept, link down.
+- **A container port's `IfName` is `ct<8 hex>`**, a hash of the endpoint
+  key (`endpointIfName`), never the label: an interface name has no
+  whitespace and at most 15 characters (`docs/wire-shapes.md` §6). The
+  label is `Name`/`Description`, which is also the inform's port name, so
+  the change (2026-11-12) moved nothing in the controller.
 - **`collect.sh` reduces `podman inspect` on the host.** The full record
   carries every container's `Env` -- the API key of this very bridge is in
   there. The script prints only the fields the driver reads. Never widen it

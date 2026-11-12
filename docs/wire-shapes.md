@@ -252,3 +252,114 @@ Not testable without a live device and controller:
   `VersionFits` is tested.
 
 ### Package C
+
+**Built** (2026-11-12). A Podman container endpoint's `IfName` is `ct` and
+eight hex digits of a SHA-256 of its endpoint key, `<container name>/<network>`
+(`endpointIfName` in `internal/drivers/podman/collector.go`); `Name` and
+`Description` keep the label. The key is the one the host's slot file keeps
+the port by, so the name survives a recreate (new id, same name) and a
+restart, and changes when a different endpoint takes a freed slot. Deriving it
+from the slot alone would also have been stable, but would have broken the
+loop's layout signature (`Index` + `IfName` + `Interfaces`,
+`internal/informloop/loop.go`), which is what tells the bridge a new
+container is on a slot and runs the provisioner to name it. The fixture's
+ports:
+
+| Slot | Before: `IfName` = `Name` = `Description` | After: `IfName` | After: `Name` = `Description` |
+|---|---|---|---|
+| 1 | `app-1` | `ctcce8b580` | `app-1` |
+| 2 | `app-2` | `ct6ca8c906` | `app-2` |
+| 3 | `app-3` | `cta2357235` | `app-3` |
+| 4 | `app-4` | `ctf314d1dd` | `app-4` |
+| 5 | `app-5` | `ct3b9b18ba` | `app-5` |
+| 6 | `app-6` | `ct429aab53` | `app-6` |
+| 7 | `app-7` | `ctb5002961` | `app-7` |
+| 8 | `app-8` | `ct3784e40d` | `app-8` |
+| 9 | `app-9` | `ct004f256d` | `app-9` |
+| 10 | `app-10` | `ct4bdfdbea` | `app-10` |
+| 11 | `app-11` | `ct7c36f308` | `app-11` |
+| 12 | `app-12` | `cta29a3fe1` | `app-12` |
+| 13 | `disunified-ups` | `ctc9907893` | `disunified-ups` |
+| 14 | `disunified` | `cta4732075` | `disunified` |
+| 15-53 | free (no name; `Open-<n>` in the controller) | unchanged | unchanged |
+| 54 | `enp6s18` (the NIC) | unchanged | unchanged |
+
+**The `IfName` trace.** Every reader of a port's `IfName`, and why the change
+is safe for it:
+
+- `port_table[].ifname` (`internal/device/tables.go`): the value being fixed.
+- `port_table[].name` (`tables.go`): falls back to `IfName` only when the
+  port has no `Description`; every container port has one, so the inform's
+  port name is the label before and after. This is the reader that would have
+  been load-bearing -- the controller shows the inform's name for a port with
+  no name override, and the Podman ports were never given overrides because
+  the inform already carried the label -- and it is not touched.
+  `TestNewIfNameChangesOnlyIfnameOnTheWire` builds the payload from the old
+  and the new snapshot: only the container ports' `ifname` differs.
+- `lldp_table[].local_port_name` (`tables.go`): only for a port with a
+  neighbour. The host runs no lldpd; a `children:` entry on a container port
+  would report the new name there, a reported value the controller does not
+  place by (placement is by MAC, `docs/topology-placement.md`).
+- `if_table` (`tables.go`): the management interface, not a port's `IfName`.
+- Naming (`internal/drivers/podman/naming.go`): `PortName` returns
+  `Description` first, so every container port is named the label as before;
+  `DefaultPortNames` gains the new `IfName` and keeps the label (through
+  `Description` and the remembered names), so every name that was a default
+  still is.
+- The controller REST API (`internal/unifiapi`): `Provision` reads
+  `namer.PortName`, the default-name test above, and `IfName == "" &&
+  !Present` for released slots, which is the same for every port (a
+  container port has a name before and after, a free slot has none);
+  `seed.go` uses `IfName` in a log note only.
+  `TestNewIfNameChangesNothingSentToTheControllerAPI` runs `Provision`
+  against a fake controller for the old and the new snapshot, seeding on and
+  off, in three states (just adopted with the profile's names; named through
+  the inform with no overrides; name overrides plus an operator's rename):
+  the requests are byte-identical.
+- The slot file: keyed by the endpoint key, never by `IfName`; slots are
+  unchanged (`TestContainerPortsKeepSlotsAndLabels`).
+- The loop's layout signature and port freshness
+  (`internal/informloop/loop.go`): held in memory only, so a restart onto
+  the new build starts a fresh signature -- no port is marked fresh and no
+  layout change fires; afterwards the name changes exactly when a slot's
+  occupant does. The Podman driver writes no ports, so freshness gates
+  nothing on it.
+- `children` placement (`internal/informloop/children.go`): by port index.
+- The driver's own uses: the start-up log's uplink name (a NIC) and the
+  tests, which now find a port by its `Name`.
+
+**Proxmox.** Guest (`vm100-net0`), bond-slave (`bond0-1`), unattached-NIC
+(`eno1`) and free-slot (no name) ports fit the rule on both committed node
+captures (`internal/drivers/proxmox/ifname_test.go`); the driver is unchanged.
+
+**`internal/device/ifname_test.go`** holds every driver's contract payload to
+the rule (no whitespace, at most 15 characters, the same names on a second
+build), through `buildContractPayload`, `buildPodmanContractPayload`,
+`buildProxmoxContractPayload`, `buildSonicContractPayload`,
+`buildPDUContractPayload`, `buildUPSContractPayload`, and every committed
+SONiC `collect*.txt` (rendered with `sonicRender`; the 202505 hardware
+captures through `sonicCapturePayload`). Every driver passes; no driver other
+than Podman needed a change.
+
+**What the spec had wrong, or did not say.**
+
+- The rule's test on the *committed* Podman capture passes on the old build
+  too: the scrub maps container names to `app-N` and the capture has no
+  container on two networks, so no label there is long or has a space -- §1's
+  "scrubbing changes shapes" again. The rule is held for the Podman driver by
+  its own tests (`TestEndpointIfNameFitsLongLabels`, and every container port
+  matching `ct[0-9a-f]{8}`), not by the payload test alone.
+- §2 finding 4 says real switches send no `ifname`; every driver's
+  `port_table` carries one (the profile's `eth<n>` for a free slot). That is
+  package A's shape question, not changed here.
+- The Back-UPS has no payload builder (`contract_backups_test.go` builds
+  inline) and `stub` none at all; neither is in `ifname_test.go`. Both are
+  power-path or instrument payloads with no port interfaces of their own.
+
+**Not tested without the live host.** That the controller's port names for
+the adopted Podman host stay as they are after the deploy (expected: the
+inform's port names and the bridge's REST writes are unchanged, so nothing
+moves; the only new value the controller sees is each container port's
+`ifname`); the live labels with spaces and up to 29 characters (covered by a
+constructed endpoint, not a capture); whether a `children:` entry sits on a
+container port in the live config.
