@@ -28,9 +28,9 @@ SUPPORT_END=2035-06-01
 @@@ dmi
 sys_vendor=QEMU
 product_name=Standard PC (Q35 + ICH9, 2009)
-product_serial=SSJ00000000
+product_serial=
 product_uuid=00000000-0000-4000-8000-000000000000
-board_serial=SSJ00000000
+board_serial=
 bios_version=4.2025.05-2
 @@@ machineid
 00000000000000000000000000000000

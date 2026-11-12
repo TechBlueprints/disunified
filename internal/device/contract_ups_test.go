@@ -69,6 +69,7 @@ func TestWireContractUPS(t *testing.T) {
 		omit[k] = v
 	}
 	compareKeys(t, "apc-ups device", real, ours, omit)
+	checkSerial(t, "apc-ups", ours)
 	compareKeys(t, "apc-ups uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
 
 	if u, ok := ours["uplink"].(string); !ok || u == "" {

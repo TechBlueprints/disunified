@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,5 +73,27 @@ func TestWireContractPodman(t *testing.T) {
 	ports, _ := ours["port_table"].([]any)
 	if len(ports) != 54 {
 		t.Errorf("port_table has %d rows, want 54 (the USW Leaf)", len(ports))
+	}
+}
+
+// A QEMU guest has no DMI serial, so the collector takes the DMI UUID
+// (36 characters): the payload must carry the MAC's 12 hex digits instead,
+// or Network 11's migration halts on this device (11.0.97, 2026-11-12).
+func TestWireContractPodmanSerial(t *testing.T) {
+	fr, err := podman.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "podman-5.8.2", "collect.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := podman.NewCollector(fr).Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(snap.System.Serial); n <= MaxSerialLen {
+		t.Fatalf("fixture serial %q is %d characters: the capture no longer exercises the fallback", snap.System.Serial, n)
+	}
+	ours := buildPodmanContractPayload(t)
+	want := strings.ToUpper(strings.ReplaceAll(snap.System.MAC, ":", ""))
+	if ours["serial"] != want {
+		t.Errorf("serial = %v, want the MAC's %s", ours["serial"], want)
 	}
 }

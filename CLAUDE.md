@@ -256,6 +256,19 @@ stay stopped** (one bridge per adopted key).
   the log host and was simply quiet (it syslogs outlet, load, PSU, restart
   and unauthorised-access events, not logins). Both stamp lines in local
   time with daylight saving off: an hour behind from March to November.
+- **A serial is at most 12 characters (Network 11, 2026-11-12).** Network
+  11 moves the controller's config from MongoDB to PostgreSQL, whose
+  `device` table holds `serial` in a `varchar(12)`; one longer record halts
+  the migration (the console's `/data/unifi/logs/migration.log`:
+  `mongo2pg.device` ... `value too long for type character varying(12)`)
+  and UniFi OS rolls the Network app back to 10.6.109. 11.0.97 tried four
+  times and failed each time on the Podman bridge's 36-character DMI UUID;
+  the DX010's 22-character chassis serial was next. Every real UniFi
+  device's serial is its MAC's 12 hex digits, and `device.SerialFor`
+  reports a device's own serial only when it fits, else the MAC. The scrub
+  scripts had hidden it: their `SSJ00000000` stood in for an empty DMI
+  serial and a 22-character one alike. Whether the controller replaces a
+  stored serial from a later inform is not yet known.
 - **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
   | QUIET 2, `mode`) is copied from an inform into the record only by the
   UDM and UXG handlers; the USW handler never copies it and the REST

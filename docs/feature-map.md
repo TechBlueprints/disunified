@@ -40,7 +40,7 @@ under mstpd ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b). Both verifie
 
 | Field | Meaning | Arista source (EOS 4.26.14M) | Arista | Proxmox |
 |---|---|---|---|---|
-| `mac`, `serial`, `model`, `model_display`, `version`, `ip`, `hostname`, `inform_url` | identity | `show version`, `show hostname`; model string claimed (UDC48X6); **`version` is the switch's own firmware** (`4.26.14M`), not the model profile's UniFi version — the UI's Version column should say what is really running (Clint, 2026-09-20); `-version` overrides it | done | done (bridge MAC, DMI serial, node hostname) |
+| `mac`, `serial`, `model`, `model_display`, `version`, `ip`, `hostname`, `inform_url` | identity | `show version`, `show hostname`; model string claimed (UDC48X6); **`version` is the switch's own firmware** (`4.26.14M`), not the model profile's UniFi version — the UI's Version column should say what is really running (Clint, 2026-09-20); `-version` overrides it; **`serial` is at most 12 characters** (Network 11's PostgreSQL `device` table halts its migration on a longer one, 2026-11-12), so a longer or missing one is reported as the MAC's hex digits, as real devices report (`device.SerialFor`) | done | done (bridge MAC, DMI serial, node hostname) |
 | `uptime`, `time` | clocks | `show version` uptime | done | done |
 | `cfgversion`, `x_authkey`, `default`, `_default_key`, `state`, `fw_caps` | protocol state | session | done | done |
 | `sys_stats` (`cpu`, `mem_total`, `mem_used`, `mem_buffer`) | health | `show processes top once` | done | done (`/proc/stat`, `/proc/meminfo`) |

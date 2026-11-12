@@ -88,6 +88,7 @@ func TestWireContractPDU(t *testing.T) {
 		omit[k] = v
 	}
 	compareKeys(t, "apc-pdu device", real, ours, omit)
+	checkSerial(t, "apc-pdu", ours)
 	// The one network port is the uplink on both.
 	compareKeys(t, "apc-pdu uplink port", uplinkPort(t, real), uplinkPort(t, ours), portOmissions)
 	// An AC outlet against an AC outlet (index 5 is the first on both), and

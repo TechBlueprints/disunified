@@ -2,6 +2,7 @@ package device
 
 import (
 	"fmt"
+	"strings"
 
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
@@ -16,6 +17,25 @@ type Identity struct {
 	Version                   string // "" = the switch's own version, else the model profile's
 	UDAPIVersion              string
 	UplinkPort                int // 0 = the snapshot's LLDP-chosen uplink
+}
+
+// MaxSerialLen is the longest serial the controller can keep. Network 11
+// moves the controller's config from MongoDB to PostgreSQL, and its device
+// table holds the serial in a varchar(12): one longer record halts the
+// whole migration, and UniFi OS rolls the Network app back to 10.x
+// (11.0.97 on 2026-11-12, four tries, each failing on the Podman bridge's
+// 36-character DMI UUID; the DX010's 22-character chassis serial was
+// next). Every real UniFi device reports its MAC's 12 hex digits.
+const MaxSerialLen = 12
+
+// SerialFor is the serial a device reports: its own when it has one that
+// fits in MaxSerialLen, else the MAC's 12 hex digits in upper case, as a
+// real UniFi device reports.
+func SerialFor(serial, mac string) string {
+	if serial != "" && len(serial) <= MaxSerialLen {
+		return serial
+	}
+	return strings.ToUpper(strings.NewReplacer(":", "", "-", "").Replace(mac))
 }
 
 // DescriptorFor builds the inform.Descriptor for model (a UniFi model code
@@ -59,7 +79,7 @@ func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (infor
 	}
 	return inform.Descriptor{
 		MAC:          id.MAC,
-		Serial:       id.Serial,
+		Serial:       SerialFor(id.Serial, id.MAC),
 		Model:        profile.Model,
 		ModelDisplay: profile.ModelDisplay,
 		Version:      version,

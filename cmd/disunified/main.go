@@ -417,6 +417,11 @@ func runOne(ctx context.Context, o options) error {
 	o.controlOutlets = controlScope(o.controlOutlets, isA[devicemodel.OutletController](sw))
 
 	// --- Identity ---
+	// A serial the operator names must fit the controller's; the device's
+	// own falls back to the MAC when it does not (device.SerialFor).
+	if len(o.serial) > device.MaxSerialLen {
+		return fmt.Errorf("-serial %q is %d characters; the controller keeps at most %d", o.serial, len(o.serial), device.MaxSerialLen)
+	}
 	if snap != nil {
 		if o.mac == "" {
 			o.mac = snap.System.MAC
@@ -458,10 +463,6 @@ func runOne(ctx context.Context, o options) error {
 	if net.ParseIP(o.ip) == nil {
 		return fmt.Errorf("-ip is required and must be an IP literal (got %q)", o.ip)
 	}
-	if o.serial == "" {
-		o.serial = strings.ToUpper(strings.ReplaceAll(macStr, ":", ""))
-	}
-
 	// --- Model ---
 	if o.model == "auto" {
 		if snap == nil {
@@ -504,6 +505,9 @@ func runOne(ctx context.Context, o options) error {
 	})
 	if err != nil {
 		return err
+	}
+	if o.serial != "" && desc.Serial != o.serial {
+		log.Printf("serial: the device's %q is %d characters, more than the %d the controller keeps; reporting the MAC's %s, as a UniFi device does", o.serial, len(o.serial), device.MaxSerialLen, desc.Serial)
 	}
 	versionPinned := o.version != "" // the operator named one; else the switch's own
 	o.version = desc.Version

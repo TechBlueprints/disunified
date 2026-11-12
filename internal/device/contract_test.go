@@ -235,4 +235,14 @@ func runContractPorts(t *testing.T, driver string, ours map[string]any, extraOmi
 	if u, ok := ours["uplink"].(string); !ok || u == "" {
 		t.Errorf("%s: uplink must be the management interface name (a string), got %v", driver, ours["uplink"])
 	}
+	checkSerial(t, driver, ours)
+}
+
+// checkSerial holds a payload's serial to what the controller can keep
+// (MaxSerialLen): one longer serial halts Network 11's migration.
+func checkSerial(t *testing.T, driver string, ours map[string]any) {
+	t.Helper()
+	if s, _ := ours["serial"].(string); s == "" || len(s) > MaxSerialLen {
+		t.Errorf("%s: serial %q must be 1..%d characters", driver, ours["serial"], MaxSerialLen)
+	}
 }

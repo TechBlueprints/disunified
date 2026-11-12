@@ -121,7 +121,9 @@ def main(src, dst):
     out = UUID_RE.sub('00000000-0000-4000-8000-000000000000', out)
     # Identifiers: DMI serials and the machine id; container/network ids are
     # random and stay (the parser keys on them within one capture).
-    out = re.sub(r'^(product_serial|board_serial)=.*$', r'\1=SSJ00000000', out, flags=re.M)
+    # An empty one stays empty: a VM has none, and the collector then falls
+    # back to the DMI UUID (36 characters, more than the controller keeps).
+    out = re.sub(r'^(product_serial|board_serial)=.+$', r'\1=SSJ00000000', out, flags=re.M)
     mid = section(out, 'machineid').strip()
     if mid:
         out = out.replace(mid, '0' * 32)

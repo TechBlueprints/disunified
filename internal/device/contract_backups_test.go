@@ -48,6 +48,7 @@ func TestWireContractBackUPS(t *testing.T) {
 		omit[k] = v
 	}
 	compareKeys(t, "apc-backups device", real, m, omit)
+	checkSerial(t, "apc-backups", m)
 	compareKeys(t, "apc-backups uplink port", uplinkPort(t, real), uplinkPort(t, m), portOmissions)
 	// This unit meters every outlet (the PDU's rows omit the meter keys).
 	metered := map[string]string{}
