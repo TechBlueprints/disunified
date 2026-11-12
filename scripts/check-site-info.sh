@@ -9,7 +9,7 @@
 # 203.0.113/24, 2001:db8::/32, link-local fe80::N), MACs 02:00:00:xx:xx:xx / aa:bb:cc:dd:ee:ff,
 # MAC masks (contiguous ones then zeros, as an ACL rule's ff:ff:ff:ff:ff:00 --
 # a mask, not an address: no device has one),
-# serial SSJ00000000, authkeys 0123456789abcdef0123456789abcdef and
+# serials SSJ0+ of any length (SSJ00000000; a scrub keeps a serial's length), authkeys 0123456789abcdef0123456789abcdef and
 # 000...0NN, example.net names, e-mail only at example.com/.net/.org (and
 # the commit trailer's noreply@anthropic.com), SSH key comments only as
 # key-N (or <comment>/empty). Site-specific words to deny (your domain,
@@ -47,8 +47,11 @@ check "MAC addresses outside the scrub vocabulary (02:00:00:xx:xx:xx, aa:bb:cc:d
 # loopback, multicast.
 check "IPv6 addresses outside the scrub vocabulary (2001:db8::/32, fe80::N)" \
   "$(grep -o -i -E '(^|[^0-9a-z:.])[0-9a-f]{0,4}(:[0-9a-f]{0,4}){2,7}([^0-9a-z:.]|$)' "$tmp" | sed -E 's/^[^0-9a-fA-F:]//; s/[^0-9a-fA-F:]$//' | grep -i -E '[0-9a-f]{0,2}ff:fe[0-9a-f]{2}:[0-9a-f]{1,4}$|^fe80::[0-9a-f]{1,4}:[0-9a-f]{1,4}|^[23][0-9a-f]{3}:' | grep -v -i -E '^2001:0?db8:' | sort -u)"
-check "serial numbers (use SSJ00000000)" \
-  "$(grep -o -E '(^|[^A-Z0-9])[A-Z]{3}[0-9]{8}([^A-Z0-9]|$)' "$tmp" | tr -d -c 'A-Z0-9\n' | grep -v '^SSJ00000000$' | sort -u)"
+# The serial shapes the scrub scripts rewrite: three letters and eight digits
+# (EOS, UniFi), two and ten (APC), and lengths between. A placeholder keeps
+# the original's length, so SSJ and zeros of any length is allowed.
+check "serial numbers (use SSJ and zeros, the serial's length: SSJ00000000)" \
+  "$(grep -o -E '(^|[^A-Z0-9])[A-Z]{2,3}[0-9]{8,10}([^A-Z0-9]|$)' "$tmp" | tr -d -c 'A-Z0-9\n' | grep -v -E '^SSJ0+$' | sort -u)"
 # E-mail addresses are personal data (an SSH key comment carried an employer
 # address into a fixture once): only the documentation domains and the
 # commit trailer's address are allowed. The local part starts with a letter

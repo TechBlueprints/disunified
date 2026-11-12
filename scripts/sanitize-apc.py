@@ -59,6 +59,13 @@ def map_host(m):
         hosts[s] = f'pdu-{len(hosts) + 1}.example.net'
     return hosts[s]
 
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
+
 out = []
 for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
     line = line.rstrip('\n')
@@ -73,7 +80,7 @@ for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
         m = IPMIB_ROW_RE.match(oid)
         if m:
             oid = m.group(1) + map_ip(re.match(r'(?:\d{1,3}\.){3}\d{1,3}', m.group(2)))
-        value = SERIAL_RE.sub('SSJ00000000', value)
+        value = SERIAL_RE.sub(lambda m: placeholder_serial(m.group(0)), value)
         value = MAC_RE.sub(map_mac, value)
         # An OID-valued line carries a MIB path, never a site identifier, and a
         # numeric OID is indistinguishable from a dotted quad (.1.3.6.1... reads

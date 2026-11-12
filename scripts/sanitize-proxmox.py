@@ -20,6 +20,13 @@ IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,
 macs, ips, ip6s, lls, names, chassis = {}, {}, {}, {}, {}, {}
 CHASSIS_NAME_RE = re.compile(r'^(\s*)"name": \[\s*$')   # lldpcli json0: chassis "name": [{"value": ...}]
 
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
+
 def map_mac(m):
     key = m.lower()
     if key not in macs:
@@ -77,8 +84,8 @@ for line in lines:
     line = BRIDGE_ID_RE.sub(lambda m: m.group(1) + '.' + map_mac(':'.join(m.group(2)[i:i+2] for i in range(0, 12, 2))).replace(':', ''), line)
     line = IP_RE.sub(lambda m: map_ip(m.group(0)), line)
     line = IP6_RE.sub(lambda m: map_ip6(m.group(0)), line)
-    line = re.sub(r'^(product_serial|board_serial)=.*', r'\1=SCRUBBED', line)
-    line = re.sub(r'^(\s*Vendor SN\s*:\s*).*', r'\1SCRUBBED', line)
+    line = re.sub(r'^(product_serial|board_serial)=(.*)', lambda m: m.group(1) + '=' + placeholder_serial(m.group(2)), line)
+    line = re.sub(r'^(\s*Vendor SN\s*:\s*)(.*?)(\s*)$', lambda m: m.group(1) + placeholder_serial(m.group(2)) + m.group(3), line)
     line = re.sub(r'^(name|hostname): (.*)$', lambda m: f'{m.group(1)}: {map_name(m.group(2))}', line)
     out.append(line)
 open(sys.argv[2], 'w').write('\n'.join(out) + '\n')

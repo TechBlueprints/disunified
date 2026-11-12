@@ -76,5 +76,26 @@ git add fixture.txt
 expect "a global IPv6 outside 2001:db8 is refused" 1 "$glob"
 reset
 
+# Serials: a scrub keeps a serial's length, so SSJ and zeros of any length
+# passes; a real-shaped serial of either family does not.
+printf '{"serial": "%s", "chassis": "%s", "card": "%s"}\n' SSJ00000000 SSJ000000000 SSJ0000000000 > fixture.json
+git add fixture.json
+expect "SSJ0+ placeholders of any length pass" 0 "ok: no secrets"
+reset
+eos=$(printf '%s%s' JPE 12345678)   # assembled so this file passes the checker
+apc=$(printf '%s%s' ZA 1234567890)
+printf '{"serial": "%s"}\n' "$eos" > fixture.json
+printf 'serial=%s\n' "$apc" > fixture.txt
+git add fixture.json fixture.txt
+expect "an EOS-shaped serial is refused" 1 "$eos"
+expect "an APC-shaped serial is refused" 1 "$apc"
+expect "a serial is refused (--staged)" 1 "$apc" --staged
+reset
+near=$(printf '%s%s' SSJ 00000001)
+printf '{"serial": "%s"}\n' "$near" > fixture.json
+git add fixture.json
+expect "a serial that is SSJ but not all zeros is refused" 1 "$near"
+reset
+
 [ "$fails" -eq 0 ] && echo "check-site-info: all rules behave" && exit 0
 exit 1

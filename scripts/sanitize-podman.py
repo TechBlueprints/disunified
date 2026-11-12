@@ -27,6 +27,13 @@ macs, ips, ip6s, lls = {}, {}, {}, {}
 KEEP_NAMES = ('disunified',)
 
 
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
+
 def map_mac(m):
     key = m.lower()
     if key not in macs:
@@ -123,7 +130,7 @@ def main(src, dst):
     # random and stay (the parser keys on them within one capture).
     # An empty one stays empty: a VM has none, and the collector then falls
     # back to the DMI UUID (36 characters, more than the controller keeps).
-    out = re.sub(r'^(product_serial|board_serial)=.+$', r'\1=SSJ00000000', out, flags=re.M)
+    out = re.sub(r'^(product_serial|board_serial)=(.+)$', lambda m: m.group(1) + '=' + placeholder_serial(m.group(2)), out, flags=re.M)
     mid = section(out, 'machineid').strip()
     if mid:
         out = out.replace(mid, '0' * 32)

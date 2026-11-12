@@ -3,7 +3,8 @@
 the web pages the apc-backups driver reads and the card's config.ini.
 
 Pages: the session token in every /NMC/<token>/ path becomes TOKEN; the
-UPS, card and battery serial numbers become SSJ00000000-style values; the
+UPS, card and battery serial numbers become placeholders of the same length
+(SSJ000000000, serial-00001); the
 card's MAC (both "00 C0 B7 .." and colon forms, and the apcXXXXXX host name
 derived from it) becomes 02:00:00:00:00:01; IPv4 addresses map into
 192.0.2.0/24; the host name and its domain become ups.example.net; outlet
@@ -34,13 +35,21 @@ KEEP_NAMES = {'unplugged', ''}
 serials, ips = {}, {}
 
 
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
+
 def map_serial(s):
     # The first serial met (the UPS's, on the About page) becomes the
-    # documented SSJ00000000; any further one (the battery pack) a
-    # placeholder that is not serial-shaped, so the checker's one allowed
-    # form stays the only one.
+    # documented SSJ0... of its length; any further one (the battery pack) a
+    # placeholder of its length that is not serial-shaped (serial-00001), so
+    # two serials stay apart and the checker's allowed form stays SSJ0+.
     if s not in serials:
-        serials[s] = 'SSJ00000000' if not serials else 'serial-%d' % len(serials)
+        n = len(serials)
+        serials[s] = placeholder_serial(s) if not n else 'serial-%0*d' % (max(len(s) - 7, 1), n)
     return serials[s]
 
 

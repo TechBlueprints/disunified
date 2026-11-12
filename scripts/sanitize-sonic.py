@@ -11,7 +11,7 @@ fe80::/64 -- both carry the real MACs in their EUI-64 half), the switch's
 hostname (host-1), SNMP community names (community-N, the same name in
 CONFIG_DB's SNMP_COMMUNITY and in the snmp.yml section), port descriptions
 that carry a mapped value, and every serial the hardware fills in -- the
-chassis, the PSUs, the fans, the optics (SSJ00000000, an optic's trailing
+chassis, the PSUs, the fans, the optics (SSJ and zeros of the serial's length, an optic's trailing
 padding kept). Hardware captures also carry an LLDP neighbour's system
 name (a site device name: neighbor-N) and the bridge's managed block of
 authorized_keys (the site's public keys: each becomes
@@ -36,6 +36,13 @@ IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,
 macs, ips, ip6s, lls = {}, {}, {}, {}
 KEEP_MACS = ('00:00:00:00:00:00', 'ff:ff:ff:ff:ff:ff')
 
+
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
 
 def map_mac(m):
     key = m.lower()
@@ -123,7 +130,7 @@ def main(src, dst):
         smeta = json.loads(section(text, 'state_metadata') or '{}')
         serial = (smeta.get('DEVICE_METADATA|localhost') or {}).get('chassis_serial_number')
         if serial and serial not in ('N/A', ''):
-            names[serial] = 'SSJ00000000'
+            names[serial] = placeholder_serial(serial)
         # Hardware serials (the optics pad theirs with spaces; the padding stays).
         for sec in ('xcvr', 'psu', 'fan', 'chassis'):
             t = json.loads(section(text, sec) or '{}')
@@ -131,7 +138,7 @@ def main(src, dst):
             for fields in t.values():
                 v = fields.get('serial', '')
                 if v.strip() not in ('', 'N/A'):
-                    fields['serial'] = 'SSJ00000000' + v[len(v.rstrip()):]
+                    fields['serial'] = placeholder_serial(v.rstrip()) + v[len(v.rstrip()):]
                     touched = True
             if touched:
                 text = set_section(text, sec, dump(t))

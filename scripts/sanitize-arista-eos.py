@@ -40,14 +40,23 @@ def map_host(s):
         hosts[s] = f'neighbor-{len(hosts)+1}'
     return hosts[s]
 
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
+
 def scrub_str(s, key=None):
     if key in ('neighborDevice', 'systemName', 'hostname', 'fqdn') and s and s != 'localhost':
         return map_host(s)
-    if key in ('systemDescription', 'portDescription', 'neighborPortDescription', 'description', 'vendorSn') and s:
+    if key == 'vendorSn':
+        return placeholder_serial(s)
+    if key in ('systemDescription', 'portDescription', 'neighborPortDescription', 'description') and s:
         return 'scrubbed'
     s = MAC_RE.sub(lambda m: map_mac(m.group(0)), s)
     s = IP_RE.sub(lambda m: map_ip(m.group(0)), s)
-    s = SERIAL_RE.sub('SSJ00000000', s)
+    s = SERIAL_RE.sub(lambda m: placeholder_serial(m.group(0)), s)
     return s
 
 def scrub(o, key=None):
