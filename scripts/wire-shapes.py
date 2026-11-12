@@ -130,11 +130,15 @@ def differences(mine, ref):
                 out.append(('longer', p, '%d > %d' % (m['strlen'], r['strlen'])))
             new = m['charset'] - r['charset'] - {'empty'}
             # a narrower class inside a wider one real devices use is no difference
+            # (internal/device/shapes_test.go mirrors this; keep the two identical)
             if 'ascii-space' in r['charset'] or 'non-ascii' in r['charset']:
                 new -= {'ascii', 'digits', 'dotted-num', 'hex', 'HEX', 'mac'}
+            if 'non-ascii' in r['charset']:
+                new -= {'ascii-space'}
             if 'ascii' in r['charset']:
                 new -= {'digits', 'dotted-num', 'hex', 'HEX', 'mac'}
-            if 'dotted-num' in r['charset']:
+            # a hex string can be all digits (a MAC-derived serial, 0011223344..)
+            if 'dotted-num' in r['charset'] or 'hex' in r['charset'] or 'HEX' in r['charset']:
                 new -= {'digits'}
             if new:
                 out.append(('charset', p, '%s (real: %s)' % ('/'.join(sorted(new)), '/'.join(sorted(r['charset'])))))

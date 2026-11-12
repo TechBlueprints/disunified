@@ -12,7 +12,8 @@ a device or a person: MAC addresses (consistent mapping into 02:00:00:xx:xx:xx;
 a MAC-shaped mask -- ones then zeros, as in an ACL rule -- is kept),
 IPv4 (192.0.2.0/24, 198.51.100.0/24) and IPv6 (2001:db8::/32; a link-local
 address, whose EUI-64 half is a real MAC, into fe80::N) addresses,
-serials, hostnames/device names, and every secret or id: auth keys, the site
+serials (a device's as its scrubbed MAC's digits, any other as SSJ0...
+of the same length), hostnames/device names, and every secret or id: auth keys, the site
 key, password hashes, SSH public keys, SNMP communities, TURN credentials,
 UUIDs and object ids. system_cfg / mgmt_cfg text inside payloads is scrubbed
 line by line the same way. cfgversion values are kept (not secret; tests
@@ -52,6 +53,13 @@ HOST_KEYS = {'hostname', 'fqdn', 'name', 'uplink_device_name', 'neighborDevice',
 SERIAL_KEYS = {'serial', 'sfp_serial', 'serial_no', 'vendorSn'}
 
 macs, ips, ip6s, hosts, ids = {}, {}, {}, {}, {}
+
+def placeholder_serial(s):
+    """A serial's documentation placeholder, the original's length (SSJ and
+    zeros; an 11-character serial is SSJ00000000); an empty one stays empty.
+    A fixture that changed a value's length could not carry the one that
+    failed (docs/wire-shapes.md §1)."""
+    return ('SSJ' + '0' * len(s))[:len(s)]
 
 def map_mac(m):
     key = re.sub(r'[^0-9a-f]', '', m.lower())
@@ -177,7 +185,7 @@ def scrub_plain(s):
     s = FQDN_RE.sub(lambda m: m.group(0) if IP_RE.fullmatch(m.group(0)) or m.group(0).endswith(('.ubnt.com', '.ntp.org', '.ui.com')) else map_host(m.group(0)), s)
     s = IP_RE.sub(lambda m: map_ip(m.group(0)), s)
     s = IP6_RE.sub(lambda m: map_ip6(m.group(0)) if ':' in m.group(0) and re.search(r'[0-9a-f]{1,4}:[0-9a-f:]*:', m.group(0), re.I) and not MAC_RE.fullmatch(m.group(0)) else m.group(0), s)
-    s = SERIAL_RE.sub('SSJ00000000', s)
+    s = SERIAL_RE.sub(lambda m: placeholder_serial(m.group(0)), s)
     s = UUID_RE.sub(lambda m: map_id(m.group(0)), s)
     s = HEX32_RE.sub(lambda m: map_id(m.group(0)), s)
     s = HEX24_RE.sub(lambda m: map_id(m.group(0)), s)
@@ -185,7 +193,14 @@ def scrub_plain(s):
 
 def scrub(o, key=None):
     if isinstance(o, dict):
-        return {k: scrub(v, k) for k, v in o.items()}
+        r = {k: scrub(v, k) for k, v in o.items()}
+        # A device's serial is its MAC's 12 hex digits, upper case, on every
+        # real UniFi device (and every bridged one: device.SerialFor), so a
+        # scrubbed device keeps that shape: its scrubbed MAC's digits.
+        mac = r.get('mac')
+        if r.get('serial') and isinstance(mac, str) and re.fullmatch(r'([0-9a-f]{2}:){5}[0-9a-f]{2}', mac, re.I):
+            r['serial'] = mac.replace(':', '').upper()
+        return r
     if isinstance(o, list):
         return [scrub(v, key) for v in o]
     if isinstance(o, str):
@@ -196,7 +211,7 @@ def scrub(o, key=None):
         if key in ID_KEYS:
             return map_id(o) if o else o
         if key in SERIAL_KEYS:
-            return 'SSJ00000000' if o else o
+            return placeholder_serial(o)
         if key in HOST_KEYS:
             return map_host(o)
         return scrub_plain(o)
