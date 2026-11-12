@@ -167,6 +167,106 @@ wrong, and what it could not test without a live device.
 
 ### Package A
 
+Built (branch `claude/wire-shapes-a-6c60a4`):
+
+- **Optic readings as strings** (`internal/device/tables.go`,
+  `opticReading`): temperature, voltage and bias current with three
+  decimals, the two powers with two, as the ECS Aggregation's inform has them
+  (`"42.000"`, `"3.000"`, `"6.000"`, `"-1.64"`); never `"-0.00"`; `HasDOM`
+  false still omits all five. No existing test asserted the numbers.
+- **The contract on every port**: `TestWireContractEveryPort`
+  (`contract_test.go`) holds every key on any port of each reference inform
+  and on any port of ours to the reference's JSON types, for every driver's
+  contract payload (`contractPayloads`, nine of them: arista-eos, proxmox,
+  podman, the SONiC VS, the DX010's hardware and l2d captures, apc-pdu,
+  apc-ups, apc-backups), and does the same for a power device's outlet rows.
+  It is one table-driven test rather than a call inside `runContract`, so no
+  per-driver test file changed; the Back-UPS payload had no builder, so
+  `buildBackUPSContractPayload` copies the one inline in its test.
+- **The shape test** (`shapes_test.go`, `TestWireShapes`): `wire-shapes.py`'s
+  `walk`, `cls`, `norm_key` and `differences` in Go, run over the same nine
+  payloads against `shapes-usw.json`. Excusals are keyed by path and kind
+  (type, longer, charset, number): `shapeExcusalsAll` for what comes from the
+  reference's source or the tests' input (`uplink` is the controller's object
+  in `stat/device`; the tests' `inform_url` is one character longer than the
+  site's), `shapeExcusals` per driver; an excusal that excuses nothing fails,
+  per driver and across all. Go and Python were run on the same nine
+  payloads and gave identical difference lists.
+- **Scrubs keep lengths**: every `scripts/sanitize-*.py` has
+  `placeholder_serial` (SSJ and zeros of the original's length, empty stays
+  empty) for every serial it rewrites, optic serials included (`vendorSn` was
+  `scrubbed`, Proxmox's DMI and optic serials `SCRUBBED`); the Back-UPS's
+  second serial is `serial-00001`, its length; the Smart-UPS's register
+  serial keeps its padding. `sanitize-controller.py` writes any object's
+  `serial` that has a `mac` beside it as the scrubbed MAC's 12 digits, upper
+  case. The four committed controller informs now carry those
+  (`020000000002`, `020000000003`); one line each, edited rather than
+  re-scrubbed, because a re-run renumbers every MAC. No other fixture was
+  rewritten.
+- **The checker** allows `SSJ0+` of any length, and its serial pattern grew
+  from exactly three letters and eight digits to the shapes the scrubbers
+  rewrite (`[A-Z]{2,3}[0-9]{8,10}`, APC's two-and-ten included), with no
+  new hit in the tree; `check-site-info_test.sh` covers both.
+- Reverting 1 fails both 2 (arista-eos, sonic-hw, sonic-l2: "real string,
+  ours number") and 3 (`type port_table[].sfp_* num (real: string)`).
+
+The excusals, and why:
+
+| Driver | Path (kind) | Reason |
+|---|---|---|
+| all | `uplink` (type) | the reference is `stat/device`, whose `uplink` is the controller's object; informs send the name |
+| all | `inform_url` (longer) | test input, one character past the site's controller URL |
+| all | `hash_id` (charset) | new finding, below |
+| arista, sonic ×3 | `version`, `displayable_version` | "fixed by package B" (charset; SONiC also longer) |
+| arista, sonic-hw, sonic-l2 | `port_table[].sfp_current` (longer) | a 100G module's bias is near 40 mA (`"39.508"`); every real one on site is under 10 |
+| arista, sonic-hw, sonic-l2 | `port_table[].sfp_part` (longer) | SFF-8636's 16-character part number, filled; the site's longest is 15 |
+| arista, sonic-hw, sonic-l2 | `psu_table[].part_no` (+ SONiC `serial_no`) | the supplies report them, as the ECS's inform does; the site's are blank (§2) |
+| arista | `lldp_table[].local_port_name` (longer) | `Ethernet49/1`; the ECS sends its vendor names too, the site's longest is 10 |
+| arista | `sys_stats.mem_buffer` (number) | bytes past 2^31 (§2) |
+| proxmox | `port_table[].sfp_compliance` (longer) | ethtool's wording (§2) |
+| proxmox | `fan_table[].label` (longer, charset) | the driver's `Fan N` where the ECS has `FanN`; a follow-up in the driver |
+| apc-ups, apc-backups | `netmask` (longer) | test input: the test's `255.255.255.0` against the site's shorter mask |
+
+What this spec had wrong:
+
+- **The Podman `ifname` has no excusal**, because nothing in the reference
+  can flag it: no real `usw` sends `ifname`, so `port_table[].ifname` is not
+  in `shapes-usw.json` and the shape test compares only shared paths. An
+  excusal for it would excuse nothing and fail. The audit's finding 4 came
+  from its default reference, every device type (the gateway's `eth30`).
+  Package C's `ifname_test.go` is what holds it.
+- **`displayable_version` differs too** (derived from the device's string
+  today), so the merge with B removes the `version` and the
+  `displayable_version` excusals, four entries per SONiC payload, two for
+  the Arista.
+- **`wire-shapes.py` had a bug in `differences()`**: an all-digit string
+  was a new class against a `hex`/`HEX` reference (a serial from an
+  all-digit MAC, `020000000001`, against the real `HEX` serials), and
+  `ascii-space` against `non-ascii`. Both are narrower classes inside wider
+  ones, which the function's own comment exempts; fixed there and in Go.
+  `capture` is untouched, so `shapes-usw.json` stands.
+- **The ECS's optic readings are whole numbers** at three decimals
+  (`"3.000"` V from a 3.3 V module, biases `"6.000"` to `"9.000"`): it
+  appears to truncate before formatting. The bridge sends the measured value
+  at the ECS's decimals (`"3.322"`) rather than copy the truncation, which
+  would throw the reading away. Whether to copy it is the parent's call; the
+  `sfp_current` length excusal stands either way (`"39.000"` is six
+  characters too).
+
+New findings, outside package A's files, not fixed:
+
+- `hash_id` is `anonID`'s first 16 characters, dashes included
+  (`d56e12ed-55f7-56`, `session.go`); real devices send 16 hex digits.
+- `sanitize-controller.py` maps `hash_id` to a 32-digit id, so the committed
+  informs carry 32 characters where the real ones had 16: a scrub that
+  changes a length, as the serial's did. Not rewritten (§4.4's rule).
+
+Not testable without a live device or controller: that the controller and
+its UI take the string readings as they take the ECS's (the readings on a
+port's SFP tab), and how a bias of 10 mA or more displays; the scrubbers
+on a new raw capture (each was run on throwaway input; the Podman and SONiC ones also over
+their committed captures, with the same output as before the change).
+
 ### Package B
 
 ### Package C
