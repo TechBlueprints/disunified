@@ -1,8 +1,9 @@
 // Package podman presents a Podman host to the controller as a switch, the
 // way the proxmox driver presents a node: the host is the switch (its
 // uplink NIC's MAC, address and hostname), every container network
-// endpoint is a port named after the container, and the NICs are the top
-// ports with the default route's NIC as the uplink. Read over one SSH exec
+// endpoint is a port named after the container (its interface name is a
+// compact "ct<hash>", endpointIfName), and the NICs are the top ports with
+// the default route's NIC as the uplink. Read over one SSH exec
 // of collect.sh per poll (root on the host, key auth). Read-only.
 //
 // Two kinds of endpoint, told apart by the network's driver:
@@ -24,7 +25,9 @@ package podman
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -467,6 +470,20 @@ func (c *Collector) writeSlots(ctx context.Context, slots map[string]int) error 
 	return err
 }
 
+// endpointIfName is a container endpoint's interface name: "ct" and eight
+// hex digits of a hash of its endpoint key, the Proxmox driver's style
+// (`ct101-net0`) without an id to put in it. An interface name has no
+// whitespace and at most 15 characters; the container's name is free text of
+// any length, and its id changes on a recreate. The endpoint key is what the
+// slot file keeps the port by, so the name survives a recreate and a
+// restart, and changes when a different endpoint takes the slot -- which is
+// what makes the loop see a new occupant (a layout change) and name its port.
+// The label a person reads stays in Name and Description.
+func endpointIfName(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "ct" + hex.EncodeToString(sum[:4])
+}
+
 // endpointPort renders one container endpoint. The port's counters are
 // the container interface's seen from the switch side: what the container
 // transmits arrives at the port (rx), what it receives left the port (tx).
@@ -478,7 +495,7 @@ func endpointPort(idx int, e endpointInfo) devicemodel.Port {
 		label += " " + e.network.Name
 	}
 	p := devicemodel.Port{
-		Index: idx, IfName: label, Name: label, Description: label,
+		Index: idx, IfName: endpointIfName(e.key), Name: label, Description: label,
 		Media: devicemodel.MediaQSFP28, Lanes: 1, Present: true, Enabled: true,
 		SpeedMbps: 100000, FullDuplex: true, AutoNeg: true, SpeedCaps: []int{100000},
 		STPState: "disabled", STPRole: "disabled", MTU: 1500,

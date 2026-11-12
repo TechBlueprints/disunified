@@ -34,9 +34,11 @@ func (w testWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// portByName finds a port by the name a person reads: the container's
+// label, or a NIC's own name.
 func portByName(snap *devicemodel.Snapshot, name string) (devicemodel.Port, bool) {
 	for _, p := range snap.Ports {
-		if p.IfName == name {
+		if p.Name == name {
 			return p, true
 		}
 	}
