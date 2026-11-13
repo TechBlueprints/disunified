@@ -74,4 +74,9 @@ UI draws each fan in the device overview by its `index` (a number, unique
 across chips: `tables.go` numbers the whole list), not by its `label`
 (read from the UI bundle on Network 11.0.97; what a fan alert's name is
 built from was not traced). So two chips both labelled `Fan1` would not
-be confused on screen, and the labels stay as they are.
+be confused on screen, and the labels stay as they are (Clint,
+2026-11-13: leave it, closed). Dell's own agents were considered and not
+installed: Dell Command | Monitor for Linux is the client-machine one but
+supports Red Hat and Ubuntu, not Debian, and whether it names a tower's
+fans was not established; OpenManage Server Administrator is the servers'.
+Neither would change what the UI shows.
