@@ -41,8 +41,8 @@ Stored records: no type differences. Live objects:
 Also seen, and left: a static `config_network` (a UniFi feature), outlet
 names past 24 characters (the UI allows 128), PSU part and serial numbers
 (the ECS reports them; this site's real PSUs are blank), `ethtool`'s wording
-in `sfp_compliance`, memory counters past 32 bits on a host with gigabytes
-of RAM. Each is an excusal with its reason in §4's test, not a silence.
+in `sfp_compliance` (since shortened for Proxmox, §8), memory counters past
+32 bits on a host with gigabytes of RAM. Each is an excusal with its reason in §4's test, not a silence.
 
 ## 3. The reference
 
@@ -227,6 +227,9 @@ The excusals, and why:
 | proxmox | `port_table[].sfp_compliance` (longer) | ethtool's wording (§2) |
 | proxmox | `fan_table[].label` (longer, charset) | the driver's `Fan N` where the ECS has `FanN`; a follow-up in the driver |
 | apc-ups, apc-backups | `netmask` (longer) | test input: the test's `255.255.255.0` against the site's shorter mask |
+
+Gone since, each with its fix (§8): the `version` rows (package B, at the
+merge), the `hash_id` row and both `proxmox` rows (2026-11-13).
 
 What this spec had wrong:
 
@@ -499,7 +502,6 @@ Open, each a decision or a live check:
   string stands; the base is dropped.
 - The one stored `previous_firmware_version` that is an image name is the
   controller's record; it is replaced by that device's next version change.
-- The Proxmox driver's fan label is `Fan N` where the ECS has `FanN`.
 - Scrubs that change a shape: an upgrade reply's version (`device-1`), and
   `anon_id`/`guid`, written as 32 hex digits where the real ones are UUIDs.
   `hash_id` (32 digits for 16) is fixed: the scrubber keeps its length and
@@ -509,6 +511,31 @@ Open, each a decision or a live check:
   module). Copying that would throw the reading away. Decided (Clint,
   2026-11-13): keep the measured value; this is a departure from the ECS's
   pattern on purpose.
+
+Closed for the Proxmox driver (2026-11-13; its shape test now has no
+excusal):
+
+- **Fan labels** are `Fan1`, `Fan2`..., as the ECS sends them. A chip's own
+  `fanN_label` still passes through unchanged; no capture has one.
+- **`sfp_compliance`** is ethtool's "Transceiver type" without its category
+  prefix (`100G Ethernet: `, `10G Ethernet: `, `Extended: `), cut at 32
+  characters, where a real switch cuts the same field. The 100G cable's
+  text is 33 characters after the prefix goes, so it ends `CA-`, as the real
+  switches' value for that cable ends cut.
+- **`sys_stats.mem_buffer`** stays Buffers plus Cached, past 2^31 on a host
+  with gigabytes of page cache. Real switches' `mem_total` and `mem_used`
+  pass 2^31, so the controller holds memory in a wide type; reporting
+  Buffers alone would change what the UI's memory figure means, and that is
+  Clint's call, not made here. The committed capture stays under 2^31, so
+  only the live audit shows it.
+- **Top-level `tx_bytes` and `uplink.rx_bytes`** past 2^31 in the live audit
+  are the controller's own fields: the bridge sends no top-level byte
+  counter and its `uplink` is the string `eth0`, so the only device-level
+  counters it sends are `if_table[]`'s (`tables.go`), and the ECS's own
+  `if_table` carries values past 2^31 too (its 10.6.109 inform). Nothing to
+  change. One difference in what that row counts, every driver alike: ours
+  is the uplink port's counters, the ECS's is its management interface's
+  (gigabytes where its uplink port has terabytes).
 
 Checked live after the deploy (2026-11-12, and again on Network 11 the
 next day):
