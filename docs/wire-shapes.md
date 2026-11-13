@@ -484,8 +484,9 @@ Open, each a decision or a live check:
   bridged device, on 10.6.109 and on 11.0.97 alike, while it keeps our
   `anon_id` and `guid` (UUIDs, as real ones are). So ours was most likely
   being dropped for its form; what the controller uses the field for is
-  not known. Live check after the deploy: a `hash_id` appears on the
-  bridged devices.
+  not known. **Confirmed after the deploy:** the controller holds a
+  16-digit `hash_id` for every bridged device from its first inform on the
+  new build.
 - ~~The config file's `firmware:` key is parsed and never read~~ (found by
   package B). **Wired 2026-11-13**: it is the config file's `-version`,
   refused at load unless it is a version as a real device reports one.
@@ -499,7 +500,9 @@ Open, each a decision or a live check:
   would have shown its image's branch (`202511`) as firmware, and package
   B's worry that it "may stop being offered an upgrade" goes with it. An
   emulated upgrade recorded by an older build over the device's own
-  string stands; the base is dropped.
+  string stands; the base is dropped. After the deploy every device's
+  reported version was what it had been (the four non-Leaf devices each
+  held such an upgrade).
 - The one stored `previous_firmware_version` that is an image name is the
   controller's record; it is replaced by that device's next version change.
 - Scrubs that change a shape: an upgrade reply's version (`device-1`), and

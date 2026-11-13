@@ -2,7 +2,7 @@
 
 Status: **built 2026-11-13** (specified the same day). The bridge reports a
 learned address's learn time and its last-seen time separately; §5 is what
-the code does, §6 the tests. The live checks of §7 wait for a deploy.
+the code does, §6 the tests, §7 the live checks after the deploy.
 
 ## 1. What went wrong
 
@@ -185,6 +185,23 @@ same capture instead).
 - Each tracked device's state directory holds `mac-learned.json` (0600)
   after its first collect, and a redeploy keeps the times.
 - Clients behind the Arista: `assoc_time` unchanged; their `age` is now 0.
+
+**Checked 2026-11-13, a few minutes after the deploy (Network 11.0.97):**
+
+- `payload-last.json`, read twice 75 seconds apart: on the three Proxmox
+  nodes the median `uptime` rose by about that much while the median `age`
+  stayed under 20 seconds; the Podman host's one entry reported the time
+  since its container started; the SONiC switch's entries rose together
+  from its bridge's restart; the Arista's `age` is 0 on every entry. No
+  entry on any device has `age` above `uptime`.
+- `stat/sta`, read twice three minutes apart: `latest_assoc_time` moved for
+  none of the wired clients behind the Proxmox nodes, the Podman host or
+  the Arista.
+- `mac-learned.json` (0600) is in the state directory of each Proxmox node
+  and of the SONiC switch; the Arista and the Podman host have none, as
+  their drivers supply the learn time.
+- Not seen yet: a redeploy keeping the times, and `assoc_time` after a
+  controller restart.
 
 ## 8. Not in scope
 
