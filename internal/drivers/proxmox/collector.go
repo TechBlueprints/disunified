@@ -833,6 +833,21 @@ func physicalMembers(physBody string, linkBy map[string]ipLink, bonds []bond, br
 	return out
 }
 
+// complianceText is ethtool's "Transceiver type" wording as a real switch
+// reports a module's compliance: without ethtool's category prefix
+// ("100G Ethernet: ", "10G Ethernet: ", "Extended: ") and cut at 32
+// characters, where a real switch cuts the same field
+// (docs/wire-shapes.md §8). Nothing matches on it; it is display text.
+func complianceText(s string) string {
+	if _, rest, ok := strings.Cut(s, ": "); ok {
+		s = rest
+	}
+	if r := []rune(s); len(r) > 32 {
+		s = string(r[:32])
+	}
+	return s
+}
+
 // physicalPort renders one uplink: link state and counters from the bridge
 // member (the bond, or the NIC), speed/optic/capabilities from the active NIC.
 func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod ethtoolModule, brBy map[string]ipLink, vlanBy map[string]brVLANs) devicemodel.Port {
@@ -849,7 +864,7 @@ func physicalPort(idx int, u uplink, member, active ipLink, et ethtoolInfo, mod 
 	}
 	p.Media, p.Present = mediaOf(et, mod)
 	if mod.Present {
-		p.Optic = &devicemodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: mod.Type,
+		p.Optic = &devicemodel.Optic{Vendor: mod.Vendor, Part: mod.Part, Serial: mod.Serial, MediaType: complianceText(mod.Type),
 			TempC: mod.TempC, VoltageV: mod.VoltageV, HasDOM: mod.HasDOM}
 	}
 	if u.LAG != "" {
@@ -1005,7 +1020,7 @@ func applyHwmon(sys *devicemodel.System, chips []hwmonChip) {
 			if !ok {
 				continue
 			}
-			f := devicemodel.Fan{Label: fmt.Sprintf("Fan %d", i), OK: rpm > 0}
+			f := devicemodel.Fan{Label: fmt.Sprintf("Fan%d", i), OK: rpm > 0} // the ECS's own form
 			if l := ch.Values[fmt.Sprintf("fan%d_label", i)]; l != "" {
 				f.Label = l
 			}

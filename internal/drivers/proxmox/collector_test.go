@@ -142,6 +142,13 @@ func TestCollectNode2(t *testing.T) {
 	if !sys.HasTemperature || sys.TemperatureC < 40 || len(sys.Fans) != 4 || !sys.Fans[0].OK {
 		t.Errorf("sensors: temp %v fans %+v", sys.TemperatureC, sys.Fans)
 	}
+	// The capture's hwmon fan labels are empty, so each fan is labelled as
+	// the ECS labels its own: "Fan1", no space.
+	for i, f := range sys.Fans {
+		if want := fmt.Sprintf("Fan%d", i+1); f.Label != want {
+			t.Errorf("fan %d label = %q, want %q", i+1, f.Label, want)
+		}
+	}
 	if sys.STPMode != "disabled" || sys.STPPriority != 32768 || !sys.IGMPSnooping[1] {
 		t.Errorf("stp/igmp: %+v", sys)
 	}
@@ -698,5 +705,39 @@ func TestNoSTPWithoutMSTPD(t *testing.T) {
 	n, _ := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp"})
 	if n != 0 || len(r.Commands) != 0 {
 		t.Errorf("STP applied without mstpd: %d %v", n, r.Commands)
+	}
+}
+
+// A module's compliance text is ethtool's "Transceiver type" wording
+// without its category prefix, cut at 32 characters as a real switch cuts
+// the field (docs/wire-shapes.md §8). Each capture has one QSFP28 cable on
+// the bond's active slave and one SFP28 cable on its standby, each with one
+// "Transceiver type" line.
+func TestModuleComplianceText(t *testing.T) {
+	cases := []struct {
+		capture         string
+		active, standby string
+	}{
+		{"collect-node1.txt", "100G Base-CR4 or 25G Base-CR CA-", "25G Base-CR CA-N"},
+		{"collect-node2.txt", "100G Base-CR4 or 25G Base-CR CA-", "25G Base-CR CA-S"},
+	}
+	for _, tc := range cases {
+		c, _ := newTestCollector(t, tc.capture)
+		snap, err := c.Start(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, p := range snap.Ports {
+			if p.Optic != nil {
+				got[p.IfName] = p.Optic.MediaType
+				if n := len([]rune(p.Optic.MediaType)); n > 32 {
+					t.Errorf("%s %s: compliance %q is %d characters", tc.capture, p.IfName, p.Optic.MediaType, n)
+				}
+			}
+		}
+		if len(got) != 2 || got["bond0-1"] != tc.active || got["bond0-2"] != tc.standby {
+			t.Errorf("%s: compliance = %q, want bond0-1 %q, bond0-2 %q", tc.capture, got, tc.active, tc.standby)
+		}
 	}
 }

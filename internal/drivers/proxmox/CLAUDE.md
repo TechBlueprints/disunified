@@ -44,3 +44,16 @@ Deployed with the Arista in the one container (config.yaml has four
 switches; the container mounts a directory with the bridge's own ed25519
 key, installed on the nodes' root user, and a known_hosts — paths in
 `local-information/site.md`).
+**Wire shapes (2026-11-13, `docs/wire-shapes.md` §8):** a fan with no hwmon
+`fanN_label` is `Fan1`..`Fan16`, the ECS's form. A chip's own label passes
+through unchanged at any length (with spaces, as `dell_smm`'s can be); no
+capture has one (both have empty labels), so that path and the shape test's
+4-character limit have never met. The loop numbers fans per chip, so two
+chips with fans would both report a `Fan1`: untested, since every capture
+and every node so far has one fan chip (four fans). A module's compliance
+text (`Optic.MediaType`, sent as `sfp_compliance`) is ethtool's
+"Transceiver type" after the first `": "`, cut at 32 characters
+(`complianceText`); nothing reads it but the payload, and `mediaOf` picks
+the media from the identifier and speeds. ethtool can print several
+"Transceiver type" lines for one module; the parser keeps the last, and no
+capture has more than one.
