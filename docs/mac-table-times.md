@@ -226,8 +226,13 @@ instead).
 - `mac-learned.json` (0600) is in the state directory of each Proxmox node
   and of the SONiC switch; the Arista and the Podman host have none, as
   their drivers supply the learn time.
-- Not seen yet: a redeploy keeping the times, and `assoc_time` after a
-  controller restart.
+- **A redeploy keeps the times** (seen two hours later, at the next
+  deploy): the Proxmox nodes' median `uptime` was about 6,900 seconds
+  before the container was recreated and about 7,050 after it, and the
+  SONiC switch's went from 6,854 to 7,020 across its package update. The
+  Podman host's one entry started again from zero, rightly: it is the
+  bridge's own container, which the redeploy restarts.
+- Not seen yet: `assoc_time` after a controller restart.
 
 ## 8. Not in scope
 
