@@ -32,7 +32,16 @@ var podmanPortOmissions = map[string]string{
 
 func buildPodmanContractPayload(t *testing.T) map[string]any {
 	t.Helper()
-	fr, err := podman.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "podman-5.8.2", "collect.txt"))
+	return buildPodmanContractPayloadFrom(t, "collect.txt")
+}
+
+// buildPodmanContractPayloadFrom builds the payload from one capture in
+// docs/fixtures/podman-5.8.2: collect.txt (no container on the LAN) or
+// collect-macvlan.txt (the bridge's own container on the macvlan network,
+// the capture that carries a MAC table entry).
+func buildPodmanContractPayloadFrom(t *testing.T, capture string) map[string]any {
+	t.Helper()
+	fr, err := podman.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "podman-5.8.2", capture))
 	if err != nil {
 		t.Fatal(err)
 	}

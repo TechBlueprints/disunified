@@ -165,15 +165,38 @@ new: `started` was already in the reduced inspect.
    the capture's `lastMove`, `age` 0.
 4. `sonic`: `TestSnapshotFromTheVirtualSwitch` asserts both times zero on every
    FDB entry.
+5. `podman`, from `docs/fixtures/podman-5.8.2/collect-macvlan.txt`: the
+   host captured again on 2026-11-13 through the driver's own `collect.sh`
+   (one read-only SSH exec, raw output kept out of the repo), scrubbed by
+   `scripts/sanitize-podman.py`. In it the bridge's own container is
+   running on the host's macvlan network (`net-2`) as well as its bridge
+   network. `TestLANEndpointLearnedAtContainerStart`
+   (`internal/drivers/podman/mactimes_test.go`) reads the capture's own
+   `networks` and `inspect` sections: every running macvlan/ipvlan
+   endpoint, and nothing else, is an entry; its `LearnedAt` is that
+   container's `started`, its `LastSeen` the snapshot time, VLAN 1, and its
+   port carries the same entry. `TestMACTimesPodman`
+   (`internal/device/mactimes_test.go`): on the wire `uptime` is the
+   seconds from `started` to the snapshot time and `age` 0, in the port's
+   table and the switch's. The capture is also in `contractPayloads`
+   (`podman-macvlan`), so `TestMACTimesEveryDriver`, the wire contract and
+   the shape test see a real Podman entry. The first capture
+   (`collect.txt`) predates the container joining that network: it has the
+   macvlan network but nothing on it, and still yields no entry
+   (`TestOnlyLANEndpointsAreClients`). The scrub keeps each network's
+   `driver`, which is what `isLANNetwork` reads, so renaming networks to
+   `net-N` hides nothing.
 
-**Not tested for want of a capture:** the Podman driver's `uptime` from
-`started`. The committed capture (`docs/fixtures/podman-5.8.2`) has a
-macvlan network but no container on it, so it carries no MAC entry at all
-(`TestOnlyLANEndpointsAreClients`); the code path waits for a capture with
-a macvlan container. Also not covered by a capture: an unparseable
-`started`, and a Proxmox FDB that really changed between two captures of
-one node (the age-out case drops an address from a later collect of the
-same capture instead).
+**Not tested for want of a capture:** a running Podman container whose
+`started` is absent or does not parse (the driver then leaves `LearnedAt`
+zero and the loop's tracker supplies it). Every running container in both
+captures has a `started` that parses;
+`TestEveryRunningContainerInTheCaptureHasAStart` fails the day a capture
+has one, so the case gets its test then. Also not in a capture: an
+`ipvlan` endpoint, a stopped container on a macvlan network, and a
+Proxmox FDB that really changed between two captures of one node (the
+age-out case drops an address from a later collect of the same capture
+instead).
 
 ## 7. After a deploy (live, read-only)
 

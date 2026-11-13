@@ -12,7 +12,10 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   wired client with no address. The port exists and counts; the client does
   not. Decided, not forgotten. Its `LearnedAt` is the container's start
   (the reduced inspect's `started`, already read: never widen inspect for
-  it), `LastSeen` the collect time (`docs/mac-table-times.md`).
+  it), `LastSeen` the collect time (`docs/mac-table-times.md`). Tested
+  from `collect-macvlan.txt` (the bridge's own container on the macvlan
+  network); `collect.txt` has no LAN container and yields no entry. An
+  unparsed `started` has no capture and no test.
 - **Slots live on the host** (`/var/lib/disunified/podman-slots.json`),
   keyed `<container name>/<network>` -- names survive a recreate, ids do
   not. Written only on change (`mkdir -p && cat > tmp && mv`); the fixture
@@ -44,7 +47,14 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
 - Scrub: `scripts/sanitize-podman.py` maps container/network names to
   `app-N`/`net-N` (keeps `disunified*`), the host to `host-1.example.net`,
   MACs/IPs/UUIDs/machine-id. Container ids stay (random, needed to join
-  `ps`/`inspect`/`netns` within one capture).
+  `ps`/`inspect`/`netns` within one capture). A network's `driver` stays,
+  so a scrubbed macvlan network is still one. `N` is per capture: `net-2`
+  in one file need not be `net-2` in another.
+- **Taking a capture** is one read-only exec of the driver's own script,
+  `ssh root@<host> "bash -s -- '' /var/lib/disunified/podman-slots.json" <
+  internal/drivers/podman/collect.sh > <scratchpad>/raw.txt`, then the
+  scrub into `docs/fixtures/podman-<ver>/`. The script only reads, and its
+  inspect is already reduced. The raw output stays in the scratchpad.
 - **Address control writes NetworkManager** (`nmcli con mod` + `nmcli device
   reapply`, no bounce), only for an address the uplink already carries, and
   refuses DHCP -- the bridge reaches this host by that address and, on site,

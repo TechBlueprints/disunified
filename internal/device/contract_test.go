@@ -335,6 +335,7 @@ var contractPayloads = []contractPayload{
 	{"arista-eos", false, buildContractPayload},
 	{"proxmox", false, buildProxmoxContractPayload},
 	{"podman", false, buildPodmanContractPayload},
+	{"podman-macvlan", false, func(t *testing.T) map[string]any { return buildPodmanContractPayloadFrom(t, "collect-macvlan.txt") }},
 	{"sonic", false, buildSonicContractPayload},
 	{"sonic-hw", false, func(t *testing.T) map[string]any {
 		m, _ := sonicCapturePayload(t, "sonic-202505.1238526-ff3c0c9f6/collect-hwtables.txt", "USWF07D")

@@ -176,7 +176,11 @@ node's `VM-<id>` port.
 `docs/fixtures/podman-5.8.2/collect.txt` is a live capture scrubbed by
 `scripts/sanitize-podman.py` (MACs, addresses, the host and domain names,
 container and network names other than the bridge's own, DMI/machine ids).
-`internal/drivers/podman/collector_test.go` drives the driver against it;
+`collect-macvlan.txt` is the same host captured the same way on
+2026-11-13, with the bridge's own container also on the macvlan network:
+the capture with a client behind a port, used for the MAC learn time
+(`internal/drivers/podman/mactimes_test.go`, `docs/mac-table-times.md` §6).
+`internal/drivers/podman/collector_test.go` drives the driver against the first;
 `internal/device/contract_podman_test.go` holds its payload to the wire
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
 priority; the uplink's FEC).

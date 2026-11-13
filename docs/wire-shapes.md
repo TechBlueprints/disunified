@@ -224,6 +224,7 @@ The excusals, and why:
 | arista, sonic-hw, sonic-l2 | `psu_table[].part_no` (+ SONiC `serial_no`) | the supplies report them, as the ECS's inform does; the site's are blank (§2) |
 | arista | `lldp_table[].local_port_name` (longer) | `Ethernet49/1`; the ECS sends its vendor names too, the site's longest is 10 |
 | arista | `sys_stats.mem_buffer` (number) | bytes past 2^31 (§2) |
+| podman-macvlan | `sys_stats.mem_buffer` (number) | bytes past 2^31, as the Arista's (§8); added 2026-11-13 with the capture (`docs/mac-table-times.md` §6) |
 | proxmox | `port_table[].sfp_compliance` (longer) | ethtool's wording (§2) |
 | proxmox | `fan_table[].label` (longer, charset) | the driver's `Fan N` where the ECS has `FanN`; a follow-up in the driver |
 | apc-ups, apc-backups | `netmask` (longer) | test input: the test's `255.255.255.0` against the site's shorter mask |
@@ -529,8 +530,10 @@ excusal):
   with gigabytes of page cache. Real switches' `mem_total` and `mem_used`
   pass 2^31, so the controller holds memory in a wide type; reporting
   Buffers alone would change what the UI's memory figure means. Decided
-  (Clint, 2026-11-13): leave it. The committed capture stays under 2^31, so
-  only the live audit shows it.
+  (Clint, 2026-11-13): leave it. The committed Proxmox capture stays under
+  2^31, so only the live audit shows it. (The Podman host's second capture,
+  `podman-5.8.2/collect-macvlan.txt` of 2026-11-13, passes it: 3.5 GB, the
+  `podman-macvlan` excusal.)
 - **Top-level `tx_bytes` and `uplink.rx_bytes`** past 2^31 in the live audit
   are the controller's own fields: the bridge sends no top-level byte
   counter and its `uplink` is the string `eth0`, so the only device-level

@@ -61,7 +61,10 @@ var shapeExcusals = map[string]map[shapeExcusal]string{
 		{"psu_table[].part_no", "charset"}:         "the 7160's supplies name their part, as the ECS's own inform does; the site's real switches report theirs blank",
 		{"sys_stats.mem_buffer", "number"}:         "memory in bytes (3.3 GB of buffers in the capture) passes 2^31; no real switch on the site has that much (docs/wire-shapes.md §2)",
 	}),
-	"proxmox":     {},
+	"proxmox": {},
+	"podman-macvlan": {
+		{"sys_stats.mem_buffer", "number"}: "memory in bytes (3.5 GB of buffers and page cache in the 2026-11-13 capture) passes 2^31, as the Arista's does; Buffers plus Cached stays (docs/wire-shapes.md §8)",
+	},
 	"sonic":       {},
 	"sonic-hw":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
 	"sonic-l2":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
