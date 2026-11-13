@@ -475,7 +475,12 @@ package B made unnecessary (an excusal that excuses nothing fails).
 Open, each a decision or a live check:
 
 - `hash_id` goes out as 16 characters of a UUID, dashes included; real
-  devices send 16 hex digits (found by package A; `session.go`).
+  devices send 16 hex digits (found by package A; `session.go`). Seen
+  2026-11-13: the controller holds a `hash_id` for every connected real
+  switch and for no bridged device, on 10.6.109 and on 11.0.97 alike, while
+  it keeps our `anon_id` and `guid` (UUIDs, as real ones are). So ours is
+  most likely being dropped for its form; what the controller uses the
+  field for is not known.
 - The config file's `firmware:` key is parsed and never read (found by
   package B): wire it with the `-version` check, or delete it.
 - The one stored `previous_firmware_version` that is an image name is the
@@ -485,7 +490,9 @@ Open, each a decision or a live check:
   upgrade reply's version (`device-1`).
 - Optic readings go out at the ECS's decimals but with the measured value;
   the ECS's own look truncated to whole numbers (`"3.000"` V from a 3.3 V
-  module). Copying that would throw the reading away, so it was not copied.
+  module). Copying that would throw the reading away. Decided (Clint,
+  2026-11-13): keep the measured value; this is a departure from the ECS's
+  pattern on purpose.
 
 Checked live after the deploy (2026-11-12, and again on Network 11 the
 next day):
