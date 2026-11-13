@@ -413,26 +413,38 @@ func opticReading(f float64, decimals int) string {
 	return s
 }
 
-// macEntries renders learned addresses. age = seconds since the address was
-// learned/moved (0 if unknown); withPort adds port_idx for the top-level table.
+// macEntries renders learned addresses as a UniFi switch does: uptime =
+// whole seconds since the address was learned on the port (LearnedAt), age
+// = since a frame from it was last seen (LastSeen); an unknown time is 0,
+// neither is negative, and age is never more than uptime -- every entry of
+// the real informs holds uptime >= age (docs/mac-table-times.md §2). The
+// per-port and the top-level tables render the same pair for an entry.
+// withPort adds port_idx for the top-level table.
 func macEntries(macs []devicemodel.MACEntry, withPort bool, now time.Time) []map[string]any {
 	out := make([]map[string]any, 0, len(macs))
 	for _, m := range macs {
-		e := map[string]any{"mac": m.MAC, "vlan": m.VLAN, "age": 0, "uptime": 0}
-		if !m.LastMove.IsZero() {
-			secs := int(now.Sub(m.LastMove).Seconds())
-			if secs < 0 {
-				secs = 0
-			}
-			e["age"] = secs
-			e["uptime"] = secs
+		uptime, age := secondsSince(now, m.LearnedAt), secondsSince(now, m.LastSeen)
+		if age > uptime {
+			age = uptime
 		}
+		e := map[string]any{"mac": m.MAC, "vlan": m.VLAN, "age": age, "uptime": uptime}
 		if withPort {
 			e["port_idx"] = m.PortIndex
 		}
 		out = append(out, e)
 	}
 	return out
+}
+
+// secondsSince is now minus t in whole seconds; 0 for a zero or future t.
+func secondsSince(now, t time.Time) int {
+	if t.IsZero() {
+		return 0
+	}
+	if s := int(now.Sub(t).Seconds()); s > 0 {
+		return s
+	}
+	return 0
 }
 
 // stpPriorityWire is the bridge priority as the claimed model reports it.

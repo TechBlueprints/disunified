@@ -270,6 +270,20 @@ func configOptions(f *config.File, sw config.Device) options {
 	}
 }
 
+// stateDirOf is the device's state directory, where drivers and the loop
+// keep their own files next to device.json: the config entry's, or the
+// -state file's directory; "" for a -collect-once run from flags, which
+// leaves nothing behind.
+func stateDirOf(o options) string {
+	if o.stateDir != "" {
+		return o.stateDir
+	}
+	if o.stateFile != "" && !o.collectOnce {
+		return filepath.Dir(o.stateFile)
+	}
+	return ""
+}
+
 // childrenOf is a config entry's children as the loop takes them.
 func childrenOf(cs []config.Child) []informloop.Child {
 	var out []informloop.Child
@@ -350,10 +364,8 @@ func runOne(ctx context.Context, o options) error {
 				}
 			}
 		}
-		if o.stateDir != "" {
-			opts["state_dir"] = o.stateDir // drivers with their own persistent state keep it next to device.json
-		} else if o.stateFile != "" && !o.collectOnce {
-			opts["state_dir"] = filepath.Dir(o.stateFile)
+		if d := stateDirOf(o); d != "" {
+			opts["state_dir"] = d // drivers with their own persistent state keep it next to device.json
 		}
 		cfg := devicemodel.DriverConfig{URL: o.deviceURL, SSH: o.deviceSSH, Username: o.username, Password: o.password, Options: opts}
 		// A device that does not answer at startup is retried, not dropped.
@@ -649,6 +661,7 @@ func runOne(ctx context.Context, o options) error {
 		ApplyTimeout:  o.applyTimeout,
 		FanMode:       o.fanMode,
 		RecordDir:     o.recordDir,
+		StateDir:      stateDirOf(o),
 		RecordMaxSize: o.recordMaxSize,
 		RecordKeep:    o.recordKeep,
 		DeviceHost:    hostOf(o.deviceURL, o.deviceSSH),

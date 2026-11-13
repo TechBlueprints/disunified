@@ -416,8 +416,11 @@ func macTable(mt showMACAddressTable) []devicemodel.MACEntry {
 		if slot, _, ok := parseEthName(e.Interface); ok {
 			m.PortIndex = slot
 		}
+		// lastMove is when EOS learned the address on this interface (or
+		// moved it there): the entry's learn time. EOS 4.26's table
+		// carries no last-seen time, so age is reported 0.
 		if e.LastMove > 0 {
-			m.LastMove = time.Unix(int64(e.LastMove), 0)
+			m.LearnedAt = time.Unix(int64(e.LastMove), 0)
 		}
 		out = append(out, m)
 	}

@@ -47,7 +47,8 @@ func (l *Loop) withChildren(snap *devicemodel.Snapshot) *devicemodel.Snapshot {
 		if vlan == 0 {
 			vlan = 1
 		}
-		e := devicemodel.MACEntry{MAC: c.MAC, VLAN: vlan, PortIndex: c.Port, LastMove: at}
+		// Seen now; the learn time is the tracker's (learntimes.go).
+		e := devicemodel.MACEntry{MAC: c.MAC, VLAN: vlan, PortIndex: c.Port, LastSeen: at}
 		has := func(m devicemodel.MACEntry) bool { return m.MAC == c.MAC }
 		if c.Report != "lldp" {
 			if !slices.ContainsFunc(p.MACs, has) {

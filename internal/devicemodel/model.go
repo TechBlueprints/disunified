@@ -711,12 +711,21 @@ type PSU struct {
 	FanRPM    []int     // the supply's own fans, if it reports their speed in RPM
 }
 
-// MACEntry is one learned MAC address.
+// MACEntry is one learned MAC address. The two times are what a UniFi
+// switch reports as an entry's `uptime` and `age` (docs/mac-table-times.md):
+// the controller takes a wired client's connected-since from the learn
+// time, so it must not be refreshed by traffic.
 type MACEntry struct {
 	MAC       string
 	VLAN      int
-	PortIndex int       // front-panel port it was learned on; 0 = CPU/other
-	LastMove  time.Time // when it was learned or last moved; zero if unknown
+	PortIndex int // front-panel port it was learned on; 0 = CPU/other
+	// LearnedAt is when the address was learned on this port, or last moved
+	// to it; zero = the driver cannot know (the loop's learn-time tracker
+	// then supplies one).
+	LearnedAt time.Time
+	// LastSeen is when a frame from the address was last seen; zero =
+	// unknown.
+	LastSeen time.Time
 }
 
 // Optic describes an installed transceiver and its DOM readings.
