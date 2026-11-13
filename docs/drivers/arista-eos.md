@@ -162,7 +162,8 @@ chassis ID (MAC), management address, system description and capabilities for th
 
 From `show version`: `systemMacAddress` (the bridge should present the Arista's real MAC so
 the controller's client list and LLDP data line up), `serialNumber`, `modelName`, `version`.
-The firmware string the controller sees must be `v<numeric>` — `4.26.14M` → `v4.26.14`.
+The firmware string the controller sees is digits and dots, as a real device's is:
+`4.26.14M` goes out as `4.26.14` (`device.WireVersion`, `docs/wire-shapes.md` §5).
 
 ## 6. Not on this switch / not used
 

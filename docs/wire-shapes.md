@@ -1,7 +1,8 @@
 # Wire shapes: holding a bridged device's values to a real device's
 
-Status: **built 2026-11-12**, not yet deployed: three work packages, §4-§6,
-each with its results in §7. Open after the merge: §8.
+Status: **built, merged and deployed 2026-11-12**: three work packages,
+§4-§6, each with its results in §7. Open after the merge: §8. Network
+11.0.97 migrated the controller the next morning: §9.
 
 ## 1. Why
 
@@ -323,8 +324,9 @@ What the spec had wrong or left out:
   token that does not start with a digit. No capture has one, and an
   operator's is refused, so the rule was left as written.
 - Stale elsewhere, not this package's files: `docs/drivers/arista-eos.md`
-  (§ on the firmware string) still says `4.26.14M` goes out as `v4.26.14`,
-  and `docs/prior-art.md` names the `v<numeric>` quirk.
+  (§ on the firmware string) said `4.26.14M` goes out as `v4.26.14`
+  (corrected 2026-11-13); `docs/prior-art.md` names the `v<numeric>` quirk
+  as history, which it is.
 - **The only captured upgrade reply's version is scrubbed to `device-1`**
   (`controller-10.6.106/replies-pdu.ndjson`), which the rule reports as `1`:
   a scrub that changes a value's shape, §4.4's kind. The tests use the model
@@ -478,10 +480,67 @@ Open, each a decision or a live check:
   package B): wire it with the `-version` check, or delete it.
 - The one stored `previous_firmware_version` that is an image name is the
   controller's record; it is replaced by that device's next version change.
-- Live: the controller's port names for the adopted Podman host after the
-  deploy, the optic readings on a port's SFP tab, and what the controller
-  records when an adopted device's version changes from `4.26.14M` to
-  `4.26.14`.
 - The Proxmox driver's fan label is `Fan N` where the ECS has `FanN`.
 - Two more scrubs that change a shape: `hash_id` (32 digits for 16) and an
   upgrade reply's version (`device-1`).
+- Optic readings go out at the ECS's decimals but with the measured value;
+  the ECS's own look truncated to whole numbers (`"3.000"` V from a 3.3 V
+  module). Copying that would throw the reading away, so it was not copied.
+
+Checked live after the deploy (2026-11-12, and again on Network 11 the
+next day):
+
+- The controller's port names, outlet names and overrides for every bridged
+  device are what they were before the deploy, the Podman host's included.
+- A version change is recorded as expected: the controller takes the new
+  `version` and moves the old one to `previous_firmware_version`
+  (`4.26.14M` there now, beside `4.26.14`). The device re-provisioned once
+  and was connected again within about a minute.
+- The stored device object holds the optic readings as strings
+  (`"3.317"`, `"-2.97"`). The port's SFP tab in the UI was not looked at.
+
+## 9. Network 11 (2026-11-13)
+
+The console installed Network 11.0.97 by itself the night after the deploy.
+Its `migration.log` ends Phase 1 with 97 steps, 97 succeeded, 0 failed, and
+the version file stamped 11.0.97; the earlier four tries had each stopped
+at `mongo2pg.device`. Every bridged device stayed adopted and connected.
+
+What the migration kept and changed, read from `stat/device` before and
+after:
+
+- **Kept:** each bridged device's serial, version, names, port and outlet
+  overrides (count and content), and the two `previous_firmware_version`
+  values no real device would hold (`4.26.14M` and a 30-character image
+  name). So that column is not a short one, and §2's finding 2 was a shape
+  difference, not a migration risk.
+- **Changed: record ids are UUIDs.** `_id`, `device_id`, `site_id`,
+  `mgmt_network_id`, `connection_network_id`, `last_connection_network_id`,
+  `native_networkconf_id` (port table and overrides) and `portconf_id` are
+  36 characters where 10.x had 24 hex digits. `map_id` and the
+  `wlangroup_id_*` fields still hold the old form. The bridge passes ids
+  through without reading them.
+- **The control channel:** the controller sent every bridge a fresh
+  `system_cfg` on its first inform after the upgrade. Each bridge in the
+  container applied it with nothing changed (`0 of 54 ports changed`,
+  `0 of 16 outlets changed`). The on-switch bridge's log was not read; its
+  device is connected with its overrides intact.
+
+`scripts/wire-shapes.py audit` against the 10.6.109 shapes file now reports
+every id path on every bridged device (36 characters against 24, `ascii`
+against `hex`), and beyond those only differences this page already lists.
+
+Open on Network 11:
+
+- **No fixture is from Network 11.** The contract informs, the replay
+  replies and the shapes file are from 10.6.106 and 10.6.109. A new shapes
+  capture (`docs/fixtures/controller-11.0.97/shapes-usw.json`) would quiet
+  the audit; the id-key patterns in `wire-shapes.py` and `shapes_test.go`
+  know 24 hex digits, not UUIDs, and should learn both with it.
+- **No feature was exercised by hand on Network 11**: no port edit, outlet
+  switch, adoption or REST write from the bridge (naming, seeding
+  overrides) has run there. What ran is the inform loop and one unchanged
+  push per device.
+- The check in issue #3 for an over-long stored serial uses `mongo`, which
+  the console no longer runs after the migration. It is only needed before
+  it.

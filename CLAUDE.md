@@ -271,6 +271,21 @@ stay stopped** (one bridge per adopted key).
   re-adoption (podman went from 36 characters to 12 on the first inform,
   still adopted). The scrub scripts had hidden it: their `SSJ00000000`
   stood in for an empty DMI serial and a 22-character one alike.
+  **Confirmed 2026-11-13:** with every stored serial at 12 characters,
+  11.0.97 installed itself overnight (`migration.log`: Phase 1, 97 of 97
+  steps) and every bridged device stayed adopted.
+- **Network 11 replaces the controller's record ids with UUIDs
+  (11.0.97, 2026-11-13).** `_id`, `device_id`, `site_id`, the network ids
+  (`native_networkconf_id`, `mgmt_network_id`, `connection_network_id`) and
+  `portconf_id` are 36-character UUIDs where 10.x had 24 hex digits; port
+  overrides kept their content, with only the network id rewritten. The
+  bridge treats ids as opaque, and the first push after the upgrade applied
+  with nothing changed on every bridge in the container. Stale since: the
+  10.6.109 shapes file lists ids as 24 hex digits, so a live
+  `wire-shapes.py audit` on Network 11 reports every id path; and MongoDB
+  is gone from the console (`mongo --port 27117` no longer answers). No
+  capture or replay fixture is from Network 11 yet
+  (`docs/wire-shapes.md` §9).
 - **Values are held to a real device's shape, not only its keys
   (2026-11-12, `docs/wire-shapes.md`).** The audit after the serial found
   optic readings sent as numbers (real: strings), a `version` with letters
