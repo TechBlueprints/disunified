@@ -31,3 +31,7 @@ that cost time on Clint's DCS-7160-48TC6-F.
   thermal control can raise. `fan_mode: quiet` is `override 30`, read back
   from `show system environment cooling`'s `overrideFanSpeed`; the
   controller never offers Fan Mode for a switch (`docs/drivers/arista-eos.md` §8).
+- `show mac address-table`'s `lastMove` is when EOS learned the address on
+  that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
+  4.26 has no per-entry last-seen time in any captured command, so `age` is
+  0 (`docs/mac-table-times.md`); never fill `age` from `lastMove`.

@@ -383,7 +383,8 @@ Nothing UniFi-specific crosses it: lane indexes, `Port`s and
   same things out.
 - **The folded cage with a child**: `Neighbor` nil, `MACs` + the child's
   entry (VLAN = the native stand-in's UniFi id 1, `PortIndex` = the cage,
-  `LastMove` = the collect time), `SpeedMbps` = `max(SpeedCaps)`.
+  `LastSeen` = the collect time, the learn time the loop's tracker's),
+  `SpeedMbps` = `max(SpeedCaps)`.
   `LocalChassisID()` = eth0's MAC as `LLDP_LOC_CHASSIS` carries it
   (`collect.py` already prints it; `MgmtMAC`).
 - **l2d (RSTP)**: the lane plan's `stpOps` write per interface as today;

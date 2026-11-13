@@ -34,7 +34,7 @@ the network's driver:
 
 | Network | Port | Client behind it |
 |---|---|---|
-| `macvlan` / `ipvlan` (the container has its own LAN address and MAC) | up when running, 100G | **yes**: the endpoint's MAC is reported on the port, so the controller shows the container as the wired client there -- exactly like a VM on a node |
+| `macvlan` / `ipvlan` (the container has its own LAN address and MAC) | up when running, 100G | **yes**: the endpoint's MAC is reported on the port, so the controller shows the container as the wired client there -- exactly like a VM on a node. Its `uptime` is the seconds since the container started (the reduced inspect's `started`; the loop's learn time if it does not parse), its `age` 0 (`docs/mac-table-times.md`) |
 | `bridge` (Podman's default: private subnet, NAT behind the host) | up when running, 100G, counted | **no**: the LAN never sees that MAC; reporting it would make the controller invent a client with no address. The port is there, named and counting traffic, and that is all it honestly can be |
 
 A container that shares another's network namespace (`--network
