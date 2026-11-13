@@ -741,3 +741,46 @@ func TestModuleComplianceText(t *testing.T) {
 		}
 	}
 }
+
+// A forced speed pushed for a guest port has nothing to act on: a guest
+// NIC's link has no speed to set. It is ignored with one log line per port
+// and speed, and no command; a port left on auto says nothing.
+func TestForcedSpeedOnGuestPortIsLogged(t *testing.T) {
+	c, r := newTestCollector(t, "collect-node2.txt")
+	var buf strings.Builder
+	c.Log.SetOutput(&buf)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first guest port on this node, as the capture has it.
+	var guest *devicemodel.Port
+	c.mu.Lock()
+	for i := range snap.Ports {
+		if key, ok := c.keyOf[snap.Ports[i].Index]; ok && c.nics[key].Node == c.node {
+			guest = &snap.Ports[i]
+			break
+		}
+	}
+	c.mu.Unlock()
+	if guest == nil {
+		t.Fatal("the capture has no guest port on this node")
+	}
+	want := func(speed int) []devicemodel.PortDesired {
+		return []devicemodel.PortDesired{{Index: guest.Index, Enabled: guest.Enabled, SpeedMbps: speed}}
+	}
+	r.Commands = nil
+	buf.Reset()
+	if n, err := c.ApplyPorts(context.Background(), want(0)); err != nil || n != 0 || len(r.Commands) != 0 || buf.Len() != 0 {
+		t.Fatalf("auto speed: n=%d err=%v cmds=%v log=%q", n, err, r.Commands, buf.String())
+	}
+	for i := 0; i < 2; i++ { // twice: the reconcile runs every inform
+		if n, err := c.ApplyPorts(context.Background(), want(1000)); err != nil || n != 0 || len(r.Commands) != 0 {
+			t.Fatalf("forced speed: n=%d err=%v cmds=%v", n, err, r.Commands)
+		}
+	}
+	note := fmt.Sprintf("port %d: the controller forces 1000 Mb/s; a guest port has no link speed to set", guest.Index)
+	if got := strings.Count(buf.String(), note); got != 1 {
+		t.Errorf("the note was logged %d times, want once: %q", got, buf.String())
+	}
+}

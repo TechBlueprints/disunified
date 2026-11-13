@@ -18,7 +18,9 @@ import (
 // another node is left to that node's bridge; a port with nothing assigned
 // has nothing to write. Everything else the controller sends for a port
 // (speed, FEC, storm control, STP, LAG, mirror) has no bridge equivalent
-// and is ignored, and the capability claims keep those controls hidden.
+// and is ignored, and the capability claims keep those controls hidden. A
+// forced speed can still arrive (a port profile, the API); it is ignored
+// with one log line per port and speed.
 //
 // Writes are diffs against the config as last read: a converged node costs
 // no command, and the loop's reconcile after every inform is free.
@@ -31,6 +33,16 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	}
 	changed := 0
 	for _, d := range desired {
+		// A forced speed has nothing to act on: a guest NIC's link has no
+		// speed to set. Said once per port and speed, as the other
+		// settings a bridge port cannot take are; nothing is written.
+		if d.SpeedMbps != 0 {
+			if key, ok := keyOf[d.Index]; ok {
+				if g, ok := nics[key]; ok && g.Node == node {
+					c.warnOnce(fmt.Sprintf("speed-guest-%d-%d", d.Index, d.SpeedMbps), "NOTE: port %d: the controller forces %d Mb/s; a guest port has no link speed to set — ignored", d.Index, d.SpeedMbps)
+				}
+			}
+		}
 		n, want, ok := c.planPort(d)
 		if !ok {
 			continue

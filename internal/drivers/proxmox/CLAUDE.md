@@ -57,3 +57,11 @@ text (`Optic.MediaType`, sent as `sfp_compliance`) is ethtool's
 the media from the identifier and speeds. ethtool can print several
 "Transceiver type" lines for one module; the parser keeps the last, and no
 capture has more than one.
+
+**Guest ports, decided 2026-11-13 (Clint):** a guest port reports
+`sfp_found: true` with empty module fields, and stays that way -- real
+switches send the same for a port with something in it and no module
+identity (59 SFP28 ports in the committed informs). A forced speed pushed
+for a guest port has nothing to act on (a guest NIC's link has no speed to
+set): `ApplyPorts` ignores it with one `NOTE:` line per port and speed and
+writes nothing. `sys_stats.mem_buffer` stays Buffers plus Cached.

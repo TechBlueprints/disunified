@@ -528,8 +528,8 @@ excusal):
 - **`sys_stats.mem_buffer`** stays Buffers plus Cached, past 2^31 on a host
   with gigabytes of page cache. Real switches' `mem_total` and `mem_used`
   pass 2^31, so the controller holds memory in a wide type; reporting
-  Buffers alone would change what the UI's memory figure means, and that is
-  Clint's call, not made here. The committed capture stays under 2^31, so
+  Buffers alone would change what the UI's memory figure means. Decided
+  (Clint, 2026-11-13): leave it. The committed capture stays under 2^31, so
   only the live audit shows it.
 - **Top-level `tx_bytes` and `uplink.rx_bytes`** past 2^31 in the live audit
   are the controller's own fields: the bridge sends no top-level byte

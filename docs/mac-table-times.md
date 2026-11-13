@@ -119,7 +119,10 @@ collect.
   unreadable file is logged and starts empty. A bridge restart or redeploy
   therefore does not reset every client. What it cannot know is whether
   an address aged out while the bridge was down: an address present on
-  both sides of the gap is treated as continuous.
+  both sides of the gap is treated as continuous. On a busy uplink the set
+  of keys changes on most informs, so the file (some 13 KB for 150
+  addresses) is rewritten about once a minute; left unthrottled on purpose
+  (Clint, 2026-11-13).
 - No state directory (tests, a `-collect-once` from flags): the tracker
   works in memory.
 
