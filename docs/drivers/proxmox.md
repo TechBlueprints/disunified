@@ -126,7 +126,7 @@ sections; nothing on the node is installed for the read side. Per section:
 | `links` | `ip -j -s -d link show` | per-port link state, MTU, counters (a tap's RX is what the guest sent, i.e. the port's RX) |
 | `brlink` | `bridge -j -d link show` | STP state / path cost per member |
 | `vlan` | `bridge -j -compressvlans vlan show` | live 802.1Q state of each member (`-compressvlans` matters: 4093 VLANs × 15 ports is 450 KB otherwise) |
-| `fdb` | `bridge -j -s fdb show br vmbr0 dynamic` | MAC table with ages (`dynamic` drops the per-VLAN permanent entries, 4.6 MB otherwise) |
+| `fdb` | `bridge -j -s fdb show br vmbr0 dynamic` | MAC table: `updated` (seconds since the entry's last frame) is the entry's `age`; the FDB has no learn time, so `uptime` is the loop's (`docs/mac-table-times.md`). `dynamic` drops the per-VLAN permanent entries, 4.6 MB otherwise |
 | `bridge` | `/sys/class/net/vmbr0/bridge/*`, `bridge-vids` | STP off/on, priority, IGMP snooping, VLAN range |
 | `phys`, `bonding`, `ethtool`, `ethtoolm`, `carrier` | sysfs, `/proc/net/bonding`, `ethtool`, `ethtool -m`, `carrier_changes` | uplinks: bond membership and active slave, speed caps, FEC support, optic EEPROM/DOM, link flaps |
 | `hwmon` | `/sys/class/hwmon` | temperature (coretemp/k10temp package sensor; overheating at `temp1_max`), fans (`fanN_input` as % of `fanN_max`; Dell's `dell_smm`) |

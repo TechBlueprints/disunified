@@ -413,7 +413,9 @@ func opticOf(x, d map[string]string) *devicemodel.Optic {
 }
 
 // buildMACTable reads STATE_DB FDB_TABLE: key FDB_TABLE|Vlan<id>:<mac>,
-// value {port, type}. No timestamps. An address learned in Vlan<native> is
+// value {port, type}. No timestamps: LearnedAt and LastSeen stay zero and
+// the loop's tracker supplies the learn time (docs/mac-table-times.md). An
+// address learned in Vlan<native> is
 // on UniFi's VLAN 1, like the ports' untagged membership.
 func buildMACTable(fdb table, byIfname map[string]int, native int, linkDown func(port string) bool) []devicemodel.MACEntry {
 	var out []devicemodel.MACEntry

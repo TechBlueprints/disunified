@@ -1,8 +1,8 @@
 # MAC table times: `age` and `uptime` are two different things
 
-Status: **spec, not built** (written 2026-11-13). This is the plan for the
-fix; when it is built, rewrite this page as the description of what the code
-does and keep the evidence.
+Status: **built 2026-11-13** (specified the same day). The bridge reports a
+learned address's learn time and its last-seen time separately; §5 is what
+the code does, §6 the tests. The live checks of §7 wait for a deploy.
 
 ## 1. What went wrong
 
@@ -54,12 +54,12 @@ since, client uptime, whatever reads them); no traffic is involved.
 Not explained, and not ours: some clients on real switches also had
 `assoc_time` reset at that restart.
 
-## 4. What the bridge sends today
+## 4. What the bridge sent before the fix
 
-`macEntries` (`internal/device/tables.go`) fills both keys from the one
+`macEntries` (`internal/device/tables.go`) filled both keys from the one
 `devicemodel.MACEntry.LastMove`. The drivers put different things in it:
 
-| Driver | `LastMove` is | `age` | `uptime` |
+| Driver | `LastMove` was | `age` | `uptime` |
 |---|---|---|---|
 | `arista-eos` | EOS `lastMove` (learned or moved) | wrong: as large as `uptime` | right |
 | `proxmox` | now minus the kernel FDB's `updated` (last refresh) | right | wrong: 0 to the ageing time |
@@ -69,72 +69,108 @@ Not explained, and not ours: some clients on real switches also had
 
 The shape test (`internal/device/shapes_test.go`) could not see this: every
 one of these values has the right type and is inside the real range. The
-fault is the relation between two keys, and what one of them means.
+fault is the relation between two keys, and what one of them means
+(`docs/wire-shapes.md` §10).
 
-## 5. The fix
+## 5. What the bridge does now
 
 ### 5.1 Model
 
-`devicemodel.MACEntry` loses `LastMove` and gains
+`devicemodel.MACEntry` has two times in place of `LastMove`:
 
-- `LearnedAt time.Time`: when the address was learned on this port (or last
-  moved to it). Zero = the driver cannot know.
-- `LastSeen time.Time`: when a frame from it was last seen. Zero = unknown.
+- `LearnedAt`: when the address was learned on this port (or last moved to
+  it). Zero = the driver cannot know.
+- `LastSeen`: when a frame from it was last seen. Zero = unknown.
 
 ### 5.2 Wire
 
-`macEntries`: `uptime` = snapshot time minus `LearnedAt`; `age` = snapshot
-time minus `LastSeen`; a zero time gives 0; negative gives 0; `age` is never
-more than `uptime` (clamp `age` down). Both stay whole numbers. The per-port
-table and the top-level table report the same pair for the same entry.
+`macEntries`: `uptime` = snapshot time minus `LearnedAt`, `age` = snapshot
+time minus `LastSeen`, in whole seconds; a zero time gives 0, a negative
+difference gives 0, and `age` is clamped down to `uptime`. The per-port
+table and the top-level table render the same pair for the same entry (one
+function, one snapshot time).
 
 ### 5.3 Learn times for drivers that cannot know them
 
-The Linux bridge FDB, SONiC's `FDB_TABLE` and a container's endpoint have no
-learn time. The loop keeps one for them: a tracker in `internal/informloop`,
-keyed by (address, VLAN, port index), applied to the snapshot after
-`children:` are added and before the payload is built.
+The Linux bridge FDB, SONiC's `FDB_TABLE` and a configured child have no
+learn time. The loop keeps one for them: `learnTimes`
+(`internal/informloop/learntimes.go`), keyed by (address, VLAN, port index)
+and applied to every snapshot after `children:` are added and before the
+session renders it -- the start-up snapshot in `New` and each successful
+collect.
 
 - An entry that arrives with `LearnedAt` set is left alone and not tracked.
-- First sight of a key: `LearnedAt` = the entry's `LastSeen` if set, else
-  the snapshot time. Later sights: the remembered time.
+- First sight of a key: `LearnedAt` = the entry's `LastSeen` if set (and
+  not after the snapshot time), else the snapshot time, truncated to the
+  second. Later sights: the remembered time. The same time goes into the
+  port's table and the switch's.
 - A key absent from a **successful** collect is forgotten, so an address
   that aged out and came back, or moved port, starts again, as on a real
-  switch. A failed collect changes nothing.
-- The map is persisted in the device's state directory, in its own file
-  (not `device.json`, which holds the adoption key), mode 0600, written
-  atomically and only when the set of keys changed; loaded at start. A
-  bridge restart or redeploy therefore does not reset every client. What it
-  cannot know is whether an address aged out while the bridge was down; an
-  address present on both sides of the gap is treated as continuous.
-- No state directory (tests, one-shots): the tracker works in memory.
+  switch. A failed collect never reaches the tracker and changes nothing.
+- The driver's snapshot is not modified; a copy carries the times.
+- **The file.** `mac-learned.json` in the device's state directory
+  (`informloop.Config.StateDir`; `cmd/disunified` passes the directory that
+  holds `device.json`, the same one drivers get as `options.state_dir`):
+  a sorted JSON list of `{mac, vlan, port, learned}` (`learned` in Unix
+  seconds), one row per tracked key. Never inside `device.json`, which
+  holds the adoption key. Mode 0600, written to a temp file and renamed,
+  and only when the set of keys changed (the times of a kept key never
+  change, so the file is otherwise current); loaded at start, and an
+  unreadable file is logged and starts empty. A bridge restart or redeploy
+  therefore does not reset every client. What it cannot know is whether
+  an address aged out while the bridge was down: an address present on
+  both sides of the gap is treated as continuous.
+- No state directory (tests, a `-collect-once` from flags): the tracker
+  works in memory.
 
 ### 5.4 Drivers
 
-- `proxmox`: `LastSeen` = now minus `updated`; `LearnedAt` unset.
-- `podman`: `LastSeen` = now; `LearnedAt` = the container's start time (the
-  reduced inspect already carries `started`), unset when it does not parse.
-- `sonic`: neither (the tracker supplies the learn time; `age` stays 0).
-- `arista-eos`: `LearnedAt` = `lastMove`; `LastSeen` unset, so `age` becomes
-  0 instead of repeating `uptime`. A per-entry age from EOS is wanted only
-  if a command in the committed 4.26.14M captures already has it; no new
-  command without a capture.
-- `children:`: `LastSeen` = the snapshot time; `LearnedAt` unset.
+| Driver | `LearnedAt` | `LastSeen` | `uptime` | `age` |
+|---|---|---|---|---|
+| `arista-eos` | EOS `lastMove` | unset | since `lastMove` | 0 |
+| `proxmox` | unset (tracker) | now minus the FDB's `updated` | since first seen by the bridge, from the FDB's `updated` then | the FDB's `updated` |
+| `podman` | the container's `started` (reduced inspect; unset if it does not parse, then the tracker) | the collect time | since the container started | 0 |
+| `sonic` | unset (tracker) | unset | since first seen by the bridge | 0 |
+| configured `children:` | unset (tracker) | the snapshot time | since first reported | 0 |
+
+EOS 4.26.14M has no per-entry last-seen time in any committed capture
+(`show mac address-table` carries `lastMove` and `moves` only), so the
+Arista's `age` is 0; no command was added. The Podman driver reads nothing
+new: `started` was already in the reduced inspect.
 
 ## 6. Tests (real captures only)
 
-1. The invariant from the real informs: every `mac_table` entry in the
-   three fixtures of section 2 has `uptime >= age`. Then the same invariant
-   over every driver's payload in the contract tests.
-2. The tracker, driven by the committed Proxmox capture collected twice with
-   the clock moved between: each entry's `uptime` grows by the interval,
-   `age` stays the capture's `updated`; an entry removed and returned starts
-   again; a failed collect forgets nothing; the persisted file round-trips
-   and a second loop started from it continues the times.
-3. `podman` from its capture: `uptime` = snapshot time minus `started`.
-4. `arista-eos` from its capture: `uptime` from `lastMove`, `age` 0.
-5. `sonic`: the existing "LastMove is zero" assertion becomes the two new
-   fields.
+1. `TestMACTimesRealInforms` (`internal/device/mactimes_test.go`): every
+   `mac_table` entry of the three informs of §2 (233, all in port tables;
+   none of the three has a top-level table) is whole, non-negative, with
+   `uptime >= age`. `TestMACTimesEveryDriver` holds every driver's
+   contract payload to the same, and a top-level entry to its port-table
+   twin.
+2. `TestLearnTimesProxmox` (`internal/informloop/learntimes_test.go`): the
+   committed Proxmox capture collected by the real driver again and again,
+   each collect read as if later (snapshot and entry times moved together):
+   first sight `uptime = age =` the capture's `updated`; each later
+   collect's `uptime` grows by the interval and `age` stays `updated`; an
+   address dropped from one collect (it aged out) starts again when it
+   returns; a failed collect forgets nothing; the file is 0600, in the
+   state directory, not rewritten when the set is unchanged and rewritten
+   when it changes; a second loop started from it continues every time;
+   with no state directory the times live in memory.
+   `TestLearnTimesChild`: a configured child on the DX010 capture, age 0,
+   uptime growing.
+3. `TestMACTimesArista`: every entry's `uptime` is the snapshot time minus
+   the capture's `lastMove`, `age` 0.
+4. `sonic`: `TestSnapshotFromTheVirtualSwitch` asserts both times zero on every
+   FDB entry.
+
+**Not tested for want of a capture:** the Podman driver's `uptime` from
+`started`. The committed capture (`docs/fixtures/podman-5.8.2`) has a
+macvlan network but no container on it, so it carries no MAC entry at all
+(`TestOnlyLANEndpointsAreClients`); the code path waits for a capture with
+a macvlan container. Also not covered by a capture: an unparseable
+`started`, and a Proxmox FDB that really changed between two captures of
+one node (the age-out case drops an address from a later collect of the
+same capture instead).
 
 ## 7. After a deploy (live, read-only)
 
@@ -143,17 +179,14 @@ keyed by (address, VLAN, port index), applied to the snapshot after
 - `stat/sta`: `latest_assoc_time` of clients behind the Proxmox and Podman
   bridges stops moving. Their `assoc_time` stays where the last controller
   restart left it; it only becomes right at the controller's next restart
-  or the client's next reconnect.
+  or the client's next reconnect -- and "right" for a tracked driver means
+  the bridge's first sight, which for the first deploy is the deploy itself
+  (there is no `mac-learned.json` before it).
+- Each tracked device's state directory holds `mac-learned.json` (0600)
+  after its first collect, and a redeploy keeps the times.
+- Clients behind the Arista: `assoc_time` unchanged; their `age` is now 0.
 
-## 8. Docs to bring along
-
-`docs/feature-map.md` (the `mac_table` row), `docs/wire-shapes.md` (a value
-can have a real device's shape and the wrong meaning; the relation check
-added in section 6), the four drivers' pages and `CLAUDE.md` files where
-they describe the MAC table, and the repo `CLAUDE.md` section 5 (the
-controller's rule in section 3 of this page, in two or three lines).
-
-## 9. Not in scope
+## 8. Not in scope
 
 Why some clients on real switches lost `assoc_time` at the restart; the
 `static`, `ip` and `hostname` keys real switches add to an entry.

@@ -59,6 +59,10 @@ func (s State) String() string {
 type Config struct {
 	Interval  time.Duration // initial inform cadence; the controller may change it
 	RecordDir string        // "" disables reply recording
+	// StateDir is the device's state directory (the one holding
+	// device.json): the loop keeps its own files there -- the MAC learn
+	// times (LearnTimesFile). "" = they are kept in memory only.
+	StateDir string
 	// RecordMaxSize caps the live reply log, <RecordDir>/<mac>.ndjson: a
 	// record that would take it past this many bytes first rotates it to
 	// <mac>.ndjson.1 (.1 -> .2 and so on). 0 = DefaultRecordMaxSize; < 0 =
@@ -241,6 +245,7 @@ type Loop struct {
 	wrotePorts map[int]bool
 	faultSig   string
 	childNoted map[int]string // per child's port, the condition last logged (children.go)
+	learn      *learnTimes    // learn times for MAC entries the driver reports without one (learntimes.go)
 	fanNoted   string         // the fan-mode refusal last logged, to log on change only (fanmode.go)
 	// power logs a power device's transitions when its driver asks for it
 	// (devicemodel.PowerEventSource); nil otherwise.
@@ -299,8 +304,11 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 		}
 		cfg.Logger.Printf("[%s] child %s (%s) reported on port %d: %s", desc.MAC, c.Name, c.MAC, c.Port, what)
 	}
-	if len(cfg.Children) > 0 {
-		sess.SetSnapshot(l.withChildren(sess.Snapshot()))
+	l.learn = newLearnTimes(cfg.StateDir, func(format string, args ...any) {
+		cfg.Logger.Printf("[%s] "+format, append([]any{desc.MAC}, args...)...)
+	})
+	if snap := sess.Snapshot(); snap != nil {
+		sess.SetSnapshot(l.learn.apply(l.withChildren(snap)))
 	}
 	if ar, ok := cfg.Collector.(devicemodel.AddressReporter); ok {
 		l.driverAddr = ar.CurrentAddress()
@@ -1443,7 +1451,7 @@ func (l *Loop) collect(ctx context.Context) {
 	if snap.System.GatewayMAC == "" && l.cfg.GatewayIP != "" {
 		snap.System.GatewayMAC = snap.System.ARP[l.cfg.GatewayIP]
 	}
-	snap = l.withChildren(snap)
+	snap = l.learn.apply(l.withChildren(snap))
 	l.session.SetGatewayIP(l.cfg.GatewayIP)
 	l.session.SetSnapshot(snap)
 	// Follow the driver's address only when it moved since start-up (or

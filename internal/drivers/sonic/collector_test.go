@@ -225,7 +225,7 @@ func TestSnapshotFromTheVirtualSwitch(t *testing.T) {
 	byVLAN := map[int]int{}
 	for _, m := range snap.MACTable {
 		byVLAN[m.VLAN]++
-		if m.PortIndex != 1 || !m.LastMove.IsZero() || m.MAC != strings.ToLower(m.MAC) {
+		if m.PortIndex != 1 || !m.LearnedAt.IsZero() || !m.LastSeen.IsZero() || m.MAC != strings.ToLower(m.MAC) {
 			t.Errorf("MAC entry %+v", m)
 			break
 		}

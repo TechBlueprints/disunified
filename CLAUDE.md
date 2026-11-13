@@ -341,6 +341,11 @@ stay stopped** (one bridge per adopted key).
   Reachability fields (`connect_request_ip`, `netmask`, `gateway_mac` as the
   segment's L2 address, `if_table`, `uplink` as a string) are necessary, not
   sufficient; a synthetic MAC is never placed. `docs/topology-placement.md`.
+- **A wired client's connected-since is its `mac_table` entry's `uptime`**
+  (Network 11.0.97, 2026-11-13): `assoc_time` = the switch's first inform
+  after a controller start minus the `uptime` it reports, and an `uptime`
+  near zero moves `latest_assoc_time` every inform. `uptime` is the learn
+  time, `age` the last frame, `uptime >= age` (`docs/mac-table-times.md`).
 
 ## 6. Driver facts
 

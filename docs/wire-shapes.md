@@ -567,3 +567,20 @@ Open on Network 11:
 - The check in issue #3 for an over-long stored serial uses `mongo`, which
   the console no longer runs after the migration. It is only needed before
   it.
+
+## 10. A real shape with the wrong meaning (2026-11-13)
+
+A value can have a real device's type, length and range and still be
+wrong. Every bridged `mac_table` entry passed the shape test, yet the
+bridge filled `age` and `uptime` from one time, so one of the two always
+meant the other: an `uptime` near zero behind the hypervisor bridges, an
+`age` as large as the `uptime` behind the Arista. The controller reads
+`uptime` as the learn time, and each of its restarts showed every guest
+behind a bridge as reconnecting (`docs/mac-table-times.md`).
+
+A shape check compares one path at a time and cannot see that. The
+relation between two keys is now a test of its own: `uptime >= age` on
+every entry of the real informs and of every driver's payload, the
+per-port and top-level tables agreeing
+(`internal/device/mactimes_test.go`). Where a real device's keys are tied
+to each other, the relation gets its own check beside the shapes.

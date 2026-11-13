@@ -483,7 +483,9 @@ Redis sections (key pattern → use):
   tagged membership exists, else `access`; `AllowAll` is never true (SONiC
   has no "all VLANs" trunk). `Snapshot.VLANs` from `VLAN|*` ids ascending.
 - **MAC table** from `FDB_TABLE`: `PortIndex` via the port's index,
-  `LastMove` zero. `MACTableUsed` = entry count; capacity unknown.
+  `LearnedAt` and `LastSeen` zero (no timestamps): the loop's learn-time
+  tracker gives `uptime`, `age` is 0 (`docs/mac-table-times.md`).
+  `MACTableUsed` = entry count; capacity unknown.
 - **LLDP** `LLDP_ENTRY_TABLE:<port>` → `Neighbor` (`lldp_rem_sys_name`,
   `lldp_rem_sys_desc`, `lldp_rem_chassis_id`, `lldp_rem_port_id`,
   `lldp_rem_port_desc`, `lldp_rem_man_addr`; `IsBridge`/`IsRouter` from

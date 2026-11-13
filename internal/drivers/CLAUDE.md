@@ -50,6 +50,12 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   the host* to the fields the driver reads: `podman inspect` carries every
   container's environment, which is where API keys live, and a raw capture
   of it must never be committed (2026-09-27).
+- **A MAC entry has two times** (`MACEntry`): `LearnedAt` only from a learn
+  or move time the device itself keeps (EOS `lastMove`, a container's
+  start), never from a refresh; `LastSeen` from a last-frame time. Leave
+  either zero when unknown: the loop then supplies the learn time. A
+  refresh time as the learn time makes every controller restart look like
+  every client reconnecting (`docs/mac-table-times.md`).
 - **Power devices:** outlets are `Snapshot.Outlets`, the battery is
   `System.Battery`; an outlet is real load, so `ApplyOutlets` is a strict
   diff, `OutletPlanner` lets the loop hold a first push that would switch

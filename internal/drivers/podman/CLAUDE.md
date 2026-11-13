@@ -10,7 +10,9 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
 - **Only macvlan/ipvlan endpoints carry a MAC entry.** A bridge-network
   container's MAC is behind NAT; reporting it makes the controller invent a
   wired client with no address. The port exists and counts; the client does
-  not. Decided, not forgotten.
+  not. Decided, not forgotten. Its `LearnedAt` is the container's start
+  (the reduced inspect's `started`, already read: never widen inspect for
+  it), `LastSeen` the collect time (`docs/mac-table-times.md`).
 - **Slots live on the host** (`/var/lib/disunified/podman-slots.json`),
   keyed `<container name>/<network>` -- names survive a recreate, ids do
   not. Written only on change (`mkdir -p && cat > tmp && mv`); the fixture

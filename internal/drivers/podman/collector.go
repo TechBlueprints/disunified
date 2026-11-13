@@ -126,6 +126,7 @@ type endpointInfo struct {
 	hasLink   bool
 	running   bool
 	inspected bool
+	started   time.Time // the container's start (inspect's `started`); zero when absent or unparsed
 }
 
 func (c *Collector) build(ctx context.Context, out string, now time.Time) (*devicemodel.Snapshot, error) {
@@ -271,6 +272,7 @@ func (c *Collector) build(ctx context.Context, out string, now time.Time) (*devi
 			e := endpointInfo{key: endpointKey(ct.Name(), n), container: ct, network: netBy[n], multi: len(nets) > 1, running: ct.State == "running", inspected: hasIns}
 			if hasIns {
 				e.ep = ins.Networks[n]
+				e.started, _ = time.Parse(time.RFC3339Nano, ins.Started)
 				for _, l := range netnsLinks[ct.ID[:12]] {
 					if strings.EqualFold(l.Address, e.ep.MAC) {
 						e.link, e.hasLink = l, true
@@ -304,7 +306,11 @@ func (c *Collector) build(ctx context.Context, out string, now time.Time) (*devi
 		used[idx] = true
 		p := endpointPort(idx, e)
 		if isLANNetwork(e.network) && e.ep.MAC != "" && e.running {
-			m := devicemodel.MACEntry{MAC: strings.ToLower(e.ep.MAC), VLAN: 1, PortIndex: idx, LastMove: now}
+			// A running endpoint is live now; its address has been on
+			// this port since the container started (the reduced
+			// inspect's `started`; unparsed, the loop's tracker supplies
+			// a learn time instead).
+			m := devicemodel.MACEntry{MAC: strings.ToLower(e.ep.MAC), VLAN: 1, PortIndex: idx, LastSeen: now, LearnedAt: e.started}
 			p.MACs = append(p.MACs, m)
 			macs = append(macs, m)
 		}

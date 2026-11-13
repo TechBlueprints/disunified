@@ -703,8 +703,12 @@ func carrierChanges(carrier map[string]string, name string) uint64 {
 	return n
 }
 
+// macEntry is one FDB entry. The kernel's `updated` is the seconds since
+// the entry was last refreshed by a frame, so it gives LastSeen; the FDB
+// keeps no learn time, which the loop's tracker supplies
+// (docs/mac-table-times.md §5.3).
 func macEntry(e fdbEntry, idx int, now time.Time) devicemodel.MACEntry {
-	return devicemodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastMove: now.Add(-time.Duration(e.Updated) * time.Second)}
+	return devicemodel.MACEntry{MAC: strings.ToLower(e.MAC), VLAN: e.VLAN, PortIndex: idx, LastSeen: now.Add(-time.Duration(e.Updated) * time.Second)}
 }
 
 // uplink is one physical port of the node, at the top of the port range:

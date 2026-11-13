@@ -59,7 +59,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `Vlan4094`. The control side must map the other way (VLAN 1 -> untagged
   in `Vlan<native_vlan>`).
 - **FDB**: STATE_DB `FDB_TABLE|Vlan<id>:<mac>` -> `{port, type}`, no
-  timestamps; a PortChannel's MACs go to its lowest member's port.
+  timestamps (an entry's learn time is the loop's tracker's,
+  `docs/mac-table-times.md`); a PortChannel's MACs go to its lowest
+  member's port.
 - **Uplink hint** when LLDP is silent (the lab guest): the up port on which
   the default gateway's MAC was learned. On the VS the gateway is reached
   over eth0 but its MAC is also learned in `Vlan4094` on Ethernet0, so
