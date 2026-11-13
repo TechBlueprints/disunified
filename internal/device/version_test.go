@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,9 +21,10 @@ import (
 )
 
 // The version on the wire (docs/wire-shapes.md §5): a real UniFi device
-// reports digits and dots, at most four groups and 13 characters; a bridged
-// device reports its own version reduced to that, and keeps its own string
-// for everything the emulated upgrade compares.
+// reports digits and dots, at most four groups and 13 characters. A device
+// claimed as the USW Leaf reports its own version reduced to that, and keeps
+// its own string for everything the emulated upgrade compares; every other
+// model reports UniFi firmware numbers only (reportsOwnVersion).
 
 func fixtureDir(parts ...string) string {
 	return filepath.Join(append([]string{"..", "..", "docs", "fixtures"}, parts...)...)
@@ -183,18 +185,25 @@ func TestWireVersionPerDriver(t *testing.T) {
 		if got := WireVersion(own); got != want[1] {
 			t.Errorf("%s: WireVersion(%q) = %q, want %q", vc.name, own, got, want[1])
 		}
+		// Only a device claimed as the USW Leaf sends its own version; every
+		// other model sends its catalogue's, and never the device's own.
+		wantSent, wantTracked := want[1], own
+		if !reportsOwnVersion(vc.model) {
+			wantSent = mustProfileVersion(t, vc.model)
+			wantTracked = wantSent
+		}
 		s := sessionFor(t, vc, State{})
 		m := payloadFor(t, s)
 		v, _ := m["version"].(string)
-		if v != want[1] || len(v) > MaxVersionLen || !VersionFits(v) {
-			t.Errorf("%s: payload version %q, want %q", vc.name, v, want[1])
+		if v != wantSent || len(v) > MaxVersionLen || !VersionFits(v) {
+			t.Errorf("%s (%s): payload version %q, want %q", vc.name, vc.model, v, wantSent)
 		}
 		if dv, _ := m["displayable_version"].(string); dv != displayableVersion(v) {
 			t.Errorf("%s: displayable_version %q, want it derived from %q", vc.name, dv, v)
 		}
-		// The device's own string stays where the emulated upgrade compares it.
-		if s.Version() != own {
-			t.Errorf("%s: tracked version %q, want the device's own %q", vc.name, s.Version(), own)
+		// The Leaf's own string stays where the emulated upgrade compares it.
+		if s.Version() != wantTracked {
+			t.Errorf("%s (%s): tracked version %q, want %q", vc.name, vc.model, s.Version(), wantTracked)
 		}
 		if s.ReportedVersion() != v {
 			t.Errorf("%s: ReportedVersion %q, payload %q", vc.name, s.ReportedVersion(), v)
@@ -284,24 +293,77 @@ func TestEmulatedUpgradeAcrossTheWireVersion(t *testing.T) {
 		t.Errorf("after an upgrade: Firmware %q over %q, want %q over the device's own", up.st.Firmware, up.st.FirmwareBase, target)
 	}
 
-	// The device's own version moving drops the fiction -- also where both
-	// strings reduce to the same wire version: the virtual-switch guest's
-	// 202505.1238524 became the DX010's 202505.1238526, both "202505".
+	// The Leaf's own version moving drops the fiction, while running and
+	// across a restart.
+	moved := *arista.snap
+	moved.System.Version = "4.26.15M"
+	running := sessionFor(t, arista, st)
+	running.SetSnapshot(&moved)
+	if v := payloadFor(t, running)["version"]; v != "4.26.15" || running.st.Firmware != "" {
+		t.Errorf("leaf, version moved while running: %v (Firmware %q), want 4.26.15 and no fiction", v, running.st.Firmware)
+	}
+	movedCase := arista
+	movedCase.snap = &moved
+	restartedLeaf := sessionFor(t, movedCase, st)
+	if v := payloadFor(t, restartedLeaf)["version"]; v != "4.26.15" || restartedLeaf.st.Firmware != "" {
+		t.Errorf("leaf, version moved across a restart: %v (Firmware %q), want 4.26.15 and no fiction", v, restartedLeaf.st.Firmware)
+	}
+}
+
+// A device claimed as anything but the USW Leaf presents UniFi firmware
+// numbers only (Clint, 2026-11-13): its catalogue's version until the
+// controller "upgrades" it, the target from then on, and never its own --
+// whatever image it runs, and whatever base an older build recorded.
+func TestUniFiVersionsOnlyOffTheLeaf(t *testing.T) {
+	byName := map[string]versionCase{}
+	for _, vc := range driverVersionCases(t) {
+		byName[vc.name] = vc
+	}
 	vs := byName["sonic "+viaVS+"/collect.txt"]
 	dx := byName["sonic sonic-202505.1238526-ff3c0c9f6/collect.txt"]
-	sonicTarget := mustProfileVersion(t, vs.model)
-	persisted := State{Firmware: sonicTarget, FirmwareBase: vs.snap.System.Version}
-	same := sessionFor(t, vs, persisted)
-	if v := payloadFor(t, same)["version"]; v != sonicTarget {
-		t.Errorf("sonic, same image: %v, want the emulated %q", v, sonicTarget)
+	igmp := byName["sonic sonic-igmp-202511.20261106-f2e25f54c/collect.txt"]
+	catalogue := mustProfileVersion(t, vs.model)
+
+	// No upgrade yet: the catalogue's version, on every image.
+	for _, vc := range []versionCase{vs, dx, igmp} {
+		s := sessionFor(t, vc, State{})
+		if v := payloadFor(t, s)["version"]; v != catalogue {
+			t.Errorf("%s: version %v, want the catalogue's %q", vc.name, v, catalogue)
+		}
 	}
-	same.SetSnapshot(dx.snap) // the image moved under a running bridge
-	if v := payloadFor(t, same)["version"]; v != "202505" || same.st.Firmware != "" {
-		t.Errorf("sonic, image moved while running: %v (Firmware %q), want 202505 and no fiction", v, same.st.Firmware)
+
+	// The state the deployed DX010 holds: an emulated upgrade recorded by an
+	// older build over the image's own name. It stands, and the base goes.
+	const target = "4.0.1.995"
+	old := State{Firmware: target, FirmwareBase: igmp.snap.System.Version}
+	s := sessionFor(t, igmp, old)
+	if v := payloadFor(t, s)["version"]; v != target || s.st.Firmware != target || s.st.FirmwareBase != "" {
+		t.Errorf("an older build's upgrade: version %v, Firmware %q over %q; want %q over nothing", v, s.st.Firmware, s.st.FirmwareBase, target)
 	}
-	restarted := sessionFor(t, dx, persisted) // the image moved across a restart
-	if v := payloadFor(t, restarted)["version"]; v != "202505" || restarted.st.Firmware != "" {
-		t.Errorf("sonic, image moved across a restart: %v (Firmware %q), want 202505 and no fiction", v, restarted.st.Firmware)
+	// The image moving under a running bridge, or across a restart, changes
+	// nothing.
+	s.SetSnapshot(dx.snap)
+	if v := payloadFor(t, s)["version"]; v != target || s.st.Firmware != target {
+		t.Errorf("image moved while running: version %v (Firmware %q), want %q kept", v, s.st.Firmware, target)
+	}
+	if v := payloadFor(t, sessionFor(t, dx, old))["version"]; v != target {
+		t.Errorf("image moved across a restart: version %v, want %q kept", v, target)
+	}
+	// An upgrade the controller requests now records no base.
+	up := sessionFor(t, dx, State{})
+	up.Apply(time.Now(), []byte(`{"_type":"upgrade","version":"`+target+`"}`))
+	if v := payloadFor(t, up)["version"]; v != target || up.st.Firmware != target || up.st.FirmwareBase != "" {
+		t.Errorf("after an upgrade: version %v, Firmware %q over %q; want %q over nothing", v, up.st.Firmware, up.st.FirmwareBase, target)
+	}
+	// Nothing in the payload carries the image's name, whole or reduced.
+	m := payloadFor(t, up)
+	if raw := string(up.BuildPayload(time.Now())); strings.Contains(raw, dx.snap.System.Version) {
+		t.Errorf("the payload carries the device's own version %q", dx.snap.System.Version)
+	}
+	for _, k := range []string{"version", "displayable_version", "required_version"} {
+		if v, _ := m[k].(string); strings.HasPrefix(v, WireVersion(dx.snap.System.Version)) {
+			t.Errorf("%s is %q, the device's own version reduced", k, v)
+		}
 	}
 }
 

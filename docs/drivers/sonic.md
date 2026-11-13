@@ -169,7 +169,8 @@ fold into one cage, split cages set `LanesDiverge`; media QSFP28; speed caps
 from the hardware SKU's `platform.json` breakout modes (hardware) with a
 sane default on the VS; `Port.Health` from the SAI counters; LLDP, FDB,
 VLANs, LAGs, STP as available. `System`: hostname, platform, HwSKU,
-build id as the firmware version, uptime, management interface as the
+build id (logged, never reported: claimed as an ECS the switch shows
+UniFi firmware numbers only, `docs/unifi-models.md`), uptime, management interface as the
 OOB interface in `System.OOBInterfaces` (the loop warns if it carries the
 bridge's address), fans/PSUs/temperatures when present. Tests cover
 parsing, idempotence and the wire-contract/replay suites.
@@ -2658,8 +2659,9 @@ capacity is Ubiquiti's number, ours is the ASIC's. The VS capture has no
 `<address>/<prefix>`, global first (the ECS: its management bridge's
 SLAAC and link-local; the DX010's Vlan4094 has only its link-local).
 `displayable_version`: a UniFi version without its build number (the
-ECS's `4.0.1.995` -> `4.0.1`), any other version as it is (the DX010's
-build id). `sfp_rev`: xcvrd's `vendor_rev`, padding trimmed (`1` on the
+ECS's `4.0.1.995` -> `4.0.1`). The DX010's build id is no longer sent
+(2026-11-13): it reports the ECS Core's catalogue version, then the
+controller's upgrade targets. `sfp_rev`: xcvrd's `vendor_rev`, padding trimmed (`1` on the
 CWDM4), `""` on an empty cage as the ECS sends; every driver now sends
 the key on its optical ports, `""` where it does not read revisions.
 

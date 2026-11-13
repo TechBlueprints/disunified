@@ -208,6 +208,10 @@ def scrub(o, key=None):
             return scrub_cfg_text(o)
         if key in SECRET_KEYS:
             return '<secret>' if o else o
+        if key == 'hash_id' and isinstance(o, str) and o:
+            # 16 hex digits on a real device: the placeholder keeps the
+            # length, as a serial's does (docs/wire-shapes.md §1)
+            return map_id(o)[-len(o):]
         if key in ID_KEYS:
             return map_id(o) if o else o
         if key in SERIAL_KEYS:

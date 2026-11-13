@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/TechBlueprints/disunified/internal/config"
 )
 
 // -device-ssh-key / DUI_DEVICE_SSH_KEY is the config file's options.ssh_key
@@ -42,5 +44,17 @@ func TestProbeAddr(t *testing.T) {
 	}
 	if _, err := informURLFor(options{}); err == nil {
 		t.Error("no controller: want an error")
+	}
+}
+
+// A config-file device's firmware: reaches the run as -version does: the
+// key was parsed and dropped until 2026-11-13 (docs/wire-shapes.md §8).
+func TestConfigFirmwareIsTheVersion(t *testing.T) {
+	f := &config.File{StateDir: t.TempDir()}
+	if got := configOptions(f, config.Device{Name: "sw", Firmware: "7.3.109.16640"}).version; got != "7.3.109.16640" {
+		t.Errorf("firmware: gave version %q", got)
+	}
+	if got := configOptions(f, config.Device{Name: "sw"}).version; got != "" {
+		t.Errorf("no firmware: gave version %q, want none (the model's rule decides)", got)
 	}
 }

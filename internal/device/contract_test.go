@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -311,7 +312,14 @@ func checkSerial(t *testing.T, driver string, ours map[string]any) {
 	if want := strings.ToUpper(strings.ReplaceAll(mac, ":", "")); mac == "" || ours["serial"] != want {
 		t.Errorf("%s: serial %q, want the MAC's %s", driver, ours["serial"], want)
 	}
+	// hash_id is 16 hex digits on every real device; the controller kept
+	// none of ours while it carried a UUID's dashes (hashID).
+	if h, _ := ours["hash_id"].(string); !hashIDForm.MatchString(h) {
+		t.Errorf("%s: hash_id %q, want 16 hex digits", driver, h)
+	}
 }
+
+var hashIDForm = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // contractPayload is one driver's contract payload and the class of real
 // device it is held to.

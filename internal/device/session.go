@@ -98,7 +98,13 @@ func NewSession(desc inform.Descriptor, informURL string, st State, store *Store
 	}
 	if st.Firmware != "" {
 		// A previous emulated upgrade is still reported — unless the switch
-		// itself has been upgraded since, in which case the truth wins.
+		// itself has been upgraded since, in which case the truth wins. That
+		// only applies to a model that reports its own version: for every
+		// other the upgrade stands whatever the device runs, and a base
+		// recorded by an older build (the device's own string) is dropped.
+		if !reportsOwnVersion(desc.Model) {
+			st.FirmwareBase = ""
+		}
 		if st.FirmwareBase == "" || st.FirmwareBase == desc.Version {
 			desc.Version = st.Firmware
 		} else {
@@ -197,11 +203,13 @@ func (s *Session) SetSnapshot(snap *devicemodel.Snapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snap = snap
-	// Report the switch's own firmware version, and follow it when the
-	// switch is upgraded under a running bridge. An operator's -version
-	// wins; so does an emulated upgrade, until the switch's version moves.
+	// A model that reports its own version (the USW Leaf): report the
+	// switch's own firmware version, and follow it when the switch is
+	// upgraded under a running bridge. An operator's -version wins; so does
+	// an emulated upgrade, until the switch's version moves. Every other
+	// model reports UniFi firmware numbers only, and nothing follows.
 	v := ""
-	if snap != nil {
+	if snap != nil && reportsOwnVersion(s.desc.Model) {
 		v = snap.System.Version
 	}
 	if v == "" || s.versionPinned {
@@ -225,9 +233,11 @@ func (s *Session) PinVersion() {
 	s.versionPinned = true
 }
 
-// deviceVersion is the switch's own version at the last collect.
+// deviceVersion is the switch's own version at the last collect, the base
+// an emulated upgrade is recorded over; "" for a model that never reports
+// its own (the upgrade then stands whatever the device runs).
 func (s *Session) deviceVersion() string {
-	if s.snap == nil {
+	if s.snap == nil || !reportsOwnVersion(s.desc.Model) {
 		return ""
 	}
 	return s.snap.System.Version
@@ -309,7 +319,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		m["upgrade_duration"] = 300
 		m["anon_id"] = anonID(s.desc.MAC)
 		m["guid"] = anonID("guid " + s.desc.MAC)
-		m["hash_id"] = anonID("hash " + s.desc.MAC)[:16]
+		m["hash_id"] = hashID(s.desc.MAC)
 		m["boot"] = map[string]any{"id": anonID("boot " + s.desc.MAC + s.bootTime.String())}
 		m["bootid"] = -1
 		m["dualboot"] = false
@@ -677,6 +687,15 @@ func anonID(mac string) string {
 	h[6] = (h[6] & 0x0f) | 0x50 // version 5 shape
 	h[8] = (h[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+// hashID is the device's hash_id: 16 hex digits, as every real device's is.
+// Until 2026-11-13 it went out as anonID's first 16 characters, dashes
+// included, and the controller kept none: it held a hash_id for every
+// connected real switch and for no bridged device (10.6.109 and 11.0.97),
+// while keeping the anon_id and guid beside it (docs/wire-shapes.md §8).
+func hashID(mac string) string {
+	return strings.ReplaceAll(anonID("hash "+mac), "-", "")[:16]
 }
 
 // SetGatewayIP sets the gateway/controller address reported as gateway_ip.

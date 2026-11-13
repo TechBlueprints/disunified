@@ -32,7 +32,6 @@ type shapeExcusal struct{ path, kind string }
 var shapeExcusalsAll = map[shapeExcusal]string{
 	{"uplink", "type"}:       "the reference is the controller's view (stat/device), whose uplink is its own object; every real inform sends the interface name as a string (CLAUDE.md §7, the uplink fix)",
 	{"inform_url", "longer"}: "test input: the tests' controller URL (http://192.0.2.1:8080/inform) is one character longer than the site's; the controller sets this URL, as on a real device",
-	{"hash_id", "charset"}:   "new finding, not this package's file: anonID's first 16 characters, dashes included (session.go), where real devices send 16 hex digits; for the parent to decide",
 }
 
 // Per driver.

@@ -56,8 +56,11 @@ the last payload sent is `inform-log/<name>/payload-last.json`.
   until one does not start with a digit, keep at most four groups and drop
   trailing ones until it fits, so EOS `4.26.14M` goes out as `4.26.14` and
   a SONiC image `202505.1238526-ff3c0c9f6` as `202505`; a version with no
-  digits falls back to the model profile's; `displayable_version` is
-  derived from it; an operator's `-version` must already fit;
+  digits falls back to the model profile's; **only a device claimed as the
+  USW Leaf sends its own version at all** -- every other model sends its
+  catalogue's version and then the controller's upgrade targets;
+  `displayable_version` is derived from it; an operator's `-version` or
+  `firmware:` must already fit;
   [wire-shapes.md](wire-shapes.md) §5), `ip`, `hostname`,
   `inform_url` (an **IP literal**, never a name: the controller answers
   HTTP 400 `invalid inform_ip` otherwise), `uptime`, `time`, `cfgversion`,

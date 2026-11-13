@@ -71,7 +71,7 @@ func main() {
 		serial   = flag.String("serial", envChain("", "DUI_SERIAL", "STU_SERIAL"), "device serial (default: the device's serial)")
 		ip       = flag.String("ip", envChain("", "DUI_IP", "STU_IP"), "device IP to report (default: the device address from -device-url/-device-ssh when it is an IP literal)")
 		hostname = flag.String("hostname", envChain("", "DUI_HOSTNAME", "STU_HOSTNAME"), "device hostname to report (default: the device's hostname)")
-		version  = flag.String("version", envChain("", "DUI_VERSION", "STU_VERSION"), "firmware version to report, digits and dots such as 7.2.123.16565 (default: the device's own, reduced to digits and dots: EOS 4.26.14M goes out as 4.26.14, PVE 9.1.6 as it is)")
+		version  = flag.String("version", envChain("", "DUI_VERSION", "STU_VERSION"), "firmware version to report, digits and dots such as 7.2.123.16565 (default: the model's UniFi firmware version; for a device claimed as the USW Leaf, the device's own reduced to digits and dots: EOS 4.26.14M goes out as 4.26.14)")
 		uplink   = flag.Int("uplink-port", envInt(0, "DUI_UPLINK_PORT", "STU_UPLINK_PORT"), "port_idx to flag as the uplink (0 = the port whose LLDP neighbour is the upstream switch)")
 
 		// Device side. -device-url/-device-ssh are the current names;
@@ -257,7 +257,8 @@ func configOptions(f *config.File, sw config.Device) options {
 		recordDir: filepath.Join(f.StateDir, "inform-log", sw.Name),
 		stateFile: filepath.Join(f.StateDir, "state", sw.Name, "device.json"),
 		ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
-		driver: sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
+		version: sw.Firmware, // the config file's -version; config.Load has checked its form
+		driver:  sw.Driver, deviceURL: sw.URL, deviceSSH: sw.SSH, username: sw.Username, password: sw.Password,
 		driverOptions: sw.Options,
 		controlPorts:  sw.Control.Ports, controlOutlets: sw.Control.Outlets, controlNUT: sw.Control.NUT,
 		allowInitialChanges: sw.Control.AllowInitialChanges, noSeed: sw.Control.NoSeed,

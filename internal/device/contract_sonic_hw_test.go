@@ -150,7 +150,7 @@ func TestWireContractSonicHardware(t *testing.T) {
 	if !reflect.DeepEqual(ours["ipv6"], []any{"fe80::2/64"}) {
 		t.Errorf("ipv6 %v", ours["ipv6"])
 	}
-	if ours["displayable_version"] != "202505" { // the wire version's (docs/wire-shapes.md §5)
+	if ours["displayable_version"] != "7.3.109" { // the catalogue's: an ECS never shows the image's own (docs/wire-shapes.md §5)
 		t.Errorf("displayable_version %v", ours["displayable_version"])
 	}
 	if p := portEntry(t, ours, 1); p["sfp_rev"] != "1" {

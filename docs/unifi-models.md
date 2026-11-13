@@ -91,7 +91,11 @@ check both. Every UniFi UPS model code in the table below came from here.
    `upgradable: false`, so the vendor's version just shows in the Version
    column. The same nodes as `USWF07D` ("ECS Core") did prompt to upgrade
    (Clint, 2026-09-20), so a model with real firmware in the controller's
-   database would turn every honest version into an update prompt. Ports beyond 54 are not
+   database would turn every honest version into an update prompt.
+   **So only the Leaf reports the device's own version** (Clint,
+   2026-11-13): a device claimed as any other model reports UniFi
+   firmware numbers only, its catalogue version and then whatever the
+   controller upgrades it to, and never presents its own. Ports beyond 54 are not
    drawn; fewer are shown as empty.
 3. Avoid PoE models unless the device has PoE: the profile adds PoE columns
    and controls that will never work.

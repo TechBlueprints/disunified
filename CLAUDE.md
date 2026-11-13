@@ -297,6 +297,16 @@ stay stopped** (one bridge per adopted key).
   A difference needs an excusal with its reason. `scripts/wire-shapes.py
   audit` repeats the comparison against a live controller. Scrub
   placeholders keep a serial's length now; other scrubs still change shapes.
+- **Only a device claimed as the USW Leaf reports its own version
+  (Clint, 2026-11-13).** The Leaf has no firmware releases, so its Version
+  column says what really runs (`4.26.14`, `9.1.6`). Every other model is
+  a UniFi product on that product's firmware line: it reports the model's
+  catalogue version, then the controller's (emulated) upgrade targets, and
+  never the device's own -- a SONiC switch claimed as an ECS was showing
+  its image's branch. `-version` / the config file's `firmware:` (dead
+  until that day) overrides either and must be digits and dots.
+  `hash_id` is 16 hex digits since the same day: with a UUID's dashes the
+  controller kept none.
 - **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
   | QUIET 2, `mode`) is copied from an inform into the record only by the
   UDM and UXG handlers; the USW handler never copies it and the REST

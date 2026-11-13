@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
@@ -62,10 +63,14 @@ type Device struct {
 	Hostname     string `yaml:"hostname"`      // reported hostname (default: the switch's)
 	UplinkPort   int    `yaml:"uplink_port"`   // default: the port whose LLDP neighbour is the upstream switch
 	UDAPIVersion string `yaml:"udapi_version"` // default "1.0.0"; "" omits (capabilities then not stored)
-	// Firmware is the version string reported to the controller. Default: the
-	// claimed model's catalogue version. The controller cannot upgrade a
-	// bridged switch; an upgrade it requests is emulated and the requested
-	// version reported (and persisted) from then on.
+	// Firmware is the version reported to the controller in place of the
+	// device's own (the -version flag for a config-file device). Default:
+	// the claimed model's catalogue version -- or, for a device claimed as
+	// the USW Leaf, the device's own reduced to digits and dots. It must be a
+	// version as a real device reports one (device.VersionFits) or the file
+	// is refused. The controller cannot upgrade a bridged device; an upgrade
+	// it requests is emulated and the requested version reported (and
+	// persisted) from then on.
 	Firmware string `yaml:"firmware"`
 
 	Control Control `yaml:"control"`
@@ -243,6 +248,9 @@ func Load(path string) (*File, error) {
 		}
 		if s.Model == "" {
 			s.Model = "auto"
+		}
+		if s.Firmware != "" && !device.VersionFits(s.Firmware) {
+			return nil, fmt.Errorf("%s: device %q: firmware %q is not a version the controller keeps: digits and dots, at most 4 groups and %d characters, such as 7.2.123.16565 (it would go out as %q)", path, s.Name, s.Firmware, device.MaxVersionLen, device.WireVersion(s.Firmware))
 		}
 		if s.FanMode != "" {
 			if _, ok := devicemodel.ParseFanMode(s.FanMode); !ok {

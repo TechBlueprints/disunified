@@ -201,3 +201,27 @@ func TestFanMode(t *testing.T) {
 		}
 	}
 }
+
+// firmware: is the config file's -version: a version as a real device
+// reports one, or the file is refused (docs/wire-shapes.md §5).
+func TestFirmware(t *testing.T) {
+	for _, tc := range []struct {
+		v  string
+		ok bool
+	}{{"", true}, {"7.3.109.16640", true}, {"4.26.14", true}, {"4.26.14M", false}, {"v7.3.109", false}, {"202505.1238526-ff3c0c9f6", false}} {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "c.yaml")
+		body := "controller:\n  host: 192.0.2.1\ndevices:\n  - name: sw\n    driver: sonic\n    ssh: admin@192.0.2.2\n    firmware: \"" + tc.v + "\"\n"
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Load(p)
+		if (err == nil) != tc.ok {
+			t.Errorf("firmware %q: err %v, want ok=%v", tc.v, err, tc.ok)
+			continue
+		}
+		if err == nil && f.Devices[0].Firmware != tc.v {
+			t.Errorf("firmware %q loaded as %q", tc.v, f.Devices[0].Firmware)
+		}
+	}
+}

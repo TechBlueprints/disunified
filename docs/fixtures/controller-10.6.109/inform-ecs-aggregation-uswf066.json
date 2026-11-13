@@ -90,7 +90,7 @@
   "has_fan": true,
   "has_speaker": false,
   "has_temperature": true,
-  "hash_id": "00000000000000000000000000000004",
+  "hash_id": "0000000000000004",
   "hostname": "device-1",
   "hw_caps": 8,
   "if_table": [

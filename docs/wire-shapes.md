@@ -474,20 +474,36 @@ package B made unnecessary (an excusal that excuses nothing fails).
 
 Open, each a decision or a live check:
 
-- `hash_id` goes out as 16 characters of a UUID, dashes included; real
-  devices send 16 hex digits (found by package A; `session.go`). Seen
-  2026-11-13: the controller holds a `hash_id` for every connected real
-  switch and for no bridged device, on 10.6.109 and on 11.0.97 alike, while
-  it keeps our `anon_id` and `guid` (UUIDs, as real ones are). So ours is
-  most likely being dropped for its form; what the controller uses the
-  field for is not known.
-- The config file's `firmware:` key is parsed and never read (found by
-  package B): wire it with the `-version` check, or delete it.
+- ~~`hash_id` goes out as 16 characters of a UUID, dashes included; real
+  devices send 16 hex digits~~ (found by package A). **Fixed 2026-11-13**
+  (`hashID` in `session.go`: 16 hex digits). What prompted it: the
+  controller holds a `hash_id` for every connected real switch and for no
+  bridged device, on 10.6.109 and on 11.0.97 alike, while it keeps our
+  `anon_id` and `guid` (UUIDs, as real ones are). So ours was most likely
+  being dropped for its form; what the controller uses the field for is
+  not known. Live check after the deploy: a `hash_id` appears on the
+  bridged devices.
+- ~~The config file's `firmware:` key is parsed and never read~~ (found by
+  package B). **Wired 2026-11-13**: it is the config file's `-version`,
+  refused at load unless it is a version as a real device reports one.
+- **Only a device claimed as the USW Leaf reports its own version
+  (Clint, 2026-11-13).** Every other model is a UniFi product on that
+  product's firmware line and reports UniFi firmware numbers only: the
+  model's catalogue version, then the controller's upgrade targets, never
+  the device's own (`reportsOwnVersion` in `descriptor.go`). The Leaf has
+  no firmware releases, so its Version column can say what really runs
+  (`docs/unifi-models.md`). Before this a SONiC switch claimed as an ECS
+  would have shown its image's branch (`202511`) as firmware, and package
+  B's worry that it "may stop being offered an upgrade" goes with it. An
+  emulated upgrade recorded by an older build over the device's own
+  string stands; the base is dropped.
 - The one stored `previous_firmware_version` that is an image name is the
   controller's record; it is replaced by that device's next version change.
 - The Proxmox driver's fan label is `Fan N` where the ECS has `FanN`.
-- Two more scrubs that change a shape: `hash_id` (32 digits for 16) and an
-  upgrade reply's version (`device-1`).
+- Scrubs that change a shape: an upgrade reply's version (`device-1`), and
+  `anon_id`/`guid`, written as 32 hex digits where the real ones are UUIDs.
+  `hash_id` (32 digits for 16) is fixed: the scrubber keeps its length and
+  the four committed informs carry 16.
 - Optic readings go out at the ECS's decimals but with the measured value;
   the ECS's own look truncated to whole numbers (`"3.000"` V from a 3.3 V
   module). Copying that would throw the reading away. Decided (Clint,

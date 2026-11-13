@@ -106,6 +106,16 @@ func reportedVersion(v, model string) string {
 	return ""
 }
 
+// reportsOwnVersion says whether a device claimed as model reports its own
+// version (reduced by WireVersion). Only the USW Leaf does: it has no need
+// for real firmware numbers. Every other model is a UniFi product on that
+// product's firmware line, so it reports UniFi firmware numbers only -- the
+// model's catalogue version, then whatever the controller "upgrades" it to
+// -- and never presents the device's own (Clint, 2026-11-13: a SONiC switch
+// claimed as an ECS showed its image's branch, 202511, as its firmware).
+// An operator's -version / firmware: still overrides either.
+func reportsOwnVersion(model string) bool { return model == "UDC48X6" }
+
 func isASCIIDigit(r rune) bool  { return r >= '0' && r <= '9' }
 func isASCIILetter(r rune) bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
 
@@ -137,15 +147,17 @@ func DescriptorFor(model string, snap *devicemodel.Snapshot, id Identity) (infor
 			ports[i].IsUplink = ports[i].PortIdx == uplink
 		}
 	}
-	// The firmware version is the switch's own ("4.26.14M", "9.1.6"): the
-	// UI's Version column should say what is really running (Clint,
-	// 2026-09-20). The model profile's UniFi version is the fallback for a
-	// driver that reports none, and -version overrides both. The descriptor
-	// keeps the device's own string, which the emulated-upgrade logic
-	// compares; the payload carries it reduced to digits and dots
-	// (WireVersion, applied in Session.buildPayload).
+	// The firmware version: an operator's -version first. Then, for a device
+	// claimed as the USW Leaf only, the device's own ("4.26.14M", "9.1.6"),
+	// so the UI's Version column says what is really running (Clint,
+	// 2026-09-20). Every other model reports UniFi firmware numbers only:
+	// the model profile's version (reportsOwnVersion), which is also the
+	// Leaf's fallback when its driver reports none. The descriptor keeps
+	// the device's own string, which the emulated-upgrade logic compares;
+	// the payload carries it reduced to digits and dots (WireVersion,
+	// applied in Session.buildPayload).
 	version := id.Version
-	if version == "" && snap != nil {
+	if version == "" && snap != nil && reportsOwnVersion(profile.Model) {
 		version = snap.System.Version
 	}
 	if version == "" {
