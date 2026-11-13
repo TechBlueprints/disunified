@@ -12,6 +12,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	"github.com/TechBlueprints/disunified/internal/drivers/podman"
 )
 
 // The MAC table's two times (docs/mac-table-times.md): `uptime` is the
@@ -165,6 +166,69 @@ func TestMACTimesArista(t *testing.T) {
 		}
 		if e["age"].(float64) != 0 {
 			t.Errorf("%s: age %v, want 0", k, e["age"])
+		}
+	}
+}
+
+// The Podman host: a running macvlan container's entry reports uptime =
+// the seconds since the container started (the capture's `started`) and
+// age 0 (last seen at the collect), in its port's table and the switch's,
+// from the capture with the bridge's own container on the LAN.
+func TestMACTimesPodman(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "podman-5.8.2", "collect-macvlan.txt")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, body, ok := strings.Cut(string(b), "@@@ inspect\n")
+	if !ok {
+		t.Fatal("capture has no inspect section")
+	}
+	body, _, _ = strings.Cut(body, "@@@ ")
+	var ins []struct {
+		Started  string `json:"started"`
+		Networks map[string]struct {
+			MAC string `json:"mac"`
+		} `json:"networks"`
+	}
+	if err := json.Unmarshal([]byte(body), &ins); err != nil {
+		t.Fatal(err)
+	}
+	started := map[string]time.Time{}
+	for _, c := range ins {
+		at, err := time.Parse(time.RFC3339Nano, c.Started)
+		if err != nil {
+			continue
+		}
+		for _, e := range c.Networks {
+			started[strings.ToLower(e.MAC)] = at
+		}
+	}
+	fr, err := podman.NewFixtureRunner(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := podman.NewCollector(fr).Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := macPayload(t, "UDC48X6", snap)
+	if n := checkMACTimes(t, "podman", m); n != 2*len(snap.MACTable) || n == 0 {
+		t.Errorf("%d mac_table entries for %d learned addresses; want each in its port's table and the switch's", n, len(snap.MACTable))
+	}
+	where, entries := macTableEntries(m)
+	for i, e := range entries {
+		mac, _ := e["mac"].(string)
+		at, ok := started[mac]
+		if !ok {
+			t.Errorf("%s %s: no container in the capture has this MAC", where[i], mac)
+			continue
+		}
+		if want := int(snap.TakenAt.Sub(at).Seconds()); int(e["uptime"].(float64)) != want || want <= 0 {
+			t.Errorf("%s %s: uptime %v, want %d (since the container started)", where[i], mac, e["uptime"], want)
+		}
+		if e["age"].(float64) != 0 {
+			t.Errorf("%s %s: age %v, want 0 (seen at the collect)", where[i], mac, e["age"])
 		}
 	}
 }
