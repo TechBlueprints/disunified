@@ -65,3 +65,13 @@ identity (59 SFP28 ports in the committed informs). A forced speed pushed
 for a guest port has nothing to act on (a guest NIC's link has no speed to
 set): `ApplyPorts` ignores it with one `NOTE:` line per port and speed and
 writes nothing. `sys_stats.mem_buffer` stays Buffers plus Cached.
+**Fan names (looked into 2026-11-13).** Proper names are not to be had from
+the node: on the hardware seen so far `dell_smm` exposes `fanN_label` but
+reading it fails (EINVAL: the BIOS answers no fan type), and SMBIOS type 27
+lists more named cooling devices than the sensor chip has fans, with
+nothing tying a name to a reading. Nor would a name show: the controller's
+UI draws each fan in the device overview by its `index` (a number, unique
+across chips: `tables.go` numbers the whole list), not by its `label`
+(read from the UI bundle on Network 11.0.97; what a fan alert's name is
+built from was not traced). So two chips both labelled `Fan1` would not
+be confused on screen, and the labels stay as they are.
