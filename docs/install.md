@@ -20,7 +20,7 @@ in the UniFi UI.
   access; for the Arista driver that is a `network-admin` user that reaches
   enable mode without an enable password, and eAPI enabled
   (`management api http-commands` → `no shutdown`), or SSH with a key
-  (then the FEC/PCS anomaly counters are not collected); for the
+  (then the FEC counters are not collected); for the
   Proxmox driver, root SSH to each node with a key and `apt-get install
   lldpd` on each node (the driver configures it); [`docs/drivers/proxmox.md`](drivers/proxmox.md) §5.
   Spanning tree on a node is optional (`mstpd`, [`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b);

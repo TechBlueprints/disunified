@@ -31,8 +31,9 @@ mode and end with `write memory`.
   `password_env`): JSON-RPC 2.0, method `runCmds`, HTTP basic auth, TLS
   1.2 with RSA key exchange (EOS 4.26 refuses ECDHE). This is the primary
   transport and the only one that can run text-format commands, which is
-  where the FEC codeword and PCS error counters come from (`show interfaces
-  <lane> phy detail`): over SSH those anomaly signals stay unset. eAPI has
+  where the FEC codeword counters come from (`show interfaces <lane> phy
+  detail`): over SSH they stay unset and the satisfaction score counts
+  frame errors only. eAPI has
   to be enabled on the switch first (one config block, in enable mode):
 
   ```
@@ -92,7 +93,7 @@ What the driver runs, all present in [`docs/fixtures/arista-eos-4.26.14M/`](../f
   spanning-tree topology status detail`, `show ip arp`, `show hardware
   capacity`.
 - **Every poll, text, eAPI only**: `show interfaces <lane> phy detail` for
-  each up lane (FEC and PCS counters).
+  each up lane (FEC counters).
 
 `Start` runs the startup set and one full poll, so a missing command or a
 bad credential fails immediately. The core mappings:
@@ -143,17 +144,25 @@ chassis ID (MAC), management address, system description and capabilities for th
 - optics: `show interfaces transceiver` gives `rxPower`/`txPower`/`temperature` per port —
   UniFi's SFP detail view reads `sfp_*` fields; worth wiring in phase 0.5
 
-### Health signals (anomaly reporting), all verified on 4.26.14M
+### Health signals, all verified on 4.26.14M
+
+These fill `Port.Health`, which goes out as raw port fields
+(`link_down_count`, `stp_state_change_count`, `sfp_rxfault`/`sfp_txfault`)
+and the satisfaction score, never as `anomalies` bits (`docs/feature-map.md`
+§2: that field is what a switch detected, and the controller raises an alert
+per bit; it derives its own link-flap and SFP alerts from the raw fields).
 
 - `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps).
-- `show spanning-tree` → `interfaces[].inconsistentFeatures` (guards);
-  `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`.
+- `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`.
+  (`show spanning-tree`'s `interfaces[].inconsistentFeatures` names the
+  guards holding a port; no port field carries it, so it is not read.)
 - `show interfaces transceiver dom thresholds` → per-parameter `channels` +
   `threshold{lowAlarm,highAlarm}` for optics with DOM (none for DACs/empty cages).
 - FEC codeword counters exist **only in text**: `show interfaces EthernetX phy detail`
   prints `FEC corrected codewords N …` / `FEC uncorrected codewords N …` (first
   number is the counter), and for every port — 10GBASE-T included — `PCS err blocks N`
-  (per PCS section; summed) and `PCS high BER ok|…`. Copper ports show
+  (per PCS section) and `PCS high BER ok|…` (printed, not read: no port field
+  carries them). Copper ports show
   `Forward Error Correction None` (no LDPC counters exposed). `show interfaces error-correction` is config/status only;
   `... error-correction detail`, `... fec` are invalid on 4.26. The eAPI transport
   runs text via `format: "text"` (`TextRunner`); one command per FEC lane.

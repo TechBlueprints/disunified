@@ -2803,8 +2803,9 @@ rstp, mstp) and `settreeprio Bridge 0 <priority/4096>`; per port
 ignores BPDUs, as `ubnt-stpmgrd` does), `stp.edge` auto/enabled/disabled →
 `setportautoedge`/`setportadminedge`, `stp.bpdu_guard` → `setbpduguard`
 (mstpd shuts the port's netdev on a BPDU; the bridge port goes disabled and
-StpOrch blocks it in the ASIC; the port reports `errdisabled: bpduguard`, the
-UI's BPDU-guard anomaly; a port toggle in UniFi brings it back). A LAG member's
+StpOrch blocks it in the ASIC; the port reports `errdisabled: bpduguard`,
+with no `anomalies` bit -- that field's table has none for BPDU guard
+(`docs/feature-map.md` §2); a port toggle in UniFi brings it back). A LAG member's
 settings go to its PortChannel, the bridge port. The controller pushes these
 only to a device claiming `feature_caps` STP (64) and `stp_caps` BPDU_GUARD |
 AUTO_EDGE (3).

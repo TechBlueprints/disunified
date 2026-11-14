@@ -346,6 +346,22 @@ stay stopped** (one bridge per adopted key).
   after a controller start minus the `uptime` it reports, and an `uptime`
   near zero moves `latest_assoc_time` every inform. `uptime` is the learn
   time, `age` the last frame, `uptime >= age` (`docs/mac-table-times.md`).
+- **`port_table[].anomalies` is what the switch itself detected, and every
+  bit raises an alert (Network 10.6 and 11.0; seen live 2026-11-13).** Its
+  table: 1/2/4 broadcast/multicast/unicast storm, 32 DHCP packet rate
+  exceeded, 64 rogue DHCP server, 128 802.1X failed, 256 MAC locking, 512
+  loop protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure (the UI's
+  labels; 64 and 32 exercised). `custom_anomalies` is a different table (1/2/4
+  SFP rx/tx/EEPROM ... 64 link flap ... 32768 port lock) and the controller's
+  own: it computes and stores it (the ECS's inform printed on the switch has
+  none; the support-bundle copies' values follow `sfp_rxfault`). The bridge
+  had filled `anomalies` from the second table: each time a Proxmox node's
+  bond leg bounced twice, a "Rogue DHCP server detected" alert for that port
+  followed about a minute later (seven, read from the controller's v2
+  `system-log/device-alert`), and the SONiC switch's topology changes raised
+  "Incoming DHCP packets exceed 300/sec". Now only 512 (a loop-protection
+  hold) is set and `custom_anomalies` is not sent; the raw fields
+  (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
 
 ## 6. Driver facts
 
@@ -486,11 +502,14 @@ reports that switch as root with the uplink cage's lane 1 as the root port.
 Only the two cabled 100G cages are STP-active (see `local-information/site.md`). `root_switch` is reported
 from `show spanning-tree root detail`.
 
-Anomaly/Experience (2026-09-19): per-port `anomalies` bits, `satisfaction`
-and `satisfaction_reason` are derived in `internal/device/tables.go`
-(`portAnomalies`) from `Port.Health` — see `docs/feature-map.md` for the
-bit table and the empirical satisfaction rule. FEC codeword counters come
-from text output (`TextRunner`), eAPI only.
+Anomaly/Experience (2026-09-19, corrected 2026-11-14): `satisfaction` and
+`satisfaction_reason` are derived in `internal/device/tables.go`
+(`portAnomalies`) from counters and `Port.Health` -- see
+`docs/feature-map.md` for the empirical satisfaction rule. FEC codeword
+counters come from text output (`TextRunner`), eAPI only. The per-port
+`anomalies` bits derived here from the same signals were the controller's
+`custom_anomalies` table and raised false alerts (§5); `anomalies` now
+carries only a loop-protection hold (512).
 
 **The UI terminal is WebRTC, not SSH (2026-09-19).** When the Debug
 terminal is opened the controller sends the device an inform-reply cmd
