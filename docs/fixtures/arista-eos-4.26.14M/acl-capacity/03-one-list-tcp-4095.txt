@@ -1,0 +1,129 @@
+# One list of 4095 rules + the closing permit (4096 counted rules) on Ethernet2: no error at the commit; counter indices 1..4095 all used (rows with counter index 1 and 4095 shown), one rule left without a counter, and the summary marks the list `[incomplete statistics]`.
+# Session: configure session dui-probe, the lists, `commit timer 00:05:00`, the reads, then `configure session dui-probe abort`.
+
+### EOS messages and summary while the session was pending its timer
+  Name    State       User    Terminal 
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 4097
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 4095
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1196
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 817
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 847
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 799
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 437
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 4097
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 4095
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1196
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 817
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 847
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 799
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 437
+
+### show platform xp acl, MG table rows selected (hw index | result | priority | log | count mode | counter index | key)
+   3659|   0|    4095|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4095|   0|   0|      3402|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4564|   0|    4095|   0|   0|         1|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4567|   0|    4095|   0|   0|       607|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3659|   0|    4095|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4095|   0|   0|      3402|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4564|   0|    4095|   0|   0|         1|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4567|   0|    4095|   0|   0|       607|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+
+### after `configure session dui-probe abort`
+  Name    State       User    Terminal 
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 4097
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 4095
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1196
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 817
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 847
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 799
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 437
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 4097
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 4095
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1196
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 817
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 847
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 799
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 437
+
