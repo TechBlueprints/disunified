@@ -132,6 +132,7 @@ sections; nothing on the node is installed for the read side. Per section:
 | `hwmon` | `/sys/class/hwmon` | temperature (coretemp/k10temp package sensor; overheating at `temp1_max`), fans (`fanN_input` as % of `fanN_max`; Dell's `dell_smm`), labelled `Fan1`, `Fan2`… as the ECS labels its own, or with the chip's `fanN_label` unchanged when it has one |
 | `qemu`, `lxc`, `vmlist` | cluster config files | guests, NIC model/MAC/tag/trunks/link_down/firewall |
 | `lldp` | `lldpcli -f json0 show neighbors details` | uplink neighbours (needs lldpd, §4) |
+| `nft`, `dhcpguard` | `command -v nft`, `nft -j list table bridge disunified` | whether DHCP guarding can be claimed; the driver's guard table, its rule-set fingerprint and each guest port's rogue-DHCP drop count (§4c) |
 | `stat`, `meminfo`, `uptime`, `dmi`, `pveversion`, `chrony` | `/proc`, DMI, `pveversion` | CPU % (delta between polls), memory, uptime, serial (service tag), NTP servers, and the node's PVE version (`9.1.6`, from `pve-manager/9.1.6/…`) — which is the firmware version the controller shows, and the model string `VE 9.1.6` |
 
 Firewall-enabled guests (`firewall=1`) hang off `fwbr<id>i<n>`; their
@@ -231,7 +232,8 @@ installed.
 
 Capabilities claimed (`switch_caps`): IGMP snooping and link aggregation
 (one aggregate session, for §3b), plus STP, BPDU guard and port cost only
-on a node whose bridge runs under mstpd (§4b). The UI therefore hides storm
+on a node whose bridge runs under mstpd (§4b), and DHCP snooping (Rogue DHCP
+Server Detection) only on a node with `nft` and a VLAN-aware bridge (§4c). The UI therefore hides storm
 control, FEC, mirroring and isolation for these switches, and STP options
 unless mstpd is present; speed pickers offer the one speed each port has.
 
@@ -317,6 +319,81 @@ UniFi port that blocks a node's BPDUs disconnects the node, and a Proxmox
 node that loses its uplinks fences itself. Turning STP on live costs the
 guests about a second (the taps become edge ports on the driver's next
 poll; set them by hand right after the reload to avoid the forward delay).
+
+## 4c. Rogue DHCP server detection (2026-11-14)
+
+UniFi's Rogue DHCP Server Detection (Settings → Networks → Global Switch
+Settings; each network's DHCP Guarding lists its trusted servers) is
+claimed on a node that has `nft` and a VLAN-aware bridge, and applied
+through an nftables table of the driver's own, `table bridge disunified`.
+Proxmox's firewall is not read or touched: on these nodes it is the
+iptables `pve-firewall` (no nftables tables at all before the driver's),
+and the driver's table sits beside whichever one runs.
+
+- **What is guarded:** every guest NIC on this node's bridge, running or
+  stopped (a stopped guest's interface gets its name when it starts, and the
+  rule is already there). It is matched by name: `tap<id>i<n>` (`veth<id>i<n>`
+  for a container) and `fwpr<id>p<n>`, the bridge side of Proxmox's
+  firewall bridge for a NIC with `firewall=1`. A DHCP server reply
+  (UDP 67 → 68) entering the bridge through one, on a guarded VLAN, from an
+  address that is not one of that VLAN's trusted servers, is counted and
+  dropped. A VLAN with no trusted server is not guarded. The node's own
+  uplinks are not guarded: replies from the LAN have already crossed the
+  upstream switch.
+- **VLANs:** a NIC's untagged frames are its own VLAN (`tag=`, else 1) and
+  are matched as `ether type ip` on its interface: on the node's kernel an
+  untagged frame carries no VLAN id at the bridge hooks, not even the
+  port's PVID (tested). Its tagged frames (a NIC with no `tag`, or with
+  `trunks`) are matched by `vlan id`, one rule per guarded VLAN it carries.
+  UniFi's VLAN 1 is the bridge's VLAN 1.
+- **Hook:** the bridge's `prerouting`, which sees each frame once as it
+  enters. The `forward` hook runs once per egress port of a flooded frame:
+  there one broadcast offer counted once for every other port in its VLAN
+  (tested, then moved).
+- **Writing:** the table is replaced as a whole in one `nft -f -`
+  transaction when the rules change (a guest added, a VLAN changed, a
+  server list changed), and deleted (`nft delete table bridge disunified`)
+  when the controller turns detection off or nothing on the node is
+  guarded. The table's comment holds a fingerprint of its rules
+  (`dui:<12 hex>`), which is how a collect tells that the node already holds
+  what the push asks for; a node reboot loses the table and the next
+  reconcile writes it again. A push without `switch.dhcp_snoop.status`
+  leaves the table as it is.
+- **Reading:** `collect.sh` lists the table (`nft -j list table bridge
+  disunified`); each port's rules' packet counters, summed, are
+  `Port.Health.RogueDHCPDrops`, and the bridge raises the port's rogue-DHCP
+  anomaly (64) when that grows between informs. A rewrite resets the
+  counters to 0, which raises nothing.
+
+**Basis.** The rule set is tested on a node's kernel (PVE 9.1.6, kernel
+6.17, nftables 1.1.3) inside a throwaway network namespace with its own
+bridge, veths and table, so nothing of the node's own was touched:
+`docs/fixtures/proxmox-9.1.6/dhcpguard-netns-test.sh` loads exactly the
+driver's write for `collect-node2-nft.txt` under the ECS's captured
+trusted servers (`dhcpguard_test.go` holds the two equal), twice (no table,
+then a table present), sends raw frames and counts what reaches a receiving
+port: untrusted replies dropped untagged and on a tagged VLAN, through a
+plain tap and through an `fwpr` member; trusted replies, a server trusted
+only on another VLAN, and other UDP as they should be; one count per
+dropped frame; the delete leaves no table (`dhcpguard-netns-test.txt`;
+the table's listing after the frames is `nft-dhcpguard.json`, the
+read-back fixture). A worktree build's `-collect-once` against a node read
+the new sections (no table there; every port 0). **Not yet seen:** the
+controller pushing `switch.dhcp_snoop.status` to a node that claims the
+capability, the table on a node's own bridge, and the alert in the UI.
+**Before the first push with detection on:** a guest that is itself a DHCP
+server on a guarded network (a router VM) loses its clients behind the same
+node unless that network's DHCP Guarding lists it; a two-minute capture of
+UDP 67 → 68 on all three nodes saw no guest answering (2026-11-14), which
+settles nothing about a renewal-time server.
+
+**Not reported by a node** (the other switch-detected anomalies): broadcast,
+multicast and unicast storms (1, 2, 4) and the DHCP packet rate (32) are
+counts a UniFi switch takes from limiters it applies, and a node applies
+none: no storm control or DHCP rate limit is built, on purpose, on
+production hosts. Loop protection (512) and the rest of the table
+(802.1X, MAC locking, DoS, PHY, PoE) have nothing on a node that detects
+them.
 
 ## 5. Setup
 

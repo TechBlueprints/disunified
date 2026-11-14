@@ -60,3 +60,11 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   refuses DHCP -- the bridge reaches this host by that address and, on site,
   runs on it. The fixture runner answers `nmcli -g ipv4.method con show`
   from its `nmipv4` section and applies `con mod` to it.
+- **No rogue DHCP detection, by decision (2026-11-14).** macvlan's bridge
+  mode (netavark's default) delivers a container's frames to the host's
+  other macvlan containers inside the driver, broadcast offers included,
+  without crossing the parent NIC's egress: no single hook sees every reply,
+  and a guard on the parent would sit on the host's only NIC, which carries
+  the deployed bridge (on site the one macvlan container). Not claimed. No
+  storm or DHCP-rate limiter either; `anomalies` stays 0
+  (`docs/drivers/podman.md` §8).

@@ -203,6 +203,25 @@ and UniFi owns the host's address from then on.
 
 ## 8. Not done
 
+- **Rogue DHCP server detection (decided 2026-11-14, not built).** Only a
+  macvlan (or ipvlan) container is on the LAN, and no single hook on the
+  host sees every reply such a container sends: in macvlan's bridge mode
+  (netavark's default) the kernel hands a frame for another macvlan
+  container on the same parent, a broadcast offer included, to that
+  container inside the macvlan driver, without it crossing the parent
+  NIC's egress (`macvlan_queue_xmit` in the kernel's
+  `drivers/net/macvlan.c`). A guard on the parent (an nftables `netdev` egress chain,
+  attributed by the container's MAC) would protect the LAN but not the
+  host's other LAN containers, and it would sit on the egress of the host's
+  only NIC; on site the one macvlan container is the deployed bridge
+  itself (`podman ps`, 2026-11-14). Not claimed, so the controller pushes
+  nothing; no port reports `RogueDHCPDrops`.
+- **The other switch-detected anomalies.** Storms (1, 2, 4) and the DHCP
+  packet rate (32) are counts a UniFi switch takes from limiters it
+  applies; the host applies none, and none is built on a production host.
+  Loop protection (512) and the rest have nothing on a host that detects
+  them.
+
 - **Port control.** Port state could map to the container's veth (`ip link
   set … down` inside the netns) or to `podman network disconnect`; names
   are the container's. Nothing is written today; `Capabilities{}`.

@@ -1,0 +1,16 @@
+write (no table yet) rc=0
+write (table present) rc=0
+port 1 untagged rogue     : received=0 expected=0
+port 1 untagged trusted   : received=1 expected=1
+port 1 v2 trusted         : received=1 expected=1
+port 1 v69 server of v2   : received=0 expected=0
+port 1 other udp          : received=1 expected=1
+port 20 untagged rogue    : received=0 expected=0
+port 20 v2 rogue          : received=0 expected=0
+port 20 v69 trusted       : received=1 expected=1
+@@@ json
+
+delete rc=0
+tables after delete: 0
+netns left: 0
+root tables named disunified: 0

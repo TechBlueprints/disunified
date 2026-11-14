@@ -49,6 +49,9 @@ type Collector struct {
 	ntpManaged  string              // contents of the managed chrony sources file
 	ntpOwn      []string            // chrony.conf's own live server/pool lines (the distribution's pool)
 	snooping    bool                // bridge multicast_snooping
+	guardable   bool                // nft is on the node and the bridge is VLAN-aware: DHCP guarding is claimed
+	guard       guardState          // the driver's nft table as the last collect read it
+	guardPorts  []guardPort         // this node's guest NICs, for the guard's rules
 	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
 	// (docs/drivers/proxmox.md §4b). Without it STP is neither claimed nor touched.
@@ -86,13 +89,15 @@ func (c *Collector) Close() error { return c.r.Close() }
 // bridge-wide. STP (version, per-port BPDU guard, path cost reported) is
 // claimed only when the bridge runs under mstpd; a bridge with the kernel's
 // STP off claims nothing, so the controller's STP settings are never pushed
-// at it. No LAG/mirror/storm/FEC control.
+// at it. DHCP guarding (UniFi's Rogue DHCP Server Detection) is claimed
+// where the node has nft and the bridge is VLAN-aware (dhcpguard.go). No
+// LAG/mirror/storm/FEC control.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// LACP: an aggregate on the node's physical ports converts their bond
 	// to 802.3ad through the Proxmox API (docs/drivers/proxmox.md §3b, untested live).
-	caps := devicemodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1}
+	caps := devicemodel.Capabilities{IGMPSnooping: true, LACP: true, AggregateSessions: 1, DHCPSnooping: c.guardable}
 	if c.stpManaged {
 		caps.STP, caps.BPDUGuard, caps.STPPortCost = true, true, true
 	}
@@ -183,6 +188,10 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	bonds := parseBonding(sec["bonding"])
 	hwmon := parseHwmon(sec["hwmon"])
 	dmi := keyValues(sec["dmi"])
+	guard, err := parseGuard(sec["dhcpguard"])
+	if err != nil {
+		c.warnOnce("guard-parse", "nft table bridge %s not understood: %v", guardTable, err)
+	}
 
 	linkBy := map[string]ipLink{}
 	for _, l := range links {
@@ -251,6 +260,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.mu.Unlock()
 
 	ports := make([]devicemodel.Port, 0, c.Ports)
+	var guardPorts []guardPort
 	var macs []devicemodel.MACEntry
 	vlanSet := map[int]bool{1: true}
 	for idx := 1; idx <= vmSlots; idx++ {
@@ -296,6 +306,13 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 					vlanSet[e.VLAN] = true
 				}
 			}
+		}
+		if n.Node == hostname {
+			// Stopped guests too: their interfaces get these names when
+			// they start, and the rule is already there.
+			gp := guardPort{Index: idx, Members: []string{n.HostIface(), fmt.Sprintf("fwpr%dp%d", n.VMID, n.Index)}, VLAN: p.VLAN}
+			guardPorts = append(guardPorts, gp)
+			p.Health.RogueDHCPDrops = guard.Drops[idx]
 		}
 		if !p.Up {
 			p.SpeedMbps = 0
@@ -423,6 +440,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	snoop := bridge["multicast_snooping"] == "1"
 	sys.IGMPSnooping = map[int]bool{1: snoop}
+	sys.DHCPSnooping = guard.Present
 	// Reachability, for the controller to place the switch in a network:
 	// the bridge's own addresses (netmask) and the neighbours it has
 	// resolved (the gateway's MAC), plus the load averages for the graphs.
@@ -482,6 +500,9 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.ntpManaged = strings.TrimSpace(sec["ntpunifi"])
 	c.ntpOwn = ntpServers(sec["chrony"])
 	c.snooping = snoop
+	c.guardable = strings.TrimSpace(sec["nft"]) == "present" && bridge["vlan_filtering"] == "1"
+	c.guard = guard
+	c.guardPorts = guardPorts
 	c.stpOn = stpOn
 	c.mstpd = strings.TrimSpace(sec["mstpctl"]) == "present"
 	c.stpManaged = stpManaged

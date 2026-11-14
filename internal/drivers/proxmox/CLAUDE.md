@@ -20,7 +20,8 @@ device record carries `oob_port_config` that must be sent back empty on
 every REST update (`api.err.OobPortNotSupported` otherwise); the
 controller's own display names ("USW Leaf", "ECS Core") count as defaults
 for renaming. Capabilities claimed: IGMP snooping, LACP (one aggregate
-session), and STP/BPDU guard/port cost only under mstpd.
+session), STP/BPDU guard/port cost only under mstpd, and DHCP snooping
+only with `nft` and a VLAN-aware bridge (below).
 For port-level tests make a throwaway, diskless guest (`qm create <id>
 --name stu-test --memory 128 --net0 virtio,bridge=vmbr0`) and destroy it
 afterwards (`qm stop <id>; qm destroy <id> --purge`); the last one, VM
@@ -81,3 +82,21 @@ installed: Dell Command | Monitor for Linux is the client-machine one but
 supports Red Hat and Ubuntu, not Debian, and whether it names a tower's
 fans was not established; OpenManage Server Administrator is the servers'.
 Neither would change what the UI shows.
+
+**Rogue DHCP (built 2026-11-14, `dhcpguard.go`, `docs/drivers/proxmox.md`
+§4c).** `DHCPSnooping` is claimed where the node has `nft` and the bridge is
+VLAN-aware; the guard is the driver's own `table bridge disunified`, never
+Proxmox's firewall (iptables `pve-firewall` on these nodes, no nft tables
+of its own). Facts that cost a test each: an untagged frame carries **no
+VLAN id** at the bridge hooks, not even the port's PVID, so untagged rules
+are `ether type ip` on the member with the port's own VLAN from its config;
+the **`forward` hook runs once per egress port** of a flooded frame (a
+broadcast offer counted once per other port), so the chain hooks
+`prerouting`; nft folds the explicit `ether type ip` into `ip saddr`'s
+implicit dependency, so the listing does not show it. The table comment
+`dui:<fp>` is the rule set's fingerprint: equal = nothing to write. Members
+are named for stopped guests too (`tap<id>i<n>`, `fwpr<id>p<n>`). Uplinks
+are not guarded. Any hand test of a rule set goes in a throwaway network
+namespace (`docs/fixtures/proxmox-9.1.6/dhcpguard-netns-test.sh`): nothing
+in the node's own namespace changes. Storms (1/2/4) and the DHCP rate (32)
+are not reported: a node applies no limiter and none is built.
