@@ -1,0 +1,90 @@
+{
+  "aclList": [
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet2"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet2"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet2",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 6,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet54/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet54/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet54-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 6,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "default-control-plane-acl",
+      "notFullySupportedByHardware": false,
+      "readonly": true,
+      "sequenceLength": 25,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [],
+      "countersEnabled": false,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "mDNS-block",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 2,
+      "standard": false,
+      "type": "Ip4Acl"
+    }
+  ]
+}

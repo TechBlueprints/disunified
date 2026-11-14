@@ -83,6 +83,17 @@ type Collector struct {
 
 	sshKeyUser    string   // user that receives the controller's SSH keys
 	installedKeys []string // what InstallSSHKeys last wrote (per process)
+
+	// acl is the running config's view of the driver's own ACLs and their
+	// bindings (acl.go). aclHeld names a change that left the switch
+	// unreachable, not sent again until the controller's rules change;
+	// aclSettle is the wait between a timed commit and the dial that
+	// confirms it; dhcpGuard is the guard mode (options.dhcp_guard).
+	acl       aclState
+	aclHeld   string
+	aclSettle time.Duration
+	dhcpGuard string
+	aclStatus string // the last ACL read-back problem logged (acl_counters.go)
 }
 
 // SetSSHKeyUser names the EOS user that receives controller SSH keys.
@@ -90,7 +101,7 @@ func (c *Collector) SetSSHKeyUser(user string) { c.sshKeyUser = user }
 
 // NewCollector wraps a transport. Call Start before Collect.
 func NewCollector(t Transport) *Collector {
-	return &Collector{t: t, Log: log.Default()}
+	return &Collector{t: t, Log: log.Default(), aclSettle: aclSettleDefault, dhcpGuard: guardExact}
 }
 
 // Start runs the startup commands and then one full poll, so a command this
@@ -271,6 +282,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
 	applyRunningConfig(ports, &snap.System, rc)
+	c.readACLs(ctx, rc, ports)
 	applyErrdisabled(ports, ed)
 	applyOpticAlarms(ports, th)
 	applySTPChanges(ports, ts)

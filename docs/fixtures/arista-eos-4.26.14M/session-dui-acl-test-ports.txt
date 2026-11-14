@@ -1,0 +1,24 @@
+ip access-list DUI_IP_ACL_Ethernet2
+counters per-entry
+10 remark disunified dhcp-guard 53d29e982de7
+20 permit udp host 192.0.2.1 eq 67 any eq 68
+30 permit udp host 192.0.2.5 eq 67 any eq 68
+40 deny udp any eq 67 any eq 68
+50 remark disunified default
+60 permit ip any any
+exit
+ip access-list DUI_IP_ACL_Ethernet54-1
+counters per-entry
+10 remark disunified dhcp-guard 53d29e982de7
+20 permit udp host 192.0.2.1 eq 67 any eq 68
+30 permit udp host 192.0.2.5 eq 67 any eq 68
+40 deny udp any eq 67 any eq 68
+50 remark disunified default
+60 permit ip any any
+exit
+interface Ethernet2
+ip access-group DUI_IP_ACL_Ethernet2 in
+exit
+interface Ethernet54/1
+ip access-group DUI_IP_ACL_Ethernet54-1 in
+exit

@@ -1,0 +1,408 @@
+{
+  "aclList": [
+    {
+      "chipName": "",
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "implicitRule": [],
+      "name": "DUI_IP_ACL_Ethernet2",
+      "readonly": false,
+      "sequence": [
+        {
+          "convertSymbols": true,
+          "sequenceNumber": 10,
+          "text": "remark disunified dhcp-guard 53d29e982de7"
+        },
+        {
+          "action": "permit",
+          "convertSymbols": true,
+          "copyToCpuDst": "none",
+          "counterData": {},
+          "log": false,
+          "mirrorSession": "",
+          "payload": {
+            "headerStart": false,
+            "payload": []
+          },
+          "ruleFilter": {
+            "destination": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "dscp": {
+              "mask": 0,
+              "match": false,
+              "value": 0
+            },
+            "dstPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                68
+              ]
+            },
+            "ecn": {
+              "match": false,
+              "name": "dontCare"
+            },
+            "established": false,
+            "fragments": false,
+            "gre": {
+              "protoMask": 0,
+              "protocol": 0
+            },
+            "gtp": {
+              "teid": 0,
+              "teidMask": 0
+            },
+            "icmp": {
+              "code": 65535,
+              "type": 65535
+            },
+            "innerProtocol": 0,
+            "ipLen": {
+              "ipLens": [],
+              "oper": "any"
+            },
+            "nexthopGroup": "",
+            "nvgre": {
+              "protoMask": 0,
+              "protocol": 0,
+              "tni": 0,
+              "tniMask": 0
+            },
+            "protocol": 17,
+            "source": {
+              "ip": "192.0.2.1",
+              "mask": 4294967295
+            },
+            "srcPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                67
+              ]
+            },
+            "standard": false,
+            "tcpFlags": 0,
+            "tracked": false,
+            "ttl": {
+              "oper": "any",
+              "value": 0
+            },
+            "userL4": {
+              "pattern": 0,
+              "patternMask": 0
+            },
+            "vlan": {
+              "id": 0,
+              "innerId": 0,
+              "innerMask": 0,
+              "mask": 0
+            },
+            "vxlan": {
+              "vni": 0,
+              "vniMask": 0,
+              "vxlanValid": false
+            }
+          },
+          "sequenceNumber": 20,
+          "text": "permit udp host 192.0.2.1 eq bootps any eq bootpc"
+        },
+        {
+          "action": "permit",
+          "convertSymbols": true,
+          "copyToCpuDst": "none",
+          "counterData": {},
+          "log": false,
+          "mirrorSession": "",
+          "payload": {
+            "headerStart": false,
+            "payload": []
+          },
+          "ruleFilter": {
+            "destination": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "dscp": {
+              "mask": 0,
+              "match": false,
+              "value": 0
+            },
+            "dstPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                68
+              ]
+            },
+            "ecn": {
+              "match": false,
+              "name": "dontCare"
+            },
+            "established": false,
+            "fragments": false,
+            "gre": {
+              "protoMask": 0,
+              "protocol": 0
+            },
+            "gtp": {
+              "teid": 0,
+              "teidMask": 0
+            },
+            "icmp": {
+              "code": 65535,
+              "type": 65535
+            },
+            "innerProtocol": 0,
+            "ipLen": {
+              "ipLens": [],
+              "oper": "any"
+            },
+            "nexthopGroup": "",
+            "nvgre": {
+              "protoMask": 0,
+              "protocol": 0,
+              "tni": 0,
+              "tniMask": 0
+            },
+            "protocol": 17,
+            "source": {
+              "ip": "192.0.2.2",
+              "mask": 4294967295
+            },
+            "srcPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                67
+              ]
+            },
+            "standard": false,
+            "tcpFlags": 0,
+            "tracked": false,
+            "ttl": {
+              "oper": "any",
+              "value": 0
+            },
+            "userL4": {
+              "pattern": 0,
+              "patternMask": 0
+            },
+            "vlan": {
+              "id": 0,
+              "innerId": 0,
+              "innerMask": 0,
+              "mask": 0
+            },
+            "vxlan": {
+              "vni": 0,
+              "vniMask": 0,
+              "vxlanValid": false
+            }
+          },
+          "sequenceNumber": 30,
+          "text": "permit udp host 192.0.2.2 eq bootps any eq bootpc"
+        },
+        {
+          "action": "deny",
+          "convertSymbols": true,
+          "copyToCpuDst": "none",
+          "counterData": {},
+          "log": false,
+          "mirrorSession": "",
+          "payload": {
+            "headerStart": false,
+            "payload": []
+          },
+          "ruleFilter": {
+            "destination": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "dscp": {
+              "mask": 0,
+              "match": false,
+              "value": 0
+            },
+            "dstPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                68
+              ]
+            },
+            "ecn": {
+              "match": false,
+              "name": "dontCare"
+            },
+            "established": false,
+            "fragments": false,
+            "gre": {
+              "protoMask": 0,
+              "protocol": 0
+            },
+            "gtp": {
+              "teid": 0,
+              "teidMask": 0
+            },
+            "icmp": {
+              "code": 65535,
+              "type": 65535
+            },
+            "innerProtocol": 0,
+            "ipLen": {
+              "ipLens": [],
+              "oper": "any"
+            },
+            "nexthopGroup": "",
+            "nvgre": {
+              "protoMask": 0,
+              "protocol": 0,
+              "tni": 0,
+              "tniMask": 0
+            },
+            "protocol": 17,
+            "source": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "srcPort": {
+              "maxPorts": 10,
+              "oper": "eq",
+              "ports": [
+                67
+              ]
+            },
+            "standard": false,
+            "tcpFlags": 0,
+            "tracked": false,
+            "ttl": {
+              "oper": "any",
+              "value": 0
+            },
+            "userL4": {
+              "pattern": 0,
+              "patternMask": 0
+            },
+            "vlan": {
+              "id": 0,
+              "innerId": 0,
+              "innerMask": 0,
+              "mask": 0
+            },
+            "vxlan": {
+              "vni": 0,
+              "vniMask": 0,
+              "vxlanValid": false
+            }
+          },
+          "sequenceNumber": 40,
+          "text": "deny udp any eq bootps any eq bootpc"
+        },
+        {
+          "convertSymbols": true,
+          "sequenceNumber": 50,
+          "text": "remark disunified default"
+        },
+        {
+          "action": "permit",
+          "convertSymbols": true,
+          "copyToCpuDst": "none",
+          "counterData": {},
+          "log": false,
+          "mirrorSession": "",
+          "payload": {
+            "headerStart": false,
+            "payload": []
+          },
+          "ruleFilter": {
+            "destination": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "dscp": {
+              "mask": 0,
+              "match": false,
+              "value": 0
+            },
+            "dstPort": {
+              "maxPorts": 10,
+              "oper": "any",
+              "ports": []
+            },
+            "ecn": {
+              "match": false,
+              "name": "dontCare"
+            },
+            "established": false,
+            "fragments": false,
+            "gre": {
+              "protoMask": 0,
+              "protocol": 0
+            },
+            "gtp": {
+              "teid": 0,
+              "teidMask": 0
+            },
+            "icmp": {
+              "code": 65535,
+              "type": 65535
+            },
+            "innerProtocol": 0,
+            "ipLen": {
+              "ipLens": [],
+              "oper": "any"
+            },
+            "nexthopGroup": "",
+            "nvgre": {
+              "protoMask": 0,
+              "protocol": 0,
+              "tni": 0,
+              "tniMask": 0
+            },
+            "protocol": 0,
+            "source": {
+              "ip": "0.0.0.0",
+              "mask": 0
+            },
+            "srcPort": {
+              "maxPorts": 10,
+              "oper": "any",
+              "ports": []
+            },
+            "standard": false,
+            "tcpFlags": 0,
+            "tracked": false,
+            "ttl": {
+              "oper": "any",
+              "value": 0
+            },
+            "userL4": {
+              "pattern": 0,
+              "patternMask": 0
+            },
+            "vlan": {
+              "id": 0,
+              "innerId": 0,
+              "innerMask": 0,
+              "mask": 0
+            },
+            "vxlan": {
+              "vni": 0,
+              "vniMask": 0,
+              "vxlanValid": false
+            }
+          },
+          "sequenceNumber": 60,
+          "text": "permit ip any any"
+        }
+      ],
+      "staleCounters": false,
+      "standard": false,
+      "type": "Ip4Acl"
+    }
+  ]
+}

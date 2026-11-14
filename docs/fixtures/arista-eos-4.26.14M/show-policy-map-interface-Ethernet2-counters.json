@@ -1,0 +1,82 @@
+{
+  "mapType": "mapQos",
+  "maxCmapsPerPolicy": 1024,
+  "policyMaps": {
+    "DUI_PM": {
+      "activeIntfs": {},
+      "classMaps": {
+        "DUI_DHCP": {
+          "classPrio": 1,
+          "mapType": "mapQos",
+          "match": {
+            "DUI_PQ": {
+              "matchRule": "matchIpAccessGroup"
+            }
+          },
+          "matchCondition": "matchConditionAny",
+          "matchedPackets": 0,
+          "name": "DUI_DHCP",
+          "police": {
+            "bc": 64,
+            "bcUnit": "kbytes",
+            "be": 0,
+            "beUnit": "bytes",
+            "cir": 1,
+            "cirUnit": "mbps",
+            "counters": {
+              "Ethernet2": {
+                "conformedBytes": 0,
+                "conformedPackets": 0,
+                "exceededBytes": 0,
+                "exceededPackets": 0,
+                "yellowBytes": 0,
+                "yellowPackets": 0
+              },
+              "Ethernet54/1": {
+                "conformedBytes": 0,
+                "conformedPackets": 0,
+                "exceededBytes": 0,
+                "exceededPackets": 0,
+                "yellowBytes": 0,
+                "yellowPackets": 0
+              }
+            },
+            "greenCounter": true,
+            "pir": 0,
+            "pirUnit": "bps",
+            "policerName": "",
+            "redCounter": false,
+            "yellowActions": {}
+          },
+          "qosParams": {
+            "dropActionRestricted": false
+          }
+        },
+        "class-default": {
+          "classPrio": 2,
+          "mapType": "mapQos",
+          "match": {},
+          "matchCondition": "matchConditionAny",
+          "matchedPackets": 0,
+          "name": "class-default",
+          "qosParams": {
+            "dropActionRestricted": false
+          }
+        }
+      },
+      "configuredIntfs": {},
+      "hwStatus": {
+        "input": {
+          "status": "hwPrgmStatusSuccess"
+        }
+      },
+      "inactiveIntfs": {},
+      "mapType": "mapQos",
+      "name": "DUI_PM",
+      "spApplied": {
+        "input": true
+      },
+      "summary": false
+    }
+  }
+}

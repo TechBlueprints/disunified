@@ -1,0 +1,44 @@
+{
+  "aclList": [
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "default-control-plane-acl",
+      "notFullySupportedByHardware": false,
+      "readonly": true,
+      "sequenceLength": 25,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [],
+      "countersEnabled": false,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "mDNS-block",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 2,
+      "standard": false,
+      "type": "Ip4Acl"
+    }
+  ]
+}

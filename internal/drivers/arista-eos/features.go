@@ -2,6 +2,7 @@ package aristaeos
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -326,12 +327,11 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			cmds = append(cmds, "no ip igmp snooping vlan "+strconv.Itoa(id))
 		}
 	}
-	// d.DHCPSnooping is deliberately ignored: UniFi's rogue DHCP server
-	// detection cannot be honoured on EOS 4.26 (Option-82 insertion only,
-	// no trusted-port model: `ip dhcp snooping trust` is invalid), so
-	// `ip dhcp snooping` would sit "not operational" and block nothing
-	// (verified live 2026-09-20). The capability is not claimed and the
-	// loop logs the key as unsupported if a controller pushes it anyway.
+	// d.DHCPSnooping never reaches EOS's own `ip dhcp snooping`, which is
+	// Option-82 insertion with no trusted-port model (`ip dhcp snooping
+	// trust` is invalid) and blocks nothing (verified live 2026-09-20). It
+	// and d.DHCPGuards become the guard block of the driver's per-port ACLs
+	// instead (applyACL, below).
 	if d.SNMPSet {
 		// UniFi's one read-only community is the switch's only one: every
 		// other is removed, and the site's SNMP off (no community) leaves
@@ -353,13 +353,25 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if d.ManageSyslog {
 		cmds = append(cmds, listDiff("logging host ", snap.System.SyslogHosts, d.SyslogHosts)...)
 	}
-	if len(cmds) == 0 {
-		return 0, nil
+	if len(cmds) > 0 {
+		if err := c.applySwitchSettings(ctx, snap, d, cmds); err != nil {
+			return 0, err
+		}
 	}
+	// The DHCP guard and the ACL rules go last, in a session of their own
+	// that the switch reverts unless the bridge still reaches it.
+	want, werr := aclWantFrom(d, snap.VLANs, c.dhcpGuard)
+	n, aerr := c.applyACL(ctx, snap, want)
+	return len(cmds) + n, errors.Join(werr, aerr)
+}
+
+// applySwitchSettings writes ApplyDevice's switch-wide batch and records it
+// in the snapshot, so the next apply is a no-op until a poll says otherwise.
+func (c *Collector) applySwitchSettings(ctx context.Context, snap *devicemodel.Snapshot, d devicemodel.DeviceDesired, cmds []string) error {
 	batch := append([]string{"enable", "configure"}, cmds...)
 	batch = append(batch, "end", "write memory")
 	if err := c.t.Configure(ctx, batch); err != nil {
-		return 0, fmt.Errorf("eos apply switch settings: %w", err)
+		return fmt.Errorf("eos apply switch settings: %w", err)
 	}
 	c.mu.Lock()
 	if c.last == snap {
@@ -397,7 +409,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 		c.last = &updated
 	}
 	c.mu.Unlock()
-	return len(cmds), nil
+	return nil
 }
 
 // listDiff turns a have/want list of "<prefix><value>" config lines into

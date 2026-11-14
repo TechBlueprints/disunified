@@ -198,6 +198,34 @@ temperatures under it wait for the switch's return
 ([`drivers/arista-eos.md`](drivers/arista-eos.md) §8). A PR for another
 model needs its `show system environment cooling` under an override.
 
+**DHCP guarding (Rogue DHCP Server Detection) and rogue DHCP reporting
+(2026-11-14), claimed.** One ingress IPv4 ACL per interface,
+`DUI_IP_ACL_<interface>` with `counters per-entry`: the trusted servers'
+replies pass, every other UDP 67 -> 68 is dropped and counted, and the count
+is the port's `RogueDHCPDrops` (anomaly bit 64). The 7160 matches no VLAN in
+an ACL, so a port is guarded only when every VLAN it carries is guarded
+(default), or with `options.dhcp_guard: edge` every port but the uplink, the
+gateway's port and switch-facing ports
+([`drivers/arista-eos.md`](drivers/arista-eos.md) §9.2).
+
+| What | Status |
+|---|---|
+| The lists on the two test ports, rendered by the driver, committed under a timer: active in the hardware, separate ACL ids and counters per list, the read-back and a `-collect-once` reporting 0 | **live**, 2026-11-14 (§9.1, §9.6) |
+| The VLAN qualifier dropped by EOS (mask 0) and flagged "not fully supported"; one list on two ports sharing its counters; abort of a session pending its timer | **live**, 2026-11-14 (§9.1) |
+| Plan, rewrite, removal, a foreign ACL left alone, modes, attribution (lanes summed, aggregate on its first member) | fixture-tested over the live captures (`acl_test.go`, `acl_counters_test.go`) |
+| A rogue reply dropped and counted, a trusted one and ARP/IPv6 passing, the drop time of a rewrite | **untested**: needs a host cabled to a test port (§9.7) |
+| The controller's push of guard groups to this switch and the alert in the UI | **untested**: the end-to-end run after the merge (§9.7) |
+| Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network |
+
+Not claimed: **IP ACL rules** (built and fixture-tested, copied into every
+interface's list; a PR needs the chip's port ACL id limit and counter pool
+measured with more than two lists, then `max_custom_ip_acls` sized from
+it), **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
+**the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
+rate limit; a QoS policer is in bits per second and counts only conforming
+packets here; a PR needs a policer's exceeded count shown rising under
+traffic, §9.5).
+
 ---
 
 ## `apc-pdu`, `apc-ups`, `apc-backups` — APC power devices
@@ -598,6 +626,7 @@ alerts on 2026-11-13.
 | Storm drops per type from the Arista (`show storm-control` `drop`), split cages summed | `internal/drivers/arista-eos/features_test.go` over the 4.26.14M capture with all three types; read live (counts 0) on 2026-11-14 |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
+| `arista-eos`: `RogueDHCPDrops` (bit 64) from the guard's per-port ACL counter | read live 2026-11-14 at 0; a count above zero and the controller's alert are untested ([`drivers/arista-eos.md`](drivers/arista-eos.md) §9.6) |
 
 Open — PRs welcome:
 

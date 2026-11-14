@@ -107,8 +107,17 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 					t.Errorf("unset-locate must turn locating off")
 				}
 			case 14:
-				if !strings.Contains(logText, "UNSUPPORTED by this switch: DHCP snooping") {
-					t.Errorf("reply %d: enabling rogue DHCP detection must be logged as unsupported", i)
+				// Rogue DHCP detection on, as Network 10.6.106 pushed it on
+				// 2026-09-20: the status and no guard group. Claimed since
+				// 2026-11-14 (the per-port guard ACLs): taken, and with no
+				// trusted server on any VLAN there is no guard to write.
+				if strings.Contains(logText, "UNSUPPORTED by this switch: DHCP snooping") {
+					t.Errorf("reply %d: DHCP snooping is claimed and must not be logged unsupported", i)
+				}
+				for _, b := range ft.Configured {
+					if strings.Contains(strings.Join(b, "\n"), "access-list") {
+						t.Errorf("reply %d: snooping without guards wrote an ACL: %v", i, b)
+					}
 				}
 			}
 			if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logText, `UNHANDLED cmd "build-ssh-session"`) {
