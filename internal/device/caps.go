@@ -424,10 +424,13 @@ func speedCaps(p devicemodel.Port) int {
 // raw fields (link_down_count growth, sfp_found/sfp_rxfault/sfp_txfault) and
 // stores it. The bridge does not send it.
 const (
-	portAnomalyBroadcastStorm = 1   // the port's storm control dropped broadcast frames
-	portAnomalyMulticastStorm = 2   // ... multicast frames
-	portAnomalyUnicastStorm   = 4   // ... unicast frames
-	portAnomalyDHCPRate       = 32  // the port's DHCP rate limit dropped DHCP frames
-	portAnomalyRogueDHCP      = 64  // DHCP guarding dropped server replies on the port
-	portAnomalyLoopProtection = 512 // a port held down by loop protection
+	portAnomalyBroadcastStorm = 1    // the port's storm control dropped broadcast frames
+	portAnomalyMulticastStorm = 2    // ... multicast frames
+	portAnomalyUnicastStorm   = 4    // ... unicast frames
+	portAnomalyDHCPRate       = 32   // the port's DHCP rate limit dropped DHCP frames
+	portAnomalyRogueDHCP      = 64   // DHCP guarding dropped server replies on the port
+	portAnomalyDot1X          = 128  // a port shut down after failed 802.1X authentication
+	portAnomalyMACLocking     = 256  // a port shut down for a MAC not on its allowed list
+	portAnomalyLoopProtection = 512  // a port held down by loop protection
+	portAnomalyDoS            = 1024 // a port shut down by the switch's denial-of-service protection
 )

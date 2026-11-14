@@ -74,10 +74,35 @@ func protectionDrops(h devicemodel.PortHealth) [5]protectionDrop {
 // port has ever dropped packets, minus 15 with reason bit 2 when it has ever
 // counted errors. An uplink negotiated below its top speed costs a further
 // 10 (our own rule; no UniFi sample had one).
-func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
-	if f := strings.ToLower(p.Fault); strings.Contains(f, "loopprotect") || strings.Contains(f, "loop-protect") {
-		bits |= portAnomalyLoopProtection
+// protectionHold is the anomalies bit for a port its own protection shut
+// down: the cause a driver names in Port.Fault (devicemodel: the causes a
+// Fault may carry). A UniFi switch reports these conditions the same way, as
+// the cause it disabled the port for; a fault with no such cause sets nothing.
+func protectionHold(fault string) int {
+	f := strings.ToLower(fault)
+	for _, c := range []struct {
+		cause string
+		bit   int
+	}{
+		{"storm-broadcast", portAnomalyBroadcastStorm},
+		{"storm-multicast", portAnomalyMulticastStorm},
+		{"storm-unicast", portAnomalyUnicastStorm},
+		{"dhcp-rate-limit", portAnomalyDHCPRate},
+		{"dot1x", portAnomalyDot1X},
+		{"mac-locking", portAnomalyMACLocking},
+		{"loop-protect", portAnomalyLoopProtection},
+		{"loopprotect", portAnomalyLoopProtection},
+		{"denial-of-service", portAnomalyDoS},
+	} {
+		if strings.Contains(f, c.cause) {
+			return c.bit
+		}
 	}
+	return 0
+}
+
+func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
+	bits |= protectionHold(p.Fault)
 	if prev != nil {
 		was := protectionDrops(prev.Health)
 		for i, c := range protectionDrops(p.Health) {

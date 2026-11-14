@@ -790,10 +790,17 @@ type Port struct {
 	LLDPMEDOff   bool
 	VoiceVLAN    int
 
-	Present    bool   // an optic/cable is present (always true for copper)
-	Enabled    bool   // administratively up
-	Fault      string // vendor fault state keeping the port down, e.g. "errdisabled: speed-misconfigured"; "" = none
-	Up         bool   // link up
+	Present bool // an optic/cable is present (always true for copper)
+	Enabled bool // administratively up
+	// Fault is the vendor fault state keeping the port down, e.g.
+	// "errdisabled: speed-misconfigured"; "" = none. When the device's own
+	// protection shut the port down, the text carries the cause as one of:
+	// storm-broadcast, storm-multicast, storm-unicast (a traffic storm of
+	// that type), dhcp-rate-limit (too many DHCP frames), mac-locking (a
+	// source address not allowed on the port), dot1x (failed port
+	// authentication), denial-of-service, loop-protect, bpduguard.
+	Fault      string
+	Up         bool // link up
 	SpeedMbps  int
 	FullDuplex bool
 	MTU        int

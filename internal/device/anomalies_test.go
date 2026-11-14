@@ -222,3 +222,26 @@ func TestPortAnomaliesProtectionDrops(t *testing.T) {
 		t.Errorf("no further growth: anomalies %v, want 0", a)
 	}
 }
+
+// A port its own protection shut down reports the cause's bit, and a fault
+// with no such cause reports none.
+func TestPortAnomaliesProtectionHold(t *testing.T) {
+	for fault, want := range map[string]int{
+		"errdisabled: storm-broadcast":                 portAnomalyBroadcastStorm,
+		"errdisabled: storm-multicast":                 portAnomalyMulticastStorm,
+		"errdisabled: storm-unicast":                   portAnomalyUnicastStorm,
+		"errdisabled: dhcp-rate-limit (412 frames/s)":  portAnomalyDHCPRate,
+		"errdisabled: dot1x":                           portAnomalyDot1X,
+		"errdisabled: mac-locking (02:00:00:00:00:01)": portAnomalyMACLocking,
+		"errdisabled: loop-protect":                    portAnomalyLoopProtection,
+		"errdisabled: denial-of-service":               portAnomalyDoS,
+		"errdisabled: bpduguard":                       0,
+		"errdisabled: speed-misconfigured":             0,
+		"":                                             0,
+	} {
+		p := devicemodel.Port{Index: 1, Fault: fault}
+		if bits, _, _ := portAnomalies(p, false, nil); bits != want {
+			t.Errorf("fault %q: anomalies = %d, want %d", fault, bits, want)
+		}
+	}
+}
