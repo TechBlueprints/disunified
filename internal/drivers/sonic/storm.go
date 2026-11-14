@@ -77,3 +77,37 @@ func stormWant(spec *devicemodel.StormControlSpec, speedMbps int) map[string]int
 	}
 	return out
 }
+
+// stormWatched: a port asks for the storm control disunified-l2d watches
+// (broadcast or multicast; §11.21).
+func stormWatched(desired []devicemodel.PortDesired) bool {
+	for _, d := range desired {
+		if s := d.StormCtrl; s != nil && (s.BroadcastPct != nil || s.MulticastPct != nil) {
+			return true
+		}
+	}
+	return false
+}
+
+// stormPorts fills each port's storm drops from disunified-l2d's
+// DUI_STORM_TABLE (§11.21): per interface, the frames received above its
+// storm-control limit while it was over (a lower bound on what storm
+// control dropped), summed over a cage's interfaces. Unknown unicast has no
+// counter of its own, so StormDropsUnicast stays 0.
+func stormPorts(out []cagePort, db map[string]table) {
+	rows := db["l2_storm"].byName("|")
+	if len(rows) == 0 {
+		return
+	}
+	for i := range out {
+		p := &out[i].Port
+		for _, ifn := range p.Interfaces {
+			r, ok := rows[ifn]
+			if !ok {
+				continue
+			}
+			p.Health.StormDropsBroadcast += atou(r["broadcast"])
+			p.Health.StormDropsMulticast += atou(r["multicast"])
+		}
+	}
+}

@@ -694,8 +694,25 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   out of step reads as no mode and is rewritten. At Default the stock curve
   runs the fans at ~41 % (PWM 102) even with the intake under MINTEMP, as it
   did before 0012.
+- **Storms are detected, never held (2026-11-14, `docs/drivers/sonic.md`
+  §11.20, §11.21).** UniFi's UI text: a storm anomaly is incoming traffic
+  of the type over the Storm Control threshold, and Storm Control
+  restricts; only loop protection and BPDU guard disable a port. The ECS
+  does not claim storm control at all (`feature_caps` bit 8 clear), and its
+  `ERROR_DISABLE` rows exist for every cause, detector or not. l2d's
+  `StormWatch` reads `IF_IN_BROADCAST_PKTS` / `IF_IN_MULTICAST_PKTS` (MAC
+  receive counters: before the policer, known multicast too) every second
+  for each port with a `PORT_STORM_CONTROL` row, compares 5 s of them with
+  kbps x 125 / 64 frames/s (x 1.25 to start, for the 1 s poll), and counts
+  the frames above it into STATE_DB `DUI_STORM_TABLE` -> collect.py
+  `l2_storm` -> `StormDropsBroadcast` / `StormDropsMulticast`; no fault.
+  l2d runs for storm control alone. No unknown-unicast counter: bit 4
+  never. **A port named by snooping's static groups cannot leave its VLAN
+  by hand** (`config vlan member del` refuses), so a MAC-looped test cage
+  stays in Vlan4094 and only RSTP's block keeps its frames off the LAN.
+  Fixtures: `collect-storm.txt`, `storm-counters.ndjson`.
 - **No storm-control drop count exists (2026-11-14, `docs/drivers/sonic.md`
-  §11.19)**, so `StormDrops*` stay 0. orchagent never registers the storm
+  §11.19)** -- hence the detection above. orchagent never registers the storm
   policers for statistics (no COUNTERS_DB key, no `POLICER` flex group), SAI
   has no storm drop reason for a `DEBUG_COUNTER`, and the Tomahawk's
   `IFP_STORM_CONTROL_METERS` are token buckets with no counter; the SDK's

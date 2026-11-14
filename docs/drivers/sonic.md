@@ -2139,7 +2139,7 @@ Table by table against what this driver writes on the DX010:
 | Speed / FEC on optics | an **`AUTO_DETECT` table per port** (speed, adv_speeds, fec, interface_type from the module) kept by Ubiquiti's `autodetectd`; the UniFi UI's "auto" means "what the optic says" | speed/FEC only as pushed; "auto" leaves the switch's setting | **hardware-day item**: on the DX010, when UniFi says auto and the cage holds a module, choose FEC from `TRANSCEIVER_INFO` (RS for 100G DAC/SR4/CWDM4, none for 40G) the way `autodetectd` does. Not provable on the VS. |
 | STP | **RSTP via mstpd 0.0.9** in the `stp` container, driven by Ubiquiti's `ubnt-stpmgrd` from a table of their own (`UBNT_STP`): RSTP switch-wide at priority step 2 (8192), per-VLAN STP off, and an admin-edge flag per port | none on the VS; the community `INCLUDE_STP` image is **PVST only** (`config spanning-tree enable <pvst>` is the only mode in 202505; no RSTP PR in sonic-stp or swss) | the gap is bigger than "build the STP image": a UniFi LAN runs RSTP, and a PVST+ switch in the middle of it interoperates through the IEEE-BPDU-on-VLAN-1 compatibility path only. Ubiquiti solved it by running mstpd with their own glue into the STP orch. Noted for §8's image work: the STP piece should be RSTP, which means mstpd + a manager, not the community `stpd`. |
 | Loop protection (`ld_mode`) | a **MAC-move guard** (`MAC_MOVE_GUARD`, switch-wide and per port): a port whose MACs move 10 times within 5 s is disabled for 150 s -- Ubiquiti's own daemon errdisables a port whose MACs flap | refused with a log | **candidate, bridge-side, no SONiC change**: the collector reads the FDB every cycle already; a MAC seen moving between ports N times in the window → anomaly on the port, and with `ld_mode` pushed, `config interface shutdown` + a timed re-enable. Same semantics as Ubiquiti's, implemented where we can. Worth it on a hub switch with no STP. |
-| Storm control | errdisable on a broadcast storm (`ERROR_DISABLE`), with no automatic recovery | `PORT_STORM_CONTROL` rate limits in kbps from the UI's percentages | different mechanisms; ours matches what the UI's sliders promise. keep. |
+| Storm control | **none** (corrected 2026-11-14, §11.20): the ECS does not claim storm control (`feature_caps` bit 8 clear), its push carries no `stormctrl` key, and it has no storm table or command; its `ERROR_DISABLE` rows name storm causes, but those rows exist for every cause and show no detector | `PORT_STORM_CONTROL` rate limits in kbps from the UI's percentages, and since 2026-11-14 the storm anomalies from the port's own counters (§11.20) | ours does what the UI says Storm Control does (restrict, and alert past the threshold). keep. |
 | DHCP guard / snooping | `ACL_TABLE\|global_ip_acl` (L3) and `global_mac_acl` (ANY) bound to every port, no rules while the site feature is off (they hold the custom ACL rules); snooping on adds a table of its own that traps DHCP server replies to the CPU for a snooping daemon (§11.7.3) | refused with a log | captured and specified 2026-11-01 (§11.7): the guard as hardware ACL rules (no trap action in community SONiC), the IP rules as an L3 table; MAC rules need an orchagent patch. |
 | Management address | on a Linux bridge `br0` taking DHCP, in a management table of their own (`UBNT_MGMT_INTERFACE`), with VLAN 1 as the management VLAN | `VLAN_INTERFACE\|Vlan<native>` address, static or DHCP | Ubiquiti's is their own construct; ours is standard SONiC. keep. |
 | Features | `l2mcd`, `stp`, `teamd`, `bgp` (FRR), `dhcp_relay`, `radv`, `mgmt-framework`, `snmp` enabled; `macsec`, `nat`, `sflow` present but off | community image: no `l2mcd`, no `stp` | §8. |
@@ -5103,6 +5103,10 @@ something observable; then a per-port detector for that condition on the
 DX010.
 ### 11.19 Storm-control drops: no count to report (2026-11-14)
 
+(Since the same day the storm bits 1 and 2 come from disunified-l2d's
+detection instead, from the port's receive counters against its limit:
+§11.21. This section stays the record of why the policers cannot tell.)
+
 UniFi's broadcast, multicast and unicast storm anomalies (bits 1/2/4) are
 set by `internal/device` when a port's `StormDropsBroadcast` /
 `StormDropsMulticast` / `StormDropsUnicast` grow between informs. The Arista
@@ -5154,6 +5158,230 @@ COUNTERS_DB in the one poll exec), or a chip whose storm meters count; then
 a capture of the count growing under a storm (a cabled traffic source, or a
 MAC-looped cage in a VLAN of its own), scrubbed with `scripts/sanitize-sonic.py`,
 and the alert seen in the controller.
+
+### 11.20 Which protections disable a port: UniFi's model, the ECS and the DX010 (2026-11-14)
+
+The `anomalies` bits (root `CLAUDE.md` §5) are each a condition the switch
+detected on a port. This section answers a question the bits do not: **does
+the switch disable the port for it, or only detect and report it?** The other
+anomaly sections (§11.5 loop protection, §11.17-§11.19, §11.21 storms) build
+on it.
+
+**Sources.** (1) The UniFi UI's own wording, as an operator reads it in
+Alerts, the System Log and the port panel on Network 11.0.97: its log
+messages, recommended actions and tooltips. (2) The ECS
+Aggregation (`USWF066`, Ubiquiti SONiC `4.0.1.995`), read-only on
+2026-11-14 at about 09:00 MST, after it was back on 4.0.1 (4.0.3 had refused
+the site key earlier that day, §11.18): CONFIG_DB/APPL_DB/STATE_DB rows, the
+CLI's output (`show errdisable recovery`, `show errdisable status`,
+`show loop-protect status`, `show mac-move-guard configuration` and
+`capabilities`), and the inform it prints (`mca-dump`). (3) The committed ECS
+inform and push, `controller-10.6.109/inform-ecs-aggregation-uswf066.json`
+and `system_cfg-ecs-aggregation.txt`. Nothing read off the ECS is kept in the
+tree beyond those two (Clint, 2026-11-01); the facts below are stated so a
+reader with an ECS can check them.
+
+#### 11.20.1 The model
+
+| Bit | What the UI says happened | Port disabled? | What the operator does |
+|---|---|---|---|
+| 512 loop protection (keepalive) | the port "was disabled by Loop Protection to prevent a network loop"; the tooltip of the port setting says it disables the port when a loop is detected | **yes** | re-enable the port by hand: the tooltip says disabled ports must be re-enabled manually, and the port panel's message offers a "re-enable" link (what that link sends is not captured) |
+| -- BPDU guard (no `anomalies` bit; its own alert) | UniFi disabled the port because it detected a loop; fix the loop, then re-enable the port | **yes** | re-enable by hand (the recommended action says so) |
+| 1 / 2 / 4 storms | incoming broadcast / multicast / unknown-unicast packets on the port **exceed the Storm Control threshold**; Storm Control's tooltip says it *restricts* excessive traffic of those types | no | check the Storm Control setting against the port's traffic, look for loops or a misbehaving device (the recommended action) |
+| 32 DHCP rate | incoming DHCP packets exceed 300/s on the port | no | check for misconfigured devices and rogue DHCP servers |
+| 64 rogue DHCP | a rogue DHCP server detected on the port | no | -- |
+| 128 802.1X | a failed 802.1X authentication attempt on the port | no | -- |
+| 256 MAC locking | a MAC on the port that is not on its allowed list | no | -- |
+| 1024 DoS | a denial-of-service attack detected on the port | no | -- |
+
+So in UniFi's model **only loop protection and BPDU guard take a port down**;
+every other bit is a detection the switch reports while the port keeps
+running (and, for storms, keeps limiting the traffic). The UI also has
+"Anomaly Started" / "Anomaly Ended": a bit is a condition with a duration,
+which the bridge produces by setting it in each inform in which the
+condition was seen (`internal/device`, `portAnomalies`).
+
+**For a driver this means:** a port held down by the switch's own protection
+is a `Port.Fault` naming the cause (`internal/device` maps the cause to its
+bit, `protectionHold`); a detection is a count that grows while the condition
+lasts (`Port.Health.StormDrops*`, `DHCPRateDrops`, `RogueDHCPDrops`, set
+on growth between informs). Taking a port down for a detection-only cause
+would do more than the controller's setting promises, and the operator would
+have no UniFi control written for bringing it back.
+
+#### 11.20.2 What the ECS shows
+
+- **An error-disable table with every cause.** CONFIG_DB `ERROR_DISABLE|<cause>`
+  (APPL_DB `ERROR_DISABLE:<cause>` the same) for `bcast-storm`, `mcast-storm`,
+  `ucast-storm`, `dhcp-rate-limit`, `denial-of-service`, `dot1x`,
+  `mac-locking`, `keepalive`, `bpduguard`, `bpdustorm` and
+  `mclag-delay-restore`, each `admin_status enabled`,
+  `auto_recovery_interval 0` (`mclag-delay-restore` also `action
+  acl-block`). `show errdisable recovery` lists the same; `show errdisable
+  status` (reason, port, last disable time) is empty; the CLI has `config
+  errdisable port-recovery <interface>` and per-cause `auto-recovery-status`
+  / `auto-recovery-interval`. What an interval of 0 does is not established:
+  no port has tripped, and the ECS is a production switch.
+- **The table is not evidence of a detector.** The ECS does not claim storm
+  control at all: its inform's `switch_caps.feature_caps` is `123317237`
+  (live and in the fixture), bit 8 (storm control) clear, no
+  `storm_control_caps`; its push has no `stormctrl` key; CONFIG_DB has no
+  storm-control table and the CLI no storm-control command. Its storm rows
+  name a feature the switch does not offer. It does claim DHCP snooping
+  (128), port security (512), loop protection (1048576) and
+  `feature_caps2` 128.
+- **No port reports anomalies.** No port of the ECS's inform has an
+  `anomalies` key (all 54, in the fixture and in today's `mca-dump`).
+- **Two loop mechanisms.** `MAC_MOVE_GUARD|GLOBAL` (enabled, threshold 10,
+  detect interval 5 s, action interval 150 s, action `DISABLE_PORT`;
+  `show mac-move-guard capabilities`: disable-port and disable-learn) with
+  `MAC_MOVE_GUARD_INTERFACE|<port> guard enabled` per port, and a separate
+  loop protect (`show loop-protect status`: per port status, loop detected,
+  last detect time, rx action, transmit interval, auto-recovery interval;
+  disabled on every port here, as the push's `switch.port.N.keepalive` is
+  `disabled` everywhere). §11.5's l2d implements the first for the
+  controller's Loop Protection.
+- STATE_DB `PORT_TABLE|<port>` carries `state ok` and `linkdown_count`;
+  ubnt-stpmgrd logs an `errdisabled` flag per interface with each STP state
+  event (all `false`).
+
+#### 11.20.3 What the DX010 does with it
+
+| Bit | DX010 | Where |
+|---|---|---|
+| 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval), never the uplink, the STP root port or the gateway's port | §11.5 |
+| 1 / 2 | detected by disunified-l2d from the port's own receive counters against the port's storm-control threshold; the port keeps running under its storm-control limit; reported as growth of `StormDropsBroadcast` / `StormDropsMulticast` | §11.21 |
+| 4 | not reported: no counter separates unknown unicast from the rest | §11.21 |
+| 32, 64, 128, 256, 1024 | §11.17, §11.7.9, §11.18 | -- |
+
+### 11.21 Storm detection on the DX010: anomalies 1 and 2 from the port's own counters (2026-11-14)
+
+**What UniFi asks for** (§11.20): Storm Control *restricts* broadcast,
+multicast and unknown-unicast traffic on a port to the configured level, and
+the storm anomaly says that incoming traffic of the type **exceeded the
+threshold**. No port is taken down. The ECS, the family the DX010 is
+claimed as, does not offer storm control at all (§11.20.2), so it gives no
+pattern to copy beyond UniFi's own words. The DX010 already restricts
+(`PORT_STORM_CONTROL`, kbps from the UI's percent, §5); what it lacked is
+the detection, because the policers count nothing (§11.19).
+
+**Decision.** disunified-l2d detects; the port keeps running under its
+storm-control limit; the driver reports the detection as the port's storm
+drops, which `internal/device` turns into bits 1 and 2 on growth. Not the
+error-disable shut-down this work was first scoped as: UniFi's model and
+its UI text have no shut-down for a storm and no control to bring such a
+port back (§11.20.1), and the ECS has no detector to copy. So none of
+loop protection's never-shut-down rule (uplink, STP root port, gateway's
+port) is needed here: nothing is shut.
+
+**What the switch can measure.** Per port, COUNTERS_DB (flex counter, 1 s
+poll) holds the MAC's receive counters, which count every frame the port
+took in, before the ingress pipeline's policers and filters:
+
+| UniFi type | SONiC storm type | Counter | What it tells |
+|---|---|---|---|
+| Broadcast | `broadcast` | `SAI_PORT_STAT_IF_IN_BROADCAST_PKTS` | exactly the broadcast frames received |
+| Multicast | `unknown-multicast` | `SAI_PORT_STAT_IF_IN_MULTICAST_PKTS` | every multicast frame, known groups too: an upper bound on unknown multicast (UniFi's text speaks of incoming multicast packets, which this is) |
+| Unknown unicast | `unknown-unicast` | none | `IF_IN_UCAST_PKTS` counts all unicast; nothing separates a frame the switch floods (unknown destination) from one it forwards. **Not detected**; bit 4 is never set by this driver |
+
+The threshold is bytes per second (kbps × 125, as orchagent programs the
+policer's CIR, §11.19), the counters frames. A frame is at least 64 bytes,
+so more than limit / 64 frames a second is over the threshold whatever the
+frames' size; l2d compares against that. A storm of large frames above the
+byte limit but under limit / 64 frames a second is missed: a lower bound,
+never a false alert.
+
+**As built (`l2d.py` `StormWatch`, one class, one registration in `L2d`).**
+- Every second, for each port with a `broadcast` or `unknown-multicast` row
+  in CONFIG_DB `PORT_STORM_CONTROL` (the driver writes it from the push; a
+  hand-made row is watched too), read the two counters. Whatever owns
+  storm control, l2d watches it: the limits are the switch's own.
+- The rate is taken over the last 5 samples (5 s). A window's ends can each
+  be up to one 1 s poll stale, so a storm starts when the rate is above
+  1.25 × limit / 64 and ends when it is back under limit / 64. Start and end
+  are logged (`storm control: Ethernet16 broadcast storm, 3189 frames/s over
+  5 s, limit 1000 kbps (1953 frames/s at 64 bytes)`).
+- While a port is over, each second's frames above limit / 64 are added to
+  its count: a lower bound on what storm control dropped. STATE_DB
+  `DUI_STORM_TABLE|<port>` publishes `broadcast` and `multicast` (monotonic;
+  adopted again when l2d restarts; the row goes when the port's storm
+  control does). A counter that went down (cleared) restarts the window.
+- `collect.py`'s `l2_storm` section reads the table; `stormPorts` sums a
+  cage's interfaces into `Health.StormDropsBroadcast` / `StormDropsMulticast`.
+  `Fault` is not touched.
+- The driver installs and runs l2d for storm control alone (`l2Want.storm`):
+  a push with broadcast or multicast storm control on any port is enough,
+  with spanning tree and loop protection off. Unknown unicast alone is not.
+- Beside the rate limits: the policers keep dropping in the ASIC exactly as
+  before; l2d only reads. Rate mode (packets/s) stays refused with its note
+  (§11.8): SONiC's policer takes kbps only, and detecting a limit the
+  switch does not enforce would report a storm control that is not there.
+
+**The uplink, observed only** (Ethernet0, 60 s at 1 s, 2026-11-14, before
+the live run): broadcast mean 77 frames/s (largest second 152), multicast mean 95
+(largest 451). UniFi's lowest level, 1 % of a 100G port, is 1 000 000 kbps,
+about 1.95 million frames/s at 64 bytes; even the test's 1000 kbps limit
+(1953 frames/s) is four times the uplink's busiest second. The replay test
+runs the uplink's samples from the live run through `StormWatch` at that
+limit: no storm.
+
+**Live run on the DX010** (2026-11-14 09:18-09:21 MST, image
+`igmp-202511.20261106-f2e25f54c`, under the shared l2d test lock; the
+bridge stopped for the run and the installed l2d replaced by this build):
+cage 5 (`Ethernet16`, `ce4`, empty) brought up by MAC loopback (`bcmcmd
+"port ce4 lb=mac"`), storm control written by hand at 1000 kbps for
+`broadcast` and `unknown-multicast`, and frames sent out of the port from
+the CPU (64-byte frames, a raw socket on `Ethernet16`), counters sampled
+every 0.5 s with the uplink's beside them
+(`sonic-igmp-202511.20261106-f2e25f54c/storm-counters.ndjson`):
+
+| Sent from the CPU | Received (counter) | l2d |
+|---|---|---|
+| broadcast, 74 100 frames over 15 s (4940/s) | +74 100 | storm at 3189 frames/s over 5 s; over after the flood; 39 839 frames above the limit |
+| broadcast, 22 290 frames over 15 s (1486/s, under 1953) | +22 290 | nothing |
+| multicast `01:00:5e:7f:ff:16`, 74 150 frames over 15 s | +74 338 (the 74 150 and 188 control frames the switch itself sent out of the looped port over the 95 s) | storm at 2955 frames/s; 41 585 frames above the limit |
+
+The collector's capture with the row is `collect-storm.txt` (scrubbed); the
+worktree build's `-collect-once` on the switch reported port 5 with
+`StormDropsBroadcast` 39839 and `StormDropsMulticast` 41585, no fault,
+`StormDropsUnicast` 0. `TestWireContractSonicStorm` sets exactly bits 1
+and 2 on port 5 from that capture after the one before, and clears them on
+an inform with no growth. `TestL2dStormWatchOverLiveCounters` replays the
+counters (38 854 and 40 416 frames above: the replay samples every 0.5 s
+where the live daemon read its own seconds).
+
+Facts the run found:
+- **A port named by IGMP snooping's static groups cannot leave its VLAN**:
+  `config vlan member del 4094 Ethernet16` was refused ("remove all
+  associated static Layer 2 multicast group entries first": the reserved
+  groups the driver floods to every port, §8.10). So the looped port stayed
+  an untagged member of the management VLAN. RSTP held it: l2d logged
+  `Ethernet16: disabled -> blocking` at link-up and nothing else until the
+  loopback was removed, the port's `IF_IN_DISCARDS` grew by 170 540
+  (exactly the frames sent: 74 100 + 22 290 + 74 150), and the uplink's
+  broadcast-out counter moved by 12 over the whole period: nothing reached
+  the LAN. A later test on a looped cage
+  should first take it out of the static groups, or rely on a blocked port
+  only with spanning tree on.
+- The MAC receive counters count a MAC-looped port's frames exactly
+  (broadcast +96 390 = 74 100 + 22 290 sent).
+- Restored and confirmed: loopback off, both storm-control rows deleted,
+  `Ethernet16` untagged in Vlan4094, the installed l2d back to main's
+  (sha256 `8c186c56…`), `DUI_STORM_TABLE` gone, l2d and the bridge active;
+  the bridge's reconcile read "0 of 32 ports changed" and its inform HTTP
+  200. Nothing was saved by the test (`config_db.json` holds no
+  `PORT_STORM_CONTROL`).
+
+**Not exercised:** a storm from a cabled host, a storm on a port that
+forwards (the looped port was STP-blocked, so the policer itself never
+dropped), storm control pushed from the UI with the detection running (the
+UI's lowest level, 1 % of 100G, is far above what the CPU can send), the
+alert in the controller (the build is not deployed), a broken-out cage's
+summed lanes, and a PortChannel member. **What a PR needs** for the rest: a
+cabled traffic source on a test port in a VLAN of its own, storm control
+from the UI, the "Broadcast Storm Detected" / "Multicast Storm Detected"
+alert read from the controller's device alerts, and for unicast a counter
+that separates flooded unicast (none on this SAI).
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

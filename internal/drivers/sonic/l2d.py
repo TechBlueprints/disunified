@@ -38,8 +38,12 @@
 # setting) for `hold` seconds -- never the STP root port nor the port the
 # default gateway is learned on.
 #
+# Storm detection (StormWatch, section 11.21): a port whose incoming broadcast
+# or multicast exceeds its storm-control limit is counted, never taken down.
+#
 # Everything the bridge reads back is published in STATE_DB:
-# DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>.
+# DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>,
+# DUI_STORM_TABLE|<port>.
 #
 # `disunified-l2d --teardown` undoes it: every VLAN back to the default STP
 # instance, every port forwarding in the kernel, stp_state 0, mstpd stopped,
@@ -366,6 +370,7 @@ class L2d(object):
         self.blocked = {}  # port -> unblock time
         self.fdb_sub = None
         self.nl = None
+        self.storm = StormWatch(self.db)  # storm detection (11.21): self.storm.tick() in main
 
     # --- spanning tree -------------------------------------------------
 
@@ -767,6 +772,7 @@ class L2d(object):
                 not self.db.hgetall(self.db.appl, "PORT_TABLE:PortInitDone"):
             time.sleep(1)
         self.adopt_guard_state()
+        self.storm.adopt()
         self.nl = nl_open()
         self.fdb_sub = sw.SubscriberStateTable(self.db.state, "FDB_TABLE")
         sel = sw.Select()
@@ -799,6 +805,145 @@ class L2d(object):
                 key, op, fvs = self.fdb_sub.pop()
                 self.on_fdb(key, op, fvs)
             self.run_flushes()
+            self.storm.tick()
+
+
+class StormWatch(object):
+    """Storm detection (docs/drivers/sonic.md 11.21): a port whose incoming
+    broadcast or multicast traffic exceeds its storm-control threshold.
+
+    UniFi's storm anomalies say that incoming packets of a type exceeded
+    the port's Storm Control threshold; the port is not taken down (11.20),
+    and the switch keeps limiting the traffic (PORT_STORM_CONTROL's
+    policers, which count nothing: 11.19). This reads the port's own
+    receive counters, which count every frame the MAC took in, before the
+    policer: IF_IN_BROADCAST_PKTS for broadcast, IF_IN_MULTICAST_PKTS for
+    multicast (known groups too -- no counter tells unknown multicast
+    apart). Unknown unicast has no counter of its own and is not watched.
+
+    The threshold is in bytes (kbps x 125); the counters are frames. A
+    frame is at least MIN_FRAME bytes, so more than limit/MIN_FRAME frames
+    a second is certainly over the threshold, whatever their size: the
+    rate is compared against that, over a WINDOW of samples, with MARGIN
+    for the counters' own 1 s poll (a window's ends can be up to one poll
+    stale); a storm ends when the rate is back under the limit. While a
+    port is over, the frames above limit/MIN_FRAME are
+    added to its count -- a lower bound on what storm control dropped --,
+    which STATE_DB DUI_STORM_TABLE|<port> publishes (`broadcast`,
+    `multicast`, monotonic; kept across restarts of this daemon) and the
+    bridge reports as the port's storm drops."""
+
+    TYPES = (  # PORT_STORM_CONTROL type, counter, STATE_DB field
+        ("broadcast", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS", "broadcast"),
+        ("unknown-multicast", "SAI_PORT_STAT_IF_IN_MULTICAST_PKTS", "multicast"),
+    )
+    MIN_FRAME = 64  # bytes: the smallest Ethernet frame
+    TICK = 1.0  # seconds between samples (the counters' poll interval)
+    WINDOW = 5  # samples a rate is taken over
+    MARGIN = 1.25  # over = above MARGIN x the frame limit; under = below it
+
+    def __init__(self, db):
+        self.cfg = db.cfg
+        self.counters = sw.DBConnector("COUNTERS_DB", 0)
+        self.st = sw.Table(db.state, "DUI_STORM_TABLE")
+        self.state = db.state
+        self.samples = {}  # port -> deque of (time, {field: frames})
+        self.count = {}  # port -> {field: frames above the limit}
+        self.over = set()  # (port, field) currently storming
+        self.published = set()  # ports with a DUI_STORM_TABLE row
+        self.nxt = 0.0
+
+    def adopt(self):
+        for k in DB.keys(self.state, "DUI_STORM_TABLE|*"):
+            port = k.split("|", 1)[1]
+            row = DB.hgetall(self.state, k)
+            self.published.add(port)
+            self.count[port] = {}
+            for _, _, field in self.TYPES:
+                try:
+                    self.count[port][field] = float(row.get(field, "0"))
+                except ValueError:
+                    self.count[port][field] = 0.0
+
+    def limits(self):
+        """port -> {STATE_DB field: kbps} from CONFIG_DB PORT_STORM_CONTROL."""
+        out = {}
+        for k in DB.keys(self.cfg, "PORT_STORM_CONTROL|*"):
+            parts = k.split("|")
+            if len(parts) != 3:
+                continue
+            for typ, _, field in self.TYPES:
+                if parts[2] == typ:
+                    try:
+                        kbps = int(DB.hgetall(self.cfg, k).get("kbps", "0"))
+                    except ValueError:
+                        kbps = 0
+                    if kbps > 0:
+                        out.setdefault(parts[1], {})[field] = kbps
+        return out
+
+    def tick(self, now=None):
+        now = time.time() if now is None else now
+        if now < self.nxt:
+            return
+        self.nxt = now + self.TICK
+        lim = self.limits()
+        oids = DB.hgetall(self.counters, "COUNTERS_PORT_NAME_MAP")
+        for port in list(self.count):
+            if port not in lim:
+                self.forget(port)
+        for port, kinds in lim.items():
+            oid = oids.get(port)
+            if not oid:
+                continue
+            row = DB.hgetall(self.counters, "COUNTERS:" + oid)
+            try:
+                frames = {field: int(row[ctr]) for _, ctr, field in self.TYPES}
+            except (KeyError, ValueError):
+                continue
+            self.sample(port, kinds, now, frames)
+
+    def sample(self, port, kinds, now, frames):
+        q = self.samples.setdefault(port, collections.deque(maxlen=self.WINDOW + 1))
+        last = q[-1] if q else None
+        q.append((now, frames))
+        if last is None or any(frames[f] < last[1][f] for f in frames):
+            q.clear()  # first sample, or the counters were cleared
+            q.append((now, frames))
+            return
+        counts = self.count.setdefault(port, {f: 0.0 for _, _, f in self.TYPES})
+        changed = port not in self.published
+        t0, f0 = q[0]
+        for field, kbps in kinds.items():
+            allowed = kbps * 125.0 / self.MIN_FRAME  # frames/s that fit under the limit
+            rate = (frames[field] - f0[field]) / (now - t0) if len(q) > self.WINDOW and now > t0 else 0.0
+            key = (port, field)
+            if key not in self.over and rate > allowed * self.MARGIN:
+                self.over.add(key)
+                log("storm control: %s %s storm, %.0f frames/s over %d s, limit %d kbps (%.0f frames/s at %d bytes)" %
+                    (port, field, rate, self.WINDOW, kbps, allowed, self.MIN_FRAME), syslog.LOG_WARNING)
+            elif key in self.over and rate < allowed:
+                self.over.discard(key)
+                log("storm control: %s %s storm over, %d frames above the limit in all" % (port, field, counts[field]))
+            if key in self.over:
+                dt = now - last[0]
+                counts[field] += max(0.0, frames[field] - last[1][field] - allowed * dt)
+                changed = True
+        for field in counts:
+            if field not in kinds:
+                self.over.discard((port, field))
+        if changed:
+            put(self.st, port, [(f, "%d" % counts[f]) for f in sorted(counts)])
+            self.published.add(port)
+
+    def forget(self, port):
+        """Storm control is gone from the port: so is its row."""
+        self.samples.pop(port, None)
+        self.count.pop(port, None)
+        self.over = {k for k in self.over if k[0] != port}
+        if port in self.published:
+            self.st._del(port)
+            self.published.discard(port)
 
 
 def teardown():

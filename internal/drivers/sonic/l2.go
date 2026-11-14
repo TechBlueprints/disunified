@@ -135,6 +135,9 @@ type l2Want struct {
 	portsSet bool
 	ports    map[string]l2Port
 	guard    []string
+	// storm: a port asks for broadcast or multicast storm control, which
+	// l2d watches (§11.21) -- it runs for that alone.
+	storm bool
 	// stpOffSeen: the push had STP off since the dead-man last fired,
 	// which re-arms a first enable.
 	stpOffSeen  bool
@@ -225,6 +228,7 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 	}
 	sort.Strings(guard)
 	c.l2.portsSet, c.l2.ports, c.l2.guard = true, ports, guard
+	c.l2.storm = stormWatched(desired)
 }
 
 // applyL2 brings disunified-l2d's installation and config in line with the
@@ -255,7 +259,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	want := w.conf()
-	need := want.STP.Enabled || want.LoopGuard.Enabled
+	need := want.STP.Enabled || want.LoopGuard.Enabled || w.storm
 	if !need && in.Conf == nil {
 		return 0, nil // nothing wanted, nothing installed
 	}
@@ -294,7 +298,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 			}
 			started = 1
 		}
-		if !want.LoopGuard.Enabled && in.Conf == nil {
+		if !want.LoopGuard.Enabled && !w.storm && in.Conf == nil {
 			return started, nil // installed once mstpd is there
 		}
 	}

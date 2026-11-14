@@ -372,6 +372,10 @@ these is marked "not captured".
   own storm, DHCP-rate and rogue-DHCP drop counters (`Port.Health`; no
   driver fills them yet); `custom_anomalies` is not sent; the raw fields
   (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
+  **Only loop protection and BPDU guard take a port down** in UniFi's model
+  (the UI's own text, 2026-11-14): every other bit is a detection the port
+  keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's
+  `ERROR_DISABLE` table does and does not show).
 
 ## 6. Driver facts
 
