@@ -1,0 +1,86 @@
+# DX010, 2026-11-14, read-only (admin, no sudo): where the image's DHCP rate limit is, and that nothing enforces it.
+# One ssh exec; output verbatim. docs/drivers/sonic.md 11.17.
+@@@ show version (build)
+SONiC Software Version: SONiC.igmp-202511.20261106-f2e25f54c
+Build commit: f2e25f54c
+@@@ show interfaces dhcp-mitigation-rate
+Interface    DHCP Mitigation Rate
+-----------  ----------------------
+Ethernet0    300
+Ethernet4
+Ethernet8    300
+Ethernet12   300
+Ethernet16   300
+Ethernet20   300
+Ethernet24   300
+Ethernet28   300
+Ethernet32   300
+Ethernet36   300
+Ethernet40   300
+Ethernet44   300
+Ethernet48   300
+Ethernet52   300
+Ethernet56   300
+Ethernet60   300
+Ethernet64   300
+Ethernet68   300
+Ethernet72   300
+Ethernet76   300
+Ethernet80   300
+Ethernet84   300
+Ethernet88   300
+Ethernet92   300
+Ethernet96   300
+Ethernet100  300
+Ethernet104  300
+Ethernet108  300
+Ethernet112  300
+Ethernet116  300
+Ethernet120  300
+Ethernet124  300
+@@@ APPL_DB PORT_TABLE dhcp_rate_limit (Ethernet0, Ethernet4)
+300
+
+@@@ swss: tc qdisc show (all front-panel ports, counted by line)
+     32 qdisc fq_codel 0:
+@@@ swss: tc filter show dev EthernetN ingress (all front-panel ports, line count)
+0
+@@@ APPL_DB COPP_TABLE:queue4_group3
+{'cbs': '100', 'cir': '100', 'meter_type': 'packets', 'mode': 'sr_tcm', 'queue': '4', 'red_action': 'drop', 'trap_action': 'trap', 'trap_priority': '4', 'trap_ids': 'dhcp,dhcpv6,lldp,udld'}
+@@@ STATE_DB COPP_TRAP_TABLE|dhcp_relay
+{'state': 'ok'}
+@@@ /etc/sonic/copp_cfg.json COPP_TRAP dhcp_relay + COPP_GROUP queue4_group3
+{
+ "COPP_GROUP": {
+  "queue4_group3": {
+   "cbs": "100",
+   "cir": "100",
+   "meter_type": "packets",
+   "mode": "sr_tcm",
+   "queue": "4",
+   "red_action": "drop",
+   "trap_action": "trap",
+   "trap_priority": "4"
+  }
+ },
+ "COPP_TRAP": {
+  "dhcp_relay": {
+   "trap_group": "queue4_group3",
+   "trap_ids": "dhcp,dhcpv6"
+  },
+  "lldp": {
+   "trap_group": "queue4_group3",
+   "trap_ids": "lldp"
+  },
+  "udld": {
+   "always_enabled": "true",
+   "trap_group": "queue4_group3",
+   "trap_ids": "udld"
+  }
+ }
+}
+@@@ show feature status dhcp_relay
+Feature     State    AutoRestart    SetOwner
+----------  -------  -------------  ----------
+dhcp_relay  enabled  enabled        local
+@@@ end

@@ -699,8 +699,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   not a fact**: Broadcom's 2026 release notes correct capability tables
   repeatedly (RX SNR, WRED ECN stats, FEC corrected bits, TAM bind points);
   before building around a refusal, probe the SAI through ASIC_DB in one
-  script (§11.9: op `Sset`, re-read every oid first). Every PORT write adds `dhcp_rate_limit:
-  300`. `config spanning-tree interface` spells `bpdu-guard` (202505:
+  script (§11.9: op `Sset`, re-read every oid first). (Not so, though noted
+  here until 2026-11-14: every PORT write adds `dhcp_rate_limit: 300` --
+  the field was on every port before; below.) `config spanning-tree interface` spells `bpdu-guard` (202505:
   `bpdu_guard`); `config` gains `igmp-snooping`, `mld-snooping`,
   `dhcpv4_relay`. portconfig prints its FEC refusal (`fec fc is not in
   ['none', 'rs']`) on **stdout** with exit 1, so `sshrun`'s error carries
@@ -723,3 +724,18 @@ logged). **A swss restart recreates the kernel `Bridge`** (stp_state 0,
 mstpd drops it): l2d re-runs its enable path when it sees that (ae2ce0e);
 before that fix the switch ran without spanning tree until the service
 was restarted.
+- **`PORT dhcp_rate_limit` is a field nothing enforces (202505 and 202511,
+  2026-11-14, `docs/drivers/sonic.md` §11.17).** The CLI
+  (`config interface dhcp-mitigation-rate`) and YANG are sonic-utilities#3301;
+  the enforcement, sonic-swss#3130 (portmgrd's `tc` ingress police on UDP
+  67), is unmerged and not in the kit: every front-panel netdev has only its
+  root `fq_codel`, no ingress filter (`dhcp-rate-20261114.txt`). The 300s
+  come from db_migrator's `version_3_0_0` on a fresh config; a breakout's
+  re-created ports have none (Ethernet4 since 2026-11-01). DHCP is policed
+  only by CoPP, `queue4_group3` (`trap`, 100 packets/s, shared with LLDP and
+  UDLD, the whole switch), whose drops have no port. So no per-port DHCP drop
+  counter exists and `Port.Health.DHCPRateDrops` stays unfilled: anomaly 32
+  ("Incoming DHCP packets exceed 300/sec", fixed UI text) never comes from
+  this driver. A kernel policer behind that CoPP rate could never drop at
+  300/s per port; a real one needs an ASIC per-port policer (orchagent's ACL
+  has no policer action).

@@ -930,7 +930,7 @@ does not expose.
 | `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); logged, unclaimed. **An unmerged upstream implementation exists; what building it takes is §8** |
 | `switch.port.N.lldpmed.opmode` / `topology_notify` | `LLDP_PORT` has `enabled`/`mode`/TLV flags, no LLDP-MED; report-only like the Arista |
 | `switch.port.N.ld_mode` (loop detection) | nothing in SONiC; a real STP daemon would be the answer (see 7.4) |
-| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking; `dhcp_relay` is L3; unclaimed. **Superseded 2026-11-01 (§11.7):** the push, captured, is the flag plus per-VLAN trusted-server groups (`switch.dhcp_guard.N.*`), which an L3 ACL table can enforce in hardware |
+| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking -- and on 202505 and 202511 only a field: nothing enforces it (§11.17); `dhcp_relay` is L3; unclaimed. **Superseded 2026-11-01 (§11.7):** the push, captured, is the flag plus per-VLAN trusted-server groups (`switch.dhcp_guard.N.*`), which an L3 ACL table can enforce in hardware |
 | isolation, 802.1X, port security (`port_security_mac_address`) | none in community SONiC (`sonic-acl.yang` exists, so an ACL-based emulation of isolation and MAC allow-lists is possible later; not now) |
 | egress/ingress rate limits | the controller pushed no rate-limit key in any capture, so nothing to act on; SONiC could shape per port through `SCHEDULER`/`PORT_QOS_MAP` (YANG present) if a push ever carries it |
 | `snmp.*` location/contact | not pushed unless the site-wide SNMP is on; `config snmp location\|contact` exist and are a one-line mapping once a capture exists |
@@ -3524,7 +3524,7 @@ breakout` now validates CONFIG_DB with sonic-yang (two dangling leafrefs
 refused the split, below); `config mirror_session span add` is gated by the
 SAI's `PORT_INGRESS/EGRESS_MIRROR_CAPABLE` flags (`'false'` on the DX010,
 so the CLI refuses every SPAN direction, and orchagent applies the same
-answer to a row written past it -- the re-run below); every PORT write adds `dhcp_rate_limit: 300`; `config
+answer to a row written past it -- the re-run below); every PORT write adds `dhcp_rate_limit: 300` (wrong: the field was on every port before, §11.17); `config
 spanning-tree interface` spells `bpdu-guard`; `config` gains
 `igmp-snooping`, `mld-snooping` and `dhcpv4_relay`. Everything else the
 driver sends behaved as on 202505. The first `config save` on the new
@@ -3561,7 +3561,7 @@ closed on this unit yet:** the second core cable (LACP state), IGMP
 snooping's hosts (§8), MAC ACL rules (an orchagent patch; built and
 verified 2026-11-06 on the next image, §11.7.8). What tonight
 left on the switch: the ten site VLANs, `fec none` on Ethernet8,
-`dhcp_rate_limit 300` on every written port (202511's CLI adds it), and
+`dhcp_rate_limit 300` on every written port (there before the writes, §11.17), and
 `PortChannel1` without members.
 
 #### Re-run after the deploy (2026-11-02, 14:25-14:56 UTC)
@@ -3587,7 +3587,7 @@ alone, and no other device got a push. The live lines are
 
 Not deployed: b26fb67 and 7dca204 (the session's permission check refused
 the rebuild). The switch after the re-run: the ten site VLANs, `fec none`
-on Ethernet8, `dhcp_rate_limit 300` on the written ports, `MGMT_PORT|eth0`
+on Ethernet8, `dhcp_rate_limit 300` on 31 ports (§11.17), `MGMT_PORT|eth0`
 (added by the driver, now saved), `NTP|global src_intf Vlan4094` (until
 7dca204 is deployed), and the leaked SAI mirror session in ASIC_DB (no
 port bound to it; gone at the next swss restart or reboot). No ACL table,
@@ -4618,6 +4618,75 @@ no link (rack day). The subnet's connected route, which SONiC installs when
 the port comes up. An OSPF adjacency or a static route over a routed port.
 A routed aggregate of more than one member: the controller pushes only the
 first.
+
+### 11.17 DHCP packet rate (anomaly 32): the image has no per-port limiter (2026-11-14)
+
+**What UniFi expects.** Bit 32 of a port's `anomalies` raises the alert
+`PORT_DHCP_STORM`, "Incoming DHCP packets exceed 300/sec on <device> Port
+N." (the controller's system log, seen live 2026-11-13 when the bridge sent
+the bit by mistake; root `CLAUDE.md` §5). The 300 is the alert's own text;
+it is not a value the inform or the push carries. No captured push, the ECS's
+or the DX010's (`docs/fixtures/controller-*`), has a DHCP rate key: the
+switch's DHCP keys are `switch.dhcp_snoop.status` and `switch.dhcp_guard.N.*`,
+which are Rogue DHCP Server Detection (§11.7). So the limit is the switch's
+own, not a setting, and the bit means "this port's own DHCP rate limit
+dropped frames" (`Port.Health.DHCPRateDrops`, cumulative; `internal/device`
+sets the bit when it grows between informs).
+
+**What the 202511 image has** (fixture
+`sonic-igmp-202511.20261106-f2e25f54c/dhcp-rate-20261114.txt`, read-only):
+
+- A field and a CLI, no enforcement. `PORT|<port> dhcp_rate_limit`
+  (`sonic-port.yang`: "DHCP DOS Mitigation Rate with default value 300"),
+  `config interface dhcp-mitigation-rate add|del` and `show interfaces
+  dhcp-mitigation-rate` come from sonic-utilities#3301 (merged 2025-02-26; in 202505 and 202511 alike).
+  The half that would apply it, sonic-swss#3130 (portmgrd: a `tc` ingress
+  qdisc per port and a u32 filter on UDP destination port 67, `police rate
+  <limit x 406>bps ... conform-exceed drop`), has been open since 2024-05-02
+  and is in neither 202505 nor 202511: the kit's sonic-swss has no `dhcp` in
+  `cfgmgr/`. On the DX010 every front-panel netdev has only its root
+  `fq_codel` qdisc and no ingress filter (32 of 32, read from the swss
+  container). There is no per-port DHCP drop counter anywhere to read.
+- The field sits on 31 of the 32 ports, at 300, in CONFIG_DB and APPL_DB.
+  It was on all 32 in the DX010's first capture
+  (`sonic-202505.1238526-ff3c0c9f6/collect.txt`, 2026-10-31); Ethernet4 has
+  had none since the breakout-and-join of 2026-11-01 (`collect-20261101.txt`),
+  because a breakout re-creates the cage's ports and nothing writes the field
+  but the `dhcp-mitigation-rate` command. The 300s fit db_migrator's
+  `version_3_0_0` step, which adds 300 to every port of a config with no
+  `VERSIONS` row, as a freshly generated L2 preset is. **§11.8's "every PORT
+  write adds `dhcp_rate_limit: 300`" was wrong**: the field was there before
+  those writes.
+- What does limit DHCP is CoPP, switch-wide. With the `dhcp_relay` feature
+  enabled, the `dhcp,dhcpv6` traps are in `queue4_group3` together with LLDP
+  and UDLD: `trap_action trap` (the ASIC hands the frame to the CPU instead
+  of forwarding it), policed `sr_tcm` at a CIR and CBS of 100 packets, red
+  dropped (`APPL_DB COPP_TABLE:queue4_group3`, from the image's
+  `copp_cfg.json`). One policer serves the whole switch, so its drops cannot
+  be attributed to a port. Not tested: a flood above 100 packets/s on one port
+  should starve DHCP and LLDP on every port.
+
+**The ECS** could not be read this time: its sshd refused the site's key on
+2026-11-14 (offered, refused, `publickey,password`), though the controller's
+pushed key list, as the DX010 holds it, still carries that key. Its CONFIG_DB
+`PORT` as read on 2026-11-01 (kept with the site's files, not in the repo)
+has no `dhcp_rate_limit` (202106 predates the field), and its inform
+(`controller-10.6.109/inform-ecs-aggregation-uswf066.json`) carries no
+`anomalies` key, so how a UniFi switch counts these drops is still unknown.
+
+**Decision: `DHCPRateDrops` stays unfilled on SONiC.** With nothing on the
+switch counting per-port DHCP drops, filling it would invent alerts. What a
+follow-up would take (each is a design decision, and the ECS's own
+mechanism is to be read first, per the follow-the-ECS rule):
+
+| Route | What it gives | Against it |
+|---|---|---|
+| (a) sonic-swss#3130's kernel policer, in the image kit or written by the driver | the policer's per-port drop count (`tc -s filter show dev <port> ingress`) | it sees only what CoPP already let through, at most 100 packets/s for the whole switch, so a 300 packets/s limit per port can never drop. It works only with DHCP's CoPP rate raised above 300, in a group of its own (LLDP shares `queue4_group3`), which is a CPU-protection change |
+| (b) a per-port DHCP policer in the ASIC, ahead of CoPP | UniFi's meaning exactly: frames over 300/s dropped on that port alone, with the meter's red count as the cumulative counter | the community orchagent's ACL has no policer action (`aclorch`, 202511); an orchagent patch in the kit, like 0003's L2 table |
+| (c) a per-port ACL counter on UDP 67, counting only | each port's DHCP arrival rate in the ASIC | the bridge would infer drops from a rate, not read them; and how a counting rule combines with the trap on this SAI needs its own capture |
+
+The recommended route is (b), once the ECS shows what it does. Until then a
+DHCP flood on the DX010 raises no alert in UniFi.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

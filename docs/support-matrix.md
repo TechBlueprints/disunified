@@ -458,6 +458,22 @@ Quiet, still rising toward the bench's 56-58 (high 70). Fixture- and loop-tested
 offer nothing; a PR for one needs its fancontrol table and a measured floor
 (the ASIC's settled temperature at it).
 
+### DHCP packet rate (anomaly 32) -- not available on the image (2026-11-14)
+
+UniFi raises "Incoming DHCP packets exceed 300/sec" when a port's own DHCP
+rate limit drops frames (`Port.Health.DHCPRateDrops`). On 202505 and 202511
+`PORT dhcp_rate_limit` (300) is only a field: its enforcement,
+sonic-swss#3130, was never merged, and the DX010 has no ingress filter on
+any port. DHCP is policed only by one CoPP policer for the whole switch
+(`queue4_group3`, 100 packets/s, shared with LLDP and UDLD), whose drops
+have no port. The driver fills nothing, so the alert never fires for a
+SONiC switch ([`drivers/sonic.md`](drivers/sonic.md) §11.17; the read-only
+capture is `sonic-igmp-202511.20261106-f2e25f54c/dhcp-rate-20261114.txt`).
+
+| Gap | What the PR needs |
+|---|---|
+| A per-port DHCP limiter with a drop counter | first, how the ECS counts these drops (to be read on the switch); then a per-port policer in the ASIC, ahead of CoPP (an orchagent patch: the community ACL has no policer action), its red count read in the poll into `DHCPRateDrops`, a capture of it, and a flood on a test cage raising the alert. A kernel policer as in sonic-swss#3130 is not enough: it sees at most CoPP's 100 packets/s for the whole switch, so it would need DHCP in a CoPP group of its own at a higher rate, which is a CPU-protection change to decide first |
+
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,
