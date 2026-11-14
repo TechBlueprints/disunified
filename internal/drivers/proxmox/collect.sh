@@ -72,4 +72,6 @@ s lldp;       lldpcli -f json0 show neighbors details 2>/dev/null
 s lldpdconf;  [ -x /usr/sbin/lldpcli ] && { echo "present"; cat /etc/lldpd.d/disunified.conf 2>/dev/null; }
 s chrony;     grep -hE '^(server|pool) ' /etc/chrony/chrony.conf 2>/dev/null
 s ntpunifi;   cat /etc/chrony/sources.d/disunified.sources 2>/dev/null
+s nft;        command -v nft >/dev/null 2>&1 && echo present
+s dhcpguard;  nft -j list table bridge disunified 2>/dev/null
 s end

@@ -52,6 +52,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 | Adoption safety: the first push after adoption is held while it would change ports; port overrides seeded from the guests' live VLANs | live re-adoption, 2026-09-20 |
 | Models `UDC48X6` (USW Leaf, 54 ports) and `USWF07D` (ECS Core, 32 ports) | live |
 | Cluster-wide guest numbering (`numbering: cluster`, the default) | live |
+| Rogue DHCP Server Detection: the driver's `table bridge disunified` drops and counts untrusted DHCP replies from guest NICs (untagged and tagged VLANs, plain and firewalled NICs), one count per frame, written and deleted whole | the driver's own write run on a PVE 9.1.6 node inside a throwaway network namespace (`fixtures/proxmox-9.1.6/dhcpguard-netns-test.*`, 2026-11-14); `dhcpguard_test.go` |
 
 ### Untested — expected to work — PRs welcome
 
@@ -61,6 +62,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 | **A single node (no cluster)** | `/etc/pve/.vmlist` exists on a standalone node too; numbering has nothing to be cluster-wide *over* | a capture from a standalone node; confirm `-collect-once` and adoption |
 | **A bridge other than `vmbr0`** (`options.bridge`) | the option and the tag form (`unifi.pN.c.vmbr1`) exist in `tags.go` and the collector test covers the parse | a live run against a second bridge; a fixture with two bridges |
 | **An 802.3ad / balance bond as a LAG** | modelled in §1b; only active-backup has run | a capture from a node with an LACP bond; the LAG rows in the contract test |
+| **Rogue DHCP Server Detection end to end**: the controller pushing `switch.dhcp_snoop.status` to a node that claims it, the table on the node's own bridge, the rogue-DHCP alert (64) | the rule set ran on the node's kernel in a namespace (above); the push is the one the ECS gets (`controller-10.6.109/system_cfg-ecs-dhcp-snoop.txt`) | the push from a node's reply log in the replay fixture; the table read back by `-collect-once`; a rogue reply from a throwaway guest and the alert in the UI ([`drivers/proxmox.md` §4c](drivers/proxmox.md)) |
 | **Guests with several NICs on the bridge** beyond the two-NIC case | `VM-<id> net1` naming exists and is in the fixture | more shapes in a capture; nothing else expected |
 
 ### Untested live — modelled, marked in the code — PRs welcome
@@ -79,6 +81,9 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
   address) is reported, never managed. The controller's IP Settings are not
   applied to a node.
 - No PoE, no port power cycle (the model claims none).
+- No storm (1/2/4) or DHCP-rate (32) anomaly: a node applies no limiter,
+  and none is built on a production host; the node's own uplinks are not
+  DHCP-guarded (the upstream switch guards the LAN).
 
 ---
 
@@ -138,6 +143,10 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 - **Port control**: port state → `ip link set … down` inside the netns, or
   `podman network disconnect`; VLANs have no meaning on a Podman network.
 - **LLDP** from the host: placement works by MAC without it.
+- **Rogue DHCP Server Detection** and the other switch-detected anomalies:
+  not built. macvlan's bridge mode delivers a container's frames to the
+  host's other macvlan containers inside the driver, so no hook on the
+  parent NIC sees every reply ([`drivers/podman.md` §8](drivers/podman.md)).
 - **Showing bridge-network (NAT'd) containers as something** without
   inventing LAN clients.
 
@@ -528,7 +537,7 @@ alerts on 2026-11-13.
 
 | What | Where / when |
 |---|---|
-| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (none filled yet); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (`proxmox` fills the rogue-DHCP one); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
 
@@ -538,7 +547,7 @@ Open — PRs welcome:
 |---|---|
 | **`stp_state_change_sum`** (per port), which the controller's STP-flap alert is expected to follow (not captured) | an inform from a real UniFi switch that carries the key (support-bundle `last.inform` or `mca-dump` on the switch), scrubbed into `docs/fixtures/controller-<ver>/`; then the field from `Port.Health.STPChanges`, held to it by the contract test |
 | The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
-| Storm (1/2/4), DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `StormDropsBroadcast`/`StormDropsMulticast`/`StormDropsUnicast`, `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
+| Storm (1/2/4), DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); `proxmox` fills `RogueDHCPDrops` (namespace-tested, not yet live); `podman` fills none (by design, [`drivers/podman.md` §8](drivers/podman.md)); a driver that fills `StormDropsBroadcast`/`StormDropsMulticast`/`StormDropsUnicast`, `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
 | Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning |
 
 ---

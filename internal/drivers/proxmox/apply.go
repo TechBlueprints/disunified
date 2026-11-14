@@ -348,6 +348,11 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 			changed++
 		}
 	}
+	n, err := c.applyGuard(ctx, d)
+	changed += n
+	if err != nil {
+		return changed, err
+	}
 	if d.ManageSyslog && len(d.SyslogHosts) > 0 {
 		c.warnOnce("syslog", "the controller's remote syslog host %v is not applied: Proxmox logs through journald", d.SyslogHosts)
 	}
@@ -390,4 +395,60 @@ func equalInts(a, b []int) bool {
 		}
 	}
 	return true
+}
+
+// applyGuard keeps the driver's nft table (dhcpguard.go) at the
+// controller's DHCP guarding: written when its rules differ from the
+// fingerprint the node holds, deleted when guarding is off or guards
+// nothing here. No dhcp_snoop key in the push leaves the table as it is.
+func (c *Collector) applyGuard(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
+	if d.DHCPSnooping == nil {
+		return 0, nil
+	}
+	c.mu.Lock()
+	guardable, cur, ports := c.guardable, c.guard, c.guardPorts
+	c.mu.Unlock()
+	if !guardable {
+		if *d.DHCPSnooping {
+			c.warnOnce("guard-unclaimed", "the controller wants DHCP guarding; this node has no nft or %s is not VLAN-aware, so it is neither claimed nor applied", c.Bridge)
+		}
+		return 0, nil
+	}
+	var rules []string
+	if *d.DHCPSnooping {
+		note := func(f string, a ...any) { c.warnOnce("guard-note:"+fmt.Sprintf(f, a...), f, a...) }
+		rules = guardRules(ports, guardServers(d.DHCPGuards, note))
+	}
+	text, mark := guardRuleset(c.Bridge, rules)
+	switch {
+	case text == "" && !cur.Present, text != "" && cur.Present && cur.Mark == mark:
+		return 0, nil
+	case text == "":
+		c.Log.Printf("proxmox %s: DHCP guard off: nft delete table bridge %s", c.node, guardTable)
+		if _, err := c.r.Run(ctx, "nft delete table bridge "+guardTable, ""); err != nil {
+			return 0, err
+		}
+		cur = guardState{}
+	default:
+		c.Log.Printf("proxmox %s: DHCP guard: %d rules on %d guest ports (nft table bridge %s, %s)", c.node, len(rules), guardedPorts(rules), guardTable, mark)
+		if _, err := c.r.Run(ctx, "nft -f -", guardWrite(text)); err != nil {
+			return 0, err
+		}
+		cur = guardState{Present: true, Mark: mark}
+	}
+	c.mu.Lock()
+	c.guard.Present, c.guard.Mark = cur.Present, cur.Mark
+	c.mu.Unlock()
+	return 1, nil
+}
+
+// guardedPorts counts the ports the rules name, for the log.
+func guardedPorts(rules []string) int {
+	seen := map[string]bool{}
+	for _, r := range rules {
+		if i := strings.LastIndex(r, `comment "`); i >= 0 {
+			seen[r[i:]] = true
+		}
+	}
+	return len(seen)
 }
