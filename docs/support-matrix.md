@@ -166,6 +166,17 @@ partner's system id (`partner_system_id`) is not reported: it needs `show
 lacp neighbor` captured on 4.26.14M first. A PR needs that capture and a
 live aggregate's `lacp_state` in the controller's record.
 
+**Storm-control drops (2026-11-14), read path verified live, a storm
+never:** `show storm-control`'s per-type `drop` fills the port's storm
+counters, and the controller's broadcast/multicast/unicast storm bits follow
+their growth. Captured on 4.26.14M with all three types on a test port, and
+read live by a `-collect-once` with the three levels on cage 54 (counts 0).
+No frame has been dropped by storm control on this switch: the test ports
+have no link and the live links may not be touched. A PR needs a storm on a
+test port (a traffic source above the level), the capture of a growing
+`drop`, and the storm alert read from the controller's device alerts; and
+whether `clear counters` or a flap resets the count (a reset sets nothing).
+
 **Built, untested live (2026-11-07): Fan Mode** through the device's
 `fan_mode: default | quiet` (the controller keeps Fan Mode only for a
 gateway, so no switch gets it from the UI). Default is EOS's automatic
@@ -557,6 +568,7 @@ alerts on 2026-11-13.
 | What | Where / when |
 |---|---|
 | `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (none filled yet); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| Storm drops per type from the Arista (`show storm-control` `drop`), split cages summed | `internal/drivers/arista-eos/features_test.go` over the 4.26.14M capture with all three types; read live (counts 0) on 2026-11-14 |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
 
@@ -566,8 +578,10 @@ Open — PRs welcome:
 |---|---|
 | **`stp_state_change_sum`** (per port), which the controller's STP-flap alert is expected to follow (not captured) | an inform from a real UniFi switch that carries the key (support-bundle `last.inform` or `mca-dump` on the switch), scrubbed into `docs/fixtures/controller-<ver>/`; then the field from `Port.Health.STPChanges`, held to it by the contract test |
 | The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
-| Storm (1/2/4), DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `StormDropsBroadcast`/`StormDropsMulticast`/`StormDropsUnicast`, `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
-| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.17 (256 has a build path) |
+| Storm bits (1/2/4) seen raising an alert | the Arista fills the counters (above); a storm on a test port and the alert read from the controller |
+| Storm drops on the SONiC switch | **no count exists on the DX010's Broadcom image** ([`drivers/sonic.md`](drivers/sonic.md) §11.19): orchagent polls no policer statistics, and the Tomahawk's storm meters have no counter. A PR needs a per-type count the chip really keeps (on a Broadcom XGS chip, three of the SDK's receive debug counters, one per storm type, if its drop triggers can be told apart -- `bcmDbgCntRxStormControlDrop` is one trigger for all three), or a SAI that answers `get_policer_stats` for a storm-control policer, plus orchagent polling it; then a capture and a live storm |
+| DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
+| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.18 (256 has a build path) |
 
 ---
 

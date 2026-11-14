@@ -1,0 +1,32 @@
+{
+  "aggregateTrafficClasses": {},
+  "interfaces": {
+    "Ethernet2": {
+      "active": true,
+      "reason": "",
+      "trafficTypes": {
+        "broadcast": {
+          "dormant": false,
+          "drop": 0,
+          "level": 500,
+          "rate": 0,
+          "thresholdType": "percentage"
+        },
+        "multicast": {
+          "dormant": false,
+          "drop": 0,
+          "level": 100,
+          "rate": 0,
+          "thresholdType": "percentage"
+        },
+        "unknown-unicast": {
+          "dormant": false,
+          "drop": 0,
+          "level": 250,
+          "rate": 0,
+          "thresholdType": "percentage"
+        }
+      }
+    }
+  }
+}

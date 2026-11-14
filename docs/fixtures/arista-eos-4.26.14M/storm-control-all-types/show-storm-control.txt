@@ -1,0 +1,4 @@
+Port       Type             Level    Units Rate(Mbps) Status        Drops Reason
+Et2        unknown-unicast  2.5      %     0          active            0 
+           broadcast        5.0      %     0          active            0 
+           multicast        1.0      %     0          active            0 

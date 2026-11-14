@@ -156,6 +156,23 @@ per bit; it derives its own link-flap and SFP alerts from the raw fields).
 - `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`.
   (`show spanning-tree`'s `interfaces[].inconsistentFeatures` names the
   guards holding a port; no port field carries it, so it is not read.)
+- `show storm-control` → `interfaces[<lane>].trafficTypes.{broadcast,multicast,unknown-unicast}.drop`
+  → `StormDropsBroadcast` / `StormDropsMulticast` / `StormDropsUnicast` (a split
+  cage adds its lanes), which `internal/device` turns into the `anomalies`
+  storm bits 1/2/4 when a count grows between informs. The same command
+  already gives the configured levels. Captured with all three types set
+  on a test port (`docs/fixtures/arista-eos-4.26.14M/storm-control-all-types/`,
+  JSON and the CLI's table, whose `Drops` column is the same number); an
+  interface without storm control is absent. Arista's
+  `ARISTA-STORM-CONTROL-MIB` defines the count, `aristaStormControlIfDrops`,
+  as a Counter64 per interface and traffic class ("packets dropped ... as a
+  result of this entry's storm control threshold level"), i.e. cumulative.
+  4.26.14M has no `clear storm-control` (the CLI answers `% Unrecognized
+  command`); whether `clear counters` or a link flap resets the count is
+  not known -- a count that goes down sets nothing. **Never seen above 0:**
+  the two test ports have no link, so no storm has been dropped on this
+  switch; the read path ran live from a `-collect-once` with the three
+  levels on cage 54 (2026-11-14).
 - `show interfaces transceiver dom thresholds` → per-parameter `channels` +
   `threshold{lowAlarm,highAlarm}` for optics with DOM (none for DACs/empty cages).
 - FEC codeword counters exist **only in text**: `show interfaces EthernetX phy detail`

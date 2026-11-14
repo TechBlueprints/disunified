@@ -4926,6 +4926,59 @@ name only:
 reporting 1024 and what traffic set it, so the condition is defined by
 something observable; then a per-port detector for that condition on the
 DX010.
+### 11.19 Storm-control drops: no count to report (2026-11-14)
+
+UniFi's broadcast, multicast and unicast storm anomalies (bits 1/2/4) are
+set by `internal/device` when a port's `StormDropsBroadcast` /
+`StormDropsMulticast` / `StormDropsUnicast` grow between informs. The Arista
+fills them from `show storm-control` (`drivers/arista-eos.md` §4). **The
+SONiC driver fills none of them: on the DX010's image nothing counts the
+frames storm control drops, per port and type.** What was looked at, on
+`igmp-202511.20261106-f2e25f54c`, with storm control put on empty cage 31
+(`Ethernet120`) by hand and removed again (`PORT_STORM_CONTROL` empty, the
+port's three policer attributes back to `oid:0x0`):
+
+- **The type mapping** (orchagent `policerorch.cpp`, and ASIC_DB live):
+  `broadcast` → `SAI_PORT_ATTR_BROADCAST_STORM_CONTROL_POLICER_ID`,
+  `unknown-multicast` → `SAI_PORT_ATTR_MULTICAST_STORM_CONTROL_POLICER_ID`,
+  `unknown-unicast` → `SAI_PORT_ATTR_FLOOD_STORM_CONTROL_POLICER_ID`; each is
+  its own policer named `_<port>_<type>` (`SAI_POLICER_MODE_STORM_CONTROL`,
+  `METER_TYPE_BYTES`, red action drop, CIR in bytes/s: 100000 kbps →
+  `12500000`). The driver writes UniFi's Multicast as `unknown-multicast` and
+  Unicast as `unknown-unicast` (§5), so a per-policer count would map 1:1.
+- **COUNTERS_DB / FLEX_COUNTER_DB:** no key for any of the three policer
+  oids, and no `POLICER` flex counter group (the 24 groups present are port,
+  queue, PG, buffer, RIF, ACL, tunnel, MACsec, trap, route, SRv6, switch and
+  debug counters). orchagent creates storm policers and never registers them
+  for statistics: in the sonic-swss source (the 202511 work clone and master
+  of April 2026) only the P4 orchestrator calls `get_policer_stats`, for ACL
+  meters. syncd's flex counter does know `POLICER_COUNTER_ID_LIST`, so the
+  polling half exists; the orchagent half does not.
+- **Drop counters (`show dropcounters capabilities`):** one free
+  `PORT_INGRESS_DROPS` counter and a list of SAI drop reasons with no storm
+  reason in it (SAI has none), so a `DEBUG_COUNTER` cannot be built for it.
+- **The chip (BCM56960, Tomahawk; `bcmcmd` in syncd):** the SAI programs
+  storm control as the ingress pipeline's `IFP_STORM_CONTROL_METERS` (four
+  entries took the three rates, the multicast rate twice), whose fields are
+  `REFRESHCOUNT`, `BUCKETSIZE`, `BUCKETCOUNT`, `METER_SPARE`, `EVEN_PARITY`:
+  a token bucket, no counter. The legacy `rate` diag (packet-mode
+  `bcm_rate_*`) shows every port `FALSE` with the policers bound, so that is
+  not the mechanism. The SDK in `libsai.so` names one debug-counter trigger
+  for it, `bcmDbgCntRxStormControlDrop`: one reason for all three types.
+  The nine receive debug counters (`RDBGC0`-`8`) are the SAI's; `RDBGC8`'s
+  select is 0 (unused).
+
+A per-port total of storm drops could be had by pointing a free receive
+debug counter at that trigger, but it cannot say which type dropped, and a
+multicast storm reported as a broadcast one is worse than none. **What a
+contributor needs to add one:** a per-type count the platform really keeps
+-- either a SAI whose `get_policer_stats` answers for a storm-control policer
+(with orchagent registering the three policers in a `POLICER` flex counter
+group and the driver reading their `SAI_POLICER_STAT_RED_PACKETS` from
+COUNTERS_DB in the one poll exec), or a chip whose storm meters count; then
+a capture of the count growing under a storm (a cabled traffic source, or a
+MAC-looped cage in a VLAN of its own), scrubbed with `scripts/sanitize-sonic.py`,
+and the alert seen in the controller.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
