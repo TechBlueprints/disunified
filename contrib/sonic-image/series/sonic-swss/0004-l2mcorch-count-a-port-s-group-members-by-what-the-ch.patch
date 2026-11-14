@@ -1,0 +1,791 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sat, 14 Nov 2026 10:32:06 -0700
+Subject: [PATCH] l2mcorch: count a port's group members by what the chip
+ holds, and drop them with the port
+
+Port::m_l2mc_count decides whether PortsOrch::removeBridgePort() may remove a
+bridge port, but L2mcOrch kept it only on the group-member path, while the
+SAI members it creates for multicast router ports went uncounted. A port that
+is a group member and a router port at once (a switch's uplink with the
+reserved groups statically flooded to every port; any port on which l2mcd
+hears a query) loses track when it goes down:
+
+- RemoveL2mcGroupMember() keeps the SAI member for the router port and returns
+  without decrementing the count or the group's ref_count;
+- RemoveL2mcMrouterPort() then removes that SAI member, decrementing neither;
+- a member l2mcd reports in a group the port was in only as a router port is
+  "already there": no ref_count, no count, and its later delete decrements a
+  count that was never raised.
+
+Seen on a Celestica DX010 (Tomahawk-1) on 202511 with this series: a port
+whose link dropped while it was both was left with m_l2mc_count 4 and no L2MC
+group member on its bridge port in ASIC_DB, and every entry it had been in
+with a ref_count that never reaches zero.
+
+The next time the port left its last VLAN, removeBridgePort() set the bridge
+port admin down, removed its STP ports, and only then refused on the count;
+doVlanMemberTask() kept the delete and retried it twice a second, and the
+VLAN added next (a native VLAN move is a delete then an add) reused the admin
+down bridge port: no learning, the port dead until a swss restart. The
+retried delete also took the port out of a VLAN of the same name added back
+behind it. The refusal strands a port without the leak too, whenever l2mcd's
+member deletes reach orchagent after the VLAN member delete.
+
+- m_l2mc_count is now every SAI L2MC group member on the port's bridge port,
+  whichever path created it (countMember(), in PortsOrch's own copy); a group's
+  ref_count counts the members with is_l2mc_member, so a router port's member
+  becoming a group member, or ceasing to be one while the router port stays,
+  moves the ref_count and not the SAI member.
+- removeL2mcPortMembers() drops a port's members in one VLAN, or in all of
+  them, with the port's place in the router-port lists, without waiting for
+  l2mcd: removeVlanMember() calls it for the VLAN the port leaves, and
+  removeBridgePort() for every VLAN before it changes anything of the bridge
+  port. A group left without a member goes, as on a leave; l2mcd's late
+  deletes find nothing. A count left above zero with no member is logged and
+  reset rather than refused.
+- PortsOrch's copies of the port and the VLAN take L2mcOrch's counts before
+  they are written back.
+- doL2mcMrouterTask() lists a router port once: a retried SET pushed it again,
+  and the copy outlived the port's removal from the list.
+
+Tests: L2mcOrchTest (the DX010's sequence, a router port leaving before the
+member, a port leaving its VLAN with members left, a port leaving one of two
+VLANs). Before this change all four fail, the first two with the counts above
+and the third with the bridge port reused admin down.
+---
+ orchagent/l2mcorch.cpp           | 185 ++++++++++++++---
+ orchagent/l2mcorch.h             |   2 +
+ orchagent/portsorch.cpp          |  46 ++++-
+ tests/mock_tests/Makefile.am     |   1 +
+ tests/mock_tests/l2mcorch_ut.cpp | 336 +++++++++++++++++++++++++++++++
+ 5 files changed, 528 insertions(+), 42 deletions(-)
+ create mode 100644 tests/mock_tests/l2mcorch_ut.cpp
+
+diff --git a/orchagent/l2mcorch.cpp b/orchagent/l2mcorch.cpp
+index 0c6ead5..392222c 100644
+--- a/orchagent/l2mcorch.cpp
++++ b/orchagent/l2mcorch.cpp
+@@ -87,6 +87,51 @@ bool L2mcOrch::isSuppressionEnabled(string vlan_alias) const
+             ||it->second.unknown_ipv6_enabled || it->second.ipv6_link_local_enabled );
+ }
+ 
++/* Port::m_l2mc_count is the number of SAI L2MC group members whose output is
++ * the port's bridge port, whichever path created them (a group member or a
++ * multicast router port): removeBridgePort relies on it. The VLAN's count
++ * follows. Kept in PortsOrch's own copy; *port, when given, is the caller's
++ * copy, brought in step. */
++void L2mcOrch::countMember(const string &port_alias, const string &vlan_alias, bool add, Port *port)
++{
++    Port p, vlan;
++
++    if (gPortsOrch->getPort(port_alias, p))
++    {
++        if (add)
++        {
++            p.m_l2mc_count++;
++        }
++        else if (p.m_l2mc_count > 0)
++        {
++            p.m_l2mc_count--;
++        }
++        else
++        {
++            SWSS_LOG_ERROR("port %s: an l2mc group member removed with none counted", port_alias.c_str());
++        }
++        gPortsOrch->setPort(port_alias, p);
++        if (port)
++        {
++            port->m_l2mc_count = p.m_l2mc_count;
++        }
++    }
++    if (gPortsOrch->getPort(vlan_alias, vlan))
++    {
++        if (add)
++        {
++            vlan.m_l2mc_count++;
++        }
++        else if (vlan.m_l2mc_count > 0)
++        {
++            vlan.m_l2mc_count--;
++        }
++        gPortsOrch->setPort(vlan_alias, vlan);
++    }
++    SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
++        port_alias.c_str(), p.m_l2mc_count, vlan_alias.c_str(), vlan.m_l2mc_count);
++}
++
+ // bool L2mcOrch::bake()
+ // {
+ //     SWSS_LOG_ENTER();
+@@ -116,8 +161,22 @@ bool L2mcOrch::AddL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vlan_a
+ 
+     auto l2mc_group = m_syncdL2mcEntries.at(vlan_alias).find(l2mc_GrpKey);
+     /*Group member already exists */
+-    if (l2mc_group->second.l2mc_group_members.find(port.m_alias) != l2mc_group->second.l2mc_group_members.end())
++    auto existing = l2mc_group->second.l2mc_group_members.find(port.m_alias);
++    if (existing != l2mc_group->second.l2mc_group_members.end())
++    {
++        if (!existing->second.is_l2mc_member)
++        {
++            /* Made for the port as a multicast router port: it is a group
++             * member now too. The SAI member is already counted on the port;
++             * the group's reference count takes the member. */
++            existing->second.is_l2mc_member = true;
++            increaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++            SWSS_LOG_NOTICE("AddL2mcGroupMember: (%s,%s,%s) router port %s is a group member too",
++                            l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(),
++                            l2mc_GrpKey.vlan_alias.c_str(), port.m_alias.c_str());
++        }
+         return true;
++    }
+ 
+     SWSS_LOG_NOTICE("AddL2mcGroupMember: (%s,%s,%s) Add l2mc group member %s to l2mc_gid:%lx", 
+                     l2mc_GrpKey.source_address.to_string().c_str(), l2mc_GrpKey.group_address.to_string().c_str(), 
+@@ -146,13 +205,7 @@ bool L2mcOrch::AddL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vlan_a
+     l2mc_group->second.l2mc_group_members[port.m_alias].l2mc_member_id = l2mc_member_id;
+     l2mc_group->second.l2mc_group_members[port.m_alias].is_l2mc_member = true;
+     increaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
+-
+-    port.m_l2mc_count++;
+-    gPortsOrch->setPort(port.m_alias, port);
+-    vlan.m_l2mc_count++;
+-    gPortsOrch->setPort(vlan.m_alias, vlan);
+-    SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
+-        port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++    countMember(port.m_alias, vlan_alias, true, &port);
+ 
+     return true;
+ }
+@@ -180,6 +233,11 @@ bool L2mcOrch::RemoveL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vla
+     /* l2mc group member already deleted or doesn't exists */
+     if(l2mc_group_member == l2mc_group->second.l2mc_group_members.end())
+         return true;
++
++    /* Only there as a multicast router port: no group member to remove (the
++     * router port's removal takes the SAI member). */
++    if (!l2mc_group_member->second.is_l2mc_member)
++        return true;
+     
+     /* Retain l2mc group member from deletion if mrouter port learnt on the
+      * same member port where delete request recieved due to IGMP leave*/
+@@ -197,14 +255,14 @@ bool L2mcOrch::RemoveL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vla
+         {
+             SWSS_LOG_NOTICE("L2mc mrouter port is same as group member port (%s, %s, %d)", l2mc_GrpKey.source_address.to_string().c_str(),
+                     l2mc_GrpKey.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id);
+-        
+-            if (l2mc_group_member != l2mc_group->second.l2mc_group_members.end())
+-            {
+-                l2mc_group->second.l2mc_group_members[port.m_alias].is_l2mc_member = false;
+-            }
+-            /* If it is the last memember, IGMP leave should be allowed to delete the member */
+-            if(m_syncdL2mcEntries[vlan_alias][l2mc_GrpKey].ref_count != 1)
+-                return true;
++
++            /* The SAI member stays for the router port (RemoveL2mcMrouterPort
++             * takes it, and counts it off the port); the group loses the
++             * member. When it was the last, the caller removes the entry,
++             * this member with it. */
++            l2mc_group_member->second.is_l2mc_member = false;
++            decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++            return true;
+         }
+     }
+ 
+@@ -224,13 +282,7 @@ bool L2mcOrch::RemoveL2mcGroupMember(const L2mcGroupKey &l2mc_GrpKey, string vla
+         }
+         decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
+         l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
+-
+-        port.m_l2mc_count--;
+-        gPortsOrch->setPort(port.m_alias, port);
+-        vlan.m_l2mc_count--;
+-        gPortsOrch->setPort(vlan.m_alias, vlan);
+-        SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
+-            port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++        countMember(port.m_alias, vlan_alias, false, &port);
+     }
+     return true;
+ }
+@@ -282,15 +334,12 @@ bool L2mcOrch::RemoveL2mcGroupMembers(const L2mcGroupKey &l2mc_GrpKey, string vl
+                            l2mc_group_member->second.l2mc_member_id, l2mc_group->second.l2mc_group_id, status);
+             return false;
+         }
+-        decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++        if (l2mc_group_member->second.is_l2mc_member)
++        {
++            decreaseL2mcMemberRefCount(vlan_alias, l2mc_GrpKey);
++        }
+         l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
+-
+-        port.m_l2mc_count--;
+-        gPortsOrch->setPort(port.m_alias, port);
+-        vlan.m_l2mc_count--;
+-        gPortsOrch->setPort(vlan.m_alias, vlan);
+-        SWSS_LOG_NOTICE("port %s l2mc_count %u vlan %s l2mc_count %u",
+-            port.m_alias.c_str(), port.m_l2mc_count, vlan.m_alias.c_str(), vlan.m_l2mc_count);
++        countMember(port.m_alias, vlan_alias, false);
+     }
+     return true;
+ }
+@@ -462,6 +511,7 @@ bool L2mcOrch::RemoveL2mcEntry(const L2mcGroupKey &key, Port &vlan)
+                            l2mc_group_member->second.l2mc_member_id, status);
+             return false;
+         }
++        countMember(l2mc_group_member->first, vlan.m_alias, false);
+         l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
+     }
+     /* Remove l2mc group */
+@@ -534,6 +584,7 @@ bool L2mcOrch::RemoveL2mcEntrys(Port &vlan)
+                             l2mc_group_member->second.l2mc_member_id, status);
+                 return false;
+             }
++            countMember(l2mc_group_member->first, vlan.m_alias, false);
+             l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
+         }
+         /* Remove l2mc group */
+@@ -596,6 +647,7 @@ bool L2mcOrch::AddL2mcMrouterPort(const L2mcGroupKey &l2mc_GrpKey, string vlan,
+     SWSS_LOG_NOTICE("AddL2mcMrouterPort: Success to add mrouter port %s as l2mc group member to l2mc-grp:%lx rv:%d",
+                         port.m_alias.c_str(), l2mc_group->second.l2mc_group_id, status);
+     l2mc_group->second.l2mc_group_members[port.m_alias].l2mc_member_id = l2mc_member_id;
++    countMember(port.m_alias, vlan, true, &port);
+     return true;
+ }
+ 
+@@ -633,6 +685,7 @@ bool L2mcOrch::RemoveL2mcMrouterPort(const L2mcGroupKey &l2mc_GrpKey, string vla
+         }
+ 
+         l2mc_group_members.erase(l2mc_group_member);
++        countMember(port, vlan, false);
+ 
+         SWSS_LOG_NOTICE("RemoveL2mcMrouterPort: Success to remove l2mc mrouter group member %lx, from l2mc-grp:%lx rv:%d",
+                         member_id, group_id, status);
+@@ -1347,7 +1400,8 @@ void L2mcOrch::doL2mcMrouterTask(Consumer &consumer)
+ 
+         if (op == SET_COMMAND)
+         {
+-            mrouter_ports->push_back(port_alias);
++            if (find(mrouter_ports->begin(), mrouter_ports->end(), port_alias) == mrouter_ports->end())
++                mrouter_ports->push_back(port_alias);
+ 
+             if (addMrouterPortToL2mcEntries(vlan_alias, port, protocol))
+             {
+@@ -1502,6 +1556,73 @@ bool L2mcOrch::removeL2mcFromVlan(string vlan_alias)
+ 
+ }
+ 
++/* Drop every group member whose output is the port's bridge port, in one VLAN
++ * (the port is leaving it) or in all of them (its bridge port is about to go),
++ * and the port's place in those VLANs' router-port lists, without waiting for
++ * the deletes l2mcd sends: a member outside its VLAN carries nothing, and a
++ * bridge port removal that waits on them was refused with the bridge port
++ * already down. A group left without a member goes, as on a leave. l2mcd's
++ * later deletes find nothing and are done. */
++bool L2mcOrch::removeL2mcPortMembers(const Port &port, const string &vlan_alias)
++{
++    SWSS_LOG_ENTER();
++
++    vector<string> vlans;
++    for (const auto &v : m_syncdL2mcEntries)
++    {
++        if (vlan_alias.empty() || v.first == vlan_alias)
++            vlans.push_back(v.first);
++    }
++    for (const auto &v : vlans)
++    {
++        vector<L2mcGroupKey> emptied;
++        for (auto &e : m_syncdL2mcEntries.at(v))
++        {
++            auto m = e.second.l2mc_group_members.find(port.m_alias);
++            if (m == e.second.l2mc_group_members.end())
++                continue;
++            sai_status_t status = sai_l2mc_group_api->remove_l2mc_group_member(m->second.l2mc_member_id);
++            if (status != SAI_STATUS_SUCCESS)
++            {
++                SWSS_LOG_ERROR("removeL2mcPortMembers: Failed to remove l2mc group member %lx of %s from l2mc-grp:%lx rv:%d",
++                               m->second.l2mc_member_id, port.m_alias.c_str(), e.second.l2mc_group_id, status);
++                return false;
++            }
++            SWSS_LOG_NOTICE("removeL2mcPortMembers: (%s,%s,%s) l2mc group member %s removed with its port",
++                            e.first.source_address.to_string().c_str(), e.first.group_address.to_string().c_str(),
++                            v.c_str(), port.m_alias.c_str());
++            if (m->second.is_l2mc_member)
++                e.second.ref_count--;
++            e.second.l2mc_group_members.erase(m);
++            countMember(port.m_alias, v, false);
++            if (e.second.ref_count <= 0)
++                emptied.push_back(e.first);
++        }
++        Port vlan;
++        if (!emptied.empty() && gPortsOrch->getPort(v, vlan))
++        {
++            for (const auto &key : emptied)
++                RemoveL2mcEntry(key, vlan);
++        }
++    }
++    for (auto *lists : {&mrouter_ports_ipv4_per_vlan, &mrouter_ports_ipv6_per_vlan})
++    {
++        for (auto it = lists->begin(); it != lists->end();)
++        {
++            if (vlan_alias.empty() || it->first == vlan_alias)
++            {
++                auto &ports = it->second;
++                ports.erase(std::remove(ports.begin(), ports.end(), port.m_alias), ports.end());
++            }
++            if (it->second.empty())
++                it = lists->erase(it);
++            else
++                it++;
++        }
++    }
++    return true;
++}
++
+ void L2mcOrch::update(SubjectType type, void *cntx)
+ {
+     SWSS_LOG_ENTER();
+diff --git a/orchagent/l2mcorch.h b/orchagent/l2mcorch.h
+index 1ce1eec..87aa973 100644
+--- a/orchagent/l2mcorch.h
++++ b/orchagent/l2mcorch.h
+@@ -101,6 +101,7 @@ public:
+     bool RemoveL2mcGroupMembers(const L2mcGroupKey&, string vlan);
+     bool isSuppressionEnabled(string vlan_alias) const;
+     void removeMrouterPortFromL2mcEntries(string vlan, string mrouterport,string protocol);
++    bool removeL2mcPortMembers(const Port &port, const string &vlan_alias = "");
+ 
+ private:
+ 
+@@ -130,6 +131,7 @@ private:
+     bool AddL2mcMrouterPort(const L2mcGroupKey &l2mc_grpKey, string vlan, Port &port);
+     bool RemoveL2mcMrouterPort(const L2mcGroupKey &l2mc_grpKey, string vlan, string port);
+     bool addMrouterPortToL2mcEntries(string vlan, Port &port,string protocol);
++    void countMember(const string &port_alias, const string &vlan_alias, bool add, Port *port = nullptr);
+     //void removeMrouterPortFromL2mcEntries(string vlan, string mrouterport);
+     bool dealOptimisedMuliticastFlood(string vlan,bool flag);
+     bool dealLinkLocalGroupsSuppress(string vlan,bool flag);
+diff --git a/orchagent/portsorch.cpp b/orchagent/portsorch.cpp
+index dd4b7d7..2e21d59 100644
+--- a/orchagent/portsorch.cpp
++++ b/orchagent/portsorch.cpp
+@@ -7254,6 +7254,26 @@ bool PortsOrch::removeBridgePort(Port &port)
+     {
+         return true;
+     }
++
++    /* Remove L2MC group members before anything of the bridge port changes: a
++     * port in no VLAN is in no group, and a refusal after the admin down below
++     * left the bridge port down, to be reused as it was by the next VLAN
++     * member add. */
++    if (gL2mcOrch)
++    {
++        if (!gL2mcOrch->removeL2mcPortMembers(port))
++        {
++            return false;
++        }
++        port.m_l2mc_count = m_portList[port.m_alias].m_l2mc_count;
++    }
++    if (port.m_l2mc_count != 0)
++    {
++        SWSS_LOG_ERROR("port %s: l2mc_count %u with no l2mc group member left; reset to 0",
++            port.m_alias.c_str(), port.m_l2mc_count);
++        port.m_l2mc_count = 0;
++    }
++
+     /* Set bridge port admin status to DOWN */
+     sai_attribute_t attr;
+     attr.id = SAI_BRIDGE_PORT_ATTR_ADMIN_STATE;
+@@ -7281,13 +7301,6 @@ bool PortsOrch::removeBridgePort(Port &port)
+     /* Remove STP ports before bridge port deletion*/
+     gStpOrch->removeStpPorts(port);
+ 
+-    /* Remove L2MC ports before bridge port deletion*/
+-    if (port.m_l2mc_count != 0)
+-    {
+-        SWSS_LOG_NOTICE("port %s still has references to a Layer 2 multicast group member.", port.m_alias.c_str());
+-        return false;
+-    }
+-
+     //Flush the FDB entires corresponding to the port
+     gFdbOrch->flushFDBEntries(port.m_bridge_port_id, SAI_NULL_OBJECT_ID);
+     SWSS_LOG_INFO("Flush FDB entries for port %s", port.m_alias.c_str());
+@@ -7847,9 +7860,22 @@ bool PortsOrch::removeVlanMember(Port &vlan, Port &port, string end_point_ip)
+         return removeVlanEndPointIp(vlan, port, end_point_ip);
+     }
+ 
+-    gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V4");
+-    gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V6");
+-    
++    if (gL2mcOrch)
++    {
++        gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V4");
++        gL2mcOrch->removeMrouterPortFromL2mcEntries(vlan.m_alias,port.m_alias,"V6");
++        /* and the port's group members in this VLAN, whatever l2mcd has yet
++         * to delete */
++        if (!gL2mcOrch->removeL2mcPortMembers(port, vlan.m_alias))
++        {
++            return false;
++        }
++        /* L2mcOrch keeps the counts in m_portList: the copies here must not
++         * write the old ones back below */
++        port.m_l2mc_count = m_portList[port.m_alias].m_l2mc_count;
++        vlan.m_l2mc_count = m_portList[vlan.m_alias].m_l2mc_count;
++    }
++
+     sai_object_id_t vlan_member_id;
+     sai_vlan_tagging_mode_t sai_tagging_mode;
+     auto vlan_member = m_portVlanMember[port.m_alias].find(vlan.m_vlan_info.vlan_id);
+diff --git a/tests/mock_tests/Makefile.am b/tests/mock_tests/Makefile.am
+index 601597f..3cf14fb 100644
+--- a/tests/mock_tests/Makefile.am
++++ b/tests/mock_tests/Makefile.am
+@@ -77,6 +77,7 @@ tests_SOURCES = aclorch_ut.cpp \
+                 dashmeterorch_ut.cpp \
+                 twamporch_ut.cpp \
+                 stporch_ut.cpp \
++                l2mcorch_ut.cpp \
+                 srv6orch_ut.cpp \
+                 flexcounter_ut.cpp \
+                 portphyattr_ut.cpp \
+diff --git a/tests/mock_tests/l2mcorch_ut.cpp b/tests/mock_tests/l2mcorch_ut.cpp
+new file mode 100644
+index 0000000..19c478b
+--- /dev/null
++++ b/tests/mock_tests/l2mcorch_ut.cpp
+@@ -0,0 +1,336 @@
++#include <gtest/gtest.h>
++#include <gmock/gmock.h>
++
++/* L2mcOrch's tables and Orch's executors: both before anything else
++ * includes l2mcorch.h or orch.h */
++#define private public
++#define protected public
++#include "directory.h"
++#include "orch.h"
++#include "l2mcorch.h"
++#undef protected
++#undef private
++#include "ut_helper.h"
++#include "dbconnector.h"
++#include "mock_orchagent_main.h"
++#include "mock_orch_test.h"
++#include "mock_table.h"
++#include "stporch.h"
++
++#include <map>
++
++extern L2mcOrch *gL2mcOrch;
++
++/* L2mcOrch's reference counts when a port is a group member and a multicast
++ * router port at once, and a bridge port removed while members still name
++ * it: the sequence that, on a Celestica DX010 (2026-11-14), left a port's
++ * m_l2mc_count above zero with no member left, and the next VLAN move with
++ * its bridge port admin down and reused by the VLAN added after. */
++namespace l2mcorch_test
++{
++    using namespace std;
++    using namespace swss;
++    using namespace mock_orch_test;
++
++    static const string G1 = "224.0.1.1";
++    static const string G2 = "224.0.1.22";
++    static const string G3 = "224.0.1.60";
++
++    /* The chip's L2MC objects, as far as the test needs them: every member
++     * and the bridge port it outputs to. */
++    static map<sai_object_id_t, sai_object_id_t> g_members;
++    static sai_object_id_t g_next_oid = 0x7700000000000001;
++
++    static sai_status_t ut_create_l2mc_group(sai_object_id_t *oid, sai_object_id_t, uint32_t, const sai_attribute_t *)
++    {
++        *oid = g_next_oid++;
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_remove_l2mc_group(sai_object_id_t)
++    {
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_create_l2mc_group_member(sai_object_id_t *oid, sai_object_id_t, uint32_t count, const sai_attribute_t *attrs)
++    {
++        sai_object_id_t out = SAI_NULL_OBJECT_ID;
++        for (uint32_t i = 0; i < count; i++)
++        {
++            if (attrs[i].id == SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_OUTPUT_ID)
++                out = attrs[i].value.oid;
++        }
++        if (out == SAI_NULL_OBJECT_ID)
++            return SAI_STATUS_INVALID_PARAMETER;
++        *oid = g_next_oid++;
++        g_members[*oid] = out;
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_remove_l2mc_group_member(sai_object_id_t oid)
++    {
++        return g_members.erase(oid) ? SAI_STATUS_SUCCESS : SAI_STATUS_ITEM_NOT_FOUND;
++    }
++    static sai_status_t ut_create_l2mc_entry(const sai_l2mc_entry_t *, uint32_t, const sai_attribute_t *)
++    {
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_remove_l2mc_entry(const sai_l2mc_entry_t *)
++    {
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_get_switch_attribute(sai_object_id_t, uint32_t, sai_attribute_t *)
++    {
++        return SAI_STATUS_SUCCESS;
++    }
++    static sai_status_t ut_flush_fdb_entries(sai_object_id_t, uint32_t, const sai_attribute_t *)
++    {
++        return SAI_STATUS_SUCCESS;
++    }
++
++    class L2mcOrchTest : public MockOrchTest
++    {
++    protected:
++        sai_l2mc_group_api_t ut_group_api, *org_group_api;
++        sai_l2mc_api_t ut_entry_api, *org_entry_api;
++        sai_switch_api_t ut_switch_api, *org_switch_api;
++        sai_fdb_api_t ut_fdb_api, *org_fdb_api;
++
++        void ApplyInitialConfigs() override
++        {
++            Table port_table = Table(m_app_db.get(), APP_PORT_TABLE_NAME);
++            Table vlan_table = Table(m_app_db.get(), APP_VLAN_TABLE_NAME);
++            Table vlan_member_table = Table(m_app_db.get(), APP_VLAN_MEMBER_TABLE_NAME);
++
++            auto ports = ut_helper::getInitialSaiPorts();
++            port_table.set(ETHERNET0, ports[ETHERNET0]);
++            port_table.set(ETHERNET4, ports[ETHERNET4]);
++            port_table.set("PortConfigDone", { { "count", to_string(1) } });
++            port_table.set("PortInitDone", { {} });
++
++            for (const auto &v : { VLAN_1000, VLAN_2000 })
++            {
++                vlan_table.set(v, { { "admin_status", "up" }, { "mtu", "9100" }, { "mac", "02:00:00:00:00:01" } });
++            }
++            const string sep = vlan_member_table.getTableNameSeparator();
++            vlan_member_table.set(VLAN_1000 + sep + ETHERNET0, { { "tagging_mode", "untagged" } });
++            vlan_member_table.set(VLAN_1000 + sep + ETHERNET4, { { "tagging_mode", "untagged" } });
++
++            gPortsOrch->addExistingData(&port_table);
++            gPortsOrch->addExistingData(&vlan_table);
++            gPortsOrch->addExistingData(&vlan_member_table);
++            static_cast<Orch *>(gPortsOrch)->doTask();
++        }
++
++        void PostSetUp() override
++        {
++            g_members.clear();
++
++            org_group_api = sai_l2mc_group_api;
++            ut_group_api = {};
++            ut_group_api.create_l2mc_group = ut_create_l2mc_group;
++            ut_group_api.remove_l2mc_group = ut_remove_l2mc_group;
++            ut_group_api.create_l2mc_group_member = ut_create_l2mc_group_member;
++            ut_group_api.remove_l2mc_group_member = ut_remove_l2mc_group_member;
++            sai_l2mc_group_api = &ut_group_api;
++
++            org_entry_api = sai_l2mc_entry_api;
++            ut_entry_api = {};
++            ut_entry_api.create_l2mc_entry = ut_create_l2mc_entry;
++            ut_entry_api.remove_l2mc_entry = ut_remove_l2mc_entry;
++            sai_l2mc_entry_api = &ut_entry_api;
++
++            org_switch_api = sai_switch_api;
++            ut_switch_api = *sai_switch_api;
++            ut_switch_api.get_switch_attribute = ut_get_switch_attribute;
++            sai_switch_api = &ut_switch_api;
++
++            org_fdb_api = sai_fdb_api;
++            ut_fdb_api = *sai_fdb_api;
++            ut_fdb_api.flush_fdb_entries = ut_flush_fdb_entries;
++            sai_fdb_api = &ut_fdb_api;
++
++            vector<string> stp_tables = { "STP_TABLE", "STP_VLAN_INSTANCE_TABLE", "STP_PORT_STATE_TABLE",
++                                          "STP_FASTAGEING_FLUSH_TABLE", "STP_INST_PORT_FLUSH_TABLE" };
++            gStpOrch = new StpOrch(m_app_db.get(), m_state_db.get(), stp_tables);
++
++            vector<string> l2mc_tables = { APP_L2MC_VLAN_TABLE_NAME, APP_L2MC_MEMBER_TABLE_NAME,
++                                           APP_L2MC_MROUTER_TABLE_NAME, APP_L2MC_SUPPRESS_TABLE_NAME };
++            gL2mcOrch = new L2mcOrch(m_app_db.get(), l2mc_tables);
++        }
++
++        void PreTearDown() override
++        {
++            delete gL2mcOrch;
++            gL2mcOrch = nullptr;
++            delete gStpOrch;
++            gStpOrch = nullptr;
++            sai_l2mc_group_api = org_group_api;
++            sai_l2mc_entry_api = org_entry_api;
++            sai_switch_api = org_switch_api;
++            sai_fdb_api = org_fdb_api;
++        }
++
++        void l2mc(const string &table, const string &key, const string &op)
++        {
++            auto consumer = dynamic_cast<Consumer *>(gL2mcOrch->getExecutor(table));
++            consumer->addToSync({ { key, op, {} } });
++            static_cast<Orch *>(gL2mcOrch)->doTask();
++        }
++        void member(const string &group, const string &port, const string &op)
++        {
++            l2mc(APP_L2MC_MEMBER_TABLE_NAME, VLAN_1000 + ":0.0.0.0:" + group + ":" + port, op);
++        }
++        void mrouter(const string &port, const string &op)
++        {
++            l2mc(APP_L2MC_MROUTER_TABLE_NAME, VLAN_1000 + ":" + port + ":V4", op);
++        }
++        void vlanMembers(deque<KeyOpFieldsValuesTuple> entries)
++        {
++            auto consumer = dynamic_cast<Consumer *>(gPortsOrch->getExecutor(APP_VLAN_MEMBER_TABLE_NAME));
++            consumer->addToSync(entries);
++            static_cast<Orch *>(gPortsOrch)->doTask();
++        }
++        size_t pendingVlanMembers()
++        {
++            auto consumer = dynamic_cast<Consumer *>(gPortsOrch->getExecutor(APP_VLAN_MEMBER_TABLE_NAME));
++            return consumer->m_toSync.size();
++        }
++
++        Port port(const string &alias)
++        {
++            Port p;
++            EXPECT_TRUE(gPortsOrch->getPort(alias, p));
++            return p;
++        }
++        /* SAI members whose output is the port's bridge port */
++        size_t chipMembers(const string &alias)
++        {
++            sai_object_id_t bp = port(alias).m_bridge_port_id;
++            size_t n = 0;
++            for (const auto &m : g_members)
++                n += m.second == bp;
++            return n;
++        }
++        bool bridgePortUp(const string &alias)
++        {
++            sai_attribute_t attr;
++            attr.id = SAI_BRIDGE_PORT_ATTR_ADMIN_STATE;
++            EXPECT_EQ(sai_bridge_api->get_bridge_port_attribute(port(alias).m_bridge_port_id, 1, &attr), SAI_STATUS_SUCCESS);
++            return attr.value.booldata;
++        }
++        /* every group's ref_count is its group members, router ports not */
++        void expectRefCounts()
++        {
++            for (const auto &v : gL2mcOrch->m_syncdL2mcEntries)
++            {
++                for (const auto &e : v.second)
++                {
++                    int members = 0;
++                    for (const auto &m : e.second.l2mc_group_members)
++                        members += m.second.is_l2mc_member;
++                    EXPECT_EQ(e.second.ref_count, members) << e.first.group_address.to_string();
++                }
++            }
++        }
++    };
++
++    /* The DX010's 09:11-09:12 sequence: Ethernet32 a static member of the
++     * reserved groups beside the uplink, learned as a router port on a loop,
++     * a member of a group it had only as a router port, then its link down:
++     * l2mcd's member deletes arrive while it is still a router port, the
++     * router port's delete after them. */
++    TEST_F(L2mcOrchTest, RouterPortThatIsAMemberGoesDown)
++    {
++        member(G1, ETHERNET0, SET_COMMAND);
++        member(G1, ETHERNET4, SET_COMMAND);
++        member(G2, ETHERNET0, SET_COMMAND);
++        member(G2, ETHERNET4, SET_COMMAND);
++        member(G3, ETHERNET0, SET_COMMAND);
++        mrouter(ETHERNET4, SET_COMMAND); /* joins G3 as a router port */
++        ASSERT_EQ(chipMembers(ETHERNET4), 3u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 3u);
++        member(G3, ETHERNET4, SET_COMMAND); /* a member of G3 too */
++        EXPECT_EQ(chipMembers(ETHERNET4), 3u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 3u);
++        expectRefCounts();
++
++        member(G1, ETHERNET4, DEL_COMMAND);
++        member(G2, ETHERNET4, DEL_COMMAND);
++        member(G3, ETHERNET4, DEL_COMMAND);
++        expectRefCounts();
++        mrouter(ETHERNET4, DEL_COMMAND);
++
++        EXPECT_EQ(chipMembers(ETHERNET4), 0u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
++        EXPECT_EQ(chipMembers(ETHERNET0), 3u);
++        EXPECT_EQ(port(ETHERNET0).m_l2mc_count, 3u);
++        expectRefCounts();
++
++        /* the native VLAN move that found the bridge port refused */
++        vlanMembers({ { VLAN_1000 + ":" + ETHERNET4, DEL_COMMAND, {} },
++                      { VLAN_2000 + ":" + ETHERNET4, SET_COMMAND, { { "tagging_mode", "untagged" } } } });
++        EXPECT_EQ(pendingVlanMembers(), 0u);
++        EXPECT_TRUE(bridgePortUp(ETHERNET4));
++    }
++
++    /* A router port that becomes a member, then stops being a router port
++     * first: the member stays, counted once, and goes with its delete. */
++    TEST_F(L2mcOrchTest, RouterPortLeavesBeforeTheMember)
++    {
++        member(G1, ETHERNET0, SET_COMMAND);
++        mrouter(ETHERNET4, SET_COMMAND);
++        member(G1, ETHERNET4, SET_COMMAND);
++        mrouter(ETHERNET4, DEL_COMMAND);
++        EXPECT_EQ(chipMembers(ETHERNET4), 1u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 1u);
++        member(G1, ETHERNET4, DEL_COMMAND);
++        EXPECT_EQ(chipMembers(ETHERNET4), 0u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
++        expectRefCounts();
++    }
++
++    /* The port leaves its only VLAN for another while l2mcd has not yet
++     * deleted its members there (the driver deleted the static rows just
++     * before): the members go with the VLAN membership, the bridge port is
++     * removed and made again, up, and l2mcd's late deletes find nothing. */
++    TEST_F(L2mcOrchTest, PortLeavesItsVlanWithMembersLeft)
++    {
++        member(G1, ETHERNET0, SET_COMMAND);
++        member(G1, ETHERNET4, SET_COMMAND);
++        member(G2, ETHERNET4, SET_COMMAND);
++        mrouter(ETHERNET4, SET_COMMAND);
++        sai_object_id_t before = port(ETHERNET4).m_bridge_port_id;
++
++        vlanMembers({ { VLAN_1000 + ":" + ETHERNET4, DEL_COMMAND, {} },
++                      { VLAN_2000 + ":" + ETHERNET4, SET_COMMAND, { { "tagging_mode", "untagged" } } } });
++        EXPECT_EQ(pendingVlanMembers(), 0u);
++        EXPECT_NE(port(ETHERNET4).m_bridge_port_id, before);
++        EXPECT_TRUE(bridgePortUp(ETHERNET4));
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
++        for (const auto &m : g_members)
++            EXPECT_NE(m.second, before);
++        EXPECT_TRUE(gL2mcOrch->m_syncdL2mcEntries[VLAN_1000].count(L2mcGroupKey(VLAN_1000, IpAddress("0.0.0.0"), IpAddress(G1))));
++        EXPECT_FALSE(gL2mcOrch->m_syncdL2mcEntries[VLAN_1000].count(L2mcGroupKey(VLAN_1000, IpAddress("0.0.0.0"), IpAddress(G2))));
++        expectRefCounts();
++
++        member(G1, ETHERNET4, DEL_COMMAND);
++        member(G2, ETHERNET4, DEL_COMMAND);
++        mrouter(ETHERNET4, DEL_COMMAND);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
++        EXPECT_EQ(port(ETHERNET0).m_l2mc_count, 1u);
++        expectRefCounts();
++    }
++
++    /* A tagged VLAN taken off a port that keeps another: its members in that
++     * VLAN go with it, the bridge port stays. */
++    TEST_F(L2mcOrchTest, PortLeavesOneOfTwoVlans)
++    {
++        vlanMembers({ { VLAN_2000 + ":" + ETHERNET4, SET_COMMAND, { { "tagging_mode", "tagged" } } } });
++        member(G1, ETHERNET4, SET_COMMAND);
++        sai_object_id_t before = port(ETHERNET4).m_bridge_port_id;
++        vlanMembers({ { VLAN_1000 + ":" + ETHERNET4, DEL_COMMAND, {} } });
++        EXPECT_EQ(pendingVlanMembers(), 0u);
++        EXPECT_EQ(port(ETHERNET4).m_bridge_port_id, before);
++        EXPECT_TRUE(bridgePortUp(ETHERNET4));
++        EXPECT_EQ(chipMembers(ETHERNET4), 0u);
++        EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
++    }
++}

@@ -53,6 +53,25 @@ type FixtureRunner struct {
 	// read on the DX010, docs/drivers/sonic.md §11.7.8). With "1",
 	// orchagent's verdict takes L2 tables and their MAC rules.
 	OrchL2 string
+	// OrchL2MCFix answers l2mcFixCheckCommand: "0" (the default) as on every
+	// image without the kit's sonic-swss 0004, "1" as on one with it. On an
+	// image without it (and l2mcd enabled) orchagent's bridge port removal
+	// is modelled (fixture_igmp.go): refused while L2MC members still name
+	// the port, the bridge port left admin down, and reused as it is by the
+	// next VLAN added -- recorded in Stranded, which a test expects empty.
+	OrchL2MCFix string
+	// L2MCLeaked are the ports whose L2MC count orchagent leaked (the
+	// 2026-11-14 state of the DX010's cage 9): their bridge port removal is
+	// refused for good.
+	L2MCLeaked map[string]bool
+	// Stranded are the interfaces a VLAN add reached while their bridge
+	// port was refused and admin down, in order.
+	Stranded []string
+	// l2mcPending: the static rows of these interfaces were deleted in this
+	// batch, and l2mcd's deletes have not reached orchagent yet.
+	l2mcPending map[string]bool
+	// bpRefused: orchagent refused the bridge port removal; it is admin down.
+	bpRefused map[string]bool
 	// DialFails makes a runner from Dial fail its first command, as a
 	// switch that does not answer at the new address would.
 	DialFails bool
@@ -189,6 +208,11 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.Builds++
 		return "", f.buildMstpd(stdin)
+	case command == l2mcFixCheckCommand:
+		if f.OrchL2MCFix == "" {
+			return "0\n", nil
+		}
+		return f.OrchL2MCFix + "\n", nil
 	case command == macACLCheckCommand:
 		if f.OrchL2 == "" {
 			return "0\n", nil
@@ -242,9 +266,11 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 				continue
 			}
 			if err := f.apply(line); err != nil {
+				f.batchEnded()
 				return out, fmt.Errorf("%s: %w", line, err) // set -e: the batch stops here
 			}
 		}
+		f.batchEnded()
 		return out, nil
 	}
 	return "", f.apply(command)
@@ -440,6 +466,8 @@ func (f *FixtureRunner) apply(line string) error {
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
 		return f.applyDevice(w)
 
+	case bridgeWaitPort(w) != "":
+		return f.bridgeWaited(bridgeWaitPort(w))
 	case len(w) == 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && w[2] == "del" && strings.HasPrefix(w[3], "L2MC"):
 		return f.l2mcDel(w[3])
 	case len(w) == 5 && cmd == "config feature state":
@@ -885,7 +913,14 @@ func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error
 		if untagged {
 			mode = "untagged"
 		}
-		return f.update("cfg_vlan_member", func(t table) error { t[k] = map[string]string{"tagging_mode": mode}; return nil })
+		joined := !f.inAnyVLAN(port)
+		if err := f.update("cfg_vlan_member", func(t table) error { t[k] = map[string]string{"tagging_mode": mode}; return nil }); err != nil {
+			return err
+		}
+		if joined {
+			f.vlanJoined(port)
+		}
+		return nil
 	case "del":
 		if _, ok := members[k]; !ok {
 			return fmt.Errorf("%s is not a member of Vlan%s", port, vid)
@@ -893,9 +928,25 @@ func (f *FixtureRunner) vlanMemberOne(op, vid, port string, untagged bool) error
 		if f.staticNames(vid, port) {
 			return fmt.Errorf("Batch delete failed: Port %s cannot be removed from Vlan%s. Please remove all associated static Layer 2 multicast group entries first.", port, vid)
 		}
-		return f.update("cfg_vlan_member", func(t table) error { delete(t, k); return nil })
+		if err := f.update("cfg_vlan_member", func(t table) error { delete(t, k); return nil }); err != nil {
+			return err
+		}
+		if !f.inAnyVLAN(port) {
+			f.vlanLeft(port)
+		}
+		return nil
 	}
 	return fmt.Errorf("usage")
+}
+
+// inAnyVLAN: port is a member of some VLAN.
+func (f *FixtureRunner) inAnyVLAN(port string) bool {
+	for k := range f.table("cfg_vlan_member") {
+		if strings.HasSuffix(k, "|"+port) {
+			return true
+		}
+	}
+	return false
 }
 
 // routerIface: iface has an address in INTERFACE or PORTCHANNEL_INTERFACE

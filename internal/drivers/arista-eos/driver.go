@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,9 +33,9 @@ func (Driver) Name() string { return "arista-eos" }
 
 // Capabilities is what EOS 4.26 on the 7160 honours: STP (priority, path
 // cost, BPDU guard), jumbo, FEC, LACP, storm control (percent), IGMP
-// snooping, LLDP-MED, SNMP, and DHCP snooping as the driver's per-port
-// guard ACLs (acl.go). Not claimed: switch ACL rules (below), port
-// isolation (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror
+// snooping, LLDP-MED, SNMP, DHCP snooping as the driver's per-port guard
+// ACLs and the controller's IP rules in the same lists (acl.go). Not
+// claimed: MAC rules (below), port isolation (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror
 // and aggregate session counts mirror what real switches report (the ECS
 // reports them) so the UI offers both.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
@@ -48,10 +49,12 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 		// VLAN in an ACL, so options.dhcp_guard decides which ports it
 		// reaches (§9.2).
 		DHCPSnooping: true,
-		// Not IPACLs: each rule is copied into every interface's list (57
-		// lists), whose hardware ACL ids and counter pool were measured for
-		// two lists only (§9.4). Not MACACLs: no MAC ACL binds to a
-		// switchport on the 7160 (§9.2).
+		// IPACLs: the controller's IP rules go into every interface's list
+		// after its guard, sized from the chip's counter pool and entry
+		// capacity, measured on the test ports 2026-11-14 (acl.go
+		// maxIPRules, docs/drivers/arista-eos.md §9.4). Not MACACLs: no
+		// MAC ACL binds to a switchport on the 7160 (§9.2).
+		IPACLs:         maxIPRules,
 		MirrorSessions: 1, AggregateSessions: 8,
 	}
 }
@@ -97,6 +100,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	}
 	c := NewCollector(t)
 	c.host, c.redial = host, redial
+	c.mgmtPort = mgmtPort(cfg)
 	if cfg.Username != "" {
 		c.SetSSHKeyUser(cfg.Username) // controller SSH keys land on the bridge's own user
 	} else if cfg.SSH != "" {
@@ -127,6 +131,33 @@ var (
 	_ devicemodel.Rebooter         = (*Collector)(nil)
 	_ devicemodel.SSHKeyInstaller  = (*Collector)(nil)
 )
+
+// mgmtPort is the TCP port the bridge reaches the switch on: the eAPI
+// URL's (443 for https, 80 for http, when it names none), or the SSH
+// target's (22 when it names none).
+func mgmtPort(cfg devicemodel.DriverConfig) int {
+	if cfg.URL != "" {
+		u, err := url.Parse(cfg.URL)
+		if err != nil {
+			return 0
+		}
+		if p, err := strconv.Atoi(u.Port()); err == nil {
+			return p
+		}
+		if u.Scheme == "http" {
+			return 80
+		}
+		return 443
+	}
+	if _, hp, ok := strings.Cut(cfg.SSH, "@"); ok {
+		if _, p, ok := strings.Cut(hp, ":"); ok {
+			if n, err := strconv.Atoi(p); err == nil {
+				return n
+			}
+		}
+	}
+	return 22
+}
 
 // eapiHost is the host part of an eAPI URL; replaceHost puts another host in
 // its place, keeping scheme, port and path.

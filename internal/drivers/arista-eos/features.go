@@ -361,6 +361,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	// The DHCP guard and the ACL rules go last, in a session of their own
 	// that the switch reverts unless the bridge still reaches it.
 	want, werr := aclWantFrom(d, snap.VLANs, c.dhcpGuard)
+	werr = errors.Join(werr, c.holdIfCutsManagement(d, &want))
 	n, aerr := c.applyACL(ctx, snap, want)
 	return len(cmds) + n, errors.Join(werr, aerr)
 }

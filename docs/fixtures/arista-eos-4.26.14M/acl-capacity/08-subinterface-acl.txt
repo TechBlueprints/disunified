@@ -1,0 +1,448 @@
+# Ethernet2 as a routed port with 70 dot1q subinterfaces: `ip access-group` on a subinterface is `Unavailable command (not supported on this hardware platform)`; the four lane lists of Ethernet54 programmed (ids 1-4).
+# Session: configure session dui-probe, the lists, `commit timer 00:05:00`, the reads, then `configure session dui-probe abort`.
+
+# (the 70 subinterfaces' refusals: the first three are shown; every `ip access-group` on a subinterface was refused the same way)
+### first refusals
+% Unavailable command (not supported on this hardware platform) at line 18
+% Unavailable command (not supported on this hardware platform) at line 28
+
+### EOS messages and summary while the session was pending its timer
+  Name    State       User    Terminal 
+! Transceiver for interface Et54/1 is not present. Cannot verify compatibility of speed and duplex settings. at line 8
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_10
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_11
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_12
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_13
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_14
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_15
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_16
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_17
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_18
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_19
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_20
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_21
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_22
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_23
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_24
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_25
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_26
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_27
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_28
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_29
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_3
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_30
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_31
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_32
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_33
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_34
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_35
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_36
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_37
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_38
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_39
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_40
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_41
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_42
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_43
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_44
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_45
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_46
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_47
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_48
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_49
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_50
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_51
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_52
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_53
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_54
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_55
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_56
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_57
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_58
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_59
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_6
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_60
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_61
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_62
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_63
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_64
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_65
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_66
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_67
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_68
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_69
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_7
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_70
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_71
+        Total rules configured: 3
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_72
+        Total rules configured: 3
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_73
+        Total rules configured: 3
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_74
+        Total rules configured: 3
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL DUI_PROBE_8
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_9
+        Total rules configured: 3
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 1
+Number of valid entries in range of 0 to 65536 : 1
+Number of valid entries in range of 0 to 1536 : 101
+Number of valid entries in range of 0 to 1536 : 251
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 2
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 2
+  Name    State       User    Terminal 
+
+### after `configure session dui-probe abort`
+  Name    State       User    Terminal 
+! Transceiver for interface Et54/1 is not present. Cannot verify compatibility of speed and duplex settings. at line 8
+> ip access-group DUI_PROBE_1 in
+> ip access-group DUI_PROBE_2 in
+> ip access-group DUI_PROBE_3 in
+> ip access-group DUI_PROBE_4 in
+> ip access-group DUI_PROBE_5 in
+> ip access-group DUI_PROBE_6 in
+> ip access-group DUI_PROBE_7 in
+> ip access-group DUI_PROBE_8 in
+> ip access-group DUI_PROBE_9 in
+> ip access-group DUI_PROBE_10 in
+> ip access-group DUI_PROBE_11 in
+> ip access-group DUI_PROBE_12 in
+> ip access-group DUI_PROBE_13 in
+> ip access-group DUI_PROBE_14 in
+> ip access-group DUI_PROBE_15 in
+> ip access-group DUI_PROBE_16 in
+> ip access-group DUI_PROBE_17 in
+> ip access-group DUI_PROBE_18 in
+> ip access-group DUI_PROBE_19 in
+> ip access-group DUI_PROBE_20 in
+> ip access-group DUI_PROBE_21 in
+> ip access-group DUI_PROBE_22 in
+> ip access-group DUI_PROBE_23 in
+> ip access-group DUI_PROBE_24 in
+> ip access-group DUI_PROBE_25 in
+> ip access-group DUI_PROBE_26 in
+> ip access-group DUI_PROBE_27 in
+> ip access-group DUI_PROBE_28 in
+> ip access-group DUI_PROBE_29 in
+> ip access-group DUI_PROBE_30 in
+> ip access-group DUI_PROBE_31 in
+> ip access-group DUI_PROBE_32 in
+> ip access-group DUI_PROBE_33 in
+> ip access-group DUI_PROBE_34 in
+> ip access-group DUI_PROBE_35 in
+> ip access-group DUI_PROBE_36 in
+> ip access-group DUI_PROBE_37 in
+> ip access-group DUI_PROBE_38 in
+> ip access-group DUI_PROBE_39 in
+> ip access-group DUI_PROBE_40 in
+> ip access-group DUI_PROBE_41 in
+> ip access-group DUI_PROBE_42 in
+> ip access-group DUI_PROBE_43 in
+> ip access-group DUI_PROBE_44 in
+> ip access-group DUI_PROBE_45 in
+> ip access-group DUI_PROBE_46 in
+> ip access-group DUI_PROBE_47 in
+> ip access-group DUI_PROBE_48 in
+> ip access-group DUI_PROBE_49 in
+> ip access-group DUI_PROBE_50 in
+> ip access-group DUI_PROBE_51 in
+> ip access-group DUI_PROBE_52 in
+> ip access-group DUI_PROBE_53 in
+> ip access-group DUI_PROBE_54 in
+> ip access-group DUI_PROBE_55 in
+> ip access-group DUI_PROBE_56 in
+> ip access-group DUI_PROBE_57 in
+> ip access-group DUI_PROBE_58 in
+> ip access-group DUI_PROBE_59 in
+> ip access-group DUI_PROBE_60 in
+> ip access-group DUI_PROBE_61 in
+> ip access-group DUI_PROBE_62 in
+> ip access-group DUI_PROBE_63 in
+> ip access-group DUI_PROBE_64 in
+> ip access-group DUI_PROBE_65 in
+> ip access-group DUI_PROBE_66 in
+> ip access-group DUI_PROBE_67 in
+> ip access-group DUI_PROBE_68 in
+> ip access-group DUI_PROBE_69 in
+> ip access-group DUI_PROBE_70 in
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_10
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_11
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_12
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_13
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_14
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_15
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_16
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_17
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_18
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_19
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_20
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_21
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_22
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_23
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_24
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_25
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_26
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_27
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_28
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_29
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_3
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_30
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_31
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_32
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_33
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_34
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_35
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_36
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_37
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_38
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_39
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_40
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_41
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_42
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_43
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_44
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_45
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_46
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_47
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_48
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_49
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_50
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_51
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_52
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_53
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_54
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_55
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_56
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_57
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_58
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_59
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_6
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_60
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_61
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_62
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_63
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_64
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_65
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_66
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_67
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_68
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_69
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_7
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_70
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_71
+        Total rules configured: 3
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_72
+        Total rules configured: 3
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_73
+        Total rules configured: 3
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_74
+        Total rules configured: 3
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL DUI_PROBE_8
+        Total rules configured: 3
+IPV4 ACL DUI_PROBE_9
+        Total rules configured: 3
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 1
+Number of valid entries in range of 0 to 65536 : 1
+Number of valid entries in range of 0 to 1536 : 101
+Number of valid entries in range of 0 to 1536 : 251
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 2
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 3
+Number of valid entries in range of 0 to 4096 : 4
+Number of valid entries in range of 0 to 8192 : 2
+  Name    State       User    Terminal 
+

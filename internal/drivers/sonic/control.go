@@ -56,6 +56,11 @@ type plan struct {
 	// port's state to re-apply on every cycle.
 	controllerOnly bool
 	notes          []string // refusals, logged once each by ApplyPorts
+	// bridgeWait: an interface that leaves its last VLAN waits for its
+	// bridge port to go before anything else uses it (bridgePortWait): an
+	// image with l2mcd running and without the kit's sonic-swss 0004
+	// (§8.15).
+	bridgeWait bool
 	appl           []applOp // APPL_DB writes, run together at the end (portfeat.go)
 
 	// The lane scope (ApplyLanes, lanes.go): ports are one cage's lanes
@@ -137,7 +142,11 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	if snap == nil || st == nil {
 		return nil, fmt.Errorf("sonic apply: no snapshot yet")
 	}
+	c.mu.Lock()
+	fixed := c.l2mcFixed
+	c.mu.Unlock()
 	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	pl.bridgeWait = st.l2mcKnown && st.l2mcFeature == "enabled" && !fixed
 	if cage == 0 {
 		for _, p := range snap.Ports {
 			pl.ports[p.Index] = p
@@ -628,6 +637,12 @@ func (pl *plan) syncVLANs(idx int, iface string, d devicemodel.PortDesired) {
 		return
 	}
 	have := pl.sim.members[iface]
+	if pl.sim.bridgeDown[iface] && !sameVLANs(have, want) {
+		// Every membership change would land on (or keep retrying against)
+		// the bridge port orchagent refused to remove (§8.15).
+		pl.note("port %d: %s's bridge port is held admin down in the chip (orchagent refused its removal: L2MC references, docs/drivers/sonic.md §8.15); its VLANs are left as they are until a swss restart or a reboot clears it", idx, iface)
+		return
+	}
 	var delTagged, addTagged []int
 	delUntagged, addUntagged, untaggedAfter := 0, 0, 0
 	for id, tagged := range have {
@@ -729,6 +744,28 @@ func (pl *plan) vlanMembers(idx int, iface, verb string, ids []int, untagged, al
 			}
 		}
 	})
+	if !add && pl.bridgeWait && len(pl.sim.members[ifc]) == 0 {
+		// The interface's last VLAN went: orchagent removes its bridge port,
+		// and without sonic-swss 0004 it refuses while L2MC members still
+		// name the port -- after setting it admin down -- and the next VLAN
+		// added reuses it as it is (§8.15). Nothing else uses the interface
+		// until the bridge port is gone.
+		w := bridgePortWait(ifc)
+		pl.ops = append(pl.ops, op{cmd: w, idx: idx})
+	}
+}
+
+// sameVLANs: an interface's memberships are what the plan wants.
+func sameVLANs(have, want map[int]bool) bool {
+	if len(have) != len(want) {
+		return false
+	}
+	for id, tagged := range want {
+		if h, ok := have[id]; !ok || h != tagged {
+			return false
+		}
+	}
+	return true
 }
 
 func joinInts(ids []int) string {

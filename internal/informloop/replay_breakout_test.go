@@ -172,14 +172,17 @@ func TestReplayLaneSwitchAggregate(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB hset 'PORTCHANNEL|PortChannel201' mtu 1500",
 	}
 	for _, ln := range []string{"Ethernet5", "Ethernet6", "Ethernet7"} {
-		want = append(want, "sudo config vlan member del 4094 "+ln, "sudo config portchannel member add PortChannel201 "+ln)
+		// The bridge-port wait of docs/drivers/sonic.md §8.15 (l2mcd on this
+		// image, no sonic-swss 0004): a lane that left its last VLAN waits
+		// before it joins.
+		want = append(want, "sudo config vlan member del 4094 "+ln, "<bridge-port wait "+ln+">", "sudo config portchannel member add PortChannel201 "+ln)
 	}
 	want = append(want,
 		"sudo config vlan member add -u 4094 PortChannel201",
 		"sudo config vlan member add -e -m 4094 PortChannel201",
 		brkSave,
 		"sudo python3 - disunified-l2mc", brkSave) // the reserved groups follow the VLAN move (igmp.go)
-	wantWrites(t, "the aggregate push", withoutL2MC(got), want)
+	wantWrites(t, "the aggregate push", waitsNamed(withoutL2MC(got)), want)
 	if !strings.Contains(r.log.String(), "the controller asks for FEC rs, which Ethernet5 does not support (fc,none)") {
 		t.Errorf("no FEC note: %s", r.log.String())
 	}
@@ -222,12 +225,13 @@ func TestReplayLaneSwitchJoin(t *testing.T) {
 	if !r.parent.applyPending(context.Background()) {
 		t.Fatal("the join was not consumed")
 	}
-	got := withoutL2MC(r.writes())
+	got := waitsNamed(withoutL2MC(r.writes()))
 	head := []string{
 		"sudo config portchannel member del PortChannel201 Ethernet5",
 		"sudo config portchannel member del PortChannel201 Ethernet6",
 		"sudo config portchannel member del PortChannel201 Ethernet7",
 		"sudo config vlan member del -m 2,8,9,10,69,1000,2000,3000,4000,4010,4094 PortChannel201",
+		"<bridge-port wait PortChannel201>",
 		"sudo config portchannel del PortChannel201",
 		"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null",
 	}
@@ -239,6 +243,20 @@ func TestReplayLaneSwitchJoin(t *testing.T) {
 	if _, err := r.lanes.Collect(context.Background()); err == nil || !strings.Contains(err.Error(), "not split") {
 		t.Errorf("the lane switch after the join: %v", err)
 	}
+}
+
+// waitsNamed shows sonic's bridge-port wait (a python3 one-liner ending in
+// "<iface> <limit> </dev/null") as "<bridge-port wait <iface>>".
+func waitsNamed(cmds []string) []string {
+	out := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		if strings.HasPrefix(c, "python3 -c ") && strings.Contains(c, "SAI_OBJECT_TYPE_BRIDGE_PORT") && strings.HasSuffix(c, " </dev/null") {
+			f := strings.Fields(c)
+			c = "<bridge-port wait " + f[len(f)-3] + ">"
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 func withoutL2MC(cmds []string) []string {

@@ -1,0 +1,36 @@
+@@@ about
+DX010, image igmp-202511.20261106-f2e25f54c, 2026-11-14, docs/drivers/sonic.md 11.18.2.
+An empty cage in MAC loopback (bcmcmd "port ceN lb=mac"), alone in a tagged test VLAN
+(3997) beside its untagged Vlan4094, the installed disunified-l2d paused; frames sent out of
+the port's netdev come back in through the chip. Scrubbed by hand: the switch MAC is
+02:00:00:00:00:01, the STP root's 02:00:00:00:00:02; LLDP frames left out (system name).
+frames_ethernet36 is from the first watched run (16:40 UTC); the count it led to on the second
+(16:53 UTC) is collect-maclock.txt's l2_maclock section.
+@@@ learn_probe
+# cage 9 (Ethernet32, chip ce8): per learn mode, frames sent from 02:00:00:00:00:99 and how
+# many came back on the netdev; a 20000-frame burst is cut by the default CoPP group.
+{"learn_mode": "drop", "asic_mode": "SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP", "sent": 20, "send_s": 1.018, "back_on_netdev": 0, "rx_span_s": 0, "rx_pps": null, "vlan_tags_seen": []}
+{"learn_mode": "cpu_trap", "asic_mode": "SAI_BRIDGE_PORT_FDB_LEARNING_MODE_CPU_TRAP", "sent": 20, "send_s": 1.012, "back_on_netdev": 20, "rx_span_s": 0.001, "rx_pps": 27130, "vlan_tags_seen": []}
+{"learn_mode": "cpu_trap", "asic_mode": "SAI_BRIDGE_PORT_FDB_LEARNING_MODE_CPU_TRAP", "sent": 20000, "send_s": 0.915, "back_on_netdev": 626, "rx_span_s": 0.114, "rx_pps": 5478, "vlan_tags_seen": []}
+{"learn_mode": "hardware", "asic_mode": "SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW", "sent": 20, "send_s": 1.038, "back_on_netdev": 0, "rx_span_s": 0, "rx_pps": null, "vlan_tags_seen": []}
+# chip counters over the four trials (bcmcmd "show c": name, total, delta)
+PERQ_PKT(0).cpu0 : 1,549 +1,549
+PERQ_DROP_PKT(0).cpu0 : 18,471 +18,471
+RUC.ce8 : 20,060 +20,060
+RPKT.ce8 : 20,124 +20,124 13/s
+@@@ chip_learn
+# cage 10 (Ethernet36, ce9): APPL_DB PORT_TABLE learn_mode -> the chip's lrn column (bcmcmd ps)
+cpu_trap C
+drop D
+cpu_trap C
+hardware FA
+@@@ frames_ethernet36
+# inbound frames on Ethernet36's netdev, 64-byte heads, while watched (cpu_trap, chain in place):
+# the switch's own BPDU through the loopback, then 02:00:00:00:00:91's test frames (no FDB entry
+# in VLAN 3997, so unknown and trapped). The tag is not in the data.
+0180c20000000200000000010027424203000002024e2000020000000002000000c8800002000000000180100100140002000f000000000000000000
+02000000009802000000009188b500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+02000000009802000000009188b500000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+02000000009802000000009188b500000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+02000000009802000000009188b500000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+02000000009802000000009188b500000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000

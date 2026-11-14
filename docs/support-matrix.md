@@ -190,13 +190,16 @@ whether `clear counters` or a flap resets the count (a reset sets nothing).
 `fan_mode: default | quiet` (the controller keeps Fan Mode only for a
 gateway, so no switch gets it from the UI). Default is EOS's automatic
 control (`no environment fan-speed`). Quiet is `environment fan-speed
-override 30`, a fixed speed: EOS 4.26 has no fan floor that its thermal
-control can raise, and 30 % is the lowest override in Arista's manual.
-Fixture- and loop-tested over the auto capture; the override's read-back
-(`overrideFanSpeed` 30), its 4.26.14M syntax and range, and the
-temperatures under it wait for the switch's return
-([`drivers/arista-eos.md`](drivers/arista-eos.md) §8). A PR for another
-model needs its `show system environment cooling` under an override.
+override 30`, a fixed speed. **Checked on the switch 2026-11-14** (the
+return-day steps 1-2, [`drivers/arista-eos.md`](drivers/arista-eos.md) §8):
+the override's range on 4.26.14M is 30-100 %, so 30 % stands; 4.26.14M
+also offers `environment fan-speed minimum <30-100>`, a floor under the
+automatic control, which does not make the switch quieter while the control
+runs above it (43 % under auto that day); the auto baseline is captured.
+Still waiting: Quiet applied through the bridge, its read-back
+(`overrideFanSpeed` 30) and the temperatures under it (steps 3-7, which
+need the deployed config and a restart). A PR for another model needs its
+`show system environment cooling` under an override.
 
 **DHCP guarding (Rogue DHCP Server Detection) and rogue DHCP reporting
 (2026-11-14), claimed.** One ingress IPv4 ACL per interface,
@@ -215,12 +218,12 @@ gateway's port and switch-facing ports
 | Plan, rewrite, removal, a foreign ACL left alone, modes, attribution (lanes summed, aggregate on its first member) | fixture-tested over the live captures (`acl_test.go`, `acl_counters_test.go`) |
 | A rogue reply dropped and counted, a trusted one and ARP/IPv6 passing, the drop time of a rewrite | **untested**: needs a host cabled to a test port (§9.7) |
 | The controller's push of guard groups to this switch and the alert in the UI | **untested**: the end-to-end run after the merge (§9.7) |
+| **IP ACL rules, claimed (`max_custom_ip_acls` 32) 2026-11-14**: the chip's ACL capacity measured on the test ports (one counter pool of 4095 for every list, two hash entries per counted rule, 20094 entries in five lists without an error, ACL ids 1-5 in bind order); the claim holds for every interface (72 with every cage split) carrying the guard and 32 rules, up to 22 trusted servers per port | **live** for the capacity (§9.1, `docs/fixtures/arista-eos-4.26.14M/acl-capacity/`); the rules themselves fixture- and replay-tested (`TestReplayAristaIPRulePushes`, the ECS's and the DX010's captured pushes) |
+| More lists than five at once (one per interface, up to 72) | **not measured**: subinterfaces take no ACL on the 7160 and only two ports may be changed; the per-list cost measured was linear and every table had room, nothing showed an id limit |
+| A rule matching traffic, and a rewrite's effect on a bound port | **untested**: needs a host on a test port (§9.7) |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network |
 
-Not claimed: **IP ACL rules** (built and fixture-tested, copied into every
-interface's list; a PR needs the chip's port ACL id limit and counter pool
-measured with more than two lists, then `max_custom_ip_acls` sized from
-it), **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
+Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
 rate limit; a QoS policer is in bits per second and counts only conforming
 packets here; a PR needs a policer's exceeded count shown rising under
@@ -405,6 +408,7 @@ logged.
 | The fixed l2mcd (0008-0010) in an image: on the DX010 it is a binary installed by hand into the running l2mcd container (2026-11-05: Ethernet0 learned as the router port, the gateway the querier, group queries from the VLAN's address, no per-packet syslog), lost on a container recreate | the next image build with the series' l2mcd, installed, and the same checks after a reboot (`docs/drivers/sonic.md` §8.14) |
 | The switch as querier from the VLAN's address (with no other querier on the VLAN) | a VLAN without a router's queries, a general query captured from the switch: never seen live, only in the harness (`query-src-*`) |
 | A querier source address on a VLAN where the switch has none (0.0.0.0) | the querier-address field of §8.11 |
+| **A port leaving its last VLAN on the image without sonic-swss 0004** (`drivers/sonic.md` §8.15): a native-VLAN move on 2026-11-14 stranded a test cage (bridge port refused, admin down, reused: no learning until a swss restart) after its L2MC count had leaked when the port, a group member and a router port at once, lost link; the uplink is exposed the same way. The fix, `sonic-swss 0004`, passes its mock test (`L2mcOrchTest`, failing without it) in the build slave; the driver's wait for the bridge port on an unpatched image and its stranded-port report are fixture-tested (`bridge_port_test.go`, on the stranded capture) | an image built with 0004 installed, then on an oper-up test cage that is a router port (a loop) and in the reserved groups: link down, a native move and back through the UI, `asic_bridge_port` admin true throughout, no `removeBridgePort` line in syslog; and the driver's wait seen on the current image on the same cage |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 
 ### Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN, router ports (2026-11-07)
@@ -552,7 +556,6 @@ switch has no source that means exactly the condition.
 | Bit | Why not | What the PR needs |
 |---|---|---|
 | 2048 PHY failure | no PHY between the ASIC and the cages; the ASIC's per-port MAC local/remote fault (`PORT_OPERR_TABLE`) is a link-down reason, counted on the working uplink's ordinary drops. The ECS reports nothing for it either (no external PHY described, no cause, no `anomalies` key; read-only 2026-11-14) | an inform from a real UniFi switch reporting 2048 and what had failed on it; then a DX010 signal for a port the ASIC cannot bring up whatever the far end does |
-| 256 MAC locking | the MAC filter is enforced (`learn_mode drop`, §11.12) but nothing counts a dropped source per port: no learning-drop reason among the SAI's drop counters, and the kit's `L2` ACL type has no ingress-port match | the kit's sonic-swss 0003 with `SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS` in the `L2` type (an image build), per-port counted catch-all rules in `DUI_MAC_ACL`, ACL counter polling read into a `Port.Health` counter, and a live violation from a host on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.2) |
 | 128 802.1X authentication failed | the image has no authenticator: no hostapd, and `docker-macsec` carries `wpa_supplicant` only; 202511's Port Access Control sources (`src/sonic-pac`) are built by no rule and consumed by nothing in sonic-swss | a PAC container with hostapd (wired) in the image kit, an orchagent consumer of `PAC_PORT_TABLE`, the controller's 802.1X push captured and applied, failed attempts per port as a `Port.Health` counter, a supplicant and a RADIUS server on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.3) |
 | 1024 DoS | the ECS's `denial-of-service` error-disable cause is a configuration row with nothing observable behind it (no detector in its databases, chip or CPU path; no push key; no UI setting; no `anomalies` in its inform), so there is no condition to copy; the Tomahawk's DoS header checks (`DosAttack*`, off but SA=DA) could be counted per port through a free receive debug counter, outside SAI | an inform from a real UniFi switch reporting 1024 and the traffic that set it; then the matching checks turned on, counted per port into `Port.Health` and set on growth, verified with a cabled host ([`drivers/sonic.md`](drivers/sonic.md) §11.18.4) |
 
@@ -663,23 +666,25 @@ alerts on 2026-11-13.
 
 | What | Where / when |
 |---|---|
-| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (`RogueDHCPDrops` filled by `sonic` and `proxmox` since 2026-11-14, `drivers/sonic.md` §11.7.9; `StormDrops*` by `arista-eos`, row below, and broadcast/multicast by `sonic`'s storm detection, `drivers/sonic.md` §11.21; `DHCPRateDrops` by `sonic` since 2026-11-14, `drivers/sonic.md` §11.17); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP or MAC-locking bit on growth of the port's drop counters (`MACLockingDrops` filled by `sonic` since 2026-11-14, `drivers/sonic.md` §11.18.2; `RogueDHCPDrops` filled by `sonic` and `proxmox` since 2026-11-14, `drivers/sonic.md` §11.7.9; `StormDrops*` by `arista-eos`, row below, and broadcast/multicast by `sonic`'s storm detection, `drivers/sonic.md` §11.21; `DHCPRateDrops` by `sonic` since 2026-11-14, `drivers/sonic.md` §11.17); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
 | Storm drops per type from the Arista (`show storm-control` `drop`), split cages summed | `internal/drivers/arista-eos/features_test.go` over the 4.26.14M capture with all three types; read live (counts 0) on 2026-11-14 |
+| `sonic`: MAC locking (bit 256): a secured port in `cpu_trap` behind the kernel drop, each frame from an unlisted source counted per interface (`MACLockingDrops`), the port left up | by hand on the DX010 2026-11-14, an empty cage in MAC loopback (`maclock-live.txt`, `collect-maclock.txt`, [`drivers/sonic.md`](drivers/sonic.md) §11.18.2); `l2d_maclock_test.go`. Untested: a host on a cabled port, a secured PortChannel, the controller's 256 alert |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
+| `stp_state_change_count` (`[{change_count, mst: 0}]`, every port) from `Port.Health.STPChanges` (`arista-eos`, `proxmox`, `sonic`; 0 on the others): the controller's STP-flap alert carries it as its `COUNT` | captured 2026-11-14 on Network 11.0.99 from the only switch on the site that raised the alert, a USW Aggregation (its inform and the alerts, `fixtures/controller-11.0.99/`); no real inform carries `stp_state_change_sum`; `internal/device/stp_changes_test.go`, and the inform is a contract reference ([`feature-map.md`](feature-map.md) §2) |
 | `arista-eos`: `RogueDHCPDrops` (bit 64) from the guard's per-port ACL counter | read live 2026-11-14 at 0; a count above zero and the controller's alert are untested ([`drivers/arista-eos.md`](drivers/arista-eos.md) §9.6) |
 
 Open — PRs welcome:
 
 | Gap | What the PR needs |
 |---|---|
-| **`stp_state_change_sum`** (per port), which the controller's STP-flap alert is expected to follow (not captured) | an inform from a real UniFi switch that carries the key (support-bundle `last.inform` or `mca-dump` on the switch), scrubbed into `docs/fixtures/controller-<ver>/`; then the field from `Port.Health.STPChanges`, held to it by the contract test |
-| The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
+| The controller's STP-flap alert on a bridged port | real STP flapping on a bridged switch's port (the count is sent, above) and the alert read from the controller's device alerts; not seen yet. On `arista-eos` a down interface leaves EOS's topology list and its count reads 0, so a port that flaps by losing its link may never show the growth a real switch's would: a PR needs EOS's count for an interface that went down and came back (`show spanning-tree topology status detail`) to decide whether the bridge should hold it |
+| The controller's own link-flap and SFP alerts on a bridged port (`link_down_count` is the driver's link changes halved: exact on `sonic`, one too many on an up port on `arista-eos`, off by up to one on Linux hosts, [`feature-map.md`](feature-map.md) §2) | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
 | Storm bits (1/2/4) seen raising an alert | the Arista fills the counters and the DX010 its broadcast/multicast detection (above); a storm on a test port and the alert read from the controller |
 | Storm drops on the SONiC switch | **no drop count exists on the DX010's Broadcom image** ([`drivers/sonic.md`](drivers/sonic.md) §11.19): orchagent polls no policer statistics, and the Tomahawk's storm meters have no counter. Detected instead since 2026-11-14 (next row). For a true drop count a PR needs a per-type count the chip really keeps (on a Broadcom XGS chip, three of the SDK's receive debug counters, one per storm type, if its drop triggers can be told apart -- `bcmDbgCntRxStormControlDrop` is one trigger for all three), or a SAI that answers `get_policer_stats` for a storm-control policer, plus orchagent polling it; then a capture and a live storm |
 | Storm detection on the SONiC switch (bits 1, 2) | **verified by hand on the DX010 2026-11-14** ([`drivers/sonic.md`](drivers/sonic.md) §11.21): disunified-l2d compares each storm-controlled port's receive counters (broadcast; multicast, known groups included) over 5 s with the limit in 64-byte frames and counts the frames above it; a MAC-looped empty cage flooded from the CPU above a 1000 kbps limit was found and counted, a flood under it was not, the uplink's traffic never reads as a storm (`storm_watch_test.go`, `contract_sonic_storm_test.go`). **Not exercised:** a cabled source on a forwarding port, the UI's storm control with the detection running, the controller's alert (not deployed), split cages and PortChannel members. Unknown unicast (bit 4): no counter separates flooded unicast. A PR needs a cabled storm on a test port in its own VLAN and the alert read from the controller |
 | DHCP rate (32) and rogue DHCP (64) bits (32 on `sonic`: built, counted live on the DX010's uplink, the alert not yet seen; 64 on `sonic`: built, the count verified by hand, the alert not yet seen; on `proxmox`: built, namespace-tested, no push seen yet) | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
-| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.18 (256 has a build path) |
+| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.18 (256 is built, §11.18.2) |
 
 ---
 

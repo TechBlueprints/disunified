@@ -216,7 +216,9 @@ func TestLaneAggregateAndJoin(t *testing.T) {
 		for _, g := range []string{"224.0.1.129", "224.0.1.1", "224.0.1.22", "224.0.1.35", "224.0.1.41", "239.255.255.250", "239.255.255.253"} {
 			want = append(want, "sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|"+g+"|"+ln+"'")
 		}
-		want = append(want, "sudo config vlan member del 4094 "+ln, "sudo config portchannel member add PortChannel201 "+ln)
+		// The lane left its last VLAN: on this image (l2mcd, no sonic-swss
+		// 0004) it waits for its bridge port to go before it joins (§8.15).
+		want = append(want, "sudo config vlan member del 4094 "+ln, bridgePortWait(ln), "sudo config portchannel member add PortChannel201 "+ln)
 	}
 	want = append(want, "sudo config vlan member add -u 4094 PortChannel201", save)
 	r.applyLanes("aggregate of lanes 2-4", ds, want)
@@ -236,6 +238,7 @@ func TestLaneAggregateAndJoin(t *testing.T) {
 		"sudo config portchannel member del PortChannel201 Ethernet6",
 		"sudo config portchannel member del PortChannel201 Ethernet7",
 		"sudo config vlan member del 4094 PortChannel201",
+		bridgePortWait("PortChannel201"),
 		"sudo config portchannel del PortChannel201",
 		"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null",
 		"sudo config interface startup Ethernet4",

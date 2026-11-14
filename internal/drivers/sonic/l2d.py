@@ -45,13 +45,19 @@
 # DhcpRate counts each port's DHCP client requests at the CPU and reports
 # the excess over 300 in any one second; it acts on nothing (11.17).
 #
+# MAC locking (UniFi's MAC Address Filter; MacLockGuard below, 11.18.2): a
+# secured port's unknown sources go to the CPU instead of being dropped
+# unseen, the kernel bridge drops them there, and each frame from a source
+# not on the port's list is counted for the port, which stays up.
+#
 # Everything the bridge reads back is published in STATE_DB:
 # DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>,
-# DUI_STORM_TABLE|<port>, DUI_DHCP_RATE_TABLE|<port>.
+# DUI_STORM_TABLE|<port>, DUI_DHCP_RATE_TABLE|<port>, DUI_MACLOCK_TABLE|<interface>.
 #
 # `disunified-l2d --teardown` undoes it: every VLAN back to the default STP
 # instance, every port forwarding in the kernel, stp_state 0, mstpd stopped,
-# guarded ports restored. A stop of the service does NOT tear down (mstpd
+# guarded ports restored, secured ports back to their CONFIG_DB learn mode.
+# A stop of the service does NOT tear down (mstpd
 # keeps running and the next start adopts it), so a restart never opens a
 # window with no spanning tree.
 import collections
@@ -161,6 +167,7 @@ def load_conf():
         c = {}
     stp = c.get("stp") or {}
     guard = c.get("loop_guard") or {}
+    lock = c.get("mac_lock") or {}
     return {
         "stp": {
             "enabled": bool(stp.get("enabled")),
@@ -176,6 +183,9 @@ def load_conf():
             "ports": set(guard.get("ports") or []),
         },
         "dhcp_rate": DhcpRate.load(c.get("dhcp_rate")),
+        "mac_lock": {
+            "ports": {p: frozenset(m.lower() for m in (macs or [])) for p, macs in (lock.get("ports") or {}).items()},
+        },
     }
 
 
@@ -589,6 +599,11 @@ class L2d(object):
         self.nl = None
         self.storm = StormWatch(self.db)  # storm detection (11.21): self.storm.tick() in main
         self.dhcp = DhcpRate(self.db)  # the DHCP rate detector (its own class)
+        # Detectors in this list (beside the two above) are run by sync(),
+        # main() and teardown() through one interface: sync(conf) every pass,
+        # fds() and readable(fd) for the main loop's select, teardown().
+        self.maclock = MacLockGuard(self)
+        self.detectors = [self.maclock]
 
     # --- spanning tree -------------------------------------------------
 
@@ -982,6 +997,8 @@ class L2d(object):
         self.gw_port = self.gateway_port()
         self.guard_tick()
         self.dhcp.configure(self.conf["dhcp_rate"])
+        for d in self.detectors:
+            d.sync(self.conf)
 
     def main(self):
         syslog.openlog("disunified-l2d", syslog.LOG_PID, syslog.LOG_DAEMON)
@@ -1004,11 +1021,15 @@ class L2d(object):
                 self.resync = False
                 self.sync()
                 nxt = time.time() + SYNC
-            fds = [self.nl, self.fdb_sub.getFd()] + ([self.dhcp] if self.dhcp.sock is not None else [])
+            extra = {fd: d for d in self.detectors for fd in d.fds()}
+            fds = [self.nl, self.fdb_sub.getFd()] + ([self.dhcp] if self.dhcp.sock is not None else []) + list(extra)
             r, _, _ = select.select(fds, [], [], 0.02)
             if self.dhcp in r:
                 self.dhcp.readable()
             self.dhcp.tick()
+            for fd in r:
+                if isinstance(fd, int) and fd in extra:
+                    extra[fd].readable(fd)
             if self.nl in r:
                 try:
                     while True:
@@ -1169,6 +1190,234 @@ class StormWatch(object):
             self.published.discard(port)
 
 
+MACLOCK_CHAIN = "DUI_MACLOCK"
+MACLOCK_TABLE = "DUI_MACLOCK_TABLE"
+EBTABLES = "/usr/sbin/ebtables"
+ETH_P_ALL = 3
+PACKET_OUTGOING = 4
+LEARN_TRAP = "cpu_trap"
+MACLOCK_LOG_EVERY = 600.0  # seconds between log lines for one port and source
+
+
+def mac_text(b):
+    return ":".join("%02x" % c for c in bytearray(b))
+
+
+class MacLockGuard(object):
+    """MAC locking: UniFi's MAC Address Filter on a port, and its anomaly
+    (256; as the UI words it, a MAC detected on the port that is not on its
+    allowed list) -- docs/drivers/sonic.md 11.18.2.
+
+    The driver secures a port with CONFIG_DB learn_mode drop and one static
+    FDB entry per allowed MAC: the chip forwards the listed sources and drops
+    every other one without a trace. With the port in this daemon's config
+    (mac_lock.ports: bridge port -> allowed MACs) it switches the port's
+    learning to cpu_trap in APPL_DB, as Ubiquiti's own SONiC switches run a
+    secured port: an unknown source is still neither learnt nor forwarded by
+    the chip, but the frame goes to the CPU, policed by the default CoPP
+    group, and arrives on the port's netdev. The kernel bridge drops it there
+    (chain DUI_MACLOCK, from INPUT and FORWARD: the listed sources pass, the
+    rest of the port's frames are dropped) and a packet socket on the netdev
+    sees it first. Each frame whose source is not on the list is counted for
+    the interface it arrived on (STATE_DB DUI_MACLOCK_TABLE|<interface>:
+    drops, cumulative since boot, and the last such source); the port stays
+    up. CONFIG_DB keeps drop, so a reboot, a swss restart or a stopped daemon
+    leaves the port as closed as before, only uncounted; the chain is written
+    before the learn mode changes and the learn mode goes back before the
+    chain is removed."""
+
+    def __init__(self, l2d):
+        self.l2d = l2d
+        self.db = l2d.db
+        self.want = {}  # bridge port -> frozenset of allowed MACs
+        self.trapped = set()  # bridge ports this daemon switched to cpu_trap
+        self.socks = {}  # netdev -> (socket, bridge port)
+        self.written = None  # the chain's rules as last written; None = not checked
+        self.own = ""
+        self.lag_pst = sw.ProducerStateTable(self.db.appl, "LAG_TABLE")
+        self.st = sw.Table(self.db.state, MACLOCK_TABLE)
+        self.drops = {}  # netdev -> count, carried over a restart from STATE_DB
+        self.last = {}  # netdev -> last source counted
+        self.dirty = set()
+        self.logged = {}  # (netdev, mac) -> time logged
+        for k in self.db.keys(self.db.state, MACLOCK_TABLE + "|*"):
+            row = self.db.hgetall(self.db.state, k)
+            try:
+                self.drops[k.split("|", 1)[1]] = int(row.get("drops", "0"))
+            except ValueError:
+                pass
+
+    # --- configuration -----------------------------------------------------
+
+    @staticmethod
+    def learn_key(port):
+        return ("LAG_TABLE:" if port.startswith("PortChannel") else "PORT_TABLE:") + port
+
+    def learn_set(self, port, mode):
+        pst = self.lag_pst if port.startswith("PortChannel") else self.db.ifport_pst
+        put(pst, port, [("learn_mode", mode)])
+
+    def configured_mode(self, port):
+        table = "PORTCHANNEL|" if port.startswith("PortChannel") else "PORT|"
+        return self.db.hgetall(self.db.cfg, table + port).get("learn_mode") or "hardware"
+
+    def netdevs(self, port):
+        return self.db.lag_members(port) if port.startswith("PortChannel") else [port]
+
+    def rules(self):
+        out = []
+        for port in sorted(self.want):
+            for mac in sorted(self.want[port]):
+                out.append(["-i", port, "-s", mac, "-j", "RETURN"])
+            out.append(["-i", port, "-j", "DROP"])
+        return out
+
+    def chain_state(self):
+        """(chain exists, its rule count, jumps from INPUT and FORWARD)."""
+        txt = run([EBTABLES, "-L"]).stdout
+        exists, count, jumps, chain = False, 0, set(), ""
+        for line in txt.splitlines():
+            if line.startswith("Bridge chain: "):
+                chain = line[len("Bridge chain: "):].split(",")[0]
+                if chain == MACLOCK_CHAIN:
+                    exists = True
+                    try:
+                        count = int(line.split("entries: ")[1].split(",")[0])
+                    except (IndexError, ValueError):
+                        count = -1
+            elif line.strip() == "-j " + MACLOCK_CHAIN and chain in ("INPUT", "FORWARD"):
+                jumps.add(chain)
+        return exists, count, jumps
+
+    def write_chain(self, rules):
+        exists, count, jumps = self.chain_state()
+        if not rules:
+            if exists or jumps:
+                for c in sorted(jumps):
+                    run([EBTABLES, "-D", c, "-j", MACLOCK_CHAIN], check=True)
+                if exists:
+                    run([EBTABLES, "-F", MACLOCK_CHAIN], check=True)
+                    run([EBTABLES, "-X", MACLOCK_CHAIN], check=True)
+                log("MAC locking: kernel bridge rules removed")
+            self.written = []
+            return True
+        if exists and count == len(rules) and jumps == {"INPUT", "FORWARD"} and rules == self.written:
+            return True
+        if not exists:
+            run([EBTABLES, "-N", MACLOCK_CHAIN, "-P", "RETURN"], check=True)
+        else:
+            run([EBTABLES, "-F", MACLOCK_CHAIN], check=True)
+        ok = True
+        for r in rules:
+            ok = run([EBTABLES, "-A", MACLOCK_CHAIN] + r, check=True).returncode == 0 and ok
+        for c in ("INPUT", "FORWARD"):
+            if c not in jumps:
+                ok = run([EBTABLES, "-A", c, "-j", MACLOCK_CHAIN], check=True).returncode == 0 and ok
+        self.written = rules if ok else None
+        log("MAC locking: kernel bridge rules for %s (%d allowed sources)" %
+            (",".join(sorted(self.want)), sum(len(m) for m in self.want.values())))
+        return ok
+
+    def sync(self, conf):
+        want = {p: m for p, m in conf["mac_lock"]["ports"].items() if self.db.known(p)}
+        if not self.own:
+            self.own = (self.db.hgetall(self.db.cfg, "DEVICE_METADATA|localhost").get("mac") or "").lower()
+        # A port leaving the config gets its configured learn mode back
+        # before its rules go.
+        for port in sorted(self.trapped - set(want)):
+            if self.db.known(port):
+                self.learn_set(port, self.configured_mode(port))
+            self.trapped.discard(port)
+            log("MAC locking: %s no longer watched (learn mode %s)" % (port, self.configured_mode(port)))
+        self.want = want
+        if want or self.written is None or self.written:
+            if not self.write_chain(self.rules()):
+                return  # no learn mode change without the kernel's drop in place
+        for port in sorted(want):
+            if self.db.hgetall(self.db.appl, self.learn_key(port)).get("learn_mode") != LEARN_TRAP:
+                self.learn_set(port, LEARN_TRAP)
+                if port not in self.trapped:
+                    log("MAC locking: %s watched, %d allowed sources" % (port, len(want[port])))
+            self.trapped.add(port)
+        self.sync_socks()
+        self.publish()
+
+    def sync_socks(self):
+        wanted = {n: port for port in self.want for n in self.netdevs(port)
+                  if os.path.isdir("%s/%s" % (SYS, n))}
+        for n in list(self.socks):
+            if wanted.get(n) != self.socks[n][1]:
+                self.socks.pop(n)[0].close()
+        for n, port in wanted.items():
+            if n in self.socks:
+                continue
+            try:
+                s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
+                s.bind((n, 0))
+                s.setblocking(False)
+            except OSError as e:
+                log("MAC locking: no packet socket on %s: %s" % (n, e), syslog.LOG_WARNING)
+                continue
+            self.socks[n] = (s, port)
+
+    def publish(self):
+        """The counts, at most once a pass: the trap's rate is CoPP's, the
+        database writes are this daemon's."""
+        for n in sorted(self.dirty):
+            put(self.st, n, [("drops", str(self.drops.get(n, 0))), ("last_mac", self.last.get(n, ""))])
+        self.dirty.clear()
+
+    # --- detection ---------------------------------------------------------
+
+    def fds(self):
+        return [s.fileno() for s, _ in self.socks.values()]
+
+    def readable(self, fd):
+        for n, (s, port) in list(self.socks.items()):
+            if s.fileno() == fd:
+                self.drain(n, s, port)
+                return
+
+    def drain(self, n, s, port):
+        """Reads what is queued, at most a burst per turn; each inbound frame
+        from a unicast source that is not the switch's and not on the port's
+        list is one drop."""
+        for _ in range(256):
+            try:
+                data, addr = s.recvfrom(64)
+            except (BlockingIOError, InterruptedError):
+                return
+            except OSError:
+                return
+            if addr[2] == PACKET_OUTGOING or len(data) < 12 or bytearray(data)[6] & 1:
+                continue  # the switch's own frames; a group address is no source
+            src = mac_text(data[6:12])
+            if src == self.own or src in self.want.get(port, ()):
+                continue
+            self.drops[n] = self.drops.get(n, 0) + 1
+            self.last[n] = src
+            self.dirty.add(n)
+            now = time.time()
+            if now - self.logged.get((n, src), 0) > MACLOCK_LOG_EVERY:
+                self.logged[(n, src)] = now
+                log("MAC locking: %s on %s is not on its list; dropped (%d on this port since boot)" %
+                    (src, n, self.drops[n]), syslog.LOG_WARNING)
+
+    def teardown(self):
+        """Secured ports back to their CONFIG_DB learn mode, then the rules go.
+        The counts stay: they are since boot."""
+        for k in self.db.keys(self.db.appl, "PORT_TABLE:*") + self.db.keys(self.db.appl, "LAG_TABLE:*"):
+            port = k.split(":", 1)[1]
+            if self.db.hgetall(self.db.appl, k).get("learn_mode") == LEARN_TRAP:
+                self.learn_set(port, self.configured_mode(port))
+        self.want = {}
+        self.written = None
+        self.write_chain([])
+        for s, _ in self.socks.values():
+            s.close()
+        self.socks = {}
+
+
 def teardown():
     syslog.openlog("disunified-l2d", syslog.LOG_PID, syslog.LOG_DAEMON)
     d = L2d()
@@ -1177,6 +1426,8 @@ def teardown():
     for p in list(d.blocked):
         d.unblock(p)
     d.dhcp.stop("teardown")
+    for det in d.detectors:
+        det.teardown()
 
 
 def deadman():

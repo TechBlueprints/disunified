@@ -164,6 +164,8 @@ section("l2_guard", "STATE_DB", "DUI_LOOP_GUARD_TABLE|*")
 section("l2_storm", "STATE_DB", "DUI_STORM_TABLE|*")
 # Its DHCP rate detector's per-port counts (11.17).
 section("l2_dhcp_rate", "STATE_DB", "DUI_DHCP_RATE_TABLE|*")
+# MAC locking's count per interface (docs/drivers/sonic.md 11.18.2).
+section("l2_maclock", "STATE_DB", "DUI_MACLOCK_TABLE|*")
 # orchagent's resource counters: the FDB's used and available entries.
 section("crm", "COUNTERS_DB", "CRM:STATS")
 # The bridge's own ACL tables (docs/drivers/sonic.md 11.7.5) -- DHCP
@@ -205,6 +207,31 @@ acl_counters("acl_counters")
 # VLAN's row, its unknown-multicast setting and its static groups, as the
 # CLI and the driver write them. Absent on an image without the series.
 section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP|*", "L2MC_STATIC_MEMBER|*", "L2MC_MROUTER|*")
+
+
+def bridge_ports(name):
+    """Each port's and PortChannel's bridge port in the chip, by name:
+    {"admin": SAI_BRIDGE_PORT_ATTR_ADMIN_STATE}. orchagent sets a bridge
+    port admin down only to remove it; one left down is a removal orchagent
+    refused, which the kit's L2MC orch before its sonic-swss 0004 made
+    (docs/drivers/sonic.md 8.15): the port learns nothing."""
+    s(name)
+    names = {}
+    for m in ("COUNTERS_PORT_NAME_MAP", "COUNTERS_LAG_NAME_MAP"):
+        try:
+            names.update({oid: n for n, oid in DB.get_all("COUNTERS_DB", m).items()})
+        except Exception:
+            pass
+    out = {}
+    for k in table("ASIC_DB", ["ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*"]).items():
+        f = k[1]
+        n = names.get(f.get("SAI_BRIDGE_PORT_ATTR_PORT_ID", ""))
+        if f.get("SAI_BRIDGE_PORT_ATTR_TYPE") == "SAI_BRIDGE_PORT_TYPE_PORT" and n:
+            out[n] = {"admin": f.get("SAI_BRIDGE_PORT_ATTR_ADMIN_STATE", "")}
+    dump(out)
+
+
+bridge_ports("asic_bridge_port")
 
 # Port isolation, port security and egress shaping (docs/drivers/sonic.md
 # 11.12): the driver's isolation group, the provisioned FDB entries (only

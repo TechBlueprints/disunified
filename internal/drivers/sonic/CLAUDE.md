@@ -588,6 +588,33 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   Fixture:
   `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
   `cfg_l2mc` section) and its `config-help.txt`.
+- **A port leaving its last VLAN can be stranded by the kit's L2MC orch
+  (`docs/drivers/sonic.md` §8.15, 2026-11-14; fixed by sonic-swss 0004).**
+  Before 0004, `removeBridgePort` sets the bridge port admin down, then
+  refuses while `m_l2mc_count` is not zero, and `addBridgePort` reuses it as
+  it is: the next VLAN added lands on a port that learns nothing until a
+  swss restart, and the retried delete takes a re-added membership of the
+  same VLAN away. The count leaks when a port that is a group member and a
+  router port at once (the uplink, with UniFi's reserved groups; a looped
+  test cage) loses link: router-port members were never counted. Facts that
+  cost time:
+  - **It is not the driver's order.** The leak came nine minutes before the
+    move; the statics-before-delete order the CLI demands is right. Read
+    orchagent's `l2mc_count` notices in syslog before blaming a batch.
+  - **"No L2MC group member in ASIC_DB" is the leak's signature**, not a
+    sign the references are gone: the count is orchagent's own.
+  - **On an image without 0004** (`Start`: `l2mcFixCheckCommand`) the plan
+    follows every delete that empties an interface with `bridgePortWait`
+    (ASIC_DB, ≤ 10 s, fails the batch on a leak); `collect.py`'s
+    `asic_bridge_port` shows a stranded one (warned once, its VLANs left
+    alone with a note). The FixtureRunner models the refusal
+    (`OrchL2MCFix`, `L2MCLeaked`, `Stranded`); fixture
+    `sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt`.
+  - **Do not aggregate the uplink on an image without 0004**: taking
+    Ethernet0 out of Vlan4094 would strand the only way in.
+  - The orch tests run in the build host's bookworm slave
+    (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
+    (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
 - **Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN,
   router ports (`portfeat.go`, `docs/drivers/sonic.md` §11.12, built and
   verified live on the DX010 2026-11-07).** Isolation is one SAI isolation
@@ -817,8 +844,9 @@ was restarted.
     switch's own address arrives on the uplink through the same trap.
     Fixtures: `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`
     (`testdata/l2d_dhcp_rate.py` runs the filter through a cBPF interpreter).
-- **Port anomalies 128/256/1024/2048 have no source on the image
-  (`docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
+- **Port anomalies 128/1024/2048 have no source on the image (256 does
+  since, below;
+  `docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
   `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before
   building a per-port counter, know: ACL counter polling is **off**
   (`FLEX_COUNTER_TABLE|ACL` disable), so no ACL rule counter reaches
@@ -841,6 +869,38 @@ was restarted.
   port, the uplink included: only with a definition captured from a real
   UniFi switch. `dos-probes.txt` in the 202511 fixture directory has the
   reads.
+- **MAC locking, anomaly 256 (`l2d.py` `MacLockGuard`, `l2.go` `mac_lock`,
+  `docs/drivers/sonic.md` §11.18.2, built 2026-11-14, verified by hand on
+  an empty cage).** The driver's MAC filter stays `learn_mode drop` + static
+  FDB in CONFIG_DB/APPL_DB (enforced from boot); l2d moves a secured port to
+  `cpu_trap` in APPL_DB only after its ebtables chain `DUI_MACLOCK` (listed
+  sources RETURN, the rest of the port DROP; from INPUT and FORWARD) is in
+  place, reads the netdev on a packet socket, and counts each frame from an
+  unlisted unicast source in STATE_DB `DUI_MACLOCK_TABLE|<interface>`
+  (`drops` since boot, `last_mac`); `collect.py` `l2_maclock` ->
+  `Health.MACLockingDrops`. **The port stays up**: the controller's alert
+  text for 256 describes a detection, not a disabled port (a first build
+  held it down; replaced the same day). Facts that cost time:
+  - **Unknown sources reach the CPU under `cpu_trap` through the default
+    CoPP group** (queue 0, 600 packets/s for the whole switch): 626 of a
+    20,000-frame burst; under `drop` none. The chip's `bcmcmd ps` `lrn`
+    column shows the mode: C, D, FA.
+  - **mstpd reads BPDUs on its own packet sockets**, past ebtables: a looped
+    test port receives its own BPDUs and goes backup/discarding, and StpOrch
+    then blocks it in every VLAN -- a loopback test needs the installed l2d
+    paused (`kill -STOP` its main pid, `-CONT` after) and a hand-made tagged
+    VLAN that no instance maps. A looped port in Vlan4094 also receives the
+    LAN's IGMP (snooping's static groups flood every port): keep it
+    trapping or dropping while looped, never learning in hardware.
+  - **Never move a test port's native VLAN through UniFi** (2026-11-14,
+    cage 9): leaving its only VLAN while snooping's static groups name it,
+    orchagent's `removeBridgePort` sets the bridge port admin down, refuses
+    the removal ("still has references to a Layer 2 multicast group
+    member"), and the next VLAN add reuses the admin-down bridge port: ASIC_DB
+    `SAI_BRIDGE_PORT_ATTR_ADMIN_STATE false`, chip `lrn` D whatever the learn
+    mode. Only a swss restart or a reboot clears it.
+  - **macOS has no `AF_PACKET`**: `testdata/l2d_maclock.py` sets the constant
+    before l2d opens its fake sockets.
 - **The lane switch's parent (`lanes.go`, `docs/drivers/breakout.md` §0;
   built 2026-11-14, fixture- and replay-tested, never live).** A split
   cage keeps its lanes as ports of their own (`cagePort.lanes`); the plan
@@ -859,4 +919,3 @@ was restarted.
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
   STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
   by cage; a lane aggregate without lane 1 is not named to l2d (open).
-

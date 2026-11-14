@@ -1,3 +1,4 @@
 0001-l2mc-IGMP-MLD-snooping-l2mcorch-and-l2mcmgrd.patch
 0002-switchorch-do-not-record-port-mirroring-as-unsupport.patch
 0003-aclorch-L2-table-type-with-outer-SRC_MAC-DST_MAC-mat.patch
+0004-l2mcorch-count-a-port-s-group-members-by-what-the-ch.patch

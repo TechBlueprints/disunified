@@ -45,13 +45,14 @@ type protectionDrop struct {
 	bit int
 }
 
-func protectionDrops(h devicemodel.PortHealth) [5]protectionDrop {
-	return [5]protectionDrop{
+func protectionDrops(h devicemodel.PortHealth) [6]protectionDrop {
+	return [6]protectionDrop{
 		{h.StormDropsBroadcast, portAnomalyBroadcastStorm},
 		{h.StormDropsMulticast, portAnomalyMulticastStorm},
 		{h.StormDropsUnicast, portAnomalyUnicastStorm},
 		{h.DHCPRateDrops, portAnomalyDHCPRate},
 		{h.RogueDHCPDrops, portAnomalyRogueDHCP},
+		{h.MACLockingDrops, portAnomalyMACLocking},
 	}
 }
 
@@ -62,7 +63,7 @@ func protectionDrops(h devicemodel.PortHealth) [5]protectionDrop {
 // for that field (caps.go): a bit is set only for a condition a driver really
 // saw -- a port held down by loop protection, or one of the port's own
 // protection drop counters (storm control per traffic type, the DHCP rate
-// limit, DHCP guarding) grown since the previous inform, up or down. No
+// limit, DHCP guarding, the MAC filter) grown since the previous inform, up or down. No
 // previous sample (the first inform after a start) or a counter that went
 // down (a reset) sets nothing. Link flaps, STP changes, optic faults, and
 // interface errors and drops are not anomalies bits: the controller derives its own alerts for those

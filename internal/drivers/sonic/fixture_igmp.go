@@ -3,6 +3,7 @@ package sonic
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -81,15 +82,111 @@ func (f *FixtureRunner) staticNames(vid, port string) bool {
 	return false
 }
 
-// l2mcDel is `sonic-db-cli CONFIG_DB del '<an L2MC key>'`.
+// l2mcDel is `sonic-db-cli CONFIG_DB del '<an L2MC key>'`. A static
+// member's delete reaches orchagent later (l2mcmgrd, l2mcd, APPL_DB): until
+// the batch waits for it, the port still has a group member there.
 func (f *FixtureRunner) l2mcDel(key string) error {
-	return f.update("cfg_l2mc", func(t table) error {
+	err := f.update("cfg_l2mc", func(t table) error {
 		if t[key] == nil {
 			return fmt.Errorf("unmodelled: %s absent", key)
 		}
 		delete(t, key)
 		return nil
 	})
+	if parts := strings.Split(key, "|"); err == nil && parts[0] == "L2MC_STATIC_MEMBER" && len(parts) == 4 && f.orchRefuses() {
+		if f.l2mcPending == nil {
+			f.l2mcPending = map[string]bool{}
+		}
+		f.l2mcPending[parts[3]] = true
+	}
+	return err
+}
+
+// The bridge port model (OrchL2MCFix; docs/drivers/sonic.md §8.15), from
+// the kit's sonic-swss 0001: PortsOrch::removeBridgePort sets the bridge
+// port admin down, then returns false while the port's m_l2mc_count is not
+// zero, and addBridgePort returns an existing bridge port as it is.
+
+// orchRefuses: l2mcd runs and orchagent lacks sonic-swss 0004.
+func (f *FixtureRunner) orchRefuses() bool {
+	if f.OrchL2MCFix == "1" {
+		return false
+	}
+	return f.table("cfg_feature")["FEATURE|l2mcd"]["state"] == "enabled"
+}
+
+// vlanLeft is a port's last VLAN membership gone: orchagent removes its
+// bridge port, or refuses with it admin down.
+func (f *FixtureRunner) vlanLeft(port string) {
+	if !f.orchRefuses() || !(f.l2mcPending[port] || f.L2MCLeaked[port]) {
+		f.setBridgePort(port, "")
+		return
+	}
+	if f.bpRefused == nil {
+		f.bpRefused = map[string]bool{}
+	}
+	f.bpRefused[port] = true
+	f.setBridgePort(port, "false")
+}
+
+// vlanJoined is a VLAN added to a port: a refused bridge port is reused as
+// it is (stranded); otherwise the port has one, up.
+func (f *FixtureRunner) vlanJoined(port string) {
+	if f.bpRefused[port] {
+		f.Stranded = append(f.Stranded, port)
+		return
+	}
+	f.setBridgePort(port, "true")
+}
+
+// bridgeWaited is the batch's bridgePortWait for port: done once l2mcd's
+// deletes have reached orchagent, refused for good on a leaked count.
+func (f *FixtureRunner) bridgeWaited(port string) error {
+	if f.bpRefused[port] && f.L2MCLeaked[port] {
+		return fmt.Errorf("exit status 1: %s: orchagent has not removed its bridge port in %d s", port, bridgePortWaitLimit)
+	}
+	delete(f.l2mcPending, port)
+	if f.bpRefused[port] {
+		delete(f.bpRefused, port)
+		f.setBridgePort(port, "")
+	}
+	return nil
+}
+
+// batchEnded: l2mcd catches up after the batch; a refused removal nothing
+// reused is retried and succeeds, unless the count leaked.
+func (f *FixtureRunner) batchEnded() {
+	f.l2mcPending = nil
+	for port := range f.bpRefused {
+		if !f.L2MCLeaked[port] {
+			delete(f.bpRefused, port)
+			f.setBridgePort(port, "")
+		}
+	}
+}
+
+// setBridgePort writes the capture's asic_bridge_port row of port: admin
+// "true"/"false", "" for none. A capture without the section has no rows.
+func (f *FixtureRunner) setBridgePort(port, admin string) {
+	if _, ok := sections(f.Fixture)["asic_bridge_port"]; !ok {
+		return
+	}
+	_ = f.update("asic_bridge_port", func(t table) error {
+		if admin == "" {
+			delete(t, port)
+		} else {
+			t[port] = map[string]string{"admin": admin}
+		}
+		return nil
+	})
+}
+
+// bridgeWaitPort is the interface of a bridgePortWait line, "" for another.
+func bridgeWaitPort(w []string) string {
+	if len(w) == 6 && w[0] == "python3" && w[1] == "-c" && w[5] == "</dev/null" && strings.Contains(w[2], "SAI_OBJECT_TYPE_BRIDGE_PORT") && w[4] == strconv.Itoa(bridgePortWaitLimit) {
+		return w[3]
+	}
+	return ""
 }
 
 // featureState is `config feature state <name> enabled|disabled`.
