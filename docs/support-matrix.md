@@ -473,11 +473,23 @@ capture is `sonic-igmp-202511.20261106-f2e25f54c/dhcp-rate-20261114.txt`).
 | Gap | What the PR needs |
 |---|---|
 | A per-port DHCP limiter with a drop counter | first, how the ECS counts these drops (to be read on the switch); then a per-port policer in the ASIC, ahead of CoPP (an orchagent patch: the community ACL has no policer action), its red count read in the poll into `DHCPRateDrops`, a capture of it, and a flood on a test cage raising the alert. A kernel policer as in sonic-swss#3130 is not enough: it sees at most CoPP's 100 packets/s for the whole switch, so it would need DHCP in a CoPP group of its own at a higher rate, which is a CPU-protection change to decide first |
+### Port anomalies the switch cannot report yet (2026-11-14)
+
+Assessed live on the DX010 (read-only; `docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`,
+[`drivers/sonic.md`](drivers/sonic.md) §11.18). No bit below is set: the
+switch has no source that means exactly the condition.
+
+| Bit | Why not | What the PR needs |
+|---|---|---|
+| 2048 PHY failure | no PHY between the ASIC and the cages; the ASIC's per-port MAC local/remote fault (`PORT_OPERR_TABLE`) is a link-down reason, counted on the working uplink's ordinary drops | an inform from a real UniFi switch reporting 2048 and what had failed on it; then a DX010 signal for a port the ASIC cannot bring up whatever the far end does |
+| 256 MAC locking | the MAC filter is enforced (`learn_mode drop`, §11.12) but nothing counts a dropped source per port: no learning-drop reason among the SAI's drop counters, and the kit's `L2` ACL type has no ingress-port match | the kit's sonic-swss 0003 with `SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS` in the `L2` type (an image build), per-port counted catch-all rules in `DUI_MAC_ACL`, ACL counter polling read into a `Port.Health` counter, and a live violation from a host on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.2) |
+| 128 802.1X authentication failed | the image has no authenticator: no hostapd, and `docker-macsec` carries `wpa_supplicant` only; 202511's Port Access Control sources (`src/sonic-pac`) are built by no rule and consumed by nothing in sonic-swss | a PAC container with hostapd (wired) in the image kit, an orchagent consumer of `PAC_PORT_TABLE`, the controller's 802.1X push captured and applied, failed attempts per port as a `Port.Health` counter, a supplicant and a RADIUS server on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.3) |
+| 1024 DoS | the condition is known by name only (no push configures a detector, the ECS reports no `anomalies`); CoPP drops are per CPU queue, not per port; the malformed-frame drop reasons are not an attack | an inform from a real UniFi switch reporting 1024 and the traffic that set it; then a per-port detector for that condition on the DX010 ([`drivers/sonic.md`](drivers/sonic.md) §11.18.4) |
 
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,
-802.1X (community SONiC has no authenticator); MAC ACL
+802.1X (the image has no authenticator; what building one takes is [`drivers/sonic.md`](drivers/sonic.md) §11.18.3); MAC ACL
 rules on an image without the kit's sonic-swss 0003 (no L2 table type in the stock orchagent); an IP ACL rule shape
 no capture shows, or a set that would block the bridge's own SSH to the
 switch (the rules of that kind are held); breakout on a platform without `platform.json`
@@ -555,7 +567,7 @@ Open — PRs welcome:
 | **`stp_state_change_sum`** (per port), which the controller's STP-flap alert is expected to follow (not captured) | an inform from a real UniFi switch that carries the key (support-bundle `last.inform` or `mca-dump` on the switch), scrubbed into `docs/fixtures/controller-<ver>/`; then the field from `Port.Health.STPChanges`, held to it by the contract test |
 | The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
 | Storm (1/2/4), DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `StormDropsBroadcast`/`StormDropsMulticast`/`StormDropsUnicast`, `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
-| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning |
+| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.17 (256 has a build path) |
 
 ---
 

@@ -4687,6 +4687,245 @@ mechanism is to be read first, per the follow-the-ECS rule):
 
 The recommended route is (b), once the ECS shows what it does. Until then a
 DHCP flood on the DX010 raises no alert in UniFi.
+### 11.18 Switch-detected anomalies the DX010 cannot report yet: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
+
+A port's `anomalies` field is what the switch itself detected, and every
+bit it carries raises an alert (`docs/feature-map.md` §2). The storm bits
+(1, 2, 4), the DHCP rate (32) and rogue DHCP (64) are other sessions' work;
+loop protection (512) is §11.5; the DX010 has no PoE (4096). This section
+is the other four: for each, what the controller means by it, what the
+DX010 offers that would mean the same, and whether a bit can be set that
+is true. The rule is the one in `internal/device/caps.go`: a bit only for
+the condition itself, detected by the switch on that port; a signal with a
+similar name is not enough.
+
+**What the controller means.** The four are the controller's own labels
+for bits of the field (128 802.1X authentication failed, 256 MAC locking,
+1024 DoS, 2048 PHY failure; root `CLAUDE.md` §5), and its UI words them:
+2048 is "Port Failure Detected", the port being unable to link up because
+of a physical failure; 256 is "Unauthorized MAC Detected", a MAC seen on
+the port that is not on its allowed list; 128 is a failed 802.1X
+authentication attempt on the port; 1024 is a denial of service attack
+detected on the port. None of the four has been seen raised, so none of
+these meanings is exercised.
+
+**What the ECS does.** Nothing: the ECS Aggregation's inform, printed on
+the switch (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`), has
+no `anomalies` key on any of its 54 ports, so the family the DX010 is
+claimed as reports none of these bits. (The ECS's `admin` login refused
+the site key on 2026-11-14, so it was not read again.)
+
+**The evidence**, read on the DX010 on 2026-11-14 (image
+`igmp-202511.20261106-f2e25f54c`, read-only):
+`docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`.
+
+| Bit | What the DX010 can do | Built |
+|---|---|---|
+| 2048 PHY failure | no PHY between the ASIC and the cages; the per-port fault it does report is a link-down reason seen on the healthy uplink (§11.18.1) | nothing |
+| 256 MAC locking | enforces the MAC filter (§11.12) but counts no dropped source per port; counting needs the ingress-port match in the kit's `L2` ACL type, an image change (§11.18.2) | nothing (enforcement as before) |
+| 128 802.1X authentication failed | no authenticator on the image; 202511 holds Broadcom's Port Access Control sources, unbuilt and without an orchagent consumer (§11.18.3) | nothing |
+| 1024 DoS | nothing the controller configures or describes beyond the name; the switch's CoPP drops are per CPU queue, not per port, and its malformed-frame drop reasons are not an attack (§11.18.4) | nothing |
+
+#### 11.18.1 PHY failure (2048)
+
+**The DX010 has no PHY to fail.** Its cages are wired to the Tomahawk's
+SerDes: the SKU's directory holds `hwsku.json`, `port_config.ini` and
+`sai.profile` and no `gearbox_config.json`, the file SONiC describes an
+external PHY with (capture, `device_dir`). A UniFi switch's PHY is a chip
+of its own that can stop answering; here the nearest parts are the ASIC's
+port and the module in the cage.
+
+**The ASIC's per-port fault is a link-down reason, not a broken port.**
+With every oper-down notification the Broadcom SAI passes the port's error
+status, and orchagent keeps it in STATE_DB `PORT_OPERR_TABLE|<port>`
+(`oper_error_status` as a bitmap, and `mac_local_fault_count`,
+`mac_remote_fault_count` and the other reasons' counts with their times;
+202511's `PortsOrch::updatePortErrorStatus`). On the DX010 the only port
+with a record is Ethernet0, the live uplink to the core:
+`mac_local_fault_count 2`, `mac_remote_fault_count 2` since swss last
+started, and its log shows every fault followed by `oper state set from
+down to up` within 0.5 to 95 s (capture, `port_operr`,
+`orchagent_port_errors`). A local fault is the receiver seeing no valid
+signal, which is what a far end rebooting or a cable being pulled gives; a
+remote fault is the far end saying the same. Mapping either to 2048 would
+raise "Port Failure Detected" for an uplink that is working.
+
+**The module's faults are already sent, as their own fields.** xcvrd's
+`TRANSCEIVER_STATUS_SW` carries an `error` field (`N/A` on every cage) and
+`TRANSCEIVER_STATUS` the module's flags; the bridge sends a module's
+faults as `sfp_rxfault`/`sfp_txfault`, from which the controller derives
+its own SFP alerts (`custom_anomalies` 1/2/4, `docs/feature-map.md` §2).
+A module fault is not this bit.
+
+**Built: nothing.** What a PR needs: an inform from a real UniFi switch
+reporting 2048 (a support-bundle `last.inform` or `mca-dump` on the
+switch) and what had failed on it, so the condition is known; then a
+signal on the DX010 for a port the ASIC cannot bring up whatever the far
+end does. None was found in STATE_DB, APPL_DB or the SAI's port
+notifications.
+
+#### 11.18.2 MAC locking (256)
+
+**The condition is the MAC Address Filter's.** "Unauthorized MAC Detected"
+is a source MAC on the port that is not on the port's allowed list: UniFi's
+port security, pushed as `switch.port.N.port-security=enabled` and
+`port-security.mac.K` (§11.12).
+
+**Enforcement is built** (§11.12, written and read back in ASIC_DB on
+2026-11-07): `learn_mode drop` on the port or its PortChannel, and a static
+FDB entry per allowed MAC in each of the port's VLANs. A frame from any
+other source is not learnt and not forwarded. It is dropped without a
+trace: nothing on the running image counts it per port. What was checked:
+
+1. **The drop counters.** The SAI offers one `PORT_INGRESS_DROPS` debug
+   counter in all, and none of its reasons is a learning drop
+   (`MPLS_MISS`, `FDB_AND_BLACKHOLE_DISCARDS`, `IP_HEADER_ERROR`,
+   `L3_EGRESS_LINK_DOWN`, `EXCEEDS_L3_MTU`, `DIP_LINK_LOCAL`,
+   `SIP_LINK_LOCAL`, `ACL_ANY`, `SMAC_EQUALS_DMAC`; capture,
+   `dropcounters_capabilities`). `FDB_AND_BLACKHOLE_DISCARDS` and
+   `ACL_ANY` each count other causes as well. The port's own
+   `IF_IN_DISCARDS` counts every ingress drop.
+2. **An ACL that counts.** Per secured port, one FORWARD rule per
+   allowed source and a catch-all DROP whose counter would be the count of
+   unlisted sources. SONiC matches SRC_MAC only in the image kit's `L2`
+   table type (sonic-swss 0003; `sonic-acl.yang` accepts SRC_MAC on a rule
+   only when its table's type is `L2`, so a custom `ACL_TABLE_TYPE` with
+   it would fail the breakout's whole-config validation, as `learn_mode`
+   would without the hold, §11.12). That type matches SRC_MAC, DST_MAC,
+   the ether type and the outer VLAN, and not the ingress port. A rule
+   counter is the sum over every port the table is bound to, so a catch-all
+   in `DUI_MAC_ACL` cannot say which port saw the source. A table per
+   secured port is no answer: the ASIC reports three more ingress PORT
+   tables available beside the one in use (CRM, capture `crm_acl_group`),
+   shared with `DUI_DHCP_GUARD`, `DUI_IP_ACL` and `DUI_MAC_ACL`. And ACL
+   counter polling is off on the image (`counterpoll`: `ACL disable`), so
+   no ACL counter reaches COUNTERS_DB.
+3. **The ECS's route.** `learn_mode cpu_trap` (portsorch has it) sends an
+   unknown source to the CPU instead, where software can count it. On the
+   DX010 those frames enter the kernel's `Bridge`, whose FORWARD chain
+   accepts everything but link-local, ARP and multicast (capture,
+   `ebtables_forward`): unicast from an unlisted source would be forwarded
+   in software unless the bridge adds an ebtables rule set per secured
+   port, which is also where it would count. `learn_mode` is CONFIG_DB and
+   is kept across a reboot; ebtables rules are not, so between boot and the
+   bridge's first reconcile a secured port would pass what today it drops
+   from boot. The frames would reach the CPU at whatever rate the host
+   sends them, policed only by the default trap group, and that could not
+   be measured: no second linked port. A weaker filter for a counter: not
+   done.
+
+**Built: nothing; enforcement only.** The bit is never set.
+
+**What it takes to report it, as a build assessment** (all three, in this
+order; each is ordinary work in this repository):
+
+1. **The kit's `L2` table type gains the ingress-port match**: one
+   `.withMatch(SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS)` in 0003's builder and a
+   case in its mock test. `sonic-acl.yang` already allows `IN_PORTS` on any
+   rule. It is an image change: build, install, and the driver's `Start`
+   probe for it (as it probes 0003 itself).
+2. **The driver writes the filter into `DUI_MAC_ACL` as well**: per secured
+   port (or its PortChannel), FORWARD rules for its allowed sources and one
+   counted DROP with `IN_PORTS` set, below UniFi's own MAC ACL rules, beside
+   `learn_mode drop`, which stays the enforcement from boot. That is the
+   allowed MACs plus one rule per secured port against
+   `max_custom_mac_acls`. On Broadcom an ACL drop does not cancel a
+   to-CPU trap's copy (§11.7.8), which changes nothing here: the learning
+   drop already applies.
+3. **ACL counter polling on** (`FLEX_COUNTER_TABLE|ACL`), the DROP rule's
+   packets read each poll into a neutral cumulative counter in
+   `Port.Health`, and its growth set as 256 in `internal/device`, as the
+   storm and DHCP counters are. The read is the same one the rogue-DHCP
+   report needs for `DUI_DHCP_GUARD`'s drops; build it once.
+
+Verification needs a source on a linked port that is not on its list: a
+host on rack day, or a second DAC.
+
+#### 11.18.3 802.1X authentication failed (128)
+
+**The condition** is a failed 802.1X authentication attempt on the port:
+the switch is the authenticator, relays a host's EAPOL to a RADIUS server,
+and the server refuses it.
+
+**The running image has no authenticator.** Nothing on the host is one
+(no `hostapd`, `authmgr`, `pacmgr` or `mabmgr`), and the one container
+that speaks EAPOL, `docker-macsec` (the `macsec` feature, disabled),
+carries `wpa_supplicant`, `wpa_cli`, `wpa_action` and `wpa_passphrase`
+only: MACsec's key agreement on the supplicant side (capture,
+`authenticator_host`, `authenticator_macsec_container`). The EAPOL trap
+exists (`copp_cfg.json`'s `macsec` group, trap `eapol`; capture
+`copp_cfg_traps`). By the task's rule, the bit is not implemented.
+
+**What 202511 holds, unbuilt.** `src/sonic-pac` is Broadcom's Port Access
+Control, contributed upstream in 27 commits between 2024-10-26 and
+2025-07-02: `authmgr` (the authentication manager), `pacmgr`,
+`hostapdmgr` (which drives hostapd), `mab` and `mabmgr` (MAC
+authentication bypass), `paccfg`, `pacoper`, and their OS layer
+`fpinfra`. sonic-swss-common names its tables (CONFIG_DB
+`PAC_PORT_CONFIG_TABLE`, `PAC_GLOBAL_CONFIG_TABLE`,
+`HOSTAPD_GLOBAL_CONFIG_TABLE`; APPL_DB `PAC_PORT_TABLE`; STATE_DB
+`PAC_GLOBAL_OPER_TABLE`, `PAC_PORT_OPER_TABLE`,
+`PAC_AUTHENTICATED_CLIENT_OPER_TABLE`). Nothing else is there: no
+`rules/*.mk` builds it and no container packages it; nothing in the
+202511 sonic-swss consumes `PAC_PORT_TABLE`, so no code turns an
+authorised or unauthorised port into ASIC state; no `config`/`show`
+command in sonic-utilities 202511 names it. hostapd's source is in the
+tree (`src/wpasupplicant` is the hostap project), and `rules/wpasupplicant.mk`
+builds the supplicant from it only.
+
+**What building it takes** (the real assessment; nothing here is
+impossible on the DX010, and all of it is larger than any feature built
+so far):
+
+1. **The image**: build rules and a container for the eight PAC
+   components, and hostapd built from the same hostap tree with the wired
+   driver, as `hostapdmgr` expects; then make it run (the code has never
+   been built in a community image, so expect the first build to be
+   porting work against 202511's libraries).
+2. **The data plane**, written for sonic-swss: an orchagent consumer of
+   `PAC_PORT_TABLE` that holds an unauthorised port closed and admits each
+   authenticated client. The mechanism exists and is verified on this ASIC:
+   §11.12's MAC filter is exactly `learn_mode drop` plus a static FDB entry
+   per admitted MAC. The EAPOL trap goes with it.
+3. **The controller side**: claim 802.1X, capture the push (RADIUS
+   profile, per-port control mode, the fallback VLAN), write it to the PAC
+   tables, a RADIUS server the switch can reach.
+4. **The signal**: failed attempts per port from `PAC_PORT_OPER_TABLE`
+   or hostapd's EAP-failure events, as a cumulative counter in
+   `Port.Health`, its growth set as 128.
+
+Verification needs an 802.1X supplicant on a linked port and a RADIUS
+server: rack day at the earliest.
+
+#### 11.18.4 DoS (1024)
+
+**The condition** is a denial of service attack detected on the port; the
+UI's advice for it is to look for a misconfigured device sending excessive
+traffic, or an attacker. Nothing more about it is observable: no captured
+push (58 in `docs/fixtures/controller-*`, the ECS's among them) carries a
+key that configures a DoS detector, the UI has no setting for one, and the
+ECS reports no `anomalies` at all. What a UniFi switch counts as an attack
+is not known.
+
+**The DX010 has no per-port detector to match.** What it has is near the
+name only:
+
+- **CoPP** polices traffic to the CPU per trap group (`copp_cfg.json`:
+  ARP, LACP, LLDP, DHCP, BGP, IGMP, `ip2me` and the rest; capture
+  `copp_cfg_traps`). Its drops are per CPU queue, switch-wide: a policer
+  drop names no port.
+- **The drop counter reasons** include `SMAC_EQUALS_DMAC` and
+  `IP_HEADER_ERROR`, malformed-frame checks the ASIC makes anyway (one
+  counter in all, §11.18.2). A frame with its own address as both ends or
+  a bad IP header is as likely a broken host as an attack; calling it a DoS
+  is a reinterpretation.
+- **Storm control** drops are bits 1, 2 and 4 (another session), and the
+  DHCP rate limit is 32: each already has its own bit.
+
+**Built: nothing.** What a PR needs: an inform from a real UniFi switch
+reporting 1024 and what traffic set it, so the condition is defined by
+something observable; then a per-port detector for that condition on the
+DX010.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

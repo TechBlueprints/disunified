@@ -739,3 +739,15 @@ was restarted.
   this driver. A kernel policer behind that CoPP rate could never drop at
   300/s per port; a real one needs an ASIC per-port policer (orchagent's ACL
   has no policer action).
+- **Port anomalies 128/256/1024/2048 have no source on the image
+  (`docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
+  `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before
+  building a per-port counter, know: ACL counter polling is **off**
+  (`FLEX_COUNTER_TABLE|ACL` disable), so no ACL rule counter reaches
+  COUNTERS_DB until something turns it on; the SAI offers **one**
+  `PORT_INGRESS_DROPS` debug counter in all, with no learning-drop reason;
+  the kit's `L2` ACL type has no `IN_PORTS` match, so a rule counter in
+  `DUI_MAC_ACL` cannot name its port; STATE_DB `PORT_OPERR_TABLE` (MAC
+  local/remote fault per oper-down) counts ordinary drops of a healthy link,
+  not a failed port; the image has no 802.1X authenticator (202511's
+  `src/sonic-pac` is unbuilt).

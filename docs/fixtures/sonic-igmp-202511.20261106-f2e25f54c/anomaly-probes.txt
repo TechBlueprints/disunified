@@ -1,0 +1,215 @@
+@@@ hostname
+host-1
+@@@ version
+SONiC Software Version: SONiC.igmp-202511.20261106-f2e25f54c
+Platform: x86_64-cel_seastone-r0
+HwSKU: Seastone-DX010
+ASIC: broadcom
+@@@ device_dir
+/usr/share/sonic/device/x86_64-cel_seastone-r0/:
+api_files
+Celestica-DX010-C32
+Celestica-DX010-D48C8
+default_sku
+fan_airflow
+fancontrol
+fancontrol-B2F
+fancontrol-F2B
+installer.conf
+led-code
+led_proc_init.soc
+pcie.yaml
+platform_asic
+platform_components.json
+platform.json
+plugins
+pmon_daemon_control.json
+Seastone-DX010
+Seastone-DX010-10-50
+Seastone-DX010-25-50
+Seastone-DX010-50
+Seastone-DX010-50-40
+Seastone-DX010-50-50-40
+sensors.conf
+sensors.conf.orig
+sonic_platform
+sonic_platform-1.0-py3-none-any.whl
+system_health_monitoring_config.json
+thermal_overload_control.sh
+thermal_policy.json
+th-seastone-dx010-config-flex-all.bcm
+
+/usr/share/sonic/device/x86_64-cel_seastone-r0/Seastone-DX010/:
+hwsku.json
+port_config.ini
+sai.profile
+@@@ port_operr
+PORT_OPERR_TABLE|Ethernet0 {'oper_error_status': '3', 'oper_error_status_time': '2026-11-14 01:23:43', 'mac_local_fault_count': '2', 'mac_local_fault_time': '2026-11-14 01:23:43', 'mac_remote_fault_count': '2', 'mac_remote_fault_time': '2026-11-14 01:23:43'}
+@@@ orchagent_port_errors
+Nov  2 01:58:34.698952 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  2 09:50:56.948688 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  2 10:22:06.338636 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  3 03:56:28.547686 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  3 08:16:49.348887 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet4 error state set from 0x0-> 0x1
+Nov  3 08:16:49.348953 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet4 oper error event: mac_local_fault occurred
+Nov  5 04:29:25.013827 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from up to down
+Nov  5 04:29:25.063484 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 error state set from 0x0-> 0x1
+Nov  5 04:29:25.063484 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 oper error event: mac_local_fault occurred
+Nov  5 04:30:59.476626 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  5 04:31:36.050945 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from up to down
+Nov  5 04:31:36.066384 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 error state set from 0x1-> 0x3
+Nov  5 04:31:36.067764 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 oper error event: mac_local_fault occurred
+Nov  5 04:31:36.068520 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 oper error event: mac_remote_fault occurred
+Nov  5 04:31:44.120596 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  6 06:37:00.092978 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+Nov  7 20:00:34.882901 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from up to down
+Nov  7 20:00:34.939994 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 error state set from 0x0-> 0x1
+Nov  7 20:00:34.939994 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet0 oper error event: mac_local_fault occurred
+Nov  7 20:00:35.396347 SONiCSeastone-DX010 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet0 oper state set from down to up
+@@@ state_port_ethernet0
+{'state': 'ok', 'netdev_oper_status': 'up', 'admin_status': 'up', 'mtu': '1500', 'supported_speeds': '40000,100000', 'supported_fecs': 'none,rs', 'host_tx_ready': 'true', 'speed': '100000', 'fec': 'rs', 'NPU_SI_SETTINGS_SYNC_STATUS': 'NPU_SI_SETTINGS_DEFAULT'}
+@@@ appl_port_ethernet0
+{'admin_status': 'up'
+ 'oper_status': 'up'
+ 'flap_count': '5'
+ 'last_up_time': 'Sat Nov 14 01:32:23 2026'
+ 'last_down_time': 'Sat Nov 14 01:23:43 2026'}
+@@@ transceiver_status_sw
+TRANSCEIVER_STATUS_SW|Ethernet0 {'cmis_state': 'READY', 'status': '1', 'error': 'N/A'}
+TRANSCEIVER_STATUS_SW|Ethernet4 {'cmis_state': 'REMOVED', 'status': '0', 'error': 'N/A'}
+TRANSCEIVER_STATUS_SW|Ethernet8 {'cmis_state': 'REMOVED', 'status': '0', 'error': 'N/A'}
+TRANSCEIVER_STATUS_SW|Ethernet12 {'cmis_state': 'REMOVED', 'status': '0', 'error': 'N/A'}
+@@@ dropcounters_capabilities
+Counter Type          Total
+------------------  -------
+PORT_INGRESS_DROPS        1
+
+PORT_INGRESS_DROPS
+        MPLS_MISS
+        FDB_AND_BLACKHOLE_DISCARDS
+        IP_HEADER_ERROR
+        L3_EGRESS_LINK_DOWN
+        EXCEEDS_L3_MTU
+        DIP_LINK_LOCAL
+        SIP_LINK_LOCAL
+        ACL_ANY
+        SMAC_EQUALS_DMAC
+@@@ dropcounters_configuration
+Counter    Alias    Group    Type    Reasons    Description    Drop Monitor    Window    Drop Count Threshold    Incident Count Threshold
+---------  -------  -------  ------  ---------  -------------  --------------  --------  ----------------------  --------------------------
+@@@ crm_acl_group
+
+Stage    Bind Point    Resource Name      Used Count    Available Count
+-------  ------------  ---------------  ------------  -----------------
+INGRESS  PORT          acl_group                   3               1021
+INGRESS  PORT          acl_table                   1                  3
+INGRESS  LAG           acl_group                   0               1021
+INGRESS  LAG           acl_table                   1                  3
+INGRESS  VLAN          acl_group                   0               1021
+INGRESS  VLAN          acl_table                   0                  9
+INGRESS  RIF           acl_group                   0               1021
+INGRESS  RIF           acl_table                   0                  9
+INGRESS  SWITCH        acl_group                   0               1021
+INGRESS  SWITCH        acl_table                   0                  9
+EGRESS   PORT          acl_group                   0               1021
+EGRESS   PORT          acl_table                   0                  2
+EGRESS   LAG           acl_group                   0               1021
+EGRESS   LAG           acl_table                   0                  2
+EGRESS   VLAN          acl_group                   0               1021
+EGRESS   VLAN          acl_table                   0                  2
+EGRESS   RIF           acl_group                   0               1021
+EGRESS   RIF           acl_table                   0                  2
+EGRESS   SWITCH        acl_group                   0               1021
+EGRESS   SWITCH        acl_table                   0                  2
+
+@@@ counterpoll
+Type                        Interval (in ms)    Status
+--------------------------  ------------------  --------
+QUEUE_STAT                  default (10000)     enable
+PORT_STAT                   default (1000)      enable
+PORT_BUFFER_DROP            default (60000)     enable
+PHY                         default (10000)     enable
+RIF_STAT                    default (1000)      enable
+QUEUE_WATERMARK_STAT        default (60000)     enable
+PG_WATERMARK_STAT           default (60000)     enable
+PG_DROP_STAT                default (10000)     enable
+BUFFER_POOL_WATERMARK_STAT  default (60000)     enable
+ACL                         10000               disable
+@@@ ebtables_forward
+Bridge table: filter
+
+Bridge chain: FORWARD, entries: 4, policy: ACCEPT
+-d BGA -j DROP
+-p ARP -j DROP
+-p 802_1Q --vlan-encap 0806 -j DROP
+-d Multicast -j DROP
+@@@ cfg_port_ethernet120
+{'admin_status': 'up', 'alias': 'Eth31', 'dhcp_rate_limit': '300', 'index': '31', 'lanes': '121,122,123,124', 'mtu': '1500', 'speed': '100000', 'subport': '0'}
+@@@ features
+Feature         State            AutoRestart     SetOwner
+macsec          disabled         enabled         local
+@@@ authenticator_host
+(end)
+@@@ authenticator_macsec_container
+wpa_passphrase
+wpa_action
+wpa_cli
+wpa_supplicant
+@@@ copp_cfg_traps
+{
+"arp": {
+"always_enabled": "true",
+"trap_group": "queue4_group2",
+"trap_ids": "arp_req,arp_resp,neigh_discovery"
+},
+"bgp": {
+"trap_group": "queue4_group1",
+"trap_ids": "bgp,bgpv6"
+},
+"dhcp_relay": {
+"trap_group": "queue4_group3",
+"trap_ids": "dhcp,dhcpv6"
+},
+"ip2me": {
+"always_enabled": "true",
+"trap_group": "queue1_group1",
+"trap_ids": "ip2me"
+},
+"l2mcd": {
+"trap_group": "l2mcd_group",
+"trap_ids": "igmp_leave,igmp_query,igmp_v1_report,igmp_v2_report,igmp_v3_report"
+},
+"lacp": {
+"always_enabled": "true",
+"trap_group": "queue4_group1",
+"trap_ids": "lacp"
+},
+"lldp": {
+"trap_group": "queue4_group3",
+"trap_ids": "lldp"
+},
+"macsec": {
+"trap_group": "queue4_group1",
+"trap_ids": "eapol"
+},
+"nat": {
+"trap_group": "queue1_group2",
+"trap_ids": "src_nat_miss,dest_nat_miss"
+},
+"neighbor_miss": {
+"always_enabled": "true",
+"trap_group": "queue1_group3",
+"trap_ids": "neighbor_miss"
+},
+"sflow": {
+"trap_group": "queue2_group1",
+"trap_ids": "sample_packet"
+},
+"udld": {
+"always_enabled": "true",
+"trap_group": "queue4_group3",
+"trap_ids": "udld"
+}
+}
+
+@@@ end
