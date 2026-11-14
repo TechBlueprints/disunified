@@ -91,8 +91,9 @@ const (
 	guardEdge  = "edge"  // every port carrying a guarded VLAN, but the uplink and ports facing a switch
 )
 
-// aclSession is the configuration session an ACL change is made in, committed
-// with commitTimer like an address move: the ACL is bound to the uplink too,
+// aclSession is the prefix of the configuration session an ACL change is made
+// in (sessionName adds a suffix per change), committed with commitTimer like
+// an address move: the ACL is bound to the uplink too,
 // so a rule that blocks the bridge's own traffic reverts by itself.
 const aclSession = "dui-acl"
 
@@ -736,20 +737,21 @@ func portClause(port, lo, hi int) (string, error) {
 // it is aborted (`configure session <name> abort`, which also reverts one
 // pending on its timer).
 func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable bool, err error) {
-	cmds := append([]string{"enable", "configure session " + aclSession}, body...)
+	session := sessionName(aclSession)
+	cmds := append([]string{"enable", "configure session " + session}, body...)
 	cmds = append(cmds, "commit timer "+commitTimer)
 	c.logConfig(cmds)
 	if err := c.t.Configure(ctx, cmds); err != nil {
-		abort := []string{"enable", "configure session " + aclSession + " abort"}
+		abort := []string{"enable", "configure session " + session + " abort"}
 		c.logConfig(abort)
 		if aerr := c.t.Configure(ctx, abort); aerr != nil {
-			return false, fmt.Errorf("arista-eos: ACL change: %w (aborting session %s: %v)", err, aclSession, aerr)
+			return false, fmt.Errorf("arista-eos: ACL change: %w (aborting session %s: %v)", err, session, aerr)
 		}
 		return false, fmt.Errorf("arista-eos: ACL change: %w", err)
 	}
 	select {
 	case <-ctx.Done():
-		return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", aclSession, ctx.Err(), commitTimer)
+		return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
 	case <-time.After(c.aclSettle):
 	}
 	check := c.t
@@ -760,14 +762,14 @@ func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable b
 	if _, err := check.Run(ctx, []string{"enable", "show version"}); err != nil {
 		if ctx.Err() != nil {
 			// The write budget ran out, which says nothing about the rules.
-			return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", aclSession, ctx.Err(), commitTimer)
+			return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
 		}
-		return true, fmt.Errorf("arista-eos: the switch does not answer a new connection after the ACL change (%v); leaving session %s to revert in %s", err, aclSession, commitTimer)
+		return true, fmt.Errorf("arista-eos: the switch does not answer a new connection after the ACL change (%v); leaving session %s to revert in %s", err, session, commitTimer)
 	}
-	confirm := []string{"enable", "configure session " + aclSession + " commit", "write memory"}
+	confirm := []string{"enable", "configure session " + session + " commit", "write memory"}
 	c.logConfig(confirm)
 	if err := check.Configure(ctx, confirm); err != nil {
-		return false, fmt.Errorf("arista-eos: confirm session %s: %w; the switch reverts it in %s", aclSession, err, commitTimer)
+		return false, fmt.Errorf("arista-eos: confirm session %s: %w; the switch reverts it in %s", session, err, commitTimer)
 	}
 	return false, nil
 }

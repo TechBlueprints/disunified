@@ -455,13 +455,13 @@ func TestApplyACLConfirmsOverAFreshConnection(t *testing.T) {
 		t.Fatalf("batches on the switch's transport: %v", got)
 	}
 	session := got[0]
-	if session[0] != "enable" || session[1] != "configure session "+aclSession || session[len(session)-1] != "commit timer "+commitTimer {
+	if session[0] != "enable" || session[1] != "configure session "+aclSession+"-t" || session[len(session)-1] != "commit timer "+commitTimer {
 		t.Errorf("session batch = %v ... %v", session[:2], session[len(session)-1])
 	}
 	if dialled != fixtureHost || !fresh.closed {
 		t.Errorf("confirmed via %q (closed %v), want a fresh dial to the switch", dialled, fresh.closed)
 	}
-	if len(fresh.Configured) != 1 || strings.Join(fresh.Configured[0], " / ") != "enable / configure session "+aclSession+" commit / write memory" {
+	if len(fresh.Configured) != 1 || strings.Join(fresh.Configured[0], " / ") != "enable / configure session "+aclSession+"-t commit / write memory" {
 		t.Errorf("confirm = %v", fresh.Configured)
 	}
 	if n, err := c.applyACL(context.Background(), c.last, sampleWant()); n != 0 || err != nil || len(ft.Configured) != before+1 {
@@ -519,7 +519,7 @@ func TestApplyACLAbortsARejectedSession(t *testing.T) {
 		t.Fatal("a rejected batch reported success")
 	}
 	last := ft.Configured[len(ft.Configured)-1]
-	if strings.Join(last, " / ") != "enable / configure session "+aclSession+" abort" {
+	if strings.Join(last, " / ") != "enable / configure session "+aclSession+"-t abort" {
 		t.Errorf("last batch = %v, want the abort", last)
 	}
 	if c.aclHeld != "" {

@@ -86,12 +86,12 @@ func TestApplyAddressChangesTheGatewayInATimedSession(t *testing.T) {
 		t.Fatalf("batches = %d, want the session then the confirm: %v", len(got), got)
 	}
 	session := strings.Join(got[0], " / ")
-	for _, want := range []string{"configure session dui-address", "interface Management1", "ip address 192.0.2.1/16", "no ip route 0.0.0.0/0 192.0.2.2", "ip route 0.0.0.0/0 192.0.2.9", "commit timer 00:02:00"} {
+	for _, want := range []string{"configure session dui-address-t", "interface Management1", "ip address 192.0.2.1/16", "no ip route 0.0.0.0/0 192.0.2.2", "ip route 0.0.0.0/0 192.0.2.9", "commit timer 00:02:00"} {
 		if !strings.Contains(session, want) {
 			t.Errorf("session batch lacks %q: %s", want, session)
 		}
 	}
-	if confirm := strings.Join(got[1], " / "); confirm != "enable / configure session dui-address commit / write memory" {
+	if confirm := strings.Join(got[1], " / "); confirm != "enable / configure session dui-address-t commit / write memory" {
 		t.Errorf("confirm batch = %s", confirm)
 	}
 	if c.last.System.Gateway != "192.0.2.9" {
@@ -132,7 +132,7 @@ func TestApplyAddressMovesTheSwitchAndConfirmsAtTheNewAddress(t *testing.T) {
 	if !strings.Contains(strings.Join(last, " / "), "commit timer 00:02:00") {
 		t.Errorf("the old transport's last batch must be the timed session, got %v", last)
 	}
-	if n := len(newT.Configured); n != 1 || strings.Join(newT.Configured[0], " / ") != "enable / configure session dui-address commit / write memory" {
+	if n := len(newT.Configured); n != 1 || strings.Join(newT.Configured[0], " / ") != "enable / configure session dui-address-t commit / write memory" {
 		t.Errorf("confirm over the new transport = %v", newT.Configured)
 	}
 	if c.t != newT || c.host != "192.0.2.40" {

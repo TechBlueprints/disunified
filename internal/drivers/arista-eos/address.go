@@ -4,15 +4,45 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// addressSession is the configuration session an address change is made in.
+// addressSession is the prefix of the configuration session an address change
+// is made in (sessionName adds a suffix per change).
 // A session lets the whole change land at once and, with a commit timer, be
 // undone by the switch itself if the bridge never confirms it.
 const addressSession = "dui-address"
+
+// sessionName is the name of the configuration session for one change: the
+// prefix (addressSession, aclSession) and a suffix of its own. EOS keeps the
+// last completed session by name (`show configuration sessions`: "Maximum
+// number of completed sessions: 1" on 4.26.14M) and refuses to enter a
+// session of that name again: the second ACL change of the deployed bridge
+// failed with "Cannot enter session dui-acl, it is already complete" and
+// could not abort it ("Too late to abort; session already committed"), live
+// on 2026-11-14 (docs/drivers/arista-eos.md §9.3). A fixed name therefore
+// works once per switch. `no configure session NAME` deletes a completed
+// session, but it fails for a name that does not exist ("Cannot delete
+// non-existent session"), so the driver never relies on it.
+func sessionName(prefix string) string { return prefix + "-" + sessionSuffix() }
+
+// sessionSeq makes two names drawn in the same millisecond differ.
+var sessionSeq atomic.Uint32
+
+// sessionSuffix is the part of a session name that differs per change.
+// Tests replace it.
+var sessionSuffix = timeSessionSuffix
+
+// timeSessionSuffix is the time in milliseconds and a sequence number, in
+// base 36.
+func timeSessionSuffix() string {
+	return strconv.FormatInt(time.Now().UnixMilli(), 36) + strconv.FormatUint(uint64(sessionSeq.Add(1)%36), 36)
+}
 
 // commitTimer is how long the switch waits for confirmation before reverting
 // an address change. Long enough for a fresh eAPI dial and one command; short
@@ -61,7 +91,8 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 		return false, nil
 	}
 
-	cmds := []string{"enable", "configure session " + addressSession,
+	session := sessionName(addressSession)
+	cmds := []string{"enable", "configure session " + session,
 		"interface " + iface, fmt.Sprintf("ip address %s/%d", d.IP, d.PrefixLen), "exit"}
 	if d.Gateway != "" && d.Gateway != last.System.Gateway {
 		if last.System.Gateway != "" {
@@ -89,22 +120,22 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	confirmVia := c.t
 	if d.IP != cur.IP {
 		if c.redial == nil {
-			return false, fmt.Errorf("arista-eos: address changed to %s in session %s, but this transport cannot be re-dialled to confirm it; the switch will revert in %s", d.IP, addressSession, commitTimer)
+			return false, fmt.Errorf("arista-eos: address changed to %s in session %s, but this transport cannot be re-dialled to confirm it; the switch will revert in %s", d.IP, session, commitTimer)
 		}
 		nt := c.redial(d.IP)
 		if _, err := nt.Run(ctx, []string{"enable", "show version"}); err != nil {
 			_ = nt.Close()
-			return false, fmt.Errorf("arista-eos: the switch does not answer at %s (%v); leaving session %s to revert in %s", d.IP, err, addressSession, commitTimer)
+			return false, fmt.Errorf("arista-eos: the switch does not answer at %s (%v); leaving session %s to revert in %s", d.IP, err, session, commitTimer)
 		}
 		confirmVia = nt
 	}
-	confirm := []string{"enable", "configure session " + addressSession + " commit", "write memory"}
+	confirm := []string{"enable", "configure session " + session + " commit", "write memory"}
 	c.logConfig(confirm)
 	if err := confirmVia.Configure(ctx, confirm); err != nil {
 		if confirmVia != c.t {
 			_ = confirmVia.Close()
 		}
-		return false, fmt.Errorf("arista-eos: confirm session %s: %w", addressSession, err)
+		return false, fmt.Errorf("arista-eos: confirm session %s: %w", session, err)
 	}
 	c.mu.Lock()
 	if confirmVia != c.t {
