@@ -717,6 +717,17 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.SyslogController = sc
 		log.Printf("control: the controller's remote syslog host is written to the device")
 	}
+	// IPv6 on the management interface follows the management network's
+	// IPv6 setting, which the push does not carry: a REST read
+	// (docs/drivers/sonic.md §11.22).
+	if _, ok := sw.(devicemodel.ManagementIPv6Controller); sw != nil && ok {
+		if o.unifiURL == "" || o.unifiKey == "" {
+			log.Printf("control: no controller API URL or key (DUI_UNIFI_API_KEY): the management network's IPv6 setting cannot be read, and the device's IPv6 is left as it is")
+		} else {
+			loopCfg.ManagementIPv6 = cachedManagementIPv6(unifiapi.New(o.unifiURL, o.unifiKey, o.unifiSite, true), time.Minute)
+			log.Printf("control: the device takes the gateway's IPv6 router advertisements on its management interface while the controller runs IPv6 on the management network")
+		}
+	}
 	loopCfg.ControlIGMP, loopCfg.ControlNTP, loopCfg.ControlSyslog, loopCfg.ControlHostname = true, true, true, true
 	loopCfg.ControlReboot, loopCfg.ControlSSHKeys, loopCfg.ControlSNMP = true, true, true
 	if o.controlPorts != "" {
@@ -964,4 +975,31 @@ func nutApplier(s *nutd.Server) informloop.NUTApplier {
 		return nil
 	}
 	return s
+}
+
+// cachedManagementIPv6 is the controller's answer to "IPv6 on the
+// management network?", read again after ttl: the loop asks every cycle.
+// An error is not cached.
+func cachedManagementIPv6(api *unifiapi.Client, ttl time.Duration) func(context.Context, int) (bool, error) {
+	var (
+		mu     sync.Mutex
+		at     time.Time
+		vlanAt int
+		on     bool
+	)
+	return func(ctx context.Context, vlan int) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !at.IsZero() && vlan == vlanAt && time.Since(at) < ttl {
+			return on, nil
+		}
+		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		v, err := api.ManagementIPv6(cctx, vlan)
+		if err != nil {
+			return false, err
+		}
+		at, vlanAt, on = time.Now(), vlan, v
+		return v, nil
+	}
 }

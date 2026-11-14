@@ -132,6 +132,22 @@ func TestParseTimezoneAndHostname(t *testing.T) {
 	}
 }
 
+// switch.managementvlan names the management network's VLAN: 1 (the
+// untagged Default network) in every recorded push; the loop asks the
+// controller whether that network runs IPv6 (docs/drivers/sonic.md §11.22).
+func TestParseManagementVLAN(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.109", "system_cfg-dx010-acl.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Parse(string(b)).ManagementVLAN; got != 1 {
+		t.Errorf("ManagementVLAN = %d, want 1", got)
+	}
+	if got := Parse("switch.port.1.name=x\n").ManagementVLAN; got != 0 {
+		t.Errorf("absent key: ManagementVLAN = %d, want 0", got)
+	}
+}
+
 // Remote logging switched on in Settings -> System (10.6.109, 2026-10-27): the
 // host arrives as syslog.remote.ip/port/status, not the syslog.ip/port unifi-emu's
 // notes guessed. syslog.status=enabled and syslog.level=7 are in every push,

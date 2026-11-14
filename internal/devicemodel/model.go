@@ -470,6 +470,17 @@ type AddressController interface {
 	ApplyAddress(ctx context.Context, desired AddressDesired) (changed bool, err error)
 }
 
+// ManagementIPv6Controller is optional: a device whose management
+// interface takes IPv6 from the gateway's router advertisements only when
+// told to -- a router (a SONiC switch forwards on every interface, and
+// Linux ignores RAs on a forwarding interface unless asked). enabled is
+// whether the controller runs IPv6 on the management network; the loop
+// asks only a driver that implements this. Idempotent; changed counts the
+// writes.
+type ManagementIPv6Controller interface {
+	ApplyManagementIPv6(ctx context.Context, enabled bool) (changed int, err error)
+}
+
 // FanMode is a device's fan behaviour as UniFi names it: Default (the
 // vendor's own fan control) or Quiet (a lower fan floor or a fixed lower
 // speed; each driver says what it writes).

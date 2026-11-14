@@ -1,0 +1,149 @@
+{
+ "data": [
+  {
+   "_id": "00000000-0000-4000-8000-000000000001",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_enabled": true,
+   "ipv6_interface_type": "pd",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "Default",
+   "purpose": "corporate",
+   "vlan_enabled": false
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000002",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_enabled": true,
+   "ipv6_interface_type": "pd",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "corporate-1",
+   "purpose": "corporate",
+   "vlan": 2,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000003",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_interface_type": "none",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "corporate-2",
+   "purpose": "corporate",
+   "vlan": 8,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000004",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_interface_type": "none",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "corporate-3",
+   "purpose": "corporate",
+   "vlan": 9,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000005",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_interface_type": "pd",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "guest-1",
+   "purpose": "guest",
+   "vlan": 69,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000006",
+   "enabled": true,
+   "name": "vlan-only-1",
+   "purpose": "vlan-only",
+   "vlan": 1000,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000007",
+   "enabled": true,
+   "name": "vlan-only-2",
+   "purpose": "vlan-only",
+   "vlan": 2000,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000008",
+   "enabled": true,
+   "ipv6_client_address_assignment": "slaac",
+   "ipv6_interface_type": "none",
+   "ipv6_ra_enabled": true,
+   "ipv6_setting_preference": "auto",
+   "name": "vlan-only-3",
+   "purpose": "vlan-only",
+   "vlan": 10,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000009",
+   "enabled": true,
+   "name": "vlan-only-4",
+   "purpose": "vlan-only",
+   "vlan": 3000,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000010",
+   "enabled": true,
+   "name": "vlan-only-5",
+   "purpose": "vlan-only",
+   "vlan": 4000,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000011",
+   "enabled": true,
+   "name": "vlan-only-6",
+   "purpose": "vlan-only",
+   "vlan": 4010,
+   "vlan_enabled": true
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000012",
+   "enabled": true,
+   "ipv6_enabled": true,
+   "ipv6_setting_preference": "manual",
+   "ipv6_wan_delegation_type": "pd",
+   "name": "wan-1",
+   "purpose": "wan",
+   "vlan_enabled": false
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000013",
+   "enabled": true,
+   "ipv6_enabled": true,
+   "ipv6_setting_preference": "manual",
+   "ipv6_wan_delegation_type": "pd",
+   "name": "wan-2",
+   "purpose": "wan",
+   "vlan_enabled": false
+  },
+  {
+   "_id": "00000000-0000-4000-8000-000000000014",
+   "enabled": true,
+   "ipv6_setting_preference": "manual",
+   "ipv6_wan_delegation_type": "pd",
+   "name": "wan-3",
+   "purpose": "wan",
+   "vlan_enabled": false
+  }
+ ],
+ "meta": {
+  "rc": "ok"
+ }
+}

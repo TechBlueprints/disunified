@@ -333,6 +333,14 @@ these is marked "not captured".
   mode is the device's `fan_mode:` in
   `config.yaml` (`devicemodel.FanModeController`; `docs/drivers/sonic.md`
   §11.15, `docs/drivers/arista-eos.md` §8).
+- **A switch's push carries no IPv6 key (Network 10.6.106 to 11.0.99,
+  2026-11-14).** Whether the management network runs IPv6 is
+  `rest/networkconf`'s `ipv6_interface_type` (`pd`/`static`/`none`) on the
+  network `switch.managementvlan` names. `ipv6_enabled` is no guide: a
+  guest network the gateway serves has none. A UniFi switch takes SLAAC on
+  its management interface; a SONiC switch needs `accept_ra` 2 there and an
+  APPL_DB `INTF_TABLE` row for the address, or inbound IPv6 rides the 600
+  pps default trap (`docs/drivers/sonic.md` §11.22).
 - **A capability bit's name and value come from upstream unifi-emu's
   `capability_bits.json`; what it unlocks and pushes, from a live claim and
   its capture** (2026-11-07, BGP/OSPF: `feature_caps` 33554432 put the DX010

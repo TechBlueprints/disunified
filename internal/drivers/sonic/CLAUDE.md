@@ -555,6 +555,32 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   the next cycle's reconcile after a swss restart -- the loop reconciles
   whether or not the inform was answered (2026-11-02), so a bridge whose own
   informs the MTU breaks still repairs it.
+- **IPv6 on the management interface (`ipv6.go`, `docs/drivers/sonic.md`
+  §11.22, 2026-11-14).** SLAAC follows the management network's IPv6 in
+  the controller (`rest/networkconf` `ipv6_interface_type` not `none`; the
+  push carries no IPv6 key; `informloop/ipv6.go` asks through
+  `devicemodel.ManagementIPv6Controller`). Facts that cost time:
+  - **SONiC forwards on every router interface**, and Linux then ignores
+    RAs unless `accept_ra` is 2. SONiC's own RA sysctls are for eth0 only.
+    The driver writes 2 on the interface it manages the switch at
+    (`ntpSource`) and nowhere else, with `echo 2 | sudo tee …/accept_ra`.
+  - **A kernel-only address gets no ip2me route.** Inbound traffic then
+    rides the default trap at 600 pps (an upload: 0.9 MB/s against 12.7 over
+    IPv4). An APPL_DB `INTF_TABLE:<iface>:<addr>/<len>` row through
+    ProducerStateTable fixes it (11.4 MB/s). On 202511 intfsorch adds only
+    that host route for a row: FRR already passes the /64 and the RA's
+    default to the chip.
+  - **Off is five steps**: the rows, `accept_ra` 1, `ip -6 addr flush …
+    scope global dynamic`, `ip -6 route flush … proto ra`, and `ip -6 route
+    del` of each on-link prefix the RA left (`proto kernel` with an expiry,
+    which outlives the address).
+  - **Lost on a reboot (sysctl) and a swss restart (rows)**; the reconcile
+    restores both. CONFIG_DB-backed addresses and their rows are never
+    touched.
+  - **The RA's MTU option (9216) is ignored** above the link's 1500, so
+    §12's MTU trap does not come back through IPv6.
+  - Fixtures: `sonic-igmp-202511.20261106-f2e25f54c/collect-ipv6-{off,
+    off-leftover-route,slaac,on}.txt`.
 - **IGMP snooping (`igmp.go`, `docs/drivers/sonic.md` §8.10, end of §8.14;
   built 2026-11-03) -- only on the repo's 202511 image (`FEATURE|l2mcd`)
   and only with `options.igmp: on` (off until §8.9 H4, the traffic test with

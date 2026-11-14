@@ -240,6 +240,10 @@ bridge_ports("asic_bridge_port")
 section("appl_iso", "APPL_DB", "ISOLATION_GROUP_TABLE:DUI_*")
 section("appl_fdb", "APPL_DB", "FDB_TABLE:*")
 section("cfg_qos", "CONFIG_DB", "SCHEDULER|DUI_*", "PORT_QOS_MAP|*")
+# The router interfaces' addresses as orchagent knows them (intfmgrd's rows
+# from CONFIG_DB, and the driver's for a SLAAC address, ipv6.go): a row is
+# what gives an address its ip2me route in the chip.
+section("appl_intf", "APPL_DB", "INTF_TABLE:*")
 # LLDP-MED: the TIA TLVs lldpd sends per port (the driver's custom TLVs,
 # OUI 00-12-BB): one "<port> <capabilities>|- <network policy>|-" line per
 # local interface, each value as lldpcli reports it; empty when lldpcli
@@ -530,6 +534,29 @@ text("meminfo", path="/proc/meminfo")
 text("addr", ["ip", "-j", "addr", "show"])
 text("route", ["ip", "-j", "route", "show", "default"])
 text("neigh", ["ip", "-j", "neigh", "show"])
+# IPv6 router advertisements (ipv6.go, docs/drivers/sonic.md §11.22): each
+# in-band netdev's accept_ra -- SONiC forwards on every router interface, so
+# there only 2 takes RAs -- and the IPv6 routes the kernel learned from RAs:
+# the default (proto ra) and the on-link prefixes, which carry an expiry (a
+# configured address's prefix route never does). "error" when unreadable.
+s("ipv6_ra")
+try:
+    _ra = {}
+    _d = "/proc/sys/net/ipv6/conf"
+    for _n in sorted(os.listdir(_d)):
+        if _n.startswith(("Vlan", "Ethernet", "PortChannel", "Loopback")):
+            try:
+                with open(os.path.join(_d, _n, "accept_ra")) as _f:
+                    _ra[_n] = _f.read().strip()
+            except Exception:
+                pass
+    _out = subprocess.run(["ip", "-6", "-j", "route", "show"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          timeout=10).stdout
+    _rt = [{"dst": _r.get("dst", ""), "dev": _r.get("dev", ""), "protocol": _r.get("protocol", "")}
+           for _r in json.loads(_out or b"[]") if _r.get("protocol") == "ra" or "expires" in _r]
+    dump({"accept_ra": _ra, "routes": _rt})
+except Exception:
+    sys.stdout.write("error\n")
 # chrony's own view of its sources (docs/drivers/sonic.md §10.6), read
 # through chronyd's localhost command port as the login user: the sources
 # (CSV), and how many are online and offline -- a boot hook can leave every

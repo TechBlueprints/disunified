@@ -300,8 +300,9 @@ var redisSections = []string{
 // l2_storm (l2d's storm detection, §11.21), l2_dhcp_rate (its DHCP rate
 // detector, §11.17), l2_maclock (MAC locking's count, §11.18.2) and
 // asic_bridge_port (each port's bridge port in the chip, §8.15) on
-// 2026-11-14.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm", "asic_bridge_port"}
+// 2026-11-14, and appl_intf (orchagent's interface address rows, §11.22)
+// the same day.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm", "asic_bridge_port", "appl_intf"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)

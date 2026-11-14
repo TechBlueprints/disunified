@@ -32,6 +32,10 @@ IP_RE = re.compile(r'(?<![0-9.])(?:\d{1,3}\.){3}\d{1,3}(?![0-9.])')
 # Any run of hex digits and colons with at least two colons; ipaddress
 # decides whether it is really an IPv6 address (a MAC is not).
 IP6_RE = re.compile(r'(?<![0-9A-Za-z:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Za-z:.])')
+# APPL_DB INTF_TABLE keys put the address right after "<interface>:"
+# ("INTF_TABLE:Vlan4094:<address>/<len>"), where IP6_RE refuses the colon
+# before it; an IPv4 address there is IP_RE's.
+INTF6_RE = re.compile(r'(INTF_TABLE:[A-Za-z][A-Za-z0-9.]*:)([0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7})(?=/\d)')
 
 macs, ips, ip6s, lls = {}, {}, {}, {}
 KEEP_MACS = ('00:00:00:00:00:00', 'ff:ff:ff:ff:ff:ff')
@@ -178,6 +182,7 @@ def main(src, dst):
         out = re.sub(r'(?<![A-Za-z0-9_.-])' + re.escape(old) + r'(?![A-Za-z0-9_-])', names[old], out)
     out = MAC_RE.sub(lambda m: map_mac(m.group(0)), out)
     out = IP_RE.sub(lambda m: map_ip(m.group(0)), out)
+    out = INTF6_RE.sub(lambda m: m.group(1) + map_ip6(m.group(2)), out)
     out = IP6_RE.sub(lambda m: map_ip6(m.group(0)), out)
 
     # Port descriptions are kept unless they still carry something mapped

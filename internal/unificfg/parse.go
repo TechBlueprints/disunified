@@ -81,6 +81,10 @@ type Config struct {
 	// spaces removed, in every push. A real UniFi device takes it as its
 	// hostname (and sends it as its DHCP hostname). "" when absent.
 	Hostname string
+	// ManagementVLAN is switch.managementvlan: the VLAN of the network the
+	// switch is managed on (1, the untagged Default network, in every
+	// recorded push). 0 when absent.
+	ManagementVLAN int
 
 	// Routing is switch.routing_enabled with switch.routing_interface.*
 	// and switch.dhcp_server/dhcp_relay: the networks a Layer 3 switch
@@ -1063,6 +1067,8 @@ func Parse(text string) *Config {
 			localeTZ = strings.TrimSpace(v)
 		case "resolv.host.1.name":
 			c.Hostname = strings.TrimSpace(v)
+		case "switch.managementvlan":
+			c.ManagementVLAN, _ = strconv.Atoi(strings.TrimSpace(v))
 		case "syslog.remote.status": // syslog.status/syslog.level are the device's own logging, pushed enabled/7 even with remote logging off
 			syslogEnabled = v == "enabled"
 		case "syslog.remote.ip":

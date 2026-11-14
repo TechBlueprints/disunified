@@ -139,6 +139,10 @@ type swState struct {
 	dhcpdKnown bool
 	l3Hop      string
 
+	// v6: router advertisements and SLAAC on the in-band interfaces
+	// (ipv6.go, §11.22).
+	v6 v6State
+
 	// BGP (bgp.go, §11.14): the top-level objects bgpd runs (collect.py's
 	// frr_bgp: "router bgp 65010", "route-map X", ...); frrKnown false on a
 	// capture without the section or when bgpd could not be read.
@@ -304,6 +308,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	s.mgmtPortMissing = mgmtAddr && !mgmtPort
+	s.v6 = parseV6(sec["ipv6_ra"], db["appl_intf"], addrs)
 	sort.Strings(s.mgmtNoGateway)
 	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
 		if line = strings.TrimSpace(line); line != "" {
@@ -527,6 +532,7 @@ func (s *swState) clone() *swState {
 	for k := range s.ifaddrs {
 		c.ifaddrs[k] = true
 	}
+	c.v6 = s.v6.clone()
 	return c
 }
 

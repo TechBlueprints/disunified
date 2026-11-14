@@ -439,6 +439,9 @@ func (f *FixtureRunner) apply(line string) error {
 		return ""
 	}
 	cmd := strings.Join(w[:min(len(w), 3)], " ")
+	if ok, err := f.ipv6Write(line, w); ok {
+		return err
+	}
 	if ok, err := f.portFeatWrite(w); ok {
 		return err
 	}

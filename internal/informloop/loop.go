@@ -104,6 +104,12 @@ type Config struct {
 	// DeviceController with ControlSyslog). nil = the device's own syslog
 	// settings are left alone.
 	SyslogController devicemodel.SyslogController
+	// ManagementIPv6 says whether the controller runs IPv6 on the network
+	// with that VLAN (the push's switch.managementvlan, 1 when absent): a
+	// REST read, unifiapi.Client.ManagementIPv6. The loop asks it only for
+	// a driver that implements devicemodel.ManagementIPv6Controller; nil
+	// leaves that device's management IPv6 as it is.
+	ManagementIPv6 func(ctx context.Context, vlan int) (bool, error)
 	// ControlIGMP, ControlNTP, ControlSyslog, ControlHostname, ControlReboot,
 	// ControlSNMP and ControlSSHKeys hand the device-wide settings UniFi owns
 	// to the driver. The bridge sets them all whenever it controls the
@@ -247,6 +253,7 @@ type Loop struct {
 	childNoted map[int]string // per child's port, the condition last logged (children.go)
 	learn      *learnTimes    // learn times for MAC entries the driver reports without one (learntimes.go)
 	fanNoted   string         // the fan-mode refusal last logged, to log on change only (fanmode.go)
+	ipv6Noted  string         // the management network's IPv6 (or the error reading it) last logged (ipv6.go)
 	// power logs a power device's transitions when its driver asks for it
 	// (devicemodel.PowerEventSource); nil otherwise.
 	power *powerevent.Tracker
@@ -1022,6 +1029,7 @@ func deviceAs[T any](l *Loop) (T, bool) {
 // syslog, SNMP, time zone, hostname); errors are logged, and the port apply
 // still proceeds (they are independent).
 func (l *Loop) applyDeviceSettings(ctx context.Context, text string) {
+	l.applyManagementIPv6(ctx, text)
 	sc, ok := deviceAs[devicemodel.DeviceController](l)
 	if !ok {
 		return

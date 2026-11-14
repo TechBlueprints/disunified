@@ -11,13 +11,20 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// Network is one of the site's networks: its VLAN and record id.
+// Network is one of the site's networks: its VLAN and record id, and
+// whether the gateway runs IPv6 on it.
 type Network struct {
 	ID      string `json:"_id"`
 	Name    string `json:"name"`
 	VLAN    int    `json:"vlan"`
 	Purpose string `json:"purpose"`
 	Enabled bool   `json:"enabled"`
+	// IPv6 is the network editor's IPv6 Interface Type set to anything but
+	// None (ipv6_interface_type "pd" or "static"; "none" or absent is off).
+	// ipv6_enabled is no guide: on Network 11.0.99 a guest network with
+	// prefix delegation, served IPv6 by the gateway, has none
+	// (docs/fixtures/controller-11.0.99/rest-networkconf.json).
+	IPv6 bool `json:"-"`
 }
 
 // Networks lists the site's networks that a port can carry (corporate,
@@ -30,6 +37,7 @@ func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 			VLAN    json.RawMessage `json:"vlan"` // a number, or a string on some records
 			Purpose string          `json:"purpose"`
 			Enabled *bool           `json:"enabled"`
+			IPv6    string          `json:"ipv6_interface_type"`
 		} `json:"data"`
 	}
 	if err := c.do(ctx, "GET", "/proxy/network/api/s/"+c.Site+"/rest/networkconf", nil, &r); err != nil {
@@ -46,9 +54,26 @@ func (c *Client) Networks(ctx context.Context) ([]Network, error) {
 		if vlan == 0 {
 			vlan = 1
 		}
-		out = append(out, Network{ID: n.ID, Name: n.Name, VLAN: vlan, Purpose: n.Purpose, Enabled: n.Enabled == nil || *n.Enabled})
+		out = append(out, Network{ID: n.ID, Name: n.Name, VLAN: vlan, Purpose: n.Purpose, Enabled: n.Enabled == nil || *n.Enabled,
+			IPv6: n.IPv6 != "" && n.IPv6 != "none"})
 	}
 	return out, nil
+}
+
+// ManagementIPv6 says whether the controller runs IPv6 on the network with
+// VLAN vlan (1 = the untagged Default network): enabled, with an IPv6
+// interface type. An error when no network has that VLAN.
+func (c *Client) ManagementIPv6(ctx context.Context, vlan int) (bool, error) {
+	nets, err := c.Networks(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range nets {
+		if n.VLAN == vlan {
+			return n.Enabled && n.IPv6, nil
+		}
+	}
+	return false, fmt.Errorf("no network with VLAN %d on site %s", vlan, c.Site)
 }
 
 // SeedPortConfig writes the switch's own per-port state into the

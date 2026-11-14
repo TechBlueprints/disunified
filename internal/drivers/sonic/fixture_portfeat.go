@@ -56,6 +56,14 @@ func (f *FixtureRunner) applWrite(op, key string, fv []string) error {
 	switch {
 	case strings.HasPrefix(key, "ISOLATION_GROUP_TABLE:"):
 		sec = "appl_iso"
+	case strings.HasPrefix(key, "INTF_TABLE:"):
+		// An address row: orchagent takes it only for a router interface
+		// it has (the interface's own row, "INTF_TABLE:<iface>").
+		sec = "appl_intf"
+		iface, _, _ := strings.Cut(strings.TrimPrefix(key, "INTF_TABLE:"), ":")
+		if _, ok := f.table("appl_intf")["INTF_TABLE:"+iface]; op == "hset" && !ok {
+			return fmt.Errorf("unmodelled: an address row for %s, which is no router interface", iface)
+		}
 	case strings.HasPrefix(key, "FDB_TABLE:"):
 		sec = "appl_fdb"
 		vlan, _, _ := strings.Cut(strings.TrimPrefix(key, "FDB_TABLE:"), ":")

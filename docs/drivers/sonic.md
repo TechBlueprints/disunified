@@ -2801,7 +2801,8 @@ capacity is Ubiquiti's number, ours is the ASIC's. The VS capture has no
 
 **Small fields.** `ipv6`: the dialled interface's IPv6 addresses,
 `<address>/<prefix>`, global first (the ECS: its management bridge's
-SLAAC and link-local; the DX010's Vlan4094 has only its link-local).
+SLAAC and link-local; the DX010's Vlan4094 had only its link-local until
+§11.22 gave it SLAAC).
 `displayable_version`: a UniFi version without its build number (the
 ECS's `4.0.1.995` -> `4.0.1`). The DX010's build id is no longer sent
 (2026-11-13): it reports the ECS Core's catalogue version, then the
@@ -5777,6 +5778,108 @@ cabled traffic source on a test port in a VLAN of its own, storm control
 from the UI, the "Broadcast Storm Detected" / "Multicast Storm Detected"
 alert read from the controller's device alerts, and for unicast a counter
 that separates flooded unicast (none on this SAI).
+
+### 11.22 IPv6 on the management interface: SLAAC while the controller's network runs IPv6 (2026-11-14)
+
+Clint asked why the DX010 had no IPv6 address, then asked for one to come
+and go with the controller's IPv6 setting.
+
+**Why it had none.** The gateway's router advertisements reach Vlan4094
+(tcpdump on the switch: one every 10-16 s, a /64 with the autonomous flag,
+RDNSS, an MTU option of 9216). SONiC turns forwarding on for every router
+interface (`net.ipv6.conf.all.forwarding=1`). On a forwarding interface
+Linux takes an RA only with `accept_ra` 2, and SONiC leaves it at 1.
+SONiC's own RA set-up (`/etc/sysctl.d/90-dhcp6-systcl.conf`, and
+`forwarding=0` on eth0) is for eth0, which the DX010 is not managed
+through. So Vlan4094 kept only its link-local, and the inform's `ipv6`
+said so (§11.4). The ECS has its management address on a kernel bridge of
+its own (`br0`, outside SONiC's router interfaces), with a SLAAC address;
+its `Vlan<id>` interfaces carry no address at all. Whether `br0` takes RAs
+through `forwarding` 0 or `accept_ra` 2 is not captured.
+
+**What the controller says.** No push to a switch carries an IPv6 key (no
+recorded push, 10.6.106 to 11.0.99). The network's setting is in
+`rest/networkconf`:
+
+- `ipv6_interface_type` is the network editor's IPv6 Interface Type
+  (`pd`, `static`, `none`).
+- The gateway serves IPv6 on exactly the `pd` networks: the gateway's own
+  DNS name resolves to one address per such network.
+- `ipv6_enabled` is no guide. On 11.0.99 the guest network has `pd` and no
+  `ipv6_enabled`, and is served all the same.
+- `switch.managementvlan` names the management network: 1, the untagged
+  Default network, in every recorded push.
+
+Fixture: `controller-11.0.99/rest-networkconf.json`, reduced to the fields
+read, names and ids replaced.
+
+**Measured by hand on the DX010** (202511 f2e25f54c; documentation values
+here):
+
+- **`accept_ra` 2 on Vlan4094.** Within one RA the interface had its SLAAC
+  address (`dynamic mngtmpaddr proto kernel_ra`), the RA's default route
+  (`proto ra`, metric 1024) and the on-link /64 (with an expiry). FRR passed
+  `::/0` and the /64 through fpmsyncd to APPL_DB `ROUTE_TABLE` and the chip,
+  as it does IPv4's default. The switch pinged its gateway and opened TCP to
+  it over IPv6, and a LAN host reached the address. The RA's MTU option
+  (9216) is above the link's 1500, and Linux ignores an RA MTU above the
+  link's: `net.ipv6.conf.Vlan4094.mtu` stayed 1500, so §12's MTU trap does
+  not come back this way. Every other VLAN kept 1.
+- **No ip2me route.** orchagent programs an interface address's host route
+  to the CPU only from an APPL_DB `INTF_TABLE:<iface>:<prefix>` row, and
+  intfmgrd writes those for CONFIG_DB addresses only. On 202511 intfsorch's
+  `setIntf` adds only that host route for a row (and a directed broadcast
+  for IPv4); the subnet route comes from FRR, and routeorch skips a
+  full-mask route the interface owns. Without a row, IPv6 to the SLAAC
+  address reached the CPU through the default trap, at the default CoPP
+  group's 600 packets/s: an SSH upload to the switch ran at 0.9 MB/s, 12.7
+  over IPv4. A row (`scope global`, `family IPv6`, through
+  ProducerStateTable) brought `addIp2MeRoute` in orchagent's log and the
+  /128 in ASIC_DB, and the same upload ran at 11.4 MB/s.
+- **Teardown.** Deleting the row removes the host route. Then `accept_ra`
+  1. `ip -6 addr flush dev Vlan4094 scope global dynamic` removes the
+  address, and FRR withdraws the /64. `ip -6 route flush dev Vlan4094 proto
+  ra` removes the default. The RA's on-link /64 (`proto kernel`, an expiry)
+  outlives all of that until `ip -6 route del`. IPv4 was untouched
+  throughout.
+
+**As built** (`ipv6.go`, `devicemodel.ManagementIPv6Controller`,
+`informloop/ipv6.go`, `unifiapi.Client.ManagementIPv6`):
+
+- **The loop asks only a driver that implements the interface**, with the
+  push's `switch.managementvlan` (1 when absent). `main` answers from
+  `rest/networkconf`, cached for a minute: on means the network is enabled
+  and its interface type is not `none`. An error, a VLAN no network has, or
+  no API key leaves the switch as it is. The setting and each error are
+  logged when they change.
+- **collect.py** prints `ipv6_ra` (every in-band netdev's `accept_ra`, and
+  the routes learned from RAs: `proto ra` or an expiry) and `appl_intf`
+  (APPL_DB `INTF_TABLE`). The SLAAC addresses are `ip -j addr`'s dynamic
+  global ones.
+- **On**, for the interface the bridge manages the switch at (`ntpSource`,
+  as for NTP): `accept_ra` 2, a row for each SLAAC address, and the row of
+  an address the kernel no longer has goes. The row comes one cycle after
+  `accept_ra`: the address waits for the next RA.
+- **Off**: the rows, then `accept_ra` 1, the address flush, the `proto ra`
+  flush, and each learned prefix route deleted.
+- **What is never touched**: an address CONFIG_DB carries, its row, and its
+  prefix route (which has no expiry). Nothing goes to CONFIG_DB, so there
+  is no `config save`.
+- **Lost on a reboot (the sysctl) and on a swss restart (the rows)**: the
+  reconcile writes them again each cycle.
+- **The sanitiser** now rewrites an IPv6 address in an `INTF_TABLE` key:
+  its pattern refused the colon before it, as the MAC pattern once did in
+  FDB keys.
+
+**Not built:** DHCPv6 on the management network (no `slaac` in
+`ipv6_client_address_assignment`; the switch runs no DHCPv6 client
+in-band), a static IPv6 address in a switch's IP Settings (not captured),
+and the RA's RDNSS (`/etc/resolv.conf` comes from CONFIG_DB's
+`DNS_NAMESERVER`, which the push's IPv4 DNS fills).
+
+Fixtures: `sonic-igmp-202511.20261106-f2e25f54c/collect-ipv6-off.txt`,
+`-off-leftover-route.txt`, `-slaac.txt`, `-on.txt` (the four states
+above), tested in `ipv6_test.go`.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
