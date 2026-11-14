@@ -120,6 +120,34 @@ only: nothing is written to the device; the start log has one line per
 child. `report: lldp` or `report: mac` on a child reports only that entry
 (for telling which one the controller places by; unset = both).
 
+A **lane switch** presents a split cage of another entry as a five-port
+switch of its own ([`docs/drivers/breakout.md`](drivers/breakout.md)): ports
+1-4 are the cage's lanes, port 5 the breakout cable. It is an entry of the
+**same file as its parent** (it runs in the parent's process and reads and
+writes through the parent's driver; no `url`, `ssh` or credentials):
+
+```yaml
+  - name: core-1-cage2
+    driver: breakout
+    options:
+      parent: core-1        # the entry whose cage this is (sonic today)
+      cage: "2"             # the parent's port index of the cage, 1..99
+      # mac: "02:00:00:00:00:a5"   # default: derived from the parent's MAC
+      # max_age: 3m                # how old the parent's snapshot may be
+    # model: defaults to USFXG (the Flex XG)
+```
+
+At start the parent logs `lane switch core-1-cage2 attached to port 2 as
+<MAC>`. While the cage is whole the lane switch does not start (its start
+is retried with a log line); once the cage is split from the parent's port
+settings it informs and is adopted like any device, placed under the cage.
+From then on the cage's own settings on the parent are its speed (the
+breakout) and its admin state only; the lanes take theirs from the lane
+switch. One lane switch per cage, never on a port the parent's `children:`
+names. `-collect-once -config` opens the entries one after another, so a
+lane switch there reports that its parent is not open: it is a probe of
+devices, and a lane switch is not one.
+
 ## 4. First run and adoption
 
 ```sh

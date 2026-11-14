@@ -72,6 +72,15 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   `gateway_mac` options and the reported address for a device that cannot
   report them itself (`apc-ups`, `stub`). A new driver with the same need
   embeds `reach.Identity`; it does not copy it.
+- **`breakout` has no device** (the lane switch, `docs/drivers/breakout.md`):
+  a split cage of a parent that implements `devicemodel.LaneProvider`,
+  read from the parent's last snapshot and written through the parent's
+  own plan, in the parent's process. A parent keeps its split cages' lanes
+  as ports of their own, scopes its plan to one cage's lanes
+  (`PortChannel<100*cage+lag>`), leaves an attached cage's lanes to the
+  child but for the breakout and the admin state, never touches a
+  PortChannel outside its own range, and serialises its writes and
+  collects (the child applies from its own loop). `sonic` is the parent.
 - **`stub` is an instrument**, not a device: a snapshot from a file, no
   write interface. Use it to ask the controller a question before building
   a driver for the answer (`docs/drivers/stub.md`).

@@ -91,6 +91,12 @@ switch never gets it.
 `/host/disunified`; `docs/drivers/sonic-on-switch.md`). The map of the two
 deployments and of the image patches by what each enables is
 `docs/drivers/sonic-running.md`.
+An eighth, `breakout`, presents a split cage of another bridged switch as a
+five-port switch of its own (`USFXG`, the "lane switch" of
+`docs/breakout-lag.md` §6): built 2026-11-14 with `sonic` as the parent,
+read from the parent's snapshot and written through the parent's plan in
+the parent's process; fixture- and replay-tested, not yet adopted live
+(`docs/drivers/breakout.md` §0, §15 the first adoption).
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering

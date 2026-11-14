@@ -219,6 +219,11 @@ type deviceOp struct {
 // settings, spanning tree through disunified-l2d (l2.go), DHCP guarding
 // and the ACL rules (acl.go), then IGMP snooping (igmp.go).
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sonic device apply: %w", err)
+	}
+	defer unlock()
 	n, err := c.applyDevice(ctx, d)
 	if err != nil {
 		return n, err
