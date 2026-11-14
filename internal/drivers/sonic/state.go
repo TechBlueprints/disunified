@@ -115,6 +115,11 @@ type swState struct {
 	l2mcKnown   bool
 	l2mcFeature string
 	l2mc        map[string]map[string]string
+	// bridgeDown are the interfaces whose bridge port the chip holds admin
+	// down (collect.py asic_bridge_port; nil in captures before 2026-11-14):
+	// a removal orchagent refused, which leaves the port learning nothing
+	// (§8.15). Read-only, shared by clones.
+	bridgeDown map[string]bool
 
 	// pf: isolation, port security, egress shapers and LLDP-MED
 	// (portfeat.go, §11.12); lagLearn is each PortChannel's CONFIG_DB
@@ -339,6 +344,14 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		s.aclCRM = db["crm_acl"]
 		parseGuardCount(s, db, sec)
 	}
+	for iface, f := range db["asic_bridge_port"] {
+		if f["admin"] == "false" {
+			if s.bridgeDown == nil {
+				s.bridgeDown = map[string]bool{}
+			}
+			s.bridgeDown[iface] = true
+		}
+	}
 	s.l2mc = map[string]map[string]string{}
 	if f, ok := db["cfg_feature"]["FEATURE|l2mcd"]; ok {
 		s.l2mcFeature = f["state"]
@@ -409,7 +422,7 @@ func (s *swState) clone() *swState {
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM, gc: s.gc.clone(),
-		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{},
+		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{}, bridgeDown: s.bridgeDown,
 		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
 	}
 	for k, v := range s.l2mc {

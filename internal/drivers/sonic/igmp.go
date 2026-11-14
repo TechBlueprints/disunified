@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/sshrun"
 )
 
 // IGMP snooping through the image's l2mcd (the Micas series, docs/drivers/
@@ -482,4 +483,64 @@ func (c *Collector) ifnamesOf(idx int) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.ifnames[idx]...)
+}
+
+// l2mcFixCheckCommand finds the image kit's sonic-swss 0004 in the running
+// orchagent: the notice its L2mcOrch logs when it drops a port's group
+// members with the port's VLAN membership or bridge port, which no other
+// orchagent carries. Read-only, as macACLCheckCommand.
+const l2mcFixCheckCommand = "docker exec swss grep -c -a -F 'l2mc group member %s removed with its port' /usr/bin/orchagent || true"
+
+// checkL2MCFix runs l2mcFixCheckCommand once, on an image with l2mcd.
+func (c *Collector) checkL2MCFix(ctx context.Context) {
+	c.mu.Lock()
+	known := c.state != nil && c.state.l2mcKnown
+	c.mu.Unlock()
+	if !known {
+		return
+	}
+	out, err := c.run(ctx, l2mcFixCheckCommand, "")
+	fixed := err == nil && atoi(strings.TrimSpace(out)) > 0
+	c.mu.Lock()
+	c.l2mcFixed = fixed
+	c.mu.Unlock()
+	if !fixed {
+		c.Log.Printf("sonic: orchagent lacks the image kit's sonic-swss 0004: a port leaving its last VLAN waits for its bridge port to go (docs/drivers/sonic.md §8.15)")
+	}
+}
+
+// bridgePortWaitLimit bounds bridgePortWait: l2mcd's member deletes reach
+// orchagent within a second when nothing is wrong.
+const bridgePortWaitLimit = 10
+
+// bridgePortWaitScript waits until the chip has no bridge port for
+// sys.argv[1] (ASIC_DB, mapped by COUNTERS_DB's name maps), exiting 1 with
+// the reason after sys.argv[2] seconds. Read-only; stdin is not read.
+const bridgePortWaitScript = `import sys, time
+from swsscommon.swsscommon import SonicV2Connector
+port, limit = sys.argv[1], float(sys.argv[2])
+db = SonicV2Connector(use_unix_socket_path=True)
+db.connect(db.COUNTERS_DB)
+db.connect(db.ASIC_DB)
+oid = db.get(db.COUNTERS_DB, "COUNTERS_PORT_NAME_MAP", port) or db.get(db.COUNTERS_DB, "COUNTERS_LAG_NAME_MAP", port)
+if not oid:
+    sys.exit(0)
+end = time.time() + limit
+while True:
+    left = [k for k in (db.keys(db.ASIC_DB, "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*") or [])
+            if db.get(db.ASIC_DB, k, "SAI_BRIDGE_PORT_ATTR_PORT_ID") == oid]
+    if not left:
+        sys.exit(0)
+    if time.time() > end:
+        print("%s: orchagent has not removed its bridge port in %d s (it refuses while L2MC members still name the port, docs/drivers/sonic.md 8.15); a swss restart or a reboot clears it" % (port, limit))
+        sys.exit(1)
+    time.sleep(0.2)
+`
+
+// bridgePortWait is the batch line that runs bridgePortWaitScript for iface:
+// one line (a batch is read line by line), the script as a JSON string
+// literal -- valid Python for ASCII -- handed to exec.
+func bridgePortWait(iface string) string {
+	lit, _ := json.Marshal(bridgePortWaitScript)
+	return fmt.Sprintf("python3 -c %s %s %d </dev/null", sshrun.ShellQuote("exec("+string(lit)+")"), iface, bridgePortWaitLimit)
 }
