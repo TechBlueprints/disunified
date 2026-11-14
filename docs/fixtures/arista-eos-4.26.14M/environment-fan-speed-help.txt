@@ -1,0 +1,44 @@
+# EOS 4.26.14M on the DCS-7160-48TC6, 2026-11-14: the fan-speed syntax, read with the CLI's ? on a pty inside
+# `configure session dui-fan-probe`, aborted (never committed), in two such sessions merged here in command order. The terminal's redraw of each typed line between
+# the commands is removed; the prompts' host name is replaced with `switch`. Nothing else is changed.
+
+switch#show configuration sessions
+Maximum number of completed sessions: 1
+Maximum number of pending sessions: 5
+
+  Name    State       User    Terminal
+  ---- ----------- ---------- --------
+
+switch#configure session dui-fan-probe
+switch(config-s-dui-fa)#environment fan-speed ?
+  auto      Automatic fan speed mode
+  minimum   Set a minimum value for fan speed algorithm
+  override  Override the automatic fan speed algorithm
+
+switch(config-s-dui-fa)#environment fan-speed override ?
+  <30-100>  % of max fan speed
+
+switch(config-s-dui-fa)#environment fan-speed minimum ?
+  <30-100>  % of max fan speed
+
+switch(config-s-dui-fa)#environment fan-speed auto ?
+  <cr>
+
+switch(config-s-dui-fa)#environment ?
+  fan-speed          Configure the system fan speed
+  insufficient-fans  Configure system behavior when insufficient fans are
+                     inserted
+  overheat           Configure system overheat behavior
+  power              Configure the system behavior for power
+  temperature        Configure the system behavior for temperatures
+
+switch(config-s-dui-fa)#abort
+switch#show configuration sessions
+Maximum number of completed sessions: 1
+Maximum number of pending sessions: 5
+
+  Name    State       User    Terminal
+  ---- ----------- ---------- --------
+
+switch#show running-config | include fan-speed
+switch#
