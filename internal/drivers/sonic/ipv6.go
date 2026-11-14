@@ -249,6 +249,11 @@ func planIPv6(v v6State, iface string, on bool, configured map[string]bool) (cmd
 // router advertisements and each SLAAC address gets its ip2me row; off,
 // all of that goes.
 func (c *Collector) ApplyManagementIPv6(ctx context.Context, on bool) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sonic: IPv6: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	st, snap, dial := c.state, c.last, c.Dial
 	c.mu.Unlock()
