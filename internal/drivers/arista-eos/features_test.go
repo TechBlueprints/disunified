@@ -2,6 +2,9 @@ package aristaeos
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -206,5 +209,61 @@ func TestApplySNMPCommunityIsTheSwitchsOnly(t *testing.T) {
 		if got := strings.Join(ft.configured[before], "\n"); got != "enable\nconfigure\n"+step.want+"\nend\nwrite memory" {
 			t.Errorf("community %q: cmds:\n%s", step.community, got)
 		}
+	}
+}
+
+// loadStormCapture decodes the 4.26.14M capture with all three types set
+// on Ethernet2 (broadcast 5 %, multicast 1 %, unknown-unicast 2.5 %).
+func loadStormCapture(t *testing.T) showStormControl {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "fixtures", "arista-eos-4.26.14M", "storm-control-all-types", "show-storm-control.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sc showStormControl
+	if err := json.Unmarshal(b, &sc); err != nil {
+		t.Fatal(err)
+	}
+	return sc
+}
+
+// The three types' levels and drop counts, by EOS's own type names
+// (`unknown-unicast` is UniFi's Unicast).
+func TestStormControlAllTypesCapture(t *testing.T) {
+	sc := loadStormCapture(t)
+	ports := []devicemodel.Port{{Index: 2}}
+	applyStormControl(ports, sc)
+	s := ports[0].StormCtrl
+	if s == nil || !pctEqual(s.BroadcastPct, f64(5)) || !pctEqual(s.MulticastPct, f64(1)) || !pctEqual(s.UnknownUnicastPct, f64(2.5)) {
+		t.Fatalf("storm = %+v", s)
+	}
+	if h := ports[0].Health; h.StormDropsBroadcast != 0 || h.StormDropsMulticast != 0 || h.StormDropsUnicast != 0 {
+		t.Errorf("drops on a port with no traffic = %d/%d/%d", h.StormDropsBroadcast, h.StormDropsMulticast, h.StormDropsUnicast)
+	}
+}
+
+// Each type's `drop` lands in its own counter, and a split cage's lanes
+// add up on the cage. No storm was ever caught on a test port, so the
+// counts are set on the decoded capture; everything else is as captured.
+func TestStormControlDropsPerTypeAndLane(t *testing.T) {
+	sc := loadStormCapture(t)
+	e := sc.Interfaces["Ethernet2"]
+	set := func(typ string, n uint64) {
+		v := e.TrafficTypes[typ]
+		v.Drop = n
+		e.TrafficTypes[typ] = v
+	}
+	set("broadcast", 7)
+	set("multicast", 11)
+	set("unknown-unicast", 13)
+	sc.Interfaces["Ethernet54/1"] = e
+	sc.Interfaces["Ethernet54/2"] = e
+	ports := []devicemodel.Port{{Index: 2}, {Index: 54}}
+	applyStormControl(ports, sc)
+	if h := ports[0].Health; h.StormDropsBroadcast != 7 || h.StormDropsMulticast != 11 || h.StormDropsUnicast != 13 {
+		t.Errorf("port 2 drops = %d/%d/%d, want 7/11/13", h.StormDropsBroadcast, h.StormDropsMulticast, h.StormDropsUnicast)
+	}
+	if h := ports[1].Health; h.StormDropsBroadcast != 14 || h.StormDropsMulticast != 22 || h.StormDropsUnicast != 26 {
+		t.Errorf("cage 54 drops = %d/%d/%d, want the two lanes' sums 14/22/26", h.StormDropsBroadcast, h.StormDropsMulticast, h.StormDropsUnicast)
 	}
 }

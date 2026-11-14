@@ -24,6 +24,12 @@ type showStormControl struct {
 		TrafficTypes map[string]struct {
 			Level         int    `json:"level"` // hundredths of a percent when thresholdType == percentage
 			ThresholdType string `json:"thresholdType"`
+			// Drop is the frames this type's storm control dropped on the
+			// interface: one count per interface and type, the CLI's Drops
+			// column (4.26.14M, docs/fixtures/arista-eos-4.26.14M/
+			// storm-control-all-types/). Arista's MIB defines the same count
+			// as a Counter64 (ARISTA-STORM-CONTROL-MIB aristaStormControlIfDrops).
+			Drop uint64 `json:"drop"`
 		} `json:"trafficTypes"`
 	} `json:"interfaces"`
 }
@@ -156,6 +162,17 @@ func applyStormControl(ports []devicemodel.Port, sc showStormControl) {
 		}
 		spec := &devicemodel.StormControlSpec{}
 		for typ, t := range e.TrafficTypes {
+			// The drops count whatever the threshold's unit: a lane of a
+			// split cage adds its own (the port is the cage).
+			h := &p.Health
+			switch typ {
+			case "broadcast":
+				h.StormDropsBroadcast += t.Drop
+			case "multicast":
+				h.StormDropsMulticast += t.Drop
+			case "unknown-unicast":
+				h.StormDropsUnicast += t.Drop
+			}
 			if t.ThresholdType != "percentage" {
 				continue
 			}
@@ -165,7 +182,7 @@ func applyStormControl(ports []devicemodel.Port, sc showStormControl) {
 				spec.BroadcastPct = &pct
 			case "multicast":
 				spec.MulticastPct = &pct
-			case "unknown-unicast", "unknownUnicast":
+			case "unknown-unicast":
 				spec.UnknownUnicastPct = &pct
 			}
 		}
