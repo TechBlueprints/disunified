@@ -77,7 +77,10 @@ var portOmissions = map[string]string{
 // the switch itself (the first from a SONiC-based UniFi switch read there)
 // and its uplink is an aggregate: an uplink that is one link is excused the
 // aggregate's keys, which are held to it on an aggregate of our own
-// (TestWireContractSonicAggregate).
+// (TestWireContractSonicAggregate). The USW Aggregation's inform (switch
+// firmware 7.5.15, printed by mca-dump on the switch while the controller ran
+// Network 11.0.99) is from the switch that raised the controller's STP-flap
+// alert (stp_changes_test.go).
 var contractReferences = []struct {
 	path       string
 	uplinkOmit map[string]string
@@ -85,6 +88,7 @@ var contractReferences = []struct {
 	{"controller-10.6.106/inform-ecs-aggregation-uswf066.json", nil},
 	{"controller-10.6.106/inform-usw-xg16-usxg.json", nil},
 	{"controller-10.6.109/inform-ecs-aggregation-uswf066.json", aggregateUplinkOmissions},
+	{"controller-11.0.99/inform-usw-aggregation-usl8a.json", nil},
 }
 
 var aggregateUplinkOmissions = map[string]string{

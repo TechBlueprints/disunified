@@ -51,6 +51,9 @@ ID_KEYS = {'anon_id', 'guid', 'hash_id', '_id', '_devsiteid', 'device_id', 'uuid
            'unifi.anonymous_controller_id', 'unifi.anonymous_site_id', 'unifi.siteid', 'unifi.reporterid'}
 HOST_KEYS = {'hostname', 'fqdn', 'name', 'uplink_device_name', 'neighborDevice', 'systemName'}
 SERIAL_KEYS = {'serial', 'sfp_serial', 'serial_no', 'vendorSn'}
+VERSION_KEYS = {'version', 'required_version', 'kernel_version'}
+VERSION_RE = re.compile(r'\d+(\.\d+)+')
+IFNAME_RE = re.compile(r'(eth|br|bond|lo|switch)\d*(\.\d+)?')
 
 macs, ips, ip6s, hosts, ids = {}, {}, {}, {}, {}
 
@@ -216,6 +219,14 @@ def scrub(o, key=None):
             return map_id(o) if o else o
         if key in SERIAL_KEYS:
             return placeholder_serial(o)
+        if key == 'chassis_id' and not MAC_RE.fullmatch(o):
+            # an LLDP neighbour's chassis id of the local subtype is its
+            # serial (seen on a laptop dock, 2026-11-14)
+            return placeholder_serial(o)
+        if key in VERSION_KEYS and VERSION_RE.fullmatch(o):
+            return o   # a firmware or kernel version looks like an FQDN; it identifies nothing
+        if key == 'name' and IFNAME_RE.fullmatch(o):
+            return o   # an interface name (if_table's eth0), not a host
         if key in HOST_KEYS:
             return map_host(o)
         return scrub_plain(o)
