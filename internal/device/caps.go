@@ -413,7 +413,10 @@ func speedCaps(p devicemodel.Port) int {
 // protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure. Each set bit
 // raises the matching alert (64 and 32 seen live 2026-11-13), so a bit is set
 // only for a condition a driver really detected; nothing is mapped onto this
-// table by a similar name. Real switches send 0 when healthy.
+// table by a similar name. Real switches send 0 when healthy. The storm,
+// DHCP-rate and rogue-DHCP bits follow the growth of the port's own drop
+// counters (Port.Health) since the previous inform; no driver fills those
+// counters yet.
 //
 // custom_anomalies is a different table (1/2/4 SFP rx/tx/EEPROM, 8 loop by
 // STP, 16 STP flap, 32 topology flap, 64 link flap, ... 32768 port lock
@@ -421,5 +424,10 @@ func speedCaps(p devicemodel.Port) int {
 // raw fields (link_down_count growth, sfp_found/sfp_rxfault/sfp_txfault) and
 // stores it. The bridge does not send it.
 const (
+	portAnomalyBroadcastStorm = 1   // the port's storm control dropped broadcast frames
+	portAnomalyMulticastStorm = 2   // ... multicast frames
+	portAnomalyUnicastStorm   = 4   // ... unicast frames
+	portAnomalyDHCPRate       = 32  // the port's DHCP rate limit dropped DHCP frames
+	portAnomalyRogueDHCP      = 64  // DHCP guarding dropped server replies on the port
 	portAnomalyLoopProtection = 512 // a port held down by loop protection
 )

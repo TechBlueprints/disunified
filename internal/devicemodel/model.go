@@ -930,6 +930,15 @@ type PortHealth struct {
 	HasFECCounters bool   // FECCorrected/FECUncorrected are populated
 	FECCorrected   uint64 // FEC corrected codewords
 	FECUncorrected uint64 // FEC uncorrected codewords (each one is a lost frame)
+
+	// Frames this port's own protection dropped, cumulative since the
+	// device booted. Zero means not reported (or none yet); the consumer
+	// keeps the previous sample and looks at growth only.
+	StormDropsBroadcast uint64 // broadcast frames dropped by the port's storm control
+	StormDropsMulticast uint64 // multicast frames dropped by the port's storm control
+	StormDropsUnicast   uint64 // unicast frames dropped by the port's storm control (unknown-unicast flood)
+	DHCPRateDrops       uint64 // DHCP frames dropped by the port's DHCP rate limit
+	RogueDHCPDrops      uint64 // DHCP server replies dropped on this port by DHCP guarding (a server on an untrusted port)
 }
 
 // Counters are lifetime interface counters.

@@ -528,7 +528,7 @@ alerts on 2026-11-13.
 
 | What | Where / when |
 |---|---|
-| `anomalies` is 0, or 512 for a port held by loop protection; nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (none filled yet); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
 
@@ -538,7 +538,8 @@ Open — PRs welcome:
 |---|---|
 | **`stp_state_change_sum`** (per port), which the controller's STP-flap alert is expected to follow (not captured) | an inform from a real UniFi switch that carries the key (support-bundle `last.inform` or `mca-dump` on the switch), scrubbed into `docs/fixtures/controller-<ver>/`; then the field from `Port.Health.STPChanges`, held to it by the contract test |
 | The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
-| An `anomalies` bit other than 512 | a driver that really detects the condition (a storm, a rogue DHCP server, ...) and a capture or live alert showing the bit's meaning |
+| Storm (1/2/4), DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `StormDropsBroadcast`/`StormDropsMulticast`/`StormDropsUnicast`, `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
+| Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning |
 
 ---
 

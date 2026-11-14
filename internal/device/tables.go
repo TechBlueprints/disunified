@@ -30,20 +30,42 @@ func macHeader(mac string) [6]byte {
 //
 // Field set = unifi-emu's minimum-to-adopt ∪ wvengen's switch-view fields.
 // portHistory is what the session remembers per port from the previous
-// inform: the time and counters the byte rates are computed from.
+// inform: the time and counters the byte rates are computed from, and the
+// port's protection drop counters, whose growth sets anomalies bits.
 type portHistory struct {
 	At       time.Time
 	Counters devicemodel.Counters
+	Health   devicemodel.PortHealth
+}
+
+// protectionDrop is one of a port's protection drop counters and the
+// anomalies bit its growth sets.
+type protectionDrop struct {
+	n   uint64
+	bit int
+}
+
+func protectionDrops(h devicemodel.PortHealth) [5]protectionDrop {
+	return [5]protectionDrop{
+		{h.StormDropsBroadcast, portAnomalyBroadcastStorm},
+		{h.StormDropsMulticast, portAnomalyMulticastStorm},
+		{h.StormDropsUnicast, portAnomalyUnicastStorm},
+		{h.DHCPRateDrops, portAnomalyDHCPRate},
+		{h.RogueDHCPDrops, portAnomalyRogueDHCP},
+	}
 }
 
 // portAnomalies derives a port's `anomalies` bits plus its satisfaction
 // score and reason from neutral port state.
 //
 // `anomalies` is what the switch itself detected, in the controller's table
-// for that field (portAnomalyLoopProtection, caps.go): a bit is set only for
-// a condition a driver really saw. Today that is one: a port held down by
-// loop protection. Link flaps, STP changes, optic faults, errors and drops
-// are not anomalies bits: the controller derives its own alerts for those
+// for that field (caps.go): a bit is set only for a condition a driver really
+// saw -- a port held down by loop protection, or one of the port's own
+// protection drop counters (storm control per traffic type, the DHCP rate
+// limit, DHCP guarding) grown since the previous inform, up or down. No
+// previous sample (the first inform after a start) or a counter that went
+// down (a reset) sets nothing. Link flaps, STP changes, optic faults, and
+// interface errors and drops are not anomalies bits: the controller derives its own alerts for those
 // from the raw port fields (link_down_count, sfp_*), and holds its result in
 // custom_anomalies, which the bridge does not send.
 //
@@ -52,9 +74,17 @@ type portHistory struct {
 // port has ever dropped packets, minus 15 with reason bit 2 when it has ever
 // counted errors. An uplink negotiated below its top speed costs a further
 // 10 (our own rule; no UniFi sample had one).
-func portAnomalies(p devicemodel.Port, isUplink bool) (bits int, satisfaction int, reason int) {
+func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
 	if f := strings.ToLower(p.Fault); strings.Contains(f, "loopprotect") || strings.Contains(f, "loop-protect") {
 		bits |= portAnomalyLoopProtection
+	}
+	if prev != nil {
+		was := protectionDrops(prev.Health)
+		for i, c := range protectionDrops(p.Health) {
+			if c.n > was[i].n {
+				bits |= c.bit
+			}
+		}
 	}
 	if !p.Up {
 		return bits, 100, 0 // real switches report a down port as fully satisfied
@@ -125,7 +155,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			if h, ok := prev[pp.PortIdx]; ok {
 				ph = &h
 			}
-			bits, sat, reason := portAnomalies(p, pp.IsUplink)
+			bits, sat, reason := portAnomalies(p, pp.IsUplink, ph)
 			e["anomalies"] = bits
 			// No custom_anomalies: the controller computes that field per
 			// port from the raw fields and stores it itself (caps.go).

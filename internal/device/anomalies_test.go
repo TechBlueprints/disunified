@@ -15,14 +15,14 @@ import (
 // (today: a loop-protection hold, 512); satisfaction is unchanged.
 func TestPortAnomalies(t *testing.T) {
 	up := devicemodel.Port{Up: true, SpeedMbps: 10000, SpeedCaps: []int{1000, 10000}}
-	if bits, sat, reason := portAnomalies(up, false); bits != 0 || sat != 100 || reason != 0 {
+	if bits, sat, reason := portAnomalies(up, false, nil); bits != 0 || sat != 100 || reason != 0 {
 		t.Errorf("healthy port = %d/%d/%d, want 0/100/0", bits, sat, reason)
 	}
 
 	// A loop-protection hold, in both spellings drivers report it.
 	for _, f := range []string{"errdisabled: loop-protect (10 MAC moves in 5 s)", "errdisabled: loopprotect"} {
 		held := devicemodel.Port{Up: false, Fault: f}
-		if bits, sat, reason := portAnomalies(held, false); bits != portAnomalyLoopProtection || sat != 100 || reason != 0 {
+		if bits, sat, reason := portAnomalies(held, false, nil); bits != portAnomalyLoopProtection || sat != 100 || reason != 0 {
 			t.Errorf("%q = %d/%d/%d, want 512/100/0", f, bits, sat, reason)
 		}
 	}
@@ -31,7 +31,7 @@ func TestPortAnomalies(t *testing.T) {
 	// anomalies table: nothing is set for it.
 	for _, f := range []string{"errdisabled: bpduguard", "errdisabled: link-flap", "errdisabled: portsec", "errdisabled: xcvr-unsupported", "errdisabled: speed-misconfigured"} {
 		p := devicemodel.Port{Up: false, Fault: f}
-		if bits, sat, _ := portAnomalies(p, false); bits != 0 || sat != 100 {
+		if bits, sat, _ := portAnomalies(p, false, nil); bits != 0 || sat != 100 {
 			t.Errorf("%q = %d/%d, want 0/100", f, bits, sat)
 		}
 	}
@@ -40,30 +40,30 @@ func TestPortAnomalies(t *testing.T) {
 	// sets no bit); lifetime drops cost 10 (reason 1), lifetime errors or
 	// uncorrected FEC codewords 15 (reason 2).
 	slow := devicemodel.Port{Up: true, SpeedMbps: 1000, SpeedCaps: []int{1000, 10000}}
-	if bits, sat, reason := portAnomalies(slow, true); bits != 0 || sat != 90 || reason != 0 {
+	if bits, sat, reason := portAnomalies(slow, true, nil); bits != 0 || sat != 90 || reason != 0 {
 		t.Errorf("slow uplink = %d/%d/%d, want 0/90/0", bits, sat, reason)
 	}
-	if _, sat, _ := portAnomalies(slow, false); sat != 100 {
+	if _, sat, _ := portAnomalies(slow, false, nil); sat != 100 {
 		t.Errorf("slow non-uplink satisfaction = %d", sat)
 	}
 	dropped := up
 	dropped.Counters = devicemodel.Counters{TxDropped: 14}
-	if bits, sat, reason := portAnomalies(dropped, false); bits != 0 || sat != 90 || reason != 1 {
+	if bits, sat, reason := portAnomalies(dropped, false, nil); bits != 0 || sat != 90 || reason != 1 {
 		t.Errorf("drops = %d/%d/%d, want 0/90/1", bits, sat, reason)
 	}
 	errs := up
 	errs.Counters = devicemodel.Counters{RxErrors: 10}
-	if bits, sat, reason := portAnomalies(errs, false); bits != 0 || sat != 85 || reason != 2 {
+	if bits, sat, reason := portAnomalies(errs, false, nil); bits != 0 || sat != 85 || reason != 2 {
 		t.Errorf("errors = %d/%d/%d, want 0/85/2", bits, sat, reason)
 	}
 	both := up
 	both.Counters = devicemodel.Counters{RxErrors: 1, RxDropped: 1}
-	if _, sat, reason := portAnomalies(both, false); sat != 75 || reason != 3 {
+	if _, sat, reason := portAnomalies(both, false, nil); sat != 75 || reason != 3 {
 		t.Errorf("errors+drops = %d/%d", sat, reason)
 	}
 	fec := up
 	fec.Health = devicemodel.PortHealth{HasFECCounters: true, FECUncorrected: 6}
-	if bits, sat, reason := portAnomalies(fec, false); bits != 0 || sat != 85 || reason != 2 {
+	if bits, sat, reason := portAnomalies(fec, false, nil); bits != 0 || sat != 85 || reason != 2 {
 		t.Errorf("fec uncorrected = %d/%d/%d, want 0/85/2", bits, sat, reason)
 	}
 }
@@ -146,5 +146,79 @@ func TestPortAnomaliesNoFalseAlerts(t *testing.T) {
 	if p49["link_down_count"] == nil || p49["sfp_rxfault"] != true || p49["sfp_txfault"] != true || p49["sfp_found"] != true {
 		t.Errorf("port 49 raw fields: link_down_count %v sfp_found %v sfp_rxfault %v sfp_txfault %v",
 			p49["link_down_count"], p49["sfp_found"], p49["sfp_rxfault"], p49["sfp_txfault"])
+	}
+}
+
+// The port's own protection drop counters set their anomalies bit only on
+// growth since the previous inform, up or down: no history, no growth or a
+// reset sets nothing.
+func TestPortAnomaliesProtectionDrops(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(h *devicemodel.PortHealth, n uint64)
+		bit  int
+	}{
+		{"broadcast storm", func(h *devicemodel.PortHealth, n uint64) { h.StormDropsBroadcast = n }, 1},
+		{"multicast storm", func(h *devicemodel.PortHealth, n uint64) { h.StormDropsMulticast = n }, 2},
+		{"unicast storm", func(h *devicemodel.PortHealth, n uint64) { h.StormDropsUnicast = n }, 4},
+		{"DHCP rate", func(h *devicemodel.PortHealth, n uint64) { h.DHCPRateDrops = n }, 32},
+		{"rogue DHCP", func(h *devicemodel.PortHealth, n uint64) { h.RogueDHCPDrops = n }, 64},
+	} {
+		for _, up := range []bool{true, false} {
+			port := func(n uint64) devicemodel.Port {
+				p := devicemodel.Port{Up: up, SpeedMbps: 10000, SpeedCaps: []int{1000, 10000}}
+				tc.set(&p.Health, n)
+				return p
+			}
+			hist := func(n uint64) *portHistory {
+				return &portHistory{Health: port(n).Health}
+			}
+			if bits, _, _ := portAnomalies(port(17), false, hist(12)); bits != tc.bit {
+				t.Errorf("%s (up %v) grew 12 -> 17: bits %d, want %d", tc.name, up, bits, tc.bit)
+			}
+			if bits, _, _ := portAnomalies(port(17), false, hist(17)); bits != 0 {
+				t.Errorf("%s (up %v) flat at 17: bits %d, want 0", tc.name, up, bits)
+			}
+			if bits, _, _ := portAnomalies(port(17), false, nil); bits != 0 {
+				t.Errorf("%s (up %v) with no history: bits %d, want 0", tc.name, up, bits)
+			}
+			if bits, _, _ := portAnomalies(port(3), false, hist(17)); bits != 0 {
+				t.Errorf("%s (up %v) reset 17 -> 3: bits %d, want 0", tc.name, up, bits)
+			}
+		}
+	}
+
+	// Through the session: the first inform after a start has no history,
+	// the next one sees the growth, and one with no further growth clears it.
+	snap := &devicemodel.Snapshot{TakenAt: time.Now(), Ports: []devicemodel.Port{{Index: 1, Up: true, SpeedMbps: 10000, SpeedCaps: []int{1000, 10000}}}}
+	snap.Ports[0].Health.RogueDHCPDrops = 5
+	snap.Ports[0].Health.StormDropsBroadcast = 9
+	desc, err := DescriptorFor("USWF07D", snap, Identity{MAC: "02:00:00:00:00:01", IP: "192.0.2.9", Hostname: "sw", UDAPIVersion: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := NewSession(desc, "http://192.0.2.1:8080/inform", State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "abc"}, nil, time.Now())
+	anomaliesOf := func(s *devicemodel.Snapshot) any {
+		sess.SetSnapshot(s)
+		var m map[string]any
+		if err := json.Unmarshal(sess.BuildPayload(time.Now()), &m); err != nil {
+			t.Fatal(err)
+		}
+		return portEntry(t, m, 1)["anomalies"]
+	}
+	if a := anomaliesOf(snap); a != float64(0) {
+		t.Errorf("first inform: anomalies %v, want 0 (no history)", a)
+	}
+	next := *snap
+	next.TakenAt = snap.TakenAt.Add(70 * time.Second)
+	next.Ports = append([]devicemodel.Port(nil), snap.Ports...)
+	next.Ports[0].Health.RogueDHCPDrops = 8
+	if a := anomaliesOf(&next); a != float64(portAnomalyRogueDHCP) {
+		t.Errorf("rogue DHCP drops grew: anomalies %v, want 64", a)
+	}
+	again := next
+	again.TakenAt = next.TakenAt.Add(70 * time.Second)
+	if a := anomaliesOf(&again); a != float64(0) {
+		t.Errorf("no further growth: anomalies %v, want 0", a)
 	}
 }

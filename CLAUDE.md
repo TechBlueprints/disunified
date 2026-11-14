@@ -364,8 +364,10 @@ these is marked "not captured".
   bond leg bounced twice, a "Rogue DHCP server detected" alert for that port
   followed about a minute later (seven, read from the controller's v2
   `system-log/device-alert`), and the SONiC switch's topology changes raised
-  "Incoming DHCP packets exceed 300/sec". Now only 512 (a loop-protection
-  hold) is set and `custom_anomalies` is not sent; the raw fields
+  "Incoming DHCP packets exceed 300/sec". Now 512 is set for a
+  loop-protection hold, and 1/2/4, 32 and 64 only on growth of the port's
+  own storm, DHCP-rate and rogue-DHCP drop counters (`Port.Health`; no
+  driver fills them yet); `custom_anomalies` is not sent; the raw fields
   (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
 
 ## 6. Driver facts
@@ -514,7 +516,8 @@ Anomaly/Experience (2026-09-19, corrected 2026-11-14): `satisfaction` and
 counters come from text output (`TextRunner`), eAPI only. The per-port
 `anomalies` bits derived here from the same signals were the controller's
 `custom_anomalies` table and raised false alerts (§5); `anomalies` now
-carries only a loop-protection hold (512).
+carries a loop-protection hold (512) and the growth of a port's own
+protection drop counters (§5).
 
 **The UI terminal is WebRTC, not SSH (2026-09-19).** When the Debug
 terminal is opened the controller sends the device an inform-reply cmd
