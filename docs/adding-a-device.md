@@ -176,11 +176,17 @@ Rules that came from live failures, all enforced by the reference driver:
 What a first-party-looking device needs beyond ports and counters (all in
 `devicemodel.System` / `Port`, all shown in the UI once filled):
 
-- `Port.Health`: link-change and STP-change counts, STP guard state, optic
-  alarm flags, FEC codeword and PCS error counters — the Anomaly column and
-  the per-port anomaly breakdown come from these. Some of it may only exist
-  in text form on your platform (the Arista driver has a `TextRunner`
-  transport capability for that); leave a field unset rather than guess.
+- `Port.Health`: link-change and STP-change counts, optic alarm flags and
+  FEC codeword counters. They go out as the raw port fields a real switch
+  sends (`link_down_count`, `stp_state_change_count`, `sfp_rxfault` /
+  `sfp_txfault`, and FEC into the satisfaction score); the controller
+  derives its own link-flap and SFP alerts from those. They never become
+  `anomalies` bits: that field is what the switch itself detected (a storm,
+  a rogue DHCP server, a loop-protection hold), each bit raises its alert,
+  and today only a port `Fault` of `errdisabled: loop-protect` sets one
+  (`docs/feature-map.md` §2). Some of it may only exist in text form on your
+  platform (the Arista driver has a `TextRunner` transport capability for
+  that); leave a field unset rather than guess.
 - `System.Addresses`, `ARP`, `MgmtMAC`, `OOBInterfaces`: the controller
   places a device by its address, netmask, gateway MAC and interfaces, and
   needs the management address in-band (§2c). Report OOB ports so the loop

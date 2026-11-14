@@ -6,8 +6,8 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// BGP and OSPF are claimed only beside L3 routing, with the bits Network
-// 10.6.109's UI tests (SWITCH_CAP_BGP in feature_caps, SWITCH_CAP_OSPF in
+// BGP and OSPF are claimed only beside L3 routing, with the bits that make
+// Network 10.6.109 offer them (SWITCH_CAP_BGP in feature_caps, OSPF in
 // feature_caps2); feature_caps2 is sent only when OSPF is claimed, so no
 // other driver's switch_caps changes. The DX010 was offered as a BGP and
 // an OSPF device with exactly these (2026-11-07, docs/drivers/sonic.md

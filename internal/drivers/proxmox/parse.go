@@ -696,8 +696,6 @@ type mstpPort struct {
 	NumTransitionFwd string `json:"num-transition-fwd"`
 	NumTransitionBlk string `json:"num-transition-blk"`
 	NumRxTCN         string `json:"num-rx-tcn"`
-	Disputed         string `json:"disputed"`
-	BAInconsistent   string `json:"ba-inconsistent"`
 }
 
 // mstpID splits "F.000.02:00:00:00:00:01" into the priority (61440) and the

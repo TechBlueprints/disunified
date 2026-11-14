@@ -72,8 +72,9 @@ lists more named cooling devices than the sensor chip has fans, with
 nothing tying a name to a reading. Nor would a name show: the controller's
 UI draws each fan in the device overview by its `index` (a number, unique
 across chips: `tables.go` numbers the whole list), not by its `label`
-(read from the UI bundle on Network 11.0.97; what a fan alert's name is
-built from was not traced). So two chips both labelled `Fan1` would not
+(Network 11.0.97; not captured: no node has yet reported two fans with the
+same label, and what a fan alert's name is built from is not known). So
+two chips both labelled `Fan1` would not
 be confused on screen, and the labels stay as they are (Clint,
 2026-11-13: leave it, closed). Dell's own agents were considered and not
 installed: Dell Command | Monitor for Linux is the client-machine one but

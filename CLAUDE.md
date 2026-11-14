@@ -206,6 +206,15 @@ stay stopped** (one bridge per adopted key).
 
 ## 5. Protocol facts that cost time (all verified on 10.6.106)
 
+**Sources.** A fact about the controller is stated with a basis an outside
+reader can check: a capture in `docs/fixtures` (scrubbed), a live test, the
+controller's UI as an operator sees it, or its logs and API responses --
+captures and live observation first. The other source of protocol
+knowledge is the upstream unifi-emu project (James Braid,
+`github.com/jamesbraid/unifi-emu`: `PROTOCOL.md`, `capability_bits.json`
+and its code), which this project forks and credits. A fact with none of
+these is marked "not captured".
+
 - Inform header 40 bytes, version 1; AES-GCM with a **16-byte nonce** and
   the whole header as AAD; both CBC and GCM required; default key
   `MD5("ubnt")`; HTTP 404 is the normal pending reply; `inform_url` must be
@@ -307,27 +316,23 @@ stay stopped** (one bridge per adopted key).
   until that day) overrides either and must be digits and dots.
   `hash_id` is 16 hex digits since the same day: with a UUID's dashes the
   controller kept none.
-- **Fan Mode is gateway-only on 10.6.109.** `sys_fan_mode` (`caps` DEFAULT 1
-  | QUIET 2, `mode`) is copied from an inform into the record only by the
-  UDM and UXG handlers; the USW handler never copies it and the REST
-  sanitizer drops it, so no switch gets the panel or a `system.fan.mode`
-  push (read from `ace.jar` 2026-11-07, confirmed live on the DX010 with
-  the gateway's shape). A switch's mode is the device's `fan_mode:` in
+- **Fan Mode is gateway-only on 10.6.109.** A switch's record never keeps
+  `sys_fan_mode` (`caps` DEFAULT 1 | QUIET 2, `mode`): the DX010 reported it
+  in the gateway's (UDM, UXG) shape and its stored record never held it, no
+  device on the site has it, and no switch gets the panel or a
+  `system.fan.mode` push (live, 2026-11-07). That a gateway's record keeps
+  it, and that a REST write of it is refused, is not captured. A switch's
+  mode is the device's `fan_mode:` in
   `config.yaml` (`devicemodel.FanModeController`; `docs/drivers/sonic.md`
   §11.15, `docs/drivers/arista-eos.md` §8).
-- **The controller's own code answers "what does this claim unlock and push"
-  before any capture** (2026-11-07, BGP/OSPF): the UI bundle is the
-  console's `/usr/lib/unifi/webapps/ROOT/app-unifi/react/js/*.js` (cap enums
-  as `SWITCH_CAP_*`, form help texts as `network.settings.*` waypoints); the
-  server is `/usr/lib/unifi/lib/ace.jar`, whose code is
-  `BOOT-INF/lib/internal-dependencies.jar` -- class names obfuscated, but each
-  class's constant pool keeps its strings, and the switch `system_cfg`
-  generators are `com/ubnt/service/config/ubntconf/*` (key prefixes such as
-  `switch.ospf.`). Read constant pools with a few lines of Python; when the
-  strings are not enough, Homebrew's openjdk (`javap -c -p`, not on PATH)
-  disassembles a class -- that is how the port op-mode enum was read
-  (2026-11-08: Routing is pushed as `opmode=switch`, Routing + Aggregating as
-  `aggregate`). A key found there still needs its capture before code.
+- **A capability bit's name and value come from upstream unifi-emu's
+  `capability_bits.json`; what it unlocks and pushes, from a live claim and
+  its capture** (2026-11-07, BGP/OSPF: `feature_caps` 33554432 put the DX010
+  in Settings -> Routing -> BGP's Device list, `feature_caps2` 4 in OSPF's,
+  and the pushes are `controller-10.6.109/system_cfg-dx010-bgp-*.txt` /
+  `-ospf-*.txt`). A port's Routing is pushed as `opmode=switch`, Routing +
+  Aggregating as `opmode=aggregate` on the aggregate's first member
+  (captured 2026-11-08, `controller-10.6.109/system_cfg-dx010-routed-*.txt`).
 - **The v2 routing API** (`/proxy/network/v2/api/site/<site>/bgp/config/<mac>`,
   `/ospf/router[/<id>]`) takes a write only with `X-Csrf-Token`, which any
   GET returns as a response header (403 without it); the OSPF router's
@@ -346,6 +351,24 @@ stay stopped** (one bridge per adopted key).
   after a controller start minus the `uptime` it reports, and an `uptime`
   near zero moves `latest_assoc_time` every inform. `uptime` is the learn
   time, `age` the last frame, `uptime >= age` (`docs/mac-table-times.md`).
+- **`port_table[].anomalies` is what the switch itself detected, and every
+  bit raises an alert (Network 10.6 and 11.0; seen live 2026-11-13).** Its
+  table: 1/2/4 broadcast/multicast/unicast storm, 32 DHCP packet rate
+  exceeded, 64 rogue DHCP server, 128 802.1X failed, 256 MAC locking, 512
+  loop protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure (the UI's
+  labels; 64 and 32 exercised). `custom_anomalies` is a different table (1/2/4
+  SFP rx/tx/EEPROM ... 64 link flap ... 32768 port lock) and the controller's
+  own: it computes and stores it (the ECS's inform printed on the switch has
+  none; the support-bundle copies' values follow `sfp_rxfault`). The bridge
+  had filled `anomalies` from the second table: each time a Proxmox node's
+  bond leg bounced twice, a "Rogue DHCP server detected" alert for that port
+  followed about a minute later (seven, read from the controller's v2
+  `system-log/device-alert`), and the SONiC switch's topology changes raised
+  "Incoming DHCP packets exceed 300/sec". Now 512 is set for a
+  loop-protection hold, and 1/2/4, 32 and 64 only on growth of the port's
+  own storm, DHCP-rate and rogue-DHCP drop counters (`Port.Health`; no
+  driver fills them yet); `custom_anomalies` is not sent; the raw fields
+  (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
 
 ## 6. Driver facts
 
@@ -486,11 +509,15 @@ reports that switch as root with the uplink cage's lane 1 as the root port.
 Only the two cabled 100G cages are STP-active (see `local-information/site.md`). `root_switch` is reported
 from `show spanning-tree root detail`.
 
-Anomaly/Experience (2026-09-19): per-port `anomalies` bits, `satisfaction`
-and `satisfaction_reason` are derived in `internal/device/tables.go`
-(`portAnomalies`) from `Port.Health` — see `docs/feature-map.md` for the
-bit table and the empirical satisfaction rule. FEC codeword counters come
-from text output (`TextRunner`), eAPI only.
+Anomaly/Experience (2026-09-19, corrected 2026-11-14): `satisfaction` and
+`satisfaction_reason` are derived in `internal/device/tables.go`
+(`portAnomalies`) from counters and `Port.Health` -- see
+`docs/feature-map.md` for the empirical satisfaction rule. FEC codeword
+counters come from text output (`TextRunner`), eAPI only. The per-port
+`anomalies` bits derived here from the same signals were the controller's
+`custom_anomalies` table and raised false alerts (§5); `anomalies` now
+carries a loop-protection hold (512) and the growth of a port's own
+protection drop counters (§5).
 
 **The UI terminal is WebRTC, not SSH (2026-09-19).** When the Debug
 terminal is opened the controller sends the device an inform-reply cmd
@@ -603,8 +630,9 @@ NUT's encoding by tests, the Main group is refused, and the loop holds the
 first outlet push of a run that would switch anything. `control.outlets: "2"`
 was enabled the same evening (stack rebuilt from 8630fe0); no command has
 been sent to the unit yet.
-**The UPS 2U picture (2026-09-26, from the UI bundle):** two multi-cells
-coloured by outlets 1 and 5 alone, override on top of the table; the
+**The UPS 2U picture (2026-09-26, the adopted unit's panel):** two
+multi-cells coloured by outlets 1 and 5 alone (seen live: the bottom row went
+grey when outlets 3-8 were seeded off), override on top of the table; the
 provisioner seeds the placeholder overrides off (`device.PlaceholderOutlets`,
 `unifiapi.SeedOutletOverrides`); there is **no outlet editor for a UPS 2U**
 in 10.6.106 -- the API is the only relay-push path; NUT Server is claimed off.

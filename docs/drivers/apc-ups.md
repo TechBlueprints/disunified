@@ -178,9 +178,12 @@ surge slots. Row shape is the rack-PDU encoding (small `outlet_caps` beside
 `outlet_type`), the form a real controller has been seen to parse for this
 bridge; the battery-backed models' class-bit form has no capture behind it.
 
-**How the picture is really drawn (read out of the Network 10.6.106 UI
-bundle, 2026-09-26 evening).** The UPS 2U's diagram in the controller's
-device catalogue is two rows, `01-02-03-04 __ 12 13` and `05-06-07-08 __
+**How the picture is drawn (Network 10.6.106, the adopted UPS 2U's panel,
+2026-09-26 evening).** Seen live: the colours follow outlets 1 and 5 (the
+consequences below), and the placeholders' reported `false` showed as
+`true` until their overrides were set. Not captured: the surge cells'
+battery-mode dimming and the metered models' `outlet_power` rule. The
+UPS 2U's diagram is two rows, `01-02-03-04 __ 12 13` and `05-06-07-08 __
 __ 11` (12/13 the surge in/out RJ45s, 11 the LAN port). A hyphenated entry
 is one *multi-cell*: its four sub-outlets are all rendered from the **same**
 data, the first outlet's, with tooltips and clicks disabled on the sub-cells.

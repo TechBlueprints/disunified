@@ -30,7 +30,7 @@ func TestWireContractSonicSpanningTree(t *testing.T) {
 		t.Errorf("port 2 = stp_state %v stp_pathcost %v; the ECS sends a down port disabled at cost 0", down["stp_state"], down["stp_pathcost"])
 	}
 	held := portEntry(t, m, 3)
-	if a, _ := held["anomalies"].(float64); int(a)&anomLoopKeepalive == 0 {
-		t.Errorf("port 3 (held by loop protection) anomalies = %v, want the loop bit (512)", held["anomalies"])
+	if a, _ := held["anomalies"].(float64); int(a) != portAnomalyLoopProtection {
+		t.Errorf("port 3 (held by loop protection) anomalies = %v, want exactly the loop-protection bit (512)", held["anomalies"])
 	}
 }

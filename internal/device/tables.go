@@ -30,56 +30,59 @@ func macHeader(mac string) [6]byte {
 //
 // Field set = unifi-emu's minimum-to-adopt ∪ wvengen's switch-view fields.
 // portHistory is what the session remembers per port from the previous
-// inform, so growth-based anomaly bits mean "since the last report".
+// inform: the time and counters the byte rates are computed from, and the
+// port's protection drop counters, whose growth sets anomalies bits.
 type portHistory struct {
-	At             time.Time
-	Counters       devicemodel.Counters
-	LinkChanges    uint64
-	STPChanges     int
-	FECUncorrected uint64
-	PCSErrBlocks   uint64
+	At       time.Time
+	Counters devicemodel.Counters
+	Health   devicemodel.PortHealth
 }
 
-// portAnomalies derives the UniFi per-port anomaly bits plus a satisfaction
+// protectionDrop is one of a port's protection drop counters and the
+// anomalies bit its growth sets.
+type protectionDrop struct {
+	n   uint64
+	bit int
+}
+
+func protectionDrops(h devicemodel.PortHealth) [5]protectionDrop {
+	return [5]protectionDrop{
+		{h.StormDropsBroadcast, portAnomalyBroadcastStorm},
+		{h.StormDropsMulticast, portAnomalyMulticastStorm},
+		{h.StormDropsUnicast, portAnomalyUnicastStorm},
+		{h.DHCPRateDrops, portAnomalyDHCPRate},
+		{h.RogueDHCPDrops, portAnomalyRogueDHCP},
+	}
+}
+
+// portAnomalies derives a port's `anomalies` bits plus its satisfaction
 // score and reason from neutral port state.
 //
-// Bits are windowed where UniFi's are: error/drop/flap bits need growth since
-// the previous inform. Satisfaction mirrors what this controller's own
-// switches report (captured 2026-09-19 across 30 switches): 100, minus 10
-// with reason bit 1 when the port has ever dropped packets, minus 15 with
-// reason bit 2 when it has ever counted errors. An uplink negotiated below
-// its top speed costs a further 10 (our own rule; no UniFi sample had one).
+// `anomalies` is what the switch itself detected, in the controller's table
+// for that field (caps.go): a bit is set only for a condition a driver really
+// saw -- a port held down by loop protection, or one of the port's own
+// protection drop counters (storm control per traffic type, the DHCP rate
+// limit, DHCP guarding) grown since the previous inform, up or down. No
+// previous sample (the first inform after a start) or a counter that went
+// down (a reset) sets nothing. Link flaps, STP changes, optic faults, and
+// interface errors and drops are not anomalies bits: the controller derives its own alerts for those
+// from the raw port fields (link_down_count, sfp_*), and holds its result in
+// custom_anomalies, which the bridge does not send.
+//
+// Satisfaction mirrors what this controller's own switches report (captured
+// 2026-09-19 across 30 switches): 100, minus 10 with reason bit 1 when the
+// port has ever dropped packets, minus 15 with reason bit 2 when it has ever
+// counted errors. An uplink negotiated below its top speed costs a further
+// 10 (our own rule; no UniFi sample had one).
 func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
-	f := strings.ToLower(p.Fault)
-	switch {
-	case strings.Contains(f, "link-flap"):
-		bits |= anomLinkFlap
-	case strings.Contains(f, "bpduguard"):
-		bits |= anomBPDUGuard
-	case strings.Contains(f, "portsec"):
-		bits |= anomPortLock
-	case strings.Contains(f, "loopprotect"), strings.Contains(f, "loop-protect"):
-		bits |= anomLoopKeepalive
-	case strings.Contains(f, "xcvr"):
-		bits |= anomSFPEEPROM
-	}
-	if p.Health.STPInconsistent {
-		bits |= anomLoopSTP
-	}
-	if p.Health.OpticRxAlarm {
-		bits |= anomSFPRxFault
-	}
-	if p.Health.OpticTxAlarm {
-		bits |= anomSFPTxFault
+	if f := strings.ToLower(p.Fault); strings.Contains(f, "loopprotect") || strings.Contains(f, "loop-protect") {
+		bits |= portAnomalyLoopProtection
 	}
 	if prev != nil {
-		if d := p.Health.LinkChanges - prev.LinkChanges; d >= 2 && p.Health.LinkChanges > prev.LinkChanges {
-			bits |= anomLinkFlap
-		}
-		if d := p.Health.STPChanges - prev.STPChanges; d >= 1 {
-			bits |= anomTopologyFlap
-			if d >= 3 {
-				bits |= anomSTPFlap
+		was := protectionDrops(prev.Health)
+		for i, c := range protectionDrops(p.Health) {
+			if c.n > was[i].n {
+				bits |= c.bit
 			}
 		}
 	}
@@ -88,23 +91,7 @@ func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits i
 	}
 	satisfaction = 100
 	if isUplink && len(p.SpeedCaps) > 0 && p.SpeedMbps > 0 && p.SpeedMbps < p.SpeedCaps[len(p.SpeedCaps)-1] {
-		bits |= anomLowUplinkSpeed
 		satisfaction -= 10
-	}
-	if prev != nil {
-		errs := p.Counters.RxErrors+p.Counters.TxErrors > prev.Counters.RxErrors+prev.Counters.TxErrors
-		if p.Health.HasFECCounters && p.Health.FECUncorrected > prev.FECUncorrected {
-			errs = true
-		}
-		if p.Health.HasPCSCounters && p.Health.PCSErrBlocks > prev.PCSErrBlocks {
-			errs = true // PHY-layer errored blocks: bad cable/optic before frames are even lost
-		}
-		if errs || p.Health.PCSHighBER {
-			bits |= anomTransmissionError
-		}
-		if p.Counters.RxDropped+p.Counters.TxDropped > prev.Counters.RxDropped+prev.Counters.TxDropped {
-			bits |= anomDroppedTraffic
-		}
 	}
 	if p.Counters.RxDropped+p.Counters.TxDropped > 0 {
 		satisfaction -= 10
@@ -170,7 +157,8 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			}
 			bits, sat, reason := portAnomalies(p, pp.IsUplink, ph)
 			e["anomalies"] = bits
-			e["custom_anomalies"] = 0
+			// No custom_anomalies: the controller computes that field per
+			// port from the raw fields and stores it itself (caps.go).
 			if sat >= 0 {
 				e["satisfaction"] = sat
 				e["satisfaction_reason"] = reason

@@ -38,19 +38,21 @@ const (
 	swCapIGMPAdvanced  = 67108864 // IGMP_SNOOPING_ADVANCED: the per-VLAN querier, timers and switch.multicast.* (docs/drivers/sonic.md §8.10)
 )
 
-// switch_caps.feature_caps2 (Network 10.6.109's UI bundle: LINK_DEBOUNCE 1,
-// OSPF 4, PORT_ROUTING 16, POE_STAGING 32, TRUSTED_PORT 64,
-// MAC_TABLE_PRESSURE 128). Sent only when a bit is claimed, so no driver's
-// payload changes without one.
+// switch_caps.feature_caps2 (upstream unifi-emu's capability_bits.json:
+// LINK_DEBOUNCE 1, ROUTES_OSPFV2 4, PORT_ROUTING 16; the ECS's own inform
+// claims 128; the names POE_STAGING 32, TRUSTED_PORT 64 and
+// MAC_TABLE_PRESSURE 128 are not captured). 4 and 16 verified live on the
+// DX010 (docs/drivers/sonic.md §11.14, §11.16). Sent only when a bit is
+// claimed, so no driver's payload changes without one.
 const (
 	swCap2OSPF        = 4  // OSPF: Settings -> Routing -> OSPF offers the switch as a Device (switch.ospf.*)
 	swCap2PortRouting = 16 // PORT_ROUTING: the port editor's Routing and Routing + Aggregating operations
 )
 
-// sys_fan_mode.caps: the fan modes a device can be set to, as the
-// controller's own enum numbers them (DEFAULT 1, QUIET 2; Network 10.6.109,
-// devmgr.g.pLZcbZDS). The controller stores the block only from a gateway's
-// inform, never a switch's (docs/drivers/sonic.md §11.15); it is reported
+// sys_fan_mode.caps: the fan modes a device can be set to (DEFAULT 1,
+// QUIET 2; upstream unifi-emu's capability_bits.json). The controller keeps
+// the block for no switch (live on the DX010, docs/drivers/sonic.md §11.15;
+// that it keeps it for a gateway is not captured); it is reported
 // anyway because it is true, in the gateway's shape: caps and the current
 // mode, which the UI reads as sys_fan_mode.mode.
 const (
@@ -404,23 +406,28 @@ func speedCaps(p devicemodel.Port) int {
 	return bits
 }
 
-// Per-port `anomalies` bits (port_table), the values the Network 10.6 UI
-// understands. Real switches send 0 when healthy; a missing key leaves the
-// UI's Anomaly column blank.
+// Per-port `anomalies` (port_table[].anomalies): conditions the switch
+// itself detected. The controller's table for this field: 1 broadcast storm,
+// 2 multicast storm, 4 unicast storm, 32 DHCP packet rate exceeded, 64 rogue
+// DHCP server, 128 802.1X authentication failed, 256 MAC locking, 512 loop
+// protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure. Each set bit
+// raises the matching alert (64 and 32 seen live 2026-11-13), so a bit is set
+// only for a condition a driver really detected; nothing is mapped onto this
+// table by a similar name. Real switches send 0 when healthy. The storm,
+// DHCP-rate and rogue-DHCP bits follow the growth of the port's own drop
+// counters (Port.Health) since the previous inform; no driver fills those
+// counters yet.
+//
+// custom_anomalies is a different table (1/2/4 SFP rx/tx/EEPROM, 8 loop by
+// STP, 16 STP flap, 32 topology flap, 64 link flap, ... 32768 port lock
+// violation) and a different owner: the controller computes it per port from
+// raw fields (link_down_count growth, sfp_found/sfp_rxfault/sfp_txfault) and
+// stores it. The bridge does not send it.
 const (
-	anomSFPRxFault        = 1
-	anomSFPTxFault        = 2
-	anomSFPEEPROM         = 4
-	anomLoopSTP           = 8
-	anomSTPFlap           = 16
-	anomTopologyFlap      = 32
-	anomLinkFlap          = 64
-	anomMCLAGNegotiation  = 128
-	anomPoEBudget         = 256
-	anomLoopKeepalive     = 512
-	anomLowUplinkSpeed    = 1024
-	anomBPDUGuard         = 2048
-	anomTransmissionError = 4096
-	anomDroppedTraffic    = 8192
-	anomPortLock          = 32768
+	portAnomalyBroadcastStorm = 1   // the port's storm control dropped broadcast frames
+	portAnomalyMulticastStorm = 2   // ... multicast frames
+	portAnomalyUnicastStorm   = 4   // ... unicast frames
+	portAnomalyDHCPRate       = 32  // the port's DHCP rate limit dropped DHCP frames
+	portAnomalyRogueDHCP      = 64  // DHCP guarding dropped server replies on the port
+	portAnomalyLoopProtection = 512 // a port held down by loop protection
 )

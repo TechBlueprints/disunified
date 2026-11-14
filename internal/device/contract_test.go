@@ -65,6 +65,11 @@ var switchOmissions = map[string]string{
 var portOmissions = map[string]string{
 	"port_caps":     "USW-only bitmask with an unknown vocabulary",
 	"stp_bridge_id": "USW-only; which bridge id it names is not established",
+	// The 10.6.106 references are the controller's copies (support bundle);
+	// the ECS's 10.6.109 inform, printed on the switch itself, has no
+	// custom_anomalies, and the 10.6.106 ECS copy's 1s sit exactly on its
+	// ports with sfp_rxfault set (1 = SFP rx fault in that field's table).
+	"custom_anomalies": "the controller's own field: it computes it per port from the raw fields (sfp_*, link_down_count) and stores it; a device's value would be a claim of its own",
 }
 
 // contractReferences are the real switch informs every switch payload is
