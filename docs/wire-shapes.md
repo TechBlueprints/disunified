@@ -588,8 +588,12 @@ against `hex`), and beyond those only differences this page already lists.
 
 Open on Network 11:
 
-- **No fixture is from Network 11.** The contract informs, the replay
-  replies and the shapes file are from 10.6.106 and 10.6.109. A new shapes
+- **Almost no fixture is from Network 11.** The replay replies and the
+  shapes file are from 10.6.106 and 10.6.109, and so are three of the four
+  contract informs; the fourth, a USW Aggregation's (switch firmware
+  7.5.15), was printed on the switch while the controller ran 11.0.99
+  (`docs/fixtures/controller-11.0.99/`, 2026-11-14), with the controller's
+  STP-flap alerts for that switch beside it. A new shapes
   capture (`docs/fixtures/controller-11.0.97/shapes-usw.json`) would quiet
   the audit; the id-key patterns in `wire-shapes.py` and `shapes_test.go`
   know 24 hex digits, not UUIDs, and should learn both with it.

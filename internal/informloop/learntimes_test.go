@@ -22,12 +22,18 @@ import (
 const proxmoxNode2 = "collect-node2.txt"
 
 // laterCollector serves the real driver's collect of a fixed capture as if
-// it were read `shift` later: the snapshot time and every entry's times
-// move together, so a capture that does not change stands for a node whose
-// FDB did not change. drop removes one address from the collect (it aged
+// it were read `shift` after base (the first snapshot's time): the snapshot
+// time and every entry's times move together, so a capture that does not
+// change stands for a node whose FDB did not change. The driver stamps each
+// collect with the wall clock, so the collect is moved to base+shift
+// exactly; shifting the fresh collect by `shift` alone would carry the test's
+// own running time into every uptime, one second too many whenever it and
+// the first collect's fraction of a second (the tracker keeps whole seconds)
+// add up to a second. drop removes one address from the collect (it aged
 // out); fail makes the collect fail.
 type laterCollector struct {
 	c     devicemodel.Collector
+	base  time.Time
 	shift time.Duration
 	drop  string
 	fail  bool
@@ -41,7 +47,7 @@ func (l *laterCollector) Collect(ctx context.Context) (*devicemodel.Snapshot, er
 	if err != nil {
 		return nil, err
 	}
-	return later(snap, l.shift, l.drop), nil
+	return later(snap, l.base.Add(l.shift).Sub(snap.TakenAt), l.drop), nil
 }
 
 func later(snap *devicemodel.Snapshot, shift time.Duration, drop string) *devicemodel.Snapshot {
@@ -168,7 +174,7 @@ func TestLearnTimesProxmox(t *testing.T) {
 	}
 	driverSnap := snap
 	dir := t.TempDir()
-	cc := &laterCollector{c: coll}
+	cc := &laterCollector{c: coll, base: snap.TakenAt}
 	l, sess := proxmoxLoop(t, cc, snap, dir)
 	ctx := context.Background()
 
@@ -277,7 +283,7 @@ func TestLearnTimesProxmox(t *testing.T) {
 	// A bridge restart: a new loop from the same state directory, its
 	// first snapshot read later still, continues every time.
 	restart := later(snap, 1800*time.Second, "")
-	_, sess2 := proxmoxLoop(t, &laterCollector{c: coll, shift: 1800 * time.Second}, restart, dir)
+	_, sess2 := proxmoxLoop(t, &laterCollector{c: coll, base: snap.TakenAt, shift: 1800 * time.Second}, restart, dir)
 	got = portMACTimes(t, sess2)
 	for k, v := range first {
 		if isGone(k) {
@@ -288,7 +294,7 @@ func TestLearnTimesProxmox(t *testing.T) {
 	}
 
 	// Without a state directory the tracker works in memory.
-	cc2 := &laterCollector{c: coll}
+	cc2 := &laterCollector{c: coll, base: snap.TakenAt}
 	l3, sess3 := proxmoxLoop(t, cc2, snap, "")
 	cc2.shift = 60 * time.Second
 	l3.collect(ctx)
@@ -308,7 +314,7 @@ func TestLearnTimesChild(t *testing.T) {
 	}
 	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef"}, nil, time.Now())
 	sess.SetSnapshot(snap)
-	cc := &laterCollector{c: fixedCollector{snap}}
+	cc := &laterCollector{c: fixedCollector{snap}, base: snap.TakenAt}
 	l, err := New(desc, sess, Config{
 		Logger: log.New(testLogWriter{t}, "", 0), Collector: cc,
 		Children: []Child{{Port: 2, MAC: "02:00:00:00:00:a2", Name: "lane-switch"}},

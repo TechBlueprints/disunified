@@ -1,0 +1,214 @@
+{
+  "data": [
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 2 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "343166",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "2",
+          "name": "2"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476798789,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 3 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "343156",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "3",
+          "name": "3"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476798791,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 2 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "354108",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "2",
+          "name": "2"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794563287166,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 3 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "354098",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "3",
+          "name": "3"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794563287167,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 2 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "365096",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "2",
+          "name": "2"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794650085284,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-2 Port 3 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY"
+        },
+        "COUNT": {
+          "name": "365086",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "3",
+          "name": "3"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794650085286,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    }
+  ]
+}

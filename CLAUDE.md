@@ -299,9 +299,10 @@ these is marked "not captured".
   with nothing changed on every bridge in the container. Stale since: the
   10.6.109 shapes file lists ids as 24 hex digits, so a live
   `wire-shapes.py audit` on Network 11 reports every id path; and MongoDB
-  is gone from the console (`mongo --port 27117` no longer answers). No
-  capture or replay fixture is from Network 11 yet
-  (`docs/wire-shapes.md` §9).
+  is gone from the console (`mongo --port 27117` no longer answers). The
+  one capture from Network 11 is a USW Aggregation's inform and its
+  STP-flap alerts (`controller-11.0.99/`, 2026-11-14); no replay fixture
+  or shapes file is (`docs/wire-shapes.md` §9).
 - **Values are held to a real device's shape, not only its keys
   (2026-11-12, `docs/wire-shapes.md`).** The audit after the serial found
   optic readings sent as numbers (real: strings), a `version` with letters
@@ -376,6 +377,11 @@ these is marked "not captured".
   own storm, DHCP-rate, rogue-DHCP and MAC-locking drop counters
   (`Port.Health`); `custom_anomalies` is not sent; the raw fields
   (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
+  The STP-flap alert ("Port N is experiencing frequent STP role state
+  changes") carries the port's `stp_state_change_count[].change_count` as
+  its `COUNT` (11.0.99, 2026-11-14: a USW Aggregation's alerts against its
+  inform, `controller-11.0.99/`); no inform carries `stp_state_change_sum`,
+  and the bridge already sends the count from `Port.Health.STPChanges`.
   **Only loop protection and BPDU guard take a port down** in UniFi's model
   (the UI's own text, 2026-11-14): every other bit is a detection the port
   keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's
