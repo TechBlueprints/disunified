@@ -4884,11 +4884,14 @@ authentication attempt on the port; 1024 is a denial of service attack
 detected on the port. None of the four has been seen raised, so none of
 these meanings is exercised.
 
-**What the ECS does.** Nothing: the ECS Aggregation's inform, printed on
-the switch (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`), has
-no `anomalies` key on any of its 54 ports, so the family the DX010 is
-claimed as reports none of these bits. (The ECS's `admin` login refused
-the site key on 2026-11-14, so it was not read again.)
+**What the ECS does.** It reports none of them. The ECS Aggregation's
+inform, printed on the switch (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`),
+has no `anomalies` key on any of its 54 ports, and none either when it was
+printed again with `mca-dump` on 2026-11-14 (firmware 4.0.1.995, read-only,
+once the switch was back on 4.0.1; on 4.0.3 its `admin` login had refused
+the site key earlier that day). Its error-disable table names a cause for
+most of the bits (§11.20); what the ECS shows for PHY failure and for DoS
+is in §11.18.1 and §11.18.4.
 
 **The evidence**, read on the DX010 on 2026-11-14 (image
 `igmp-202511.20261106-f2e25f54c`, read-only):
@@ -4896,10 +4899,10 @@ the site key on 2026-11-14, so it was not read again.)
 
 | Bit | What the DX010 can do | Built |
 |---|---|---|
-| 2048 PHY failure | no PHY between the ASIC and the cages; the per-port fault it does report is a link-down reason seen on the healthy uplink (§11.18.1) | nothing |
+| 2048 PHY failure | no PHY between the ASIC and the cages, as on the ECS, whose SONiC describes none either; the per-port fault the DX010 does report is a link-down reason seen on the healthy uplink (§11.18.1) | nothing |
 | 256 MAC locking | enforces the MAC filter (§11.12) but counts no dropped source per port; counting needs the ingress-port match in the kit's `L2` ACL type, an image change (§11.18.2) | nothing (enforcement as before) |
 | 128 802.1X authentication failed | no authenticator on the image; 202511 holds Broadcom's Port Access Control sources, unbuilt and without an orchagent consumer (§11.18.3) | nothing |
-| 1024 DoS | nothing the controller configures or describes beyond the name; the switch's CoPP drops are per CPU queue, not per port, and its malformed-frame drop reasons are not an attack (§11.18.4) | nothing |
+| 1024 DoS | the ECS's `denial-of-service` cause is a configuration row with nothing observable behind it (no detector in any database, the chip or the CPU path, no push key, no UI setting, no bit reported), so there is no condition to copy; the Tomahawk's own DoS header checks could be counted per port, but outside SAI and only as a condition of this project's choosing (§11.18.4) | nothing |
 
 #### 11.18.1 PHY failure (2048)
 
@@ -4931,6 +4934,24 @@ raise "Port Failure Detected" for an uplink that is working.
 faults as `sfp_rxfault`/`sfp_txfault`, from which the controller derives
 its own SFP alerts (`custom_anomalies` 1/2/4, `docs/feature-map.md` §2).
 A module fault is not this bit.
+
+**The ECS gives the bit no observable meaning either** (read-only,
+2026-11-14, firmware 4.0.1.995). Its error-disable table has no cause for a
+physical failure (§11.20.2). Its SONiC describes no external PHY: the SKU
+directory holds the Marvell board, SAI and profile files and no
+`gearbox_config.json`, and APPL_DB's only gearbox key is the done marker
+(`_GEARBOX_TABLE:GearboxConfigDone`). Its 202106 orchagent keeps no
+`PORT_OPERR_TABLE`. STATE_DB `PORT_TABLE|<port>` carries `state`,
+`netdev_oper_status`, `linkdown_count`, `supported_speeds` and
+`switching_mode`, and `state` is `ok` on all 56 ports, up or down (it marks
+the port created, not healthy). The inform has no `anomalies` key, and a
+down cage is reported only through `up`, `link_down_count` and the
+module's `sfp_found`/`sfp_rxfault`/`sfp_txfault` (4 of its 41 down ports
+carry `sfp_rxfault` true), from which the controller derives its own SFP alerts.
+So on the family the DX010 is claimed as, "cannot link up due to a physical
+failure" is not a state anything reports; the bit most likely belongs to
+switches with PHY chips of their own (not captured: no switch on the site
+reports it).
 
 **Built: nothing.** What a PR needs: an inform from a real UniFi switch
 reporting 2048 (a support-bundle `last.inform` or `mca-dump` on the
@@ -5074,33 +5095,117 @@ server: rack day at the earliest.
 
 #### 11.18.4 DoS (1024)
 
-**The condition** is a denial of service attack detected on the port; the
-UI's advice for it is to look for a misconfigured device sending excessive
-traffic, or an attacker. Nothing more about it is observable: no captured
-push (58 in `docs/fixtures/controller-*`, the ECS's among them) carries a
-key that configures a DoS detector, the UI has no setting for one, and the
-ECS reports no `anomalies` at all. What a UniFi switch counts as an attack
-is not known.
+**The condition.** The UI words the bit as a denial of service attack
+detected on the port, and advises checking for misconfigured devices that
+send excessive traffic and for attackers. It is a detection: no UI text says
+the port is disabled (§11.20.1). The controller configures nothing for it:
+no captured push (the 58 in `docs/fixtures/controller-*`, the ECS's among
+them, and the ECS's own 818-line `system.cfg` on firmware 4.0.3 in a state
+dump of 2026-11-13) carries a key for a DoS detector, and the UI has no
+setting for one, only the alert's texts.
 
-**The DX010 has no per-port detector to match.** What it has is near the
-name only:
+**The ECS has a cause by that name and nothing observable behind it**
+(read-only, 2026-11-14, firmware 4.0.1.995 live, and 4.0.3 from a state
+dump taken on the switch on 2026-11-13; nothing read off the ECS is kept in
+the tree, §11.4, so this is stated for a reader with an ECS to check):
 
-- **CoPP** polices traffic to the CPU per trap group (`copp_cfg.json`:
-  ARP, LACP, LLDP, DHCP, BGP, IGMP, `ip2me` and the rest; capture
-  `copp_cfg_traps`). Its drops are per CPU queue, switch-wide: a policer
-  drop names no port.
-- **The drop counter reasons** include `SMAC_EQUALS_DMAC` and
-  `IP_HEADER_ERROR`, malformed-frame checks the ASIC makes anyway (one
-  counter in all, §11.18.2). A frame with its own address as both ends or
-  a bad IP header is as likely a broken host as an attack; calling it a DoS
-  is a reinterpretation.
-- **Storm control** drops are bits 1, 2 and 4 (another session), and the
-  DHCP rate limit is 32: each already has its own bit.
+- CONFIG_DB `ERROR_DISABLE|denial-of-service` and APPL_DB
+  `ERROR_DISABLE:denial-of-service`: `admin_status enabled`,
+  `auto_recovery_interval 0`, as every other cause (§11.20.2). The
+  error-disable service runs in the `swss` container (`errdisablemgrd`,
+  `errdisabled`; Redis channels `ERROR_DISABLE_CHANNEL`,
+  `errdisablemgrd_CHANNEL`, `errdisabled_CHANNEL`). No port has been
+  disabled (`show errdisable status` empty; no STATE_DB `ERROR_DISABLE`
+  row).
+- **Nothing configures a detector.** No other key or value in CONFIG_DB,
+  APPL_DB, STATE_DB or ASIC_DB names DoS (the 4.0.3 dump's four databases
+  searched whole; on 4.0.1 the tables below read one by one). The chip is
+  given no DoS check: ASIC_DB's port objects carry only the standard
+  attributes plus Ubiquiti's cut-through pair, and the switch object only
+  cut-through, pipeline-bypass and the usual notification attributes. The
+  CPU path has nine CoPP groups (IGMP/PIM, ip2me, DHCP, BGP/LLDP/OSPF/UDLD,
+  ARP/ND, VRRP, LACP/STP, a user-defined group and the default), each a
+  switch-wide policer whose drops name no port, and no ACL beyond the
+  controller's own MAC and IP rules.
+- **Nothing reports it.** The inform the switch builds (`mca-dump`, 4.0.1)
+  has no `anomalies` key on any of its 54 ports, as in the committed
+  fixture (§11.18).
 
-**Built: nothing.** What a PR needs: an inform from a real UniFi switch
-reporting 1024 and what traffic set it, so the condition is defined by
-something observable; then a per-port detector for that condition on the
-DX010.
+So what the ECS's `denial-of-service` cause detects cannot be pinned down
+from anything the switch, its push or the controller shows: the row names a
+cause, and a cause row is not a detector (the ECS's storm rows name a
+feature it does not even claim, §11.20.2). There is no ECS behaviour to
+copy.
+
+**What the DX010 can measure** (read-only on 2026-11-14,
+`docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/dos-probes.txt`):
+
+- **The Tomahawk's own DoS checks.** The Broadcom SDK's switch controls
+  (`bcmcmd sc` in `syncd`) include `DosAttackSipEqualDip`,
+  `DosAttackTcpFlagsSF`, `DosAttackTcpFlagsFUP`, `DosAttackFlagZeroSeqZero`,
+  `DosAttackSynFrag`, `DosAttackV4FirstFrag`, `DosAttackTcpHdrPartial`,
+  `DosAttackTcpPortsEqual`, `DosAttackUdpPortsEqual`, `DosAttackIcmp*`,
+  `DosAttackIcmpFragments` and others; every one is off except
+  `DosAttackMACSAEqualMACDA` (1, the drop SONiC calls `SMAC_EQUALS_DMAC`).
+  They are header sanity checks applied to the whole switch: a frame with
+  its source and destination address equal, a TCP segment with SYN and FIN
+  both set, a first fragment too small to hold a TCP header. One such frame
+  trips a check; a flood of well-formed traffic trips none.
+- **A per-port count of them, outside SAI.** The SDK names receive
+  debug-counter triggers for those drops (`bcmDbgCntDSL3HE`, `DSL4HE`,
+  `DSICMP`, `DSFRAG`, `RxDSL2HE`, `MACSAEQUALMACDA`, in the `syncd`
+  container's `libsai.so.1`). The receive debug counters are per-port
+  registers (`listreg RDBGC8`: a port register), and `RDBGC8_SELECT` is 0,
+  unused. With SONiC's one `PORT_INGRESS_DROPS` debug counter installed
+  for 17 s (`SMAC_EQUALS_DMAC`), all nine select registers read as before,
+  so which hardware counter the SAI uses for it was not found; whether the
+  two would collide is open.
+- **Through SAI, only two of the checks.** SONiC's drop-counter reasons
+  include `SMAC_EQUALS_DMAC` and `IP_HEADER_ERROR` (one counter in all,
+  §11.18.2); SAI has no attribute that turns the other checks on.
+- **CoPP** polices per trap group, switch-wide, as on the ECS: no port.
+
+None of this is the ECS's condition, because the ECS shows none. The chip's
+checks carry the name "DoS attack" from the chip vendor and are what many
+switch makers mean by DoS prevention; reporting them as bit 1024 would
+still be a condition of this project's choosing, not the controller's or the
+ECS's.
+
+**Built: nothing.** The driver never reports a `denial-of-service` Fault
+and never sets 1024. (`internal/device` maps that cause to 1024 for a
+driver that one day has it.)
+
+**What it takes to report it** (the build assessment; none of it is out of
+reach of the DX010):
+
+1. **A definition**, from a UniFi switch that reports 1024: a support-bundle
+   `last.inform` or a switch's own `mca-dump` with the bit set, and the
+   traffic that set it (which header check, or which rate). No capture in
+   the tree has the bit set (the real switch's port entries in
+   `controller-10.6.106/inform-usw-xg16-usxg.json` carry `anomalies` 0; the ECS
+   carries none), so this needs a switch whose firmware sets it; until then,
+   which checks to turn on is a guess.
+2. **If the definition is header checks, the DX010 half is a small driver
+   feature:** turn the chosen `DosAttack*` controls on with `bcmcmd sc`
+   (outside SAI and orchagent, so lost whenever `syncd` restarts: disunified-l2d
+   or the driver re-applies them after every `syncd` start, or an image
+   patch exposes them as SAI switch attributes, which upstream SAI does not
+   define), point the free receive debug counter at the matching triggers
+   (one switch-wide select, a count per port), read it per poll in the
+   driver's one exec into a neutral cumulative counter in `Port.Health`, and
+   set 1024 on its growth in `internal/device`, as the storm and DHCP
+   counters are (a detection, not a port held down, §11.20.1). The checks
+   apply to every port, the uplink included, and drop what they match, so
+   each one turned on is a change to the switch's forwarding, made only with
+   the definition in hand. The debug counter must first be shown not to
+   collide with SONiC's own `PORT_INGRESS_DROPS` counter.
+3. **If the definition is a rate** (excessive traffic of some kind), a
+   per-port rate detector: the port's own counters in `COUNTERS_DB`, read
+   by disunified-l2d as the storms detector reads them (§11.21), against the
+   definition's threshold.
+4. **Verification:** a cabled host on a DX010 test cage sending the frames
+   the definition names, the count growing in a capture scrubbed with
+   `scripts/sanitize-sonic.py`, and the alert seen in the controller.
 ### 11.19 Storm-control drops: no count to report (2026-11-14)
 
 UniFi's broadcast, multicast and unicast storm anomalies (bits 1/2/4) are

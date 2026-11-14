@@ -796,3 +796,15 @@ was restarted.
   local/remote fault per oper-down) counts ordinary drops of a healthy link,
   not a failed port; the image has no 802.1X authenticator (202511's
   `src/sonic-pac` is unbuilt).
+- **DoS (1024) and PHY failure (2048): the ECS has nothing to copy**
+  (§11.18.4, §11.18.1; read-only 2026-11-14). Its `ERROR_DISABLE|denial-of-service`
+  row is configuration only: nothing in its databases, chip attributes, CoPP
+  or push configures a DoS detector, and its inform carries no `anomalies`
+  key. Do not build a DoS hold from the row. The Tomahawk's own checks are
+  Broadcom switch controls (`bcmcmd sc`, `DosAttack*`, all off except
+  `DosAttackMACSAEqualMACDA`), invisible to SAI and lost on a `syncd`
+  restart; the SDK has per-port receive debug-counter triggers for them
+  (`RDBGC8_SELECT` is 0). Turning a check on changes forwarding on every
+  port, the uplink included: only with a definition captured from a real
+  UniFi switch. `dos-probes.txt` in the 202511 fixture directory has the
+  reads.
