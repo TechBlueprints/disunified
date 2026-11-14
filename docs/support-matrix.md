@@ -612,6 +612,43 @@ its own LLDP neighbour (the child is then reported in the MAC table only;
 whether the controller places by that alone next to another neighbour is
 the open question).
 
+## `breakout` — a split cage as its own switch (the lane switch)
+
+A split cage of a bridged switch presented as a five-port switch of its own
+(`USFXG`: ports 1-4 the lanes, 5 the cable), reading and writing through its
+parent driver ([`drivers/breakout.md`](drivers/breakout.md)). Built
+2026-11-14 with `sonic` as the parent. **Nothing of it has run live**; the
+controller side it relies on was proven with the stub (above).
+
+### Verified (fixtures and replay)
+
+| What | How |
+|---|---|
+| The child's snapshot from the DX010's real 4x25G capture (lanes with their aliases, supported speeds and media, port 5 the uplink with the parent as its neighbour), and at 2x50G after a re-split through the parent (two lanes, two empty slots) | `internal/drivers/breakout/breakout_test.go`; `internal/drivers/sonic/lanes_test.go` |
+| The child's inform held to the real switches' (wire contract, every-port types, value shapes) | `internal/device/contract_breakout_test.go`, the `breakout` row of `contractPayloads` |
+| The controller's Flex XG aggregate push replayed through a child loop onto the parent: `PortChannel201` on lanes 2-4, the FEC note, both loops' next cycle writing nothing; the join removing it before the breakout; the first-push hold | `internal/informloop/replay_breakout_test.go` |
+| The parent's plan on an owned cage: only the breakout and the admin state; a lane speed the child forced not undone; an unowned lane aggregate left alone | `lanes_test.go` |
+
+### Built, untested live — PRs welcome
+
+| Gap | What the PR needs |
+|---|---|
+| Adoption and placement of a real lane switch on a `sonic` parent | the steps of [`drivers/breakout.md`](drivers/breakout.md) §15 on a DX010 (or any SONiC switch with `platform.json` breakout modes): the child's record placed under the cage (`uplink_remote_port`), the parent's `downlink_lldp_macs`, both records scrubbed into `docs/fixtures/controller-<ver>/` |
+| A lane aggregate to a real LACP partner | a breakout DAC to a bonded host: `teamdctl PortChannel<100*cage+1> state` with the partner, the child's `lacp_state`/`partner_system_id` in its stored record, traffic on the members; the push and the reply log scrubbed into fixtures |
+| A join with an aggregate present while the DUI ACL tables are bound | the join's batch from the journal (`portchannel del` of a bound PortChannel), the tables `Active` after (§14.5) |
+| A forced lane speed (one lane at 10G beside 25G lanes) | the lane up at 10G with its neighbour, the other lanes unaffected; whether the Tomahawk accepts mixed lane speeds in one cage is not known |
+| The stored-speed quirk after a re-split (§14.1) | the child's `rest/device` `port_overrides` after the aggregate push (the speed keys, captured), then a rule that clears a lane's forced speed when the mode changes |
+| The disconnect seen once after the aggregate push (§14.2) | the child's record across the push on a real parent: connected throughout, or the same `MISSED_INFORM` with the reply log showing the informs answered |
+
+### Not built — PRs welcome
+
+| Gap | What the PR needs |
+|---|---|
+| The `arista-eos` parent | [`drivers/breakout.md`](drivers/breakout.md) §7b against `docs/fixtures/eos-4.26.14M/` (cage 50 split there): `LaneProvider` on the Collector, the lane scope in `plan()`, tests as §10 lists, then §11b live |
+| STP port settings, isolation, port security, egress limit, LLDP-MED on the lane switch (today the cage's, on every lane) | the switch-wide computations taking both loops' intent (`l2SetPorts` in `sonic/l2.go`, `portFeatures`); the claims then on the child |
+| A lane aggregate's own STP settings when it leaves lane 1 out (§14.4) | `l2SetPorts` naming every PortChannel a cage's interfaces are in, a test on the captured 2-4 aggregate |
+| A lane switch that appears by itself on a split (§12) | the loop adding and removing devices at run time, and the bridge forgetting a retired child |
+
 ---
 
 ## Every driver — per-port anomaly fields

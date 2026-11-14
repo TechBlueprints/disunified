@@ -841,3 +841,22 @@ was restarted.
   port, the uplink included: only with a definition captured from a real
   UniFi switch. `dos-probes.txt` in the 202511 fixture directory has the
   reads.
+- **The lane switch's parent (`lanes.go`, `docs/drivers/breakout.md` §0;
+  built 2026-11-14, fixture- and replay-tested, never live).** A split
+  cage keeps its lanes as ports of their own (`cagePort.lanes`); the plan
+  has a lane scope (`planFor(cage, ...)`: ports are the lanes, aggregates
+  `PortChannel<100*cage+lag>`, mirrors `dui<100*cage+lane>`) and an owned
+  cage (split, a child attached) keeps only the breakout and the admin
+  state in the cage plan -- a cage speed the mode runs writes nothing, the
+  module rule keeps the mode only, a join dissolves the child's aggregates
+  and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
+  (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
+  PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
+  `ApplyLanes`, `EnsureVLANs` and `ApplyDevice`. Facts from the capture
+  (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
+  `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
+  (so the Flex XG aggregate push's `cl-91` is refused); the controller's
+  aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
+  STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
+  by cage; a lane aggregate without lane 1 is not named to l2d (open).
+

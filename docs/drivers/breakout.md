@@ -1,11 +1,174 @@
-# `breakout` -- a split cage as its own UniFi switch (build spec, 2026-11-02)
+# `breakout` -- a split cage as its own UniFi switch
 
-Status: **specified, not built.** The design discussion and the capture
-that decided it are [`docs/breakout-lag.md`](../breakout-lag.md) (§6, the
-lane switch; §6.6-6.7, the controller placing a stub lane switch from our
-own bridged switch's report). This document is what to build, written for
-the session that builds it; the facts it rests on are cited back to the
-note and the code.
+Status: **built 2026-11-14 with `sonic` as the parent; fixture- and
+replay-tested only, never adopted.** The first live adoption is the next
+step (§15). The Arista as a second parent is specified (§7b) and not built.
+The design discussion and the capture that decided it are
+[`docs/breakout-lag.md`](../breakout-lag.md) (§6, the lane switch; §6.6-6.7,
+the controller placing a stub lane switch from our own bridged switch's
+report; §6.8, what this build decided). §0 is what was built and where it
+departs from the spec of 2026-11-02 below it (§1-§13, kept as written, with
+"as built" marks where §0 changes them). The facts it rests on are cited
+back to the note, the captures and the code.
+
+## 0. As built (2026-11-14)
+
+**Code.** `internal/devicemodel/lanes.go` (the contract, neutral),
+`internal/drivers/breakout` (the child), `internal/drivers/sonic/lanes.go`
+plus the lane scope in `control.go`, `model.go`, `collector.go` and
+`breakout.go` (the parent), `internal/config` (the entry's rules),
+`cmd/disunified/main.go` (the attachment and the registry).
+
+**Declared in the parent's file, attached by main.** A lane switch is a
+config entry with `driver: breakout`, `options.parent` (another entry of
+the same file, not a lane switch) and `options.cage` (1..99), no
+`url`/`ssh`, `model` defaulting to `USFXG`; at most one per cage, and not
+on a port the parent's `children:` already names (`config.Load`). `main`
+opens the parent, then -- **before the parent's loop starts** -- calls
+`AttachLaneSwitch(cage, {MAC, Name})` for every lane-switch entry naming it,
+and registers the opened parent under its config name
+(`devicemodel.RegisterOpened`). The spec had the child attach itself from
+its own `Open`; that loses a race: the parent's first apply could run
+before the child opened and write the cage's intent over the lanes on every
+bridge restart. Attached by main, the parent's very first plan already
+leaves the lanes alone. The child's `Open` finds the parent by name
+(`devicemodel.OpenedDevice`) and fails with a reason until it is there;
+main's start retry (15 s doubling) brings it up.
+
+**Identity.** The MAC is `options.mac`, else
+`devicemodel.LaneSwitchMAC(parent MAC, cage)`: the parent's MAC with the
+locally administered bit set and the multicast bit clear in the first
+octet, the cage in the last (DX010 cage 2 from a parent `xx:..:yy` is
+`(xx|02):..:02`). main computes it once and the child reads it back from
+the parent (`LaneView.Child`), so the parent's report and the child's
+inform cannot disagree. The serial is the MAC's digits like every bridged
+device's (`device.SerialFor`, `CLAUDE.md` §5). Hostname = the child's config
+name; model string "Lane switch", SKU the cage's mode (`4x25G[10G]`);
+version the parent's. Address: `AddressReporter` returns the parent's
+`CurrentAddress()` (the dial target, which follows an address move), and
+the snapshot carries one address on `eth0` with the parent's prefix length,
+exactly the shape the stub that was placed reported. **Why the controller
+places it:** the parent reports the child's MAC in the cage's MAC table and
+the child as the cage's LLDP neighbour (`Child` set, so never the parent's
+uplink), the two entries the 2026-11-02 run proved place a device with no
+other trace on the LAN, either one alone (`docs/breakout-lag.md` §6.6.1).
+
+**Reading.** The parent keeps each split cage's lanes as ports of their own
+beside the fold (`cagePort.lanes`, `buildPorts`): state, speed, counters,
+FEC, MTU, VLAN, the host's LLDP neighbour, and -- through the same
+interface-keyed helpers the fold uses -- LACP (`setLACP`), l2d's STP state
+and faults (`l2Ports`), the storm and DHCP-rate counts, DHCP guard drops,
+the FDB entries learned on each lane (`laneMACs`; a lane aggregate's on its
+lowest member) and a lane-to-lane mirror. A lane's `SpeedCaps` are its
+STATE_DB `supported_speeds` (the DX010's 25G lanes: 1000,10000,25000 --
+what portconfig checks), else the mode's speeds; its media is SFP28 at 25G
+and below 50G, QSFP28 at 50G (the Flex XG drew a 50G lane as a QSFP tile,
+§6.6.3 of the note). `Lanes(cage)` hands the child those ports, the folded
+cage, the parent's `System`, `VLANs`, its LLDP chassis id
+(`LLDP_LOC_CHASSIS`), the mode, the cage's admin state and the attachment.
+The child's `Collect` is that view, no device read; it errors while the
+cage is whole (not split), while nothing is attached, and when the parent's
+snapshot is older than `options.max_age` (default 3 min: the parent is not
+answering, and its last snapshot would be frozen numbers).
+
+**The child's snapshot** (`breakout.Snapshot`): ports 1..N the lanes; N+1..4
+empty slots (a 2x50G cage) with no interface, not present; port 5 the
+cable: up when any lane is, at the cage's native speed (the highest of its
+`SpeedCaps`, 100G on the DX010) and claiming only that, counters and FEC
+counters summed, the cage's module, the parent as its LLDP neighbour
+(chassis id the parent's own, system name its hostname, port id the cage's
+interface), the uplink hint. Names: lane alias (`Eth2/1`), the cage's alias
+for port 5, the device `"<parent hostname> <cage alias>"`. Claims: the
+parent's LACP, FEC, jumbo and storm control, `AggregateSessions` at most 2
+(four lanes), `MirrorSessions` at most 1; nothing switch-wide.
+
+**Writing.** `ApplyPorts`/`PlanPorts` on the child pass the lanes'
+`PortDesired` (Index = lane) to the parent's `ApplyLanes`/`PlanLanes`;
+port 5's settings are dropped (logged once when they ask for anything) and
+a mirror whose source is not another lane is refused with a note.
+`EnsureVLANs` is the parent's, `ApplyTimeout` the parent's budget,
+`SwitchesJumbo` the parent's. On SONiC `ApplyLanes` is the parent's own
+plan with a **lane scope** (`planFor(cage, ...)`): the ports are the lanes,
+the PortChannel of the child's aggregate `lag` is
+`PortChannel<100*cage+lag>` and its mirror session `dui<100*cage+lane>`;
+state, name, VLANs, FEC (the module FEC where the push says auto), MTU,
+storm control, the aggregate (create, MTU, fast rate, min links, the VLAN
+move, the ACL unbind) and a lane mirror run through the same routines as a
+cage's; the batch is followed by the ACL rebind and the IGMP reserved
+groups, as `ApplyPorts`' is. A lane speed is forced on that lane only and
+must be one it runs; auto leaves it at what it runs. The plan refuses a
+lane plan whose interfaces no longer match CONFIG_DB (the cage changed
+since the collect).
+
+**Who writes what on a split cage with a lane switch ("owned").**
+
+| | the lane switch (child) | the cage on the parent |
+|---|---|---|
+| admin state | each lane | disabled = every lane down; while it is, the child cannot bring a lane up (`LaneView.CageDisabled`) |
+| speed | a lane speed on its lane | **the mode only** (split, re-split, join; the module rule of sonic §10.9 too, kept while the module runs that many ports): a cage speed the current mode runs writes nothing, so it never undoes a lane speed |
+| name, VLANs, FEC, MTU, storm control | each lane | not applied (one note per push) |
+| aggregate, mirror | between its lanes | the cage's own not applied; a join removes the child's first |
+| STP port settings (edge, BPDU guard, loop protection), isolation, port security, egress limit, LLDP-MED | -- | **the cage's, on every lane, as before** |
+| VLAN MTU, VLAN creation | -- (`EnsureVLANs` is the parent's) | the parent's |
+
+The last two rows depart from the spec (§5.4), for a code reason: those
+settings are computed switch-wide from the parent's own ports -- l2d's
+per-port intent is keyed by cage in `l2.go` (`l2SetPorts`, rebuilt from
+every port at once), the isolation group and the static FDB entries from
+every isolated or secured port -- so a lane scope would have to rebuild the
+whole set from two loops' pushes. The child claims none of them, so the UI
+offers none on the lane switch. Moving them to the child is open (§14).
+
+**A join, a re-split, a split.** A cage speed that changes the mode of an
+owned cage first removes the child's aggregates (`member del` on each lane,
+the PortChannel's VLANs, `portchannel del`) and lane mirror sessions in the
+same batch (`dissolveLanes`), then breaks out; the new lanes (or the joined
+cage) take the cage's whole intent from that plan, as on any breakout, and
+the next cycle hands them to the child again if they are still split. The
+child of a joined cage stops answering, and the controller shows it
+disconnected and keeps its placement (a placement outlives the report,
+§6.6.1 of the note) until it is forgotten. A split of a cage whose child is
+attached gives the lanes the cage's intent; the child then seeds the
+controller from them at adoption.
+
+**Aggregates the plan does not own.** Each scope owns its own range: the
+parent's plan PortChannels below 100, a lane plan its cage's 100*cage+1..99.
+A lane in any other PortChannel (a lane switch's on a cage no longer
+attached, the parent's own, one made by hand) is left in it: no member
+del, no VLANs, no MTU, with a note; and an orphan outside the range is
+never deleted. So a lane switch's aggregate survives its config entry
+being removed, and the operator removes it by hand (or re-adds the entry
+and removes it from the UI).
+
+**One write at a time.** The child applies from its own loop, beside the
+parent's: `lockApply` (a one-slot semaphore that gives up with the
+caller's context) serialises `Collect`, `ApplyPorts`, `ApplyLanes`,
+`EnsureVLANs` and `ApplyDevice` on the SONiC collector, so two plans never
+interleave their batches and a collect never reads a batch half done.
+
+**Tests (real captures only).** The parent is the DX010 as captured on
+2026-11-07 with cage 2 split to 4x25G
+(`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`); the push is the
+controller's own for a Flex XG with ports 2-4 marked Aggregate
+(`controller-10.6.109/system_cfg-flexxg-aggregate.txt`, 2026-11-02).
+`internal/drivers/sonic/lanes_test.go` (the view, lane settings, the
+owned cage, the aggregate and the join, an unowned lane aggregate, the
+lock), `internal/drivers/breakout/breakout_test.go` (the snapshot at 4x25G
+and, after a real 2x50G re-split through the parent, at 2x50G; stale,
+whole and unattached; the push through the parent; options), the
+replay `internal/informloop/replay_breakout_test.go` (the aggregate push
+through a child loop onto the parent, both loops' next cycle writing
+nothing, the join through the parent's loop, the first-push hold), the
+child's payload in the wire contract and shape tests
+(`internal/device/contract_breakout_test.go`, `TestLaneSwitchPayload`), and
+`internal/config/lanes_test.go`.
+
+What the replay showed about the real push: it names the aggregate `lag=1`
+(the controller's aggregate number, not the lowest member's index: the
+lane PortChannel is `PortChannel201`); it carries no VLAN keys for ports
+without an override, so lane 1 and the aggregate are Allow All; and its
+`fec=cl-91` on the members is refused with a note, because the DX010's 25G
+lanes support `none,fc` only (STATE_DB `supported_fecs` in the capture).
 
 ## 1. What it is
 
@@ -71,7 +234,7 @@ all, `cmd/disunified/main.go` `runOne`: open the driver whenever `driver`
 is set). `model` unset becomes `USFXG` for this driver (today `""` becomes
 `auto`, which would rank a 4xSFP28+1xQSFP28 layout against the catalogue
 and land somewhere else). `children:` on the parent is **not** needed: the
-child registers itself (§5.3).
+child registers itself (§5.3). *(As built: main attaches it, §0.)*
 
 One child per cage; two entries naming the same parent and cage are a
 config error. A child whose parent entry is a `breakout` itself is a config
@@ -209,7 +372,9 @@ The child implements `devicemodel.Controller` and `Planner`:
 
 A lane aggregate is `PortChannel<100*cage + lag>` (`cage` the parent's
 index, `lag` the child's UniFi id): cage 2's aggregate headed by its port 2
-is `PortChannel202`. The parent's own aggregates are `PortChannel<lag>`
+is `PortChannel202`. *(As built: `lag` is the number the push names, `lag=1`
+for the first aggregate whatever its members, so the captured push makes
+`PortChannel201`, §0.)* The parent's own aggregates are `PortChannel<lag>`
 with `lag` a front-panel index, never ≥ 100, so the two never collide and
 either side tells the other's by the id alone:
 
@@ -264,6 +429,9 @@ is the only SSH exec. A child's snapshot is therefore up to one parent
 interval old, which is the same age the parent's own inform has.
 
 ### 5.4 The cage on the parent while a child is attached
+
+*(As built: STP port settings and the switch-wide port features stay the
+cage's, and a cage speed only ever picks the mode, §0's table.)*
 
 The parent keeps one control on the cage: **its speed is the breakout
 control** (`docs/drivers/sonic.md` §7.5: 25G/10G → `4x25G[10G]`, 50G →
@@ -395,6 +563,10 @@ Nothing UniFi-specific crosses it: lane indexes, `Port`s and
 - `collect.py` needs no change: every table it prints is per interface.
 
 ## 7b. Arista implementation notes (`internal/drivers/arista-eos`)
+
+*(Not built 2026-11-14: the 7160 is unplugged, and the sessions working on
+its ACL files the same day share `plan()` with this change. The notes stand
+as the spec for it; the contract and the child need nothing new.)*
 
 The 7160's capture (`docs/fixtures/arista-eos-4.26.14M/`) has cage 50 split
 to 4x25G (`Ethernet50/1..4`), so every lane test runs on real data.
@@ -634,6 +806,8 @@ parent instead; `show port-channel summary` and `show lacp neighbor` for
 
 ## 13. Open questions for the build (decide, note the answer here)
 
+*(Answered 2026-11-14 as below: native speed, accept and wait, honoured.)*
+
 1. The parent's cage `SpeedMbps` while a child is attached: the native
    speed (this spec) shows the cage as a 100G link to a switch, which is
    the cable's capacity and what the capture drew well; the alternative
@@ -645,3 +819,121 @@ parent instead; `show port-channel summary` and `show lacp neighbor` for
    all, or the cage's state left to the lanes: honoured (a cage disabled
    on the parent is every lane down), because "disable the port" on the
    parent must mean something.
+
+## 14. Still open after the build (2026-11-14)
+
+1. **The stored speed follows a forced override** (§6.6.3 of the note:
+   50000 sent, 25000 stored on lanes the aggregate push had forced to 25G).
+   Not fixed in code: the cause is the controller's own record, and the
+   seed (`unifiapi.SeedPortConfig`) writes VLANs and the admin state only.
+   Seeding a lane's speed would *create* the forced override the quirk
+   comes from, and the override's speed keys have never been captured (no
+   `port_overrides` record with a speed in `docs/fixtures`). The lane
+   switch reports what each lane runs, takes auto as "what it runs", and
+   refuses a forced speed the lane does not run with a note naming it; so
+   after a re-split (4x25G to 2x50G) with the aggregate's forced 25G still
+   in the overrides, the push asks 25G of a 50G lane, nothing is written,
+   the note says why, and the record keeps showing 25G until the operator
+   sets the lane to auto. What a fix needs: a capture of the child's
+   `rest/device` `port_overrides` after the aggregate (the speed keys), then
+   a rule (clear a lane's forced speed when the mode changes under it).
+2. **The record disconnected about 90 s after the aggregate push** (seen
+   once with the stub). The reply log of that run (kept site-side) shows
+   the stub informing every 30 s and every inform answered HTTP 200 through
+   the window, while the controller's record says `disconnection_reason:
+   MISSED_INFORM, last_seen '<the push's inform>', considered_lost
+   '<last_seen + 30 s>'` and reconnected at the next push -- a controller-side
+   state after the push, not the bridge's cadence. Not chased further; the
+   live run's step 4 watches for it (§15).
+3. **A parent that is a real driver**: built and tested for `sonic` against
+   the DX010's capture, never run live; the Arista not built (§7b). A
+   parent on an up cage with its own neighbour: on an owned cage the
+   child's LLDP entry replaces the hosts' (they are the lanes', on the
+   child), by design; `children:` keeps its old rule (a port's own
+   neighbour wins) for the experiment knob.
+4. **STP on a lane aggregate.** l2d's per-port intent comes from the
+   parent's push, keyed by cage (`l2.go` `l2SetPorts`, owned by the l2d
+   work): a cage's interfaces, or the PortChannel its *first* interface is
+   in. A lane aggregate that leaves lane 1 out (the captured 2-4) is a
+   kernel bridge port l2d is not told about, so mstpd runs it at its
+   defaults (no edge, no BPDU guard, no loop protection), and the lanes in
+   it are named instead. Needs `l2SetPorts` to name every PortChannel a
+   cage's interfaces are in; until then a lane aggregate's STP settings are
+   mstpd's defaults (the topology itself is still protected: mstpd runs
+   RSTP on it).
+5. **`config portchannel del` of a PortChannel an ACL table binds** (the
+   join's `dissolveLanes`, as the existing emptied-PortChannel path does):
+   not modelled by the FixtureRunner, never run live with the DUI tables
+   bound. The live run's step 8 checks it.
+6. The lane switch claims no STP, isolation, port security, egress limit
+   or LLDP-MED (§0's table); moving them to the child needs the switch-wide
+   computations to take both loops' intent.
+7. Automatic lane switches (§12) and the bridge forgetting a retired child.
+
+## 15. The first live adoption (DX010, cage 2)
+
+Clint's to start; nothing here has been run. The DX010's bridge runs on the
+switch (`docs/drivers/sonic-on-switch.md`), so the lane switch is one more
+entry in `/host/disunified/config.yaml`, beside the switch's own, and the
+package is rebuilt from a commit that has this change.
+
+1. **Build and install** the package from the commit (`docs/install.md` §7;
+   the update steps are in `local-information/site.md`). Before the
+   restart, add to `/host/disunified/config.yaml` (keep a backup):
+
+   ```yaml
+     - name: dx010-cage2
+       driver: breakout
+       options:
+         parent: dx010        # the switch's own entry
+         cage: "2"
+   ```
+
+   Expect in the journal: `lane switch dx010-cage2 attached to port 2 as
+   <MAC>`, then for the child `start attempt N failed ... cage 2 of ... is
+   not split` every retry while the cage is whole. The DX010's own next
+   reconcile writes nothing (`sonic apply` absent).
+2. **Split cage 2 from the DX010's port drawer** (25G). The parent's log
+   shows the breakout; within one retry the child logs `breakout: dx010
+   cage 2 (4x25G[10G]) as <MAC>` and informs as `USFXG`, PENDING. Adopt it
+   by exact MAC (`cmd/devmgr adopt`, never Adopt All). Expect CONNECTED
+   within ~10 s and placement under the DX010's port 2 within a minute
+   (`uplink_mac` the DX010, `uplink_remote_port` 2); the DX010's record
+   gains the child in `downlink_lldp_macs`/`downlink_table`. With an
+   `api_url` the switch can reach, the child seeds the controller from the
+   lanes and its first push applies with nothing changed; without one the
+   first push is held (`HOLDING the first push after adoption ... ports
+   [1 2 3 4]`: the controller's default for an unseeded port is Allow All,
+   the lanes are native only) until the lanes are set in the UI. Save both records (scrubbed) and the
+   child's first inform.
+3. **UI walk on the child**: four SFP28 lanes at 25 GbE (no link on the
+   empty cage), port 5 QSFP28 100 GbE marked uplink, the module (if any) on
+   port 5, names `Eth2/1`-`Eth2/4`.
+4. **A lane setting**: rename lane 1, then back: `hset 'PORT|Ethernet4'
+   description` in the parent's journal (`sonic apply (cage 2 lanes, ...)`),
+   then a zero-change cycle. Watch the child's record across the push for
+   the disconnect of §14.2.
+5. **The aggregate**: on the child, mark lanes 2-4 Aggregate. Expect
+   `PortChannel201` created on Ethernet5-7 in one batch (the FEC note for
+   `cl-91`), the next cycle writing nothing, the child's ports 2-4 reporting
+   it. Without a cabled far side the members stay down; with a breakout DAC
+   to a bonded host (the real test) `teamdctl PortChannel201 state` shows
+   the partner and the child's inform `lacp_state`. Remove the aggregate in
+   the UI: the PortChannel goes, the lanes back in their VLANs, zero-change
+   cycle.
+6. **The join**: set the DX010's port 2 to 100G (or auto with a 100G
+   module) with an aggregate present: one batch dissolves `PortChannel201`
+   then breaks out to `1x100G[40G]` (check the ACL tables stay `Active`,
+   §14.5). The child stops answering (`not split`), the controller shows it
+   disconnected.
+7. **Undo**: forget the child (`cmd/sitemgr delete-device`, exact MAC),
+   remove its entry from `/host/disunified/config.yaml`, restart the
+   service; set port 2 back to what it was. A forgotten lane switch that is
+   split again comes back pending under the same MAC.
+
+What could go wrong and how to see it: the child never placed (check the
+DX010's `payload-last.json` for the MAC in port 2's `mac_table` and
+`lldp_table`); a write on the wrong cage (the journal names `cage 2 lanes`
+and Ethernet4-7 only); the parent's own ports touched by the child's push
+(they are not in the lane scope; the replay asserts it).
+
