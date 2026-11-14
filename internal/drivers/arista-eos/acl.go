@@ -15,27 +15,63 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// DHCP guarding and switch ACL rules as an EOS port ACL
-// (docs/drivers/arista-eos.md §8).
+// DHCP guarding and switch ACL rules as EOS port ACLs
+// (docs/drivers/arista-eos.md §9).
 //
 // EOS 4.26's own `ip dhcp snooping` cannot block a rogue server (§6), but an
-// ingress IPv4 ACL can: for each guarded VLAN, permit UDP 67 -> 68 from each
-// trusted server, deny the rest of UDP 67 -> 68 on that VLAN. An interface
-// takes one IPv4 ACL per direction, so the guard and the controller's IP
-// rules share one list, the guard first (its drop wins over an Allow rule),
-// and an explicit `permit ip any any` last: EOS ACLs end in an implicit
-// deny, UniFi's are default-allow.
+// ingress IPv4 ACL can drop UDP 67 -> 68 (a server's reply) from every
+// address but the trusted servers'. Two facts of the 7160 on 4.26.14M shape
+// the rest (§9.1, measured 2026-11-14):
 //
-// The list is the driver's own (ipACLName) and nothing else is touched: an
-// interface already carrying another IPv4 ACL inbound is left alone. Every
-// block of rules starts with a remark naming it and a hash of the lines the
-// driver rendered, so the diff does not depend on how EOS rewrites a rule
-// for display (`eq 67` comes back as `eq bootps`), and a block the
-// controller leaves alone is carried over as the switch shows it.
+//   - No VLAN match: EOS takes `vlan N MASK` in a rule and stores it with
+//     mask 0 (any VLAN), whatever the mask is written as, and the chip's
+//     ACL key has no VLAN field. A guard cannot be limited to the VLANs
+//     UniFi guards, so it is limited by port instead: a port is guarded
+//     only when every VLAN it carries is guarded (guardExact), or, with
+//     options.dhcp_guard: edge, every port but the uplink and other
+//     switches' ports (guardEdge).
+//   - One list bound to several interfaces is one set of hardware entries
+//     with one counter per entry, while separate lists get separate entries
+//     and counters. So every interface gets a list of its own,
+//     DUI_IP_ACL_<interface>, with `counters per-entry`, and the guard's
+//     drop entry counts the rogue replies dropped on that port alone
+//     (acl_counters.go).
+//
+// An interface takes one IPv4 ACL per direction, so a port's guard and the
+// controller's IP rules share its list, the guard first (its drop wins over
+// an Allow rule), and an explicit `permit ip any any` last: EOS ACLs end in
+// an implicit deny, UniFi's are default-allow.
+//
+// Only the driver's lists are touched: an interface already carrying another
+// IPv4 ACL inbound is left alone. Every block of rules starts with a remark
+// naming it and a hash of the lines the driver rendered, so the diff does
+// not depend on how EOS rewrites a rule for display (`eq 67` comes back as
+// `eq bootps`), and a block the controller leaves alone is carried over as
+// the switch shows it.
 
-// ipACLName is the driver's IPv4 ACL. EOS ACL names start with a letter and
-// carry no space or quote.
-const ipACLName = "DUI_IP_ACL"
+// aclPrefix starts the name of each of the driver's IPv4 ACLs; the rest is
+// the interface it is bound to, "/" written "-". legacyACLName is the one
+// shared list of the first design (never deployed), removed if found.
+const (
+	aclPrefix     = "DUI_IP_ACL_"
+	legacyACLName = "DUI_IP_ACL"
+)
+
+// aclListName is the driver's list for one interface.
+func aclListName(iface string) string { return aclPrefix + strings.ReplaceAll(iface, "/", "-") }
+
+// ownACL: the list is one of the driver's.
+func ownACL(name string) bool { return name == legacyACLName || strings.HasPrefix(name, aclPrefix) }
+
+// aclCounters is the list option that gives every entry its own hardware
+// counter; without it EOS reports no match counts.
+const aclCounters = "counters per-entry"
+
+// The guard modes (options.dhcp_guard).
+const (
+	guardExact = "exact" // a port is guarded when every VLAN it carries is guarded (the default)
+	guardEdge  = "edge"  // every port carrying a guarded VLAN, but the uplink and ports facing a switch
+)
 
 // aclSession is the configuration session an ACL change is made in, committed
 // with commitTimer like an address move: the ACL is bound to the uplink too,
@@ -57,7 +93,7 @@ func (c *Collector) ApplyTimeout() time.Duration { return applyBudget }
 // the rules say.
 const aclSettleDefault = 5 * time.Second
 
-// The blocks of the driver's IPv4 ACL, in list order. Each starts with
+// The blocks of a driver list, in list order. Each starts with
 // `remark disunified <block> <hash>`; the default block is the closing
 // permit and carries no hash.
 const (
@@ -68,7 +104,7 @@ const (
 	aclDefaultAllow = "permit ip any any"
 )
 
-// aclBlock is one block of the driver's ACL: the hash in its remark and its
+// aclBlock is one block of a driver list: the hash in its remark and its
 // rules as the switch shows them (or as the driver rendered them, for a
 // block it just wrote).
 type aclBlock struct {
@@ -76,59 +112,62 @@ type aclBlock struct {
 	lines []string
 }
 
-// aclState is what the running configuration says about the driver's ACL.
+// aclList is one of the driver's lists as the running configuration has it.
+type aclList struct {
+	seqs     []int // every sequence number in the list, remarks included
+	blocks   map[string]aclBlock
+	stray    int  // rules outside any block (added by hand): the list is rewritten
+	counters bool // `counters per-entry` is set
+}
+
+// aclState is what the running configuration says about the driver's lists.
 type aclState struct {
-	exists bool
-	seqs   []int // every sequence number in the list, remarks included
-	blocks map[string]aclBlock
-	stray  int             // rules outside any block (added by hand): the list is rewritten
-	bound  map[string]bool // interfaces carrying `ip access-group DUI_IP_ACL in`
+	lists map[string]aclList // the driver's lists by name
+	bound map[string]string  // interface -> the driver list it carries inbound
 	// foreign is every interface carrying another IPv4 ACL inbound, with its
 	// name. EOS takes one per direction, so the driver does not bind there.
 	foreign map[string]string
 }
 
-// aclWant is what the ACL should hold. A block marked keep stays as the
-// switch has it: the controller sent nothing for it this time.
-type aclWant struct {
-	guard, rules         []string
-	keepGuard, keepRules bool
+func newACLState() aclState {
+	return aclState{lists: map[string]aclList{}, bound: map[string]string{}, foreign: map[string]string{}}
 }
 
-// aclWantFrom translates the controller's DHCP guards and IP rules into the
-// driver's blocks. A block the controller did not send (snooping not
-// pushed, IP rules held by the loop) is kept as the switch has it, and so
-// is one this driver cannot write in full: a partial rule list could let
-// through what a later Block meant to stop. Guards on a VLAN the switch
-// does not carry are skipped. MAC rules are refused (§8.2).
-func aclWantFrom(d devicemodel.DeviceDesired, vlans []int) (aclWant, error) {
-	w := aclWant{keepGuard: d.DHCPSnooping == nil, keepRules: !d.IPACLSet}
+// aclWant is what the lists should hold. A block marked keep stays as the
+// switch has it: the controller sent nothing for it this time.
+type aclWant struct {
+	guards               map[int][]string // guarded VLAN -> its trusted servers, in push order
+	rules                []string
+	keepGuard, keepRules bool
+	mode                 string
+}
+
+// aclWantFrom translates the controller's DHCP guards and IP rules. A block
+// the controller did not send (snooping not pushed, IP rules held by the
+// loop) is kept as the switch has it, and so is one this driver cannot
+// write in full: a partial rule list could let through what a later Block
+// meant to stop. Guards on a VLAN the switch does not carry are skipped.
+// MAC rules are refused (§9.2).
+func aclWantFrom(d devicemodel.DeviceDesired, vlans []int, mode string) (aclWant, error) {
+	w := aclWant{keepGuard: d.DHCPSnooping == nil, keepRules: !d.IPACLSet, mode: mode}
 	var errs []error
 	if d.DHCPSnooping != nil && *d.DHCPSnooping {
 		carried := map[int]bool{}
 		for _, v := range vlans {
 			carried[v] = true
 		}
-		servers := map[int][]string{}
-		var order []int
+		w.guards = map[int][]string{}
 		for _, g := range d.DHCPGuards {
 			if !carried[g.VLAN] {
 				continue
 			}
-			if _, ok := servers[g.VLAN]; !ok {
-				order = append(order, g.VLAN)
-			}
-			servers[g.VLAN] = append(servers[g.VLAN], g.Server)
-		}
-		sort.Ints(order)
-		for _, v := range order {
-			lines, err := guardLines(v, servers[v])
-			if err != nil {
-				errs = append(errs, fmt.Errorf("arista-eos: DHCP guard left as the switch has it: %w", err))
-				w.guard, w.keepGuard = nil, true
+			a, err := netip.ParseAddr(g.Server)
+			if err != nil || !a.Is4() {
+				errs = append(errs, fmt.Errorf("arista-eos: DHCP guard left as the switch has it: DHCP server %q on VLAN %d is not an IPv4 address", g.Server, g.VLAN))
+				w.guards, w.keepGuard = nil, true
 				break
 			}
-			w.guard = append(w.guard, lines...)
+			w.guards[g.VLAN] = append(w.guards[g.VLAN], a.String())
 		}
 	}
 	if d.IPACLSet {
@@ -145,18 +184,22 @@ func aclWantFrom(d devicemodel.DeviceDesired, vlans []int) (aclWant, error) {
 		}
 	}
 	if d.MACACLSet && len(d.MACACLs) > 0 {
-		errs = append(errs, fmt.Errorf("arista-eos: %d MAC rules not applied: the 7160 is not yet shown to bind a MAC ACL to a switchport, scope it to a VLAN and apply it to IP packets (docs/drivers/arista-eos.md §8.2)", len(d.MACACLs)))
+		errs = append(errs, fmt.Errorf("arista-eos: %d MAC rules not applied: the 7160 binds no MAC ACL to a switchport (`mac access-group` is unavailable on an Ethernet interface on 4.26.14M; docs/drivers/arista-eos.md §9.2)", len(d.MACACLs)))
 	}
 	return w, errors.Join(errs...)
 }
 
-// aclFromRunningConfig reads the driver's ACL and every interface's inbound
-// IPv4 ACL out of the structured running configuration. EOS keys a list's
-// rules by "<seq> <rule>".
+// aclFromRunningConfig reads the driver's lists and every interface's
+// inbound IPv4 ACL out of the structured running configuration. EOS keys a
+// list's rules by "<seq> <rule>".
 func aclFromRunningConfig(rc showRunningConfig) aclState {
-	st := aclState{blocks: map[string]aclBlock{}, bound: map[string]bool{}, foreign: map[string]string{}}
-	if sec, ok := rc.Cmds["ip access-list "+ipACLName]; ok {
-		st.exists = true
+	st := newACLState()
+	for section, sec := range rc.Cmds {
+		name, ok := strings.CutPrefix(section, "ip access-list ")
+		if !ok || !ownACL(name) {
+			continue
+		}
+		l := aclList{blocks: map[string]aclBlock{}}
 		type rule struct {
 			seq  int
 			text string
@@ -164,6 +207,10 @@ func aclFromRunningConfig(rc showRunningConfig) aclState {
 		var rules []rule
 		if sec != nil {
 			for line := range sec.Cmds {
+				if line == aclCounters {
+					l.counters = true
+					continue
+				}
 				seq, text, ok := strings.Cut(line, " ")
 				n, err := strconv.Atoi(seq)
 				if !ok || err != nil {
@@ -175,24 +222,25 @@ func aclFromRunningConfig(rc showRunningConfig) aclState {
 		sort.Slice(rules, func(i, j int) bool { return rules[i].seq < rules[j].seq })
 		block := ""
 		for _, r := range rules {
-			st.seqs = append(st.seqs, r.seq)
+			l.seqs = append(l.seqs, r.seq)
 			if f := strings.Fields(r.text); len(f) >= 3 && f[0] == "remark" && f[1] == aclRemark {
 				block = f[2]
 				b := aclBlock{}
 				if len(f) >= 4 {
 					b.hash = f[3]
 				}
-				st.blocks[block] = b
+				l.blocks[block] = b
 				continue
 			}
 			if block == "" || strings.HasPrefix(r.text, "remark ") {
-				st.stray++
+				l.stray++
 				continue
 			}
-			b := st.blocks[block]
+			b := l.blocks[block]
 			b.lines = append(b.lines, r.text)
-			st.blocks[block] = b
+			l.blocks[block] = b
 		}
+		st.lists[name] = l
 	}
 	for section, body := range rc.Cmds {
 		if !strings.HasPrefix(section, "interface ") || body == nil {
@@ -205,8 +253,8 @@ func aclFromRunningConfig(rc showRunningConfig) aclState {
 				continue
 			}
 			name = strings.TrimSuffix(name, " in")
-			if name == ipACLName {
-				st.bound[iface] = true
+			if ownACL(name) {
+				st.bound[iface] = name
 			} else {
 				st.foreign[iface] = name
 			}
@@ -215,26 +263,145 @@ func aclFromRunningConfig(rc showRunningConfig) aclState {
 	return st
 }
 
-// aclTargets is every interface the ACL is bound to: each lane of a port that
+// aclTarget is one interface a list can be bound to, with the port it
+// belongs to (for a Port-Channel, its first member: members share their
+// switchport settings).
+type aclTarget struct {
+	iface string
+	port  devicemodel.Port
+}
+
+// aclTargets is every interface a list is bound to: each lane of a port that
 // is not in an aggregate, and the Port-Channel of every aggregate. The
 // management port and VLAN interfaces are never bound.
-func aclTargets(ports []devicemodel.Port) []string {
-	set := map[string]bool{}
+func aclTargets(ports []devicemodel.Port) []aclTarget {
+	set := map[string]devicemodel.Port{}
 	for _, p := range ports {
 		if p.LAGID > 0 {
-			set["Port-Channel"+strconv.Itoa(p.LAGID)] = true
+			po := "Port-Channel" + strconv.Itoa(p.LAGID)
+			if q, ok := set[po]; !ok || p.Index < q.Index {
+				set[po] = p
+			}
 			continue
 		}
 		for _, l := range laneNames(p) {
-			set[l] = true
+			set[l] = p
 		}
 	}
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
+	out := make([]aclTarget, 0, len(set))
+	for k, p := range set {
+		out = append(out, aclTarget{iface: k, port: p})
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].iface < out[j].iface })
 	return out
+}
+
+// carriedVLANs is every VLAN a port's ingress frames can belong to: an
+// access port's VLAN, a trunk's allowed list (every VLAN the switch has, for
+// "allowed vlan all") and its native VLAN.
+func carriedVLANs(p devicemodel.Port, switchVLANs []int) []int {
+	set := map[int]bool{}
+	if p.VLAN.NativeVLAN > 0 {
+		set[p.VLAN.NativeVLAN] = true
+	}
+	if p.VLAN.Mode != "access" {
+		if p.VLAN.AllowAll {
+			for _, v := range switchVLANs {
+				set[v] = true
+			}
+		} else {
+			for _, v := range p.VLAN.Allowed {
+				set[v] = true
+			}
+		}
+	}
+	out := make([]int, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// guardExempt is, for guardEdge, the ports never guarded: the uplink (the
+// port the gateway's MAC is learned on, and the LLDP uplink) and every port
+// whose LLDP neighbour is a bridge. Behind those sit the gateway and other
+// switches, where a server of a VLAN UniFi does not guard may answer.
+// Empty when none is known.
+func guardExempt(snap *devicemodel.Snapshot) map[int]bool {
+	ex := map[int]bool{}
+	for _, p := range snap.Ports {
+		if p.Neighbor != nil && p.Neighbor.IsBridge {
+			ex[p.Index] = true
+		}
+	}
+	if up := snap.UplinkPort(); up > 0 {
+		ex[up] = true
+	}
+	if mac := snap.System.ARP[snap.System.Gateway]; mac != "" {
+		for _, e := range snap.MACTable {
+			if e.MAC == mac && e.PortIndex > 0 {
+				ex[e.PortIndex] = true
+			}
+		}
+	}
+	return ex
+}
+
+// portGuard is the guard for one port: replies from the trusted servers of
+// the guarded VLANs it carries pass, every other UDP 67 -> 68 entering the
+// port is dropped. Without a VLAN match the servers are one list for the
+// port, so a server trusted on one of its VLANs is trusted on all of them.
+// nil when the port is not guarded; reason says why, for the log.
+func portGuard(w aclWant, p devicemodel.Port, switchVLANs []int, exempt map[int]bool) (lines []string, reason string) {
+	if len(w.guards) == 0 {
+		return nil, ""
+	}
+	carried := carriedVLANs(p, switchVLANs)
+	var guarded, open []int
+	for _, v := range carried {
+		if _, ok := w.guards[v]; ok {
+			guarded = append(guarded, v)
+		} else {
+			open = append(open, v)
+		}
+	}
+	if len(guarded) == 0 {
+		return nil, ""
+	}
+	switch w.mode {
+	case guardEdge:
+		if exempt[p.Index] {
+			return nil, "uplink or a switch's port"
+		}
+	default:
+		if len(open) > 0 {
+			return nil, "carries unguarded VLAN " + joinInts(open)
+		}
+	}
+	seen := map[string]bool{}
+	for _, v := range guarded {
+		for _, s := range w.guards[v] {
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			lines = append(lines, "permit udp host "+s+" eq 67 any eq 68")
+		}
+	}
+	return append(lines, guardDrop), ""
+}
+
+// guardDrop is the guard's drop entry, whose counter is the port's rogue
+// DHCP count. EOS shows it as `deny udp any eq bootps any eq bootpc`.
+const guardDrop = "deny udp any eq 67 any eq 68"
+
+func joinInts(xs []int) string {
+	s := make([]string, len(xs))
+	for i, x := range xs {
+		s[i] = strconv.Itoa(x)
+	}
+	return strings.Join(s, ",")
 }
 
 // blockHash names a block's rendered lines in its remark.
@@ -243,11 +410,11 @@ func blockHash(lines []string) string {
 	return hex.EncodeToString(sum[:6])
 }
 
-// wantBlock is the block the switch should hold: the controller's lines, or
-// the switch's own when the block is kept.
-func wantBlock(have aclState, name string, lines []string, keep bool) aclBlock {
+// wantBlock is the block a list should hold: the controller's lines, or the
+// switch's own when the block is kept.
+func wantBlock(have aclBlock, lines []string, keep bool) aclBlock {
 	if keep {
-		return have.blocks[name]
+		return have
 	}
 	if len(lines) == 0 {
 		return aclBlock{}
@@ -260,32 +427,61 @@ func sameBlock(have aclBlock, want aclBlock) bool {
 	return have.hash == want.hash && len(have.lines) == len(want.lines)
 }
 
-// aclPlan is the session body that brings the driver's ACL and its bindings
-// to want, and the state the switch has once it is committed. An empty body
-// means the switch already matches. skipped lists the interfaces left alone
-// because they carry another IPv4 ACL.
-func aclPlan(have aclState, want aclWant, targets []string) (body []string, next aclState, skipped []string) {
-	guard := wantBlock(have, blockDHCPGuard, want.guard, want.keepGuard)
-	rules := wantBlock(have, blockIPRules, want.rules, want.keepRules)
-	needACL := len(guard.lines)+len(rules.lines) > 0
-
-	next = aclState{blocks: map[string]aclBlock{}, bound: map[string]bool{}, foreign: have.foreign}
-	wantBound := map[string]bool{}
-	if needACL {
-		for _, t := range targets {
-			if other, ok := have.foreign[t]; ok {
-				skipped = append(skipped, t+" ("+other+")")
-				continue
+// aclPlan is the session body that brings the driver's lists and their
+// bindings to want, and the state the switch has once it is committed. An
+// empty body means the switch already matches. skipped lists the interfaces
+// left alone because they carry another IPv4 ACL; unguarded the ports
+// carrying a guarded VLAN that get no guard, with the reason.
+func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int, exempt map[int]bool) (body []string, next aclState, skipped, unguarded []string) {
+	next = newACLState()
+	for k, v := range have.foreign {
+		next.foreign[k] = v
+	}
+	// A kept rules block is the same in every list; take it from any.
+	var keptRules aclBlock
+	if want.keepRules {
+		names := make([]string, 0, len(have.lists))
+		for n := range have.lists {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			if b, ok := have.lists[n].blocks[blockIPRules]; ok {
+				keptRules = b
+				break
 			}
-			wantBound[t] = true
 		}
 	}
-
-	if needACL {
-		current := have.exists && have.stray == 0 &&
-			sameBlock(have.blocks[blockDHCPGuard], guard) && sameBlock(have.blocks[blockIPRules], rules) &&
-			len(have.blocks[blockDefault].lines) == 1 && have.blocks[blockDefault].lines[0] == aclDefaultAllow
+	wanted := map[string]bool{} // list names to keep
+	var bind []string
+	for _, t := range targets {
+		name := aclListName(t.iface)
+		old := have.lists[name]
+		var guard aclBlock
+		if want.keepGuard {
+			guard = old.blocks[blockDHCPGuard]
+		} else {
+			lines, why := portGuard(want, t.port, switchVLANs, exempt)
+			if why != "" {
+				unguarded = append(unguarded, t.iface+" ("+why+")")
+			}
+			guard = wantBlock(aclBlock{}, lines, false)
+		}
+		rules := wantBlock(keptRules, want.rules, want.keepRules)
+		if len(guard.lines)+len(rules.lines) == 0 {
+			continue
+		}
+		if other, ok := have.foreign[t.iface]; ok {
+			skipped = append(skipped, t.iface+" ("+other+")")
+			continue
+		}
+		wanted[name] = true
+		_, exists := have.lists[name]
+		current := exists && old.counters && old.stray == 0 &&
+			sameBlock(old.blocks[blockDHCPGuard], guard) && sameBlock(old.blocks[blockIPRules], rules) &&
+			len(old.blocks[blockDefault].lines) == 1 && old.blocks[blockDefault].lines[0] == aclDefaultAllow
 		var lines []string
+		nl := aclList{blocks: map[string]aclBlock{}, counters: true}
 		for _, b := range []struct {
 			name string
 			blk  aclBlock
@@ -295,72 +491,54 @@ func aclPlan(have aclState, want aclWant, targets []string) (body []string, next
 			}
 			lines = append(lines, "remark "+aclRemark+" "+b.name+" "+b.blk.hash)
 			lines = append(lines, b.blk.lines...)
-			next.blocks[b.name] = b.blk
+			nl.blocks[b.name] = b.blk
 		}
 		lines = append(lines, "remark "+aclRemark+" "+blockDefault, aclDefaultAllow)
-		next.blocks[blockDefault] = aclBlock{lines: []string{aclDefaultAllow}}
-		next.exists = true
+		nl.blocks[blockDefault] = aclBlock{lines: []string{aclDefaultAllow}}
 		if current {
-			next.seqs = have.seqs
+			nl.seqs = old.seqs
 		} else {
-			body = append(body, "ip access-list "+ipACLName)
-			for _, s := range have.seqs {
+			body = append(body, "ip access-list "+name, aclCounters)
+			for _, s := range old.seqs {
 				body = append(body, "no "+strconv.Itoa(s))
 			}
 			for i, l := range lines {
 				seq := 10 * (i + 1)
 				body = append(body, strconv.Itoa(seq)+" "+l)
-				next.seqs = append(next.seqs, seq)
+				nl.seqs = append(nl.seqs, seq)
 			}
 			body = append(body, "exit")
 		}
-	}
-
-	var bind, unbind []string
-	for _, t := range targets {
-		if wantBound[t] && !have.bound[t] {
-			bind = append(bind, t)
+		next.lists[name] = nl
+		next.bound[t.iface] = name
+		if have.bound[t.iface] != name {
+			bind = append(bind, t.iface)
 		}
 	}
-	for iface := range have.bound {
-		if !wantBound[iface] {
+	var unbind []string
+	for iface, name := range have.bound {
+		if next.bound[iface] != name {
 			unbind = append(unbind, iface)
 		}
 	}
 	sort.Strings(unbind)
 	for _, iface := range unbind {
-		body = append(body, "interface "+iface, "no ip access-group "+ipACLName+" in", "exit")
+		body = append(body, "interface "+iface, "no ip access-group "+have.bound[iface]+" in", "exit")
 	}
 	for _, iface := range bind {
-		body = append(body, "interface "+iface, "ip access-group "+ipACLName+" in", "exit")
+		body = append(body, "interface "+iface, "ip access-group "+next.bound[iface]+" in", "exit")
 	}
-	for iface := range wantBound {
-		next.bound[iface] = true
-	}
-	if !needACL && have.exists {
-		body = append(body, "no ip access-list "+ipACLName)
-	}
-	return body, next, skipped
-}
-
-// guardLines is the DHCP guard for one VLAN: replies from each trusted
-// server pass, every other UDP 67 -> 68 on the VLAN is dropped. The VLAN
-// qualifier's mask 0xfff compares all twelve bits.
-func guardLines(vlan int, servers []string) ([]string, error) {
-	var out []string
-	seen := map[string]bool{}
-	for _, s := range servers {
-		a, err := netip.ParseAddr(s)
-		if err != nil || !a.Is4() {
-			return nil, fmt.Errorf("DHCP server %q on VLAN %d is not an IPv4 address", s, vlan)
+	var drop []string
+	for name := range have.lists {
+		if !wanted[name] {
+			drop = append(drop, name)
 		}
-		if seen[a.String()] {
-			continue
-		}
-		seen[a.String()] = true
-		out = append(out, fmt.Sprintf("permit vlan %d 0xfff udp host %s eq 67 any eq 68", vlan, a))
 	}
-	return append(out, fmt.Sprintf("deny vlan %d 0xfff udp any eq 67 any eq 68", vlan)), nil
+	sort.Strings(drop)
+	for _, name := range drop {
+		body = append(body, "no ip access-list "+name)
+	}
+	return body, next, skipped, unguarded
 }
 
 // ipRuleLine renders one IPv4 rule: action, protocol ("" is every IPv4
@@ -489,7 +667,7 @@ func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable b
 	return false, nil
 }
 
-// applyACL brings the switch's ACL to want. A change the switch would not
+// applyACL brings the switch's lists to want. A change the switch would not
 // let the bridge confirm is held: the same rules are not sent again (each
 // attempt would cut the bridge off for the timer's length) until the
 // controller sends different ones.
@@ -497,7 +675,20 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 	c.mu.Lock()
 	have := c.acl
 	c.mu.Unlock()
-	body, next, skipped := aclPlan(have, want, aclTargets(snap.Ports))
+	if have.lists == nil {
+		have = newACLState()
+	}
+	var exempt map[int]bool
+	if want.mode == guardEdge {
+		exempt = guardExempt(snap)
+		if len(exempt) == 0 {
+			if c.Log != nil {
+				c.Log.Printf("arista: dhcp_guard edge: no uplink known (no bridge LLDP neighbour, gateway MAC not learned); guarding as %s", guardExact)
+			}
+			want.mode = guardExact
+		}
+	}
+	body, next, skipped, unguarded := aclPlan(have, want, aclTargets(snap.Ports), snap.VLANs, exempt)
 	if len(body) == 0 {
 		return 0, nil
 	}
@@ -505,8 +696,13 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 	if key == c.aclHeld {
 		return 0, fmt.Errorf("arista-eos: holding the ACL change that left the switch unreachable; it is sent again once the controller's rules change")
 	}
-	if len(skipped) > 0 && c.Log != nil {
-		c.Log.Printf("arista: not binding %s on %s: each carries its own IPv4 ACL inbound, and EOS takes one", ipACLName, strings.Join(skipped, ", "))
+	if c.Log != nil {
+		if len(skipped) > 0 {
+			c.Log.Printf("arista: no list of the driver's on %s: each carries its own IPv4 ACL inbound, and EOS takes one", strings.Join(skipped, ", "))
+		}
+		if len(unguarded) > 0 {
+			c.Log.Printf("arista: DHCP guard (%s) leaves %d interfaces unguarded, the 7160 matching no VLAN in an ACL: %s", want.mode, len(unguarded), strings.Join(unguarded, "; "))
+		}
 	}
 	if unreachable, err := c.commitACL(ctx, body); err != nil {
 		if unreachable {

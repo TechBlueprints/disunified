@@ -18,7 +18,9 @@ import (
 // preferred), or SSH = user@host[:port] (key auth via ssh-agent or
 // ~/.ssh/id_*, host key from ~/.ssh/known_hosts; no password support).
 // Options: ssh_key_user = EOS user that receives the controller's SSH keys
-// (default: the bridge's own user).
+// (default: the bridge's own user); dhcp_guard = exact (default) | edge,
+// which ports the DHCP guard reaches, the 7160 matching no VLAN in an ACL
+// (docs/drivers/arista-eos.md §9.2).
 //
 // Written against EOS 4.26.14M on a DCS-7160-48TC6-F; see
 // docs/drivers/arista-eos.md for what that version does and does not have.
@@ -30,21 +32,26 @@ func (Driver) Name() string { return "arista-eos" }
 
 // Capabilities is what EOS 4.26 on the 7160 honours: STP (priority, path
 // cost, BPDU guard), jumbo, FEC, LACP, storm control (percent), IGMP
-// snooping, LLDP-MED, SNMP. Not claimed: DHCP snooping and switch ACLs
-// (below), port isolation (no protected-port equivalent), L3, dot1x,
-// MC-LAG, PTP. Mirror and aggregate session counts mirror what real
-// switches report (the ECS reports them) so the UI offers both.
+// snooping, LLDP-MED, SNMP, and DHCP snooping as the driver's per-port
+// guard ACLs (acl.go). Not claimed: switch ACL rules (below), port
+// isolation (no protected-port equivalent), L3, dot1x, MC-LAG, PTP. Mirror
+// and aggregate session counts mirror what real switches report (the ECS
+// reports them) so the UI offers both.
 func (c *Collector) Capabilities() devicemodel.Capabilities {
 	return devicemodel.Capabilities{
 		STP: true, BPDUGuard: true, STPPortCost: true, Jumbo: true, FEC: true, LACP: true,
 		StormControl: true, IGMPSnooping: true, LLDPMED: true, SNMP: true,
-		// Not yet DHCPSnooping, IPACLs or MACACLs. EOS 4.26's own DHCP
-		// snooping is Option-82 insertion with no trusted-port model, so
-		// the guard and the IP rules are an ingress ACL (acl.go,
-		// docs/drivers/arista-eos.md §8), claimed once they have run on the
-		// switch and the rule count is sized from its ACL tables (§8.4).
-		// Unclaimed, the controller pushes neither (verified 2026-09-20 for
-		// snooping).
+		// DHCPSnooping: EOS 4.26's own DHCP snooping is Option-82 insertion
+		// with no trusted-port model, so the guard is an ingress ACL per
+		// interface, programmed and read back on the switch's test ports
+		// 2026-11-14 (docs/drivers/arista-eos.md §9). The 7160 matches no
+		// VLAN in an ACL, so options.dhcp_guard decides which ports it
+		// reaches (§9.2).
+		DHCPSnooping: true,
+		// Not IPACLs: each rule is copied into every interface's list (57
+		// lists), whose hardware ACL ids and counter pool were measured for
+		// two lists only (§9.4). Not MACACLs: no MAC ACL binds to a
+		// switchport on the 7160 (§9.2).
 		MirrorSessions: 1, AggregateSessions: 8,
 	}
 }
@@ -98,6 +105,14 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	}
 	if u := cfg.Options["ssh_key_user"]; u != "" {
 		c.SetSSHKeyUser(u)
+	}
+	switch m := cfg.Options["dhcp_guard"]; m {
+	case "", guardExact:
+	case guardEdge:
+		c.dhcpGuard = guardEdge
+	default:
+		t.Close()
+		return nil, fmt.Errorf("arista-eos: options.dhcp_guard %q: want %s or %s", m, guardExact, guardEdge)
 	}
 	return c, nil
 }

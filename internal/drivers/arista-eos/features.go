@@ -313,8 +313,8 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	// d.DHCPSnooping never reaches EOS's own `ip dhcp snooping`, which is
 	// Option-82 insertion with no trusted-port model (`ip dhcp snooping
 	// trust` is invalid) and blocks nothing (verified live 2026-09-20). It
-	// and d.DHCPGuards become the guard block of the driver's ACL instead
-	// (applyACL, below).
+	// and d.DHCPGuards become the guard block of the driver's per-port ACLs
+	// instead (applyACL, below).
 	if d.SNMPSet {
 		// UniFi's one read-only community is the switch's only one: every
 		// other is removed, and the site's SNMP off (no community) leaves
@@ -343,7 +343,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	}
 	// The DHCP guard and the ACL rules go last, in a session of their own
 	// that the switch reverts unless the bridge still reaches it.
-	want, werr := aclWantFrom(d, snap.VLANs)
+	want, werr := aclWantFrom(d, snap.VLANs, c.dhcpGuard)
 	n, aerr := c.applyACL(ctx, snap, want)
 	return len(cmds) + n, errors.Join(werr, aerr)
 }
