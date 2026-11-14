@@ -21,8 +21,8 @@ import (
 //   - collect-ipv6-slaac.txt: accept_ra 2 on Vlan4094 -- the SLAAC address,
 //     the RA default and the on-link /64, no INTF_TABLE row for the address;
 //   - collect-ipv6-on.txt: the same with the driver's INTF_TABLE row, which
-//     gave the address its ip2me route (uploads to it at 11.4 MB/s, 0.9
-//     without).
+//     gave the address its ip2me route (uploads to it as fast as over
+//     IPv4, ~8.8 MB/s; 0.9 without).
 const (
 	fixtureIPv6Off      = "../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/collect-ipv6-off.txt"
 	fixtureIPv6Leftover = "../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/collect-ipv6-off-leftover-route.txt"

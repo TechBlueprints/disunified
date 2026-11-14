@@ -24,12 +24,12 @@ import (
 // SONiC's 1 when it does not.
 //
 // The address alone is not enough. orchagent programs an interface
-// address's ip2me route (the address -> CPU, through the ip2me CoPP queue)
-// only from an APPL_DB INTF_TABLE row, which intfmgrd writes for CONFIG_DB
-// addresses only. A SLAAC address without one reaches the CPU through the
-// default trap at the default CoPP group's 600 packets/s: measured on the
-// DX010, an upload to it ran at 0.9 MB/s against 12.7 over IPv4, and 11.4
-// once the row was there. So each SLAAC address gets a row of the driver's
+// address's ip2me route (the address -> CPU, through the ip2me CoPP group,
+// 6000 packets/s) only from an APPL_DB INTF_TABLE row, which intfmgrd
+// writes for CONFIG_DB addresses only. A SLAAC address without one reaches
+// the CPU through the default trap at the default group's 600 packets/s:
+// measured on the DX010, an upload to it ran at 0.9 MB/s, and with the row
+// at IPv4's ~8.8 MB/s (both at the ip2me group's rate, back to back). So each SLAAC address gets a row of the driver's
 // own (ProducerStateTable, like portfeat.go's), and a row for an address
 // the kernel no longer has goes. The /64 itself needs nothing: FRR hands
 // the connected route to orchagent through fpmsyncd, as it does the RA's
@@ -277,11 +277,11 @@ func (c *Collector) ApplyManagementIPv6(ctx context.Context, on bool) (int, erro
 	if len(cmds) == 0 {
 		return 0, nil
 	}
-	state := "off"
+	why := "no IPv6 on the management network"
 	if on {
-		state = "on"
+		why = "the management network runs IPv6"
 	}
-	c.Log.Printf("sonic ipv6 %s (IPv6 %s on the management network): %s", iface, state, strings.Join(logged, " ; "))
+	c.Log.Printf("sonic ipv6 %s (%s): %s", iface, why, strings.Join(logged, " ; "))
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic: IPv6 on %s: %w", iface, err)
 	}

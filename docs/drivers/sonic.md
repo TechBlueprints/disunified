@@ -5890,10 +5890,13 @@ here):
   for IPv4); the subnet route comes from FRR, and routeorch skips a
   full-mask route the interface owns. Without a row, IPv6 to the SLAAC
   address reached the CPU through the default trap, at the default CoPP
-  group's 600 packets/s: an SSH upload to the switch ran at 0.9 MB/s, 12.7
-  over IPv4. A row (`scope global`, `family IPv6`, through
-  ProducerStateTable) brought `addIp2MeRoute` in orchagent's log and the
-  /128 in ASIC_DB, and the same upload ran at 11.4 MB/s.
+  group's 600 packets/s: an SSH upload to the switch ran at 0.9 MB/s. A
+  row (`scope global`, `family IPv6`, through ProducerStateTable) brought
+  `addIp2MeRoute` in orchagent's log and the /128 in ASIC_DB. The upload
+  then ran as fast as over IPv4: ~8.8 MB/s for both, back to back, which is
+  the ip2me group's 6000 packets/s (`COPP_TABLE:queue1_group1`; the first
+  run of a series, 11-14 MB/s for either family, is the token bucket's
+  burst).
 - **Teardown.** Deleting the row removes the host route. Then `accept_ra`
   1. `ip -6 addr flush dev Vlan4094 scope global dynamic` removes the
   address, and FRR withdraws the /64. `ip -6 route flush dev Vlan4094 proto
@@ -5928,6 +5931,16 @@ here):
 - **The sanitiser** now rewrites an IPv6 address in an `INTF_TABLE` key:
   its pattern refused the colon before it, as the MAC pattern once did in
   FDB keys.
+
+**Verified live through the driver** (deb 99e1fdd on the DX010,
+2026-11-14 11:19 MST, from SONiC's stock state with Vlan4094 at `accept_ra`
+1): the start-up reconcile logged the controller's answer (IPv6 on VLAN 1)
+and wrote `accept_ra` 2. The next apply, five seconds later, found the
+SLAAC address and wrote its row. The chip had the /128, and the next
+inform's `ipv6` led with the global address, which the controller's
+record shows. Later cycles wrote nothing, and every inform was answered.
+Off has run by hand only (the steps above): turning IPv6 off on the
+management network is a change to the whole LAN.
 
 **Not built:** DHCPv6 on the management network (no `slaac` in
 `ipv6_client_address_assignment`; the switch runs no DHCPv6 client

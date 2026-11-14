@@ -559,6 +559,23 @@ switch has no source that means exactly the condition.
 | 128 802.1X authentication failed | the image has no authenticator: no hostapd, and `docker-macsec` carries `wpa_supplicant` only; 202511's Port Access Control sources (`src/sonic-pac`) are built by no rule and consumed by nothing in sonic-swss | a PAC container with hostapd (wired) in the image kit, an orchagent consumer of `PAC_PORT_TABLE`, the controller's 802.1X push captured and applied, failed attempts per port as a `Port.Health` counter, a supplicant and a RADIUS server on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.3) |
 | 1024 DoS | the ECS's `denial-of-service` error-disable cause is a configuration row with nothing observable behind it (no detector in its databases, chip or CPU path; no push key; no UI setting; no `anomalies` in its inform), so there is no condition to copy; the Tomahawk's DoS header checks (`DosAttack*`, off but SA=DA) could be counted per port through a free receive debug counter, outside SAI | an inform from a real UniFi switch reporting 1024 and the traffic that set it; then the matching checks turned on, counted per port into `Port.Health` and set on growth, verified with a cabled host ([`drivers/sonic.md`](drivers/sonic.md) §11.18.4) |
 
+### IPv6 on the management interface (2026-11-14)
+
+SLAAC on the interface the bridge manages the switch at, while the
+controller runs IPv6 on the management network (`rest/networkconf`
+`ipv6_interface_type`; the push has no IPv6 key): `accept_ra` 2 and an
+APPL_DB `INTF_TABLE` row per SLAAC address for its ip2me route
+([`drivers/sonic.md`](drivers/sonic.md) §11.22). Fixture-tested on four
+DX010 captures (`ipv6_test.go`), the loop and the REST read on the
+controller's own networkconf (`informloop/ipv6_test.go`,
+`unifiapi/ipv6_test.go`).
+
+| Gap | What the PR needs |
+|---|---|
+| Off through the driver (the rows, `accept_ra` 1, the address and the RA's routes removed; run by hand on the DX010 only) | the management network's IPv6 Interface Type set to None in the controller on a site where that is safe, the teardown in the bridge's log, `ip -6 addr`/`route` and APPL_DB `INTF_TABLE` read back, a zero-change reconcile after |
+| A prefix change (a new delegated prefix: the old row goes, a row for the new address comes) | the gateway's delegated prefix changing under a running bridge, or a second prefix advertised on the management network |
+| DHCPv6 on the management network, a static IPv6 address in a switch's IP Settings | not built: no capture of either |
+
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,

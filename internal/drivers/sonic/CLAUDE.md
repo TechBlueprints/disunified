@@ -565,9 +565,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     The driver writes 2 on the interface it manages the switch at
     (`ntpSource`) and nowhere else, with `echo 2 | sudo tee …/accept_ra`.
   - **A kernel-only address gets no ip2me route.** Inbound traffic then
-    rides the default trap at 600 pps (an upload: 0.9 MB/s against 12.7 over
-    IPv4). An APPL_DB `INTF_TABLE:<iface>:<addr>/<len>` row through
-    ProducerStateTable fixes it (11.4 MB/s). On 202511 intfsorch adds only
+    rides the default trap at the default CoPP group's 600 pps (an upload:
+    0.9 MB/s). An APPL_DB `INTF_TABLE:<iface>:<addr>/<len>` row through
+    ProducerStateTable fixes it: the ip2me group's 6000 pps, IPv4's ~8.8
+    MB/s back to back. On 202511 intfsorch adds only
     that host route for a row: FRR already passes the /64 and the RA's
     default to the chip.
   - **Off is five steps**: the rows, `accept_ra` 1, `ip -6 addr flush …
