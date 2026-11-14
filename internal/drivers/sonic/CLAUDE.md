@@ -793,14 +793,30 @@ was restarted.
   67), is unmerged and not in the kit: every front-panel netdev has only its
   root `fq_codel`, no ingress filter (`dhcp-rate-20261114.txt`). The 300s
   come from db_migrator's `version_3_0_0` on a fresh config; a breakout's
-  re-created ports have none (Ethernet4 since 2026-11-01). DHCP is policed
-  only by CoPP, `queue4_group3` (`trap`, 100 packets/s, shared with LLDP and
-  UDLD, the whole switch), whose drops have no port. So no per-port DHCP drop
-  counter exists and `Port.Health.DHCPRateDrops` stays unfilled: anomaly 32
-  ("Incoming DHCP packets exceed 300/sec", fixed UI text) never comes from
-  this driver. A kernel policer behind that CoPP rate could never drop at
-  300/s per port; a real one needs an ASIC per-port policer (orchagent's ACL
-  has no policer action).
+  re-created ports have none (Ethernet4 since 2026-11-01).
+- **The DHCP rate (anomaly 32) is counted by disunified-l2d (`l2d.py`
+  `DhcpRate`, 2026-11-14, §11.17).** A detection, never a hold: UniFi's
+  model does not shut the port. Facts that cost time:
+  - **The image's CoPP caps DHCP at 100/s for the whole switch**
+    (`queue4_group3`, shared with LLDP and UDLD; measured: a 400/s sender
+    is seen at exactly 100/s), so a count at the CPU can never pass 300.
+    l2d moves the `dhcp_relay` trap to `COPP_GROUP|queue3_group1` (600/s)
+    while it counts: the group row first (sonic-yang leafref), the trap row
+    with the image's `trap_ids` after; stopping deletes the trap row
+    (coppmgr restores `copp_cfg.json`'s) and the group two seconds later.
+    coppmgr leaves the old group's APPL_DB `trap_ids` naming dhcp while the
+    ASIC's trap is in the new group: read ASIC_DB, not APPL_DB.
+  - **Trapped frames reach the hostif tagged** (802.1Q, VLAN 4094), and a
+    packet socket may see them with or without the tag: the BPF filter and
+    the classifier take both. `recvfrom`'s interface is the ingress port.
+  - **Only a client's own request counts** (op 1, `giaddr` 0): a server's
+    replies and a relay's forwarded requests never count against their port.
+  - Read side: STATE_DB `DUI_DHCP_RATE_TABLE|<port>` (`over`, `peak`,
+    `last`), `collect.py` `l2_dhcp_rate`, summed over a cage's lanes into
+    `Health.DHCPRateDrops`. Testing: a LAN host sending BOOTREQUESTs to the
+    switch's own address arrives on the uplink through the same trap.
+    Fixtures: `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`
+    (`testdata/l2d_dhcp_rate.py` runs the filter through a cBPF interpreter).
 - **Port anomalies 128/256/1024/2048 have no source on the image
   (`docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
   `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before

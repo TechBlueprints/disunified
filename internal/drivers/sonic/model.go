@@ -208,6 +208,7 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 	setLACP(out, db["state_lag_member"])
 	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
 		l2Ports(out, db)
+		dhcpRateCounts(out, db)
 	}
 	stormPorts(out, db)
 	return out

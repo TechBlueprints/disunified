@@ -930,7 +930,7 @@ does not expose.
 | `switch.vlan.N.igmp_*` (snooping, querier, fast-leave…) | no IGMP snooping in community SONiC (no `config igmp*`, no L2MC tables in the schema); logged, unclaimed. **An unmerged upstream implementation exists; what building it takes is §8** |
 | `switch.port.N.lldpmed.opmode` / `topology_notify` | `LLDP_PORT` has `enabled`/`mode`/TLV flags, no LLDP-MED; report-only like the Arista |
 | `switch.port.N.ld_mode` (loop detection) | nothing in SONiC; a real STP daemon would be the answer (see 7.4) |
-| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking -- and on 202505 and 202511 only a field: nothing enforces it (§11.17); `dhcp_relay` is L3; unclaimed. **Superseded 2026-11-01 (§11.7):** the push, captured, is the flag plus per-VLAN trusted-server groups (`switch.dhcp_guard.N.*`), which an L3 ACL table can enforce in hardware |
+| `switch.dhcp_snoop.status` | SONiC's `dhcp-mitigation-rate` is a per-port DHCP packet rate limit (`PORT dhcp_rate_limit`, default 300 pps), not rogue-server blocking -- and on 202505 and 202511 only a field: nothing enforces it (§11.17, where disunified-l2d counts the rate instead); `dhcp_relay` is L3; unclaimed. **Superseded 2026-11-01 (§11.7):** the push, captured, is the flag plus per-VLAN trusted-server groups (`switch.dhcp_guard.N.*`), which an L3 ACL table can enforce in hardware |
 | isolation, 802.1X, port security (`port_security_mac_address`) | none in community SONiC (`sonic-acl.yang` exists, so an ACL-based emulation of isolation and MAC allow-lists is possible later; not now) |
 | egress/ingress rate limits | the controller pushed no rate-limit key in any capture, so nothing to act on; SONiC could shape per port through `SCHEDULER`/`PORT_QOS_MAP` (YANG present) if a push ever carries it |
 | `snmp.*` location/contact | not pushed unless the site-wide SNMP is on; `config snmp location\|contact` exist and are a one-line mapping once a capture exists |
@@ -2704,7 +2704,7 @@ upgrade keeps):
 | mstpd, mstpctl 0.2.0 | `/usr/local/sbin/` | built **on the switch** from the upstream release tarball (sha256-pinned) in a throwaway `alpine:3.20` container (digest-pinned), statically linked against musl (`build-mstpd.sh`; ~40 s on the DX010's Atom, 149 KB + 121 KB). Debian 12 has no mstpd (Debian's 0.2.0 needs glibc 2.38; bookworm has 2.36), and building it on the switch means the bridge redistributes no GPL binary. A transient unit (`disunified-mstpd-build`) runs the build so it outlives the SSH session; the next collects read its outcome. With libtool installed, `-static` silently links against musl's loader, which Debian lacks: the build refuses a binary with an `INTERP` header. |
 | `disunified-l2d` | `/usr/local/sbin/disunified-l2d` (`l2d.py`) | the manager, Python with swsscommon, run as root by `disunified-l2d.service` |
 | the kernel hook | `/usr/sbin/bridge-stp` (`bridge-stp.sh`; `/sbin` is `usr/sbin` on Debian 12) | answers 0 to `Bridge start\|stop` and 1 for any other bridge. Without the file the kernel runs its own 802.1D STP on `Bridge` (`br_stp_start`: no helper = kernel STP), so l2d refuses to set `stp_state` unless it exists, and turns it off again if the bridge does not read back `2` |
-| config | `/etc/sonic/disunified/l2.json` | written by the driver: STP on/off, version, priority, per port `enabled`/`edge`/`bpdu_guard`, the loop-protected ports; `deadman` set by the switch when the dead-man fired |
+| config | `/etc/sonic/disunified/l2.json` | written by the driver: STP on/off, version, priority, per port `enabled`/`edge`/`bpdu_guard`, the loop-protected ports, the DHCP rate detector (§11.17); `deadman` set by the switch when the dead-man fired |
 
 **Kernel side.** `Bridge` (vlanmgrd's, VLAN filtering on, every switched port
 and vlanmgrd's `dummy` a member) runs with `stp_state 0`. l2d writes `1`; the
@@ -4794,7 +4794,7 @@ the port comes up. An OSPF adjacency or a static route over a routed port.
 A routed aggregate of more than one member: the controller pushes only the
 first.
 
-### 11.17 DHCP packet rate (anomaly 32): the image has no per-port limiter (2026-11-14)
+### 11.17 DHCP packet rate (anomaly 32): counted by disunified-l2d (2026-11-14)
 
 **What UniFi expects.** Bit 32 of a port's `anomalies` raises the alert
 `PORT_DHCP_STORM`, "Incoming DHCP packets exceed 300/sec on <device> Port
@@ -4803,10 +4803,15 @@ the bit by mistake; root `CLAUDE.md` §5). The 300 is the alert's own text;
 it is not a value the inform or the push carries. No captured push, the ECS's
 or the DX010's (`docs/fixtures/controller-*`), has a DHCP rate key: the
 switch's DHCP keys are `switch.dhcp_snoop.status` and `switch.dhcp_guard.N.*`,
-which are Rogue DHCP Server Detection (§11.7). So the limit is the switch's
-own, not a setting, and the bit means "this port's own DHCP rate limit
-dropped frames" (`Port.Health.DHCPRateDrops`, cumulative; `internal/device`
-sets the bit when it grows between informs).
+which are Rogue DHCP Server Detection (§11.7); the ECS's own push, read on
+the switch on 2026-11-14, has none either. So the limit is the switch's
+own, not a setting. **The bit is a detection, not a port shutdown**: in the
+UI's own wording only loop protection and BPDU guard take a port down, and
+the DHCP alert's recommended action is to look for misconfigured devices and
+rogue servers (§11.20, the model for every bit). For a driver that is a count
+that grows while the condition lasts, `Port.Health.DHCPRateDrops`
+(cumulative; `internal/device` sets the bit when it grows between informs),
+not a `Port.Fault`, which names a fault keeping the port down.
 
 **What the 202511 image has** (fixture
 `sonic-igmp-202511.20261106-f2e25f54c/dhcp-rate-20261114.txt`, read-only):
@@ -4839,29 +4844,115 @@ sets the bit when it grows between informs).
   dropped (`APPL_DB COPP_TABLE:queue4_group3`, from the image's
   `copp_cfg.json`). One policer serves the whole switch, so its drops cannot
   be attributed to a port. Not tested: a flood above 100 packets/s on one port
-  should starve DHCP and LLDP on every port.
+  should starve DHCP and LLDP on every port. **Measured 2026-11-14 (below):
+the CPU sees exactly 100 DHCP frames a second from a 400/s sender.**
 
-**The ECS** could not be read this time: its sshd refused the site's key on
-2026-11-14 (offered, refused, `publickey,password`), though the controller's
-pushed key list, as the DX010 holds it, still carries that key. Its CONFIG_DB
-`PORT` as read on 2026-11-01 (kept with the site's files, not in the repo)
-has no `dhcp_rate_limit` (202106 predates the field), and its inform
-(`controller-10.6.109/inform-ecs-aggregation-uswf066.json`) carries no
-`anomalies` key, so how a UniFi switch counts these drops is still unknown.
+**What the ECS shows** (Ubiquiti SONiC 4.0.1, read-only, 2026-11-14 about
+09:00 MST; the facts are stated so a reader with an ECS can check them):
 
-**Decision: `DHCPRateDrops` stays unfilled on SONiC.** With nothing on the
-switch counting per-port DHCP drops, filling it would invent alerts. What a
-follow-up would take (each is a design decision, and the ECS's own
-mechanism is to be read first, per the follow-the-ECS rule):
+- DHCP reaches its CPU through the SAI DHCP trap, action trap, in a CoPP
+  group of its own: APPL_DB `COPP_TABLE:queue3_group1` `trap_ids dhcp`,
+  queue 3, `sr_tcm` at a CIR and CBS of 256 packets, red dropped (ASIC_DB:
+  the DHCP `HOSTIF_TRAP` in a trap group on queue 3 whose policer is 256/256).
+  LLDP and UDLD are in another group. One policer serves the whole switch.
+- Nothing counts DHCP per port: ASIC_DB holds one ACL entry (a MAC rule)
+  and six policers, every one a CoPP group's; no process holds a packet
+  socket open for DHCP (`ss -0 -p`: l2mcd, lldpd, mstpd, teamd, syncd, lbpd
+  and macsnoopingd), and there is no `tc` filter on the ports' ingress.
+- `dhcp-rate-limit` is a cause in its error-disable table (CONFIG_DB and
+  APPL_DB `ERROR_DISABLE|dhcp-rate-limit`, `admin_status enabled`,
+  `auto_recovery_interval 0`; `show errdisable recovery`), as every other
+  anomaly cause is, and `show errdisable status` is empty. A tripped port
+  would be STATE_DB `ERROR_DISABLE|<cause>|<port>`; none exists.
+- Its inform (`mca-dump`) has no `anomalies` key on any of its 54 ports.
 
-| Route | What it gives | Against it |
+So on 4.0.1 the ECS registers the cause and polices DHCP to its CPU, and no
+detector can be seen; its CoPP rate (256) is itself below the 300 the alert
+names, so a count taken at its CPU could never pass it. What a UniFi switch
+counts to raise the alert stays not captured.
+
+**The DX010, as built.** disunified-l2d counts DHCP the only place this
+switch can see it per port, at the CPU (`l2d.py`, class `DhcpRate`):
+
+- **What is counted.** An `AF_PACKET` socket with a classic BPF filter
+  (IPv4 UDP to port 67, untagged or 802.1Q, no fragments; the hostif hands
+  trapped frames over tagged, VLAN 4094 here) receives what the ASIC traps;
+  `recvfrom`'s interface is the ingress port, outgoing frames and anything
+  that is not a front-panel `Ethernet` netdev are skipped. A frame counts
+  if it is a client's own request: BOOTREQUEST (op 1) with `giaddr` 0. So
+  a DHCP server's port is never counted for its replies (BOOTREPLY, and to
+  port 68 besides), nor a relay's for the requests it forwards (they carry
+  its `giaddr`). DHCPv6 is not counted: the alert says DHCP, and the ECS
+  traps only DHCPv4 in its group.
+- **The threshold.** 300 requests in one wall-clock second on one port,
+  the alert's figure; a second over it adds the excess to the port's count.
+  STATE_DB `DUI_DHCP_RATE_TABLE|<port>` holds `over` (cumulative), `peak`
+  and `last` (the last second over); l2d reads them back when it restarts,
+  a reboot starts from 0 (a decrease sets nothing). `collect.py`'s
+  `l2_dhcp_rate` reads the table, and the driver sums a cage's lanes into
+  `DHCPRateDrops`. The name is the model's; on the DX010 these frames are
+  not dropped by a per-port limiter (the image has none), they are the
+  requests over UniFi's rate.
+- **CoPP, the one write.** With the image's group the count can never pass
+  100 a second for the whole switch. While the detector runs, l2d moves the
+  image's `dhcp_relay` trap into a group of its own, as the ECS keeps DHCP:
+  CONFIG_DB `COPP_GROUP|queue3_group1` (queue 3, `sr_tcm`, 600/600 packets,
+  red drop, trap priority 3) first -- the trap's `trap_group` is a leafref
+  sonic-yang checks on every breakout (§11.8) -- then `COPP_TRAP|dhcp_relay`
+  with the image's `trap_ids` and that group. **The rate departs from the
+  ECS's 256 for a code reason**: below 300 the alert's threshold could never
+  be seen. 600 fits one port at 300 with room for the rest; LLDP and UDLD
+  keep the image's group at 100, so a DHCP flood no longer starves them.
+  Stopping (the config's `dhcp_rate.enabled` false, `--teardown`) deletes
+  the trap row, coppmgr restores the image's from `copp_cfg.json`, and the
+  group goes two seconds later. A trap row left behind by an l2d that died
+  is removed the same way on the next start with the detector off. With
+  `FEATURE|dhcp_relay` disabled the trap is not installed at all (DHCP is
+  forwarded in the ASIC, never seen): l2d logs that once and counts nothing.
+  coppmgr moves the trap but does not rewrite the image's group row, whose
+  APPL_DB `trap_ids` keeps naming `dhcp,dhcpv6` while the ASIC's DHCP trap
+  is in the new group (read live); harmless, and gone once the trap is back.
+- **Nothing is acted on.** No port is shut, so no exemption is needed for
+  the uplink, the STP root port or the gateway's port; the uplink is counted
+  like any other port (its alert is a real one). The operator's recovery is
+  UniFi's: find the device; the count stops growing and the anomaly ends.
+- **Where it runs.** Wherever disunified-l2d runs (STP or loop protection
+  in the push, `l2d` not off): the driver writes `dhcp_rate {enabled true,
+  threshold 300, rate 600}` into `l2.json` with the rest; it is not a
+  controller setting. A switch with `FEATURE|stp` (the PVST path) has no
+  l2d and no count.
+
+**Live check on the DX010 (2026-11-14 16:16-16:17 UTC, image
+igmp-202511.20261106-f2e25f54c, under the shared test lock).** A harness
+loaded only `DhcpRate` from the branch's `l2d.py` (the installed l2d,
+mstpd and the bridge untouched) and counted while a LAN host sent
+BOOTREQUESTs to the switch's own address on the uplink:
+
+| Phase | Sent | The CPU saw on Ethernet0 |
 |---|---|---|
-| (a) sonic-swss#3130's kernel policer, in the image kit or written by the driver | the policer's per-port drop count (`tc -s filter show dev <port> ingress`) | it sees only what CoPP already let through, at most 100 packets/s for the whole switch, so a 300 packets/s limit per port can never drop. It works only with DHCP's CoPP rate raised above 300, in a group of its own (LLDP shares `queue4_group3`), which is a CPU-protection change |
-| (b) a per-port DHCP policer in the ASIC, ahead of CoPP | UniFi's meaning exactly: frames over 300/s dropped on that port alone, with the meter's red count as the cumulative counter | the community orchagent's ACL has no policer action (`aclorch`, 202511); an orchagent patch in the kit, like 0003's L2 table |
-| (c) a per-port ACL counter on UDP 67, counting only | each port's DHCP arrival rate in the ASIC | the bridge would infer drops from a rate, not read them; and how a counting rule combines with the trap on this SAI needs its own capture |
+| the image's CoPP (`queue4_group3`, 100/s) | 400/s for 5 s | 136 (the burst), then 101, 100, 100, 100 a second: the switch-wide policer, nothing past it |
+| DHCP in `queue3_group1` (600/s) | 400/s for 5 s | 402, 390, 403, 402 a second; `over` 397, peak 403; one log line |
+| the same | 150/s for 3 s | 150, 150 a second; nothing counted |
+| teardown | -- | the trap back in the image's group (ASIC_DB: DHCP and LLDP in the same trap group, queue 4, policer 100), `queue3_group1` gone from APPL_DB and STATE_DB, CONFIG_DB as before |
 
-The recommended route is (b), once the ECS shows what it does. Until then a
-DHCP flood on the DX010 raises no alert in UniFi.
+The baseline before it: one DHCP frame in 30 s arrives on the uplink. The
+capture taken with the count in place is
+`sonic-igmp-202511.20261106-f2e25f54c/collect-dhcprate.txt`
+(`TestDHCPRateCountFromTheLiveCapture`); two of the uplink's real requests,
+scrubbed, are `dhcp-frames-20261114.txt`, on which
+`testdata/l2d_dhcp_rate.py` runs the filter through a classic-BPF
+interpreter and the classifier, the accounting and the CoPP writes
+(`TestL2dDHCPRate`). Afterwards the switch was as before: no
+`DUI_DHCP_RATE_TABLE` key, the installed `disunified-l2d` unchanged (same
+sha256 and pid), `config_db.json`'s CoPP rows `stp` / `queue4_group1` only.
+
+**Not exercised:** a flood arriving on any port but the uplink (no other
+cage is cabled; a loopback cage would loop the VLAN), the alert raised in
+the controller (the deployed bridge does not read the table yet: it needs
+this branch deployed), and l2d running the detector as a service (the
+harness ran the class alone; the service path is `sync` -> `configure`
+every 2 s and the main loop's `select`, fixture-tested only).
+
 ### 11.18 Switch-detected anomalies the DX010 cannot report yet: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
 
 A port's `anomalies` field is what the switch itself detected, and every

@@ -524,21 +524,25 @@ Quiet, still rising toward the bench's 56-58 (high 70). Fixture- and loop-tested
 offer nothing; a PR for one needs its fancontrol table and a measured floor
 (the ASIC's settled temperature at it).
 
-### DHCP packet rate (anomaly 32) -- not available on the image (2026-11-14)
+### DHCP packet rate (anomaly 32) -- counted at the CPU (2026-11-14)
 
-UniFi raises "Incoming DHCP packets exceed 300/sec" when a port's own DHCP
-rate limit drops frames (`Port.Health.DHCPRateDrops`). On 202505 and 202511
-`PORT dhcp_rate_limit` (300) is only a field: its enforcement,
-sonic-swss#3130, was never merged, and the DX010 has no ingress filter on
-any port. DHCP is policed only by one CoPP policer for the whole switch
-(`queue4_group3`, 100 packets/s, shared with LLDP and UDLD), whose drops
-have no port. The driver fills nothing, so the alert never fires for a
-SONiC switch ([`drivers/sonic.md`](drivers/sonic.md) §11.17; the read-only
-capture is `sonic-igmp-202511.20261106-f2e25f54c/dhcp-rate-20261114.txt`).
+UniFi raises "Incoming DHCP packets exceed 300/sec" on a port; in its model
+the port keeps running. On 202505 and 202511 `PORT dhcp_rate_limit` is only a
+field (sonic-swss#3130 unmerged), so disunified-l2d counts each ingress
+port's DHCP client requests at the CPU, puts the `dhcp_relay` trap in a CoPP
+group of its own at 600 packets/s while it does (the image's group caps the
+whole switch at 100/s), and reports the requests above 300 in any one second
+as `DHCPRateDrops` ([`drivers/sonic.md`](drivers/sonic.md) §11.17).
+Verified live on the DX010: the cap at 100/s with the image's group, 400/s
+seen and 397 over the threshold with the driver's, everything restored;
+fixtures `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`.
 
 | Gap | What the PR needs |
 |---|---|
-| A per-port DHCP limiter with a drop counter | first, how the ECS counts these drops (to be read on the switch); then a per-port policer in the ASIC, ahead of CoPP (an orchagent patch: the community ACL has no policer action), its red count read in the poll into `DHCPRateDrops`, a capture of it, and a flood on a test cage raising the alert. A kernel policer as in sonic-swss#3130 is not enough: it sees at most CoPP's 100 packets/s for the whole switch, so it would need DHCP in a CoPP group of its own at a higher rate, which is a CPU-protection change to decide first |
+| A flood on a port other than the uplink | a host cabled to a DX010 cage sending more than 300 DHCP requests a second, the count read, the port's alert in the controller (the bridge with this change deployed) |
+| The alert in the controller | the deploy; then one 400/s burst at the switch, as in the live check, and the alert for port 1 read from the controller's system log |
+| What a UniFi switch counts | the ECS (4.0.1) shows no detector and its DHCP CoPP rate (256) is below the threshold; a capture of a real UniFi switch raising the alert, to compare with |
+
 ### Port anomalies the switch cannot report yet (2026-11-14)
 
 Assessed live on the DX010 (read-only; `docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`,
@@ -622,7 +626,7 @@ alerts on 2026-11-13.
 
 | What | Where / when |
 |---|---|
-| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (`RogueDHCPDrops` filled by `sonic` and `proxmox` since 2026-11-14, `drivers/sonic.md` §11.7.9; `StormDrops*` by `arista-eos`, row below, and broadcast/multicast by `sonic`'s storm detection, `drivers/sonic.md` §11.21; `DHCPRateDrops` by no driver); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (`RogueDHCPDrops` filled by `sonic` and `proxmox` since 2026-11-14, `drivers/sonic.md` §11.7.9; `StormDrops*` by `arista-eos`, row below, and broadcast/multicast by `sonic`'s storm detection, `drivers/sonic.md` §11.21; `DHCPRateDrops` by `sonic` since 2026-11-14, `drivers/sonic.md` §11.17); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
 | Storm drops per type from the Arista (`show storm-control` `drop`), split cages summed | `internal/drivers/arista-eos/features_test.go` over the 4.26.14M capture with all three types; read live (counts 0) on 2026-11-14 |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
@@ -637,7 +641,7 @@ Open — PRs welcome:
 | Storm bits (1/2/4) seen raising an alert | the Arista fills the counters and the DX010 its broadcast/multicast detection (above); a storm on a test port and the alert read from the controller |
 | Storm drops on the SONiC switch | **no drop count exists on the DX010's Broadcom image** ([`drivers/sonic.md`](drivers/sonic.md) §11.19): orchagent polls no policer statistics, and the Tomahawk's storm meters have no counter. Detected instead since 2026-11-14 (next row). For a true drop count a PR needs a per-type count the chip really keeps (on a Broadcom XGS chip, three of the SDK's receive debug counters, one per storm type, if its drop triggers can be told apart -- `bcmDbgCntRxStormControlDrop` is one trigger for all three), or a SAI that answers `get_policer_stats` for a storm-control policer, plus orchagent polling it; then a capture and a live storm |
 | Storm detection on the SONiC switch (bits 1, 2) | **verified by hand on the DX010 2026-11-14** ([`drivers/sonic.md`](drivers/sonic.md) §11.21): disunified-l2d compares each storm-controlled port's receive counters (broadcast; multicast, known groups included) over 5 s with the limit in 64-byte frames and counts the frames above it; a MAC-looped empty cage flooded from the CPU above a 1000 kbps limit was found and counted, a flood under it was not, the uplink's traffic never reads as a storm (`storm_watch_test.go`, `contract_sonic_storm_test.go`). **Not exercised:** a cabled source on a forwarding port, the UI's storm control with the detection running, the controller's alert (not deployed), split cages and PortChannel members. Unknown unicast (bit 4): no counter separates flooded unicast. A PR needs a cabled storm on a test port in its own VLAN and the alert read from the controller |
-| DHCP rate (32) and rogue DHCP (64) bits (64 on `sonic`: built, the count verified by hand, the alert not yet seen; on `proxmox`: built, namespace-tested, no push seen yet) | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
+| DHCP rate (32) and rogue DHCP (64) bits (32 on `sonic`: built, counted live on the DX010's uplink, the alert not yet seen; 64 on `sonic`: built, the count verified by hand, the alert not yet seen; on `proxmox`: built, namespace-tested, no push seen yet) | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
 | Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.18 (256 has a build path) |
 
 ---
