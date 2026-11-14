@@ -656,6 +656,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   out of step reads as no mode and is rewritten. At Default the stock curve
   runs the fans at ~41 % (PWM 102) even with the intake under MINTEMP, as it
   did before 0012.
+- **No storm-control drop count exists (2026-11-14, `docs/drivers/sonic.md`
+  §11.17)**, so `StormDrops*` stay 0. orchagent never registers the storm
+  policers for statistics (no COUNTERS_DB key, no `POLICER` flex group), SAI
+  has no storm drop reason for a `DEBUG_COUNTER`, and the Tomahawk's
+  `IFP_STORM_CONTROL_METERS` are token buckets with no counter; the SDK's
+  one debug trigger (`bcmDbgCntRxStormControlDrop`) covers all three types
+  together. Do not report a total as a type.
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name

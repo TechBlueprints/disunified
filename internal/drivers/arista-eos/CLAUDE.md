@@ -31,6 +31,14 @@ that cost time on Clint's DCS-7160-48TC6-F.
   thermal control can raise. `fan_mode: quiet` is `override 30`, read back
   from `show system environment cooling`'s `overrideFanSpeed`; the
   controller never offers Fan Mode for a switch (`docs/drivers/arista-eos.md` §8).
+- Storm-control drops are in `show storm-control` (JSON `trafficTypes.<type>.drop`,
+  the text table's `Drops`), per interface and per type, types keyed
+  `broadcast`, `multicast`, `unknown-unicast` (captured 2026-11-14,
+  `docs/fixtures/arista-eos-4.26.14M/storm-control-all-types/`). There is no
+  `clear storm-control` on 4.26.14M. A hand-made config change on the Arista
+  while another session's config session waits on its commit timer is
+  reverted with that session (EOS warns "Any changes done here will be
+  reverted"): check `show configuration sessions` before a probe.
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is
