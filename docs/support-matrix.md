@@ -536,10 +536,11 @@ as `DHCPRateDrops` ([`drivers/sonic.md`](drivers/sonic.md) §11.17).
 Verified live on the DX010: the cap at 100/s with the image's group, 400/s
 seen and 397 over the threshold with the driver's, everything restored;
 fixtures `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`.
+A detection with no port hold, and no flood test on another port or CPU
+reading at 600/s planned (Clint, 2026-11-14).
 
 | Gap | What the PR needs |
 |---|---|
-| A flood on a port other than the uplink | a host cabled to a DX010 cage sending more than 300 DHCP requests a second, the count read, the port's alert in the controller (the bridge with this change deployed) |
 | The alert in the controller | the deploy; then one 400/s burst at the switch, as in the live check, and the alert for port 1 read from the controller's system log |
 | What a UniFi switch counts | the ECS (4.0.1) shows no detector and its DHCP CoPP rate (256) is below the threshold; a capture of a real UniFi switch raising the alert, to compare with |
 

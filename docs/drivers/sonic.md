@@ -4946,8 +4946,13 @@ interpreter and the classifier, the accounting and the CoPP writes
 `DUI_DHCP_RATE_TABLE` key, the installed `disunified-l2d` unchanged (same
 sha256 and pid), `config_db.json`'s CoPP rows `stp` / `queue4_group1` only.
 
-**Not exercised:** a flood arriving on any port but the uplink (no other
-cage is cabled; a loopback cage would loop the VLAN), the alert raised in
+**Clint's decision (2026-11-14):** the bit stays a detection, with no port
+hold, and the two numbers stay: 300 is the alert's own text, and 600 is the
+CoPP cap that lets a count pass it. A flood test on a port other than the
+uplink, and a CPU reading of l2d at the full 600/s, are not planned (no
+other cage is cabled; a loopback cage would loop the VLAN).
+
+**Not exercised:** the alert raised in
 the controller (the deployed bridge does not read the table yet: it needs
 this branch deployed), and l2d running the detector as a service (the
 harness ran the class alone; the service path is `sync` -> `configure`
