@@ -208,6 +208,31 @@ acl_counters("acl_counters")
 # CLI and the driver write them. Absent on an image without the series.
 section("cfg_l2mc", "CONFIG_DB", "L2MC|*", "L2MC_SUPPRESS|*", "L2MC_STATIC_GROUP|*", "L2MC_STATIC_MEMBER|*", "L2MC_MROUTER|*")
 
+
+def bridge_ports(name):
+    """Each port's and PortChannel's bridge port in the chip, by name:
+    {"admin": SAI_BRIDGE_PORT_ATTR_ADMIN_STATE}. orchagent sets a bridge
+    port admin down only to remove it; one left down is a removal orchagent
+    refused, which the kit's L2MC orch before its sonic-swss 0004 made
+    (docs/drivers/sonic.md 8.15): the port learns nothing."""
+    s(name)
+    names = {}
+    for m in ("COUNTERS_PORT_NAME_MAP", "COUNTERS_LAG_NAME_MAP"):
+        try:
+            names.update({oid: n for n, oid in DB.get_all("COUNTERS_DB", m).items()})
+        except Exception:
+            pass
+    out = {}
+    for k in table("ASIC_DB", ["ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*"]).items():
+        f = k[1]
+        n = names.get(f.get("SAI_BRIDGE_PORT_ATTR_PORT_ID", ""))
+        if f.get("SAI_BRIDGE_PORT_ATTR_TYPE") == "SAI_BRIDGE_PORT_TYPE_PORT" and n:
+            out[n] = {"admin": f.get("SAI_BRIDGE_PORT_ATTR_ADMIN_STATE", "")}
+    dump(out)
+
+
+bridge_ports("asic_bridge_port")
+
 # Port isolation, port security and egress shaping (docs/drivers/sonic.md
 # 11.12): the driver's isolation group, the provisioned FDB entries (only
 # provisioning writes APPL_DB FDB_TABLE; learnt MACs are STATE_DB's), the

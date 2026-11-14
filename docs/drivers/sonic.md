@@ -2121,6 +2121,148 @@ port, l2mcd `querier : 0` with the gateway as `querier_router`; all 10
 groups in l2mcd and 10 `L2MC_ENTRY` objects in ASIC_DB. The install lives in
 the container's writable layer until the next image build carries 0008-0010.
 
+### 8.15 A port that leaves its last VLAN, and the bridge port orchagent would not remove (2026-11-14)
+
+**What was seen.** On the DX010 (`igmp-202511.20261106-f2e25f54c`, snooping
+on in Vlan4094 with the reserved groups' static members on every port), a
+native-network change in the UI on a test cage (Ethernet32: Default to a
+VLAN-only network and back) left the port dead. orchagent's syslog, from
+16:21:32 UTC: `removeVlanMember` took Ethernet32 out of Vlan4094, then
+`removeBridgePort` logged "still has references to a Layer 2 multicast group
+member" about twice a second from then on; the add to the new VLAN reused the
+bridge port, and ASIC_DB held it with `SAI_BRIDGE_PORT_ATTR_ADMIN_STATE
+false` (the chip's learn column `D`). Moving the port back did not clear it.
+An hour later CONFIG_DB, APPL_DB and STATE_DB had Ethernet32 untagged in
+Vlan4094, while ASIC_DB had **no** VLAN member on its bridge port (at 16:32:15
+a re-add was undone 12 ms later by the delete orchagent kept retrying) and
+**no** L2MC group member either: the six L2MC group members left were all the
+uplink's. The capture is
+`sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt` (its
+`asic_bridge_port` section, the new collector section below).
+
+**The cause is the kit's L2MC orch (sonic-swss 0001, the Micas series), not
+the driver's order.** `removeBridgePort` refuses while `Port::m_l2mc_count` is
+not zero, and that count had leaked nine minutes before the move, when the
+port's link dropped. The same syslog, 16:11-16:12 UTC:
+
+1. 16:11:40, the port up (a test loop): l2mcd added its seven static members
+   (`AddL2mcGroupMember ... l2mc_count 1` ... `7`).
+2. 16:11:50, l2mcd learned the port as a multicast router port (it heard
+   queries over the loop): `AddL2mcMrouterPort` added it to four more groups,
+   **without counting them** -- the orch counts only the group-member path.
+3. 16:12:01, link down. l2mcd's member deletes arrived while the port was
+   still a router port: for five of the static groups `RemoveL2mcGroupMember`
+   logged "mrouter port is same as group member port" and kept the SAI member
+   for the router port, **returning without decrementing** the count or the
+   group's `ref_count`; for 224.0.1.60, a group the port was in only as a
+   router port, the same path **decremented** a count it had never raised
+   (7 -> 6). Then the router port's delete: `RemoveL2mcMrouterPort` removed
+   the five kept SAI members, **decrementing nothing**. Two more member
+   deletes after it went the normal way (6 -> 5 -> 4).
+4. Result: `m_l2mc_count` 4 with no group member on the port's bridge port,
+   and five groups whose `ref_count` never reaches zero (their entries stay in
+   the chip, holding only the uplink's router-port members).
+
+The refusal then strands the port because `removeBridgePort` sets the bridge
+port admin down and removes its STP ports **before** it checks the count, and
+`addBridgePort` returns an existing bridge port as it is: the VLAN added next
+gets the admin-down one. The same code strands a port without any leak
+whenever l2mcd's member deletes reach orchagent after the VLAN member delete
+-- a native move is a delete then an add in one batch, a quarter second apart.
+
+**Who is exposed.** Any port that is a static or dynamic member and a router
+port at once, and loses link or stops being a router port while it is both.
+With UniFi's reserved groups flooded to every port, that is **the uplink**
+(Ethernet0: the router port, beside the gateway's queries, and a static member
+of all seven groups). On the unpatched image, anything that takes Ethernet0 out of
+its last VLAN -- joining the planned core aggregate first of all -- would
+strand the uplink: install an image with the fix (below) before that.
+
+**What shares it** (from the source; only the native move was seen live):
+every change that takes a port out of its **last** VLAN goes through
+`removeBridgePort` -- a native-VLAN move on an access port, a port that
+becomes routed, a port joining an aggregate or becoming a mirror destination
+(the driver strips its VLANs first), and a breakout's deleted lanes. A tagged
+VLAN taken off a port that keeps another never removes the bridge port: not
+affected (its group members in that VLAN only linger until l2mcd deletes
+them). On an empty cage none of it shows: l2mcd programs members only on an
+oper-up port, so a down port has no members to wait for (the 2026-11-07
+breakouts with snooping on were on an empty cage).
+
+**Recovery.** On the unpatched orch none was found short of a swss restart
+or a reboot: the count lives in orchagent's memory, and the only path that
+decrements it without a matching member is turning snooping off on a VLAN
+where the port is a router-port-only member of exactly as many groups as the
+count is high -- theoretical, untried, and the pending VLAN-member delete
+would still take the port's re-added membership away. On the DX010 the
+port was still stranded at 17:30 UTC, awaiting a reboot.
+
+#### The fix: sonic-swss 0004
+
+`contrib/sonic-image/series/sonic-swss/0004-*`, this project's patch on the
+series:
+
+- `m_l2mc_count` is every SAI L2MC group member on the port's bridge port,
+  whichever path made it (router-port members included); a group's
+  `ref_count` counts the members only. A router port's member that becomes a
+  group member, or stops being one while the router port stays, moves the
+  `ref_count` and not the SAI member.
+- `removeL2mcPortMembers()` drops a port's members (and its place in the
+  router-port lists) in the VLAN it leaves, from `removeVlanMember`, and in
+  every VLAN from `removeBridgePort` **before** anything of the bridge port
+  changes. A group left with no member goes, as on a leave; l2mcd's late
+  deletes find nothing. A count still above zero with no member is logged and
+  reset, never refused. This is also what the ECS's own orch does in effect:
+  its orchagent (Ubiquiti's 202106 lineage, read-only 2026-11-14) records
+  which path made a member and converts between the two, and has no
+  bridge-port refusal on L2MC references.
+- PortsOrch's copies of the port and the VLAN take L2mcOrch's counts before
+  they are written back; a router port is listed once per VLAN (a retried
+  SET used to push it again).
+
+Tested in the build host's bookworm slave (`tests/mock_tests`, the patch's
+`L2mcOrchTest`): the 16:11-16:12 sequence above, a router port leaving before
+the member, a port leaving its VLAN with members left (the native move), and
+a port leaving one of two VLANs. **All four fail on the orch without 0004**
+-- the first with the leaked count, the third with the delete left pending and
+the same bridge port reused admin down, the live symptom -- and pass with it,
+with the whole mock suite (607 tests in 68 suites). Not yet in an image, so
+not yet seen on the switch.
+
+#### The driver: a safe order for an image without it
+
+The driver cannot prevent the leak (it happens on a link event), but it can
+keep its own writes from stranding a port that has not leaked:
+
+- `Start` checks the running orchagent for 0004 (`l2mcFixCheckCommand`: the
+  notice its `removeL2mcPortMembers` logs) on an image with l2mcd, as it does
+  for sonic-swss 0003, and logs when it is missing.
+- Without it, and with `FEATURE|l2mcd` enabled, every `config vlan member del`
+  that leaves an interface in no VLAN is followed in the batch by
+  `bridgePortWait`: a read-only `python3 -c` that waits (up to 10 s) until
+  ASIC_DB holds no bridge port for the interface, then lets the batch go on to
+  the add, the aggregate join or the address. When l2mcd's deletes are merely
+  late, orchagent's retry removes the bridge port and the next step gets a new
+  one. When the count has leaked, the wait fails the batch with the reason
+  before the add, instead of the add landing on the admin-down port.
+- `collect.py`'s `asic_bridge_port` (every port's and PortChannel's bridge
+  port, `{"admin": ...}`, mapped through COUNTERS_DB's name maps) shows a
+  stranded port: the collector warns once ("held admin down in the chip ...
+  a swss restart or a reboot clears it"), and the plan leaves that port's
+  VLANs as they are with a note instead of retrying against it.
+- The static rows still go before the delete (the CLI's refusal, §8.14).
+
+The FixtureRunner models orchagent's bridge port (`OrchL2MCFix`,
+`L2MCLeaked`, `Stranded`): on an image without 0004 a last-VLAN delete with
+static rows deleted earlier in the batch (l2mcd's deletes not yet through) or
+a leaked count is refused with the bridge port admin down, a VLAN add then
+records the port as stranded, and the wait clears the refusal unless the count
+leaked. `bridge_port_test.go` runs on the capture above: the move's order
+(statics, delete, wait, add), the same commands without the wait stranding the
+port, no wait on a patched orchagent, a leaked count failing the wait, and the
+stranded cage left alone. The driver's wait is fixture-tested only; the live
+reproduction waits for the switch.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is

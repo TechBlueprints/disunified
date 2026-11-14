@@ -588,6 +588,33 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   Fixture:
   `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
   `cfg_l2mc` section) and its `config-help.txt`.
+- **A port leaving its last VLAN can be stranded by the kit's L2MC orch
+  (`docs/drivers/sonic.md` §8.15, 2026-11-14; fixed by sonic-swss 0004).**
+  Before 0004, `removeBridgePort` sets the bridge port admin down, then
+  refuses while `m_l2mc_count` is not zero, and `addBridgePort` reuses it as
+  it is: the next VLAN added lands on a port that learns nothing until a
+  swss restart, and the retried delete takes a re-added membership of the
+  same VLAN away. The count leaks when a port that is a group member and a
+  router port at once (the uplink, with UniFi's reserved groups; a looped
+  test cage) loses link: router-port members were never counted. Facts that
+  cost time:
+  - **It is not the driver's order.** The leak came nine minutes before the
+    move; the statics-before-delete order the CLI demands is right. Read
+    orchagent's `l2mc_count` notices in syslog before blaming a batch.
+  - **"No L2MC group member in ASIC_DB" is the leak's signature**, not a
+    sign the references are gone: the count is orchagent's own.
+  - **On an image without 0004** (`Start`: `l2mcFixCheckCommand`) the plan
+    follows every delete that empties an interface with `bridgePortWait`
+    (ASIC_DB, ≤ 10 s, fails the batch on a leak); `collect.py`'s
+    `asic_bridge_port` shows a stranded one (warned once, its VLANs left
+    alone with a note). The FixtureRunner models the refusal
+    (`OrchL2MCFix`, `L2MCLeaked`, `Stranded`); fixture
+    `sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt`.
+  - **Do not aggregate the uplink on an image without 0004**: taking
+    Ethernet0 out of Vlan4094 would strand the only way in.
+  - The orch tests run in the build host's bookworm slave
+    (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
+    (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
 - **Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN,
   router ports (`portfeat.go`, `docs/drivers/sonic.md` §11.12, built and
   verified live on the DX010 2026-11-07).** Isolation is one SAI isolation

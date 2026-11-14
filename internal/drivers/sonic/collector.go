@@ -132,6 +132,12 @@ type Collector struct {
 	// MAC matches (the image kit's sonic-swss 0003), checked once at Start
 	// (macACLCheckCommand); MAC rules are claimed and written only then.
 	macACL bool
+	// l2mcFixed: this image's orchagent has the image kit's sonic-swss 0004
+	// (a port's L2MC group members go with its VLAN membership and its
+	// bridge port), checked once at Start (l2mcFixCheckCommand). Without
+	// it a port that leaves its last VLAN waits for its bridge port to go
+	// (bridgePortWait, §8.15).
+	l2mcFixed bool
 	// IGMP snooping through l2mcd (igmp.go): off unless options.igmp is on
 	// (docs/drivers/sonic.md §8.14: the claim waits for the traffic test),
 	// and the snooping intent of the last push.
@@ -190,6 +196,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		return nil, err
 	}
 	c.checkMACACL(ctx)
+	c.checkL2MCFix(ctx)
 	c.Log.Printf("sonic: %s, %s %s, SONiC %s, %d ports (%d up), %d MACs, uplink hint %d", snap.System.Hostname, snap.System.Vendor, snap.System.Model, snap.System.Version, len(snap.Ports), up, len(snap.MACTable), snap.UplinkHint)
 	return snap, nil
 }
@@ -291,9 +298,10 @@ var redisSections = []string{
 // empty. state_switch_cap (the SAI's SWITCH_CAPABILITY, §11.8) joined on
 // 2026-11-02, cfg_l2mc (IGMP snooping's tables, §8.10) on 2026-11-03,
 // l2_storm (l2d's storm detection, §11.21), l2_dhcp_rate (its DHCP rate
-// detector, §11.17) and l2_maclock (MAC locking's count, §11.18.2) on
+// detector, §11.17), l2_maclock (MAC locking's count, §11.18.2) and
+// asic_bridge_port (each port's bridge port in the chip, §8.15) on
 // 2026-11-14.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm"}
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm", "asic_bridge_port"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
@@ -392,7 +400,11 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		c.aliases[p.Index] = p.alias
 		c.ifnames[p.Index] = append([]string(nil), p.Interfaces...)
 	}
+	down := sortedKeysOf(c.state.bridgeDown)
 	c.mu.Unlock()
+	for _, iface := range down {
+		c.warnOnce("bridge down "+iface, "sonic: %s's bridge port is held admin down in the chip: orchagent refused to remove it (L2MC references; the kit's sonic-swss 0004 fixes the cause, docs/drivers/sonic.md §8.15), and the port learns nothing; a swss restart or a reboot clears it", iface)
+	}
 
 	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, MACTable: macs, VLANs: vlanIDs(db["cfg_vlan"], c.NativeVLAN)}
 	for _, p := range ports {
