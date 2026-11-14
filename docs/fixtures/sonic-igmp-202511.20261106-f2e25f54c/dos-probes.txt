@@ -1,0 +1,91 @@
+@@@ hostname
+host-1
+@@@ version
+SONiC Software Version: SONiC.igmp-202511.20261106-f2e25f54c
+Platform: x86_64-cel_seastone-r0
+HwSKU: Seastone-DX010
+ASIC: broadcom
+@@@ switch_controls_dos (bcmcmd sc, DosAttack*)
+DosAttackToCpu                          0x0
+DosAttackSipEqualDip                    0x0
+DosAttackMinTcpHdrSize                  0x14
+DosAttackV4FirstFrag                    0x0
+DosAttackIcmp                           0x0
+DosAttackIcmpV4                         0x0
+DosAttackIcmpV6                         0x0
+DosAttackIcmpPktOversize                0x200
+DosAttackMACSAEqualMACDA                0x1
+DosAttackIcmpV6PingSize                 0x200
+DosAttackIcmpFragments                  0x0
+DosAttackTcpOffset                      0x0
+DosAttackUdpPortsEqual                  0x0
+DosAttackTcpPortsEqual                  0x0
+DosAttackTcpFlagsSF                     0x0
+DosAttackTcpFlagsFUP                    0x0
+DosAttackTcpHdrPartial                  0x0
+DosAttackFlagZeroSeqZero                0x0
+DosAttackSynFrag                        0x0
+DosAttackV6MinFragEnable                0x0
+DosAttackV6MinFragSize                  0x500
+@@@ rdbgc_selects (bcmcmd getreg RDBGCn_SELECT)
+RDBGC0_SELECT.ipipe0[1][0x56002600]=0x400ad11: <BITMAP=0x400ad11>
+RDBGC1_SELECT.ipipe0[1][0x56002700]=0x1000: <BITMAP=0x1000>
+RDBGC2_SELECT.ipipe0[1][0x56002800]=0x4000: <BITMAP=0x4000>
+RDBGC3_SELECT.ipipe0[1][0x56002900]=0x4000000: <BITMAP=0x4000000>
+RDBGC4_SELECT.ipipe0[1][0x56002a00]=0xa: <BITMAP=0xa>
+RDBGC5_SELECT.ipipe0[1][0x56002b00]=8: <BITMAP=8>
+RDBGC6_SELECT.ipipe0[1][0x56002c00]=0x20: <BITMAP=0x20>
+RDBGC7_SELECT.ipipe0[1][0x56002d00]=0x2000: <BITMAP=0x2000>
+RDBGC8_SELECT.ipipe0[1][0x56002e00]=0: <BITMAP=0>
+@@@ rdbgc8_register (bcmcmd listreg RDBGC8)
+Register: RDBGC8.cpu0 port register address 0x54001e00
+Flags: 64-bits counter
+Blocks: ipipe0 (1 copy)
+Description: Receive debug counter #8
+Displaying: reset defaults, reset value 0 mask 0
+  EVEN_PARITY<32> = x
+  COUNT<31:0> = x
+@@@ sdk_debug_counter_triggers_dos (names of the SDK's receive debug-counter triggers in the syncd container's libsai, DoS/header-check ones)
+bcmDbgCntDSFRAG
+bcmDbgCntDSICMP
+bcmDbgCntDSL3HE
+bcmDbgCntDSL4HE
+bcmDbgCntMACSAEQUALMACDA
+bcmDbgCntRxDSL2HE
+@@@ dropcounters_capabilities
+Counter Type          Total
+------------------  -------
+PORT_INGRESS_DROPS        1
+
+PORT_INGRESS_DROPS
+        MPLS_MISS
+        FDB_AND_BLACKHOLE_DISCARDS
+        IP_HEADER_ERROR
+        L3_EGRESS_LINK_DOWN
+        EXCEEDS_L3_MTU
+        DIP_LINK_LOCAL
+        SIP_LINK_LOCAL
+        ACL_ANY
+        SMAC_EQUALS_DMAC
+@@@ debug_counter_config (CONFIG_DB DEBUG_COUNTER*)
+
+(end)
+@@@ copp_groups (APPL_DB COPP_TABLE)
+COPP_TABLE:default cbs 600 cir 600 meter_type packets mode sr_tcm queue 0 red_action drop
+COPP_TABLE:l2mcd_group cir 128 meter_type packets mode sr_tcm yellow_action drop cbs 160 red_action drop queue 1 trap_ids igmp_leave,igmp_query,igmp_v1_report,igmp_v2_report,igmp_v3_report trap_priority 1 trap_action trap
+COPP_TABLE:queue1_group1 cbs 6000 cir 6000 meter_type packets mode sr_tcm queue 1 red_action drop trap_action trap trap_priority 1 trap_ids ip2me
+COPP_TABLE:queue1_group3 cbs 200 cir 200 meter_type packets mode sr_tcm queue 1 red_action drop trap_action trap trap_priority 1 trap_ids neighbor_miss
+COPP_TABLE:queue4_group1 cbs 6000 cir 6000 meter_type packets mode sr_tcm queue 4 red_action drop trap_action trap trap_priority 4 trap_ids bgp,bgpv6,lacp,stp
+COPP_TABLE:queue4_group2 cbs 600 cir 600 meter_type packets mode sr_tcm queue 4 red_action drop trap_action copy trap_priority 4 trap_ids arp_req,arp_resp,neigh_discovery
+COPP_TABLE:queue4_group3 cbs 100 cir 100 meter_type packets mode sr_tcm queue 4 red_action drop trap_action trap trap_priority 4 trap_ids dhcp,dhcpv6,lldp,udld
+@@@ debug_counter_probe (2026-11-14 16:10:08-16:10:25 UTC: sudo config dropcounters install DUI_DOSPROBE PORT_INGRESS_DROPS [SMAC_EQUALS_DMAC]; read; sudo config dropcounters delete DUI_DOSPROBE)
+-- with the counter installed:
+ASIC_STATE:SAI_OBJECT_TYPE_DEBUG_COUNTER:oid:0x5500000000087b
+SAI_DEBUG_COUNTER_ATTR_TYPE SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS
+SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST 1:SAI_IN_DROP_REASON_SMAC_EQUALS_DMAC
+RDBGC0_SELECT..RDBGC8_SELECT unchanged (RDBGC8_SELECT=0)
+show dropcounters counts: a DUI_DOSPROBE column, 0 on every port
+-- after the delete:
+CONFIG_DB DEBUG_COUNTER*: none; ASIC_DB debug counter: none; RDBGC8_SELECT=0
+/etc/sonic/config_db.json: mtime 2026-11-12 (not written)
+@@@ end
