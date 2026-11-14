@@ -84,10 +84,15 @@ func (c *Collector) checkMACACL(ctx context.Context) {
 	}
 }
 
-// tableType is the ACL table type each of the driver's tables has.
+// tableType is the ACL table type each of the driver's tables has. The
+// guard's is its own (ACL_TABLE_TYPE, of the same name): L3's fields plus
+// the ingress port its counted rules match (acl_count.go).
 func tableType(name string) string {
-	if name == macACLTable {
+	switch name {
+	case macACLTable:
 		return macACLType
+	case guardTable:
+		return guardTable
 	}
 	return aclType
 }
@@ -744,18 +749,34 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 	ports := aclPorts(sim)
 	plist := strings.Join(sortIfnames(ports), ",")
 	changed := map[string]bool{}
+	written := map[string]int{}
 	for _, t := range tables {
 		rules := want[t]
+		if t == guardTable {
+			// The counted per-port DROPs follow the ports as they are now
+			// (a breakout earlier in this cycle changed them).
+			rules = withPortCounts(rules, sim, func(format string, args ...any) {
+				n := fmt.Sprintf(format, args...)
+				c.warnOnce("acl: "+n, "sonic: %s", n)
+			})
+		}
+		written[t] = len(rules)
 		cur, exists := sim.aclTables[t]
 		have := sim.rulesOf(t)
 		typ := tableType(t)
-		ours := exists && cur.typ == typ && cur.stage == aclStage
+		typeOK := t != guardTable || reflect.DeepEqual(sim.gc.types[typ], guardType)
+		ours := exists && cur.typ == typ && cur.stage == aclStage && typeOK
 		if len(rules) == 0 || (exists && !ours) {
 			// The table goes (or is not the driver's shape): its rules first.
 			dropRules(t, byPriority(have))
 			if exists {
 				name := t
 				add("config acl remove table "+name, func(s *swState) { delete(s.aclTables, name) })
+			}
+			if len(rules) == 0 && t == guardTable && sim.gc.types[typ] != nil {
+				// The guard's type goes after the table that used it.
+				name := typ
+				add(delType(name), func(s *swState) { delete(s.gc.types, name) })
 			}
 			changed[t] = changed[t] || len(have) > 0 || exists
 			if len(rules) == 0 {
@@ -766,6 +787,16 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 		if len(ports) == 0 {
 			c.warnOnce("acl no ports", "sonic: no port to bind %s to; not written", t)
 			continue
+		}
+		if !typeOK {
+			// The type comes before the table that names it; one that is not
+			// the guard's (an earlier build's) is replaced whole.
+			name := typ
+			if sim.gc.types[name] != nil {
+				add(delType(name), func(s *swState) { delete(s.gc.types, name) })
+			}
+			add(hsetType(name, guardType), func(s *swState) { s.gc.types[name] = copyFields(guardType) })
+			changed[t] = true
 		}
 		if !exists || !equalSets(cur.ports, ports) {
 			name, bound := t, copySet(ports)
@@ -781,10 +812,17 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 			}
 		}
 		dropRules(t, stale)
+		// A counted rule orchagent refused (Inactive: its port was not
+		// created yet when the rule arrived, and aclorch never retries) is
+		// written again now that the port is known.
+		same := func(r string, f map[string]string) bool {
+			old, ok := have[r]
+			return ok && reflect.DeepEqual(old, f) && !(isCountedRule(f) && sim.aclStatus[t+"|"+r] == "Inactive")
+		}
 		for _, r := range byPriority(rules) {
 			f := rules[r]
-			old, ok := have[r]
-			if ok && reflect.DeepEqual(old, f) {
+			_, ok := have[r]
+			if same(r, f) {
 				continue
 			}
 			table, rule, fields := t, r, copyFields(f)
@@ -795,9 +833,16 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 		}
 		changed[t] = changed[t] || len(stale) > 0
 		for r, f := range rules {
-			if old, ok := have[r]; !ok || !reflect.DeepEqual(old, f) {
+			if !same(r, f) {
 				changed[t] = true
 			}
+		}
+		if t == guardTable && sim.gc.flexACL != "enable" {
+			// The counted rules' counters reach COUNTERS_DB only while
+			// orchagent polls ACL counters (off on the image); this is the
+			// field `counterpoll acl enable` writes. Left on afterwards.
+			add("sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote(flexACLKey)+" FLEX_COUNTER_STATUS enable", func(s *swState) { s.gc.flexACL = "enable" })
+			changed[t] = true
 		}
 	}
 	if len(ops) == 0 {
@@ -811,7 +856,7 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 	var summary []string
 	for _, t := range tables {
 		if changed[t] {
-			summary = append(summary, fmt.Sprintf("%s %d rules", t, len(want[t])))
+			summary = append(summary, fmt.Sprintf("%s %d rules", t, written[t]))
 		}
 	}
 	c.Log.Printf("sonic apply acl (%s): %s", strings.Join(summary, ", "), strings.Join(cmds, " ; "))
@@ -860,6 +905,9 @@ func (c *Collector) verifyACL(st *swState) {
 			c.warnOnce("acl status "+t+"|"+r+" "+s, "sonic: ACL rule %s|%s is %s in orchagent (STATE_DB ACL_RULE_TABLE), not Active: %s", t, r, statusWord(s), pyDict(rules[r]))
 		}
 		tally = append(tally, fmt.Sprintf("%s %d of %d rules active", t, active, len(rules)))
+	}
+	for _, n := range guardCountNotes(st) {
+		c.warnOnce("acl count: "+n, "sonic: %s", n)
 	}
 	if !written {
 		return

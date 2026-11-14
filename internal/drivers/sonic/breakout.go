@@ -369,6 +369,8 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		for _, h := range held {
 			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote(h.key)+" learn_mode", nil)
 		}
+		// The guard's counted rules name the lanes that go (acl_count.go).
+		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
 		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
 		for _, h := range held {
 			if h.lane != "" && pl.sim.port[h.lane] == nil {

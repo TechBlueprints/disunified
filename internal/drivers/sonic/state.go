@@ -105,6 +105,8 @@ type swState struct {
 	// aclCRM the CRM ACL counters: read-only, shared by clones.
 	aclStatus map[string]string
 	aclCRM    table
+	// gc: the guard's per-port count (acl_count.go, §11.7.9).
+	gc guardCountState
 
 	// IGMP snooping (igmp.go, §8.10): the image has the l2mcd series
 	// (FEATURE|l2mcd) and the collector reads its tables (cfg_l2mc;
@@ -335,6 +337,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 			}
 		}
 		s.aclCRM = db["crm_acl"]
+		parseGuardCount(s, db, sec)
 	}
 	s.l2mc = map[string]map[string]string{}
 	if f, ok := db["cfg_feature"]["FEATURE|l2mcd"]; ok {
@@ -405,7 +408,7 @@ func (s *swState) clone() *swState {
 		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
-		aclStatus: s.aclStatus, aclCRM: s.aclCRM,
+		aclStatus: s.aclStatus, aclCRM: s.aclCRM, gc: s.gc.clone(),
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{},
 		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
 	}

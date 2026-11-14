@@ -16,8 +16,10 @@ import (
 // The DX010's own push (system_cfg-dx010-held.txt) with the snooping and
 // ACL lines the controller sent the ECS, through the loop into the driver
 // over the DX010 collected with the ACL sections: VLAN 1's guard on
-// Vlan4094 (the DX010 carries no other guarded VLAN), the three IP rules,
-// the MAC rules refused, and no "unsupported" line for snooping.
+// Vlan4094 (the DX010 carries no other guarded VLAN) in a table of its own
+// type with a counted DROP per port and ACL counter polling turned on
+// (the capture predates the count), the three IP rules, the MAC rules
+// refused, and no "unsupported" line for snooping.
 func TestReplaySonicDHCPGuardAndACL(t *testing.T) {
 	var extra []string
 	for name, prefix := range map[string]string{"system_cfg-ecs-dhcp-snoop.txt": "switch.dhcp_", "system_cfg-ecs-acl.txt": "switch.acl."} {
@@ -62,7 +64,10 @@ func TestReplaySonicDHCPGuardAndACL(t *testing.T) {
 	}
 	cmds := strings.Join(fr.Recorded(), "\n")
 	for _, want := range []string{
-		"sudo config acl add table DUI_DHCP_GUARD L3 -p Ethernet0,",
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE_TYPE|DUI_DHCP_GUARD' 'ACTIONS@' 'PACKET_ACTION,COUNTER' 'BIND_POINTS@' 'PORT,PORTCHANNEL' 'MATCHES@' 'IN_PORTS,VLAN_ID,IP_PROTOCOL,L4_SRC_PORT,L4_DST_PORT,SRC_IP'\nsudo config acl add table DUI_DHCP_GUARD DUI_DHCP_GUARD -p Ethernet0,",
+		"'ACL_RULE|DUI_DHCP_GUARD|V1_IN_Ethernet0' IN_PORTS 'Ethernet0' IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'DROP' PRIORITY '8500' VLAN_ID '4094'",
+		"'ACL_RULE|DUI_DHCP_GUARD|V1_IN_Ethernet124' IN_PORTS 'Ethernet124' IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'DROP' PRIORITY '8500' VLAN_ID '4094'",
+		"sudo sonic-db-cli CONFIG_DB hset 'FLEX_COUNTER_TABLE|ACL' FLEX_COUNTER_STATUS enable",
 		"'ACL_RULE|DUI_DHCP_GUARD|V1_S1' IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'FORWARD' PRIORITY '9000' SRC_IP '192.0.2.1/32' VLAN_ID '4094'",
 		"'ACL_RULE|DUI_DHCP_GUARD|V1_DROP' IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'DROP' PRIORITY '8000' VLAN_ID '4094'",
 		"sudo config acl add table DUI_IP_ACL L3 -p Ethernet0,",
@@ -87,7 +92,7 @@ func TestReplaySonicDHCPGuardAndACL(t *testing.T) {
 	if _, err := coll.Collect(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "DUI_DHCP_GUARD 2 of 2 rules active, DUI_IP_ACL 3 of 3 rules active") {
+	if !strings.Contains(buf.String(), "DUI_DHCP_GUARD 34 of 34 rules active, DUI_IP_ACL 3 of 3 rules active") {
 		t.Errorf("verdict not logged:\n%s", buf.String())
 	}
 	n := len(fr.Recorded())

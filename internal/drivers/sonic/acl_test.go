@@ -131,7 +131,10 @@ func TestACLClaimsAndCommandChecks(t *testing.T) {
 
 // The ECS's push with Rogue DHCP Server Detection on: six guards on VLANs
 // 1, 69 and 2. On a switch carrying those VLANs, one FORWARD per trusted
-// server and one DROP per VLAN; UniFi's VLAN 1 matches Vlan4094.
+// server, one counted DROP per port and one shared DROP per VLAN
+// (acl_count.go), in a table of the guard's own type; UniFi's VLAN 1 matches
+// Vlan4094. The capture predates the count, so ACL counter polling is
+// turned on too.
 func TestDHCPGuardFromTheECSPush(t *testing.T) {
 	r := newACLRig(t, nil)
 	if _, err := r.c.EnsureVLANs(context.Background(), []int{1, 2, 69}); err != nil {
@@ -149,26 +152,35 @@ func TestDHCPGuardFromTheECSPush(t *testing.T) {
 	drop := func(rule, vid string) string {
 		return hset(rule, "IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'DROP' PRIORITY '8000' VLAN_ID '"+vid+"'")
 	}
-	st := r.expectDevice("snooping on", d, []string{
-		"sudo config acl add table DUI_DHCP_GUARD L3 -p " + dx010Ports() + " -s ingress",
+	vlans := []struct{ uni, sw string }{{"1", "4094"}, {"2", "2"}, {"69", "69"}}
+	var counted, countedNames []string
+	for _, v := range vlans {
+		for _, p := range sortedNames(strings.Split(dx010Ports(), ",")) {
+			name := "V" + v.uni + "_IN_" + p
+			countedNames = append(countedNames, name)
+			counted = append(counted, hset(name, "IN_PORTS '"+p+"' IP_PROTOCOL '17' L4_DST_PORT '68' L4_SRC_PORT '67' PACKET_ACTION 'DROP' PRIORITY '8500' VLAN_ID '"+v.sw+"'"))
+		}
+	}
+	on1 := []string{
+		guardTypeWrite,
+		"sudo config acl add table DUI_DHCP_GUARD DUI_DHCP_GUARD -p " + dx010Ports() + " -s ingress",
 		fwd("V1_S1", "4094", "192.0.2.1"),
 		fwd("V2_S1", "2", "192.0.2.6"),
 		fwd("V2_S2", "2", "192.0.2.1"),
 		fwd("V2_S3", "2", "192.0.2.7"),
 		fwd("V69_S1", "69", "192.0.2.5"),
 		fwd("V69_S2", "69", "192.0.2.1"),
-		drop("V1_DROP", "4094"),
-		drop("V2_DROP", "2"),
-		drop("V69_DROP", "69"),
-		save,
-	})
+	}
+	on1 = append(on1, counted...)
+	on1 = append(on1, drop("V1_DROP", "4094"), drop("V2_DROP", "2"), drop("V69_DROP", "69"), flexEnable, save)
+	st := r.expectDevice("snooping on", d, on1)
 	if s := st.aclStatus[guardTable]; s != "Active" {
 		t.Errorf("table status %q", s)
 	}
-	if len(st.rulesOf(guardTable)) != 9 {
-		t.Errorf("read back %d rules, want 9", len(st.rulesOf(guardTable)))
+	if len(st.rulesOf(guardTable)) != 105 {
+		t.Errorf("read back %d rules, want 105 (6 FORWARDs, 3 x 32 counted DROPs, 3 DROPs)", len(st.rulesOf(guardTable)))
 	}
-	if !strings.Contains(r.log.String(), "acl: DUI_DHCP_GUARD 9 of 9 rules active; CRM ingress PORT tables 0 used, 3 free") {
+	if !strings.Contains(r.log.String(), "acl: DUI_DHCP_GUARD 105 of 105 rules active; CRM ingress PORT tables 0 used, 3 free") {
 		t.Errorf("the collect after the write logs orchagent's verdict and CRM's counters:\n%s", r.log.String())
 	}
 	if strings.Contains(r.log.String(), "not Active") {
@@ -177,10 +189,14 @@ func TestDHCPGuardFromTheECSPush(t *testing.T) {
 
 	// The site's setting off: the rules go, the DROPs first, then the table.
 	off := false
-	st = r.expectDevice("snooping off", devicemodel.DeviceDesired{DHCPSnooping: &off}, []string{
-		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V69_DROP'",
-		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V2_DROP'",
-		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V1_DROP'",
+	del := func(rule string) string {
+		return "sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|" + rule + "'"
+	}
+	off1 := []string{del("V69_DROP"), del("V2_DROP"), del("V1_DROP")}
+	for i := len(countedNames) - 1; i >= 0; i-- {
+		off1 = append(off1, del(countedNames[i]))
+	}
+	st = r.expectDevice("snooping off", devicemodel.DeviceDesired{DHCPSnooping: &off}, append(off1,
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V69_S2'",
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V69_S1'",
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V2_S3'",
@@ -188,8 +204,12 @@ func TestDHCPGuardFromTheECSPush(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V2_S1'",
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|V1_S1'",
 		"sudo config acl remove table DUI_DHCP_GUARD",
+		"sudo sonic-db-cli CONFIG_DB del 'ACL_TABLE_TYPE|DUI_DHCP_GUARD'",
 		save,
-	})
+	))
+	if len(st.gc.types) != 0 || st.gc.flexACL != "enable" {
+		t.Errorf("the guard's type must go with its table, polling stays on: types %v, polling %q", st.gc.types, st.gc.flexACL)
+	}
 	if len(st.aclTables) != 0 || len(st.aclRules) != 0 || len(st.aclStatus) != 0 {
 		t.Errorf("left behind: tables %v rules %v status %v", st.aclTables, st.aclRules, st.aclStatus)
 	}

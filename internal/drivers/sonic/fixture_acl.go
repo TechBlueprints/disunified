@@ -201,7 +201,8 @@ func (f *FixtureRunner) orchACL() error {
 	for k, v := range f.table("cfg_acl_table") {
 		name := strings.TrimPrefix(k, "ACL_TABLE|")
 		l2 := v["type"] == "L2" && strings.TrimSpace(f.OrchL2) != "" && f.OrchL2 != "0"
-		ok := (v["type"] == "L3" || l2) && (v["stage"] == "ingress" || v["stage"] == "egress")
+		custom := f.customType(v["type"]) != nil // a CONFIG_DB type (fixture_acl_count.go)
+		ok := (v["type"] == "L3" || l2 || custom) && (v["stage"] == "ingress" || v["stage"] == "egress")
 		for _, p := range strings.Split(v["ports@"], ",") {
 			if members[p] {
 				ok = false // "Bind table to LAG member ... is not allowed"
@@ -223,10 +224,13 @@ func (f *FixtureRunner) orchACL() error {
 		status := "Inactive"
 		if typ[tbl] == "L2" && validL2Rule(v) || typ[tbl] == "L3" && validL3Rule(v) {
 			status = "Active"
+		} else if m := f.customType(typ[tbl]); m != nil && f.validCustomRule(v, m) {
+			status = "Active"
 		}
 		out["ACL_RULE_TABLE|"+name] = map[string]string{"status": status}
 	}
 	f.setTable("state_acl", out)
+	f.aclCounters(out)
 	return nil
 }
 

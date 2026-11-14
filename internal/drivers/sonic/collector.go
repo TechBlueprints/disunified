@@ -380,6 +380,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	for i := range ports {
 		readBackPortFeat(c.state, &ports[i].Port, macsBy)
 	}
+	rogueDHCPDrops(c.state, ports) // DHCP guarding's count per port (acl_count.go)
 	c.sshFrom, c.sshTo = "", ""
 	if f := strings.Fields(sec["ssh"]); len(f) == 2 {
 		c.sshFrom, c.sshTo = f[0], f[1]
