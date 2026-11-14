@@ -2195,7 +2195,7 @@ decrements it without a matching member is turning snooping off on a VLAN
 where the port is a router-port-only member of exactly as many groups as the
 count is high -- theoretical, untried, and the pending VLAN-member delete
 would still take the port's re-added membership away. On the DX010 the
-port was still stranded at 17:30 UTC, awaiting a reboot.
+port stayed stranded until the reboot at about 17:54 UTC.
 
 #### The fix: sonic-swss 0004
 
@@ -2260,8 +2260,66 @@ records the port as stranded, and the wait clears the refusal unless the count
 leaked. `bridge_port_test.go` runs on the capture above: the move's order
 (statics, delete, wait, add), the same commands without the wait stranding the
 port, no wait on a patched orchagent, a leaked count failing the wait, and the
-stranded cage left alone. The driver's wait is fixture-tested only; the live
-reproduction waits for the switch.
+stranded cage left alone.
+
+#### Live on the DX010 (2026-11-14, 18:00-18:04 UTC)
+
+The image without 0004, the bridge at 0.0.0+20261114.1c1cd16 (this change),
+an empty test cage (Ethernet48), changed through the controller's REST as the
+UI saves it. The record is
+`sonic-igmp-202511.20261106-f2e25f54c/bridge-port-live-20261114.txt`.
+
+- **The bridge logged the missing patch at start** ("orchagent lacks the image
+  kit's sonic-swss 0004 ...").
+- **A native move on a down cage, Default to a VLAN-only network and back.**
+  The driver's batch was the seven static deletes, `config vlan member del
+  4094`, the wait, `config vlan member add -u 4000`, and the save. orchagent
+  removed the bridge port 55 ms after the VLAN member. The add made a new one,
+  `ADMIN_STATE true` in ASIC_DB. The way back ran the wait too, and
+  `applyIGMP` put the seven rows back. No `removeBridgePort` refusal since
+  the boot: the only two `removeBridgePort` lines are these two removals.
+  A down port has no L2MC members, so this run proves the driver's path, not
+  the race.
+- **The trigger, reproduced.** `bcmcmd "port ce12 lb=mac"` brought the cage
+  up with no cable. RSTP made it a Backup port, discarding, and l2mcd added
+  its seven static members (count 7). **4 s later l2mcd learned it as a router
+  port anyway**: the trapped queries reach l2mcd whatever the port's STP
+  state. With `lb=none` (link down) the sequence of 16:12 repeated:
+  - four "mrouter port is same as group member port" with no decrement;
+  - 224.0.1.60, a group the port had only as a router port, decremented;
+  - the router-port removal took the kept members uncounted;
+  - three normal deletes after it.
+
+  orchagent's count stopped at **3** with no L2MC group member on the port's
+  bridge port in ASIC_DB: the leak's signature. The bridge port itself stays
+  up and the port works. The leak waits for the port's next removal from its
+  last VLAN, and that is the one change not made: it would strand the cage
+  until a swss restart.
+- **What a cable-less test cannot show:**
+  - **The race on a port with programmed members that is not a router port.**
+    A looped cage becomes a router port in seconds, sooner than any controller
+    push reaches it.
+  - **The driver failing its wait on a leaked count, live.** Fixture-tested
+    only: doing it would strand the cage.
+
+  Both need a host on a cabled port, or the patched image (on it the leak
+  cannot happen).
+- **Left on the switch:** cage 13's leaked count (3) lives in orchagent's
+  memory until the next swss restart or reboot. Do not move cage 13 to
+  another VLAN, make it routed or aggregate it before then: the move would
+  strand the cage and the driver's wait would fail the batch. Everything
+  else was restored and checked: the loop off (`ps ce12` shows no
+  loopback), Vlan4094 untagged with its seven static rows, and the
+  controller's 32 port overrides equal to the pre-test copy.
+
+**Installing 0004 (Clint's step).** Build an image from the kit with the
+series as it stands (`build.sh`, 3-6 hours on the build host), then on the
+DX010: `sonic-upgrade.sh arm <image.bin> <sha256>`, then `sudo reboot`, then
+`sonic-upgrade.sh confirm` once it is proven. The dead-man rolls back a
+failed boot. The bridge's `.deb` comes back through rc.local. After the boot,
+the start log no longer says the patch is missing, and the plan stops
+waiting. The proof is the same loop-and-drop on a test cage: the count back
+to 0, then a native move with no wait and a new bridge port, admin `true`.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 

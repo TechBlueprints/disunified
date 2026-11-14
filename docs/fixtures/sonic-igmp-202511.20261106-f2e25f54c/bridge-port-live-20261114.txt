@@ -1,0 +1,87 @@
+# The DX010 on igmp-202511.20261106-f2e25f54c (no sonic-swss 0004), bridge build 0.0.0+20261114.1c1cd16,
+# 2026-11-14 (syslog times MST = UTC-7). docs/drivers/sonic.md 8.15. Hostname scrubbed.
+@@@ move-down-cage-to-vlan4000 (controller push; the driver's batch, then orchagent)
+ sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet48' 
+ sudo config vlan member del 4094 Ethernet48 
+ python3 -c 'exec("import sys, time\nfrom swsscommon.swsscommon import SonicV2Connector\nport, limit = sys.argv[1], float(sys.argv[2])\ndb = SonicV2Connector(use_unix_socket_path=True)\ndb.connect(db.COUNTERS_DB)\ndb.connect(db.ASIC_DB)\noid = db.get(db.COUNTERS_DB, \"COUNTERS_PORT_NAME_MAP\", port) or db.get(db.COUNTERS_DB, \"COUNTERS_LAG_NAME_MAP\", port)\nif not oid:\n    sys.exit(0)\nend = time.time() + limit\nwhile True:\n    left = [k for k in (db.keys(db.ASIC_DB, \"ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*\") or [])\n            if db.get(db.ASIC_DB, k, \"SAI_BRIDGE_PORT_ATTR_PORT_ID\") == oid]\n    if not left:\n        sys.exit(0)\n    if time.time() \u003e end:\n        print(\"%s: orchagent has not removed its bridge port in %d s (it refuses while L2MC members still name the port, docs/drivers/sonic.md 8.15)
+ sudo config vlan member add -u 4000 Ethernet48 
+ sudo config save -y
+11:00:29.102312 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet48 from VLAN Vlan4094 lid:ffe vmid:270000000005f7
+11:00:29.105015 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet48
+11:00:29.157077 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+11:00:30.332723 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+11:00:30.337998 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet48 to VLAN Vlan4000 vid:4000 pid1000000000015
+11:00:30.341886 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4000 to port: Ethernet48
+@@@ asic-after-move
+ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000007c2 {'SAI_BRIDGE_PORT_ATTR_ADMIN_STATE': 'true', 'SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE': 'SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW', 'SAI_BRIDGE_PORT_ATTR_PORT_ID': 'oid:0x1000000000015', 'SAI_BRIDGE_PORT_ATTR_TYPE': 'SAI_BRIDGE_PORT_TYPE_PORT'}
+|      4000 |               | Ethernet48  | untagged       | disabled    |                       |
+@@@ loop-then-link-down (bcmcmd port ce12 lb=mac 18:02:48Z, lb=none 18:03:40Z)
+drivshell>
+11:02:02.132321 host-1 INFO disunified[2334]: 2026/11/14 11:02:02.131551 sonic apply (1 ports): sudo config vlan member del 4000 Ethernet48 ; python3 -c 'exec("import sys, time\nfrom swsscommon.swsscommon imp
+11:02:03.156720 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet48 from VLAN Vlan4000 lid:fa0 vmid:270000000007c3
+11:02:03.163165 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet48
+11:02:03.237328 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+11:02:04.626842 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+11:02:04.633022 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet48 to VLAN Vlan4094 vid:4094 pid1000000000015
+11:02:04.640857 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4094 to port: Ethernet48
+11:02:49.097561 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet48 oper state set from down to up
+11:02:49.108121 host-1 NOTICE swss#orchagent: :- publish: EVENT_PUBLISHED: {"sonic-events-swss:if-state":{"ifname":"Ethernet48","status":"up","timestamp":"2026-11-14T11:02:49.107673Z"}}
+11:02:49.113993 host-1 NOTICE swss#orchagent: :- handleNotification: Ethernet48 oper speed is 100000
+11:02:49.176097 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.129,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007a0
+11:02:49.182473 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 1 vlan Vlan4094 l2mc_count 11
+11:02:49.182473 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.1,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007a2
+11:02:49.188225 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 2 vlan Vlan4094 l2mc_count 12
+11:02:49.188933 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.35,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007a6
+11:02:49.191973 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 3 vlan Vlan4094 l2mc_count 13
+11:02:49.191973 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.41,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007a8
+11:02:49.195176 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 4 vlan Vlan4094 l2mc_count 14
+11:02:49.195569 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.255.255.250,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007ae
+11:02:49.197593 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 5 vlan Vlan4094 l2mc_count 15
+11:02:49.197593 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.255.255.253,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007b0
+11:02:49.200035 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 6 vlan Vlan4094 l2mc_count 16
+11:02:49.201148 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.22,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007a4
+11:02:49.203826 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: port Ethernet48 l2mc_count 7 vlan Vlan4094 l2mc_count 17
+11:02:53.416796 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,233.89.188.1,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:310000000007cf
+11:02:53.419597 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:310000000007cf rv:0
+11:02:53.419597 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,224.0.1.60,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:310000000007bb
+11:02:53.422267 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:310000000007bb rv:0
+11:02:53.422267 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,239.254.127.63,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:310000000007ac
+11:02:53.424817 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:310000000007ac rv:0
+11:02:53.424817 host-1 NOTICE swss#orchagent: :- doL2mcMrouterTask: doL2mcMrouterTask: Mrouter port Ethernet48 added to vlan Vlan4094
+11:03:40.622119 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet48 oper state set from up to down
+11:03:40.636834 host-1 NOTICE swss#orchagent: :- publish: EVENT_PUBLISHED: {"sonic-events-swss:if-state":{"ifname":"Ethernet48","status":"down","timestamp":"2026-11-14T11:03:40.635478Z"}}
+11:03:40.647231 host-1 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet48 error state set from 0x0-> 0x1
+11:03:40.647231 host-1 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet48 oper error event: mac_local_fault occurred
+11:03:40.653039 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.1, 4094)
+11:03:40.653039 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.22, 4094)
+11:03:40.653039 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.35, 4094)
+11:03:40.654260 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.41, 4094)
+11:03:40.654967 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.60, 4094)
+11:03:40.655218 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,224.0.1.60,Vlan4094) Delete l2mc group member Ethernet48 from l2mc_gid:310000000007bb
+11:03:40.657345 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: port Ethernet48 l2mc_count 6 vlan Vlan4094 l2mc_count 16
+11:03:40.671725 host-1 NOTICE swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: Mrouter port Ethernet48 deleted from vlan Vlan4094
+11:03:40.671725 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.1,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007a2
+11:03:40.675275 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,233.89.188.1,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007cf
+11:03:40.678332 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.22,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007a4
+11:03:40.681394 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.35,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007a6
+11:03:40.683915 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.41,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007a8
+11:03:40.687310 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,239.254.127.63,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007ac
+11:03:40.691308 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.129,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007a0
+11:03:40.691408 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,239.255.255.250,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007ae
+11:03:40.691470 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,239.255.255.253,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007b0
+11:03:40.698469 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,224.0.1.129,Vlan4094) Delete l2mc group member Ethernet48 from l2mc_gid:310000000007a0
+11:03:40.700443 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: port Ethernet48 l2mc_count 5 vlan Vlan4094 l2mc_count 15
+11:03:40.700443 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,239.255.255.250,Vlan4094) Delete l2mc group member Ethernet48 from l2mc_gid:310000000007ae
+11:03:40.702190 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: port Ethernet48 l2mc_count 4 vlan Vlan4094 l2mc_count 14
+11:03:40.702834 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,239.255.255.253,Vlan4094) Delete l2mc group member Ethernet48 from l2mc_gid:310000000007b0
+11:03:40.704910 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: port Ethernet48 l2mc_count 3 vlan Vlan4094 l2mc_count 13
+@@@ after (bridge port, L2MC members on it, ps, VLAN rows, static rows)
+bridge port ['oid:0x3a0000000007d1'] ['true']
+l2mc members 9 on Ethernet48: 0
+ps ce12
+
+      ce12( 84)  down   4  100G  FD   SW  No   Forward          None   FA    KR4  1522    No      
+1
+7
+2858
+2856
