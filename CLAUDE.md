@@ -50,7 +50,10 @@ time zone, hostname and locate (§7.5) are fixture-tested only; breakout ran eve
 UniFi's DHCP guarding (Rogue DHCP Server Detection) and switch IP ACL rules
 are the driver's own L3 ACL tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`; built
 2026-11-01 from the ECS's and the DX010's captured pushes and verified live
-on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`);
+on the DX010 the same evening, §11.7.6-11.7.7; never `config acl update`;
+since 2026-11-14 the guard counts what it drops per port, a counted
+`IN_PORTS` rule each in a table type of its own, for the rogue-DHCP
+anomaly bit, verified by hand, §11.7.9);
 MAC ACL rules are `DUI_MAC_ACL`, an `L2` table that needs the image kit's
 sonic-swss 0003 (orchagent's outer-MAC match; claimed only when Start finds
 it): written, Active in the chip and removed live on the DX010 2026-11-06;
