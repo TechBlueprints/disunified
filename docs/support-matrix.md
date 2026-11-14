@@ -408,7 +408,7 @@ logged.
 | The fixed l2mcd (0008-0010) in an image: on the DX010 it is a binary installed by hand into the running l2mcd container (2026-11-05: Ethernet0 learned as the router port, the gateway the querier, group queries from the VLAN's address, no per-packet syslog), lost on a container recreate | the next image build with the series' l2mcd, installed, and the same checks after a reboot (`docs/drivers/sonic.md` §8.14) |
 | The switch as querier from the VLAN's address (with no other querier on the VLAN) | a VLAN without a router's queries, a general query captured from the switch: never seen live, only in the harness (`query-src-*`) |
 | A querier source address on a VLAN where the switch has none (0.0.0.0) | the querier-address field of §8.11 |
-| **A port leaving its last VLAN on the image without sonic-swss 0004** (`drivers/sonic.md` §8.15): a native-VLAN move on 2026-11-14 stranded a test cage (bridge port refused, admin down, reused: no learning until a swss restart) after its L2MC count had leaked when the port, a group member and a router port at once, lost link; the uplink is exposed the same way. The fix, `sonic-swss 0004`, passes its mock test (`L2mcOrchTest`, failing without it) in the build slave; the driver's wait for the bridge port on an unpatched image and its stranded-port report are fixture-tested (`bridge_port_test.go`, on the stranded capture) | an image built with 0004 installed, then on an oper-up test cage that is a router port (a loop) and in the reserved groups: link down, a native move and back through the UI, `asic_bridge_port` admin true throughout, no `removeBridgePort` line in syslog; and the driver's wait seen on the current image on the same cage |
+| **A port leaving its last VLAN on the image without sonic-swss 0004** (`drivers/sonic.md` §8.15): a native-VLAN move on 2026-11-14 stranded a test cage (bridge port refused, admin down, reused: no learning until a swss restart) after its L2MC count had leaked when the port, a group member and a router port at once, lost link; the uplink is exposed the same way. The fix, `sonic-swss 0004`, passes its mock test (`L2mcOrchTest`, failing without it) in the build slave; the driver's stranded-port report is fixture-tested (`bridge_port_test.go`, on the stranded capture). **Live 2026-11-14 on the unpatched image:** the driver's wait in a native move and back on a down cage (new bridge port, admin true, no refusal), and the leak itself reproduced on a MAC-looped cage (router port within 4 s, link down, orchagent's count left at 3 with no member). Not live: the race on a port with programmed members that is not a router port, and the wait failing on a leak (it would strand the cage) | a host cabled to a test port for the race; an image built with 0004 installed, then the same loop and link drop on a test cage with the count back to 0, and a native move with no wait |
 | Unknown multicast to the router ports only on a Tomahawk-1 | a SAI that accepts the wildcard L2MC entry or `SAI_VLAN_ATTR_UNKNOWN_IPV4_MCAST_OUTPUT_GROUP_ID`; the legacy-TH 13.2.1.x train does not |
 
 ### Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN, router ports (2026-11-07)
@@ -614,6 +614,43 @@ placement in the parent's record), and a child on a port that is up with
 its own LLDP neighbour (the child is then reported in the MAC table only;
 whether the controller places by that alone next to another neighbour is
 the open question).
+
+## `breakout` — a split cage as its own switch (the lane switch)
+
+A split cage of a bridged switch presented as a five-port switch of its own
+(`USFXG`: ports 1-4 the lanes, 5 the cable), reading and writing through its
+parent driver ([`drivers/breakout.md`](drivers/breakout.md)). Built
+2026-11-14 with `sonic` as the parent. **Nothing of it has run live**; the
+controller side it relies on was proven with the stub (above).
+
+### Verified (fixtures and replay)
+
+| What | How |
+|---|---|
+| The child's snapshot from the DX010's real 4x25G capture (lanes with their aliases, supported speeds and media, port 5 the uplink with the parent as its neighbour), and at 2x50G after a re-split through the parent (two lanes, two empty slots) | `internal/drivers/breakout/breakout_test.go`; `internal/drivers/sonic/lanes_test.go` |
+| The child's inform held to the real switches' (wire contract, every-port types, value shapes) | `internal/device/contract_breakout_test.go`, the `breakout` row of `contractPayloads` |
+| The controller's Flex XG aggregate push replayed through a child loop onto the parent: `PortChannel201` on lanes 2-4, the FEC note, both loops' next cycle writing nothing; the join removing it before the breakout; the first-push hold | `internal/informloop/replay_breakout_test.go` |
+| The parent's plan on an owned cage: only the breakout and the admin state; a lane speed the child forced not undone; an unowned lane aggregate left alone | `lanes_test.go` |
+
+### Built, untested live — PRs welcome
+
+| Gap | What the PR needs |
+|---|---|
+| Adoption and placement of a real lane switch on a `sonic` parent | the steps of [`drivers/breakout.md`](drivers/breakout.md) §15 on a DX010 (or any SONiC switch with `platform.json` breakout modes): the child's record placed under the cage (`uplink_remote_port`), the parent's `downlink_lldp_macs`, both records scrubbed into `docs/fixtures/controller-<ver>/` |
+| A lane aggregate to a real LACP partner | a breakout DAC to a bonded host: `teamdctl PortChannel<100*cage+1> state` with the partner, the child's `lacp_state`/`partner_system_id` in its stored record, traffic on the members; the push and the reply log scrubbed into fixtures |
+| A join with an aggregate present while the DUI ACL tables are bound | the join's batch from the journal (`portchannel del` of a bound PortChannel), the tables `Active` after (§14.5) |
+| A forced lane speed (one lane at 10G beside 25G lanes) | the lane up at 10G with its neighbour, the other lanes unaffected; whether the Tomahawk accepts mixed lane speeds in one cage is not known |
+| The stored-speed quirk after a re-split (§14.1) | the child's `rest/device` `port_overrides` after the aggregate push (the speed keys, captured), then a rule that clears a lane's forced speed when the mode changes |
+| The disconnect seen once after the aggregate push (§14.2) | the child's record across the push on a real parent: connected throughout, or the same `MISSED_INFORM` with the reply log showing the informs answered |
+
+### Not built — PRs welcome
+
+| Gap | What the PR needs |
+|---|---|
+| The `arista-eos` parent | [`drivers/breakout.md`](drivers/breakout.md) §7b against `docs/fixtures/eos-4.26.14M/` (cage 50 split there): `LaneProvider` on the Collector, the lane scope in `plan()`, tests as §10 lists, then §11b live |
+| STP port settings, isolation, port security, egress limit, LLDP-MED on the lane switch (today the cage's, on every lane) | the switch-wide computations taking both loops' intent (`l2SetPorts` in `sonic/l2.go`, `portFeatures`); the claims then on the child |
+| A lane aggregate's own STP settings when it leaves lane 1 out (§14.4) | `l2SetPorts` naming every PortChannel a cage's interfaces are in, a test on the captured 2-4 aggregate |
+| A lane switch that appears by itself on a split (§12) | the loop adding and removing devices at run time, and the bridge forgetting a retired child |
 
 ---
 

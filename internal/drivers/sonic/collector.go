@@ -147,6 +147,19 @@ type Collector struct {
 	// saw it (collect.py's ssh section): the bridge's address and the
 	// switch address it dialled; "" when not reported.
 	sshFrom, sshTo string
+
+	// Lane switches (lanes.go, docs/drivers/breakout.md): each split cage's
+	// lanes as of the last collect, the lane switches attached to cages,
+	// the cages the parent's own config has disabled, and the switch's own
+	// LLDP chassis id (what a lane switch sees as its uplink's neighbour).
+	lanes     map[int][]cagePort
+	children  map[int]devicemodel.Attachment
+	cageDown  map[int]bool
+	chassisID string
+	// applySem serialises the writes and the collect: a lane switch's apply
+	// runs from its own loop, beside this device's (lockApply).
+	applySem  chan struct{}
+	applyOnce sync.Once
 }
 
 // NewCollector wraps a runner.
@@ -265,6 +278,14 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 
 // Collect runs collect.py and builds the snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
+	// Not while a write runs: a lane switch's apply comes from its own loop,
+	// and a collect read mid-batch would become the state the next plan
+	// diffs against.
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sonic: collect: %w", err)
+	}
+	defer unlock()
 	out, err := c.run(ctx, collectCommand, collectScript)
 	if err != nil {
 		return nil, fmt.Errorf("sonic: collect: %w", err)
@@ -350,12 +371,14 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		byIfname[name] = idx
 	}
 	applPort, applLAG := db["appl_port"].byName(":"), db["appl_lag"].byName(":")
-	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN, func(port string) bool {
+	linkDown := func(port string) bool {
 		if f, ok := applLAG[port]; ok {
 			return f["oper_status"] != "up"
 		}
 		return applPort[port]["oper_status"] != "up"
-	})
+	}
+	macs := buildMACTable(db["fdb"], byIfname, c.NativeVLAN, linkDown)
+	laneMACs(db, ports, c.NativeVLAN, linkDown)
 	pi := map[int]int{}
 	for i := range ports {
 		pi[ports[i].Index] = i
@@ -401,11 +424,24 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		c.aliases[p.Index] = p.alias
 		c.ifnames[p.Index] = append([]string(nil), p.Interfaces...)
 	}
+	c.lanes = map[int][]cagePort{}
+	for _, p := range ports {
+		if len(p.lanes) > 0 {
+			rogueDHCPDrops(c.state, p.lanes)
+			c.lanes[p.Index] = p.lanes
+		}
+	}
+	c.chassisID = strings.ToLower(db["lldp_loc"].first()["lldp_loc_chassis_id"])
+	children := make(map[int]devicemodel.Attachment, len(c.children))
+	for k, v := range c.children {
+		children[k] = v
+	}
 	down := sortedKeysOf(c.state.bridgeDown)
 	c.mu.Unlock()
 	for _, iface := range down {
 		c.warnOnce("bridge down "+iface, "sonic: %s's bridge port is held admin down in the chip: orchagent refused to remove it (L2MC references; the kit's sonic-swss 0004 fixes the cause, docs/drivers/sonic.md §8.15), and the port learns nothing; a swss restart or a reboot clears it", iface)
 	}
+	macs = reportChildren(ports, macs, children, now)
 
 	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, MACTable: macs, VLANs: vlanIDs(db["cfg_vlan"], c.NativeVLAN)}
 	for _, p := range ports {
@@ -438,7 +474,7 @@ func dialAddrs(host string) []string {
 // out, which is its uplink when the management address is in-band); else 0.
 func uplinkHint(snap *devicemodel.Snapshot) int {
 	for _, p := range snap.Ports {
-		if p.Up && p.Neighbor != nil && p.Neighbor.IsBridge {
+		if p.Up && p.Neighbor != nil && p.Neighbor.IsBridge && !p.Neighbor.Child {
 			return p.Index
 		}
 	}

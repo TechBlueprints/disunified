@@ -638,6 +638,11 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     `sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt`.
   - **Do not aggregate the uplink on an image without 0004**: taking
     Ethernet0 out of Vlan4094 would strand the only way in.
+  - **A MAC-looped test cage is a router port within seconds** (live
+    2026-11-14: RSTP Backup/discarding does not stop the trapped queries),
+    so on an unpatched image every loop-and-drop leaks its count: never
+    move such a cage out of its last VLAN before a swss restart or reboot.
+    The race with members but no router port needs a cabled host.
   - The orch tests run in the build host's bookworm slave
     (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
     (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
@@ -927,3 +932,21 @@ was restarted.
     mode. Only a swss restart or a reboot clears it.
   - **macOS has no `AF_PACKET`**: `testdata/l2d_maclock.py` sets the constant
     before l2d opens its fake sockets.
+- **The lane switch's parent (`lanes.go`, `docs/drivers/breakout.md` §0;
+  built 2026-11-14, fixture- and replay-tested, never live).** A split
+  cage keeps its lanes as ports of their own (`cagePort.lanes`); the plan
+  has a lane scope (`planFor(cage, ...)`: ports are the lanes, aggregates
+  `PortChannel<100*cage+lag>`, mirrors `dui<100*cage+lane>`) and an owned
+  cage (split, a child attached) keeps only the breakout and the admin
+  state in the cage plan -- a cage speed the mode runs writes nothing, the
+  module rule keeps the mode only, a join dissolves the child's aggregates
+  and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
+  (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
+  PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
+  `ApplyLanes`, `EnsureVLANs` and `ApplyDevice`. Facts from the capture
+  (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
+  `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
+  (so the Flex XG aggregate push's `cl-91` is refused); the controller's
+  aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
+  STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
+  by cage; a lane aggregate without lane 1 is not named to l2d (open).

@@ -325,7 +325,19 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			return
 		}
 	}
+	if target == nil && pl.owned[p.Index] {
+		// The mode runs the speed: on a cage a lane switch owns, the lane
+		// speeds are the lane switch's, so the cage's speed only ever picks
+		// the mode (split, re-split, join).
+		return
+	}
 	if target != nil {
+		if pl.owned[p.Index] {
+			// A lane switch's aggregates and mirrors go with its lanes; the
+			// new lanes (or the joined cage) take the cage's intent.
+			pl.dissolveLanes(d.Index, p.Index, write)
+			delete(pl.owned, p.Index)
+		}
 		if why := pl.breakoutBlocked(d, p.Index); why != "" {
 			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want.speed, target.name, why)
 			return

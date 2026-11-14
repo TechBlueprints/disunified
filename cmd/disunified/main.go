@@ -42,6 +42,7 @@ import (
 	_ "github.com/TechBlueprints/disunified/internal/drivers/apc-pdu"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/apc-ups"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/arista-eos"
+	_ "github.com/TechBlueprints/disunified/internal/drivers/breakout"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/podman"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 	_ "github.com/TechBlueprints/disunified/internal/drivers/sonic"
@@ -214,6 +215,8 @@ type options struct {
 	stateDir                                   string
 	name                                       string // the config entry's name; "" from flags
 	children                                   []informloop.Child
+	laneSwitches                               []config.LaneSwitch // lane switches on this device's cages (attached at start)
+	laneDriver                                 bool                // a lane switch: no transport, opened through its parent
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
@@ -267,7 +270,9 @@ func configOptions(f *config.File, sw config.Device) options {
 		recordMaxSize: sw.ReplyLog.Bytes(), recordKeep: sw.ReplyLog.Keep,
 		unifiURL: f.Controller.APIURL, unifiSite: f.Controller.Site, unifiKey: f.Controller.APIKey(), provision: true,
 		logger: logger, stateDir: filepath.Join(f.StateDir, "state", sw.Name), name: sw.Name,
-		children: childrenOf(sw.Children),
+		children:     childrenOf(sw.Children),
+		laneSwitches: f.LaneSwitchesOf(sw.Name),
+		laneDriver:   sw.Driver == config.LaneDriver,
 	}
 }
 
@@ -292,6 +297,37 @@ func childrenOf(cs []config.Child) []informloop.Child {
 		out = append(out, informloop.Child{Port: c.Port, MAC: c.MAC, Name: c.Name, Report: c.Report})
 	}
 	return out
+}
+
+// attachLaneSwitches declares the config's lane switches on their parent's
+// cages (docs/drivers/breakout.md): each one's MAC is its options.mac or
+// derived from the parent's, and the lane switch reads it back from the
+// parent, so the two never disagree.
+func attachLaneSwitches(log *log.Logger, sw devicemodel.Device, snap *devicemodel.Snapshot, ls []config.LaneSwitch) {
+	if len(ls) == 0 {
+		return
+	}
+	lp, ok := sw.(devicemodel.LaneProvider)
+	if !ok {
+		log.Printf("lane switches %v: this driver cannot present a split cage as a lane switch; not attached", ls)
+		return
+	}
+	for _, l := range ls {
+		mac := l.MAC
+		if mac == "" {
+			m, err := devicemodel.LaneSwitchMAC(snap.System.MAC, l.Cage)
+			if err != nil {
+				log.Printf("lane switch %s on port %d: %v; not attached", l.Name, l.Cage, err)
+				continue
+			}
+			mac = m
+		}
+		if err := lp.AttachLaneSwitch(l.Cage, devicemodel.Attachment{MAC: mac, Name: l.Name}); err != nil {
+			log.Printf("lane switch %s on port %d: %v; not attached", l.Name, l.Cage, err)
+			continue
+		}
+		log.Printf("lane switch %s attached to port %d as %s (reported in its MAC table and as its LLDP neighbour while the cage is split)", l.Name, l.Cage, mac)
+	}
 }
 
 // openAndStart opens a driver and takes its first snapshot, closing the
@@ -342,7 +378,7 @@ func runOne(ctx context.Context, o options) error {
 		sw   devicemodel.Device
 		snap *devicemodel.Snapshot
 	)
-	if o.deviceURL != "" || o.deviceSSH != "" {
+	if o.deviceURL != "" || o.deviceSSH != "" || o.laneDriver {
 		if o.driver == "" {
 			return errors.New("no driver named: set -driver / DUI_DRIVER, or driver: in the config file (see -list-drivers)")
 		}
@@ -400,6 +436,14 @@ func runOne(ctx context.Context, o options) error {
 		}
 		defer sw.Close()
 		log.Printf("switch: %s %s serial %s, %s, %d ports", snap.System.Vendor, snap.System.Model, snap.System.Serial, snap.System.Version, len(snap.Ports))
+		// Lane switches on this device's cages are attached before its loop
+		// starts, so its first apply already leaves their lanes to them; a
+		// lane switch finds this device by its name.
+		attachLaneSwitches(log, sw, snap, o.laneSwitches)
+		if o.name != "" && !o.collectOnce {
+			devicemodel.RegisterOpened(o.name, sw)
+			defer devicemodel.UnregisterOpened(o.name, sw)
+		}
 	}
 
 	if o.collectOnce {

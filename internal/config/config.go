@@ -95,6 +95,86 @@ type Device struct {
 	Children []Child `yaml:"children"`
 }
 
+// LaneDriver is the driver of a lane switch (docs/drivers/breakout.md): a
+// split cage of another entry presented as a device of its own. It has no
+// transport (it reads and writes through its parent, options.parent, at
+// the parent's port options.cage) and claims the Flex XG unless a model is
+// named.
+const (
+	LaneDriver = "breakout"
+	LaneModel  = "USFXG"
+)
+
+// LaneSwitch is a lane switch entry as its parent sees it.
+type LaneSwitch struct {
+	Name string // the lane switch's config name
+	Cage int    // the parent's port index of the cage
+	MAC  string // options.mac, lower-case colon form; "" = derived from the parent's
+}
+
+// LaneSwitchesOf lists the lane switches whose parent is the entry named
+// parent. Load has checked them.
+func (f *File) LaneSwitchesOf(parent string) []LaneSwitch {
+	var out []LaneSwitch
+	for _, d := range f.Devices {
+		if d.Driver != LaneDriver || strings.TrimSpace(d.Options["parent"]) != parent {
+			continue
+		}
+		cage, _ := strconv.Atoi(strings.TrimSpace(d.Options["cage"]))
+		out = append(out, LaneSwitch{Name: d.Name, Cage: cage, MAC: d.Options["mac"]})
+	}
+	return out
+}
+
+// checkLaneSwitches holds lane-switch entries to their rules: a parent
+// that is another entry of this file and not a lane switch itself, a cage
+// index, at most one lane switch per cage, a MAC if one is given.
+func checkLaneSwitches(path string, f *File) error {
+	byName := map[string]*Device{}
+	for i := range f.Devices {
+		byName[f.Devices[i].Name] = &f.Devices[i]
+	}
+	cages := map[string]string{}
+	for i := range f.Devices {
+		d := &f.Devices[i]
+		if d.Driver != LaneDriver {
+			continue
+		}
+		parent := strings.TrimSpace(d.Options["parent"])
+		p, ok := byName[parent]
+		switch {
+		case parent == "":
+			return fmt.Errorf("%s: device %q: driver %s needs options.parent, the name of the entry whose cage it is", path, d.Name, LaneDriver)
+		case !ok:
+			return fmt.Errorf("%s: device %q: options.parent %q is not an entry of this file (a lane switch runs in its parent's process, from the same file)", path, d.Name, parent)
+		case p.Driver == LaneDriver:
+			return fmt.Errorf("%s: device %q: options.parent %q is a lane switch itself", path, d.Name, parent)
+		}
+		cage, err := strconv.Atoi(strings.TrimSpace(d.Options["cage"]))
+		if err != nil || cage < 1 || cage > 99 {
+			return fmt.Errorf("%s: device %q: options.cage %q must be the parent's port index of the cage, 1..99", path, d.Name, d.Options["cage"])
+		}
+		key := parent + "|" + strconv.Itoa(cage)
+		if other, dup := cages[key]; dup {
+			return fmt.Errorf("%s: device %q: cage %d of %s already has a lane switch (%s)", path, d.Name, cage, parent, other)
+		}
+		cages[key] = d.Name
+		if m := strings.TrimSpace(d.Options["mac"]); m != "" {
+			hw, err := net.ParseMAC(m)
+			if err != nil || len(hw) != 6 {
+				return fmt.Errorf("%s: device %q: options.mac %q is not a 6-byte MAC", path, d.Name, m)
+			}
+			d.Options["mac"] = hw.String()
+		}
+		for _, c := range p.Children {
+			if c.Port == cage {
+				return fmt.Errorf("%s: device %q: %s already declares a child on port %d (children:); a lane switch reports itself there", path, d.Name, parent, cage)
+			}
+		}
+	}
+	return nil
+}
+
 // Child is one device reported on a port (see Device.Children).
 type Child struct {
 	Port int    `yaml:"port"` // front-panel port index
@@ -243,10 +323,17 @@ func Load(path string) (*File, error) {
 		if s.Driver == "" {
 			return nil, fmt.Errorf("%s: device %q: driver is required", path, s.Name)
 		}
-		if s.URL == "" && s.SSH == "" {
+		lane := s.Driver == LaneDriver
+		if s.URL == "" && s.SSH == "" && !lane {
 			return nil, fmt.Errorf("%s: device %q: url or ssh is required", path, s.Name)
 		}
-		if s.Model == "" {
+		if lane && (s.URL != "" || s.SSH != "") {
+			return nil, fmt.Errorf("%s: device %q: driver %s has no transport of its own (it goes through options.parent); remove url/ssh", path, s.Name, LaneDriver)
+		}
+		switch {
+		case s.Model == "" && lane:
+			s.Model = LaneModel
+		case s.Model == "":
 			s.Model = "auto"
 		}
 		if s.Firmware != "" && !device.VersionFits(s.Firmware) {
@@ -309,6 +396,9 @@ func Load(path string) (*File, error) {
 		default:
 			return nil, fmt.Errorf("%s: device %q: auth must be \"none\" or unset, got %q", path, s.Name, s.Auth)
 		}
+	}
+	if err := checkLaneSwitches(path, &f); err != nil {
+		return nil, err
 	}
 	return &f, nil
 }

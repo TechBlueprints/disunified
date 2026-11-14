@@ -354,6 +354,7 @@ var contractPayloads = []contractPayload{
 		m, _ := sonicCapturePayload(t, "sonic-202505.1238526-ff3c0c9f6/collect-l2-running.txt", "USWF07D")
 		return m
 	}},
+	{"breakout", false, buildBreakoutContractPayload},
 	{"apc-pdu", true, buildPDUContractPayload},
 	{"apc-ups", true, buildUPSContractPayload},
 	{"apc-backups", true, buildBackUPSContractPayload},

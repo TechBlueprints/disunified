@@ -68,6 +68,11 @@ itself) -- with the guards in [`internal/drivers/CLAUDE.md`](../internal/drivers
    placement, the push an edit sends) can be answered with the `stub`
    driver, which reports a file and writes nothing
    ([`docs/drivers/stub.md`](drivers/stub.md)).
+6. **A switch that breaks cages out** can present a split cage as a lane
+   switch of its own by implementing `devicemodel.LaneProvider` (its lanes
+   as ports, a lane-scoped apply, the attachment report); the `breakout`
+   driver does the rest ([`docs/drivers/breakout.md`](drivers/breakout.md),
+   `sonic` is the reference).
 
 ### APC network cards: which surface a card offers
 

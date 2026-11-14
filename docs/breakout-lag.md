@@ -1,6 +1,10 @@
 # A LAG on the far side of a breakout cable (design note, 2026-11-02)
 
-Status: **two shapes written up, neither chosen, nothing built.** Clint's
+Status: **shape 2 (the lane switch, §6) built 2026-11-14** with `sonic` as
+the parent, fixture- and replay-tested, not yet adopted live
+([`docs/drivers/breakout.md`](drivers/breakout.md) §0, §15); §6.8 is what the build
+decided. Shape 1 (§4-5) stays the record of the road not taken. Originally:
+**two shapes written up, neither chosen, nothing built.** Clint's
 question (2026-11-02): when the far end of a breakout cable bundles its
 lanes with LACP (say three of a 4x25G cable into one bond), can the bridge
 notice, bundle the same lanes on our side, and show UniFi the result --
@@ -189,7 +193,7 @@ a breakout DAC to a bonded host.
 
 ## 6. Shape 2: the lane switch
 
-**Build spec (2026-11-02): [`docs/drivers/breakout.md`](drivers/breakout.md)** --
+**Built 2026-11-14 (§6.8); build spec (2026-11-02): [`docs/drivers/breakout.md`](drivers/breakout.md)** --
 the parent contract (`LaneProvider`), the SONiC implementation, the loop
 and config changes, tests and the live order. What follows is the design
 discussion it came from.
@@ -499,3 +503,61 @@ the redeploys bounce every bridged device for about a minute, three
 times in all (steps 2, 5, 8 -- step 5 twice). The one real-network risk
 is the UI aggregate edit landing on the wrong device: the Ports page must
 be the stub's.
+
+### 6.8 What the build decided (2026-11-14)
+
+What §6.4 left open, settled against the code as it is; the full account
+is [`docs/drivers/breakout.md`](drivers/breakout.md) §0.
+
+- **Declaring a child.** An entry of the parent's own config file:
+  `driver: breakout`, `options: {parent: <entry name>, cage: N}`, no
+  transport, model `USFXG` by default. `main` attaches it to the parent
+  (`devicemodel.LaneProvider.AttachLaneSwitch`) after the parent starts and
+  before the parent's loop runs, so no first apply of the parent ever
+  writes the cage's intent over the lanes; the child finds the parent by
+  name in a registry of the process's opened devices. Both deployments run
+  the same binary over their own file, so the DX010's lane switches live
+  on the switch and the Arista's in the container.
+- **Identity and placement.** The MAC is `options.mac`, else the parent's
+  with the locally administered bit set and the cage in the last octet
+  (`devicemodel.LaneSwitchMAC`), computed once by main; the child reads it
+  back from the parent. The parent reports it in the cage's MAC table and
+  as the cage's LLDP neighbour while the cage is split -- the two entries
+  §6.6.1 proved place a device, either alone -- and the controller places
+  the child under the cage as it placed the stub. The address and
+  reachability fields are the parent's (§6.6.2).
+- **Reading without dialling.** The parent keeps the split cage's lanes as
+  ports of their own beside the fold, each with every per-interface field
+  the fold is made from (LACP, STP state, MACs, counters, FEC, the host's
+  neighbour); `Lanes(cage)` hands the child that view of the parent's last
+  collect. The child goes quiet when the cage is whole or the parent's
+  snapshot is older than three minutes.
+- **A push to the child.** `ApplyPorts` becomes the parent's `ApplyLanes`:
+  the parent's own plan, scoped to the cage's lanes. The controller's
+  aggregate `lag` on the child is `PortChannel<100*cage+lag>` (the captured
+  push names `lag=1`: `PortChannel201`), a lane mirror
+  `dui<100*cage+lane>`; the parent's own aggregates stay below 100.
+- **Not writing the same cage twice.** On a split cage with a lane switch
+  the parent keeps the breakout (the cage's speed picks the mode, never a
+  lane speed) and the cage's admin state (disabled = every lane down); the
+  lane switch has each lane's state, name, VLANs, speed, FEC, MTU, storm
+  control, aggregates and mirrors. The STP port settings and the
+  switch-wide port features stay the cage's for a code reason (computed
+  from every port at once). Each plan touches only PortChannels in its own
+  range, and one write lock serialises the two loops' applies and the
+  parent's collect.
+- **A join.** The parent removes the lane switch's aggregates and mirrors in
+  the same batch, then breaks out, and the joined cage takes the cage's
+  whole intent; the child stops answering, and the controller shows it
+  disconnected and keeps its placement until it is forgotten. A re-split
+  (4x25G to 2x50G) works the same way and the child comes back with two
+  lanes and two empty slots.
+
+The register's three open bits: the stored speed following a forced
+override is not fixed in code (no capture of the override's speed keys;
+the child reports what each lane runs and refuses a speed a lane cannot
+run with a note), the disconnect after the aggregate push is a
+controller-side state (the stub's reply log shows every inform answered
+through the window), and a real parent is built for `sonic` and
+fixture-tested only (`docs/drivers/breakout.md` §14).
+
