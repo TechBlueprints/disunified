@@ -266,6 +266,11 @@ the CPLD watchdog, the trace that found it) is §8.14.
   and was removed by the 2026-11-06 install (install.sh keeps two). Adopted as
   `USWF07D`, the bridge on the switch (§2). Every image the unit has run,
   with checksums and manifests, is kept on the deployment host.
+- Built, not installed (2026-11-14): `igmp-202511.20261114-42cccc87a`, the
+  running image plus sonic-swss 0004 (the L2MC count, `sonic.md` §8.15) and
+  sonic-buildimage 0013 (the SO-DIMM sensor limits). Installing it deletes
+  the `e53777446` slot (install.sh keeps two) and leaves `f2e25f54c` as the
+  fallback.
 - IGMP snooping: in the image, `l2mcd` shipped disabled, verified on the
   virtual switch with two test hosts (§8.14 V1-V7). **On the DX010
   (2026-11-03, §8.14 H2-H3):** the IGMP traps install, the Tomahawk-1 SAI

@@ -2226,8 +2226,9 @@ the member, a port leaving its VLAN with members left (the native move), and
 a port leaving one of two VLANs. **All four fail on the orch without 0004**
 -- the first with the leaked count, the third with the delete left pending and
 the same bridge port reused admin down, the live symptom -- and pass with it,
-with the whole mock suite (607 tests in 68 suites). Not yet in an image, so
-not yet seen on the switch.
+with the whole mock suite (607 tests in 68 suites). Built into
+`igmp-202511.20261114-42cccc87a` (below); not yet installed, so not yet seen
+on the switch.
 
 #### The driver: a safe order for an image without it
 
@@ -2312,14 +2313,31 @@ UI saves it. The record is
   loopback), Vlan4094 untagged with its seven static rows, and the
   controller's 32 port overrides equal to the pre-test copy.
 
-**Installing 0004 (Clint's step).** Build an image from the kit with the
-series as it stands (`build.sh`, 3-6 hours on the build host), then on the
-DX010: `sonic-upgrade.sh arm <image.bin> <sha256>`, then `sudo reboot`, then
+**The image with 0004: `igmp-202511.20261114-42cccc87a` (built
+2026-11-14, 144 min).** It is the running `igmp-202511.20261106-f2e25f54c`
+plus sonic-swss 0004 and sonic-buildimage 0013 (the Seastone SO-DIMM sensor
+limits, set by hand on the switch since 2026-11-07); its bases and the build
+scripts are unchanged, and `dry-run.sh` passed on the kit first. The DX010's
+`sonic-broadcom-legacy-th.bin` has sha256
+`b913217d3268eff364f8a1830afecba44a1124f247ca26d4ac04b0c7050bed0f`. Both
+patches were found in the image itself, not only in the series: the `.bin`
+unpacked, the orchagent in both of its docker layers (the same file as the
+built `swss_1.0.0_amd64.deb`'s) carries 0004's notice string, the one
+`l2mcFixCheckCommand` looks for, and the root filesystem's Seastone
+`sensors.conf` has 0013's `jc42-*` block. The image is kept with the others
+on the deployment host.
+
+**Installing 0004 (Clint's step).** On the DX010:
+`sonic-upgrade.sh arm <image.bin> <sha256>`, then `sudo reboot`, then
 `sonic-upgrade.sh confirm` once it is proven. The dead-man rolls back a
 failed boot. The bridge's `.deb` comes back through rc.local. After the boot,
 the start log no longer says the patch is missing, and the plan stops
 waiting. The proof is the same loop-and-drop on a test cage: the count back
-to 0, then a native move with no wait and a new bridge port, admin `true`.
+to 0 (0004's `countMember` line for the port ends at `l2mc_count 0`), then
+a native move with no wait and a new bridge port, admin `true`. With 0004
+the race can be tried without a cable too: a move made while the cage is
+looped (members programmed) should log `removeL2mcPortMembers ... removed
+with its port` for each member and still get a new bridge port (untried).
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
