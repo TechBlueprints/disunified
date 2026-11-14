@@ -564,8 +564,11 @@ fills the field. What was looked at, all on 2026-11-14:
 - A QoS policer per port: `class-map type qos` matching an ACL for UDP
   67/68, `policy-map type quality-of-service` with `police rate`, bound with
   `service-policy type qos input`. It programmed on both test ports
-  ("Hardware programming status: Successful", a policer and seven QoS TCAM
-  entries) with per-interface counters in the JSON
+  ("Hardware programming status: Successful"; `show hardware capacity` read
+  one entry in each PolicerSDE table and seven in QosTcamV4 while it was
+  bound, and 0 used after its abort. Another session set and removed
+  storm-control on the same test ports that hour; neither port carried it at
+  the probe's time, as far as that session's log shows) with per-interface counters in the JSON
   (`show-policy-map-interface-Ethernet2-counters.json`). But the rate is in
   `bps`, `kbps` or `mbps` only (no packets per second), and the JSON says
   `redCounter: false`: only conforming packets are counted on this
