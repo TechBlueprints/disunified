@@ -2176,7 +2176,8 @@ With UniFi's reserved groups flooded to every port, that is **the uplink**
 (Ethernet0: the router port, beside the gateway's queries, and a static member
 of all seven groups). On the unpatched image, anything that takes Ethernet0 out of
 its last VLAN -- joining the planned core aggregate first of all -- would
-strand the uplink: install an image with the fix (below) before that.
+strand the uplink: install an image with the fix (below) before that
+(the DX010 has run one since 2026-11-14).
 
 **What shares it** (from the source; only the native move was seen live):
 every change that takes a port out of its **last** VLAN goes through
@@ -2227,8 +2228,8 @@ a port leaving one of two VLANs. **All four fail on the orch without 0004**
 -- the first with the leaked count, the third with the delete left pending and
 the same bridge port reused admin down, the live symptom -- and pass with it,
 with the whole mock suite (607 tests in 68 suites). Built into
-`igmp-202511.20261114-42cccc87a` (below); not yet installed, so not yet seen
-on the switch.
+`igmp-202511.20261114-42cccc87a`, installed on the DX010 on 2026-11-14 and
+proven live there (below).
 
 #### The driver: a safe order for an image without it
 
@@ -2311,7 +2312,9 @@ UI saves it. The record is
   strand the cage and the driver's wait would fail the batch. Everything
   else was restored and checked: the loop off (`ps ce12` shows no
   loopback), Vlan4094 untagged with its seven static rows, and the
-  controller's 32 port overrides equal to the pre-test copy.
+  controller's 32 port overrides equal to the pre-test copy. (The count
+  was cleared by the reboot at 18:31 UTC; the switch has run the patched
+  image since 22:53 UTC.)
 
 **The image with 0004: `igmp-202511.20261114-42cccc87a` (built
 2026-11-14, 144 min).** It is the running `igmp-202511.20261106-f2e25f54c`
@@ -2327,17 +2330,45 @@ built `swss_1.0.0_amd64.deb`'s) carries 0004's notice string, the one
 `sensors.conf` has 0013's `jc42-*` block. The image is kept with the others
 on the deployment host.
 
-**Installing 0004 (Clint's step).** On the DX010:
-`sonic-upgrade.sh arm <image.bin> <sha256>`, then `sudo reboot`, then
-`sonic-upgrade.sh confirm` once it is proven. The dead-man rolls back a
-failed boot. The bridge's `.deb` comes back through rc.local. After the boot,
-the start log no longer says the patch is missing, and the plan stops
-waiting. The proof is the same loop-and-drop on a test cage: the count back
-to 0 (0004's `countMember` line for the port ends at `l2mc_count 0`), then
-a native move with no wait and a new bridge port, admin `true`. With 0004
-the race can be tried without a cable too: a move made while the cage is
-looped (members programmed) should log `removeL2mcPortMembers ... removed
-with its port` for each member and still get a new bridge port (untried).
+#### Installed and proven live (2026-11-14, 22:45-23:03 UTC)
+
+Clint's go; the kit's procedure, step by step as planned
+(`sonic-upgrade.sh arm <image.bin> <sha256>`, `sudo reboot`,
+`sonic-upgrade.sh confirm`). The record is
+`sonic-igmp-202511.20261114-42cccc87a/l2mc-0004-live-20261114.txt`.
+
+- **The install.** Armed at 22:48 (the install deleted the `e53777446`
+  slot, as install.sh keeps two), rebooted at 22:49:50, answering on the
+  new image at 22:53:22, confirmed at 22:58 with `f2e25f54c` kept as the
+  fallback. The bridge's `.deb` came back with the image's first boot;
+  l2d reinstalled itself under its dead-man and cancelled it; the first
+  reconcile changed 0 of 32 ports, then one apply put back what a reboot
+  loses (the VLAN netdevs' MTUs and the LLDP-MED TLVs, reported as 32 of 32
+  ports), then nothing. The start log has no "orchagent lacks ... 0004"
+  line, and the running orchagent carries 0004's string. 0013: the SO-DIMM
+  sensor read 28.8 C against high 85 and crit 95, no alarm.
+- **The loop-and-drop on cage 13**, the run that left the count at 3 on the
+  old image. With `port ce12 lb=mac` the port took its seven static
+  members, and 3 s later became a router port in three more groups (the
+  ones it was not a static member of): **those are counted now**, the
+  port's count 10 and the VLAN's 20. At `lb=none` the router-port removals
+  and l2mcd's member deletes took it down one member at a time to **0**
+  (the VLAN's back to 10, the uplink's), with no "reset to 0" line: the
+  count matched the chip's members throughout.
+- **A native move and back**, through the controller's REST (the port
+  overrides PUT with only the native network changed, as the UI saves it).
+  The batches: the seven static deletes, `config vlan member del 4094`,
+  `config vlan member add -u 4000`, the save -- **no bridge-port wait** --
+  then `del 4000`, `add -u 4094` and `applyIGMP`'s seven rows. orchagent
+  removed the bridge port and added a new one each time (about 1.1 s
+  apart), a new oid with `ADMIN_STATE true` each time, and no "still has
+  references" line since the boot. Restored afterwards: Ethernet48
+  untagged in Vlan4094 with its seven static rows, and the controller's 32
+  port overrides equal to the pre-test copy.
+- **Not run:** a move while the cage is looped (members programmed when the
+  VLAN member goes: the race, which the patched image lets a cable-less cage
+  try; `removeL2mcPortMembers` should log a line per member). The wait failing
+  on a leaked count cannot happen on this image and stays fixture-tested.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 

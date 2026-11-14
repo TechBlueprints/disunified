@@ -252,13 +252,19 @@ The arrival-day procedure for a DX010 is [`sonic.md`](sonic.md) §3; what the
 first install on the hardware exposed (two failed boots and their cause,
 the CPLD watchdog, the trace that found it) is §8.14.
 
-### 3.3 Status on the DX010, 2026-11-06
+### 3.3 Status on the DX010, 2026-11-14
 
-- Running: `igmp-202511.20261106-f2e25f54c`, the full series of §3.1
+- Running since 2026-11-14 (installed 22:49 UTC, confirmed 22:58 with bridge
+  `c7d8a82`): `igmp-202511.20261114-42cccc87a`, the image below plus
+  sonic-swss 0004 (the L2MC count, `sonic.md` §8.15, proven live on it) and
+  sonic-buildimage 0013 (the SO-DIMM sensor limits). The install deleted the
+  `e53777446` slot (install.sh keeps two); the other slot is the image below,
+  the fallback.
+- Before it, 2026-11-06 to 2026-11-14: `igmp-202511.20261106-f2e25f54c`, the full series of §3.1
   (installed and confirmed 2026-11-06 06:50 UTC with bridge `cc276ad`;
   switch MAC ACL rules verified on it, `sonic.md` §11.7.8). It is the first
   image with sonic-swss 0003, sonic-l2mcd 0008-0010 and the fan floor
-  (sonic-buildimage 0012) built in. The other slot is
+  (sonic-buildimage 0012) built in. Its other slot was
   `igmp-202511.20261102-e53777446`, the series through sonic-swss 0002
   (installed 2026-11-02; port mirroring verified on it, §11.10), which
   carried snooping until 2026-11-06. The image before that,
@@ -266,11 +272,6 @@ the CPLD watchdog, the trace that found it) is §8.14.
   and was removed by the 2026-11-06 install (install.sh keeps two). Adopted as
   `USWF07D`, the bridge on the switch (§2). Every image the unit has run,
   with checksums and manifests, is kept on the deployment host.
-- Built, not installed (2026-11-14): `igmp-202511.20261114-42cccc87a`, the
-  running image plus sonic-swss 0004 (the L2MC count, `sonic.md` §8.15) and
-  sonic-buildimage 0013 (the SO-DIMM sensor limits). Installing it deletes
-  the `e53777446` slot (install.sh keeps two) and leaves `f2e25f54c` as the
-  fallback.
 - IGMP snooping: in the image, `l2mcd` shipped disabled, verified on the
   virtual switch with two test hosts (§8.14 V1-V7). **On the DX010
   (2026-11-03, §8.14 H2-H3):** the IGMP traps install, the Tomahawk-1 SAI

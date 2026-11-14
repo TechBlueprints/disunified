@@ -616,7 +616,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `sonic-igmp-202511.20261102-e53777446/collect-snooping.txt` (the H3 state,
   `cfg_l2mc` section) and its `config-help.txt`.
 - **A port leaving its last VLAN can be stranded by the kit's L2MC orch
-  (`docs/drivers/sonic.md` §8.15, 2026-11-14; fixed by sonic-swss 0004).**
+  (`docs/drivers/sonic.md` §8.15, 2026-11-14; fixed by sonic-swss 0004,
+  which the DX010 runs since 2026-11-14: `igmp-202511.20261114-42cccc87a`).**
   Before 0004, `removeBridgePort` sets the bridge port admin down, then
   refuses while `m_l2mc_count` is not zero, and `addBridgePort` reuses it as
   it is: the next VLAN added lands on a port that learns nothing until a
@@ -637,8 +638,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     alone with a note). The FixtureRunner models the refusal
     (`OrchL2MCFix`, `L2MCLeaked`, `Stranded`); fixture
     `sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt`.
+  - **On the patched image the plan adds no wait** and the count follows
+    the chip: router-port members counted, a loop-and-drop back to 0, a
+    native move getting a new bridge port admin true (live 2026-11-14,
+    `sonic-igmp-202511.20261114-42cccc87a/l2mc-0004-live-20261114.txt`).
+    The wait is for other images (the VS, an older build).
   - **Do not aggregate the uplink on an image without 0004**: taking
-    Ethernet0 out of Vlan4094 would strand the only way in.
+    Ethernet0 out of Vlan4094 would strand the only way in. (The DX010 has
+    it now; check `show version` before relying on that.)
   - **A MAC-looped test cage is a router port within seconds** (live
     2026-11-14: RSTP Backup/discarding does not stop the trapped queries),
     so on an unpatched image every loop-and-drop leaks its count: never
