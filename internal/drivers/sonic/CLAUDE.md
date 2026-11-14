@@ -612,6 +612,11 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     `sonic-igmp-202511.20261106-f2e25f54c/collect-stranded.txt`.
   - **Do not aggregate the uplink on an image without 0004**: taking
     Ethernet0 out of Vlan4094 would strand the only way in.
+  - **A MAC-looped test cage is a router port within seconds** (live
+    2026-11-14: RSTP Backup/discarding does not stop the trapped queries),
+    so on an unpatched image every loop-and-drop leaks its count: never
+    move such a cage out of its last VLAN before a swss restart or reboot.
+    The race with members but no router port needs a cabled host.
   - The orch tests run in the build host's bookworm slave
     (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
     (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
