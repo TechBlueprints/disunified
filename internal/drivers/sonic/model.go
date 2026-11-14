@@ -12,10 +12,14 @@ import (
 // The mapping from SONiC's tables onto the neutral model
 // (docs/drivers/sonic.md §5.2).
 
-// cagePort is a front-panel port plus what the namer needs.
+// cagePort is a front-panel port plus what the namer needs. A split cage
+// also keeps its lanes as ports of their own (Index = lane number 1..N,
+// each with its one interface and its own alias), for a lane switch
+// (lanes.go); an unsplit cage has none.
 type cagePort struct {
 	devicemodel.Port
 	alias string
+	lanes []cagePort
 }
 
 type membership struct {
@@ -137,8 +141,20 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 			if n := lldp[name]; len(n) > 0 && lp.Neighbor == nil {
 				lp.Neighbor = neighborOf(n)
 			}
+			if len(names) > 1 {
+				// The lane as a port of its own: its speeds are what the SAI
+				// says it runs (portconfig checks only that), its media the
+				// lane's own form.
+				ln := lp
+				ln.Index = i + 1
+				ln.Interfaces = []string{name}
+				ln.SpeedCaps = speedList(state[name]["supported_speeds"])
+				ln.Media = laneMedia(atoi(cfg[name]["speed"]))
+				cage.lanes = append(cage.lanes, cagePort{Port: ln, alias: cfg[name]["alias"]})
+			}
 			if i == 0 {
-				cage = cagePort{Port: lp, alias: cageAlias(cfg[name]["alias"], len(names) > 1)}
+				lanes := cage.lanes
+				cage = cagePort{Port: lp, alias: cageAlias(cfg[name]["alias"], len(names) > 1), lanes: lanes}
 				continue
 			}
 			p := &cage.Port
@@ -211,7 +227,67 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 		dhcpRateCounts(out, db)
 	}
 	stormPorts(out, db)
+	laneDetail(out, db)
 	return out
+}
+
+// laneDetail gives a split cage's lanes what the cage gets from tables keyed
+// by interface -- LACP, l2d's STP state, the storm and DHCP-rate counts --
+// and a lane mirror destination its source lane. The helpers key by
+// interface, so they run unchanged over the lanes as ports of their own.
+func laneDetail(out []cagePort, db map[string]table) {
+	var flat []cagePort
+	for _, c := range out {
+		flat = append(flat, c.lanes...)
+	}
+	if len(flat) == 0 {
+		return
+	}
+	setLACP(flat, db["state_lag_member"])
+	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
+		l2Ports(flat, db)
+		dhcpRateCounts(flat, db)
+	}
+	stormPorts(flat, db)
+	k := 0
+	for i := range out {
+		lanes := out[i].lanes
+		laneOf := map[string]int{}
+		for j := range lanes {
+			lanes[j] = flat[k]
+			k++
+			laneOf[lanes[j].Interfaces[0]] = lanes[j].Index
+		}
+		for _, f := range db["cfg_mirror"] {
+			dst, ok := laneOf[f["dst_port"]]
+			if !ok {
+				continue
+			}
+			src, _, _ := strings.Cut(f["src_port"], ",")
+			if s, ok := laneOf[strings.TrimSpace(src)]; ok {
+				lanes[dst-1].MirrorFrom = s
+			}
+		}
+	}
+}
+
+// laneMedia is a lane's form by its configured speed: a 25G lane is an
+// SFP28, a 50G lane two serdes of a QSFP28 (the Flex XG draws it as a
+// QSFP tile, docs/breakout-lag.md 6.6), 10G SFP+.
+func laneMedia(speed int) devicemodel.Media {
+	switch {
+	case speed >= 50000:
+		return devicemodel.MediaQSFP28
+	case speed >= 40000:
+		return devicemodel.MediaQSFPPlus
+	case speed >= 25000:
+		return devicemodel.MediaSFP28
+	case speed >= 10000:
+		return devicemodel.MediaSFPPlus
+	case speed > 0:
+		return devicemodel.MediaSFP
+	}
+	return devicemodel.MediaSFP28
 }
 
 // lanePort maps one SONiC interface.

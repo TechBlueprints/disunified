@@ -3,6 +3,7 @@ package sonic
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +57,30 @@ type plan struct {
 	controllerOnly bool
 	notes          []string // refusals, logged once each by ApplyPorts
 	appl           []applOp // APPL_DB writes, run together at the end (portfeat.go)
+
+	// The lane scope (ApplyLanes, lanes.go): ports are one cage's lanes
+	// keyed by lane number, aggregates and mirror sessions are numbered
+	// from pcBase, and cageDown is the cage disabled in the device's own
+	// config. laneCage 0 is the device's own plan, whose owned cages are
+	// the split ones a lane switch sets the lanes of.
+	laneCage int
+	pcBase   int
+	cageDown bool
+	owned    map[int]bool
+}
+
+// pc is the PortChannel of the plan's aggregate lag.
+func (pl *plan) pc(lag int) string { return pcName(pl.pcBase + lag) }
+
+// mine: pc is in this plan's range -- the device's own aggregates (ids
+// below 100) or, in the lane scope, this cage's lane-switch aggregates.
+// Any other PortChannel is left as it is.
+func (pl *plan) mine(pc string) bool {
+	n := lagID(pc)
+	if pl.laneCage == 0 {
+		return n > 0 && n < lanePCBase(1)
+	}
+	return n > pl.pcBase && n < pl.pcBase+100
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
@@ -93,16 +118,62 @@ func lanesOf(p devicemodel.Port) []string {
 // newPlan diffs desired against the collector's state without writing;
 // controllerOnly leaves out the module-driven writes (plan.controllerOnly).
 func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
+	return c.planFor(0, desired, controllerOnly)
+}
+
+// planFor is newPlan for the device's own ports (cage 0) or, for a lane
+// switch, for one split cage's lanes (lanes.go).
+func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
 	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
+	lanes := c.lanes[cage]
+	down := c.cageDown[cage]
+	var attached []int
+	for idx := range c.children {
+		attached = append(attached, idx)
+	}
 	c.mu.Unlock()
 	if snap == nil || st == nil {
 		return nil, fmt.Errorf("sonic apply: no snapshot yet")
 	}
-	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly}
-	for _, p := range snap.Ports {
-		pl.ports[p.Index] = p
+	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	if cage == 0 {
+		for _, p := range snap.Ports {
+			pl.ports[p.Index] = p
+		}
+		for _, idx := range attached {
+			if len(st.cagePorts(idx)) > 1 {
+				pl.owned[idx] = true
+			}
+		}
+	} else {
+		var names []string
+		for _, l := range lanes {
+			names = append(names, l.Interfaces[0])
+		}
+		if len(names) < 2 || !slices.Equal(names, st.cagePorts(cage)) {
+			return nil, fmt.Errorf("sonic apply: cage %d is not split as the last collect saw it (lanes %v, CONFIG_DB %v)", cage, names, st.cagePorts(cage))
+		}
+		var optic *devicemodel.Optic
+		for _, p := range snap.Ports {
+			if p.Index == cage {
+				optic = p.Optic
+			}
+		}
+		for _, l := range lanes {
+			p := l.Port
+			p.Optic = optic // the module FEC where the lane switch says auto
+			if len(p.SpeedCaps) == 0 {
+				if parent, _, ok := st.platformCage(cage); ok {
+					if m, ok := parseMode(st.brkout[parent]); ok {
+						p.SpeedCaps = m.speeds
+					}
+				}
+			}
+			pl.ports[p.Index] = p
+		}
+		pl.laneCage, pl.pcBase, pl.cageDown = cage, lanePCBase(cage), down
 	}
 	if pl.site == nil {
 		for id := range st.vlans {
@@ -123,6 +194,17 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 			pl.note("port %d: VLAN %d is this switch's native_vlan (UniFi's VLAN 1 is Vlan%d here); port not written -- set options.native_vlan to an id no UniFi network uses", d.Index, bad, pl.native)
 			continue
 		}
+		switch {
+		case pl.laneCage > 0 && d.Routed:
+			pl.note("lane %d of cage %d: a routed lane is not something this driver writes; its VLANs are left as they are", d.Index, pl.laneCage)
+			d.Routed, d.VLANSet = false, false
+		case pl.owned[d.Index]:
+			// The lanes' aggregates and mirrors are the lane switch's.
+			if d.LAG > 0 || d.MirrorSource > 0 || d.Routed {
+				pl.note("port %d: a lane switch sets this cage's lanes; the cage's own aggregate, mirror and routing are not applied", d.Index)
+			}
+			d.LAG, d.MirrorSource, d.Routed = 0, 0, false
+		}
 		if d.VLANSet && d.NativeVLAN != 1 && containsInt(d.TaggedVLANs, 1) {
 			// VLAN 1 is Vlan<native_vlan> as an untagged member; tagging it
 			// would put the stand-in id on the wire.
@@ -141,19 +223,38 @@ func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bo
 		if d.LAG > 0 || d.MirrorSource > 0 {
 			continue // VLANs live on the PortChannel; a mirror destination has none
 		}
+		if pl.owned[d.Index] {
+			continue // the lane switch's
+		}
 		lanes := lanesOf(pl.ports[d.Index])
 		if d.Routed && len(lanes) > 1 {
 			pl.note("port %d: a routed port on a split cage (%d ports) is not something this driver writes; its VLANs are left as they are", d.Index, len(lanes))
 			continue
 		}
 		for _, lane := range lanes {
+			if pl.foreignLAG(lane, "") {
+				continue // its VLANs are its PortChannel's, which this plan does not own
+			}
 			pl.syncVLANs(d.Index, lane, d)
 		}
 	}
 	pl.lagJoins(ds)
 	pl.mirrorAdds(ds)
-	pl.vlanMTUs(ds)
-	pl.portFeatures(ds, caps)
+	if pl.laneCage == 0 {
+		// Both are switch-wide: the VLANs' MTU follows the device's own
+		// ports, and isolation, port security, the egress limit and
+		// LLDP-MED are computed over every port the device has.
+		pl.vlanMTUs(ds)
+		pl.portFeatures(ds, caps)
+	}
+	if len(pl.owned) > 0 && pl.laneCage == 0 {
+		var owned []int
+		for idx := range pl.owned {
+			owned = append(owned, idx)
+		}
+		sort.Ints(owned)
+		pl.note("ports %v: a lane switch sets these cages' lanes; the cage keeps its speed (the breakout) and its admin state, its other settings are not applied to the lanes", owned)
+	}
 	return pl, nil
 }
 
@@ -238,6 +339,9 @@ func (pl *plan) mirrorSource(d devicemodel.PortDesired) (string, bool) {
 
 func (pl *plan) mirrorRemovals(ds []devicemodel.PortDesired) {
 	for _, d := range ds {
+		if pl.owned[d.Index] {
+			continue // a lane mirror session is the lane switch's
+		}
 		dst := lanesOf(pl.ports[d.Index])[0]
 		cur := pl.sim.mirrorTo(dst)
 		if cur == "" {
@@ -271,7 +375,7 @@ func (pl *plan) mirrorAdds(ds []devicemodel.PortDesired) {
 			pl.note("port %d: mirroring port %d is not possible on this switch: its SAI reports that a port cannot be attached to a mirror session (STATE_DB SWITCH_CAPABILITY PORT_INGRESS/EGRESS_MIRROR_CAPABLE false), and SONiC then creates the session without its source port; not mirrored", d.Index, d.MirrorSource)
 			continue
 		}
-		name := "dui" + strconv.Itoa(d.Index)
+		name := "dui" + strconv.Itoa(pl.pcBase+d.Index)
 		if _, taken := pl.sim.mirrors[name]; taken {
 			pl.add(d.Index, "config mirror_session remove "+name, func(s *swState) { delete(s.mirrors, name) })
 		}
@@ -288,9 +392,16 @@ func (pl *plan) mirrorAdds(ds []devicemodel.PortDesired) {
 
 func (pl *plan) lagLeaves(ds []devicemodel.PortDesired) {
 	for _, d := range ds {
+		if pl.owned[d.Index] {
+			continue // the lanes' aggregates are the lane switch's
+		}
 		for _, lane := range lanesOf(pl.ports[d.Index]) {
 			cur := pl.sim.lagOf(lane)
-			if cur == "" || (d.LAG > 0 && cur == pcName(d.LAG)) {
+			if cur == "" || (d.LAG > 0 && cur == pl.pc(d.LAG)) {
+				continue
+			}
+			if !pl.mine(cur) {
+				pl.note("port %d: %s is in %s, an aggregate this config does not own (a lane switch's, the switch's own, or one made by hand); left as it is", d.Index, lane, cur)
 				continue
 			}
 			pc, ln := cur, lane
@@ -319,7 +430,7 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	for _, lag := range ids {
 		for _, d := range byLAG[lag] {
 			for _, lane := range lanesOf(pl.ports[d.Index]) {
-				if !pl.sim.lags[pcName(lag)][lane] {
+				if !pl.sim.lags[pl.pc(lag)][lane] && !pl.foreignLAG(lane, pl.pc(lag)) {
 					joining = append(joining, lane)
 				}
 			}
@@ -329,12 +440,12 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 		pl.aclUnbind(byLAG[ids[0]][0].Index, joining)
 	}
 	for _, lag := range ids {
-		pc := pcName(lag)
+		pc := pl.pc(lag)
 		members := byLAG[lag]
 		for _, d := range members {
 			for _, lane := range lanesOf(pl.ports[d.Index]) {
-				if pl.sim.lags[pc][lane] {
-					continue
+				if pl.sim.lags[pc][lane] || pl.foreignLAG(lane, pc) {
+					continue // already in, or held by an aggregate lagLeaves left alone
 				}
 				ln := lane
 				laneMTU := pl.sim.field(ln, "mtu")
@@ -374,11 +485,11 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	// the unbind) left exactly that on the DX010 (2026-11-02).
 	wanted := map[string]bool{}
 	for _, lag := range ids {
-		wanted[pcName(lag)] = true
+		wanted[pl.pc(lag)] = true
 	}
 	var pcs []string
 	for pc, m := range pl.sim.lags {
-		if len(m) == 0 && !wanted[pc] && (pl.emptiedHere(pc) || pl.ownOrphan(pc)) {
+		if len(m) == 0 && !wanted[pc] && pl.mine(pc) && (pl.emptiedHere(pc) || pl.ownOrphan(pc)) {
 			pcs = append(pcs, pc)
 		}
 	}
@@ -393,6 +504,13 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 			delete(s.lagLACP, name)
 		})
 	}
+}
+
+// foreignLAG: lane is in a PortChannel other than pc that this plan does
+// not own, which SONiC would refuse to move it out of by a member add.
+func (pl *plan) foreignLAG(lane, pc string) bool {
+	cur := pl.sim.lagOf(lane)
+	return cur != "" && cur != pc && !pl.mine(cur)
 }
 
 // setLAGMTU sets a PortChannel's MTU in CONFIG_DB (probed: APPL_DB
@@ -631,14 +749,31 @@ func (pl *plan) stripVLANs(idx int, iface string) {
 
 func (pl *plan) portState(d devicemodel.PortDesired) {
 	p := pl.ports[d.Index]
-	pl.speed(p, d, lanesOf(p))
+	if pl.laneCage > 0 {
+		pl.laneSpeed(p, d)
+	} else {
+		pl.speed(p, d, lanesOf(p))
+	}
 	// A breakout replaced the cage's interfaces: the rest of its intent goes
-	// on the new ones (admin state, name, FEC, MTU, storm control, STP).
+	// on the new ones (admin state, name, FEC, MTU, storm control, STP) --
+	// a cage a lane switch owned too, which the breakout handed back.
 	lanes := lanesOf(pl.ports[d.Index])
+	owned := pl.owned[d.Index]
+	want := d.Enabled && !pl.cageDown
 	for _, lane := range lanes {
 		ln := lane
-		if enabled := pl.sim.field(ln, "admin_status") == "up"; enabled != d.Enabled {
-			if d.Enabled {
+		if owned {
+			// The cage's admin state is the one control it keeps over its
+			// lanes besides the breakout: disabled takes every lane down,
+			// enabled leaves each lane to the lane switch.
+			if !d.Enabled && pl.sim.field(ln, "admin_status") == "up" {
+				pl.add(d.Index, "config interface shutdown "+ln, func(s *swState) { s.setField(ln, "admin_status", "down") })
+			}
+			pl.stpOps(d, ln)
+			continue
+		}
+		if enabled := pl.sim.field(ln, "admin_status") == "up"; enabled != want {
+			if want {
 				pl.add(d.Index, "config interface startup "+ln, func(s *swState) { s.setField(ln, "admin_status", "up") })
 			} else {
 				pl.add(d.Index, "config interface shutdown "+ln, func(s *swState) { s.setField(ln, "admin_status", "down") })
@@ -683,7 +818,10 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 		if d.MTU > 0 {
 			want := d.MTU
 			m := strconv.Itoa(want)
-			if pc := pl.sim.lagOf(ln); pc != "" {
+			if pc := pl.sim.lagOf(ln); pc != "" && !pl.mine(pc) {
+				// A member of an aggregate this plan does not own runs at that
+				// PortChannel's MTU, which is its owner's.
+			} else if pc != "" {
 				if atoi(pl.sim.lagMTU[pc]) != want {
 					pl.setLAGMTU(d.Index, pc, m)
 					if atoi(pl.sim.field(ln, "mtu")) != want {
@@ -697,7 +835,11 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 			}
 		}
 		pl.stormOps(d, ln)
-		pl.stpOps(d, ln)
+		if pl.laneCage == 0 {
+			// A lane's STP port settings are its cage's (l2.go keys them by
+			// the cage; the PVST path the same).
+			pl.stpOps(d, ln)
+		}
 	}
 }
 
@@ -826,6 +968,15 @@ func (pl *plan) moduleSpeed(p devicemodel.Port, d devicemodel.PortDesired, lanes
 	if pl.controllerOnly {
 		return true
 	}
+	if pl.owned[p.Index] {
+		// A lane switch sets the lane speeds, which may differ: the module
+		// decides the mode only, kept while it runs that many ports.
+		for _, r := range runs {
+			if r.ports == len(lanes) {
+				return true
+			}
+		}
+	}
 	cur := laneCfg{ports: len(lanes), speed: atoi(pl.sim.field(lanes[0], "speed"))}
 	for _, ln := range lanes[1:] {
 		if atoi(pl.sim.field(ln, "speed")) != cur.speed {
@@ -947,6 +1098,11 @@ func sanitizeDescription(s string) string {
 
 // ApplyPorts implements devicemodel.Controller.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sonic apply: %w", err)
+	}
+	defer unlock()
 	n, err := c.applyPorts(ctx, desired)
 	if err != nil {
 		return n, err
@@ -983,10 +1139,17 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 }
 
 func (c *Collector) applyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	c.noteCageDown(desired)
 	pl, err := c.newPlan(desired, false)
 	if err != nil {
 		return 0, err
 	}
+	return c.runPlan(ctx, pl, "")
+}
+
+// runPlan logs the plan's notes, runs its batch and makes its copy of
+// CONFIG_DB the state. what names a scoped plan in the log ("" = ports).
+func (c *Collector) runPlan(ctx context.Context, pl *plan, what string) (int, error) {
 	for _, n := range pl.notes {
 		c.warnOnce("apply: "+n, "%s", n)
 	}
@@ -1004,9 +1167,13 @@ func (c *Collector) applyPorts(ctx context.Context, desired []devicemodel.PortDe
 			n++
 		}
 	}
-	c.Log.Printf("sonic apply (%d ports): %s", n, strings.ReplaceAll(strings.Join(cmds, " ; "), applCommand, applLogged))
+	label := fmt.Sprintf("%d ports", n)
+	if what != "" {
+		label = fmt.Sprintf("%s, %d changed", what, n)
+	}
+	c.Log.Printf("sonic apply (%s): %s", label, strings.ReplaceAll(strings.Join(cmds, " ; "), applCommand, applLogged))
 	if err := c.runBatch(ctx, cmds); err != nil {
-		return 0, fmt.Errorf("sonic apply (%d ports): %w", n, err)
+		return 0, fmt.Errorf("sonic apply (%s): %w", label, err)
 	}
 	c.mu.Lock()
 	c.state = pl.sim
@@ -1036,6 +1203,11 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 // remembers the list for "Allow All". Never deletes. A list that contains
 // native_vlan itself is refused whole: that id is the stand-in for VLAN 1.
 func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sonic ensure vlans: %w", err)
+	}
+	defer unlock()
 	for _, id := range ids {
 		if id == c.NativeVLAN {
 			return 0, fmt.Errorf("sonic: the controller has a network on VLAN %d, which is this switch's native_vlan (UniFi's VLAN 1 is Vlan%d here); nothing written -- set options.native_vlan to an id no UniFi network uses", id, c.NativeVLAN)
