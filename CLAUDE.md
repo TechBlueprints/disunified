@@ -60,6 +60,10 @@ it): written, Active in the chip and removed live on the DX010 2026-11-06;
 the chip's entry matched exactly the blocked MAC's frames, a dropped switched
 frame is unseen (one linked port), and frames to the switch itself still
 reach its CPU through the traps' copy (§11.7.8).
+UniFi's MAC Address Filter violations (anomaly 256) are counted per port by
+disunified-l2d since 2026-11-14: a secured port's learning is `cpu_trap` in
+APPL_DB behind a kernel-bridge drop, the port stays up (§11.18.2, verified
+by hand on an empty cage in MAC loopback).
 IGMP snooping runs through l2mcd on the repo's 202511 image: the chip half
 verified by hand on the DX010 2026-11-03 (group entries program, optimised
 flood is refused by the SAI), the driver's write path built behind
@@ -368,9 +372,9 @@ these is marked "not captured".
   followed about a minute later (seven, read from the controller's v2
   `system-log/device-alert`), and the SONiC switch's topology changes raised
   "Incoming DHCP packets exceed 300/sec". Now 512 is set for a
-  loop-protection hold, and 1/2/4, 32 and 64 only on growth of the port's
-  own storm, DHCP-rate and rogue-DHCP drop counters (`Port.Health`; no
-  driver fills them yet); `custom_anomalies` is not sent; the raw fields
+  loop-protection hold, and 1/2/4, 32, 64 and 256 only on growth of the port's
+  own storm, DHCP-rate, rogue-DHCP and MAC-locking drop counters
+  (`Port.Health`); `custom_anomalies` is not sent; the raw fields
   (`link_down_count`, `sfp_*`) are (`docs/feature-map.md` §2).
   **Only loop protection and BPDU guard take a port down** in UniFi's model
   (the UI's own text, 2026-11-14): every other bit is a detection the port

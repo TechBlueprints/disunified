@@ -817,8 +817,9 @@ was restarted.
     switch's own address arrives on the uplink through the same trap.
     Fixtures: `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`
     (`testdata/l2d_dhcp_rate.py` runs the filter through a cBPF interpreter).
-- **Port anomalies 128/256/1024/2048 have no source on the image
-  (`docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
+- **Port anomalies 128/1024/2048 have no source on the image (256 does
+  since, below;
+  `docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
   `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before
   building a per-port counter, know: ACL counter polling is **off**
   (`FLEX_COUNTER_TABLE|ACL` disable), so no ACL rule counter reaches
@@ -841,3 +842,35 @@ was restarted.
   port, the uplink included: only with a definition captured from a real
   UniFi switch. `dos-probes.txt` in the 202511 fixture directory has the
   reads.
+- **MAC locking, anomaly 256 (`l2d.py` `MacLockGuard`, `l2.go` `mac_lock`,
+  `docs/drivers/sonic.md` §11.18.2, built 2026-11-14, verified by hand on
+  an empty cage).** The driver's MAC filter stays `learn_mode drop` + static
+  FDB in CONFIG_DB/APPL_DB (enforced from boot); l2d moves a secured port to
+  `cpu_trap` in APPL_DB only after its ebtables chain `DUI_MACLOCK` (listed
+  sources RETURN, the rest of the port DROP; from INPUT and FORWARD) is in
+  place, reads the netdev on a packet socket, and counts each frame from an
+  unlisted unicast source in STATE_DB `DUI_MACLOCK_TABLE|<interface>`
+  (`drops` since boot, `last_mac`); `collect.py` `l2_maclock` ->
+  `Health.MACLockingDrops`. **The port stays up**: the controller's alert
+  text for 256 describes a detection, not a disabled port (a first build
+  held it down; replaced the same day). Facts that cost time:
+  - **Unknown sources reach the CPU under `cpu_trap` through the default
+    CoPP group** (queue 0, 600 packets/s for the whole switch): 626 of a
+    20,000-frame burst; under `drop` none. The chip's `bcmcmd ps` `lrn`
+    column shows the mode: C, D, FA.
+  - **mstpd reads BPDUs on its own packet sockets**, past ebtables: a looped
+    test port receives its own BPDUs and goes backup/discarding, and StpOrch
+    then blocks it in every VLAN -- a loopback test needs the installed l2d
+    paused (`kill -STOP` its main pid, `-CONT` after) and a hand-made tagged
+    VLAN that no instance maps. A looped port in Vlan4094 also receives the
+    LAN's IGMP (snooping's static groups flood every port): keep it
+    trapping or dropping while looped, never learning in hardware.
+  - **Never move a test port's native VLAN through UniFi** (2026-11-14,
+    cage 9): leaving its only VLAN while snooping's static groups name it,
+    orchagent's `removeBridgePort` sets the bridge port admin down, refuses
+    the removal ("still has references to a Layer 2 multicast group
+    member"), and the next VLAN add reuses the admin-down bridge port: ASIC_DB
+    `SAI_BRIDGE_PORT_ATTR_ADMIN_STATE false`, chip `lrn` D whatever the learn
+    mode. Only a swss restart or a reboot clears it.
+  - **macOS has no `AF_PACKET`**: `testdata/l2d_maclock.py` sets the constant
+    before l2d opens its fake sockets.

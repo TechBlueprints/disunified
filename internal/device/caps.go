@@ -414,9 +414,9 @@ func speedCaps(p devicemodel.Port) int {
 // raises the matching alert (64 and 32 seen live 2026-11-13), so a bit is set
 // only for a condition a driver really detected; nothing is mapped onto this
 // table by a similar name. Real switches send 0 when healthy. The storm,
-// DHCP-rate and rogue-DHCP bits follow the growth of the port's own drop
-// counters (Port.Health) since the previous inform; no driver fills those
-// counters yet.
+// DHCP-rate, rogue-DHCP and MAC-locking bits follow the growth of the port's
+// own drop counters (Port.Health) since the previous inform; the cause named
+// in a Port.Fault sets its bit for a port a device's protection shut down.
 //
 // custom_anomalies is a different table (1/2/4 SFP rx/tx/EEPROM, 8 loop by
 // STP, 16 STP flap, 32 topology flap, 64 link flap, ... 32768 port lock
@@ -430,7 +430,7 @@ const (
 	portAnomalyDHCPRate       = 32   // the port's DHCP rate limit dropped DHCP frames
 	portAnomalyRogueDHCP      = 64   // DHCP guarding dropped server replies on the port
 	portAnomalyDot1X          = 128  // a port shut down after failed 802.1X authentication
-	portAnomalyMACLocking     = 256  // a port shut down for a MAC not on its allowed list
+	portAnomalyMACLocking     = 256  // the port's MAC filter dropped a source not on its allowed list (or shut the port for one)
 	portAnomalyLoopProtection = 512  // a port held down by loop protection
 	portAnomalyDoS            = 1024 // a port shut down by the switch's denial-of-service protection
 )

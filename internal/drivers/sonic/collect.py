@@ -164,6 +164,8 @@ section("l2_guard", "STATE_DB", "DUI_LOOP_GUARD_TABLE|*")
 section("l2_storm", "STATE_DB", "DUI_STORM_TABLE|*")
 # Its DHCP rate detector's per-port counts (11.17).
 section("l2_dhcp_rate", "STATE_DB", "DUI_DHCP_RATE_TABLE|*")
+# MAC locking's count per interface (docs/drivers/sonic.md 11.18.2).
+section("l2_maclock", "STATE_DB", "DUI_MACLOCK_TABLE|*")
 # orchagent's resource counters: the FDB's used and available entries.
 section("crm", "COUNTERS_DB", "CRM:STATS")
 # The bridge's own ACL tables (docs/drivers/sonic.md 11.7.5) -- DHCP

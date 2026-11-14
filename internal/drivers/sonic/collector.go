@@ -290,9 +290,10 @@ var redisSections = []string{
 // driver's ACL tables); the captures before that lack them, which reads as
 // empty. state_switch_cap (the SAI's SWITCH_CAPABILITY, §11.8) joined on
 // 2026-11-02, cfg_l2mc (IGMP snooping's tables, §8.10) on 2026-11-03,
-// l2_storm (l2d's storm detection, §11.21) and l2_dhcp_rate (its DHCP
-// rate detector, §11.17) on 2026-11-14.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm"}
+// l2_storm (l2d's storm detection, §11.21), l2_dhcp_rate (its DHCP rate
+// detector, §11.17) and l2_maclock (MAC locking's count, §11.18.2) on
+// 2026-11-14.
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)

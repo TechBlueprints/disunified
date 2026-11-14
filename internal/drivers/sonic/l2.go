@@ -81,6 +81,12 @@ type l2Conf struct {
 	// DHCPRate is the DHCP rate detector, on wherever l2d runs: the limit
 	// is the switch's own, not a controller setting.
 	DHCPRate l2DHCPRate `json:"dhcp_rate"`
+	// MacLock is the MAC Address Filter's watch: each secured bridge port
+	// (an interface, or the PortChannel it is a member of) with its allowed
+	// MACs, lower case and sorted (an empty list allows nothing, as on a
+	// UniFi switch). nil when no port is secured, so a config written before
+	// it existed reads the same.
+	MacLock *l2MacLock `json:"mac_lock,omitempty"`
 	// Deadman is set by the switch when the dead-man timer undid a first
 	// enable: the time it fired. The driver does not enable STP again until
 	// the controller has turned it off and on.
@@ -112,6 +118,10 @@ type l2DHCPRate struct {
 	Enabled   bool `json:"enabled"`
 	Threshold int  `json:"threshold"`
 	Rate      int  `json:"rate"`
+}
+
+type l2MacLock struct {
+	Ports map[string][]string `json:"ports"`
 }
 
 // l2Inst is collect.py's l2d section: what is installed and running.
@@ -154,6 +164,7 @@ type l2Want struct {
 	portsSet bool
 	ports    map[string]l2Port
 	guard    []string
+	macLock  map[string][]string // secured bridge port -> allowed MACs
 	// storm: a port asks for broadcast or multicast storm control, which
 	// l2d watches (§11.21) -- it runs for that alone.
 	storm bool
@@ -166,7 +177,7 @@ type l2Want struct {
 
 // anyPortSetting: a port asks for BPDU guard, STP off, or loop protection.
 func (w *l2Want) anyPortSetting() bool {
-	if len(w.guard) > 0 {
+	if len(w.guard) > 0 || len(w.macLock) > 0 {
 		return true
 	}
 	for _, p := range w.ports {
@@ -182,6 +193,9 @@ func (w *l2Want) conf() l2Conf {
 		STP:       l2STP{Enabled: w.stp, Version: w.version, Priority: w.priority, Ports: w.ports},
 		LoopGuard: l2Guard{Enabled: len(w.guard) > 0, Threshold: loopThreshold, Interval: loopInterval, Hold: loopHold, Ports: w.guard},
 		DHCPRate:  l2DHCPRate{Enabled: true, Threshold: dhcpRateThreshold, Rate: dhcpRateCoPP},
+	}
+	if len(w.macLock) > 0 {
+		c.MacLock = &l2MacLock{Ports: w.macLock}
 	}
 	if c.STP.Version == "" {
 		c.STP.Version = "rstp"
@@ -220,6 +234,7 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 	defer c.mu.Unlock()
 	ports := map[string]l2Port{}
 	var guard []string
+	lock := map[string][]string{}
 	seen := map[string]bool{}
 	for _, d := range desired {
 		ifs := c.ifnames[d.Index]
@@ -244,11 +259,33 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 			if d.LoopProtect {
 				guard = append(guard, n)
 			}
+			if d.PortSecurity {
+				lock[n] = allowedMACs(d.AllowedMACs)
+			}
 		}
 	}
 	sort.Strings(guard)
-	c.l2.portsSet, c.l2.ports, c.l2.guard = true, ports, guard
+	if len(lock) == 0 {
+		lock = nil
+	}
+	c.l2.portsSet, c.l2.ports, c.l2.guard, c.l2.macLock = true, ports, guard, lock
 	c.l2.storm = stormWatched(desired)
+}
+
+// allowedMACs is a port's list as l2d compares it: lower case, sorted, no
+// duplicates, never nil (an empty list allows nothing).
+func allowedMACs(macs []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range macs {
+		m = strings.ToLower(m)
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // applyL2 brings disunified-l2d's installation and config in line with the
@@ -271,7 +308,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 			case in.present:
 				why = "the switch has no mstpd and no docker to build it"
 			}
-			c.warnOnce("l2 cannot", "sonic: spanning tree, BPDU guard or loop protection requested, but this image has no STP daemon (no FEATURE|stp) and %s; not written", why)
+			c.warnOnce("l2 cannot", "sonic: spanning tree, BPDU guard, loop protection or MAC locking requested, but this image has no STP daemon (no FEATURE|stp) and %s; not written (a MAC Address Filter is still enforced, its violations go uncounted)", why)
 		}
 		return 0, nil
 	}
@@ -279,7 +316,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	want := w.conf()
-	need := want.STP.Enabled || want.LoopGuard.Enabled || w.storm
+	need := want.STP.Enabled || want.LoopGuard.Enabled || w.storm || want.MacLock != nil
 	if !need && in.Conf == nil {
 		return 0, nil // nothing wanted, nothing installed
 	}
@@ -318,7 +355,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 			}
 			started = 1
 		}
-		if !want.LoopGuard.Enabled && !w.storm && in.Conf == nil {
+		if !want.LoopGuard.Enabled && !w.storm && want.MacLock == nil && in.Conf == nil {
 			return started, nil // installed once mstpd is there
 		}
 	}
@@ -458,7 +495,11 @@ func l2Summary(in l2Inst, want l2Conf, confChanged, arm bool) string {
 		if want.STP.Enabled {
 			stp = fmt.Sprintf("%s priority %d", want.STP.Version, want.STP.Priority)
 		}
-		parts = append(parts, fmt.Sprintf("config: spanning tree %s, loop protection %s", stp, guard))
+		lock := "off"
+		if want.MacLock != nil {
+			lock = fmt.Sprintf("%d ports", len(want.MacLock.Ports))
+		}
+		parts = append(parts, fmt.Sprintf("config: spanning tree %s, loop protection %s, MAC locking %s", stp, guard, lock))
 	}
 	if arm {
 		parts = append(parts, fmt.Sprintf("first enable under a %s dead-man timer", l2DeadmanAfter))
@@ -580,6 +621,7 @@ func dhcpRateCounts(out []cagePort, db map[string]table) {
 func l2Ports(out []cagePort, db map[string]table) {
 	sp := db["l2_port"].byName("|")
 	guard := db["l2_guard"].byName("|")
+	lock := db["l2_maclock"].byName("|")
 	lags := map[string]string{}
 	for k := range db["cfg_lag_member"] {
 		parts := strings.Split(k, "|")
@@ -592,6 +634,14 @@ func l2Ports(out []cagePort, db map[string]table) {
 		if len(p.Interfaces) == 0 {
 			continue
 		}
+		// MAC locking counts per interface (a member's, for a PortChannel):
+		// a split cage sums its lanes.
+		var drops uint64
+		for _, ifc := range p.Interfaces {
+			n, _ := strconv.ParseUint(lock[ifc]["drops"], 10, 64)
+			drops += n
+		}
+		p.Health.MACLockingDrops = drops
 		name := p.Interfaces[0]
 		if lag := lags[name]; lag != "" {
 			name = lag

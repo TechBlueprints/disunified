@@ -946,6 +946,7 @@ type PortHealth struct {
 	StormDropsUnicast   uint64 // unicast frames dropped by the port's storm control (unknown-unicast flood)
 	DHCPRateDrops       uint64 // DHCP frames dropped by the port's DHCP rate limit
 	RogueDHCPDrops      uint64 // DHCP server replies dropped on this port by DHCP guarding (a server on an untrusted port)
+	MACLockingDrops     uint64 // frames from a source not allowed on the port that the port's MAC filter dropped
 }
 
 // Counters are lifetime interface counters.

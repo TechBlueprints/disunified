@@ -4953,7 +4953,7 @@ this branch deployed), and l2d running the detector as a service (the
 harness ran the class alone; the service path is `sync` -> `configure`
 every 2 s and the main loop's `select`, fixture-tested only).
 
-### 11.18 Switch-detected anomalies the DX010 cannot report yet: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
+### 11.18 Switch-detected anomalies: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
 
 A port's `anomalies` field is what the switch itself detected, and every
 bit it carries raises an alert (`docs/feature-map.md` §2). The storm bits
@@ -4991,7 +4991,7 @@ is in §11.18.1 and §11.18.4.
 | Bit | What the DX010 can do | Built |
 |---|---|---|
 | 2048 PHY failure | no PHY between the ASIC and the cages, as on the ECS, whose SONiC describes none either; the per-port fault the DX010 does report is a link-down reason seen on the healthy uplink (§11.18.1) | nothing |
-| 256 MAC locking | enforces the MAC filter (§11.12) but counts no dropped source per port; counting needs the ingress-port match in the kit's `L2` ACL type, an image change (§11.18.2) | nothing (enforcement as before) |
+| 256 MAC locking | enforces the MAC filter (§11.12); since 2026-11-14 a secured port's unknown sources go to the CPU (`cpu_trap`, as on the ECS), where disunified-l2d counts them per port; the port stays up (§11.18.2) | built: `Health.MACLockingDrops`, verified by hand on an empty cage |
 | 128 802.1X authentication failed | no authenticator on the image; 202511 holds Broadcom's Port Access Control sources, unbuilt and without an orchagent consumer (§11.18.3) | nothing |
 | 1024 DoS | the ECS's `denial-of-service` cause is a configuration row with nothing observable behind it (no detector in any database, the chip or the CPU path, no push key, no UI setting, no bit reported), so there is no condition to copy; the Tomahawk's own DoS header checks could be counted per port, but outside SAI and only as a condition of this project's choosing (§11.18.4) | nothing |
 
@@ -5051,82 +5051,139 @@ signal on the DX010 for a port the ASIC cannot bring up whatever the far
 end does. None was found in STATE_DB, APPL_DB or the SAI's port
 notifications.
 
-#### 11.18.2 MAC locking (256)
+#### 11.18.2 MAC locking (256): built (2026-11-14)
 
 **The condition is the MAC Address Filter's.** "Unauthorized MAC Detected"
 is a source MAC on the port that is not on the port's allowed list: UniFi's
 port security, pushed as `switch.port.N.port-security=enabled` and
-`port-security.mac.K` (§11.12).
+`port-security.mac.K` (§11.12; the push for a test port is captured in
+`controller-10.6.109/system_cfg-dx010-portfeat-*.txt`).
 
-**Enforcement is built** (§11.12, written and read back in ASIC_DB on
-2026-11-07): `learn_mode drop` on the port or its PortChannel, and a static
-FDB entry per allowed MAC in each of the port's VLANs. A frame from any
-other source is not learnt and not forwarded. It is dropped without a
-trace: nothing on the running image counts it per port. What was checked:
+**What the ECS does** (the ECS Aggregation on SONiC 4.0.1, read-only on
+2026-11-14; no port there is secured, so no violation could be watched
+without changing a production switch):
 
-1. **The drop counters.** The SAI offers one `PORT_INGRESS_DROPS` debug
-   counter in all, and none of its reasons is a learning drop
-   (`MPLS_MISS`, `FDB_AND_BLACKHOLE_DISCARDS`, `IP_HEADER_ERROR`,
-   `L3_EGRESS_LINK_DOWN`, `EXCEEDS_L3_MTU`, `DIP_LINK_LOCAL`,
-   `SIP_LINK_LOCAL`, `ACL_ANY`, `SMAC_EQUALS_DMAC`; capture,
-   `dropcounters_capabilities`). `FDB_AND_BLACKHOLE_DISCARDS` and
-   `ACL_ANY` each count other causes as well. The port's own
-   `IF_IN_DISCARDS` counts every ingress drop.
-2. **An ACL that counts.** Per secured port, one FORWARD rule per
-   allowed source and a catch-all DROP whose counter would be the count of
-   unlisted sources. SONiC matches SRC_MAC only in the image kit's `L2`
-   table type (sonic-swss 0003; `sonic-acl.yang` accepts SRC_MAC on a rule
-   only when its table's type is `L2`, so a custom `ACL_TABLE_TYPE` with
-   it would fail the breakout's whole-config validation, as `learn_mode`
-   would without the hold, §11.12). That type matches SRC_MAC, DST_MAC,
-   the ether type and the outer VLAN, and not the ingress port. A rule
-   counter is the sum over every port the table is bound to, so a catch-all
-   in `DUI_MAC_ACL` cannot say which port saw the source. A table per
-   secured port is no answer: the ASIC reports three more ingress PORT
-   tables available beside the one in use (CRM, capture `crm_acl_group`),
-   shared with `DUI_DHCP_GUARD`, `DUI_IP_ACL` and `DUI_MAC_ACL`. And ACL
-   counter polling is off on the image (`counterpoll`: `ACL disable`), so
-   no ACL counter reaches COUNTERS_DB.
-3. **The ECS's route.** `learn_mode cpu_trap` (portsorch has it) sends an
-   unknown source to the CPU instead, where software can count it. On the
-   DX010 those frames enter the kernel's `Bridge`, whose FORWARD chain
-   accepts everything but link-local, ARP and multicast (capture,
-   `ebtables_forward`): unicast from an unlisted source would be forwarded
-   in software unless the bridge adds an ebtables rule set per secured
-   port, which is also where it would count. `learn_mode` is CONFIG_DB and
-   is kept across a reboot; ebtables rules are not, so between boot and the
-   bridge's first reconcile a secured port would pass what today it drops
-   from boot. The frames would reach the CPU at whatever rate the host
-   sends them, policed only by the default trap group, and that could not
-   be measured: no second linked port. A weaker filter for a counter: not
-   done.
+- Its error-disable configuration lists the cause:
+  `ERROR_DISABLE|mac-locking` in CONFIG_DB and APPL_DB, `admin_status
+  enabled`, `auto_recovery_interval 0`, beside bcast-storm, mcast-storm,
+  ucast-storm, dhcp-rate-limit, denial-of-service, dot1x, keepalive,
+  bpduguard, bpdustorm and mclag-delay-restore; `show errdisable recovery`
+  prints the same list, `show errdisable status` an empty table (the model
+  of those rows: §11.20). No port has been seen disabled for this cause.
+- A secured port there is `learn_mode cpu_trap` and Ubiquiti's software
+  learning (§11.12): unknown sources go to the CPU, only the listed ones
+  are learnt, the kernel bridge drops the rest. `systemctl` lists
+  `port-securityd.service` ("Port Security daemon"), the swss container runs
+  `swlearnd`, and `macsnoopingd` holds a packet socket on the kernel `Bridge`
+  (`/proc/net/packet`, protocol `ETH_P_ALL`).
+- The ECS's inform printed on the switch has no `anomalies` key
+  (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`). The rows are
+  written for every cause, including ones the ECS does not even claim
+  (storm control, §11.20), so they do not show a detector; what a violation
+  does there is not observed.
 
-**Built: nothing; enforcement only.** The bit is never set.
+**What the DX010 does now.** The driver still secures a port with
+`learn_mode drop` and one static FDB entry per allowed MAC (§11.12): the
+chip forwards the listed sources and drops the rest unseen, from boot. With
+the port in l2d's config (`l2.json` `mac_lock`: bridge port -> allowed
+MACs), `disunified-l2d`'s `MacLockGuard`:
 
-**What it takes to report it, as a build assessment** (all three, in this
-order; each is ordinary work in this repository):
+1. writes the kernel bridge's chain `DUI_MACLOCK` (jumped to from INPUT and
+   FORWARD): per secured port, `-i <port> -s <mac> -j RETURN` for each
+   allowed MAC, then `-i <port> -j DROP`;
+2. only then sets the port's learning to `cpu_trap` in APPL_DB
+   (`PORT_TABLE`, a PortChannel's `LAG_TABLE`, through ProducerStateTable),
+   the ECS's mode: an unknown source is still neither learnt nor forwarded
+   by the chip, but goes to the CPU and arrives on the port's netdev, where
+   the chain drops it;
+3. reads the port's netdev (each member's, for a PortChannel) on a packet
+   socket, which sees a frame before the bridge does, and counts every
+   inbound frame whose source is unicast, not the switch's own MAC and not
+   on the list: STATE_DB `DUI_MACLOCK_TABLE|<interface>` `drops` (since
+   boot; carried over an l2d restart) and `last_mac`;
+4. leaves the port up.
 
-1. **The kit's `L2` table type gains the ingress-port match**: one
-   `.withMatch(SAI_ACL_TABLE_ATTR_FIELD_IN_PORTS)` in 0003's builder and a
-   case in its mock test. `sonic-acl.yang` already allows `IN_PORTS` on any
-   rule. It is an image change: build, install, and the driver's `Start`
-   probe for it (as it probes 0003 itself).
-2. **The driver writes the filter into `DUI_MAC_ACL` as well**: per secured
-   port (or its PortChannel), FORWARD rules for its allowed sources and one
-   counted DROP with `IN_PORTS` set, below UniFi's own MAC ACL rules, beside
-   `learn_mode drop`, which stays the enforcement from boot. That is the
-   allowed MACs plus one rule per secured port against
-   `max_custom_mac_acls`. On Broadcom an ACL drop does not cancel a
-   to-CPU trap's copy (§11.7.8), which changes nothing here: the learning
-   drop already applies.
-3. **ACL counter polling on** (`FLEX_COUNTER_TABLE|ACL`), the DROP rule's
-   packets read each poll into a neutral cumulative counter in
-   `Port.Health`, and its growth set as 256 in `internal/device`, as the
-   storm and DHCP counters are. The read is the same one the rogue-DHCP
-   report needs for `DUI_DHCP_GUARD`'s drops; build it once.
+`collect.py` reads the table (`l2_maclock`) and the driver sums a cage's
+lanes into `Port.Health.MACLockingDrops`; the device layer sets bit 256
+when that count grew since the previous inform, as it does for the storm
+and DHCP counts.
 
-Verification needs a source on a linked port that is not on its list: a
-host on rack day, or a second DAC.
+CONFIG_DB keeps `drop`: a reboot, a swss restart (APPL_DB rebuilt from
+CONFIG_DB) or a stopped l2d leaves the port as closed as before, only
+uncounted, and l2d re-asserts `cpu_trap` within one 2 s pass. A port leaving
+the config gets its CONFIG_DB learn mode back first, and the chain goes
+after; `--teardown` does the same for every port l2d trapped. The counts
+stay until the switch reboots.
+
+**Why the port stays up.** The DX010 does what a UniFi switch does, and a
+claim must be true. As the UI words the alert for bit 256, a MAC was
+detected on the port that is not on the allowed list, and its recommended
+action is to check what is connected to the port; nothing says the port was
+disabled. Loop protection's alert does say so ("disabled by Loop
+Protection", to be re-enabled by hand). So the DX010 keeps dropping the
+source, as the ECS's mode does, and reports the detection. The ECS's own
+outcome on a violation is the open point: its `ERROR_DISABLE|mac-locking`
+row exists, but whether a violation disables a port there has not been seen
+(untested; no port there was secured). The `mac-locking` Fault cause stays
+in the device layer for a device that does shut the port.
+
+**What the count costs the CPU, and its bound.** The trapped frames come
+through the default CoPP group (`COPP_TABLE:default`: queue 0, `cir 600`,
+`cbs 600` packets), one policer for the whole switch, so under a flood l2d
+reads at most about 600 frames a second in all, at most 256 per socket per
+turn of its loop; the database is written once per 2 s pass, and a log line
+for one port and source at most every 10 minutes. The count is then a lower
+bound (the rest are dropped by the policer, which names no port), which is
+enough: the bit follows growth, not the number.
+
+**Live: the CPU path** (cage 9 in MAC loopback, 2026-11-14,
+`sonic-igmp-202511.20261106-f2e25f54c/maclock-live.txt`, `learn_probe`):
+under `drop` no frame from an unknown source reached the CPU; under
+`cpu_trap` 20 of 20 did; a burst of 20,000 frames at about 22,000 frames/s
+delivered 626 to the netdev, and the chip counted 1,549 to CPU queue 0 and
+18,471 dropped there. The chip's learn flag (`bcmcmd ps`, `lrn`) followed
+APPL_DB on cage 10: `cpu_trap` C, `drop` D, `hardware` FA (`chip_learn`).
+
+**Live: the watch** (2026-11-14, the candidate `MacLockGuard` run by hand
+beside the installed l2d, under the test lock; the switch restored and
+checked after): cage 10 (Ethernet36), empty, in MAC loopback in a hand-made
+tagged VLAN 3997 beside its Vlan4094, the installed l2d's main process
+paused so its VLAN mapping did not block the looped port. The chain and
+`cpu_trap` were written (chip C); frames from the listed source were not
+counted; frames from an unlisted one were, and the port stayed up
+(`admin_status up`); unwatched, the port went back to `hardware` and the
+chain was removed (`frames_ethernet36` is what the netdev delivered). The
+collector's capture during the second run is `collect-maclock.txt`
+(`l2_maclock`: 22 on Ethernet36; `TestMacLockingDropsFromCapture`). The
+loopback also brought back the LAN's IGMP frames, which snooping's static
+groups flood to every port of Vlan4094: under `cpu_trap` they were trapped,
+counted and dropped like any unlisted source, and the FDB afterwards held
+every LAN address on Ethernet0. While a looped port in Vlan4094 learns in
+hardware, the same frames would move LAN addresses onto it: never loop a
+port that is not trapping or dropping.
+
+An earlier build of this section held the port down 150 s on a violation
+(945d0b4); that was replaced the same day for the reason above.
+
+Not exercised: a host on a cabled port, a secured PortChannel, the
+controller's 256 alert (the deployed bridge predates this build).
+
+**Found while testing: a VLAN move can leave a port's bridge port dead.**
+Cage 9 was first set in UniFi to a VLAN-only network (VLAN 4000) with the
+filter on. The deployed driver moved it (`config vlan member del 4094
+Ethernet32 ; config vlan member add -u 4000 Ethernet32`, after deleting the
+port's `L2MC_STATIC_MEMBER` rows). orchagent's `removeBridgePort` set the
+bridge port admin down, then refused to remove it ("port Ethernet32 still has
+references to a Layer 2 multicast group member": IGMP snooping's static
+groups; ASIC_DB held no L2MC group member on it by then), and the add reused
+the admin-down bridge port: ASIC_DB `SAI_BRIDGE_PORT_ATTR_ADMIN_STATE
+false`, the chip's learn flag D whatever learn mode was set. Moving the port
+back did not clear it, and orchagent then kept retrying the removal (about
+two log lines a second). A swss restart or a reboot clears it. Any native
+VLAN change on a port with snooping's static groups is likely to do the
+same; the driver's VLAN plan (or the kit's l2mc reference counting) needs a
+fix, outside this work. Testing therefore keeps a port's native VLAN and
+adds a hand-made tagged one.
 
 #### 11.18.3 802.1X authentication failed (128)
 
