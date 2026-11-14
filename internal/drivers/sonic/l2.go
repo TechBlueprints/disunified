@@ -64,10 +64,23 @@ const (
 	loopHold      = 150 // seconds the port stays down
 )
 
+// DHCP rate detection (docs/drivers/sonic.md §11.17): UniFi's alert is
+// "Incoming DHCP packets exceed 300/sec" on a port, a fixed figure no push
+// carries. l2d counts each port's DHCP requests against it; dhcpRateCoPP is
+// the CPU rate of the DHCP trap's own CoPP group while it does, above what
+// one port at the threshold sends.
+const (
+	dhcpRateThreshold = 300 // requests per second on one port
+	dhcpRateCoPP      = 600 // packets per second, the whole switch
+)
+
 // l2Conf is l2d's config file (l2d.py load_conf).
 type l2Conf struct {
 	STP       l2STP   `json:"stp"`
 	LoopGuard l2Guard `json:"loop_guard"`
+	// DHCPRate is the DHCP rate detector, on wherever l2d runs: the limit
+	// is the switch's own, not a controller setting.
+	DHCPRate l2DHCPRate `json:"dhcp_rate"`
 	// Deadman is set by the switch when the dead-man timer undid a first
 	// enable: the time it fired. The driver does not enable STP again until
 	// the controller has turned it off and on.
@@ -93,6 +106,12 @@ type l2Guard struct {
 	Interval  int      `json:"interval"`
 	Hold      int      `json:"hold"`
 	Ports     []string `json:"ports,omitempty"`
+}
+
+type l2DHCPRate struct {
+	Enabled   bool `json:"enabled"`
+	Threshold int  `json:"threshold"`
+	Rate      int  `json:"rate"`
 }
 
 // l2Inst is collect.py's l2d section: what is installed and running.
@@ -159,6 +178,7 @@ func (w *l2Want) conf() l2Conf {
 	c := l2Conf{
 		STP:       l2STP{Enabled: w.stp, Version: w.version, Priority: w.priority, Ports: w.ports},
 		LoopGuard: l2Guard{Enabled: len(w.guard) > 0, Threshold: loopThreshold, Interval: loopInterval, Hold: loopHold, Ports: w.guard},
+		DHCPRate:  l2DHCPRate{Enabled: true, Threshold: dhcpRateThreshold, Rate: dhcpRateCoPP},
 	}
 	if c.STP.Version == "" {
 		c.STP.Version = "rstp"
@@ -530,6 +550,25 @@ func bridgeID(s string) (int, string, bool) {
 		return 0, "", false
 	}
 	return int(n) * 4096, strings.ToLower(parts[2]), true
+}
+
+// dhcpRateCounts fills each port's Health.DHCPRateDrops from l2d's DHCP
+// rate detector: the DHCP requests its lanes received above the threshold
+// in any one second, summed since l2d started counting (§11.17). The frames
+// were not dropped by a per-port limiter -- the image has none -- but they
+// are what UniFi's alert counts: the port's DHCP over its rate.
+func dhcpRateCounts(out []cagePort, db map[string]table) {
+	rate := db["l2_dhcp_rate"].byName("|")
+	for i := range out {
+		p := &out[i].Port
+		var sum uint64
+		for _, name := range p.Interfaces {
+			if n, err := strconv.ParseUint(rate[name]["over"], 10, 64); err == nil {
+				sum += n
+			}
+		}
+		p.Health.DHCPRateDrops = sum
+	}
 }
 
 // l2Ports fills each port's STP state from l2d's STATE_DB tables: the

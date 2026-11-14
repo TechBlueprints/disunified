@@ -38,8 +38,13 @@
 # setting) for `hold` seconds -- never the STP root port nor the port the
 # default gateway is learned on.
 #
+# The DHCP rate (UniFi's "Incoming DHCP packets exceed 300/sec"): class
+# DhcpRate counts each port's DHCP client requests at the CPU and reports
+# the excess over 300 in any one second; it acts on nothing (11.17).
+#
 # Everything the bridge reads back is published in STATE_DB:
-# DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>.
+# DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>,
+# DUI_DHCP_RATE_TABLE|<port>.
 #
 # `disunified-l2d --teardown` undoes it: every VLAN back to the default STP
 # instance, every port forwarding in the kernel, stp_state 0, mstpd stopped,
@@ -47,6 +52,7 @@
 # keeps running and the next start adopts it), so a restart never opens a
 # window with no spanning tree.
 import collections
+import ctypes
 import json
 import os
 import select
@@ -166,6 +172,7 @@ def load_conf():
             "hold": float(guard.get("hold", 150)),
             "ports": set(guard.get("ports") or []),
         },
+        "dhcp_rate": DhcpRate.load(c.get("dhcp_rate")),
     }
 
 
@@ -344,6 +351,217 @@ class Mstp(object):
         return run([MSTPCTL, "showbridge", BRIDGE]).returncode == 0
 
 
+class DhcpRate(object):
+    """UniFi's "Incoming DHCP packets exceed 300/sec" (the port's DHCP rate
+    anomaly), detected and counted, never acted on: in the UI's model the
+    port keeps running (docs/drivers/sonic.md 11.17).
+
+    What is counted: DHCPv4 requests a client sends straight to the network
+    (BOOTREQUEST, giaddr 0), per ingress front-panel port, per second, as
+    they reach the CPU. A server's or a relay's replies are BOOTREPLY and a
+    relay's forwarded requests carry its giaddr, so neither makes a server's
+    or a relay's port look like a flood. A second in which a port's count
+    exceeds the threshold adds the excess to that port's cumulative `over`
+    in STATE_DB DUI_DHCP_RATE_TABLE|<port>, which the bridge reads as the
+    port's DHCP-rate count.
+
+    The CPU sees DHCP only through CoPP: on the image it shares
+    queue4_group3 with LLDP and UDLD at 100 packets/s for the whole switch,
+    so no port could ever be seen above 300/s. While the detector runs, the
+    image's dhcp_relay trap moves to a group of its own, as Ubiquiti's ECS
+    keeps DHCP (queue 3, alone), at a rate a single port's 300/s fits in;
+    the group and the trap row go again when it stops, and coppmgr puts the
+    trap back in the image's group."""
+
+    TABLE = "DUI_DHCP_RATE_TABLE"
+    TRAP = "dhcp_relay"  # copp_cfg.json's trap key, gated by FEATURE|dhcp_relay
+    GROUP = "queue3_group1"
+    QUIET = 10  # seconds under the threshold that end an episode (for the log)
+
+    # A classic BPF program: IPv4 UDP to port 67, untagged or 802.1Q, not a
+    # fragment; the first 256 bytes (the BOOTP header) are kept.
+    FILTER = [
+        (0x28, 0, 0, 12),       # 0  ldh [12]          ethertype
+        (0x15, 0, 7, 0x0800),   # 1  jeq IPv4 ? 2 : 9
+        (0x30, 0, 0, 23),       # 2  ldb [23]          protocol
+        (0x15, 0, 16, 17),      # 3  jeq UDP ? 4 : drop
+        (0x28, 0, 0, 20),       # 4  ldh [20]          flags + fragment
+        (0x45, 14, 0, 0x1FFF),  # 5  jset offset ? drop : 6
+        (0xB1, 0, 0, 14),       # 6  ldxb 4*([14]&0xf) header length
+        (0x48, 0, 0, 16),       # 7  ldh [x+16]        UDP destination
+        (0x05, 0, 0, 9),        # 8  ja 18
+        (0x15, 0, 10, 0x8100),  # 9  jeq 802.1Q ? 10 : drop
+        (0x28, 0, 0, 16),       # 10 ldh [16]          inner ethertype
+        (0x15, 0, 8, 0x0800),   # 11 jeq IPv4 ? 12 : drop
+        (0x30, 0, 0, 27),       # 12 ldb [27]
+        (0x15, 0, 6, 17),       # 13 jeq UDP ? 14 : drop
+        (0x28, 0, 0, 24),       # 14 ldh [24]
+        (0x45, 4, 0, 0x1FFF),   # 15 jset offset ? drop : 16
+        (0xB1, 0, 0, 18),       # 16 ldxb 4*([18]&0xf)
+        (0x48, 0, 0, 20),       # 17 ldh [x+20]
+        (0x15, 0, 1, 67),       # 18 jeq 67 ? 19 : drop
+        (0x06, 0, 0, 256),      # 19 accept 256 bytes
+        (0x06, 0, 0, 0),        # 20 drop
+    ]
+
+    @staticmethod
+    def load(c):
+        c = c or {}
+        return {
+            "enabled": bool(c.get("enabled")),
+            "threshold": int(c.get("threshold", 300)),
+            "rate": int(c.get("rate", 600)),
+        }
+
+    def __init__(self, db):
+        self.db = db
+        self.table = sw.Table(db.state, self.TABLE)
+        self.conf = self.load(None)
+        self.sock = None
+        self.filter_buf = None
+        self.sec = 0
+        self.counts = collections.Counter()  # port -> requests this second
+        self.stats = {}  # port -> {"over", "peak", "last"}
+        self.episode = {}  # port -> last second over the threshold
+        self.group_delete_at = 0.0
+        self.untrapped_logged = False
+
+    @staticmethod
+    def classify(frame):
+        """True for a client's own DHCP request: BOOTREQUEST, giaddr 0."""
+        off = 18 if frame[12:14] == b"\x81\x00" else 14
+        if len(frame) < off + 20:
+            return False
+        p = off + (frame[off] & 0x0F) * 4 + 8  # the BOOTP header
+        return len(frame) >= p + 28 and frame[p] == 1 and frame[p + 24:p + 28] == b"\0\0\0\0"
+
+    def configure(self, conf):
+        """Called on every sync: start, stop, keep CoPP as the config says."""
+        was = self.conf["enabled"]
+        self.conf = conf
+        if conf["enabled"]:
+            self.copp_install()
+            if self.sock is None:
+                self.open()
+        elif was or self.sock is not None or \
+                self.db.hgetall(self.db.cfg, "COPP_TRAP|" + self.TRAP).get("trap_group") == self.GROUP:
+            self.stop("disabled")  # also a trap row left behind by an l2d that died
+        if self.group_delete_at and time.time() >= self.group_delete_at:
+            self.db.copp_group._del(self.GROUP)
+            self.group_delete_at = 0.0
+
+    def copp_install(self):
+        group = [("cbs", str(self.conf["rate"])), ("cir", str(self.conf["rate"])), ("meter_type", "packets"),
+                 ("mode", "sr_tcm"), ("queue", "3"), ("red_action", "drop"), ("trap_action", "trap"),
+                 ("trap_priority", "3")]
+        if self.db.hgetall(self.db.cfg, "COPP_GROUP|" + self.GROUP) != dict(group):
+            put(self.db.copp_group, self.GROUP, group)  # before the trap: its leafref
+        try:
+            with open(COPP_CFG) as f:
+                ids = json.load(f)["COPP_TRAP"][self.TRAP]["trap_ids"]
+        except (IOError, OSError, KeyError, ValueError, TypeError):
+            ids = "dhcp,dhcpv6"
+        trap = [("trap_ids", ids), ("trap_group", self.GROUP)]
+        if self.db.hgetall(self.db.cfg, "COPP_TRAP|" + self.TRAP) != dict(trap):
+            put(self.db.copp, self.TRAP, trap)
+            log("dhcp rate: %s trap in %s (%d packets/s)" % (self.TRAP, self.GROUP, self.conf["rate"]))
+        self.group_delete_at = 0.0
+        if self.db.hgetall(self.db.cfg, "FEATURE|dhcp_relay").get("state") != "enabled" and not self.untrapped_logged:
+            self.untrapped_logged = True
+            log("dhcp rate: FEATURE|dhcp_relay is not enabled, so DHCP is not trapped to the CPU; nothing to count",
+                syslog.LOG_WARNING)
+
+    def copp_remove(self, now=False):
+        if self.db.hgetall(self.db.cfg, "COPP_TRAP|" + self.TRAP).get("trap_group") == self.GROUP:
+            self.db.copp._del(self.TRAP)  # coppmgr restores the image's own row
+            log("dhcp rate: %s trap back in the image's group" % self.TRAP)
+        if now:
+            time.sleep(1)
+            self.db.copp_group._del(self.GROUP)
+        else:
+            self.group_delete_at = time.time() + 2  # after coppmgr moved the trap
+
+    def open(self):
+        s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0003))
+        prog = b"".join(struct.pack("HBBI", *ins) for ins in self.FILTER)
+        self.filter_buf = ctypes.create_string_buffer(prog)
+        fprog = struct.pack("HL", len(self.FILTER), ctypes.addressof(self.filter_buf))
+        s.setsockopt(socket.SOL_SOCKET, 26, fprog)  # SO_ATTACH_FILTER
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+        s.setblocking(False)
+        try:  # what arrived before the filter was attached
+            while True:
+                s.recv(1)
+        except BlockingIOError:
+            pass
+        self.sock = s
+        self.adopt()
+        log("dhcp rate: counting DHCP requests per port (threshold %d/s)" % self.conf["threshold"])
+
+    def adopt(self):
+        """Counts survive an l2d restart (STATE_DB keeps them until a reboot)."""
+        for k in self.db.keys(self.db.state, self.TABLE + "|*"):
+            f = self.db.hgetall(self.db.state, k)
+            try:
+                self.stats[k.split("|", 1)[1]] = {"over": int(f.get("over", 0)), "peak": int(f.get("peak", 0)),
+                                                  "last": int(f.get("last", 0))}
+            except ValueError:
+                pass
+
+    def stop(self, why):
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+        self.counts.clear()
+        self.copp_remove(now=(why == "teardown"))
+        log("dhcp rate: stopped (%s)" % why)
+
+    def fileno(self):
+        return self.sock.fileno() if self.sock is not None else None
+
+    def readable(self):
+        now = int(time.time())
+        for _ in range(4096):
+            try:
+                frame, addr = self.sock.recvfrom(256)
+            except BlockingIOError:
+                break
+            except OSError:
+                break
+            ifname, pkttype = addr[0], addr[2]
+            if pkttype == socket.PACKET_OUTGOING or not ifname.startswith("Ethernet"):
+                continue
+            if self.classify(frame):
+                self.note(ifname, now)
+
+    def note(self, port, sec):
+        if sec != self.sec:
+            self.close_second()
+            self.sec = sec
+        self.counts[port] += 1
+
+    def tick(self):
+        if self.sock is not None and int(time.time()) != self.sec:
+            self.close_second()
+            self.sec = int(time.time())
+
+    def close_second(self):
+        limit = self.conf["threshold"]
+        for port, n in self.counts.items():
+            if n <= limit:
+                continue
+            st = self.stats.setdefault(port, {"over": 0, "peak": 0, "last": 0})
+            st["over"] += n - limit
+            st["peak"] = max(st["peak"], n)
+            st["last"] = self.sec
+            put(self.table, port, [(k, str(v)) for k, v in sorted(st.items())])
+            if self.sec - self.episode.get(port, 0) > self.QUIET:
+                log("dhcp rate: %s received %d DHCP requests in one second (threshold %d)" % (port, n, limit),
+                    syslog.LOG_WARNING)
+            self.episode[port] = self.sec
+        self.counts.clear()
+
+
 class L2d(object):
     def __init__(self):
         self.db = DB()
@@ -366,6 +584,7 @@ class L2d(object):
         self.blocked = {}  # port -> unblock time
         self.fdb_sub = None
         self.nl = None
+        self.dhcp = DhcpRate(self.db)  # the DHCP rate detector (its own class)
 
     # --- spanning tree -------------------------------------------------
 
@@ -758,6 +977,7 @@ class L2d(object):
             self.publish()
         self.gw_port = self.gateway_port()
         self.guard_tick()
+        self.dhcp.configure(self.conf["dhcp_rate"])
 
     def main(self):
         syslog.openlog("disunified-l2d", syslog.LOG_PID, syslog.LOG_DAEMON)
@@ -779,7 +999,11 @@ class L2d(object):
                 self.resync = False
                 self.sync()
                 nxt = time.time() + SYNC
-            r, _, _ = select.select([self.nl, self.fdb_sub.getFd()], [], [], 0.02)
+            fds = [self.nl, self.fdb_sub.getFd()] + ([self.dhcp] if self.dhcp.sock is not None else [])
+            r, _, _ = select.select(fds, [], [], 0.02)
+            if self.dhcp in r:
+                self.dhcp.readable()
+            self.dhcp.tick()
             if self.nl in r:
                 try:
                     while True:
@@ -808,6 +1032,7 @@ def teardown():
     d.adopt_guard_state()
     for p in list(d.blocked):
         d.unblock(p)
+    d.dhcp.stop("teardown")
 
 
 def deadman():
