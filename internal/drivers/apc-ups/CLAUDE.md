@@ -104,7 +104,8 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   `rc: ok` and leaves the record (seen twice, 2026-09-26); `sitemgr` removed
   it in seconds. `cmd/devmgr adopt` and `cmd/devmgr upgrade` do work.
 - **The UPS 2U picture is two multi-cells, coloured by outlets 1 and 5 only**
-  (read from the UI bundle 2026-09-26): rows 2-4 and 6-8 never colour
+  (the adopted unit's panel, 2026-09-26: seeding outlets 3-8 off turned the
+  bottom row grey; `docs/drivers/apc-ups.md` §6b): rows 2-4 and 6-8 never colour
   anything, the row data is table merged with override (override on top,
   and the stored table already carries the override's relay_state), and
   there is **no outlet editor for a UPS 2U** in Network 10.6.106 -- the

@@ -38,19 +38,21 @@ const (
 	swCapIGMPAdvanced  = 67108864 // IGMP_SNOOPING_ADVANCED: the per-VLAN querier, timers and switch.multicast.* (docs/drivers/sonic.md §8.10)
 )
 
-// switch_caps.feature_caps2 (Network 10.6.109's UI bundle: LINK_DEBOUNCE 1,
-// OSPF 4, PORT_ROUTING 16, POE_STAGING 32, TRUSTED_PORT 64,
-// MAC_TABLE_PRESSURE 128). Sent only when a bit is claimed, so no driver's
-// payload changes without one.
+// switch_caps.feature_caps2 (upstream unifi-emu's capability_bits.json:
+// LINK_DEBOUNCE 1, ROUTES_OSPFV2 4, PORT_ROUTING 16; the ECS's own inform
+// claims 128; the names POE_STAGING 32, TRUSTED_PORT 64 and
+// MAC_TABLE_PRESSURE 128 are not captured). 4 and 16 verified live on the
+// DX010 (docs/drivers/sonic.md §11.14, §11.16). Sent only when a bit is
+// claimed, so no driver's payload changes without one.
 const (
 	swCap2OSPF        = 4  // OSPF: Settings -> Routing -> OSPF offers the switch as a Device (switch.ospf.*)
 	swCap2PortRouting = 16 // PORT_ROUTING: the port editor's Routing and Routing + Aggregating operations
 )
 
-// sys_fan_mode.caps: the fan modes a device can be set to, as the
-// controller's own enum numbers them (DEFAULT 1, QUIET 2; Network 10.6.109,
-// devmgr.g.pLZcbZDS). The controller stores the block only from a gateway's
-// inform, never a switch's (docs/drivers/sonic.md §11.15); it is reported
+// sys_fan_mode.caps: the fan modes a device can be set to (DEFAULT 1,
+// QUIET 2; upstream unifi-emu's capability_bits.json). The controller keeps
+// the block for no switch (live on the DX010, docs/drivers/sonic.md §11.15;
+// that it keeps it for a gateway is not captured); it is reported
 // anyway because it is true, in the gateway's shape: caps and the current
 // mode, which the UI reads as sys_fan_mode.mode.
 const (

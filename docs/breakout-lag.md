@@ -160,8 +160,6 @@ switch:
    inform; read the port drawer, the Ports list and the device overview.
    If "75" is unprintable, A falls back to reporting the lane speed and
    the bundle lives in the log and the LACP fields -- or 50/100 only.
-   (Could also be answered from the UI bundle's speed-label table, as the
-   UPS picture was.)
    **Answer (2026-11-02, Network 10.6.109, the stub of §6.7):** the
    controller stores `speed: 75000` as sent, and the Ports list prints
    **"75 GbE"**. Nothing else knows the speed: the text is grey (no legend

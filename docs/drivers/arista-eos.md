@@ -332,8 +332,8 @@ with `scripts/sanitize-arista-eos.py`, commit it under
    the baseline from 1.
 6. In the UI, open the Arista's device Settings and check for a Fan Mode
    panel; also check `sys_fan_mode` on its stored record (CLAUDE.md §5).
-   On 10.6.109 neither is expected, because the switch handler drops the
-   field. Record what a newer Network release does.
+   On 10.6.109 neither is expected: no switch's record keeps the field
+   (CLAUDE.md §5). Record what a newer Network release does.
 7. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
    idempotent) and mark the feature verified in this section, the support
    matrix and the feature map.
