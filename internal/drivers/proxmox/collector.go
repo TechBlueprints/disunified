@@ -516,7 +516,6 @@ func applyMSTPPort(p *devicemodel.Port, sp mstpPort) {
 	p.BPDUGuard = sp.BPDUGuardPort == "yes"
 	p.STPEdge = sp.OperEdgePort == "yes"
 	p.Health.STPChanges = atoiDefault(sp.NumTransitionFwd) + atoiDefault(sp.NumTransitionBlk)
-	p.Health.STPInconsistent = sp.Disputed == "yes" || sp.BAInconsistent == "yes" || sp.BPDUGuardError == "yes"
 	if sp.BPDUGuardError == "yes" {
 		p.Fault = "errdisabled: bpduguard"
 	}

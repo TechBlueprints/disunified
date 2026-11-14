@@ -404,23 +404,20 @@ func speedCaps(p devicemodel.Port) int {
 	return bits
 }
 
-// Per-port `anomalies` bits (port_table), the values the Network 10.6 UI
-// understands. Real switches send 0 when healthy; a missing key leaves the
-// UI's Anomaly column blank.
+// Per-port `anomalies` (port_table[].anomalies): conditions the switch
+// itself detected. The controller's table for this field: 1 broadcast storm,
+// 2 multicast storm, 4 unicast storm, 32 DHCP packet rate exceeded, 64 rogue
+// DHCP server, 128 802.1X authentication failed, 256 MAC locking, 512 loop
+// protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure. Each set bit
+// raises the matching alert (64 and 32 seen live 2026-11-13), so a bit is set
+// only for a condition a driver really detected; nothing is mapped onto this
+// table by a similar name. Real switches send 0 when healthy.
+//
+// custom_anomalies is a different table (1/2/4 SFP rx/tx/EEPROM, 8 loop by
+// STP, 16 STP flap, 32 topology flap, 64 link flap, ... 32768 port lock
+// violation) and a different owner: the controller computes it per port from
+// raw fields (link_down_count growth, sfp_found/sfp_rxfault/sfp_txfault) and
+// stores it. The bridge does not send it.
 const (
-	anomSFPRxFault        = 1
-	anomSFPTxFault        = 2
-	anomSFPEEPROM         = 4
-	anomLoopSTP           = 8
-	anomSTPFlap           = 16
-	anomTopologyFlap      = 32
-	anomLinkFlap          = 64
-	anomMCLAGNegotiation  = 128
-	anomPoEBudget         = 256
-	anomLoopKeepalive     = 512
-	anomLowUplinkSpeed    = 1024
-	anomBPDUGuard         = 2048
-	anomTransmissionError = 4096
-	anomDroppedTraffic    = 8192
-	anomPortLock          = 32768
+	portAnomalyLoopProtection = 512 // a port held down by loop protection
 )

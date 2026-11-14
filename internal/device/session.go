@@ -37,7 +37,7 @@ type Session struct {
 	locating  bool
 
 	versionPinned  bool                // the operator named a version: never follow the switch's
-	prevHistory    map[int]portHistory // per port, at the last inform (anomaly deltas)
+	prevHistory    map[int]portHistory // per port, at the last inform (byte rates)
 	caps           devicemodel.Capabilities
 	smartPowerCaps int             // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
 	nutClients     func() []string // addresses of NUT clients served, for nut_client_ips; nil = none
@@ -374,8 +374,7 @@ func (s *Session) buildPayload(now time.Time) []byte {
 		if s.snap != nil {
 			s.prevHistory = make(map[int]portHistory, len(s.snap.Ports))
 			for _, p := range s.snap.Ports {
-				s.prevHistory[p.Index] = portHistory{At: s.snap.TakenAt, Counters: p.Counters, LinkChanges: p.Health.LinkChanges,
-					STPChanges: p.Health.STPChanges, FECUncorrected: p.Health.FECUncorrected, PCSErrBlocks: p.Health.PCSErrBlocks}
+				s.prevHistory[p.Index] = portHistory{At: s.snap.TakenAt, Counters: p.Counters}
 			}
 		}
 		// Reachability, as UniFi switches report it: where the controller can

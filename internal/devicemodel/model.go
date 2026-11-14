@@ -918,21 +918,18 @@ type Battery struct {
 	TransferCause string        // the device's reason for the last status change, "" if unknown
 }
 
-// PortHealth carries the vendor-neutral signals the presentation layer turns
-// into per-port anomaly flags. Counters are lifetime values; the consumer
-// keeps history and looks at growth.
+// PortHealth carries the vendor-neutral fault and change signals the
+// presentation layer reports per port (link drops, STP state changes, optic
+// fault flags, FEC counters for the satisfaction score). Counters are
+// lifetime values.
 type PortHealth struct {
-	LinkChanges     uint64 // link state transitions
-	STPChanges      int    // spanning-tree topology changes seen on this port
-	STPInconsistent bool   // an STP guard (loop/root/bridge assurance) holds the port inconsistent
-	OpticRxAlarm    bool   // receive power outside the optic's alarm thresholds
-	OpticTxAlarm    bool   // transmit power or laser bias outside the alarm thresholds
-	HasFECCounters  bool   // FECCorrected/FECUncorrected are populated
-	FECCorrected    uint64 // FEC corrected codewords
-	FECUncorrected  uint64 // FEC uncorrected codewords (each one is a lost frame)
-	HasPCSCounters  bool   // PCSErrBlocks/PCSHighBER are populated (PHY layer; copper and optical alike)
-	PCSErrBlocks    uint64 // PCS errored blocks, summed over lanes
-	PCSHighBER      bool   // the PHY currently reports a high bit-error rate
+	LinkChanges    uint64 // link state transitions
+	STPChanges     int    // spanning-tree topology changes seen on this port
+	OpticRxAlarm   bool   // receive power outside the optic's alarm thresholds
+	OpticTxAlarm   bool   // transmit power or laser bias outside the alarm thresholds
+	HasFECCounters bool   // FECCorrected/FECUncorrected are populated
+	FECCorrected   uint64 // FEC corrected codewords
+	FECUncorrected uint64 // FEC uncorrected codewords (each one is a lost frame)
 }
 
 // Counters are lifetime interface counters.

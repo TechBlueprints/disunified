@@ -99,10 +99,9 @@ type showSpanningTreeFull struct {
 			Priority int `json:"priority"`
 		} `json:"bridge"`
 		Interfaces map[string]struct {
-			State        string          `json:"state"`
-			Role         string          `json:"role"` // root | designated | alternate | backup | disabled
-			Cost         int             `json:"cost"`
-			Inconsistent map[string]bool `json:"inconsistentFeatures"` // loopGuard, rootGuard, bridgeAssurance, mstPvstBorder
+			State string `json:"state"`
+			Role  string `json:"role"` // root | designated | alternate | backup | disabled
+			Cost  int    `json:"cost"`
 		} `json:"interfaces"`
 	} `json:"spanningTreeInstances"`
 }
@@ -183,8 +182,8 @@ func applySTPChanges(ports []devicemodel.Port, ts showSTPTopologyStatus) {
 	}
 }
 
-// applySTPInconsistent flags ports an STP guard holds inconsistent.
-func applySTPInconsistent(ports []devicemodel.Port, st showSpanningTreeFull) {
+// applySTPRoles sets each port's STP role.
+func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
@@ -194,11 +193,6 @@ func applySTPInconsistent(ports []devicemodel.Port, st showSpanningTreeFull) {
 			slot, _, ok := parseEthName(name)
 			if !ok || byIndex[slot] == nil {
 				continue
-			}
-			for _, v := range e.Inconsistent {
-				if v {
-					byIndex[slot].Health.STPInconsistent = true
-				}
 			}
 			if e.Role != "" && byIndex[slot].STPRole == "" {
 				byIndex[slot].STPRole = e.Role
@@ -210,8 +204,6 @@ func applySTPInconsistent(ports []devicemodel.Port, st showSpanningTreeFull) {
 var (
 	fecCorrectedRe   = regexp.MustCompile(`FEC corrected codewords\s+(\d+)`)
 	fecUncorrectedRe = regexp.MustCompile(`FEC uncorrected codewords\s+(\d+)`)
-	pcsErrBlocksRe   = regexp.MustCompile(`PCS err blocks\s+(\d+)`)
-	pcsHighBERRe     = regexp.MustCompile(`PCS high BER\s+(\S+)`)
 )
 
 // phyDetail is what `show interfaces <name> phy detail` (text; EOS 4.26 has
@@ -220,9 +212,6 @@ var (
 type phyDetail struct {
 	HasFEC                  bool
 	FECCorrected, FECUncorr uint64
-	HasPCS                  bool
-	PCSErrBlocks            uint64 // summed over the PCS sections (lanes)
-	PCSHighBER              bool   // any section not "ok"
 }
 
 func parsePHYDetail(text string) phyDetail {
@@ -231,17 +220,6 @@ func parsePHYDetail(text string) phyDetail {
 		d.HasFEC = true
 		d.FECCorrected, _ = strconv.ParseUint(c[1], 10, 64)
 		d.FECUncorr, _ = strconv.ParseUint(u[1], 10, 64)
-	}
-	for _, m := range pcsErrBlocksRe.FindAllStringSubmatch(text, -1) {
-		n, _ := strconv.ParseUint(m[1], 10, 64)
-		d.PCSErrBlocks += n
-		d.HasPCS = true
-	}
-	for _, m := range pcsHighBERRe.FindAllStringSubmatch(text, -1) {
-		d.HasPCS = true
-		if m[1] != "ok" {
-			d.PCSHighBER = true
-		}
 	}
 	return d
 }

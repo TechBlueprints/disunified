@@ -274,7 +274,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	applyErrdisabled(ports, ed)
 	applyOpticAlarms(ports, th)
 	applySTPChanges(ports, ts)
-	applySTPInconsistent(ports, stp)
+	applySTPRoles(ports, stp)
 	if tr, ok := c.t.(TextRunner); ok {
 		c.applyPHYDetail(ctx, tr, ports)
 	}
@@ -307,10 +307,10 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 // Close releases the transport.
 func (c *Collector) Close() error { return c.t.Close() }
 
-// applyPHYDetail reads the PHY-layer counters for every up port: FEC
-// codewords (ports running FEC) and PCS errored blocks / high-BER state
-// (every port, copper included). EOS 4.26 only prints them (`show
-// interfaces X phy detail`, text), so this is one text command per lane; a
+// applyPHYDetail reads the FEC codeword counters of every up port that runs
+// FEC (the satisfaction score counts uncorrected codewords as errors). EOS
+// 4.26 only prints them (`show interfaces X phy detail`, text), so this is
+// one text command per up lane; a
 // failure is logged, not fatal, and a transport without text support skips it.
 func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []devicemodel.Port) {
 	var cmds []string
@@ -343,11 +343,6 @@ func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []d
 			h.HasFECCounters = true
 			h.FECCorrected += d.FECCorrected
 			h.FECUncorrected += d.FECUncorr
-		}
-		if d.HasPCS {
-			h.HasPCSCounters = true
-			h.PCSErrBlocks += d.PCSErrBlocks
-			h.PCSHighBER = h.PCSHighBER || d.PCSHighBER
 		}
 	}
 }
