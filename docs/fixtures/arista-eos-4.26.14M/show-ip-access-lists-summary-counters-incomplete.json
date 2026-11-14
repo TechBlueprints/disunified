@@ -1,0 +1,67 @@
+{
+    "aclList": [
+        {
+            "sequenceLength": 4097,
+            "configuredEgressIntfs": [],
+            "name": "DUI_PROBE_1",
+            "activeEgressIntfs": [],
+            "dynamic": false,
+            "standard": false,
+            "notFullySupportedByHardware": false,
+            "readonly": false,
+            "countersIncomplete": true,
+            "configuredIngressIntfs": [
+                {
+                    "name": "Ethernet2"
+                }
+            ],
+            "type": "Ip4Acl",
+            "activeIngressIntfs": [
+                {
+                    "name": "Ethernet2"
+                }
+            ],
+            "countersEnabled": true
+        },
+        {
+            "sequenceLength": 25,
+            "configuredEgressIntfs": [],
+            "name": "default-control-plane-acl",
+            "activeEgressIntfs": [],
+            "dynamic": false,
+            "standard": false,
+            "notFullySupportedByHardware": false,
+            "readonly": true,
+            "countersIncomplete": false,
+            "configuredIngressIntfs": [
+                {
+                    "name": "control-plane",
+                    "vrf": "default"
+                }
+            ],
+            "type": "Ip4Acl",
+            "activeIngressIntfs": [
+                {
+                    "name": "control-plane",
+                    "vrf": "default"
+                }
+            ],
+            "countersEnabled": true
+        },
+        {
+            "sequenceLength": 2,
+            "configuredEgressIntfs": [],
+            "name": "mDNS-block",
+            "activeEgressIntfs": [],
+            "dynamic": false,
+            "standard": false,
+            "notFullySupportedByHardware": false,
+            "readonly": false,
+            "countersIncomplete": false,
+            "configuredIngressIntfs": [],
+            "type": "Ip4Acl",
+            "activeIngressIntfs": [],
+            "countersEnabled": false
+        }
+    ]
+}

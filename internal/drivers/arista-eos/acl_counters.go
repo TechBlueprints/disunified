@@ -46,7 +46,10 @@ type showIPACLSummary struct {
 	ACLList []struct {
 		Name                        string `json:"name"`
 		NotFullySupportedByHardware bool   `json:"notFullySupportedByHardware"`
-		ConfiguredIngressIntfs      []struct {
+		// CountersIncomplete: some of the list's entries got no counter,
+		// the chip's 4095 being taken (measured 2026-11-14, §9.1).
+		CountersIncomplete     bool `json:"countersIncomplete"`
+		ConfiguredIngressIntfs []struct {
 			Name string `json:"name"`
 		} `json:"configuredIngressIntfs"`
 		ActiveIngressIntfs []struct {
@@ -85,13 +88,20 @@ func (c *Collector) readACLs(ctx context.Context, rc showRunningConfig, ports []
 		return
 	}
 	var sum showIPACLSummary
+	incomplete := map[string]bool{}
 	if err := json.Unmarshal(out[1], &sum); err != nil {
 		c.logf("arista: ACL read-back: summary: %v", err)
 	} else {
 		c.noteACLStatus(aclStatus(sum, st))
+		for _, a := range sum.ACLList {
+			incomplete[a.Name] = a.CountersIncomplete
+		}
 	}
 	drops := map[string]uint64{}
 	for i, n := range names {
+		if incomplete[n] {
+			continue // the drop entry may be one without a counter: no count beats a false 0
+		}
 		var l showIPACLs
 		if err := json.Unmarshal(out[2+i], &l); err != nil {
 			c.logf("arista: ACL read-back: %s: %v", n, err)
@@ -124,6 +134,9 @@ func aclStatus(sum showIPACLSummary, st aclState) string {
 		}
 		if a.NotFullySupportedByHardware {
 			problems = append(problems, a.Name+" has rules the hardware does not fully support")
+		}
+		if a.CountersIncomplete {
+			problems = append(problems, a.Name+" has entries without a counter (the chip's counters are taken); its rogue DHCP count is not reported")
 		}
 	}
 	sort.Strings(problems)

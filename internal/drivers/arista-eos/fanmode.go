@@ -2,11 +2,14 @@ package aristaeos
 
 // Fan Mode on EOS 4.26 (docs/drivers/arista-eos.md §8).
 //
-// EOS has two fan settings and no others: `environment fan-speed auto`
-// (the default, the switch's own thermal control) and `environment
-// fan-speed override <30-100>`, a fixed percentage held "regardless of the
-// switch temperature conditions" (Arista's manual). There is no minimum
-// that the thermal control can still raise, and no ceiling. Default is
+// EOS 4.26.14M has three fan settings (its CLI help, read on the switch
+// 2026-11-14): `environment fan-speed auto` (the default, the switch's own
+// thermal control), `environment fan-speed override <30-100>`, a fixed
+// percentage held "regardless of the switch temperature conditions"
+// (Arista's manual), and `environment fan-speed minimum <30-100>`, a floor
+// under the thermal control. The floor cannot make the switch quieter:
+// auto already runs above 30 % (43 % that day, holding the CPU sensor at
+// its setpoint), so only the override runs the fans slower. Default is
 // auto. Quiet is the lowest override, 30 %, by Clint's decision
 // (2026-11-07). It is a fixed speed: under Quiet EOS does not raise the
 // fans as the switch heats, and only the alert threshold and the overheat

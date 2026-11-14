@@ -64,6 +64,9 @@ type Collector struct {
 	// cannot be re-dialled (a fixture without one, or an unknown target).
 	host   string
 	redial func(host string) Transport
+	// mgmtPort is the TCP port the bridge connects on (eAPI's or SSH's);
+	// 0 = eAPI's default, 443.
+	mgmtPort int
 
 	mu        sync.Mutex
 	hostname  string

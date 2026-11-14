@@ -190,13 +190,16 @@ whether `clear counters` or a flap resets the count (a reset sets nothing).
 `fan_mode: default | quiet` (the controller keeps Fan Mode only for a
 gateway, so no switch gets it from the UI). Default is EOS's automatic
 control (`no environment fan-speed`). Quiet is `environment fan-speed
-override 30`, a fixed speed: EOS 4.26 has no fan floor that its thermal
-control can raise, and 30 % is the lowest override in Arista's manual.
-Fixture- and loop-tested over the auto capture; the override's read-back
-(`overrideFanSpeed` 30), its 4.26.14M syntax and range, and the
-temperatures under it wait for the switch's return
-([`drivers/arista-eos.md`](drivers/arista-eos.md) §8). A PR for another
-model needs its `show system environment cooling` under an override.
+override 30`, a fixed speed. **Checked on the switch 2026-11-14** (the
+return-day steps 1-2, [`drivers/arista-eos.md`](drivers/arista-eos.md) §8):
+the override's range on 4.26.14M is 30-100 %, so 30 % stands; 4.26.14M
+also offers `environment fan-speed minimum <30-100>`, a floor under the
+automatic control, which does not make the switch quieter while the control
+runs above it (43 % under auto that day); the auto baseline is captured.
+Still waiting: Quiet applied through the bridge, its read-back
+(`overrideFanSpeed` 30) and the temperatures under it (steps 3-7, which
+need the deployed config and a restart). A PR for another model needs its
+`show system environment cooling` under an override.
 
 **DHCP guarding (Rogue DHCP Server Detection) and rogue DHCP reporting
 (2026-11-14), claimed.** One ingress IPv4 ACL per interface,
@@ -215,12 +218,12 @@ gateway's port and switch-facing ports
 | Plan, rewrite, removal, a foreign ACL left alone, modes, attribution (lanes summed, aggregate on its first member) | fixture-tested over the live captures (`acl_test.go`, `acl_counters_test.go`) |
 | A rogue reply dropped and counted, a trusted one and ARP/IPv6 passing, the drop time of a rewrite | **untested**: needs a host cabled to a test port (§9.7) |
 | The controller's push of guard groups to this switch and the alert in the UI | **untested**: the end-to-end run after the merge (§9.7) |
+| **IP ACL rules, claimed (`max_custom_ip_acls` 32) 2026-11-14**: the chip's ACL capacity measured on the test ports (one counter pool of 4095 for every list, two hash entries per counted rule, 20094 entries in five lists without an error, ACL ids 1-5 in bind order); the claim holds for every interface (72 with every cage split) carrying the guard and 32 rules, up to 22 trusted servers per port | **live** for the capacity (§9.1, `docs/fixtures/arista-eos-4.26.14M/acl-capacity/`); the rules themselves fixture- and replay-tested (`TestReplayAristaIPRulePushes`, the ECS's and the DX010's captured pushes) |
+| More lists than five at once (one per interface, up to 72) | **not measured**: subinterfaces take no ACL on the 7160 and only two ports may be changed; the per-list cost measured was linear and every table had room, nothing showed an id limit |
+| A rule matching traffic, and a rewrite's effect on a bound port | **untested**: needs a host on a test port (§9.7) |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network |
 
-Not claimed: **IP ACL rules** (built and fixture-tested, copied into every
-interface's list; a PR needs the chip's port ACL id limit and counter pool
-measured with more than two lists, then `max_custom_ip_acls` sized from
-it), **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
+Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
 rate limit; a QoS policer is in bits per second and counts only conforming
 packets here; a PR needs a policer's exceeded count shown rising under

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -66,6 +67,23 @@ func ownACL(name string) bool { return name == legacyACLName || strings.HasPrefi
 // aclCounters is the list option that gives every entry its own hardware
 // counter; without it EOS reports no match counts.
 const aclCounters = "counters per-entry"
+
+// aclCounterPool is how many ACL counters the 7160's chip has, for every
+// list together (measured 2026-11-14, §9.1: counter indices 1-4095; five
+// lists of 819 counted rules fill it, while one list of 4096, or five of
+// 820, leave entries without a counter: no error at the commit, only the
+// summary's countersIncomplete). Only a list with a guard is counted.
+const aclCounterPool = 4095
+
+// maxIPRules is how many of the controller's IP rules the driver claims
+// (max_custom_ip_acls) and writes; a longer list is held. The rules go
+// into every interface's list, so the worst case is every interface of the
+// switch (72 with every cage split) carrying the guard and the rules
+// (§9.4): at 32 rules that is 72 x (32 + S + 2) counted rules for S
+// trusted servers, inside the 4095 counters up to S = 22, and two hardware
+// entries per counted rule, 144 x (34 + S), a fraction of the 20094
+// entries five lists programmed without an error.
+const maxIPRules = 32
 
 // The guard modes (options.dhcp_guard).
 const (
@@ -182,11 +200,61 @@ func aclWantFrom(d devicemodel.DeviceDesired, vlans []int, mode string) (aclWant
 			}
 			w.rules = append(w.rules, line)
 		}
+		if len(w.rules) > maxIPRules {
+			errs = append(errs, fmt.Errorf("arista-eos: IP rules left as the switch has them: %d rules, and the driver writes at most %d (docs/drivers/arista-eos.md §9.4)", len(w.rules), maxIPRules))
+			w.rules, w.keepRules = nil, true
+		}
 	}
 	if d.MACACLSet && len(d.MACACLs) > 0 {
 		errs = append(errs, fmt.Errorf("arista-eos: %d MAC rules not applied: the 7160 binds no MAC ACL to a switchport (`mac access-group` is unavailable on an Ethernet interface on 4.26.14M; docs/drivers/arista-eos.md §9.2)", len(d.MACACLs)))
 	}
 	return w, errors.Join(errs...)
+}
+
+// holdIfCutsManagement holds the IP rules (the switch keeps the ones it
+// has) when one would drop the bridge's own connection to the switch: the
+// lists are bound to the uplink too. The commit timer would revert such a
+// change by itself (§9.3), but each attempt would cut the bridge off for
+// the timer's length. The bridge's address as the switch sees it is not
+// known to the driver (eAPI through NAT), so every source counts.
+func (c *Collector) holdIfCutsManagement(d devicemodel.DeviceDesired, w *aclWant) error {
+	if w.keepRules || len(d.IPACLs) == 0 {
+		return nil
+	}
+	why := devicemodel.IPRulesCutManagement(d.IPACLs, "", c.dialAddrs(), c.mgmtPortOr())
+	if why == "" {
+		return nil
+	}
+	w.rules, w.keepRules = nil, true
+	return fmt.Errorf("arista-eos: IP rules left as the switch has them: %s", why)
+}
+
+// dialAddrs is the switch's address the bridge connects to: the configured
+// host, resolved when it is a name. Empty when it cannot be resolved; the
+// commit timer is then the only guard.
+func (c *Collector) dialAddrs() []string {
+	if c.host == "" {
+		return nil
+	}
+	if a, err := netip.ParseAddr(c.host); err == nil {
+		return []string{a.String()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupHost(ctx, c.host)
+	if err != nil {
+		return nil
+	}
+	return addrs
+}
+
+// mgmtPortOr is the TCP port the bridge reaches the switch on: eAPI's
+// HTTPS by default.
+func (c *Collector) mgmtPortOr() int {
+	if c.mgmtPort > 0 {
+		return c.mgmtPort
+	}
+	return 443
 }
 
 // aclFromRunningConfig reads the driver's lists and every interface's
@@ -431,8 +499,10 @@ func sameBlock(have aclBlock, want aclBlock) bool {
 // bindings to want, and the state the switch has once it is committed. An
 // empty body means the switch already matches. skipped lists the interfaces
 // left alone because they carry another IPv4 ACL; unguarded the ports
-// carrying a guarded VLAN that get no guard, with the reason.
-func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int, exempt map[int]bool) (body []string, next aclState, skipped, unguarded []string) {
+// carrying a guarded VLAN that get no guard, with the reason. over is the
+// number of counted entries the guarded lists would need when it exceeds
+// the chip's counter pool, and no list is then counted (0 otherwise).
+func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int, exempt map[int]bool) (body []string, next aclState, skipped, unguarded []string, over int) {
 	next = newACLState()
 	for k, v := range have.foreign {
 		next.foreign[k] = v
@@ -452,8 +522,16 @@ func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int
 			}
 		}
 	}
-	wanted := map[string]bool{} // list names to keep
-	var bind []string
+	// Each target's blocks first: whether its entries are counted depends
+	// on what every list together asks of the chip's counter pool.
+	type planned struct {
+		iface, name   string
+		guard, rules  aclBlock
+		old           aclList
+		exists, count bool
+	}
+	var plans []planned
+	counted := 0 // counted entries if every guarded list is counted
 	for _, t := range targets {
 		name := aclListName(t.iface)
 		old := have.lists[name]
@@ -475,17 +553,39 @@ func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int
 			skipped = append(skipped, t.iface+" ("+other+")")
 			continue
 		}
-		wanted[name] = true
 		_, exists := have.lists[name]
-		current := exists && old.counters && old.stray == 0 &&
-			sameBlock(old.blocks[blockDHCPGuard], guard) && sameBlock(old.blocks[blockIPRules], rules) &&
+		// Only a list with a guard is counted: its drop entry is the
+		// port's rogue DHCP count, and nothing reads the other entries'.
+		pl := planned{iface: t.iface, name: name, guard: guard, rules: rules, old: old, exists: exists, count: len(guard.lines) > 0}
+		if pl.count {
+			counted += len(guard.lines) + len(rules.lines) + 1 // remarks take no counter
+		}
+		plans = append(plans, pl)
+	}
+	// Past the pool, EOS programs the rules and leaves some entries without
+	// a counter, saying nothing (measured 2026-11-14, §9.1): a guard drop
+	// entry could read 0 whatever it drops. Then no list is counted and
+	// the rogue DHCP counts are not reported; the filtering is the same.
+	if counted > aclCounterPool {
+		over = counted
+		for i := range plans {
+			plans[i].count = false
+		}
+	}
+	wanted := map[string]bool{} // list names to keep
+	var bind []string
+	for _, pl := range plans {
+		name, old := pl.name, pl.old
+		wanted[name] = true
+		current := pl.exists && old.counters == pl.count && old.stray == 0 &&
+			sameBlock(old.blocks[blockDHCPGuard], pl.guard) && sameBlock(old.blocks[blockIPRules], pl.rules) &&
 			len(old.blocks[blockDefault].lines) == 1 && old.blocks[blockDefault].lines[0] == aclDefaultAllow
 		var lines []string
-		nl := aclList{blocks: map[string]aclBlock{}, counters: true}
+		nl := aclList{blocks: map[string]aclBlock{}, counters: pl.count}
 		for _, b := range []struct {
 			name string
 			blk  aclBlock
-		}{{blockDHCPGuard, guard}, {blockIPRules, rules}} {
+		}{{blockDHCPGuard, pl.guard}, {blockIPRules, pl.rules}} {
 			if len(b.blk.lines) == 0 {
 				continue
 			}
@@ -498,7 +598,12 @@ func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int
 		if current {
 			nl.seqs = old.seqs
 		} else {
-			body = append(body, "ip access-list "+name, aclCounters)
+			body = append(body, "ip access-list "+name)
+			if pl.count {
+				body = append(body, aclCounters)
+			} else if old.counters {
+				body = append(body, "no "+aclCounters)
+			}
 			for _, s := range old.seqs {
 				body = append(body, "no "+strconv.Itoa(s))
 			}
@@ -510,9 +615,9 @@ func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int
 			body = append(body, "exit")
 		}
 		next.lists[name] = nl
-		next.bound[t.iface] = name
-		if have.bound[t.iface] != name {
-			bind = append(bind, t.iface)
+		next.bound[pl.iface] = name
+		if have.bound[pl.iface] != name {
+			bind = append(bind, pl.iface)
 		}
 	}
 	var unbind []string
@@ -538,7 +643,7 @@ func aclPlan(have aclState, want aclWant, targets []aclTarget, switchVLANs []int
 	for _, name := range drop {
 		body = append(body, "no ip access-list "+name)
 	}
-	return body, next, skipped, unguarded
+	return body, next, skipped, unguarded, over
 }
 
 // ipRuleLine renders one IPv4 rule: action, protocol ("" is every IPv4
@@ -688,7 +793,7 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 			want.mode = guardExact
 		}
 	}
-	body, next, skipped, unguarded := aclPlan(have, want, aclTargets(snap.Ports), snap.VLANs, exempt)
+	body, next, skipped, unguarded, over := aclPlan(have, want, aclTargets(snap.Ports), snap.VLANs, exempt)
 	if len(body) == 0 {
 		return 0, nil
 	}
@@ -702,6 +807,9 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 		}
 		if len(unguarded) > 0 {
 			c.Log.Printf("arista: DHCP guard (%s) leaves %d interfaces unguarded, the 7160 matching no VLAN in an ACL: %s", want.mode, len(unguarded), strings.Join(unguarded, "; "))
+		}
+		if over > 0 {
+			c.Log.Printf("arista: the guarded lists need %d counted entries and the chip has %d counters: writing every list without `%s`, so no rogue DHCP count is reported (the guard itself is unchanged; docs/drivers/arista-eos.md §9.4)", over, aclCounterPool, aclCounters)
 		}
 	}
 	if unreachable, err := c.commitACL(ctx, body); err != nil {

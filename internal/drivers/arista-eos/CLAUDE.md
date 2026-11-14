@@ -24,7 +24,23 @@ that cost time on Clint's DCS-7160-48TC6-F.
   is ingress IPv4 ACLs instead, **one list per interface**
   (`DUI_IP_ACL_<interface>`, `counters per-entry`; `acl.go`, §9), and
   `DHCPSnooping` is claimed since 2026-11-14. IP rules share each
-  interface's list and stay unclaimed; MAC rules are refused.
+  interface's list, claimed at 32 (`maxIPRules`) since the same day; MAC
+  rules are refused.
+- **ACL capacity of the 7160 (measured 2026-11-14, §9.1,
+  `docs/fixtures/arista-eos-4.26.14M/acl-capacity/`):** one pool of **4095
+  counters for every list together**. Past it, EOS leaves entries uncounted
+  **without an error at the commit**; only the summary's
+  `countersIncomplete` shows it. So only a guarded list gets `counters
+  per-entry`, and past the pool none does. A counted rule is two MaskGroup
+  entries, an uncounted one is one (20094 held in five lists). ACL ids are
+  one per list in bind order; only five lists were measured at once. No
+  DSCP match. ACLs on subinterfaces are unavailable. **A list that fails to
+  program still commits** (`! Error in ACL commit`, a warning), and the
+  summary still says "Active on Ingress". The commit's warning is the
+  signal.
+- A rule set blocking TCP to the address and port the bridge dials (eAPI
+  443) is held before it is written (`devicemodel.IPRulesCutManagement`),
+  every source counted.
 - **The 7160 matches no VLAN in an ACL**: EOS takes `vlan N MASK` in a
   rule and stores it with mask 0 (any VLAN), flagging the list "not fully
   supported by hardware" (measured 2026-11-14). Never write a VLAN
@@ -48,11 +64,15 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - The firmware version reported to the controller is EOS's own
   (`4.26.14M`), not the UniFi model profile's; `-version` overrides it, and
   an emulated upgrade from the controller masks it until EOS itself moves.
-- Fans on 4.26: `environment fan-speed auto` or a fixed `override
-  <30-100>` (held whatever the temperature), nothing else -- no floor the
-  thermal control can raise. `fan_mode: quiet` is `override 30`, read back
-  from `show system environment cooling`'s `overrideFanSpeed`; the
-  controller never offers Fan Mode for a switch (`docs/drivers/arista-eos.md` §8).
+- Fans on 4.26.14M (the switch's own CLI help, 2026-11-14): `environment
+  fan-speed auto`, a fixed `override <30-100>` (held whatever the
+  temperature), and `minimum <30-100>`, a floor under the automatic
+  control. The floor cannot make the switch quieter: auto already runs
+  above 30 % (43 %, with the CPU sensor at its 60 °C setpoint). So
+  `fan_mode: quiet` is `override 30`, read back from `show system
+  environment cooling`'s `overrideFanSpeed`. The controller never offers
+  Fan Mode for a switch (`docs/drivers/arista-eos.md` §8, return-day steps
+  0-2 done, 3-7 need the deployed config).
 - Storm-control drops are in `show storm-control` (JSON `trafficTypes.<type>.drop`,
   the text table's `Drops`), per interface and per type, types keyed
   `broadcast`, `multicast`, `unknown-unicast` (captured 2026-11-14,

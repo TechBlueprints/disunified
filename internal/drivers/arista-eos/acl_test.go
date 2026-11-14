@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +36,7 @@ func duiACLCollector(t *testing.T) (*Collector, *FixtureTransport) {
 	t.Helper()
 	ft := NewFixtureTransport(aclFixtureDir)
 	ft.Overrides = map[string]string{
-		"show running-config":         "show-running-config-dui-acl.json",
+		"show running-config":          "show-running-config-dui-acl.json",
 		"show ip access-lists summary": "show-ip-access-lists-summary-dui-acl.json",
 	}
 	c := NewCollector(ft)
@@ -215,7 +217,7 @@ func TestACLPlanIsTheBodyRunLive(t *testing.T) {
 	c, _ := startedCollector(t)
 	snap := withAccess(c.last, 1, "Ethernet2", "Ethernet54/1")
 	w := aclWant{guards: map[int][]string{1: {"192.0.2.1", "192.0.2.5"}}, keepRules: true, mode: guardExact}
-	body, next, skipped, unguarded := aclPlan(c.acl, w, aclTargets(snap.Ports), snap.VLANs, nil)
+	body, next, skipped, unguarded, _ := aclPlan(c.acl, w, aclTargets(snap.Ports), snap.VLANs, nil)
 	live, err := os.ReadFile(filepath.Join(aclFixtureDir, "session-dui-acl-test-ports.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -226,12 +228,12 @@ func TestACLPlanIsTheBodyRunLive(t *testing.T) {
 	if len(skipped) != 0 || len(unguarded) != 55 {
 		t.Errorf("skipped %v, %d unguarded", skipped, len(unguarded))
 	}
-	if again, _, _, _ := aclPlan(next, w, aclTargets(snap.Ports), snap.VLANs, nil); len(again) != 0 {
+	if again, _, _, _, _ := aclPlan(next, w, aclTargets(snap.Ports), snap.VLANs, nil); len(again) != 0 {
 		t.Errorf("planning from its own result: %v", again)
 	}
 
 	d, _ := duiACLCollector(t)
-	if again, _, _, _ := aclPlan(d.acl, w, aclTargets(snap.Ports), snap.VLANs, nil); len(again) != 0 {
+	if again, _, _, _, _ := aclPlan(d.acl, w, aclTargets(snap.Ports), snap.VLANs, nil); len(again) != 0 {
 		t.Errorf("planning from the captured result: %v", again)
 	}
 }
@@ -244,7 +246,7 @@ func TestACLPlanRewritesAndRemoves(t *testing.T) {
 	snap := withAccess(d.last, 1, "Ethernet2", "Ethernet54/1")
 	targets := aclTargets(snap.Ports)
 	w := aclWant{guards: map[int][]string{1: {"192.0.2.1"}}, keepRules: true, mode: guardExact}
-	body, _, _, _ := aclPlan(d.acl, w, targets, snap.VLANs, nil)
+	body, _, _, _, _ := aclPlan(d.acl, w, targets, snap.VLANs, nil)
 	s := strings.Join(body, "\n")
 	for _, want := range []string{"ip access-list DUI_IP_ACL_Ethernet2\ncounters per-entry\nno 10\nno 20\nno 30\nno 40\nno 50\nno 60\n10 remark disunified dhcp-guard ",
 		"20 permit udp host 192.0.2.1 eq 67 any eq 68\n30 deny udp any eq 67 any eq 68\n40 remark disunified default\n50 permit ip any any\nexit"} {
@@ -257,7 +259,7 @@ func TestACLPlanRewritesAndRemoves(t *testing.T) {
 	}
 
 	off := aclWant{keepRules: true}
-	body, next, _, _ := aclPlan(d.acl, off, targets, snap.VLANs, nil)
+	body, next, _, _, _ := aclPlan(d.acl, off, targets, snap.VLANs, nil)
 	want := "interface Ethernet2\nno ip access-group DUI_IP_ACL_Ethernet2 in\nexit\n" +
 		"interface Ethernet54/1\nno ip access-group DUI_IP_ACL_Ethernet54-1 in\nexit\n" +
 		"no ip access-list DUI_IP_ACL_Ethernet2\nno ip access-list DUI_IP_ACL_Ethernet54-1"
@@ -271,7 +273,7 @@ func TestACLPlanRewritesAndRemoves(t *testing.T) {
 	c, _ := startedCollector(t)
 	have := c.acl
 	have.foreign = map[string]string{"Ethernet2": "mDNS-block"}
-	body, _, skipped, _ := aclPlan(have, w, targets, snap.VLANs, nil)
+	body, _, skipped, _, _ := aclPlan(have, w, targets, snap.VLANs, nil)
 	if len(skipped) != 1 || strings.Contains(strings.Join(body, "\n"), "DUI_IP_ACL_Ethernet2") {
 		t.Errorf("an interface with its own ACL: skipped %v, body %v", skipped, body)
 	}
@@ -330,7 +332,7 @@ func TestApplyDeviceWritesTheCapturedRulesOnEveryInterface(t *testing.T) {
 	if strings.Count(s, "\nip access-list DUI_IP_ACL_") != 57 || strings.Count(s, "\nip access-group DUI_IP_ACL_") != 57 {
 		t.Errorf("want 57 lists, each bound once:\n%s", s)
 	}
-	one := "ip access-list DUI_IP_ACL_Ethernet50-3\ncounters per-entry\n10 remark disunified ip-rules " +
+	one := "ip access-list DUI_IP_ACL_Ethernet50-3\n10 remark disunified ip-rules " +
 		blockHash([]string{"permit ip 192.0.2.0/24 198.51.100.0/24", "deny tcp 203.0.113.0/24 192.0.2.0/24 eq 9", "deny tcp 203.0.113.0/24 192.0.2.0/24 eq 1001"}) +
 		"\n20 permit ip 192.0.2.0/24 198.51.100.0/24\n30 deny tcp 203.0.113.0/24 192.0.2.0/24 eq 9\n40 deny tcp 203.0.113.0/24 192.0.2.0/24 eq 1001\n50 remark disunified default\n60 permit ip any any\nexit"
 	if !strings.Contains(s, one) {
@@ -553,3 +555,174 @@ func TestApplyACLDoesNotHoldWhenTheBudgetRunsOut(t *testing.T) {
 		t.Errorf("write budget %v: it must hold an ACL confirm and end inside the 2-minute commit timer", got)
 	}
 }
+
+// The claim (max_custom_ip_acls) is maxIPRules; a longer rule list is held
+// whole, the guard in the same push still written.
+func TestApplyDeviceHoldsMoreRulesThanClaimed(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	if got := c.Capabilities().IPACLs; got != maxIPRules {
+		t.Fatalf("claim %d, want %d", got, maxIPRules)
+	}
+	var many []devicemodel.IPACL
+	for len(many) <= maxIPRules {
+		many = append(many, capturedIPRules...)
+	}
+	many = many[:maxIPRules+1]
+	before := len(ft.Configured)
+	_, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IPACLSet: true, IPACLs: many, MACACLSet: true})
+	if err == nil || !strings.Contains(err.Error(), "33 rules, and the driver writes at most 32") {
+		t.Errorf("err = %v", err)
+	}
+	if len(ft.Configured) != before {
+		t.Errorf("a held rule list wrote %v", ft.Configured[before:])
+	}
+	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IPACLSet: true, IPACLs: many[:maxIPRules], MACACLSet: true})
+	if err != nil || n == 0 {
+		t.Errorf("the claimed count: n=%d err=%v", n, err)
+	}
+}
+
+// A Block of the bridge's own connection (TCP 443 to the address it dials,
+// the captured Block's shape) is held, as on the DX010: the lists are bound
+// to the uplink too. An Allow for every source ahead of it makes it
+// harmless; a Block of another port is written.
+func TestApplyDeviceHoldsRulesThatCutTheBridgeOff(t *testing.T) {
+	block := devicemodel.IPACL{Name: "block-https", Protocol: "tcp",
+		Src: devicemodel.IPACLEnd{CIDR: "203.0.113.0/24", PortMin: 1, PortMax: 65535}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.0/24", Port: 443}}
+	allow := devicemodel.IPACL{Name: "allow-https", Permit: true, Protocol: "tcp",
+		Src: devicemodel.IPACLEnd{PortMin: 1, PortMax: 65535}, Dst: devicemodel.IPACLEnd{CIDR: "192.0.2.1/32", Port: 443}}
+	for _, tc := range []struct {
+		rules []devicemodel.IPACL
+		held  bool
+	}{
+		{append(append([]devicemodel.IPACL(nil), capturedIPRules...), block), true},
+		{[]devicemodel.IPACL{allow, block}, false},
+		{capturedIPRules, false},
+	} {
+		c, ft := aclCollector(t, nil)
+		before := len(ft.Configured)
+		_, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IPACLSet: true, IPACLs: tc.rules, MACACLSet: true})
+		held := err != nil && strings.Contains(err.Error(), `rule 4 ("block-https") would block the bridge's connection to this device (192.0.2.1, TCP 443)`)
+		if held != tc.held || (tc.held && len(ft.Configured) != before) || (!tc.held && (err != nil || len(ft.Configured) == before)) {
+			t.Errorf("%d rules: held=%v err=%v batches %d", len(tc.rules), held, err, len(ft.Configured)-before)
+		}
+	}
+	c, _ := aclCollector(t, nil)
+	c.mgmtPort = 22 // over SSH, a Block of 443 does not cut the bridge off
+	if _, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{IPACLSet: true, IPACLs: []devicemodel.IPACL{block}, MACACLSet: true}); err != nil {
+		t.Errorf("SSH transport: %v", err)
+	}
+}
+
+// mgmtPort is the port the bridge dials: eAPI's, from the URL or its
+// scheme, or SSH's.
+func TestMgmtPort(t *testing.T) {
+	for _, tc := range []struct {
+		cfg  devicemodel.DriverConfig
+		want int
+	}{
+		{devicemodel.DriverConfig{URL: "https://192.0.2.1/command-api"}, 443},
+		{devicemodel.DriverConfig{URL: "https://192.0.2.1:8443/command-api"}, 8443},
+		{devicemodel.DriverConfig{URL: "http://192.0.2.1/command-api"}, 80},
+		{devicemodel.DriverConfig{SSH: "admin@192.0.2.1"}, 22},
+		{devicemodel.DriverConfig{SSH: "admin@192.0.2.1:2222"}, 2222},
+	} {
+		if got := mgmtPort(tc.cfg); got != tc.want {
+			t.Errorf("%+v: %d, want %d", tc.cfg, got, tc.want)
+		}
+	}
+}
+
+// Edge mode with the captured guards and rules: a guarded list is counted
+// (its drop entry is the port's rogue DHCP count), an exempt port's list,
+// which holds the rules alone, is not.
+func TestOnlyGuardedListsAreCounted(t *testing.T) {
+	on := true
+	c, ft := aclCollector(t, nil)
+	c.dhcpGuard = guardEdge
+	before := len(ft.Configured)
+	if _, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		DHCPSnooping: &on, DHCPGuards: capturedSnoopGuards, IPACLSet: true, IPACLs: capturedIPRules, MACACLSet: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := strings.Join(ft.Configured[before], "\n")
+	ex := guardExempt(c.last)
+	counted, uncounted := 0, 0
+	for _, tg := range aclTargets(c.last.Ports) {
+		head := "ip access-list " + aclListName(tg.iface) + "\n"
+		switch {
+		case strings.Contains(s, head+aclCounters+"\n10 remark disunified dhcp-guard "):
+			counted++
+			if ex[tg.port.Index] {
+				t.Errorf("exempt %s guarded", tg.iface)
+			}
+		case strings.Contains(s, head+"10 remark disunified ip-rules "):
+			uncounted++
+			if !ex[tg.port.Index] {
+				t.Errorf("%s carries no guard", tg.iface)
+			}
+		default:
+			t.Errorf("%s: no list", tg.iface)
+		}
+	}
+	if counted == 0 || uncounted == 0 || counted+uncounted != 57 {
+		t.Errorf("%d counted, %d uncounted", counted, uncounted)
+	}
+}
+
+// Past the chip's 4095 counters EOS leaves entries uncounted and says
+// nothing (§9.1), so a guard drop could read 0: then no list is counted,
+// and it is logged. 32 rules and 50 trusted servers on every guarded port
+// of the captured switch need 55 x 83 counted entries.
+func TestCountersOffPastThePool(t *testing.T) {
+	on := true
+	var guards []devicemodel.DHCPGuard
+	for i := 10; i < 60; i++ {
+		guards = append(guards, devicemodel.DHCPGuard{VLAN: 1, Server: "192.0.2." + itoa(i)})
+	}
+	var rules []devicemodel.IPACL
+	for len(rules) < maxIPRules {
+		rules = append(rules, capturedIPRules...)
+	}
+	rules = rules[:maxIPRules]
+	c, ft := aclCollector(t, nil)
+	var buf strings.Builder
+	c.Log = log.New(&buf, "", 0)
+	c.dhcpGuard = guardEdge
+	before := len(ft.Configured)
+	if _, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
+		DHCPSnooping: &on, DHCPGuards: guards, IPACLSet: true, IPACLs: rules, MACACLSet: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := strings.Join(ft.Configured[before], "\n")
+	if strings.Contains(s, aclCounters) || strings.Count(s, "remark disunified dhcp-guard") == 0 {
+		t.Errorf("want guards written without counters:\n%.2000s", s)
+	}
+	if !strings.Contains(buf.String(), "and the chip has 4095 counters") {
+		t.Errorf("log: %s", buf.String())
+	}
+}
+
+// A captured counted list whose guard goes (snooping on, no server) while
+// the rules come in: rewritten without its counters.
+func TestCountersRemovedWithTheGuard(t *testing.T) {
+	d, _ := duiACLCollector(t)
+	snap := withAccess(d.last, 1, "Ethernet2", "Ethernet54/1")
+	lines := []string{"deny tcp 203.0.113.0/24 192.0.2.0/24 eq 9"}
+	w := aclWant{guards: map[int][]string{}, rules: lines, mode: guardExact}
+	body, next, _, _, _ := aclPlan(d.acl, w, aclTargets(snap.Ports), snap.VLANs, nil)
+	s := strings.Join(body, "\n")
+	if !strings.Contains(s, "ip access-list DUI_IP_ACL_Ethernet2\nno counters per-entry\nno 10\n") {
+		t.Errorf("body:\n%.1500s", s)
+	}
+	if next.lists["DUI_IP_ACL_Ethernet2"].counters {
+		t.Error("next state still counted")
+	}
+	if again, _, _, _, _ := aclPlan(next, w, aclTargets(snap.Ports), snap.VLANs, nil); len(again) != 0 {
+		t.Errorf("planning from its own result: %v", again)
+	}
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }

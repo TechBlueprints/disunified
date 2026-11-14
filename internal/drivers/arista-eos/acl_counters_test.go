@@ -149,3 +149,19 @@ func TestVLANQualifierIsDroppedOnThe7160(t *testing.T) {
 		t.Errorf("status %q", s)
 	}
 }
+
+// One list of 4097 counted rules on Ethernet2 (2026-11-14): EOS programs
+// it, says nothing at the commit, and flags the list countersIncomplete in
+// the summary (`[incomplete statistics]` in the text). The read-back says
+// so; a list of the driver's with the flag is not counted into a port.
+func TestACLStatusCountersIncomplete(t *testing.T) {
+	var sum showIPACLSummary
+	readACLFixture(t, "show-ip-access-lists-summary-counters-incomplete.json", &sum)
+	if len(sum.ACLList) == 0 || !sum.ACLList[0].CountersIncomplete {
+		t.Fatalf("summary %+v", sum)
+	}
+	st := aclState{lists: map[string]aclList{"DUI_PROBE_1": {}}}
+	if s := aclStatus(sum, st); !strings.Contains(s, "DUI_PROBE_1 has entries without a counter") || strings.Contains(s, "not active") {
+		t.Errorf("status %q", s)
+	}
+}

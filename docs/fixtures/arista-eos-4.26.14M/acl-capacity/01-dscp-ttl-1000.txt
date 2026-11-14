@@ -1,0 +1,142 @@
+# One list of 1000 `permit ip any any dscp D ttl eq T` rules (counters per-entry) on Ethernet2: EOS warns dscp is not supported in the data plane, the commit reports insufficient hardware resources, XpAcl logs COMPUTATION_FAILED, and the summary still says Active on Ingress.
+# Session: configure session dui-probe, the lists, `commit timer 00:05:00`, the reads, then `configure session dui-probe abort`.
+
+### EOS messages and summary while the session was pending its timer
+  Name    State       User    Terminal 
+! Warning: ACL DUI_PROBE_1 contains rules not supported in data-plane.
+> commit timer 00:05:00
+! Error in ACL commit, configuration may differ from hardware (Insufficient HW resources on Chip-0,dscp not supported) at line 1010
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+> show ip access-lists summary
+! Not all ACLs are programmed in the hardware! at line 1013
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 1000
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+      * Some rules are not fully supported by hardware
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Nov 14 10:10:34 switch ConfigAgent: %SYS-5-CONFIG_SESSION_COMMIT_TIMER_STARTED: User admin committed session dui-probe on UnknownTty (192.0.2.250), with timer 0:5:0(hr:min:sec).
+Nov 14 10:10:34 switch XpAcl: %ACL-3-COMPUTATION_FAILED: Computing resources to program ACLs failed (Chip-0).
+  Name    State       User    Terminal 
+> show ip access-lists summary
+! Not all ACLs are programmed in the hardware! at line 1019
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 1000
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+      * Some rules are not fully supported by hardware
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+
+### after `configure session dui-probe abort`
+  Name    State       User    Terminal 
+> ip access-group DUI_PROBE_1 in
+! Warning: ACL DUI_PROBE_1 contains rules not supported in data-plane.
+> commit timer 00:05:00
+! Error in ACL commit, configuration may differ from hardware (Insufficient HW resources on Chip-0,dscp not supported) at line 1010
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+> show ip access-lists summary
+! Not all ACLs are programmed in the hardware! at line 1013
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 1000
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+      * Some rules are not fully supported by hardware
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Nov 14 10:10:34 switch ConfigAgent: %SYS-5-CONFIG_SESSION_COMMIT_TIMER_STARTED: User admin committed session dui-probe on UnknownTty (192.0.2.250), with timer 0:5:0(hr:min:sec).
+Nov 14 10:10:34 switch XpAcl: %ACL-3-COMPUTATION_FAILED: Computing resources to program ACLs failed (Chip-0).
+  Name    State       User    Terminal 
+> show ip access-lists summary
+! Not all ACLs are programmed in the hardware! at line 1019
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 1000
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+      * Some rules are not fully supported by hardware
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+Number of valid entries in range of 0 to 4096 : 0
+Number of valid entries in range of 0 to 8192 : 0
+

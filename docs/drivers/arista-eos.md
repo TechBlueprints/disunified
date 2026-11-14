@@ -265,10 +265,12 @@ nothing.
 After a successful move the bridge keeps working at the new address until it
 restarts; the operator then updates `url:` in the config file.
 
-## 8. Fan Mode (built 2026-11-07, untested live)
+## 8. Fan Mode (built 2026-11-07; syntax and baseline checked live 2026-11-14)
 
 UniFi's Fan Mode (Default / Quiet) mapped onto EOS 4.26. The switch was
-off the network when it was built, so nothing below has run on it yet.
+off the network when it was built. On 2026-11-14 the first return-day
+steps ran on it (the syntax and the auto baseline, below); Quiet itself
+has not been applied yet.
 
 **Where the mode comes from.** Not from the controller: Network 10.6.109
 keeps `sys_fan_mode` only for a gateway (UDM, UXG), never for a switch, so
@@ -279,8 +281,9 @@ with the mode the driver read back on every collect and calls
 `ApplyFanMode` only when they differ (`internal/informloop/fanmode.go`).
 The inform still reports `sys_fan_mode` (caps 3, the current mode).
 
-**What EOS offers.** Two settings and nothing else (Arista's manual,
-*Environment Commands*; the 4.26 syntax is the first return-day check):
+**What EOS offers.** Three settings (Arista's manual, *Environment
+Commands*, and the switch's own CLI help on 4.26.14M, read 2026-11-14 in
+an aborted session: `environment-fan-speed-help.txt`):
 
 - `environment fan-speed auto` (the default; `no environment fan-speed` /
   `default environment fan-speed` restore it) -- the switch's own thermal
@@ -292,9 +295,23 @@ The inform still reports `sys_fan_mode` (caps 3, the current mode).
   editions of the page say it can void the warranty (the 7160 is past its
   end of software support).
 
-No minimum or ceiling form is documented. The 4.26.14M JSON of
-`show system environment cooling` carries `coolingMode` (`"automatic"`),
-`overrideFanSpeed` (0) and `minFanSpeed` (0); there is no CLI for the last.
+- `environment fan-speed minimum <percent>` -- "Set a minimum value for fan
+  speed algorithm", 30 to 100 %. The manual consulted on 2026-11-07 did not
+  list it and this section said there was none; the switch offers it. It is
+  a floor under the automatic control, which can still raise the fans
+  above it.
+
+The 4.26.14M JSON of `show system environment cooling` carries
+`coolingMode` (`"automatic"`), `overrideFanSpeed` (0) and `minFanSpeed`
+(0, presumably the `minimum` setting; not set to check).
+
+**`minimum` does not give a quieter mode.** Its range starts at 30 %, and
+under auto the fans already run above that (43 % on 2026-11-14) to hold
+the CPU sensor at its 60 °C setpoint. A floor at or below the speed the
+control chooses changes nothing, and none can go lower. Only the override
+runs the fans slower than the automatic control does, so Quiet stays the
+fixed override. The floor could make a "never below N %" mode, which UniFi
+does not have.
 The manual does not say whether an override still lets the alert threshold
 ("all fans run at maximum speed") raise the fans; the overheat shutdown
 (`environment overheat action`, shutdown by default) is separate and left
@@ -302,19 +319,26 @@ alone.
 
 The capture under auto: all four fan trays at 42 %, the PSU fans at 32 %,
 29 °C ambient, the hottest sensor 63 °C against its 60 °C target (overheat
-90, critical 95).
+90, critical 95). On 2026-11-14 (step 1 below), six days after the switch's
+return: the trays at 43 %, the PSU fans at 33 % ("FW Override", the
+supplies' own), ambient 29 °C, the CPU sensor 60.4 °C against its 60 °C
+setpoint (alert 90, critical 95), the switch chip 50.4 °C (setpoint 75,
+alert 95), every other sensor 25 to 45 °C below its alert limit
+(`show-system-environment-cooling-auto-20261114.json`,
+`show-system-environment-temperature-auto-20261114.json`).
 
 **The mapping** (Clint, 2026-11-07: "fixed override unless the arista can
 do stepping on top of the 30%", then "quiet is the floor you can set"; EOS
 documents no stepping on top of an override):
 
-> **Quiet is a fixed speed, not a floor.** The 7160 has no fan minimum that
-> EOS's thermal control can still raise. The only knob is the fixed
-> override, and the lowest value EOS accepts is **30 %** (the manual's
-> range, to be confirmed on 4.26.14M). Under Quiet, EOS's automatic control
-> does not raise the fans as the switch heats up. Only the undocumented
-> alert threshold and the overheat shutdown act. Clint was told this
-> before the merge (2026-11-07).
+> **Quiet is a fixed speed, not a floor.** EOS's `minimum` is a floor the
+> thermal control can raise, but it cannot take the fans below what the
+> control chooses (above). The only knob that runs them slower is the fixed
+> override, and the lowest value EOS accepts is **30 %** (confirmed on
+> 4.26.14M, 2026-11-14). Under Quiet, EOS's automatic control does not
+> raise the fans as the switch heats up. Only the undocumented alert
+> threshold and the overheat shutdown act. Clint was told this before the
+> merge (2026-11-07).
 
 | UniFi | EOS | Read back from `show system environment cooling` |
 |---|---|---|
@@ -331,17 +355,27 @@ back to the configured one on the next collect. One batch: `enable`,
 
 **When the switch is back** (in this order; record each output, scrub it
 with `scripts/sanitize-arista-eos.py`, commit it under
-`docs/fixtures/arista-eos-4.26.14M/`):
+`docs/fixtures/arista-eos-4.26.14M/`). Steps 0-2 ran on 2026-11-14; 3-7
+need the deployed bridge's config and a restart, which belong to the
+session that runs the deployment:
 
-0. The deployed container must carry this code (a rebuild needs Clint's
-   go), and the Arista's entry in `config.yaml` needs no `fan_mode` until 3.
-1. Read-only: `show system environment cooling` and `show system
-   environment temperature` under auto (the baseline for 3).
-2. The syntax on 4.26.14M, in a session that is aborted, not committed:
-   `configure session dui-fan-probe`, `environment fan-speed ?`,
-   `environment fan-speed override ?`, `abort`. Confirm `auto` and
-   `override` exist and that the range starts at 30; if it does not, change
-   `quietFanPct` in `fanmode.go` before step 3.
+0. **Done 2026-11-14.** The deployed bridge carries this code: its last
+   payload for the Arista (`payload-last.json` on the state volume) reports
+   `sys_fan_mode` `{"caps":3,"mode":"default"}`, which only the Fan Mode
+   code sends. The Arista's entry in the deployed `config.yaml` has no
+   `fan_mode` (read, not changed).
+1. **Done 2026-11-14.** Read-only: `show system environment cooling` and
+   `show system environment temperature` under auto, the baseline for 3
+   (numbers above; `show-system-environment-cooling-auto-20261114.json`,
+   `show-system-environment-temperature-auto-20261114.json`). A
+   `-collect-once` from a build of this tree read the switch as Default,
+   all four trays at 42 %.
+2. **Done 2026-11-14.** The syntax on 4.26.14M, in a session that was
+   aborted, not committed: `environment fan-speed ?` is `auto`, `minimum`
+   and `override`; `override ?` and `minimum ?` are both `<30-100>`;
+   `show configuration sessions` was empty and no `fan-speed` line was in
+   the running config afterwards (`environment-fan-speed-help.txt`). The
+   range starts at 30, so `quietFanPct` stays 30.
 3. Quiet: `fan_mode: quiet` on the Arista in `config.yaml`, bridge
    restarted. The bridge log shows `fan mode default -> quiet` and one batch
    with `environment fan-speed override 30`, and
@@ -354,7 +388,10 @@ with `scripts/sanitize-arista-eos.py`, commit it under
    every sensor must stay below its overheat threshold. If the hottest
    sensor climbs toward overheat, set Default and record the numbers here;
    do not provoke the alert threshold to see whether it overrides the
-   override.
+   override. The one to watch is the CPU sensor: under auto at 43 % it sits
+   at its 60 °C setpoint (2026-11-14), so at 30 % it will settle above
+   that; its alert limit is 90 °C. The switch chip (50 °C against 95) has
+   more room.
 5. Default: `fan_mode: default`, bridge restarted: `no environment
    fan-speed`, the cooling output back
    to `overrideFanSpeed` 0 and `coolingMode` `automatic`, the fans back to
@@ -365,7 +402,8 @@ with `scripts/sanitize-arista-eos.py`, commit it under
    (CLAUDE.md §5). Record what a newer Network release does.
 7. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
    idempotent) and mark the feature verified in this section, the support
-   matrix and the feature map.
+   matrix and the feature map. Then the standing setting: `fan_mode: quiet`
+   on the Arista's entry, unless step 4 argued against it.
 
 
 ## 9. DHCP guarding, rogue DHCP reporting and switch ACLs (2026-11-14)
@@ -421,8 +459,8 @@ outputs are fixtures in `docs/fixtures/arista-eos-4.26.14M/`.
   `counterData.packetCount` in `show ip access-lists <name>` JSON; a rule
   nothing has matched has an empty `counterData`, a remark none
   (`show-ip-access-lists.json` holds real counts on the control-plane list).
-  The counter indices were handed out downwards from 4095, which suggests a
-  4096-entry counter pool; that is an inference, not a measurement.
+  The counter indices were handed out downwards from 4095. The pool's size
+  was measured the same afternoon (next section).
 - **Cost.** A permit `udp host S eq 67 any eq 68` took two hardware entries,
   the drop and the closing `permit ip any any` one each. The MaskGroup
   tables hold 8192 entries each; `show hardware capacity`'s ACL rows lagged
@@ -440,16 +478,69 @@ outputs are fixtures in `docs/fixtures/arista-eos-4.26.14M/`.
 - **EOS's own DHCP snooping** is still Option-82 insertion and bridging only
   (`ip dhcp snooping ?`: `bridging`, `information`, `vlan`; §6).
 
+**The chip's ACL capacity (measured 2026-11-14, afternoon).** These probes
+sized the IP rules claim (§9.4). They ran on the same two test ports, with
+the empty Ethernet54 cage split (`speed 25g`) inside the session for four
+lanes, five interfaces in all. Each probe was one session: lists of
+generated rules (documentation addresses only), `commit timer 00:05:00`,
+the reads, then `abort`. The outputs are in
+`docs/fixtures/arista-eos-4.26.14M/acl-capacity/` (README there):
+
+- **ACL counters are one pool of 4095 for the whole chip** (counter indices
+  1-4095; 0 is "no counter"). One list of 4096 counted rules used all 4095
+  and left one rule without a counter. Five lists of 819 counted rules each
+  (4095) used every index, all rules counted. Five of 820 (4100) left 20
+  entries (10 rules) without a counter, some in the middle of a list. **EOS reports no
+  error at the commit when the pool runs out.** The only sign is the
+  summary: the list is marked `[incomplete statistics]` in the text and
+  `countersIncomplete: true` in the JSON
+  (`show-ip-access-lists-summary-counters-incomplete.json`). A rule
+  without a counter still filters.
+- **Hardware entries.** A counted rule took two entries in the six
+  MaskGroup hash tables (8192 entries each) and an uncounted one took one.
+  Rule shape made no difference: a TCP port match, a source host, a
+  source prefix with a destination host and port. Five uncounted lists of a
+  guard and 4000 UniFi-shaped rules each (20020 rules) programmed with no
+  error as 20094 entries. The MaskGroup key-profile (MGKS) tables used 12 to
+  24 entries per list. The prefix transform tables (1536 per side) take one
+  slot per distinct prefix, shared by every list.
+- **ACL ids** were assigned 1-5 in bind order, one per list, and the five
+  lists of one probe programmed independently. No more interfaces could be
+  bound: ACLs on subinterfaces are "Unavailable command (not supported on
+  this hardware platform)" (`08-subinterface-acl.txt`; Ethernet2 as a
+  routed port with 70 subinterfaces). Whether some id limit lies between 5
+  and 72 was not measured. Nothing in the tables pointed to one.
+- **What EOS refuses:** a rule matching DSCP is accepted with "dscp not
+  supported" and the list flagged "not fully supported by hardware". 1000
+  such rules (with TTL) failed to program: "Error in ACL commit ...
+  Insufficient HW resources", `%ACL-3-COMPUTATION_FAILED`, and "Not all ACLs
+  are programmed in the hardware!" -- while the summary still listed the
+  list "Active on Ingress". **"Active" in the summary is not proof of
+  programming**; the commit's `! Error in ACL commit` and the summary's
+  warning line are. UniFi's IP rules carry no DSCP or TTL.
+- **What the probes left behind:** nothing in the configuration, the
+  MaskGroup tables or the sessions. The prefix transform tables kept the
+  last probes' prefixes listed (101 and 251 entries). A prefix an earlier
+  probe had left there was gone by the next probe, so the slots are reused;
+  whether a full table is reclaimed was not measured. Splitting the test
+  cage also made the deployed bridge log a new layout for port 54 four
+  times, rename that port in the controller each time (it reads
+  `Ethernet54/1` again after the join), and once log the cage's other
+  lanes errdisabled (`speed-misconfigured`) while a probe had only lane 1
+  at 25G. Nothing was written to the switch by the bridge during the
+  probes ("0 of 54 ports changed" on each push).
+
 ### 9.2 The mapping
 
 **One IPv4 ACL per interface, `DUI_IP_ACL_<interface>`** (`/` written `-`:
-`DUI_IP_ACL_Ethernet54-1`), with `counters per-entry`, bound inbound. The
+`DUI_IP_ACL_Ethernet54-1`), bound inbound, with `counters per-entry` when it
+carries a guard. The
 targets are every Ethernet lane not in an aggregate and the Port-Channel of
 every aggregate; `Management1` and VLAN interfaces never. An interface takes
 one IPv4 ACL inbound, so a port's guard and the IP rules share its list:
 
 ```
-counters per-entry
+counters per-entry                               (only with a guard block)
 10 remark disunified dhcp-guard <hash>
 20 permit udp host <server> eq 67 any eq 68      (one per trusted server of the port)
 30 deny udp any eq 67 any eq 68                  (the guard's drop: its counter is the rogue count)
@@ -511,13 +602,24 @@ being able to match a VLAN.
   rule that cannot be written holds the whole rule list (a partial list
   could let through what a later Block meant to stop). The rules go into
   every interface's list.
+- **Counters only where they are read.** A list with a guard block is
+  counted: its drop entry is the port's rogue DHCP count (§9.6). A list
+  holding the IP rules alone is not, since nothing reads a rule's count. Its
+  rules then take one hardware entry each instead of two, and none of the
+  4095 counters (§9.1). If the guarded lists together would need more
+  than the 4095 counters, no list is counted and the driver logs it, so no
+  guard reports a 0 from an entry that got no counter. The filtering is the
+  same either way. A list going from counted to not is rewritten with
+  `no counters per-entry`.
+- **At most 32 IP rules** (the claim, §9.4); a longer list is held whole,
+  like one with a rule EOS cannot write.
 - **The closing `permit ip any any`** makes UniFi's default-allow hold over
   EOS's implicit deny. An IPv4 ACL does not see non-IP traffic such as ARP,
   or IPv6 (not measured: no traffic on the test ports).
 - **Diffing by remark.** Each block's remark carries a hash of the lines the
   driver rendered; a list is current when its blocks' hashes and line counts
   match, it has `counters per-entry`, no line outside a block, and it is
-  bound where it should be. EOS rewrites rules for display (`eq 67` reads
+  bound where it should be, and is counted exactly when it should be. EOS rewrites rules for display (`eq 67` reads
   back as `eq bootps`), so text is never compared. A block the controller
   leaves alone (snooping not pushed, rules held) is carried over as the
   switch shows it. A rewrite removes every sequence number (`no SEQ`) and
@@ -555,6 +657,21 @@ bridge's ordinary configuration batches too, until it is confirmed,
 aborted or reverted. In `exact` mode the uplink is never guarded when it
 carries an unguarded VLAN; in `edge` mode never at all.
 
+**A rule set that would block the bridge's own connection is held** before
+anything is written, as the `sonic` driver does (`docs/drivers/sonic.md`
+§11.7.6). The IP rules are bound on the uplink too. A Block that matches
+TCP to the address the bridge dials (the configured host, resolved when it
+is a name), on the port it dials (eAPI's: 443 unless the URL names
+another; SSH's: 22), with no earlier Allow covering it, keeps the switch's
+rules as they are and logs which rule
+(`devicemodel.IPRulesCutManagement`). The bridge's address as the switch
+sees it is not known to the driver (eAPI from a container passes NAT), so
+every source counts: an Allow limited to some sources is not taken to
+cover the bridge. The commit timer still backs this up for what the check
+cannot see. Whether the 7160 applies an ingress port ACL to traffic
+addressed to the switch itself was not measured; the check assumes it
+does.
+
 ### 9.4 Claims
 
 - **DHCP snooping is claimed** (`feature_caps` 128) since 2026-11-14: the
@@ -563,13 +680,27 @@ carries an unguarded VLAN; in `edge` mode never at all.
   did not ask to drop. With Rogue DHCP Server Detection off (the site's
   setting on 2026-11-14) the controller pushes `switch.dhcp_snoop.status=disabled`
   and nothing is written.
-- **IP rules are not claimed** (`max_custom_ip_acls` 0). Each rule is copied
-  into every interface's list (57 on this switch), and what was measured is
-  two lists. How many port ACL ids the chip takes, and whether 57 lists with
-  `counters per-entry` fit its counter pool, were not measured, since lists
-  can be bound to the two test ports only. A rough bound from the counter
-  indices (a pool of 4096, an inference): about 70 counted entries per
-  interface, so a claim near the ECS's 512 would not fit.
+- **IP rules are claimed** (`max_custom_ip_acls` **32**) since
+  2026-11-14, sized for the worst case: every interface of the switch
+  carrying the guard and all 32 rules. That is 72 interfaces with every
+  cage split (48 copper + 6 x 4 lanes; 57 on the captured switch). A
+  guarded list counts S trusted servers + 1 drop + 32 rules + 1 closing
+  permit. 72 x (S + 34) fits the 4095 counters for S up to 22 trusted
+  servers per port, and takes 144 x (S + 34) hardware entries, about 8000
+  at S = 22, well inside the 20094 five lists held without an error (§9.1).
+  Beyond 22 servers per port the guard still filters but no list is counted
+  (§9.2), so the claim never depends on the counters. One list took 4097
+  rules without an error (§9.1), far beyond 32. What is **not measured** is
+  more than five lists at once, because only two ports may be changed and
+  subinterfaces take no ACL (§9.1). The guard, claimed since the morning,
+  has the same dependency in `edge` mode. **A list the hardware cannot
+  program does not fail the commit**: EOS prints `! Error in ACL commit
+  ... Insufficient HW resources` and commits anyway (§9.1). The driver does
+  not read that warning, and the summary's "Active" does not show it.
+  Within the claim the measured room makes it unlikely; reading the
+  warning (eAPI returns it apart from the output) is a follow-up. The ECS
+  claims 512 and the DX010 128. 32 is what this chip's counters allow on
+  every port at once.
 - **MAC rules are not claimed** (§9.1).
 
 ### 9.5 The DHCP rate question (anomaly bit 32)
@@ -631,6 +762,8 @@ into bit 64, which the controller shows as "Rogue DHCP server detected on
 - A rewrite of a port's list starts its counters at zero; the device layer
   raises no bit on a decrease.
 - A failed read is logged and leaves the counts unreported for that cycle.
+- A list the summary flags `countersIncomplete` (some entries got no
+  counter, §9.1) reports no count, and the read-back logs it.
 
 **Verified live:** a `-collect-once` from this branch's build, run while
 the two test lists were on the switch, read them and reported
@@ -654,5 +787,12 @@ entering a guarded port. No host is cabled to either test port.
    restore the setting. In `exact` mode on today's all-VLAN trunks this
    writes nothing.
 3. **Choose the mode** for the deployment (`exact` or `edge`, §9.2).
-4. **IP rules**: bind more lists (on ports Clint frees for it) to measure
-   the ACL id limit and the counter pool, then size `max_custom_ip_acls`.
+4. ~~**IP rules**: measure the ACL id limit and the counter pool, then size
+   `max_custom_ip_acls`~~ -- done 2026-11-14 (§9.1, §9.4): claimed at 32.
+   Left: a rule seen matching traffic on a test port (with item 1), and
+   more than five lists at once if Clint ever frees more ports for it.
+5. **The end-to-end IP rule push** (the main session, after the merge): one
+   documentation-range Block rule scoped to the Arista in the UI, read the
+   push in the reply log and the session the driver logs, check the lists
+   in `show ip access-lists summary`, then remove the rule and check the
+   lists are gone.

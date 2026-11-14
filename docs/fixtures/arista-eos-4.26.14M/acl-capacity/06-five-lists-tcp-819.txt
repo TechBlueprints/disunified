@@ -1,0 +1,227 @@
+# Five lists of 819 rules + the closing permit each: 4100 counted rules: no error at the commit, 4095 counters, two lists `[incomplete statistics]`; rows without a counter (index 0) shown: rule entries in the middle of lists among them.
+# Session: configure session dui-probe, the lists, `commit timer 00:05:00`, the reads, then `configure session dui-probe abort`.
+
+### EOS messages and summary while the session was pending its timer
+  Name    State       User    Terminal 
+! Transceiver for interface Et54/1 is not present. Cannot verify compatibility of speed and duplex settings. at line 5
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 821
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_3 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 821
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 821
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 819
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 805
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 941
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 925
+Number of valid entries in range of 0 to 4096 : 8
+Number of valid entries in range of 0 to 8192 : 326
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 854
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 254
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 821
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_3 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 821
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 821
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 819
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 805
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 941
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 925
+Number of valid entries in range of 0 to 4096 : 8
+Number of valid entries in range of 0 to 8192 : 326
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 854
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 254
+
+### show platform xp acl, MG table rows selected (hw index | result | priority | log | count mode | counter index | key)
+   6047|   0|    4095|   0|   0|         0|AclId:004 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6071|   0|    3529|   0|   0|       176|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7630|   0|    4095|   0|   0|         0|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7634|   0|    3432|   0|   0|      2664|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    310|   0|    4095|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    316|   0|    3873|   0|   0|      3497|AclId:002 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1600|   0|    3721|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1634|   0|    3451|   0|   0|      2315|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2704|   0|    3507|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2742|   0|    3755|   0|   0|      2321|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4585|   0|    4022|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4620|   0|    3402|   0|   0|      2471|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5637|   0|    4083|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5656|   0|    3586|   0|   0|      2451|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7678|   0|    4066|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7684|   0|    3276|   0|   0|      2402|AclId:004 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2323|   0|    4095|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2333|   0|    3877|   0|   0|       984|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6948|   0|    4095|   0|   0|         0|AclId:002 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6955|   0|    3578|   0|   0|      1474|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6047|   0|    4095|   0|   0|         0|AclId:004 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6071|   0|    3529|   0|   0|       176|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7630|   0|    4095|   0|   0|         0|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7634|   0|    3432|   0|   0|      2664|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    310|   0|    4095|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    316|   0|    3873|   0|   0|      3497|AclId:002 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1600|   0|    3721|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1634|   0|    3451|   0|   0|      2315|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2704|   0|    3507|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2742|   0|    3755|   0|   0|      2321|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4585|   0|    4022|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4620|   0|    3402|   0|   0|      2471|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5637|   0|    4083|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5656|   0|    3586|   0|   0|      2451|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7678|   0|    4066|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7684|   0|    3276|   0|   0|      2402|AclId:004 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2323|   0|    4095|   0|   0|         0|AclId:003 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2333|   0|    3877|   0|   0|       984|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6948|   0|    4095|   0|   0|         0|AclId:002 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6955|   0|    3578|   0|   0|      1474|AclId:005 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+
+### after `configure session dui-probe abort`
+  Name    State       User    Terminal 
+! Transceiver for interface Et54/1 is not present. Cannot verify compatibility of speed and duplex settings. at line 5
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 821
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_3 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 821
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 821
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 819
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 805
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 941
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 925
+Number of valid entries in range of 0 to 4096 : 8
+Number of valid entries in range of 0 to 8192 : 326
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 854
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 254
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL DUI_PROBE_2
+        Total rules configured: 821
+        Configured on Ingress: Et54/1
+        Active on     Ingress: Et54/1
+IPV4 ACL DUI_PROBE_3 [incomplete statistics]
+        Total rules configured: 821
+        Configured on Ingress: Et54/2
+        Active on     Ingress: Et54/2
+IPV4 ACL DUI_PROBE_4
+        Total rules configured: 821
+        Configured on Ingress: Et54/3
+        Active on     Ingress: Et54/3
+IPV4 ACL DUI_PROBE_5
+        Total rules configured: 821
+        Configured on Ingress: Et54/4
+        Active on     Ingress: Et54/4
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 819
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 805
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 941
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 925
+Number of valid entries in range of 0 to 4096 : 8
+Number of valid entries in range of 0 to 8192 : 326
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 854
+Number of valid entries in range of 0 to 4096 : 10
+Number of valid entries in range of 0 to 8192 : 254
+

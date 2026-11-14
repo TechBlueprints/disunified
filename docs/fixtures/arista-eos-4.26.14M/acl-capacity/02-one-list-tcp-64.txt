@@ -1,0 +1,387 @@
+# One list of 64 `permit tcp any any eq N` rules + `permit ip any any` (counters per-entry) on Ethernet2: 65 counters, handed out from index 4095 down.
+# Session: configure session dui-probe, the lists, `commit timer 00:05:00`, the reads, then `configure session dui-probe abort`.
+
+### EOS messages and summary while the session was pending its timer
+  Name    State       User    Terminal 
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 66
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 64
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 10
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 7
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 18
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Nov 14 10:10:43 switch XpAcl: %ACL-6-COMPUTATION_SUCCESS: Computing resources to program ACLs succeeded (Chip-0).
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 66
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 64
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 10
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 7
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 18
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+
+### show platform xp acl, MG table rows selected (hw index | result | priority | log | count mode | counter index | key)
+   1625|   0|    4032|   0|   0|      4091|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1782|   0|    4094|   0|   0|      4093|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1782|   0|    4094|   0|   0|      4093|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1840|   0|    4068|   0|   0|      4092|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1840|   0|    4068|   0|   0|      4092|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1877|   0|    4062|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1877|   0|    4062|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5098|   0|    4042|   0|   0|      4090|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5098|   0|    4042|   0|   0|      4090|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5155|   0|    4063|   0|   0|      4094|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5155|   0|    4063|   0|   0|      4094|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5312|   0|    4050|   0|   0|      4088|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5312|   0|    4050|   0|   0|      4088|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5605|   0|    4033|   0|   0|      4087|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5605|   0|    4033|   0|   0|      4087|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6897|   0|    4064|   0|   0|      4086|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6897|   0|    4064|   0|   0|      4086|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7124|   0|    4047|   0|   0|      4089|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7124|   0|    4047|   0|   0|      4089|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 10
+    464|   0|    4089|   0|   0|      4065|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2206|   0|    4052|   0|   0|      4066|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2206|   0|    4052|   0|   0|      4066|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3485|   0|    4061|   0|   0|      4064|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3485|   0|    4061|   0|   0|      4064|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4144|   0|    4038|   0|   0|      4060|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4144|   0|    4038|   0|   0|      4060|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5498|   0|    4091|   0|   0|      4062|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5498|   0|    4091|   0|   0|      4062|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5729|   0|    4049|   0|   0|      4061|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5729|   0|    4049|   0|   0|      4061|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7293|   0|    4066|   0|   0|      4063|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7293|   0|    4066|   0|   0|      4063|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 7
+    156|   0|    4043|   0|   0|      4079|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    249|   0|    4085|   0|   0|      4068|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    249|   0|    4085|   0|   0|      4068|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    319|   0|    4075|   0|   0|      4075|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    319|   0|    4075|   0|   0|      4075|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    346|   0|    4053|   0|   0|      4069|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    346|   0|    4053|   0|   0|      4069|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1683|   0|    4036|   0|   0|      4078|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1683|   0|    4036|   0|   0|      4078|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2003|   0|    4077|   0|   0|      4084|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2003|   0|    4077|   0|   0|      4084|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2530|   0|    4067|   0|   0|      4076|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2530|   0|    4067|   0|   0|      4076|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3627|   0|    4086|   0|   0|      4077|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3627|   0|    4086|   0|   0|      4077|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4044|   0|   0|      4071|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4044|   0|   0|      4071|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3947|   0|    4059|   0|   0|      4081|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3947|   0|    4059|   0|   0|      4081|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4873|   0|    4039|   0|   0|      4067|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4873|   0|    4039|   0|   0|      4067|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5382|   0|    4048|   0|   0|      4073|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5382|   0|    4048|   0|   0|      4073|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5475|   0|    4082|   0|   0|      4080|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5475|   0|    4082|   0|   0|      4080|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7089|   0|    4081|   0|   0|      4074|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7089|   0|    4081|   0|   0|      4074|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7288|   0|    4072|   0|   0|      4083|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7288|   0|    4072|   0|   0|      4083|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7422|   0|    4055|   0|   0|      4072|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7422|   0|    4055|   0|   0|      4072|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7517|   0|    4087|   0|   0|      4082|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7517|   0|    4087|   0|   0|      4082|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7643|   0|    4040|   0|   0|      4070|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7643|   0|    4040|   0|   0|      4070|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 18
+    619|   0|    4034|   0|   0|      4031|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    785|   0|    4076|   0|   0|      4042|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    785|   0|    4076|   0|   0|      4042|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1336|   0|    4071|   0|   0|      4040|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1336|   0|    4071|   0|   0|      4040|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1948|   0|    4060|   0|   0|      4032|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1948|   0|    4060|   0|   0|      4032|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2228|   0|    4079|   0|   0|      4034|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2228|   0|    4079|   0|   0|      4034|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2337|   0|    4046|   0|   0|      4035|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2337|   0|    4046|   0|   0|      4035|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2510|   0|    4037|   0|   0|      4041|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2510|   0|    4037|   0|   0|      4041|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4210|   0|    4074|   0|   0|      4045|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4210|   0|    4074|   0|   0|      4045|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5036|   0|    4095|   0|   0|      4043|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5036|   0|    4095|   0|   0|      4043|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5509|   0|    4084|   0|   0|      4039|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5509|   0|    4084|   0|   0|      4039|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5723|   0|    4069|   0|   0|      4037|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5723|   0|    4069|   0|   0|      4037|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6153|   0|    4092|   0|   0|      4036|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6153|   0|    4092|   0|   0|      4036|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6968|   0|    4070|   0|   0|      4044|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6968|   0|    4070|   0|   0|      4044|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7441|   0|    4073|   0|   0|      4033|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7441|   0|    4073|   0|   0|      4033|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8117|   0|    4054|   0|   0|      4038|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8117|   0|    4054|   0|   0|      4038|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 15
+   5434|   0|    4031|   0|   0|      4085|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 1
+    443|   0|    4095|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    937|   0|    4090|   0|   0|      4052|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    937|   0|    4090|   0|   0|      4052|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1589|   0|    4058|   0|   0|      4051|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1589|   0|    4058|   0|   0|      4051|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2109|   0|    4051|   0|   0|      4055|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2109|   0|    4051|   0|   0|      4055|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2449|   0|    4041|   0|   0|      4059|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2449|   0|    4041|   0|   0|      4059|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3402|   0|    4045|   0|   0|      4049|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3402|   0|    4045|   0|   0|      4049|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3489|   0|    4083|   0|   0|      4054|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3489|   0|    4083|   0|   0|      4054|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4492|   0|    4056|   0|   0|      4057|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4492|   0|    4056|   0|   0|      4057|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5136|   0|    4088|   0|   0|      4048|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5136|   0|    4088|   0|   0|      4048|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5482|   0|    4065|   0|   0|      4047|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5482|   0|    4065|   0|   0|      4047|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5564|   0|    4078|   0|   0|      4050|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5564|   0|    4078|   0|   0|      4050|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6680|   0|    4093|   0|   0|      4046|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6680|   0|    4093|   0|   0|      4046|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6899|   0|    4035|   0|   0|      4058|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6899|   0|    4035|   0|   0|      4058|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7007|   0|    4057|   0|   0|      4053|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7007|   0|    4057|   0|   0|      4053|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8121|   0|    4080|   0|   0|      4056|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8121|   0|    4080|   0|   0|      4056|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 15
+   1625|   0|    4032|   0|   0|      4091|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1782|   0|    4094|   0|   0|      4093|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1782|   0|    4094|   0|   0|      4093|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1840|   0|    4068|   0|   0|      4092|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1840|   0|    4068|   0|   0|      4092|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1877|   0|    4062|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1877|   0|    4062|   0|   0|      4095|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5098|   0|    4042|   0|   0|      4090|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5098|   0|    4042|   0|   0|      4090|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5155|   0|    4063|   0|   0|      4094|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5155|   0|    4063|   0|   0|      4094|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5312|   0|    4050|   0|   0|      4088|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5312|   0|    4050|   0|   0|      4088|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5605|   0|    4033|   0|   0|      4087|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5605|   0|    4033|   0|   0|      4087|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6897|   0|    4064|   0|   0|      4086|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6897|   0|    4064|   0|   0|      4086|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7124|   0|    4047|   0|   0|      4089|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7124|   0|    4047|   0|   0|      4089|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 10
+    464|   0|    4089|   0|   0|      4065|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2206|   0|    4052|   0|   0|      4066|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2206|   0|    4052|   0|   0|      4066|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3485|   0|    4061|   0|   0|      4064|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3485|   0|    4061|   0|   0|      4064|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4144|   0|    4038|   0|   0|      4060|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4144|   0|    4038|   0|   0|      4060|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5498|   0|    4091|   0|   0|      4062|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5498|   0|    4091|   0|   0|      4062|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5729|   0|    4049|   0|   0|      4061|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5729|   0|    4049|   0|   0|      4061|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7293|   0|    4066|   0|   0|      4063|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7293|   0|    4066|   0|   0|      4063|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 7
+    156|   0|    4043|   0|   0|      4079|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    249|   0|    4085|   0|   0|      4068|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    249|   0|    4085|   0|   0|      4068|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    319|   0|    4075|   0|   0|      4075|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    319|   0|    4075|   0|   0|      4075|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    346|   0|    4053|   0|   0|      4069|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    346|   0|    4053|   0|   0|      4069|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1683|   0|    4036|   0|   0|      4078|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1683|   0|    4036|   0|   0|      4078|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2003|   0|    4077|   0|   0|      4084|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2003|   0|    4077|   0|   0|      4084|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2530|   0|    4067|   0|   0|      4076|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2530|   0|    4067|   0|   0|      4076|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3627|   0|    4086|   0|   0|      4077|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3627|   0|    4086|   0|   0|      4077|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4044|   0|   0|      4071|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3662|   0|    4044|   0|   0|      4071|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3947|   0|    4059|   0|   0|      4081|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3947|   0|    4059|   0|   0|      4081|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4873|   0|    4039|   0|   0|      4067|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4873|   0|    4039|   0|   0|      4067|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5382|   0|    4048|   0|   0|      4073|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5382|   0|    4048|   0|   0|      4073|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5475|   0|    4082|   0|   0|      4080|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5475|   0|    4082|   0|   0|      4080|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7089|   0|    4081|   0|   0|      4074|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7089|   0|    4081|   0|   0|      4074|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7288|   0|    4072|   0|   0|      4083|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7288|   0|    4072|   0|   0|      4083|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7422|   0|    4055|   0|   0|      4072|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7422|   0|    4055|   0|   0|      4072|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7517|   0|    4087|   0|   0|      4082|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7517|   0|    4087|   0|   0|      4082|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7643|   0|    4040|   0|   0|      4070|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7643|   0|    4040|   0|   0|      4070|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 18
+    619|   0|    4034|   0|   0|      4031|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    785|   0|    4076|   0|   0|      4042|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    785|   0|    4076|   0|   0|      4042|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1336|   0|    4071|   0|   0|      4040|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1336|   0|    4071|   0|   0|      4040|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1948|   0|    4060|   0|   0|      4032|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1948|   0|    4060|   0|   0|      4032|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2228|   0|    4079|   0|   0|      4034|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2228|   0|    4079|   0|   0|      4034|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2337|   0|    4046|   0|   0|      4035|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2337|   0|    4046|   0|   0|      4035|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2510|   0|    4037|   0|   0|      4041|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2510|   0|    4037|   0|   0|      4041|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4210|   0|    4074|   0|   0|      4045|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4210|   0|    4074|   0|   0|      4045|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5036|   0|    4095|   0|   0|      4043|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5036|   0|    4095|   0|   0|      4043|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5509|   0|    4084|   0|   0|      4039|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5509|   0|    4084|   0|   0|      4039|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5723|   0|    4069|   0|   0|      4037|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5723|   0|    4069|   0|   0|      4037|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6153|   0|    4092|   0|   0|      4036|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6153|   0|    4092|   0|   0|      4036|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6968|   0|    4070|   0|   0|      4044|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6968|   0|    4070|   0|   0|      4044|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7441|   0|    4073|   0|   0|      4033|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7441|   0|    4073|   0|   0|      4033|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8117|   0|    4054|   0|   0|      4038|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8117|   0|    4054|   0|   0|      4038|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 15
+   5434|   0|    4031|   0|   0|      4085|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 1
+    443|   0|    4095|   0|   0|         0|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    937|   0|    4090|   0|   0|      4052|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+    937|   0|    4090|   0|   0|      4052|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1589|   0|    4058|   0|   0|      4051|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   1589|   0|    4058|   0|   0|      4051|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2109|   0|    4051|   0|   0|      4055|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2109|   0|    4051|   0|   0|      4055|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2449|   0|    4041|   0|   0|      4059|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   2449|   0|    4041|   0|   0|      4059|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3402|   0|    4045|   0|   0|      4049|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3402|   0|    4045|   0|   0|      4049|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3489|   0|    4083|   0|   0|      4054|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   3489|   0|    4083|   0|   0|      4054|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4492|   0|    4056|   0|   0|      4057|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   4492|   0|    4056|   0|   0|      4057|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5136|   0|    4088|   0|   0|      4048|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5136|   0|    4088|   0|   0|      4048|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5482|   0|    4065|   0|   0|      4047|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5482|   0|    4065|   0|   0|      4047|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5564|   0|    4078|   0|   0|      4050|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   5564|   0|    4078|   0|   0|      4050|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6680|   0|    4093|   0|   0|      4046|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6680|   0|    4093|   0|   0|      4046|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6899|   0|    4035|   0|   0|      4058|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   6899|   0|    4035|   0|   0|      4058|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7007|   0|    4057|   0|   0|      4053|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   7007|   0|    4057|   0|   0|      4053|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8121|   0|    4080|   0|   0|      4056|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+   8121|   0|    4080|   0|   0|      4056|AclId:001 PktType:1 AclType:0 Direction:0 SIP:0x0000 DIP:0x0000 SPort:0x0000|
+Number of valid entries in range of 0 to 8192 : 15
+
+### after `configure session dui-probe abort`
+  Name    State       User    Terminal 
+  Name         State                    User    Terminal 
+  dui-probe    pendingCommitTimer                        
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 66
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 64
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 10
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 7
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 18
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Nov 14 10:10:43 switch XpAcl: %ACL-6-COMPUTATION_SUCCESS: Computing resources to program ACLs succeeded (Chip-0).
+  Name    State       User    Terminal 
+IPV4 ACL DUI_PROBE_1
+        Total rules configured: 66
+        Configured on Ingress: Et2
+        Active on     Ingress: Et2
+IPV4 ACL default-control-plane-acl [readonly]
+        Total rules configured: 25
+        Configured on Ingress: control-plane(default VRF)
+        Active on     Ingress: control-plane(default VRF)
+IPV4 ACL mDNS-block
+        Total rules configured: 2
+Number of valid entries in range of 0 to 65536 : 0
+Number of valid entries in range of 0 to 65536 : 64
+Number of valid entries in range of 0 to 1536 : 3
+Number of valid entries in range of 0 to 1536 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 10
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 7
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 18
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 1
+Number of valid entries in range of 0 to 4096 : 2
+Number of valid entries in range of 0 to 8192 : 15
+
