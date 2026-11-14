@@ -153,7 +153,16 @@ and the satisfaction score, never as `anomalies` bits (`docs/feature-map.md`
 per bit; it derives its own link-flap and SFP alerts from the raw fields).
 
 - `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps).
-- `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`.
+  EOS counts one change at boot on every port (read 2026-11-14: every
+  never-up port at 1, a port up once at 2), so `link_down_count`, which
+  `internal/device` sends as the count halved, is one too many on an up
+  port; its growth is exact.
+- `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`,
+  the interface's STP state changes (3 for one link-up), sent as
+  `stp_state_change_count`, the field the controller's STP-flap alert
+  carries (`docs/feature-map.md` §2). A down interface is not in the list
+  (read 2026-11-14), so its count reads 0 while it is down; whether EOS
+  keeps the count when it comes back is not captured.
   (`show spanning-tree`'s `interfaces[].inconsistentFeatures` names the
   guards holding a port; no port field carries it, so it is not read.)
 - `show storm-control` → `interfaces[<lane>].trafficTypes.{broadcast,multicast,unknown-unicast}.drop`
