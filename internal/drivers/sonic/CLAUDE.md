@@ -445,8 +445,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   §11.7.6, built 2026-11-01, verified live on the DX010 the same evening,
   §11.7.7: `VLAN_ID 4094` matches the stand-in's untagged frames, the
   guard's DROP beats a `DUI_IP_ACL` FORWARD, 512+ entries per table, ACL
-  counter polling is off on the image so `aclshow` reads N/A).** Two L3 tables of the driver's
-  own, `DUI_DHCP_GUARD` and `DUI_IP_ACL`, bound ingress to every port that is
+  counter polling is off on the image so `aclshow` reads N/A).** Two tables of the driver's
+  own, `DUI_DHCP_GUARD` (a type of its own since 2026-11-14, next item) and
+  `DUI_IP_ACL` (L3), bound ingress to every port that is
   not a PortChannel member and every PortChannel with members (the CLI's
   `get_acl_bound_ports`; orchagent refuses a member). **Never `config acl
   update`**: acl-loader adds a DROP-all-IPv4 `DEFAULT_RULE` to every ingress
@@ -483,6 +484,43 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   gateway/prefix CIDR. Fixtures: `collect-acl.txt` (with the `ssh`
   section), and the DX010's own `config-help.txt` beside it (the older
   DX010 captures' rigs still borrow the VS's).
+- **DHCP guarding's count per port (`acl_count.go`, `docs/drivers/sonic.md`
+  §11.7.9, built and verified by hand on the DX010 2026-11-14).** One
+  counted DROP per port, `V<v>_IN_<port>` at 8500 with `IN_PORTS`, between
+  the FORWARDs and the shared DROP; `Health.RogueDHCPDrops` is each port's
+  sum. Facts that cost time:
+  - **The `L3` type has no `IN_PORTS`, and `L3V4V6` (which has) is
+    unsupported here** (STATE_DB `ACL_STAGE_CAPABILITY_TABLE|INGRESS`
+    `supported_L3V4V6 false`). So the guard has a CONFIG_DB `ACL_TABLE_TYPE`
+    row of its own name: `MATCHES@`, `ACTIONS@`, `BIND_POINTS@`.
+    swss-common strips the `@` before orchagent reads them.
+  - **The type row and the table.** `config acl add table` takes any type
+    name, and there is no CLI for the row. YANG makes the table's type a
+    leafref: the row goes in before the table and comes out after it.
+  - **orchagent refuses an `IN_PORTS` naming a port it does not have**
+    ("Failed to locate port"), marks the rule `Inactive` and never retries.
+    The driver writes counted rules only for ports in STATE_DB `PORT_TABLE`
+    and rewrites an `Inactive` one.
+  - **`IN_PORTS` is a plain string in YANG**, so `config interface breakout
+    -f` does not clear it as a dependency. The port batch deletes the
+    lanes' rules before the breakout.
+  - **ACL counters reach COUNTERS_DB only with `FLEX_COUNTER_TABLE|ACL
+    FLEX_COUNTER_STATUS enable`** (what `counterpoll acl enable` writes;
+    off on the image). The driver turns it on with the guard.
+    `ACL_COUNTER_RULE_MAP` maps `<table>:<rule>` to the counter oid, and
+    `COUNTERS:<oid>` holds `SAI_ACL_COUNTER_ATTR_PACKETS`. A deleted
+    rule's entry leaves the map.
+  - **Testing on the DX010.** A reply can only arrive on Ethernet0, the
+    one link.
+    - A LAN host can send one: UDP from source port 67 to the switch's 68
+      (macOS binds 67 without root).
+    - Keep every test rule's match to that host's own address.
+    - The deployed bridge leaves alone a `DUI_` table it does not manage
+      (`DUI_RDTEST`). A hand-made `DUI_DHCP_GUARD` is one it would remove on
+      its next cycle while the push says snooping off (by its code; not
+      waited for): work right after an inform.
+  - **Fixture:** `sonic-igmp-202511.20261106-f2e25f54c/collect-rdtest.txt`,
+    with that test table and its live counts.
 - **On the switch itself (`options.transport: local`, built 2026-11-02;
   `docs/drivers/sonic-on-switch.md`).** `sshrun.Local` runs every command
   through `bash -c` as the service's own user, and **that user must be the

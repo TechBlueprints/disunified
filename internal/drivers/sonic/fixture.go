@@ -444,6 +444,8 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.l2mcDel(w[3])
 	case len(w) == 5 && cmd == "config feature state":
 		return f.featureState(w[3], w[4])
+	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && (strings.HasPrefix(w[3], "ACL_TABLE_TYPE|") || w[3] == flexACLKey):
+		return f.aclCountWrite(w)
 	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_RULE|"):
 		return f.aclRuleWrite(w)
 	case cmd == "config acl add" && at(3) == "table":

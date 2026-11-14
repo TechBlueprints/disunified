@@ -318,8 +318,26 @@ the ECS round lacked), the guard on the native VLAN dropping an untrusted
 server's replies even under a matching ACL Allow, an IP rule written and
 removed, 512+ entries per table.
 
+**Which port a rogue server is behind** (§11.7.9, built 2026-11-14): one
+counted DROP per port (`IN_PORTS`) above the guard's shared DROP, in a table
+type of the driver's own, with ACL counter polling on; each port reports the
+sum as `Health.RogueDHCPDrops`, which sets `anomalies` bit 64 on growth.
+**Verified by hand on the DX010 2026-11-14**: replies to the switch counted
+only on the rule of the port they entered (a higher-priority rule for an
+empty cage stayed at 0), a trusted server's replies uncounted, the shared
+DROP still catching a port without its own rule, the type valid under
+sonic-yang, 2557 entries available on it; and the branch's `-collect-once`
+reported the drops on port 1 and 0 on the other 31. Fixture- and
+replay-tested (`acl_count_test.go`, `TestReplaySonicRogueDHCPPerPort`: bit 64
+on the right port only).
+
 | Gap | What the PR needs |
 |---|---|
+| The rogue-DHCP alert through the deployed bridge | Rogue DHCP Server Detection on, an untrusted reply arriving on a DX010 port, and the controller's "Rogue DHCP server detected on <device> Port N" read from its device alerts for that port |
+| A rogue reply on a port other than the uplink, and on an aggregate member (the table binds the PortChannel, the counted rule names the member) | a second linked port (and an aggregate): the count rising on that port's rule alone |
+| A breakout or a join with counted rules in place (fixture-tested: the lanes' rules go before the breakout, the new lanes' come once STATE_DB has them) | the split and join of an empty cage with detection on: no stalled breakout, the new lanes' rules `Active` |
+| Replacing a deployed `L3` guard with the counted one (fixture-tested) | a bridge update while detection is on: the old table, then the type, table and rules, all `Active` |
+| More than 256 guard entries (counted rules dropped per VLAN with a note; fixture-tested) | many guarded VLANs on a split switch, CRM's entry counts on the guard table |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, but frames to the switch itself still reach its CPU through the traps' copy, and no second port had a link, §11.7.8) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
 
@@ -567,7 +585,7 @@ alerts on 2026-11-13.
 
 | What | Where / when |
 |---|---|
-| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (none filled yet); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
+| `anomalies` is 0, or 512 for a port held by loop protection, or a storm/DHCP-rate/rogue-DHCP bit on growth of the port's drop counters (`RogueDHCPDrops` filled by `sonic` since 2026-11-14, `drivers/sonic.md` §11.7.9; `StormDrops*` by `arista-eos`, row below; `DHCPRateDrops` by no driver); nothing else sets a bit | `internal/device/anomalies_test.go` (the regression: a flap, STP changes, optic alarms, growing errors, drops and FEC on the Arista's capture all report 0), `contract_sonic_stp_test.go` (512 on the DX010's live capture) |
 | Storm drops per type from the Arista (`show storm-control` `drop`), split cages summed | `internal/drivers/arista-eos/features_test.go` over the 4.26.14M capture with all three types; read live (counts 0) on 2026-11-14 |
 | `custom_anomalies` not sent; the controller computes it | `internal/device/contract_test.go` `portOmissions`, with the fixtures' evidence |
 | Raw fields the controller derives its own alerts from: `link_down_count`, `sfp_found`, `sfp_rxfault`, `sfp_txfault` | sent as before; the contract tests |
@@ -580,7 +598,7 @@ Open — PRs welcome:
 | The controller's own link-flap and SFP alerts on a bridged port | a live flap (or an optic fault) on a bridged port and the alert read from the controller's device alerts; no such alert has been seen yet |
 | Storm bits (1/2/4) seen raising an alert | the Arista fills the counters (above); a storm on a test port and the alert read from the controller |
 | Storm drops on the SONiC switch | **no count exists on the DX010's Broadcom image** ([`drivers/sonic.md`](drivers/sonic.md) §11.19): orchagent polls no policer statistics, and the Tomahawk's storm meters have no counter. A PR needs a per-type count the chip really keeps (on a Broadcom XGS chip, three of the SDK's receive debug counters, one per storm type, if its drop triggers can be told apart -- `bcmDbgCntRxStormControlDrop` is one trigger for all three), or a SAI that answers `get_policer_stats` for a storm-control policer, plus orchagent polling it; then a capture and a live storm |
-| DHCP rate (32) and rogue DHCP (64) bits | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
+| DHCP rate (32) and rogue DHCP (64) bits (64 on `sonic`: built, the count verified by hand, the alert not yet seen; SONiC section above) | the plumbing is built (`Port.Health` drop counters, growth-based, `anomalies_test.go`); a driver that fills `DHCPRateDrops` or `RogueDHCPDrops` from the device's own drop counters, with a capture of them and a live alert |
 | Any other `anomalies` bit | a driver that really detects the condition and a capture or live alert showing the bit's meaning; for `sonic`, 128, 256, 1024 and 2048 are assessed in [`drivers/sonic.md`](drivers/sonic.md) §11.18 (256 has a build path) |
 
 ---

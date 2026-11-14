@@ -3298,7 +3298,9 @@ details the spec left open:
 - **Guard priorities are constant**: every FORWARD at 9000, every DROP at
   8000. Rules of one priority never overlap (one VLAN, one server each), and
   a server added or removed then writes one rule, not a renumbering. Rule
-  names as specified (`V<v>_S<k>`, `V<v>_DROP`, v UniFi's VLAN).
+  names as specified (`V<v>_S<k>`, `V<v>_DROP`, v UniFi's VLAN). Since
+  2026-11-14 a counted DROP per port sits between them at 8500
+  (`V<v>_IN_<port>`) and the table has a type of its own (§11.7.9).
 - **The bound ports** are the CLI's own rule (`get_acl_bound_ports`): every
   port that is not a PortChannel member, and every PortChannel with members;
   orchagent refuses to bind a member. The list is compared as a set (the CLI
@@ -3370,8 +3372,9 @@ or not seen by `tcpdump` on `Vlan4094` (the switch's CPU).
 | Removal | Snooping off; the Allow rule deleted | `DUI_DHCP_GUARD` went in the designed order (DROP, FORWARD, table) 74 s after the save, `DUI_IP_ACL` 23 s after its delete; CONFIG_DB, STATE_DB and `config_db.json` hold no `DUI_` key afterwards. |
 
 Side findings: the image's ACL counter polling is off (`counterpoll` ACL
-disable), so `aclshow` reports N/A per rule; the driver does not need the
-counters and does not turn them on. The Allow rule with destination Any and
+disable), so `aclshow` reports N/A per rule; the driver did not need the
+counters then (since 2026-11-14 the guard turns the polling on for its
+per-port count, §11.7.9). The Allow rule with destination Any and
 a destination port arrived as `dst.ip=any` plus `dst.port=68`, a shape the
 loop already takes (Any on either side, a port on either side).
 
@@ -3503,6 +3506,178 @@ Tested from fixtures: `acl_mac_test.go` (the ECS's push, refusal without the
 patch, VLANs and holds, the management guard) and
 `TestReplaySonicDX010MACACLPush` (the captured push through the loop: the L2
 table, both rules as written live, the verdict, a quiet reconcile).
+
+#### 11.7.9 Which port a rogue server is behind: the per-port count (2026-11-14)
+
+**The goal.** UniFi raises "Rogue DHCP server detected on <device> Port N"
+from the per-port `anomalies` bit 64, which the controller reads as what the
+switch itself detected (seen live 2026-11-13: the alert came up while the
+bridge still set that bit for a link flap; `docs/feature-map.md` §2). The bridge sets the bit when a port's `Health.RogueDHCPDrops` grows
+between informs (`internal/device`). The guard of §11.7.6 drops an untrusted
+server's replies silently, and its rules are bound to every port: a rule's
+counter can say that replies were dropped, not where they came in. The alert
+is per port, so the count must be too.
+
+**What the ECS does.** Its guard is software (§11.7.3): a table traps UDP
+67 -> 68 to a CPU queue and a snooping daemon applies the server lists, so
+the daemon sees each reply's ingress port. The ECS's inform printed on the
+switch (`controller-10.6.109/inform-ecs-aggregation-uswf066.json`, detection
+off) has no `anomalies` key on any port, so no capture shows the ECS setting
+bit 64. A read-only look at the ECS on 2026-11-14 was refused at login
+(`Permission denied (publickey,password)` for the key that worked on
+2026-10-28), so how its daemon reports was not read. Copying the pattern
+needs a trap to a CPU queue, which this ASIC's ACL has no action for
+(§11.7.4): the code reason to do it differently.
+
+**The options weighed.**
+
+| Option | Attribution | Guard semantics | Entries | Breakout, aggregate | Cost per poll |
+|---|---|---|---|---|---|
+| A DROP per port in place of the shared DROP (an ingress-port match) | true | **weakened**: a port without its rule (a breakout's new lanes, until orchagent has them) is unguarded | VLANs x (servers + ports) | the rules must follow every port change before the port is guarded | the rules' counters |
+| **One counted DROP per port above the shared DROP** (chosen) | true (verified live, below) | **unchanged**: the shared DROP stays and catches whatever no counted rule matched | VLANs x (servers + ports + 1); 34 on the DX010 with one guarded VLAN; capped at 256 | a breakout's lanes lose their rules before it and get new ones after it; an aggregate's members are still physical ports, so nothing changes | two small Redis reads plus one per counted rule |
+| A trap or mirror of the dropped replies to the CPU, counted by disunified-l2d | true | unchanged | one more table | none | none, but every reply (a flood too) reaches the CPU |
+| SONiC's per-port drop counters (`PORT_INGRESS_DROPS`, reason `ACL_ANY`) | **no**: they count every ACL drop on the port, the IP and MAC rules' too | unchanged | none | none | one counter per port |
+
+The trap is out for three reasons. The ASIC has no trap action. COPY
+forwards the original, so the rogue's reply would pass. A mirror needs a
+session to the CPU and a table, and the driver's three tables (guard, IP
+rules, MAC rules) use the three ingress tables the DX010 has free (§11.7.4).
+Whether this SAI offers `ACL_ANY` drop counters was not checked: they would
+not be the guard's count.
+
+**Why a table type of its own.** The guard's table was type `L3`, and
+202511's aclorch (`initDefaultTableTypes`) gives `TABLE_TYPE_L3` no
+`IN_PORTS` match. `L3V4V6` has one, but this SAI does not support it: STATE_DB
+`ACL_STAGE_CAPABILITY_TABLE|INGRESS` says `supported_L3V4V6 false`. A
+CONFIG_DB `ACL_TABLE_TYPE` row defines a type orchagent builds the table
+from (`AclTableTypeParser`):
+
+```
+ACL_TABLE_TYPE|DUI_DHCP_GUARD  MATCHES@     IN_PORTS,VLAN_ID,IP_PROTOCOL,L4_SRC_PORT,L4_DST_PORT,SRC_IP
+                               ACTIONS@     PACKET_ACTION,COUNTER
+                               BIND_POINTS@ PORT,PORTCHANNEL
+```
+
+- **The `@`** marks a list in CONFIG_DB, as `ports@` does. swss-common strips it
+  before orchagent sees the field name (`Table::stripSpecialSym`).
+- **`config acl add table`** takes any type name (202511's
+  `parse_acl_table_info` does not check it). There is no CLI for the type
+  row, so it is a `sonic-db-cli` write like the rules.
+- **sonic-acl.yang** makes `ACL_TABLE.type` a leafref to
+  `ACL_TABLE_TYPE_NAME`, and `IN_PORTS` a plain string.
+  - The leafref means the type row must exist before the table, and the
+    table must go before the type.
+  - Being a string, `IN_PORTS` is no dependency that `config interface
+    breakout -f` would clear.
+- **The whole CONFIG_DB with the row passed `validate_data_tree`** (live,
+  below). That matters on 202511, which validates everything before a
+  breakout (§11.8).
+
+**As built** (`internal/drivers/sonic/acl_count.go`, beside `acl.go`).
+
+- **Rules.** Per guarded VLAN v, unchanged: `V<v>_S<k>` FORWARD at 9000 and
+  `V<v>_DROP` at 8000. New between them: one `V<v>_IN_<port>` DROP at 8500
+  per front-panel port. It is the shared DROP's match plus `IN_PORTS <port>`.
+  Rules of one priority never overlap, one port each.
+- **Only ports orchagent has.** A counted rule is written only for a port in
+  STATE_DB `PORT_TABLE`. aclorch refuses a rule whose `IN_PORTS` names a port
+  it does not have ("Failed to locate port"), marks it `Inactive` and erases
+  the task: it never retries (202511 `doAclRuleTask`). So a counted rule that
+  is `Inactive` is written again (`del`, `hset`) at the next apply.
+- **A breakout or a join.** The port batch deletes every rule whose `IN_PORTS`
+  names one of the cage's lanes, before `config interface breakout`. Each such
+  rule's SAI entry holds the port's object id (aclorch passes `IN_PORTS` as an
+  object list). The plan also forgets those lanes in its copy of STATE_DB's
+  ports: a child can have its parent's name (`Ethernet4`) and is still a new
+  port. The new lanes get their rules at the first apply after STATE_DB lists
+  them. The shared DROP guards the cage throughout.
+  - Untried live: whether a rule left naming a leaving port would hold up
+    the breakout. The rules simply go first.
+- **An aggregate.** The table binds the PortChannel, as before. The counted
+  rules name its members, which stay physical ports. `config portchannel
+  member add` checks table bindings (`get_port_acl_binding`), not rules, so
+  a join changes nothing here.
+- **The cap.** The guard table holds at most 256 entries (`guardEntries`).
+  Counted rules are added VLAN by VLAN in number order while they fit; a VLAN
+  past the cap keeps its FORWARDs and its shared DROP, with a note naming it.
+  - Measured: the stock L3 table took 512+ entries (§11.7.7). The guard's own
+    type showed 2557 available beside 3 used (CRM, live, below).
+  - A quarter leaves the IP rules' claim of 128 its margin.
+  - One VLAN on 32 cages is 34 entries; on 128 lanes (every cage split in
+    four) it is 130.
+- **Counter polling.** Rule counters reach COUNTERS_DB only while orchagent
+  polls ACL counters, which is off on the image (§11.7.7). With the guard
+  written, the driver sets `FLEX_COUNTER_TABLE|ACL FLEX_COUNTER_STATUS
+  enable`, the field `counterpoll acl enable` writes (202511 `counterpoll`
+  `acl_enable`, `mod_entry`). It leaves it on: polling costs one SAI read per
+  ACL rule every 10 s. A switch where polling was turned off again is logged
+  ("orchagent does not poll ACL counters"), and the next apply turns it back on.
+- **The read.** `collect.py` prints three sections:
+  - `cfg_acl_type`: `ACL_TABLE_TYPE|DUI_*`;
+  - `cfg_flex_acl`: `FLEX_COUNTER_TABLE|ACL`;
+  - `acl_counters`: for each counted rule of a `DUI_` table, from COUNTERS_DB's
+    `ACL_COUNTER_RULE_MAP` (`<table>:<rule>` -> counter oid), the counter's
+    `SAI_ACL_COUNTER_ATTR_PACKETS`.
+  The collector sums the packets of the guard's counted rules by each rule's
+  own `IN_PORTS` (CONFIG_DB) over a port's lanes and the guarded VLANs. That
+  sum is `Health.RogueDHCPDrops`. A rule with no value yet adds nothing.
+- **Counters reset.** A rule written again starts from 0, and a deleted rule
+  takes its counter out of the map (live, below). `internal/device` sets
+  nothing on a decrease.
+- **An earlier build's guard** (type `L3`, no counted rules) is replaced
+  whole: its rules, then its table, then the type, the table and the rules.
+  For a moment there is no guard.
+
+**Verified live on the DX010** (2026-11-14 02:41-02:59 MST, image
+`igmp-202511.20261106-f2e25f54c`, the deployed bridge running and left
+alone). The reply came from a LAN host: its own UDP from port 67 to the
+switch's address, port 68, as in §11.7.7 but unforged.
+- **The test tables.** Every DROP matched only that host's address, so no
+  real DHCP was touched.
+  - The table was bound to Ethernet0 (the uplink) and cages 2-3 (empty).
+  - A reply can only arrive on a linked port, and Ethernet0 is the DX010's
+    only one. A MAC loopback on an empty cage (§8.9) would have needed the
+    cage out of `Vlan4094`. The running bridge reconciles VLAN membership
+    every cycle, and a looped port in the LAN's VLAN would send the LAN's
+    floods back into it.
+  - The first table was `DUI_RDTEST` (the deployed bridge leaves a `DUI_`
+    table it does not manage alone). The read-path check used
+    `DUI_DHCP_GUARD` itself, built by hand just after a bridge inform. The
+    deployed bridge would remove it within a cycle (the push says snooping
+    off), and it did not get to.
+- **Cleanup.** A 15-minute and then a 10-minute systemd timer held the
+  cleanup. It was run by hand after each stage and the timer stopped.
+
+| Check | Done | Result |
+|---|---|---|
+| The type and IN_PORTS | type row as above; rules at 8600 `IN_PORTS Ethernet4`, 8500 `IN_PORTS Ethernet0`, 8000 no port | table and every rule `Active`; `show acl rule` lists `IN_PORTS` |
+| Attribution | 5 replies | Ethernet0's rule **5 packets (1410 bytes)**; the empty cage's rule, one priority **above** it, **0**; the shared DROP 0. The port match holds in the chip. |
+| A trusted server | a FORWARD for the host at 9000, 5 replies | the FORWARD 5, Ethernet0's counted rule still 5: trusted replies are not counted |
+| The shared DROP still guards | the FORWARD and Ethernet0's rule deleted, 3 replies | the shared DROP 3, the empty cage's rule 0. A deleted rule's counter left `ACL_COUNTER_RULE_MAP`. |
+| Capacity | CRM `CRM:ACL_TABLE_STATS:<oid>` | 3 used, **2557 available** on the custom type |
+| YANG | `sonic_yang` `loadData` + `validate_data_tree` over `sonic-cfggen -d --print-data` with the type row | passes; no table without a model |
+| The capture | the rules renamed to the design's (`V1_S1`, `V1_IN_Ethernet0`, `V1_IN_Ethernet4`, `V1_DROP`), 4 replies, `collect.py` from the branch | `acl_counters`: Ethernet0 4, Ethernet4 0; scrubbed as `sonic-igmp-202511.20261106-f2e25f54c/collect-rdtest.txt` |
+| The driver's read | `DUI_DHCP_GUARD` of the same shape, 3 replies, `disunified -driver sonic -device-ssh ... -collect-once` built from the branch | `RogueDHCPDrops` **3 on port 1, 0 on the other 31** |
+| Restore | cleanup after each stage | no `DUI_` ACL key in CONFIG_DB or STATE_DB, `ACL_COUNTER_RULE_MAP` empty, ACL polling `disable` running and in `config_db.json` (which never held a test key), no ACL table, CRM 0 tables; Ethernet0 up, the bridge informing throughout |
+
+**Tested from fixtures:**
+- `acl_count_test.go`: the live capture's counters, the per-port rules and
+  count, the replacement of an `L3` guard with polling turned on, the wait for
+  orchagent's ports, the `Inactive` rewrite, a breakout, the cap, polling off.
+- The ECS-push tests in `acl_test.go` and `TestReplaySonicDHCPGuardAndACL`,
+  updated.
+- `TestReplaySonicRogueDHCPPerPort`: the push through the loop, replies
+  counted on cage 3, the next inform's `anomalies` 64 on port 3 alone, then 0.
+
+**Not verified live:**
+- A reply on a port other than the uplink, which needs a second linked port
+  (rack day).
+- An aggregate member's count.
+- A breakout with counted rules in place.
+- The replacement of a deployed `L3` guard (detection is off on the site).
+- The cap.
+- The controller's alert from this bit, which is the end-to-end check after
+  the deploy.
 
 ### 11.8 Full retest on the 202511 IGMP image (2026-11-02)
 

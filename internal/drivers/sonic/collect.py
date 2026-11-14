@@ -171,6 +171,32 @@ section("cfg_acl_table", "CONFIG_DB", "ACL_TABLE|DUI_*")
 section("cfg_acl_rule", "CONFIG_DB", "ACL_RULE|DUI_*")
 section("state_acl", "STATE_DB", "ACL_TABLE_TABLE|DUI_*", "ACL_RULE_TABLE|DUI_*")
 section("crm_acl", "COUNTERS_DB", "CRM:ACL_STATS:INGRESS:*", "CRM:ACL_TABLE_STATS:*")
+# DHCP guarding's count per port (docs/drivers/sonic.md 11.7.9): the guard
+# table's type (ACL_TABLE_TYPE, its IN_PORTS match), whether orchagent polls
+# ACL counters at all, and the packets of each counted rule (<table>:V<v>_IN_<port>).
+section("cfg_acl_type", "CONFIG_DB", "ACL_TABLE_TYPE|DUI_*")
+section("cfg_flex_acl", "CONFIG_DB", "FLEX_COUNTER_TABLE|ACL")
+
+
+def acl_counters(name):
+    s(name)
+    out = {}
+    try:
+        rules = DB.get_all("COUNTERS_DB", "ACL_COUNTER_RULE_MAP")
+    except Exception:
+        rules = {}
+    for rule, oid in rules.items():
+        if not rule.startswith("DUI_") or "_IN_" not in rule:
+            continue
+        try:
+            c = DB.get_all("COUNTERS_DB", "COUNTERS:" + oid)
+        except Exception:
+            c = {}
+        out[rule] = {"oid": oid, "SAI_ACL_COUNTER_ATTR_PACKETS": c.get("SAI_ACL_COUNTER_ATTR_PACKETS", "")}
+    dump(out)
+
+
+acl_counters("acl_counters")
 # IGMP snooping (the l2mcd series, docs/drivers/sonic.md 8.10): a snooping
 # VLAN's row, its unknown-multicast setting and its static groups, as the
 # CLI and the driver write them. Absent on an image without the series.
