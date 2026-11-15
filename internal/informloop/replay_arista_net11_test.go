@@ -26,14 +26,14 @@ import (
 // address and its removal. The bridge was long adopted when the upgrade
 // came, so the device starts adopted on the (test) site key.
 //
-// The fixture transport is stateless: every collect reads the 4.26.14M
-// capture, which predates three of the site's VLANs and holds none of the
-// driver's lists, so every apply and every reconcile writes those VLANs and
-// the port batch again. That writing is the baseline (a reconcile of the
-// 10.6.109 push); each reply must write exactly the baseline plus its own
-// change. The upgrade's push changes nothing, as it did live (0 of 54 ports
-// changed). A removed rule cannot show here (the next collect forgets the
-// lists); TestReplayAristaIPRuleLiveRound replays that pair.
+// The fixture transport remembers what was written, so the replay runs as
+// it ran live: the reconcile of the 10.6.109 push (record 0) writes the
+// site's VLANs and the port settings the 4.26.14M capture predates, and
+// from then on each push writes only its own change and every noop
+// nothing ("0 of 54 ports changed", the deployed bridge's log). The
+// upgrade's push changes nothing, as it did live. Each rule goes in as one
+// timed session and its confirm, and each removal takes the 57 lists out
+// again in a session of its own.
 func TestReplayAristaNetwork11(t *testing.T) {
 	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
 	coll := aristaeos.NewCollector(ft)
@@ -61,8 +61,7 @@ func TestReplayAristaNetwork11(t *testing.T) {
 		Start:     &device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", UseAESGCM: true},
 		GatewayIP: "192.0.2.2", // the gateway in the scrubbed EOS capture (ip route 0.0.0.0/0)
 		Written:   written,
-		// The stateless transport can never converge a held push, and the
-		// bridge had applied pushes for weeks before record 0.
+		// The bridge had applied pushes for weeks before record 0.
 		Loop: func(c *Config) { c.AllowInitialChanges = true },
 		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
 			var p map[string]any
@@ -84,62 +83,70 @@ func TestReplayAristaNetwork11(t *testing.T) {
 		}
 	}
 
-	// The baseline: the reconcile after the last 10.6.109 push, one VLAN
-	// batch and one port batch, port 54 named as EOS names it.
-	base := strings.Split(writes[1], "\n")
-	if len(base) != 2 || !strings.Contains(base[0], "vlan ") || !strings.Contains(base[1], "interface Ethernet54/1 | description Ethernet54/1 |") {
-		t.Fatalf("baseline (reply 1) is not one VLAN and one port batch:\n%s", writes[1])
+	// Record 0: one VLAN batch and one port batch, port 54 named as EOS
+	// names it.
+	first := strings.Split(writes[0], "\n")
+	if len(first) != 2 || first[0] != "enable | configure | vlan 69,4000,4010 | end | write memory" || !strings.Contains(first[1], "interface Ethernet54/1 | description Ethernet54/1 |") {
+		t.Fatalf("record 0 is not one VLAN and one port batch:\n%s", writes[0])
 	}
-	renamed := strings.Replace(base[1], "description Ethernet54/1 |", "description Ethernet54/1-4 |", 1)
-	if renamed == base[1] {
-		t.Fatal("no port 54 description in the baseline")
+	port54 := func(desc string) string {
+		return "enable | configure | interface Ethernet54/1 | description " + desc + " | end | write memory"
 	}
-	rule := func(line string) func(string) []string {
+	// session is an ACL change: the timed session with body's lines in
+	// each of the 57 lists (or of their removal), then its confirm.
+	session := func(lines ...string) func(string) []string {
 		return func(w string) []string {
-			var bad []string
 			ls := strings.Split(w, "\n")
-			if len(ls) != 4 || ls[0] != base[0] || ls[3] != base[1] {
-				return []string{"want the baseline with one ACL session and its confirm between"}
+			if len(ls) != 2 {
+				return []string{"want one ACL session and its confirm"}
 			}
-			if !strings.HasPrefix(ls[1], "enable | configure session dui-acl-") || !strings.HasSuffix(ls[1], "commit timer 00:02:00") {
-				bad = append(bad, "the rule is not written in a timed session: "+ls[1][:80])
+			var bad []string
+			name, _, _ := strings.Cut(strings.TrimPrefix(ls[0], "enable | configure session "), " |")
+			if !strings.HasPrefix(ls[0], "enable | configure session dui-acl-") || !strings.HasSuffix(ls[0], "| commit timer 00:02:00") {
+				bad = append(bad, "not a timed session: "+ls[0][:80])
 			}
-			if n := strings.Count(ls[1], "| ip access-group DUI_IP_ACL_"); n != 57 {
-				bad = append(bad, "bound lists: "+itoa(n)+", want 57")
+			if ls[1] != "enable | configure session "+name+" commit | write memory" {
+				bad = append(bad, "not confirmed: "+ls[1])
 			}
-			if n := strings.Count(ls[1], "| 20 "+line+" |"); n != 57 {
-				bad = append(bad, "rule "+line+" in "+itoa(n)+" lists, want 57")
-			}
-			if !strings.HasSuffix(ls[2], " commit | write memory") {
-				bad = append(bad, "not confirmed: "+ls[2])
+			for _, l := range lines {
+				if n := strings.Count(ls[0], "| "+l); n != 57 {
+					bad = append(bad, itoa(n)+" x "+l+", want 57")
+				}
 			}
 			return bad
 		}
 	}
-	same := func(what, want string) func(string) []string {
+	exactly := func(want string) func(string) []string {
 		return func(w string) []string {
 			if w != want {
-				return []string{"want exactly " + what}
+				return []string{"want " + want}
 			}
 			return nil
 		}
 	}
-	block := rule("deny tcp 203.0.113.0/24 198.51.100.0/24 eq 9")  // dui-test-arista-block-1
-	match := rule("deny udp 198.51.100.0/24 host 192.0.2.1 eq 68") // dui-test-arista-match-1: the switch's own address
-	plain := same("the baseline", writes[1])
-	split := same("the baseline with port 54 described Ethernet54/1-4", base[0]+"\n"+renamed)
+	added := func(rule string) func(string) []string {
+		return session("ip access-list DUI_IP_ACL_", "20 "+rule+" |", "ip access-group DUI_IP_ACL_")
+	}
+	removed := session("no ip access-group DUI_IP_ACL_", "no ip access-list DUI_IP_ACL_")
 	want := map[int]func(string) []string{
-		18: split, 19: plain, 20: plain, 21: split, 22: split, 23: plain, // 18 also pushes dhcp_snoop.status=disabled: nothing to write
-		27: block, 28: block, // the rule, and the reconcile after it (the capture forgets it)
-		35: match, 36: match,
+		0:  func(string) []string { return nil },
+		18: exactly(port54("Ethernet54/1-4")), 19: exactly(port54("Ethernet54/1")), // 18 also pushes dhcp_snoop.status=disabled: nothing to write
+		21: exactly(port54("Ethernet54/1-4")), 23: exactly(port54("Ethernet54/1")),
+		27: added("deny tcp 203.0.113.0/24 198.51.100.0/24 eq 9"), // dui-test-arista-block-1
+		29: removed,
+		35: added("deny udp 198.51.100.0/24 host 192.0.2.1 eq 68"), // dui-test-arista-match-1: the switch's own address
+		37: removed,
 	}
 	for i, w := range writes {
-		check := plain
-		if f, ok := want[i]; ok {
-			check = f
+		check, ok := want[i]
+		if !ok {
+			check = exactly("")
 		}
 		if bad := check(w); len(bad) > 0 {
 			t.Errorf("reply %d (cfgversion %q): %s; wrote:\n%s", i, pushes[i], strings.Join(bad, "; "), w)
 		}
+	}
+	if len(ft.Unmodelled) != 0 {
+		t.Errorf("writes the fixture transport could not show: %q", ft.Unmodelled)
 	}
 }

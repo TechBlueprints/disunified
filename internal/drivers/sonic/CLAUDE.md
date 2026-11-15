@@ -530,10 +530,16 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   with a log. A MAC set whose Block would drop the switch's own management
   frames is held (`cutsManagementMAC`). The UI refuses the management
   network for a MAC rule, and the DX010's one link carries only that
-  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8). On
-  Broadcom the rule's Drop does not cancel a to-CPU trap's `GpCopyToCpu`
-  in another field-processor group: frames to the switch itself still
-  reach its CPU; `bcmcmd "fp stat get si=<n> t=Packets"` shows the hits.
+  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8).
+  **No ACL drop keeps a frame addressed to the switch from its CPU** on
+  202511's libsaibcm `13.2.1.100` (traced 2026-11-15, §11.7.8). Every
+  table is an ingress field-processor group at priority 100 whose entry
+  is a plain `Drop`. That drop leaves the trap group's (GID 1, priority
+  -1) `GpCopyToCpu` alone, for ip2me and DHCP alike, L3 and L2 tables
+  alike. So judge a drop by the chip's counter, never by `tcpdump` on the
+  switch: `bcmcmd "fp show group <gid>"` for the entry's stat id, then
+  `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
+  was on 202505's `13.2.1.36`.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
@@ -832,10 +838,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   a cage flapped every ~6.5 s raised the DX010's own STP-flap alert, and a
   BPDU-guarded looped cage its BPDU-guard alert (§11.23.4). Facts that cost time:
   - **A looped cage with BPDU guard is shut by mstpd within a second**
-    ("Received BPDU on BPDU Guarded Port"), but only the netdev: APPL_DB
-    `oper_status` stays up while the loopback is on, so the port reports
-    up. After the guard is turned off, `ip link set dev <port> up` and the
-    next link-up clear `bpdu guard error`.
+    ("Received BPDU on BPDU Guarded Port"), but only the netdev; l2d holds
+    the chip's port down since (next item). mstpd clears `bpdu guard
+    error` only at the next link-up.
   - **`pkill -f <pattern>` over SSH matches the remote shell's own command
     line** when the pattern is in it, and kills the session (exit 255): use
     a script file, or `pgrep -f "[x]yz"` with a pattern the command line
@@ -843,6 +848,30 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
     about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
     the payloads, not the period.
+- **BPDU guard holds the chip's port down until the UI's Re-enable
+  (`l2d.py` "BPDU guard", `recover.go`, `docs/drivers/sonic.md` §11.28,
+  verified live on a looped cage 2026-11-15).** l2d holds a port mstpd
+  reports tripped with APPL_DB `admin_status down`, as loop protection
+  does. It is released by the controller's `port-recovery` (the driver
+  writes STATE_DB `DUI_PORT_RECOVERY|<interface>`), by mstpd no longer
+  guarding the port, or by STP off. The driver's fault follows l2d's
+  `bpdu_guard_held`. Facts that cost time:
+  - **portmgrd undoes an APPL_DB hold** whenever anything writes the
+    port's CONFIG_DB row: it copies `admin_status` and runs `ip link set
+    up`. l2d re-asserts both every pass, for loop protection's hold too.
+  - **Release on mstpd's report, not on the config.** Released one pass
+    before mstpd's guard went off, the port linked into the guard and was
+    shut again with the guard off: left down (live).
+  - **mstpd's error outlives a release with no link**, so a released port
+    is not a new trip until its kernel state changes (a link-up). That
+    holds even if the guard is switched off and on.
+  - **The MAC loopback keeps the chip's PHY up on a disabled port**
+    (`bcmcmd "port ce16"`: `*ce16 (Disabled ...`): APPL_DB `oper_status`
+    stays up and the port reports up while held. The admin state is
+    `bcmcmd ps`'s `!ena` and ASIC_DB `SAI_PORT_ATTR_ADMIN_STATE false`.
+    A peer losing link needs a cable to see.
+  - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/collect-bpduguard-held.txt`,
+    `controller-11.0.99/reply-port-recovery.ndjson`.
 - **Storms are detected, never held (2026-11-14, `docs/drivers/sonic.md`
   §11.20, §11.21).** UniFi's UI text: a storm anomaly is incoming traffic
   of the type over the Storm Control threshold, and Storm Control
@@ -1139,6 +1168,9 @@ was restarted.
   you are doing, wait while another session holds it, remove it when done.
   It covers anything the deployed bridge or another session's test would
   see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
-  row, an l2d run by hand. Read-only commands need no lock. (The
+  row, an l2d run by hand. Read-only commands need no lock. **Take it
+  with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
+  so that a held lock refuses the write. A plain `>` replaced a held lock
+  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)

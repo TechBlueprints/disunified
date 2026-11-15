@@ -59,7 +59,8 @@ sonic-swss 0003 (orchagent's outer-MAC match; claimed only when Start finds
 it): written, Active in the chip and removed live on the DX010 2026-11-06;
 the chip's entry matched exactly the blocked MAC's frames, a dropped switched
 frame is unseen (one linked port), and frames to the switch itself still
-reach its CPU through the traps' copy (§11.7.8).
+reach its CPU through the traps' copy, as they do under any ACL drop on
+202511's SAI, the DHCP guard's included (§11.7.8, traced 2026-11-15).
 UniFi's 802.1X Control is hostapd (wired driver, built on the switch like
 mstpd) under disunified-l2d, the port closed by the MAC filter's learn mode
 and each authenticated host a static FDB entry, failed attempts as anomaly
@@ -441,7 +442,18 @@ these is marked "not captured".
   the override. On the ECS and in l2d, `disabled` turns auto edge off, so a
   port that was once up as a non-edge port (a looped test cage, a switch
   link) stays non-edge. A `disabled` value lasts through the controller's
-  restarts (`docs/drivers/sonic.md` §11.23.3).
+  restarts (`docs/drivers/sonic.md` §11.23.3). The site setting is
+  `global_switch.auto_stp_edge_detection_enabled` (the UI's "Auto STP
+  Edge"). An operator un-pins a port by choosing Edge in its settings and
+  then "Restore Auto STP Edge": the push goes back to `auto` (port 17,
+  2026-11-15). The UI's save of the Edge choice also switched BPDU guard on.
+- **The UI's Re-enable is `port-recovery`, and the device gets the port as
+  `port` (11.0.99, captured 2026-11-15).** A port whose alert is BPDU guard
+  or loop protection gets a Re-enable button. The UI posts `cmd/devmgr
+  {"cmd":"port-recovery","port_idx":N}`, and the next inform reply carries
+  `{"_type":"cmd","cmd":"port-recovery","port":N}`. The session hands it to
+  `devicemodel.PortRecoverer`. UniFi's text promises no recovery timer for
+  BPDU guard: "requires manual re-enable" (`docs/drivers/sonic.md` §11.28).
 
 ## 6. Driver facts
 

@@ -140,11 +140,17 @@ Create `internal/drivers/<name>/` with:
   `devicemodel.Controller` (`ApplyPorts`), `DeviceController` (`ApplyDevice`),
   `VLANController` (`EnsureVLANs`). Add the compile-time interface checks
   from [`arista-eos/driver.go`](../internal/drivers/arista-eos/driver.go).
-- Tests against the fixtures (a `fixtureTransport` that serves the files by
+- Tests against the fixtures (a fixture transport that serves the files by
   command name), covering: port count and indexes, an up port's counters,
   a down port, breakout folding if the platform has it, LLDP, capabilities,
   and every apply command sequence (including idempotence: applying the
-  same desire twice must write nothing the second time).
+  same desire twice must write nothing the second time). Make the
+  transport remember what it wrote, so a collect after a write reads it
+  back and a replay can require a reconcile to write nothing: each write
+  changes the replies only in forms a capture of the device after such a
+  command shows, and anything it cannot show is recorded, not guessed
+  (`aristaeos.FixtureTransport`, `docs/drivers/arista-eos.md` §11;
+  `sonic.FixtureRunner`).
 - A blank import in [`cmd/disunified/main.go`](../cmd/disunified/main.go) next to the Arista one.
 - Optionally `devicemodel.Planner` (`PlanPorts`: what ApplyPorts would
   change, without writing). With it the loop holds a freshly adopted

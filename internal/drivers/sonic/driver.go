@@ -225,5 +225,6 @@ var (
 	_ devicemodel.AddressController = (*Collector)(nil)
 	_ devicemodel.AddressReporter   = (*Collector)(nil)
 	_ devicemodel.Locator           = (*Collector)(nil)
+	_ devicemodel.PortRecoverer     = (*Collector)(nil)
 	_ devicemodel.ApplyBudget       = (*Collector)(nil)
 )

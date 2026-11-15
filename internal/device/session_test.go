@@ -2,6 +2,7 @@ package device
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -257,5 +258,28 @@ func TestFirmwareVersionIsTheSwitchsOwn(t *testing.T) {
 	p.SetSnapshot(upgraded)
 	if got := p.Version(); got != "9.9.9" {
 		t.Errorf("pinned version = %q", got)
+	}
+}
+
+// The UI's Re-enable on a port BPDU guard or loop protection took down
+// (docs/drivers/sonic.md §11.28): the UI posts cmd/devmgr port-recovery with
+// port_idx, and the device receives the reply captured on Network 11.0.99,
+// whose port number is "port".
+func TestPortRecoveryCarriesItsPort(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", "reply-port-recovery.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true}
+	s := NewSession(testDesc(), "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	effects := s.Apply(time.Now(), rec.Payload)
+	if len(effects) != 1 || effects[0].Kind != EffectPortRecovery || effects[0].Text != "17" {
+		t.Errorf("effects = %+v, want one port recovery for port 17", effects)
 	}
 }

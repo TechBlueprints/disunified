@@ -39,7 +39,10 @@ that cost time on Clint's DCS-7160-48TC6-F.
   DSCP match. ACLs on subinterfaces are unavailable. **A list that fails to
   program still commits** (`! Error in ACL commit`, a warning), and the
   summary still says "Active on Ingress". The commit's warning is the
-  signal.
+  signal: eAPI returns it in the `commit timer` command's result
+  (`warnings`), the CLI as a `! ` line; `ConfigWarner` reads both, and
+  `commitACL` aborts such a session and holds the change (2026-11-15,
+  `acl-commit-warning/`).
 - A rule set blocking TCP to the address and port the bridge dials (eAPI
   443) is held before it is written (`devicemodel.IPRulesCutManagement`),
   every source counted.
@@ -53,9 +56,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   per interface, and why `RogueDHCPDrops` is per port (the guard drop
   entry's `packetCount`, `acl_counters.go`, §9.6).
 - An interface takes **one IPv4 ACL per direction**; reprogramming a bound
-  list may block its traffic while it lasts (`hardware access-list update
-  default-result permit` is offered on this switch but not set by the
-  driver, and its effect is unmeasured). ACL changes go through a `commit
+  list blocks its traffic while it is reprogrammed: a 500-rule rewrite on
+  the uplink cost 10 consecutive 20 ms pings, every time (2026-11-15,
+  `acl-update-default-result/`). `hardware access-list update
+  default-result permit` removes that drop (no ping lost) by letting all
+  traffic pass instead for the window (fail-open, per Arista's manual), so
+  the driver does not set it: that trade is the operator's. ACL changes go through a `commit
   timer` session like an address move, confirmed over a fresh connection;
   `configure session NAME abort` reverts a session pending its timer at once.
 - **Every configuration session needs a name of its own** (`sessionName`:
@@ -64,11 +70,24 @@ that cost time on Clint's DCS-7160-48TC6-F.
   dui-acl, it is already complete"): with a fixed name the second ACL change
   failed, live 2026-11-14. `no configure session NAME` deletes a completed
   one by hand, and fails for a name that does not exist.
+- **Hand tests on the Arista take the test lock**, as the DX010's do
+  (`internal/drivers/sonic/CLAUDE.md`): write
+  `local-information/locks/arista.lock` (in the main checkout) with your
+  session's name and what you are doing, wait while another session holds
+  it, remove it when done; read-only commands need none. Check `show
+  configuration sessions` and `show logging last 15 minutes | include
+  CONFIG_SESSION` first: on 2026-11-15 two sessions ran hold sessions on
+  the switch minutes apart, one with a lock file of another name.
 - **A session pending its commit timer blocks every other commit** ("Cannot
   commit because another session, X is pending commit timer"), the
   bridge's included: open one (a harmless `alias`) to hold the deployed
-  bridge off a hand-made test, abort it after. Reverting it keeps what was
-  committed before it.
+  bridge's ACL and address changes off a hand-made test, abort it after.
+  Reverting it keeps what was committed before it. It does **not** hold off
+  the bridge's port writes (plain `configure`): those apply, and are reverted
+  with the session, but the bridge's `write memory` saves them, and a hand
+  change made meanwhile, into startup-config (2026-11-15: a test
+  Port-Channel5). After the abort, `write memory` and check `show
+  running-config diffs` is empty.
 - Live (2026-11-14, §9.8): the driver's list on all 57 interfaces at once
   programmed (57 port ACL ids); binding them costs one or two 50 ms pings.
   The controller refuses an IP rule within one subnet ("resort to MAC ACL
@@ -129,6 +148,16 @@ that cost time on Clint's DCS-7160-48TC6-F.
   switch applies from its own loop). An `interface A-B` range stops at the
   first warning (an empty cage's "transceiver not present"): write one
   `interface` per lane.
+- **EOS keeps an emptied Port-Channel** (2026-11-15, `docs/drivers/arista-eos.md`
+  §4, Aggregates): `no channel-group` on the last member leaves `interface
+  Port-Channel<n>` with its settings. `no interface Port-Channel<n>` removes
+  it and its ACL binding, takes any members out too, and is silent for one
+  that does not exist; any `interface Port-Channel<n>` line (an ACL unbind)
+  re-creates it empty. The plan removes an empty one in its own range
+  (1..last port; a cage's nine for a lane switch) that carries only the
+  driver's lines (`portchannel.go`); a hand-made one stays. The test
+  fixtures' switch had four (Po1-4): `removeLeftovers` in the test helpers
+  takes them out first.
 - **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
   detail`** (text; its `| json` wraps the text): the `... since system
   boot` rows' Current State. Per interface, not per channel; no
@@ -139,3 +168,11 @@ that cost time on Clint's DCS-7160-48TC6-F.
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is
   0 (`docs/mac-table-times.md`); never fill `age` from `lastMove`.
+- **The fixture transport remembers what it wrote** (2026-11-15,
+  `fixture_state.go`, `docs/drivers/arista-eos.md` §11): a new write the
+  driver makes needs its read-back form captured on the test ports
+  (`write-forms/` is the pattern) or it lands in `Unmodelled`. Only the
+  whole `show running-config` has JSON on 4.26.14M (`... interfaces X |
+  json` is "unconverted"). The admin speed is a startup read
+  (`show interfaces transceiver properties`): a batch that writes a speed
+  sets `c.refresh` so the next collect re-reads it.

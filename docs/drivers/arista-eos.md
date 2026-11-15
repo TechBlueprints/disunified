@@ -126,7 +126,8 @@ while every other QSFP slot is a single `EthernetNN/1`. `Ethernet52/1` reports
 QSFP28 port per slot, so the collector must **fold lanes into their parent slot**: port 50 is
 "up" if any lane is up, counters summed. Also present: `Management1`, the OOB port, reported
 as `System.OOBInterfaces` (link state, address) for the loop's in-band warning; and
-`Port-Channel1..4` (defined, no members), `Vlan*`.
+`Vlan*` (and, until 2026-11-15, `Port-Channel1..4`, defined with no members: leftovers
+of emptied aggregates, removed; §4, Aggregates).
 
 ### `lldp_table` from `show lldp neighbors` → `lldpNeighbors[]`
 
@@ -301,6 +302,69 @@ per bit; it derives its own link-flap and SFP alerts from the raw fields).
   `packetCount` of the guard's drop entry in the port's own ACL, `show ip access-lists
   DUI_IP_ACL_<interface>` (§9.6). Read only while the driver has lists; 0 on the live
   read of 2026-11-14 (no traffic on the test ports).
+
+### Aggregates (Port-Channels; removal fixed 2026-11-15)
+
+The controller's `switch.port.N.lag=<id>` is `channel-group <id> mode
+active` on every lane of each member, and the Port-Channel carries the
+VLAN config (`interface Port-Channel<id>`, the members inherit it). The
+device's own groups are numbered by the controller's id (1 up to the
+switch's last port); a lane switch's are `1000+10*cage+lag` (§10).
+
+**EOS keeps an emptied Port-Channel.** Measured on 4.26.14M on 2026-11-15
+on the two test ports, the switch held off with a pending `commit timer`
+session and every change reverted with it afterwards:
+
+- With Ethernet2 and Ethernet54/1 in `Port-Channel5` (the driver's build
+  batch), the deployed bridge's reconcile, as before the fix, took both
+  out with `no channel-group` and left `interface Port-Channel5` with
+  `switchport mode trunk`. `show port-channel` kept listing it ("No Active
+  Ports"). The switch's `Port-Channel1..4`, empty since the first capture
+  of 2026-09-19, have that shape: three with `switchport mode trunk` (an
+  Allow All aggregate's VLANs) and one with nothing (access, VLAN 1, which
+  is also what the ACL unbind below leaves). Which batch left each is not
+  recorded.
+- `no interface Port-Channel<n>` removes the interface and the ACL bound
+  to it (the list itself stays, unbound). With members still in it, it
+  also takes them out of the group: their `channel-group` lines go. For a
+  Port-Channel that does not exist it is silent, no error.
+- Any `interface Port-Channel<n>` line re-creates one, empty. An ACL plan
+  that unbinds its list from a Port-Channel already removed would do
+  exactly that (`interface Port-Channel5` / `no ip access-group X in` left
+  a fresh `Port-Channel5`, access, VLAN 1).
+
+What a leftover could do: a later aggregate with the same id joins it as
+it is. The driver diffs the Port-Channel's VLANs (read from `show
+interfaces switchport`), so those are put right; anything else on it (an
+MTU, a description, a list bound by hand) would be inherited unseen. The
+driver's own ACL list for it is unbound by the removal and dropped by the
+next ACL plan, as for any interface that is no longer a target.
+
+So the plan (`portchannel.go`) removes, at the end of the same batch, every
+Port-Channel of its range that has no member once the batch has run --
+one the batch just emptied, or one the switch already had empty at the
+collect -- with `no interface Port-Channel<n>` after the members' `no
+channel-group`. The range is 1 to the switch's last port for the device's
+own plan and the cage's nine for a lane switch's (a join's dissolve of the
+lane groups removes theirs too); a lane switch's groups are never the
+device's to remove, and anything above the ports is left. A Port-Channel
+that carries a line the driver never writes there (anything but the
+`switchport` VLAN lines and the binding of a `DUI_IP_ACL_` list: a
+description, an MTU, an address, another list) was made by hand: it stays,
+with a note in the log. A removal changes no port, so the first-push hold
+does not wait on it; it counts in the apply's change total, as a
+Port-Channel's VLAN write does. After the batch the collector forgets the
+removed Port-Channels' VLANs and ACL bindings, so nothing re-creates one
+before the next collect.
+
+The captures (`docs/fixtures/arista-eos-4.26.14M/empty-po-*`, one sanitizer
+run): `leftovers` (Port-Channel1..4 empty), `lag5` (the aggregate built),
+`lag5-removed` (the old removal's result), `lag5-acl` (a list of its own
+bound to Port-Channel5), `lag5-removed-fixed` (members out, then `no
+interface`), `none` (after the four leftovers were removed by hand on
+2026-11-15; the switch has no Port-Channel since). `portchannel_test.go`
+holds the build, the removal, the leftovers, the hand-made case and
+idempotence to them.
 
 ## 5. Identity for the UniFi descriptor
 
@@ -602,12 +666,16 @@ outputs are fixtures in `docs/fixtures/arista-eos-4.26.14M/`.
   tables hold 8192 entries each; `show hardware capacity`'s ACL rows lagged
   what the chip table showed and are not used for sizing.
 - **A session pending its timer aborts at once**: `configure session NAME
-  abort` reverts it immediately, with no wait for the timer (all four runs).
+  abort` reverts it with no wait for the timer (all four runs). The revert
+  is a config replace from the timer's checkpoint
+  (`%SYS-5-CONFIG_REPLACE_SUCCESS`), logged about 4 s after the command
+  returns: a read in those seconds still shows the session's change
+  (2026-11-15).
 - **Hitless update is offered.** `hardware access-list update
   default-result permit` exists on this switch's CLI (the 2026-11-01 notes
-  said, from the manual, that it does not). The driver does not set it;
-  whether it makes a rewrite hitless here was not measured (no traffic on
-  the test ports).
+  said, from the manual, that it does not). Measured 2026-11-15 (§9.7 item
+  1): it removes a rewrite's drop by letting all traffic pass for the
+  window instead; the driver does not set it.
 - **No MAC ACL on a switchport.** `mac access-list` exists (with a `vlan`
   qualifier), but `mac access-group` is "Unavailable command" on an Ethernet
   interface. MAC rules cannot be applied (§9.2).
@@ -845,10 +913,21 @@ does.
   interfaces, 57 port ACL ids in the chip's PortCfg table (1-57), every
   list active, no commit warning, both for one IP rule and for the guard. **A list the hardware cannot
   program does not fail the commit**: EOS prints `! Error in ACL commit
-  ... Insufficient HW resources` and commits anyway (§9.1). The driver does
-  not read that warning, and the summary's "Active" does not show it.
-  Within the claim the measured room makes it unlikely; reading the
-  warning (eAPI returns it apart from the output) is a follow-up. The ECS
+  ... Insufficient HW resources` and commits anyway (§9.1), and the
+  summary's "Active" does not show it. **Since 2026-11-15 the driver reads
+  the warning** (`ConfigWarner`, `docs/fixtures/arista-eos-4.26.14M/
+  acl-commit-warning/`): eAPI returns it in the `commit timer` command's
+  own result (`{"warnings": ["Error in ACL commit, configuration may
+  differ from hardware (...)"]}`, every other result `{}`), the CLI over
+  SSH as a `! ` line ending ` at line N`; both carry the same text. A
+  commit that reports it is aborted at once (never confirmed), and the
+  same change is held with a note naming the lists it wrote until the
+  controller's rules change, as an unreachable switch's change is. The
+  warning names no list. The summary has a switch-wide `warnings` entry
+  ("Not all ACLs are programmed in the hardware!") meanwhile, which the
+  read-back logs with the lists' status. Provoked on test port 2 with
+  1000 DSCP+TTL rules through eAPI and over SSH, each aborted. Within the
+  claim the measured room makes it unlikely. The ECS
   claims 512 and the DX010 128. 32 is what this chip's counters allow on
   every port at once.
 - **MAC rules are not claimed** (§9.1).
@@ -922,18 +1001,35 @@ the two test lists were on the switch, read them and reported
 uplink, seven forged replies were dropped and counted, a `-collect-once`
 reported `RogueDHCPDrops` 7 on port 1 (0 on port 53), and the deployed
 bridge's inform raised the controller's "Rogue DHCP server detected" alert
-for port 1. The deployed bridge reads the counters of the lists it knew at
-its previous collect, so a list written outside it is counted one cycle
-later (the alert came one inform after the frames).
+for port 1. A list written outside the bridge is counted in the first
+collect that sees it: the read-back takes its lists from the same collect's
+running config (`TestACLWrittenOutsideIsCountedAtOnce`, 2026-11-15; an
+earlier note here said one cycle later). The alert came in the inform after
+the frames because that is the first collect after them.
 
 ### 9.7 What waits
 
 1. ~~**Traffic through the guard**~~ -- done 2026-11-14 on the uplink, not
    a test port (§9.8): an untrusted reply dropped and counted on the right
    port, a trusted one passed, ARP and IPv6 unaffected, the count through a
-   collect and the alert. Left: whether `hardware access-list update
-   default-result permit` shortens a rewrite's drop (binding the lists cost
-   one or two 50 ms pings, §9.8; the knob was not tried).
+   collect and the alert. **`hardware access-list update default-result
+   permit`, measured 2026-11-15** (`docs/fixtures/arista-eos-4.26.14M/
+   acl-update-default-result/`): with a test list on the uplink and the
+   switch's own pings every 20 ms through it, rewriting a 500-rule list
+   lost exactly 10 consecutive pings (about 200 ms) in each of six runs;
+   with the knob set, six runs lost none. A 4-rule list's rewrite and a
+   1-rule list's bind lost nothing measurable either way. So the knob
+   removes the drop. **Its cost**: Arista's EOS manual ("ACLs and Route
+   Maps", "Permit All Traffic During ACL Update") says that by default
+   "all traffic is blocked on any interface using the ACL" while it is
+   modified, and that the knob permits all traffic there instead -- it
+   fails open for that window, switch-wide, every list included (the
+   guard's drop and a Block rule pass whatever they match until the new
+   rules are in the hardware). The manual's platform list does not name
+   the 7160; 4.26.14M accepts it and it works. **Not set by the driver**:
+   the choice between dropping all traffic on a rewritten interface for
+   ~200 ms and letting it all pass for as long is the operator's (Clint's
+   register), not a code fact.
 2. **The end-to-end guard push** (Rogue DHCP Server Detection on, the guard
    groups this switch gets): not run. Detection stays off site-wide by
    Clint's decision (2026-11-14), so the controller pushes
@@ -1094,3 +1190,52 @@ MACs, an LACP partner on a lane aggregate, negotiated FEC, traffic on a
 lane mirror, and whether the 7160 runs a lane mirror beside a session of
 the switch's own. No lane switch has been adopted (Clint's step,
 `breakout.md` §11b).
+
+## 11. Tests: the fixture transport remembers what it wrote (2026-11-15)
+
+`aristaeos.FixtureTransport` (`fixture.go`, `fixture_state.go`) serves the
+captures and, since 2026-11-15, applies every config batch to the replies
+the driver reads it back from, as the SONiC `FixtureRunner` does. Until then
+it only recorded the batches, so in a replay every reconcile wrote the
+capture's missing VLANs and the whole port batch again, and a rule removal
+could not be replayed after its addition. Now the replays hold every
+reconcile after an applied push to writing nothing (`replayDriver.Quiet`;
+the deployed bridge logs "0 of 54 ports changed"), and the Network 11 replay
+adds and removes both recorded rules in order (records 27/29, 35/37).
+
+A reply nothing has written to is the capture byte for byte. A write changes
+a reply only in forms the switch printed after such a command:
+
+| Written | Read back from | Captured in |
+|---|---|---|
+| `vlan <list>` | `show vlan` (`VLAN0069`, active), `show ip igmp snooping` (the VLAN, snooping as the switch) | `split-cage54/` (taken after the driver created 69, 4000, 4010) |
+| `shutdown` / `no shutdown` (a port without a link) | `show interfaces` `interfaceStatus` `disabled`, `autoNegotiate` `off`; back as before | `link-counters/show-interfaces-Ethernet2-shutdown.json` |
+| `description` | `show interfaces` `description`, as written | `write-forms/` |
+| `switchport mode`, `access vlan`, `trunk native vlan`, `trunk allowed vlan` | `show interfaces switchport` (`1-2,8-10,1000`; access keeps the trunk's settings) | `write-forms/` |
+| `storm-control <type> level` / `no` | `show storm-control` (hundredths; an interface with no type left is not listed) | `storm-control-all-types/`, `split-cage54/` |
+| `speed forced`, `speed auto` | `show interfaces transceiver properties` `adminSpeed` (`1Gbps`/`full` ... `auto`) | `write-forms/`, the poll capture |
+| `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `error-correction encoding ...`, `no error-correction encoding`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
+| `ip access-list` (`counters per-entry`, `<seq> <rule>`, `no <seq>`), `no ip access-list` | the running config; a port EOS names is shown by name (9 `discard`, 22 `ssh`, 67 `bootps`, 68 `bootpc`, 443 `https`; 1001 kept) | `session-dui-acl-test-ports.txt` -> `show-running-config-dui-acl.json`, `write-forms/` |
+| `ntp server`, `logging host` (shown with port 514), `monitor session ... both` (shown without `both`) | the running config | the poll capture, `write-forms/`, `split-cage54-lag/` |
+| `no interface Port-Channel<n>` (no member left) | gone from `show interfaces`, its switchport and status, and the running config | `empty-po-leftovers/` -> `empty-po-none/` |
+| `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState` | `split-cage54/` |
+| `environment fan-speed override 30` / `no environment fan-speed` | `show system environment cooling` `coolingMode`, `overrideFanSpeed` | `show-system-environment-cooling-override30.json`, `-default-20261114-after-quiet.json` |
+
+A `configure session` is applied at its `commit timer`, kept by `configure
+session NAME commit` and reverted by `... abort`. Everything else is recorded
+in `FixtureTransport.Unmodelled` and changes no reply: a speed that splits or
+joins a cage (the tests switch `Dir` to a capture of the cage after it),
+`channel-group` (and removing a Port-Channel that still has members), a shutdown of a port with a link, the switch's own
+addressing, STP mode and priority, SNMP communities, the hostname, SSH keys
+and MTU. A replay can require `Unmodelled` empty. Changing `Dir` or an
+`Overrides` entry makes the new capture the switch's state for the commands
+it serves. `Stateless` gives the old behaviour.
+
+`show running-config interfaces X | json` answers "This is an unconverted
+command" on 4.26.14M; only the whole running config has JSON.
+
+The first test on it found a driver bug: the admin speed is read from `show
+interfaces transceiver properties`, one of the startup commands the
+collector re-reads every 30 polls, so after a forced speed every reconcile
+for half an hour wrote it again. A batch with a `speed` line now makes the
+next collect re-read them (`TestForcedSpeedIsReadBackOnTheNextCollect`).

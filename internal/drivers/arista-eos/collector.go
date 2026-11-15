@@ -75,28 +75,35 @@ type Collector struct {
 	props     showInterfacesTransceiverProperties
 	hardware  map[string]portHardware
 	polls     int
-	last      *devicemodel.Snapshot
+	// refresh makes the next collect re-read the startup commands: a
+	// written speed is read back from `show interfaces transceiver
+	// properties`, one of them.
+	refresh bool
+	last    *devicemodel.Snapshot
 	// nameServers and mgmtDHCP are the running config's view of the
 	// switch's own addressing, kept for ApplyAddress's diff.
 	nameServers []string
 	mgmtDHCP    bool
 
 	portChannels map[string]devicemodel.PortVLAN // Port-ChannelN -> its switchport state
+	channelCfg   map[int][]string                // every Port-Channel in the running config: number -> its lines (portchannel.go)
 	managedSNMP  string                          // the SNMP community this bridge last configured
 
 	sshKeyUser    string   // user that receives the controller's SSH keys
 	installedKeys []string // what InstallSSHKeys last wrote (per process)
 
 	// acl is the running config's view of the driver's own ACLs and their
-	// bindings (acl.go). aclHeld names a change that left the switch
-	// unreachable, not sent again until the controller's rules change;
+	// bindings (acl.go). aclHeld names a change not sent again until the
+	// controller's rules change -- one that left the switch unreachable, or
+	// one the hardware could not program -- and aclHeldWhy says which;
 	// aclSettle is the wait between a timed commit and the dial that
 	// confirms it; dhcpGuard is the guard mode (options.dhcp_guard).
-	acl       aclState
-	aclHeld   string
-	aclSettle time.Duration
-	dhcpGuard string
-	aclStatus string // the last ACL read-back problem logged (acl_counters.go)
+	acl        aclState
+	aclHeld    string
+	aclHeldWhy string
+	aclSettle  time.Duration
+	dhcpGuard  string
+	aclStatus  string // the last ACL read-back problem logged (acl_counters.go)
 
 	stpHeld map[string]stpHold // per interface: holdSTPChanges
 
@@ -200,7 +207,8 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	defer unlock()
 	c.mu.Lock()
 	c.polls++
-	needRefresh := c.static == nil || c.polls%mediaRefreshEvery == 0
+	needRefresh := c.static == nil || c.refresh || c.polls%mediaRefreshEvery == 0
+	c.refresh = false
 	c.mu.Unlock()
 	if needRefresh {
 		if err := c.refreshStatic(ctx); err != nil {
@@ -296,6 +304,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	}
 	c.mu.Lock()
 	c.portChannels = portChannelVLANs(sp)
+	c.channelCfg = portChannelSections(rc)
 	c.mu.Unlock()
 	stpMode, stpPrio := stpSystem(stp)
 

@@ -38,6 +38,7 @@ type Session struct {
 
 	versionPinned  bool                // the operator named a version: never follow the switch's
 	prevHistory    map[int]portHistory // per port, at the last inform (byte rates, drop-counter growth)
+	lastPayload    []byte              // the payload EncodeInform last encrypted, for the record dir
 	caps           devicemodel.Capabilities
 	smartPowerCaps int             // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
 	nutClients     func() []string // addresses of NUT clients served, for nut_client_ips; nil = none
@@ -248,6 +249,7 @@ func (s *Session) deviceVersion() string {
 func (s *Session) EncodeInform(now time.Time) ([]byte, error) {
 	s.mu.Lock()
 	payload := s.buildPayload(now)
+	s.lastPayload = payload
 	key, gcm := s.st.Key, s.st.UseAESGCM
 	s.mu.Unlock()
 	pkt := &inform.Packet{MAC: s.macHeader, Payload: payload}
@@ -257,7 +259,20 @@ func (s *Session) EncodeInform(now time.Time) ([]byte, error) {
 	return pkt.Encode(key)
 }
 
+// LastPayload is the payload EncodeInform last encrypted, byte for byte (nil
+// before the first). The record dir's payload-last.json is written from it:
+// building the payload again would not reproduce what was sent, because a
+// build moves the per-port history forward -- a second build sees no
+// counter growth, so the anomalies bits and byte rates the inform carried
+// would read 0 (seen live 2026-11-15, the DHCP-rate alert's inform).
+func (s *Session) LastPayload() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastPayload
+}
+
 // BuildPayload renders the payload for the current state (for tests/debug).
+// Each build moves the per-port history forward, as an inform does.
 func (s *Session) BuildPayload(now time.Time) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -472,6 +487,10 @@ type informResponse struct {
 	Cfgversion string `json:"cfgversion"`
 	Version    string `json:"version"`
 	PortIdx    int    `json:"port_idx"`
+	// Port is port-recovery's port number: the UI posts port_idx to
+	// cmd/devmgr, but the device receives {"cmd":"port-recovery","port":17}
+	// (Network 11.0.99, captured 2026-11-15).
+	Port int `json:"port"`
 	// OutletTable is relayctl's selection list: the controller names the
 	// outlets to act on, carrying only their index. Captured from Network
 	// 10.6.106 on 2026-09-21: {"cmd":"relayctl","outlet_table":[{"index":13}]}.
@@ -495,6 +514,9 @@ const (
 	// EffectOutletCycle: power-cycle outlets on a power device (Text =
 	// comma-separated outlet indexes in the controller's numbering).
 	EffectOutletCycle
+	// EffectPortRecovery: re-enable a port the switch's own protection
+	// holds down (Text = port_idx).
+	EffectPortRecovery
 )
 
 // Apply advances the session by one controller reply and returns what
@@ -586,6 +608,17 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		// and the device-side name has not been captured; "power-cycle" is the
 		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
+	case "port-recovery":
+		// The UI's Re-enable, offered on a port whose alert is BPDU guard or
+		// loop protection (BPDU_GUARD_TRIGGERED,
+		// NETWORK_LOOP_DETECTED_BY_KEEPALIVE): cmd/devmgr port-recovery with
+		// the port's port_idx; the device's command carries it as "port"
+		// (docs/drivers/sonic.md §11.28).
+		idx := r.Port
+		if idx == 0 {
+			idx = r.PortIdx
+		}
+		return []inform.Effect{{Kind: EffectPortRecovery, Text: strconv.Itoa(idx)}}
 	case "relayctl":
 		// The UI's per-outlet Power Cycle. The controller picks the outlets and
 		// sends them as a selection list; the device is expected to open and

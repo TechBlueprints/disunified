@@ -339,6 +339,7 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		c.lanes[cage] = marked
 	}
 	c.markPortChannels(pr.pcVLAN)
+	c.forgetPortChannels(pr.removed)
 	c.mu.Unlock()
 	return pr.changed, nil
 }

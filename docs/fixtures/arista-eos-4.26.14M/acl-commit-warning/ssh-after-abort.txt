@@ -1,0 +1,5 @@
+Maximum number of completed sessions: 1
+Maximum number of pending sessions: 5
+
+  Name    State       User    Terminal 
+  ---- ----------- ---------- -------- 

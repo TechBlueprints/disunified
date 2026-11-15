@@ -108,8 +108,11 @@ type FixtureRunner struct {
 	// path; L2Scripts the disunified-l2 scripts as sent; Builds the mstpd
 	// builds started. BuildFails makes the build fail; STPCutsUplink makes
 	// a fresh connection fail once spanning tree is on (the dead-man path).
-	L2Files       map[string]string
-	L2Scripts     []string
+	L2Files   map[string]string
+	L2Scripts []string
+	// Recoveries: the interfaces each port-recovery asked disunified-l2d to
+	// release (STATE_DB DUI_PORT_RECOVERY rows), in order.
+	Recoveries    []string
 	Builds        int
 	BuildFails    bool
 	STPCutsUplink bool
@@ -265,6 +268,16 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
 		return "", f.applySNMPYml(stdin)
+	case strings.HasPrefix(command, "sudo sonic-db-cli STATE_DB hset 'DUI_PORT_RECOVERY|"):
+		f.Commands = append(f.Commands, command)
+		for _, c := range strings.Split(command, " && ") {
+			w := strings.Fields(c)
+			if len(w) != 8 || w[3] != "hset" || w[5] != "at" || w[7] != ">/dev/null" {
+				return "", fmt.Errorf("%s: not a recovery row", c)
+			}
+			f.Recoveries = append(f.Recoveries, strings.TrimSuffix(strings.TrimPrefix(w[4], "'DUI_PORT_RECOVERY|"), "'"))
+		}
+		return "", nil
 	case command == batchCommand:
 		out := ""
 		for _, line := range strings.Split(stdin, "\n") {
