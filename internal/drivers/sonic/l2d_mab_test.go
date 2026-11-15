@@ -78,13 +78,13 @@ func TestL2dMAB(t *testing.T) {
 	if !has(a, "PST FDB_TABLE Vlan3997:02:00:00:00:0a:01 port=Ethernet120 type=static") ||
 		!has(a, "PST FDB_TABLE Vlan4094:02:00:00:00:0a:01 port=Ethernet120 type=static") ||
 		!has(a, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -s 02:00:00:00:0a:01 -j RETURN") ||
-		!has(a, `STATE row {"authorized": "02:00:00:00:0a:01", "failures": "0", "last_failed_mac": "", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}`) {
+		!has(a, `STATE row {"authorized": "02:00:00:00:0a:01", "failures": "0", "last_failed_mac": "", "mab": "02:00:00:00:0a:01", "mab_heard": "02:00:00:00:0a:01=1000.0", "mode": "mac_based"}`) {
 		t.Errorf("accept: the captured Access-Accept admits the host, published at once:\n%s", show(a))
 	}
 
 	r := "reject"
 	if count(r, "STATE as captured true") != 1 || strings.Contains(show(r), "PST FDB_TABLE") ||
-		!has(r, `STATE row {"authorized": "02:00:00:00:0a:01", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}`) {
+		!has(r, `STATE row {"authorized": "02:00:00:00:0a:01", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mab_heard": "02:00:00:00:0a:01=1000.0", "mode": "mac_based"}`) {
 		t.Errorf("reject: the captured Access-Reject counts one failure and admits nothing:\n%s", show(r))
 	}
 	if !has("quiet", "STATE requests 0") {

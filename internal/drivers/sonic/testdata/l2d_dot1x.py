@@ -69,6 +69,10 @@ class Table(object):
         print("SET %s %s" % (self.full(key), " ".join("%s=%s" % p for p in pairs)))
         STORE[self.conn.name].setdefault(self.full(key), {}).update(dict(pairs))
 
+    def hdel(self, key, field):
+        print("HDEL %s %s" % (self.full(key), field))
+        STORE[self.conn.name].get(self.full(key), {}).pop(field, None)
+
     def _del(self, key):
         if self.full(key) in STORE[self.conn.name]:
             print("DEL %s" % self.full(key))
