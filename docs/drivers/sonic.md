@@ -8704,12 +8704,94 @@ datagrams to the switch's own address are the test.
 - **Throughout**, the bridge on the switch kept informing (an inform reply
   at 21:32:35, mid-test), and the SSH session the test ran over was
   untouched.
-- **Not run live:** the mirror written by the deployed bridge from a
-  controller push (it runs from the same function, fixture-tested), and
-  caclmgrd's rewrite of the filter table leaving `raw` alone. The latter
-  is read from 202511's `caclmgrd`, whose rewrite lists and flushes only
-  filter chains and ip6tables' `raw`. Seeing it live needs an `ACL_TABLE`
-  event, which the test kept clear of.
+- **Not run in this hand test:** the mirror written by the bridge from a
+  controller push, and caclmgrd's rewrite of the filter table leaving `raw`
+  alone. Both ran the same evening through the driver (§11.32.5).
+
+#### 11.32.5 Through the driver (2026-11-15)
+
+Run 22:28-22:44 UTC under the switch lock, on `igmp-202511.20261115-6c8eb1cf7`
+with Network 11.0.99. A build of main (70a5a6d) replaced the deployed bridge
+for the run, and the deployed one was put back after. The site's ACL rule
+list was empty before and after.
+- **The rule.** An IPv4 Block saved in the UI, scoped to the DX010 alone:
+  UDP from a documentation address (198.51.100.7) to the switch's own
+  address, destination port 9999. The next inform's push carried it as
+  `switch.acl.ip.1.*` (both addresses as /32, the source side
+  `port_range=1-65535`).
+- **What the driver wrote.** The chip half as before: `config acl add
+  table DUI_IP_ACL L3` over the free ports and PortChannel1 (not its
+  members), `RULE_1` (`Active`), the save. Three seconds later, the mirror:
+  `DUI_ACL_CPU` hooked from `PREROUTING` on `Vlan+`, `Ethernet+` and
+  `PortChannel+`, jumping to `DUI_IP_ACL`, which held the one DROP. The
+  marker held the hash the journal logged. The next two cycles wrote
+  nothing.
+- **Traffic.** The Podman host sent single datagrams from a raw socket,
+  with the rule's documentation address as the source. The switch's
+  reverse-path filter is loose (2) on Vlan4094, so they arrive. It sent
+  three each to 9999 (matched), 9998 and 9997, and three to 9999 from
+  another documentation address. None of the three matched ones reached the
+  listener, and the DROP counted 3. The other nine arrived.
+- **Edited** to ports 9998 and 9999. The push carried two groups
+  (`-1`, `-2`). The driver deleted and rewrote `RULE_1` (9998, priority
+  9998) and added `RULE_2` (9999, 9997). The mirror held two DROPs in that
+  order under a new marker. Both ports were dropped (2 each counted), and
+  9997 arrived.
+- **caclmgrd.** The driver's own `config acl add table` set caclmgrd off at
+  once, but that rewrite came a second before the first mirror write, so it
+  proves nothing. A second `ACL_TABLE` event was made by hand (the table's
+  description written again with its own value). caclmgrd then flushed and
+  rewrote INPUT, FORWARD and OUTPUT and ip6tables' `raw` within half a
+  second. IPv4's `raw` table was byte for byte the same (`iptables -t raw
+  -S` unchanged).
+- **A bridge restart** wrote nothing: the start-up reconcile found the
+  marker equal to the tables' hash.
+- **A lost marker** (deleted by hand, as a reboot clears `/run` with the
+  rules) was written again on the next cycle, with the same hash and rules
+  and no second set of hooks.
+- **Removed.** The driver deleted the rules lowest first, removed the table
+  and saved. Then it removed the mirror: the hooks, the chains (the
+  dispatcher too) and the marker. `iptables -t raw -S` was back to its two
+  policies. ASIC_DB held no ACL table afterwards. CRM still counted one
+  table until its 300 s poll; that was stale, not a leak.
+- **The guard half, without a push.** Rogue DHCP Server Detection stays off
+  site-wide (Clint's decision), so the controller sends no guard.
+  - **The setup.** The bridge was stopped and the guard's rows written by
+    hand: `V1_S1` FORWARD from 192.0.2.1, a counted `V1_IN_Ethernet120` and
+    `V1_DROP`, all on VLAN_ID 4094. They were `ACL_RULE` rows with no
+    `ACL_TABLE`, so nothing was bound and the chip had no entry (orchagent
+    waits for the table).
+  - **The reconcile's own step.** A test build ran the driver's own
+    `Collect` and then `applyACL` on the switch. With no push the chip half
+    writes nothing and the mirror follows CONFIG_DB. The mirror was the
+    trusted server's RETURN and the VLAN's DROP, on `-i Vlan4094`, with the
+    counted rule left out. A second cycle wrote nothing.
+  - **Traffic.** Three replies (67 -> 68) from the trusted address arrived
+    (RETURN counted 3). Three from an untrusted one were dropped (DROP 3),
+    and three from source port 66 arrived. dhclient holds `0.0.0.0:68` for
+    eth0, so the listener bound the switch's own address with
+    `SO_REUSEADDR` to take the unicast.
+  - **The bridge started again.** Its reconcile, under the site's
+    snooping-off push, deleted the three rows (orchagent: "Skip removing
+    rule ... Table does not exist") and removed the mirror.
+- **What the run showed about the design:**
+  - Every restore declares both table chains, so a table with no rules has
+    an empty, unreferenced chain. The cost is cosmetic. The gain is that a
+    table that loses its last rule is emptied in the same transaction.
+  - The marker is the reconcile's only view of the kernel, because
+    `collect.py` runs without root. A hand `iptables -t raw -F` that leaves
+    the marker is not repaired until the tables change or the marker goes.
+    A reboot clears both.
+- **Not run:** the guard from a real push (detection stays off), and a
+  breakout's rebind as the `ACL_TABLE` event. A description rewrite stood
+  in for it: caclmgrd handles both as the same table event.
+- **Fixtures:** the collect before the run
+  (`sonic-igmp-202511.20261115-6c8eb1cf7/collect-acl-mirror.txt`) and the
+  three pushes (`controller-11.0.99/system_cfg-dx010-acl-mirror-{1-add,
+  2-edit,3-removed}.txt`), replayed in
+  `TestReplaySonicDX010ACLMirror`: each push's chip writes and restore
+  input as the journal had them, a lost marker rewritten, and a cycle
+  after each that writes nothing.
 
 ### 11.33 UniFi's client Block (2026-11-15)
 
