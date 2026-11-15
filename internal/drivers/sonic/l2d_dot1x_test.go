@@ -16,11 +16,15 @@ const dot1xFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf
 // config file holds the RADIUS secret and is root's alone; the host
 // hostapd authorised gets a static FDB entry and a kernel RETURN, the
 // wrong password counts one failure, the switch's own looped station
-// nothing; a single-device (auto) port turns a second host away, a
-// multi_host one admits it too; a restart adopts the running hostapd and keeps the admission
-// without removing it first; a logoff removes it and reaches STATE_DB; an
-// unwatched port loses its authenticator, chain and trap, and keeps its
-// count.
+// nothing; a Credentials (auto) port is opened to every host by its first
+// (the chain RETURNs the port, learning in hardware), as a UniFi switch's
+// own firmware runs it (multi-host, docs/drivers/sonic.md §11.26.9), and a
+// second host that authenticates is admitted too; a multi_host port admits
+// each host on its own, so a port that changes to it closes again and
+// forgets what it learnt; a restart adopts the running hostapd and keeps the
+// admission without removing it first; the last host's logoff closes the
+// port (learn mode, flush, chain) and reaches STATE_DB; an unwatched port
+// loses its authenticator, chain and trap, and keeps its count.
 func TestL2dDot1X(t *testing.T) {
 	py, err := exec.LookPath("python3")
 	if err != nil {
@@ -79,8 +83,11 @@ func TestL2dDot1X(t *testing.T) {
 	}
 
 	ev := "captured events"
+	open, learn := index(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j RETURN"), index(ev, "PST PORT_TABLE Ethernet120 learn_mode=hardware")
+	if open < 0 || learn < open || index(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP") >= 0 {
+		t.Errorf("Credentials: the first host opens the port to every host, the chain before the chip:\n%s", show(ev))
+	}
 	if !has(ev, "PST FDB_TABLE Vlan4094:02:00:00:00:00:03 port=Ethernet120 type=static") ||
-		!has(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -s 02:00:00:00:00:03 -j RETURN") ||
 		!has(ev, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) {
 		t.Errorf("the authorised host admitted, the refused one counted once:\n%s", show(ev))
 	}
@@ -88,16 +95,17 @@ func TestL2dDot1X(t *testing.T) {
 		t.Errorf("the switch's own looped station was admitted or counted:\n%s", show(ev))
 	}
 
-	one := "second host, single device"
-	if !has(one, "CTRL DEAUTHENTICATE 02:00:00:00:00:01") || strings.Contains(show(one), "PST FDB_TABLE") ||
-		!has(one, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) {
-		t.Errorf("auto (Credentials) admits a single device; a second one is turned away:\n%s", show(one))
+	one := "second host, Credentials"
+	if strings.Contains(show(one), "DEAUTHENTICATE") || !has(one, "PST FDB_TABLE Vlan4094:02:00:00:00:00:01 port=Ethernet120 type=static") ||
+		!has(one, `STATE row {"authorized": "02:00:00:00:00:01,02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) ||
+		strings.Contains(show(one), "learn_mode=drop") || strings.Contains(show(one), "FLUSH") {
+		t.Errorf("auto (Credentials): a second host is admitted, and the port stays open while one host holds it:\n%s", show(one))
 	}
 	many := "second host, multiple devices"
 	if !has(many, "PST FDB_TABLE Vlan4094:02:00:00:00:00:01 port=Ethernet120 type=static") ||
 		!has(many, `STATE row {"authorized": "02:00:00:00:00:01,02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "multi_host"}`) ||
-		strings.Contains(show(many), "learn_mode") {
-		t.Errorf("multi_host (Multiple Credentials) admits each device on its own, the port stays closed to the rest:\n%s", show(many))
+		!has(many, "PST PORT_TABLE Ethernet120 learn_mode=drop") || !has(many, "FLUSH FLUSHFDBREQUEST PORT Ethernet120") {
+		t.Errorf("multi_host (Multiple Credentials) admits each device on its own; the port opened by Credentials closes and forgets what it learnt:\n%s", show(many))
 	}
 
 	if strings.Contains(show("restart"), "PSTDEL") || strings.Contains(show("restart"), "/hostapd -B") ||
@@ -105,6 +113,10 @@ func TestL2dDot1X(t *testing.T) {
 		t.Errorf("restart: the running hostapd is adopted, its authorised host kept without a gap, the count carried on:\n%s", show("restart"))
 	}
 
+	closed, flush, drop2 := index("logoff", "PST PORT_TABLE Ethernet120 learn_mode=drop"), index("logoff", "FLUSH FLUSHFDBREQUEST PORT Ethernet120"), index("logoff", "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP")
+	if closed < 0 || flush < closed || drop2 < flush {
+		t.Errorf("logoff: the last host closes the port (learn mode, flush, then the chain):\n%s", show("logoff"))
+	}
 	if !has("logoff", "PSTDEL FDB_TABLE Vlan4094:02:00:00:00:00:03") ||
 		!has("logoff", `STATE row {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) ||
 		strings.Contains(show("logoff"), "-s 02:00:00:00:00:03") {

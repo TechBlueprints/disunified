@@ -7472,9 +7472,9 @@ authenticates:
   `eap_reauth_period=3600`, the servers and secrets), events read from its
   control socket (`ATTACH`): `AP-STA-CONNECTED` admits the host (a static
   FDB entry in every VLAN the port carries, through ProducerStateTable as
-  the MAC filter's, and a RETURN in the chain) -- on an `auto` port only
-  while no other host is admitted (a second one is deauthenticated and
-  logged), on a `multi_host` port every one --, `AP-STA-DISCONNECTED`
+  the MAC filter's, and a RETURN in the chain) -- on an `auto`
+  (Credentials) port the first one opens the port to every host until the
+  last one is gone (§11.26.9) --, `AP-STA-DISCONNECTED`
   removes it, and
   `CTRL-EVENT-EAP-FAILURE2` counts a failed attempt
   (`DUI_DOT1X_TABLE|<port>` `failures`, since boot, carried over a
@@ -7491,9 +7491,12 @@ authenticates:
 and sets anomaly 128 when a port's `Health.Dot1XFailures` grew since the
 previous inform, as it does for the storm, DHCP and MAC-locking counts. The
 port reports `dot1x_mode`/`dot1x_status` `force_auth`/`authorized` for a
-force-authorised port (the values the site's own switches report) and the
-off values otherwise: what a UniFi switch reports for the other modes is
-not captured.
+force-authorised port (the values the site's own switches report), and
+since the evening of 2026-11-15 the other modes in a UniFi switch's own
+inform agent's words (§11.26.9): `force_unauth`/`unauthorized`, `auto` for
+Credentials and Multiple Credentials, `mac_based`, each `authorized` while
+a host is admitted and `unauthorized` otherwise; `unknown`/`disabled` with
+802.1X off.
 
 #### 11.26.4 The controller's push (Network 11.0.99, captured 2026-11-15)
 
@@ -7542,9 +7545,11 @@ the server, off opens every port and empties l2d's section, and nothing is
 logged as unsupported or carries the secret. The scrubber replaces
 `switch.radius.auth.N.secret` and `resolv.host.N.name` since.
 
-The two Credentials modes follow the UI's text: `auto` admits a single
-device per port (a second that authenticates is turned away), `multi_host`
-admits each device that authenticates.
+What each method does on a UniFi switch is read from a UniFi switch's own
+firmware (§11.26.9): `auto` (Credentials) opens the port to every host once
+one has authenticated, `multi_host` (Multiple Credentials) admits each host
+that authenticates and no other. (Until 2026-11-15 l2d read the UI's
+"a single wired device" as one host per port, turning a second away.)
 
 #### 11.26.5 Live, by hand (2026-11-15)
 
@@ -7771,6 +7776,69 @@ the cage back to `hardware`, hostapd, chain and trap gone (§11.26.7's two
 fixes).
 
 Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host.
+
+#### 11.26.9 What a UniFi switch does with each method (its firmware, 2026-11-15)
+
+Clint, 2026-11-15, on whether to turn 802.1X on to find out: "I dont
+really want to turn it on, I just want us to do our best guess that it
+would work correctly when turned on if I ever do". So the answer was read,
+not exercised: from the site's USW-Pro-XG-48-PoE, read-only, with 802.1X
+off (no authenticator running).
+
+That switch's `ubntbox` turns the controller's `system_cfg` into the
+commands of its switching stack (`ros`, a Cisco small-business style CLI).
+Its string table holds the keys it reads (`switch.port.%d.dot1x.mode`
+with `force_authorized`, `force_unauthorized`, `mac_based`, `multi_host`,
+and `switch.port.%d.dot1x.idle_timeout`) and the per-port commands it
+writes, in this order:
+
+```
+ dot1x port-control force-authorized
+ dot1x host-mode multi-host
+ dot1x authentication 802.1x
+ dot1x port-control auto
+ dot1x radius-attributes vlan static
+ dot1x port-control force-unauthorized
+ dot1x host-mode multi-sessions
+ dot1x authentication 802.1x mac
+```
+
+with, switch-wide, `dot1x mac-auth radius username uppercase groupsize 12
+separator :` and, per port, `dot1x timeout silence-period %d`. In `ros`'s
+own messages `multi-sessions` is the mode where each host has a session of
+its own (Max-hosts and web authentication need it); `multi-host` lets one
+authentication open the port. Read with the table's order, the mapping is:
+
+| Push | UI | The switch runs | l2d (since 2026-11-15) |
+|---|---|---|---|
+| `force_authorized` | (802.1X on, no method) | `port-control force-authorized` | open, nothing runs |
+| `auto` | Credentials | `port-control auto`, `host-mode multi-host`, `authentication 802.1x` | the first host that authenticates opens the port to every host (the chain RETURNs the port, APPL_DB learning `hardware`); the last one's logoff or the link's loss closes it again (learning back to `drop`, the port's dynamic FDB entries flushed through fdborch's `FLUSHFDBREQUEST` op `PORT`) |
+| `multi_host` | Multiple Credentials | `host-mode multi-sessions`, `authentication 802.1x` | each host that authenticates, no other |
+| `mac_based` | MAC Address | `host-mode multi-sessions`, `authentication 802.1x mac` | each host, by EAP or by its MAC (§11.26.8) |
+| `force_unauthorized` | Always Unauthorized | `port-control force-unauthorized` | closed, nothing runs |
+
+The MAB user name is one group of twelve upper-case hex digits (the
+separator never applies), as the controller's RADIUS-user help text says,
+and the idle timeout is the switch's silence period: an authorised host
+that sends nothing that long becomes unauthorised, as §11.26.8 does.
+Ubiquiti's help page "MAC-Based VLAN Assignment Using 802.1x in UniFi
+Network" (help.ui.com 115004589707, read by the dot1x-mab session) words
+Credentials and Multiple Credentials the same way.
+
+**What the switch reports.** Its inform agent (`mcad`) writes
+`dot1x_mode` and `dot1x_status`; its only mode strings are `force_auth`,
+`force_unauth`, `auto`, `mac_based` and `unknown`, its statuses
+`authorized`, `unauthorized` and `disabled`. There is no `multi_host`: a
+Multiple Credentials port runs `port-control auto` as a Credentials one
+does, so both are taken to report `auto`. The device layer reports these
+since (`dot1xReport`, `TestDot1XReport`), a controlled port `authorized`
+while l2d has admitted a host.
+
+What is a reading, not an observation: the mode-to-command mapping comes
+from the order of the string table, not from tracing the code; which mode
+string and status a port reports in each state is inferred the same way;
+and no UniFi port ran a method. Credentials on the DX010 is fixture-tested
+(`TestL2dDot1X`, the captured hostapd events) and not run on the switch.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
