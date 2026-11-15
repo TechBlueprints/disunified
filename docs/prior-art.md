@@ -155,6 +155,15 @@ The daemon's review happens in
 | [jasper-hou-micas/sonic-l2mcd-micas#3](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/3) | 0008, election half | a v3 VLAN elects against an IGMPv2 querier |
 | [jasper-hou-micas/sonic-l2mcd-micas#7](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/7) | 0008 address half + 0009 | the VLAN's address as the query source, whatever `ve_ifindex` holds |
 | [jasper-hou-micas/sonic-l2mcd-micas#4](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/4) | 0010 (counters on their own lines, so it stands alone) | per-packet lines out of syslog at the default level |
+| prepared, not posted (branch `fix/breakout-port-index`, 2026-11-15) | 0011 | a port a breakout or join re-creates keeps its own index, not another port's (§11.25.3 of [`drivers/sonic.md`](drivers/sonic.md)) |
+| prepared, not posted (branch `fix/free-socket-event`, 2026-11-15) | 0012 | free a closed port socket's libevent event |
+
+The last two were cut the same way, on `651a13b` (`dev` and `l2mcd-pre`, both still there on
+2026-11-15; no upstream change to either file since). Each applies and builds alone, and the
+harness case `port-delete` gives 0012 a reproduction of its own on upstream. `port-list-breakout`
+is clean only with both. That case's use-after-free on `651a13b` comes from
+`mcgrp_stop_phy_port()`, which any member port's link-down reaches. Neither PR fixes it
+(§11.25.3).
 
 The four sonic-net drafts each got a comment linking a rebase branch on
 Clint's forks (`igmp-snp-202511`, on the commits `series/BASES` pins):

@@ -807,6 +807,25 @@ int main(int argc, char **argv)
         if (bad)
             abort();
     }
+    /* a port that is deleted from the port list: l2mcd_igmprx_sock_close() and
+     * l2mcd_mldrx_sock_close() closed its two sockets, but
+     * l2mcd_libevent_destroy() only event_del()ed their events, so both stayed
+     * allocated (LeakSanitizer: 2 libevent events). Ethernet44 is created in the
+     * case, so its events are not hidden with the setup's. */
+    if (run("port-delete")) {
+        if (system("ip link add Ethernet44 type dummy && ip link set Ethernet44 up"))
+            return 2;
+        port_msg("Ethernet44", 1, 1);
+        fprintf(stderr, "  Ethernet44 added: index %u, packet sockets %d\n",
+                portdb_get_portindex_from_ifname("Ethernet44"), packet_sockets_on("Ethernet44"));
+        if (packet_sockets_on("Ethernet44") != 2) {
+            fprintf(stderr, "harness: setup failed: Ethernet44 has no sockets\n");
+            return 2;
+        }
+        port_msg("Ethernet44", 0, 0);
+        fprintf(stderr, "  Ethernet44 deleted: index %u, packet sockets %d\n",
+                portdb_get_portindex_from_ifname("Ethernet44"), packet_sockets_on("Ethernet44"));
+    }
     if (run("mld-valid")) {
         n = mldv2_hdr(m, 3);
         n += mldv2_rec(m + n, 1, 0, 1, 1, 0);
