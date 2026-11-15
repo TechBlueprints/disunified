@@ -3015,9 +3015,10 @@ of receive signal. Three sources agree:
 Neither the link nor the readings decide the flag. A down port with light
 has none. Whether a reading below the module's low alarm threshold with
 LOS clear would raise one is not captured: every faulted port in the
-captures had both. The Arista driver (`arista-eos` `applyOpticAlarms`)
-flags a reading outside the alarm thresholds instead, and that rule also
-catches a dark receiver.
+captures had both. The Arista driver reads the module's own RX_LOS and
+TX_FAULT too since 2026-11-15 (EOS prints them in `phy detail`;
+[`arista-eos.md`](arista-eos.md) §4), keeping its old threshold rule only
+for the SSH transport.
 
 **What the DX010 keeps** (read-only, 2026-11-14, `igmp-202511.20261114-42cccc87a`;
 `docs/fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-optic.txt`).

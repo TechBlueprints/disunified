@@ -135,7 +135,14 @@ type showSTPTopologyStatus struct {
 }
 
 // applyOpticAlarms flags ports whose optic reports a receive or transmit
-// parameter outside its own alarm thresholds (any lane, any channel).
+// parameter outside its own alarm thresholds (any lane, any channel). It is
+// the fallback for a transport that cannot run text (SSH): with eAPI the
+// flags are the module's own RX_LOS and TX_FAULT from `phy detail`
+// (applyPHYDetail), which is what a UniFi switch sends. A UniFi switch's
+// inform carries no thresholds, and no real port has been seen faulted with
+// light (docs/drivers/arista-eos.md §4); this rule agrees for a dark
+// receiver (-30 dBm or no finite reading, under any low alarm) and may flag
+// a weak but lit one that a UniFi switch would not.
 func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
@@ -286,14 +293,26 @@ func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull, key ifKey)
 var (
 	fecCorrectedRe   = regexp.MustCompile(`FEC corrected codewords\s+(\d+)`)
 	fecUncorrectedRe = regexp.MustCompile(`FEC uncorrected codewords\s+(\d+)`)
+	rxLOSRe          = regexp.MustCompile(`RX_LOS since system boot\s+(True|False)\b`)
+	txFaultRe        = regexp.MustCompile(`TX_FAULT since system boot\s+(True|False)\b`)
 )
 
 // phyDetail is what `show interfaces <name> phy detail` (text; EOS 4.26 has
-// no JSON for these counters) yields per lane. The first number on a line is
-// the counter; the rest is change bookkeeping.
+// no JSON for these counters: its `| json` wraps the same text) yields per
+// lane. The first number on a line is the counter; the rest is change
+// bookkeeping.
+//
+// RxLOS and TxFault are the module's own flags as EOS's transceiver agent
+// holds them now: the Current State column of the `RX_LOS since system boot`
+// and `TX_FAULT since system boot` rows (the column after it counts changes).
+// True on a seated module with no light, False with light (the 2026-09-19
+// capture of the same module, linked), on a DAC and on an empty cage
+// (docs/drivers/arista-eos.md §4, optic fault flags).
 type phyDetail struct {
 	HasFEC                  bool
 	FECCorrected, FECUncorr uint64
+	HasXcvrFlags            bool
+	RxLOS, TxFault          bool
 }
 
 func parsePHYDetail(text string) phyDetail {
@@ -302,6 +321,10 @@ func parsePHYDetail(text string) phyDetail {
 		d.HasFEC = true
 		d.FECCorrected, _ = strconv.ParseUint(c[1], 10, 64)
 		d.FECUncorr, _ = strconv.ParseUint(u[1], 10, 64)
+	}
+	if r, t := rxLOSRe.FindStringSubmatch(text), txFaultRe.FindStringSubmatch(text); r != nil && t != nil {
+		d.HasXcvrFlags = true
+		d.RxLOS, d.TxFault = r[1] == "True", t[1] == "True"
 	}
 	return d
 }

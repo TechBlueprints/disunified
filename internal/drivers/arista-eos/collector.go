@@ -278,7 +278,9 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 		}
 		applyRunningConfig(ports, sys, rc, key, sessions)
 		applyErrdisabled(ports, ed, key)
-		applyOpticAlarms(ports, th, key)
+		if _, text := c.t.(TextRunner); !text {
+			applyOpticAlarms(ports, th, key) // with text, applyPHYDetail reads the module's own flags
+		}
 		applySTPChanges(ports, stpTotals, key)
 		applySTPRoles(ports, stp, key)
 		return ports, macs, nil
@@ -390,50 +392,69 @@ func interfaceDrops(ifs showInterfaces, bootAt float64) map[string]uint64 {
 // Close releases the transport.
 func (c *Collector) Close() error { return c.t.Close() }
 
-// applyPHYDetail reads the FEC codeword counters of every up port that runs
-// FEC (the satisfaction score counts uncorrected codewords as errors). EOS
-// 4.26 only prints them (`show interfaces X phy detail`, text), so this is
-// one text command per up lane; a
-// failure is logged, not fatal, and a transport without text support skips it.
+// applyPHYDetail reads `show interfaces X phy detail` (text: EOS 4.26 only
+// prints it) for two things. The FEC codeword counters of every up port that
+// runs FEC (the satisfaction score counts uncorrected codewords as errors),
+// and the module's own RX_LOS and TX_FAULT flags of every optical cage with a
+// module seated, up or down, which are sent as sfp_rxfault and sfp_txfault
+// (a UniFi switch's meaning: docs/drivers/arista-eos.md §4). One text
+// command per lane interface of those ports; a cage takes any of its lanes'
+// flags, a split cage's lane port its own. The up ports are one batch and
+// the seated down cages another, so a cage the switch cannot read (eAPI
+// stops a batch at its first error) costs no FEC counter. A failure is
+// logged, not fatal, and a transport without text support skips it (the
+// flags then come from the DOM thresholds, applyOpticAlarms).
 func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports, lanes []devicemodel.Port) {
-	var cmds []string
-	var owners []int // ports index per command
-	var names []string
-	for i, p := range ports {
-		if !p.Up {
-			continue
-		}
-		for _, n := range laneNames(p) {
-			cmds = append(cmds, "show interfaces "+n+" phy detail")
-			owners = append(owners, i)
-			names = append(names, n)
-		}
-	}
-	if len(cmds) == 0 {
-		return
-	}
-	out, err := tr.RunText(ctx, append([]string{"enable"}, cmds...))
-	if err != nil {
-		c.Log.Printf("eos phy detail: %v", err)
-		return
-	}
 	laneOf := map[string]int{}
 	for i, l := range lanes {
 		laneOf[laneNames(l)[0]] = i
 	}
-	for j, text := range out[1:] {
-		d := parsePHYDetail(text)
-		if !d.HasFEC {
+	var up, seated []int
+	for i, p := range ports {
+		switch {
+		case p.Up:
+			up = append(up, i)
+		case p.Present && p.Media != devicemodel.MediaUnknown && !isCopperMedia(p.Media):
+			seated = append(seated, i)
+		}
+	}
+	for _, batch := range [][]int{up, seated} {
+		var cmds []string
+		var owners []int // ports index per command
+		var names []string
+		for _, i := range batch {
+			for _, n := range laneNames(ports[i]) {
+				cmds = append(cmds, "show interfaces "+n+" phy detail")
+				owners = append(owners, i)
+				names = append(names, n)
+			}
+		}
+		if len(cmds) == 0 {
 			continue
 		}
-		hs := []*devicemodel.PortHealth{&ports[owners[j]].Health}
-		if i, ok := laneOf[names[j]]; ok {
-			hs = append(hs, &lanes[i].Health)
+		out, err := tr.RunText(ctx, append([]string{"enable"}, cmds...))
+		if err != nil {
+			c.Log.Printf("eos phy detail: %v", err)
+			continue
 		}
-		for _, h := range hs {
-			h.HasFECCounters = true
-			h.FECCorrected += d.FECCorrected
-			h.FECUncorrected += d.FECUncorr
+		for j, text := range out[1:] {
+			d := parsePHYDetail(text)
+			owner := &ports[owners[j]]
+			hs := []*devicemodel.PortHealth{&owner.Health}
+			if i, ok := laneOf[names[j]]; ok {
+				hs = append(hs, &lanes[i].Health)
+			}
+			for _, h := range hs {
+				if d.HasFEC && owner.Up {
+					h.HasFECCounters = true
+					h.FECCorrected += d.FECCorrected
+					h.FECUncorrected += d.FECUncorr
+				}
+				if d.HasXcvrFlags {
+					h.OpticRxAlarm = h.OpticRxAlarm || d.RxLOS
+					h.OpticTxAlarm = h.OpticTxAlarm || d.TxFault
+				}
+			}
 		}
 	}
 }

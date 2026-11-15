@@ -1,0 +1,27 @@
+Ethernet49/2
+                              Current State     Changes            Last Change
+                              -------------     -------            -----------
+*** WARNING: some information is stale.
+Current System Time: Sun Nov 15 10:43:16 2026
+  PHY state                   errDisabled             3   7 days, 21:56:20 ago
+  Interface state             down                    1   7 days, 21:57:07 ago
+  HW resets                                           0                  never
+  Transceiver                 100GBASE-CWDM4          2           16:55:02 ago
+  Transceiver SN              SSJ00000000     
+  Oper speed                  unknown                                         
+  Interrupt Count                                     0                       
+  Transceiver Reset Count                             0                  never
+  Transceiver Interrupt Count                         1           16:55:09 ago
+  Transceiver Smbus Failures                          0                  never
+  Diags mode                  normalOperation
+  Model                       xp80 (A2)
+  Loopback                    none
+  Xcvr EEPROM read timeout                            0                  never
+  Spurious xcvr detection                             0                  never
+  DOM control/status fail                             0                       
+  Presence indication         xcvrPresent             2           16:55:09 ago
+  Bad EEPROM checksums                                0                  never
+  RX_LOS since system boot    True                    1           16:54:59 ago
+  RX_LOS since insertion                              1                       
+  TX_FAULT since system boot  False                   0                  never
+  TX_FAULT since insertion                            0                       
