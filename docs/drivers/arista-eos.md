@@ -666,12 +666,16 @@ outputs are fixtures in `docs/fixtures/arista-eos-4.26.14M/`.
   tables hold 8192 entries each; `show hardware capacity`'s ACL rows lagged
   what the chip table showed and are not used for sizing.
 - **A session pending its timer aborts at once**: `configure session NAME
-  abort` reverts it immediately, with no wait for the timer (all four runs).
+  abort` reverts it with no wait for the timer (all four runs). The revert
+  is a config replace from the timer's checkpoint
+  (`%SYS-5-CONFIG_REPLACE_SUCCESS`), logged about 4 s after the command
+  returns: a read in those seconds still shows the session's change
+  (2026-11-15).
 - **Hitless update is offered.** `hardware access-list update
   default-result permit` exists on this switch's CLI (the 2026-11-01 notes
-  said, from the manual, that it does not). The driver does not set it;
-  whether it makes a rewrite hitless here was not measured (no traffic on
-  the test ports).
+  said, from the manual, that it does not). Measured 2026-11-15 (§9.7 item
+  1): it removes a rewrite's drop by letting all traffic pass for the
+  window instead; the driver does not set it.
 - **No MAC ACL on a switchport.** `mac access-list` exists (with a `vlan`
   qualifier), but `mac access-group` is "Unavailable command" on an Ethernet
   interface. MAC rules cannot be applied (§9.2).
