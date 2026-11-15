@@ -446,7 +446,7 @@ with the MAC filter's `learn_mode drop`, each authenticated host admitted
 with a static FDB entry and a kernel RETURN, EAPOL trapped with an
 `always_enabled` CoPP row; failed attempts counted per port into
 `Health.Dot1XFailures`, whose growth is anomaly 128. No image change
-([`drivers/sonic.md`](drivers/sonic.md) §11.25). **The controller's push
+([`drivers/sonic.md`](drivers/sonic.md) §11.26). **The controller's push
 captured on Network 11.0.99** from the UI on the DX010's empty cages (the
 device's 802.1X Control, UniFi Integrated and External RADIUS, each of the
 four methods, off), parsed and replayed
@@ -674,8 +674,11 @@ the open question).
 A split cage of a bridged switch presented as a five-port switch of its own
 (`USFXG`: ports 1-4 the lanes, 5 the cable), reading and writing through its
 parent driver ([`drivers/breakout.md`](drivers/breakout.md)). Built
-2026-11-14 with `sonic` as the parent. **Nothing of it has run live**; the
-controller side it relies on was proven with the stub (above).
+2026-11-14 with `sonic` as the parent; `arista-eos` became the second
+parent on 2026-11-15 (§7b). **No lane switch has been adopted**; the
+controller side it relies on was proven with the stub (above). On the
+Arista the lane batches themselves were run on the switch's empty test
+cage by hand (below).
 
 ### Verified (fixtures and replay)
 
@@ -685,14 +688,19 @@ controller side it relies on was proven with the stub (above).
 | The child's inform held to the real switches' (wire contract, every-port types, value shapes) | `internal/device/contract_breakout_test.go`, the `breakout` row of `contractPayloads` |
 | The controller's Flex XG aggregate push replayed through a child loop onto the parent: `PortChannel201` on lanes 2-4, the FEC note, both loops' next cycle writing nothing; the join removing it before the breakout; the first-push hold | `internal/informloop/replay_breakout_test.go` |
 | The parent's plan on an owned cage: only the breakout and the admin state; a lane speed the child forced not undone; an unowned lane aggregate left alone | `lanes_test.go` |
+| A lane aggregate without lane 1 takes the cage's STP settings in l2d (§14.4): live on the DX010 by hand (a probe built from the branch, mstpd `admin edge`/`bpdu guard` yes on `PortChannel2901`) | `TestLaneAggregateTakesTheCageSTP`; `docs/drivers/sonic.md` §11.25.1 |
+| A join with a lane aggregate the DUI ACL tables bind (§14.5): the tables rebound without the PortChannel before `portchannel del`; the order before the fix refused live by sonic-yang, the fixed order run live by hand | `TestLaneJoinUnbindsTheACLTables`, `fixture_breakout.go`'s leafref check; `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt` |
+| **`arista-eos` as the parent**, on the 7160's empty test cage captured split on 2026-11-15 (`fixtures/arista-eos-4.26.14M/split-cage54*/`: split; lanes 3-4 in channel group 1541 with a lane mirror; the Flex XG batch's result; the first try's errdisabled lanes): `Lanes(54)` and the captured cage 50, a lane's state/name/VLAN/storm, the refused lane speed, a lane-to-lane mirror (session 1543), the aggregate and its undo, the owned cage (admin state and speed only, nothing counted by `PlanPorts`, the disabled cage holding every lane down), the join dissolving the lane groups first, a lane group left alone with no child attached, the write lock; the Flex XG push through a child loop (`channel-group 1541` on Ethernet54/2-4, `Port-Channel1541` Allow All) with both loops' next cycle writing nothing against the switch as that batch left it, and the join | `internal/drivers/arista-eos/lanes_test.go`; `internal/informloop/replay_arista_breakout_test.go` |
+| The Arista's lane batches accepted by EOS 4.26.14M: the split, the Flex XG aggregate batch (with RS on the 25G lanes), a lane mirror session, and the join's `no monitor session` / `no channel-group` / `speed forced 100gfull`, each in a commit-timer session on the empty cage, aborted after | live 2026-11-15, by hand ([`drivers/arista-eos.md`](drivers/arista-eos.md) §10) |
 
 ### Built, untested live — PRs welcome
 
 | Gap | What the PR needs |
 |---|---|
 | Adoption and placement of a real lane switch on a `sonic` parent | the steps of [`drivers/breakout.md`](drivers/breakout.md) §15 on a DX010 (or any SONiC switch with `platform.json` breakout modes): the child's record placed under the cage (`uplink_remote_port`), the parent's `downlink_lldp_macs`, both records scrubbed into `docs/fixtures/controller-<ver>/` |
-| A lane aggregate to a real LACP partner | a breakout DAC to a bonded host: `teamdctl PortChannel<100*cage+1> state` with the partner, the child's `lacp_state`/`partner_system_id` in its stored record, traffic on the members; the push and the reply log scrubbed into fixtures |
-| A join with an aggregate present while the DUI ACL tables are bound | the join's batch from the journal (`portchannel del` of a bound PortChannel), the tables `Active` after (§14.5) |
+| Adoption and placement of a lane switch on the `arista-eos` parent | [`drivers/breakout.md`](drivers/breakout.md) §11b: a child entry in the container's `config.yaml` on a split cage, adopted by exact MAC, placed under the cage; then the lane settings with a far end (the test cage has no module and no link, so no lane has come up, no LACP partner, no lane MAC or neighbour has been seen, and whether the 7160 runs a lane mirror beside the device's own session is not known) |
+| A lane aggregate to a real LACP partner | a breakout DAC to a bonded host: `teamdctl PortChannel<100*cage+1> state` (on the Arista `show port-channel 1541 detailed` / `show lacp neighbor` for `Port-Channel<1000+10*cage+1>`) with the partner, the child's `lacp_state`/`partner_system_id` in its stored record, traffic on the members; the push and the reply log scrubbed into fixtures |
+| A join with an aggregate present through a deployed bridge with a lane switch attached | the join's batch from the journal (the hand run of 2026-11-15 replayed its commands, sonic.md §11.25.2), the tables `Active` after, part of §15 |
 | A forced lane speed (one lane at 10G beside 25G lanes) | the lane up at 10G with its neighbour, the other lanes unaffected; whether the Tomahawk accepts mixed lane speeds in one cage is not known |
 | The stored-speed quirk after a re-split (§14.1) | the child's `rest/device` `port_overrides` after the aggregate push (the speed keys, captured), then a rule that clears a lane's forced speed when the mode changes |
 | The disconnect seen once after the aggregate push (§14.2) | the child's record across the push on a real parent: connected throughout, or the same `MISSED_INFORM` with the reply log showing the informs answered |
@@ -701,9 +709,7 @@ controller side it relies on was proven with the stub (above).
 
 | Gap | What the PR needs |
 |---|---|
-| The `arista-eos` parent | [`drivers/breakout.md`](drivers/breakout.md) §7b against `docs/fixtures/eos-4.26.14M/` (cage 50 split there): `LaneProvider` on the Collector, the lane scope in `plan()`, tests as §10 lists, then §11b live |
 | STP port settings, isolation, port security, egress limit, LLDP-MED on the lane switch (today the cage's, on every lane) | the switch-wide computations taking both loops' intent (`l2SetPorts` in `sonic/l2.go`, `portFeatures`); the claims then on the child |
-| A lane aggregate's own STP settings when it leaves lane 1 out (§14.4) | `l2SetPorts` naming every PortChannel a cage's interfaces are in, a test on the captured 2-4 aggregate |
 | A lane switch that appears by itself on a split (§12) | the loop adding and removing devices at run time, and the bridge forgetting a retired child |
 
 ---
@@ -735,8 +741,8 @@ Open — PRs welcome:
 
 | Gap | What the PR needs |
 |---|---|
-| The STP-flap alert on `arista-eos` | on `arista-eos` a down interface leaves EOS's topology list and its count reads 0, so a port that flaps by losing its link may never show the growth a real switch's would: a PR needs EOS's count for an interface that went down and came back (`show spanning-tree topology status detail`) to decide whether the bridge should hold it |
-| The controller's SFP alerts on a bridged port, and link flap on the other drivers (`link_down_count` is the driver's link changes halved: exact on `sonic`, one too many on an up port on `arista-eos`, off by up to one on Linux hosts, [`feature-map.md`](feature-map.md) §2) | an optic fault on a bridged port and the alert read from the controller's device alerts; the rate rule itself is known (above) |
+| The STP-flap alert on `arista-eos` | EOS keeps a port's STP change count per link-up (absent while down, from 0 after); the driver holds it since 2026-11-15 so it never falls ([`drivers/arista-eos.md`](drivers/arista-eos.md) §4). A PR needs a capture of an interface going down and up again in STP (`show spanning-tree topology status detail` before, while down, after) -- the 7160's test ports have no link and no MAC loopback -- and the alert seen on the Arista's record |
+| The controller's SFP alerts on a bridged port, and link flap on the other drivers (`link_down_count` is the driver's link changes halved: exact on `sonic` and on `arista-eos` since 2026-11-15, exact on the Linux NICs and taps captured but one too many while up on a NIC whose driver counts a carrier-off at probe (none captured as an uplink), [`feature-map.md`](feature-map.md) §2) | an optic fault on a bridged port and the alert read from the controller's device alerts; the rate rule itself is known (above) |
 | BPDU guard taking the chip's port down on `sonic` | mstpd shuts the netdev and StpOrch blocks the port, but SONiC's oper status stays up (a cabled peer would see link) and the port is reported `up` ([`drivers/sonic.md`](drivers/sonic.md) §11.23); a PR needs the chip's port taken down for the hold and brought back by the operator's re-enable, live on a looped cage |
 | Storm bits (1/2/4) seen raising an alert | the Arista fills the counters and the DX010 its broadcast/multicast detection (above); a storm on a test port and the alert read from the controller |
 | Storm drops on the SONiC switch | **no drop count exists on the DX010's Broadcom image** ([`drivers/sonic.md`](drivers/sonic.md) §11.19): orchagent polls no policer statistics, and the Tomahawk's storm meters have no counter. Detected instead since 2026-11-14 (next row). For a true drop count a PR needs a per-type count the chip really keeps (on a Broadcom XGS chip, three of the SDK's receive debug counters, one per storm type, if its drop triggers can be told apart -- `bcmDbgCntRxStormControlDrop` is one trigger for all three), or a SAI that answers `get_policer_stats` for a storm-control policer, plus orchagent polling it; then a capture and a live storm |

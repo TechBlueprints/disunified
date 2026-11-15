@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ const (
 	l2dUnitPath  = "/etc/systemd/system/disunified-l2d.service"
 	l2ConfPath   = "/etc/sonic/disunified/l2.json"
 	mstpdBuildIn = "/var/lib/disunified/mstpd-build"
-	// The 802.1X authenticator (§11.25): hostapd built on the switch as
+	// The 802.1X authenticator (§11.26): hostapd built on the switch as
 	// mstpd is, and the RADIUS secrets l2d hands it -- root's alone, never
 	// in l2.json (which collect.py reads as the login user).
 	hostapdBuildIn  = "/var/lib/disunified/hostapd-build"
@@ -170,7 +171,7 @@ type l2Inst struct {
 	Files map[string]string `json:"files"` // path -> sha256, "" = absent
 	Mstpd string            `json:"mstpd"` // `mstpd -V`, "" = not installed
 	// Hostapd is `hostapd -v`'s first line ("" = not installed); nil in a
-	// capture from before 802.1X (§11.25), which claims nothing for it.
+	// capture from before 802.1X (§11.26), which claims nothing for it.
 	Hostapd      *string `json:"hostapd"`
 	HostapdBuild string  `json:"hostapd_build"` // as Build, for hostapd
 	Service      string  `json:"service"`
@@ -240,7 +241,11 @@ type l2Want struct {
 	storm bool
 	// stpOffSeen: the push had STP off since the dead-man last fired,
 	// which re-arms a first enable.
-	stpOffSeen  bool
+	stpOffSeen bool
+	// desired is the last port push l2SetPorts took (this device's own):
+	// a lane switch's batch changes the bridge ports under it, and
+	// ApplyLanes derives the per-port intent again from it.
+	desired     []devicemodel.PortDesired
 	buildTried  time.Time
 	deadmanSeen string
 }
@@ -367,11 +372,18 @@ func dot1xPorts(desired []devicemodel.PortDesired, ifnames map[int][]string, st 
 	return out
 }
 
-// l2SetPorts records the per-port intent (ApplyPorts): every interface of
-// a cage, or the PortChannel a cage is a member of (the kernel bridge port).
+// l2SetPorts records the per-port intent (ApplyPorts): each kernel bridge
+// port a cage's interfaces make -- an interface, or the PortChannel it is a
+// member of. A split cage's lanes can be in several PortChannels and in
+// none (a lane switch's aggregate of lanes 2-4 leaves lane 1 a bridge port
+// of its own), so every interface is looked at, not only the first. The
+// settings are the cage's: the lane switch claims no STP (breakout.md §0),
+// so the parent's push is the only one that carries them, and they cover
+// every lane of the cage, in an aggregate or not (breakout.md §14).
 func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.l2.desired = slices.Clone(desired)
 	ports := map[string]l2Port{}
 	var guard []string
 	lock := map[string][]string{}
@@ -386,9 +398,15 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 			edge = "auto"
 		}
 		pc := l2Port{Enabled: !d.STPEdge, Edge: edge, BPDUGuard: d.BPDUGuard}
-		names := ifs
-		if lag := st.lagOf(ifs[0]); lag != "" {
-			names = []string{lag}
+		var names []string
+		for _, ifc := range ifs {
+			n := ifc
+			if lag := st.lagOf(ifc); lag != "" {
+				n = lag
+			}
+			if !slices.Contains(names, n) {
+				names = append(names, n)
+			}
 		}
 		for _, n := range names {
 			if seen[n] {
@@ -742,7 +760,7 @@ func hostapdBuildHostScript() string {
 	b.WriteString(installFile(hostapdBuildIn+"/build.sh", "0755", buildHostapdScript) + "\n")
 	host := strings.Join([]string{
 		"#!/bin/sh",
-		"# disunified: builds hostapd for this switch (docs/drivers/sonic.md 11.25)",
+		"# disunified: builds hostapd for this switch (docs/drivers/sonic.md 11.26)",
 		"d=" + hostapdBuildIn,
 		"echo running > $d/status",
 		"if docker run --rm --network host -v $d:/out " + alpineImage + " sh /out/build.sh > $d/build.log 2>&1 &&",

@@ -383,8 +383,18 @@ func TestACLTablesFollowThePorts(t *testing.T) {
 		t.Errorf("second apply wrote %q", again)
 	}
 
-	// Back apart, then cage 2 split 4x25G: the children are bound.
-	r.apply(base)
+	// Back apart: the emptied PortChannel leaves the table before it goes
+	// (`config portchannel del` would leave the table naming it, and
+	// orchagent holding the LAG: the DX010, 2026-11-15), then cage 2 split
+	// 4x25G: the children are bound.
+	got, _ = r.apply(base)
+	ui, di := indexOf(got, unbind), indexOf(got, "sudo config portchannel del PortChannel2")
+	if ui < 0 || di < 0 || ui > di {
+		t.Errorf("apart: the table must let go of PortChannel2 before it is deleted, got %q", got)
+	}
+	if len(r.fr.HeldLAGs) != 0 {
+		t.Errorf("apart: orchagent still holds %v", r.fr.HeldLAGs)
+	}
 	if _, err := r.c.Collect(context.Background()); err != nil {
 		t.Fatal(err)
 	}

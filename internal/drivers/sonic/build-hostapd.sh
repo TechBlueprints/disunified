@@ -1,7 +1,7 @@
 #!/bin/sh
 # disunified: builds hostapd, statically linked, from the upstream release,
 # inside a throwaway alpine container on the switch (docs/drivers/sonic.md
-# 11.25), as build-mstpd.sh builds mstpd. Nothing built here leaves the
+# 11.26), as build-mstpd.sh builds mstpd. Nothing built here leaves the
 # switch: the bridge redistributes no binary. Output: /out/hostapd,
 # /out/hostapd_cli.
 #

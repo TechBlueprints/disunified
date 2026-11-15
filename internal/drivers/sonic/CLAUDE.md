@@ -1019,15 +1019,30 @@ was restarted.
   and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
   (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
   PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
-  `ApplyLanes`, `EnsureVLANs` and `ApplyDevice`. Facts from the capture
+  `ApplyLanes`, `EnsureVLANs`, `ApplyDevice`, `ApplyManagementIPv6`, `ApplyAddress` and `Reboot`; the fan mode, the SSH keys and locate stay outside it on purpose (they share nothing with a plan). Facts from the capture
   (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
   (so the Flex XG aggregate push's `cl-91` is refused); the controller's
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
+  STP port settings stay the cage's (the lane switch claims no STP):
+  `l2SetPorts` (l2.go) names every bridge port a cage's interfaces make --
+  a lane aggregate without lane 1 included -- with the cage's settings, and
+  `ApplyLanes` re-derives them after a lane batch (§11.25.1, live
+  2026-11-15).
+- **`config portchannel del` does not look at ACL_TABLE** (§11.25.2, live
+  on the DX010 2026-11-15): a deleted PortChannel a table still binds stays
+  in the table, orchagent keeps the LAG (`removeLag: Failed to remove ref
+  count 1`, retried ~7/s until no table binds it), and the next `config
+  interface breakout` is refused by sonic-yang (`Invalid value
+  "PortChannel<n>" in "ports" element`). Every delete the plan makes is
+  preceded by `aclUnbind` of that PortChannel; the plan's breakout effect
+  takes the old ports out of the tables as `-f` does. The FixtureRunner
+  models both (`HeldLAGs`, the breakout's leafref check). Fixture:
+  `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
   STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
   by cage; a lane aggregate without lane 1 is not named to l2d (open).
 - **802.1X (`l2d.py` `Dot1xGuard`, `l2.go` `dot1x`, `build-hostapd.sh`,
-  `docs/drivers/sonic.md` §11.25, built 2026-11-15, verified by hand on an
+  `docs/drivers/sonic.md` §11.26, built 2026-11-15, verified by hand on an
   empty cage).** hostapd 2.11 (wired driver, a RADIUS client) built on the
   switch like mstpd, one per controlled port under l2d; the port closed by
   the MAC filter's CONFIG_DB `learn_mode drop`; each host hostapd

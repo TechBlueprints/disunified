@@ -2,7 +2,9 @@ package sonic
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -314,4 +316,129 @@ func (r *controlRig) laneBaseFromView(t *testing.T) []devicemodel.PortDesired {
 		ds = append(ds, devicemodel.PortDesired{Index: l.Index, Enabled: l.Enabled, VLANSet: true, NativeVLAN: 1})
 	}
 	return ds
+}
+
+// A lane aggregate that leaves lane 1 out (the captured Flex XG push's
+// lanes 2-4) is a kernel bridge port of its own: l2d takes the cage's STP
+// settings for it and for lane 1 alone, from the parent's push (the lane
+// switch claims no STP), as soon as the lane batch has made it, and drops
+// it again when the join dissolves it (breakout.md §14 item 4).
+func TestLaneAggregateTakesTheCageSTP(t *testing.T) {
+	r := laneRig(t)
+	r.c.L2 = true
+	cageSTP := func(ds []devicemodel.PortDesired) []devicemodel.PortDesired {
+		return edit(ds, 2, func(d *devicemodel.PortDesired) {
+			d.STPEdgeMode, d.BPDUGuard, d.LoopProtect = "enabled", true, true
+		})
+	}
+	conf := func() l2Conf {
+		t.Helper()
+		var c l2Conf
+		if err := json.Unmarshal([]byte(r.fr.L2Files[l2ConfPath]), &c); err != nil {
+			t.Fatalf("l2.json: %v", err)
+		}
+		return c
+	}
+	want := l2Port{Enabled: true, Edge: "enabled", BPDUGuard: true}
+	check := func(stage string, on, off []string) {
+		t.Helper()
+		c := conf()
+		for _, n := range on {
+			if c.STP.Ports[n] != want {
+				t.Errorf("%s: %s = %+v, want %+v", stage, n, c.STP.Ports[n], want)
+			}
+			if !slices.Contains(c.LoopGuard.Ports, n) {
+				t.Errorf("%s: %s not under loop protection %v", stage, n, c.LoopGuard.Ports)
+			}
+		}
+		for _, n := range off {
+			if _, ok := c.STP.Ports[n]; ok || slices.Contains(c.LoopGuard.Ports, n) {
+				t.Errorf("%s: %s is not a bridge port, but l2d is told about it", stage, n)
+			}
+		}
+	}
+	r.deviceCmds(rstp)
+	base := cageSTP(r.baseline())
+	r.apply(base)
+	check("split", []string{"Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7"}, []string{"PortChannel201"})
+
+	ds := r.laneBase()
+	for i := 1; i < 4; i++ {
+		ds[i].LAG = 1
+	}
+	n := len(r.fr.L2Scripts)
+	if _, err := r.c.ApplyLanes(context.Background(), 2, ds); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.fr.L2Scripts) == n || !strings.Contains(r.fr.L2Scripts[len(r.fr.L2Scripts)-1], "sudo systemctl reload disunified-l2d") {
+		t.Errorf("the lane batch did not hand l2d the new bridge port: %q", r.fr.L2Scripts[n:])
+	}
+	check("aggregate of lanes 2-4", []string{"Ethernet4", "PortChannel201"}, []string{"Ethernet5", "Ethernet6", "Ethernet7"})
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := r.apply(base); len(got) != 0 {
+		t.Errorf("the parent's next push wrote %q", got)
+	}
+
+	// The join dissolves the aggregate: the cage is one bridge port again.
+	r.apply(speedOn(base, 2, 100000))
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.apply(speedOn(base, 2, 100000))
+	check("joined", []string{"Ethernet4"}, []string{"PortChannel201", "Ethernet5"})
+}
+
+// The join with the driver's ACL tables bound to a lane aggregate (the
+// DX010, 2026-11-15, portchannel-del-acl-20261115.txt): `config portchannel
+// del` leaves a table naming the PortChannel, orchagent then holds the LAG
+// and the breakout's YANG check refuses the dangling name. The plan rebinds
+// each table without the PortChannel before it goes.
+func TestLaneJoinUnbindsTheACLTables(t *testing.T) {
+	r := laneRig(t)
+	r.deviceCmds(devicemodel.DeviceDesired{IPACLSet: true, IPACLs: ipACLsOf(ecsPush(t, "system_cfg-ecs-acl.txt"))})
+	ds := r.laneBase()
+	for i := 1; i < 4; i++ {
+		ds[i].LAG = 1
+	}
+	if _, err := r.c.ApplyLanes(context.Background(), 2, ds); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.c.mu.Lock()
+	bound := r.c.state.aclTables[ipACLTable].ports
+	r.c.mu.Unlock()
+	if !bound["PortChannel201"] || bound["Ethernet5"] {
+		t.Fatalf("the lane aggregate is not bound in place of its lanes: %v", sortIfnames(bound))
+	}
+	got, _ := r.apply(speedOn(r.baseline(), 2, 100000))
+	var keep []string
+	for p := range bound {
+		if p != "PortChannel201" {
+			keep = append(keep, p)
+		}
+	}
+	unbind := "sudo config acl add table DUI_IP_ACL L3 -p " + strings.Join(sortIfnames(setOf(keep)), ",") + " -s ingress"
+	ui, di := indexOf(got, unbind), indexOf(got, "sudo config portchannel del PortChannel201")
+	if ui < 0 || di < 0 || ui > di {
+		t.Errorf("the table must let go of PortChannel201 before it is deleted: unbind at %d, del at %d in %q", ui, di, got)
+	}
+	if !containsString(got, "sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null") {
+		t.Errorf("no join in %q", got)
+	}
+	if len(r.fr.HeldLAGs) != 0 {
+		t.Errorf("orchagent still holds %v", r.fr.HeldLAGs)
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.c.mu.Lock()
+	bound = r.c.state.aclTables[ipACLTable].ports
+	r.c.mu.Unlock()
+	if bound["PortChannel201"] || !bound["Ethernet4"] {
+		t.Errorf("after the join: %v", sortIfnames(bound))
+	}
 }

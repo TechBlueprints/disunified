@@ -66,7 +66,7 @@ and each authenticated host a static FDB entry, failed attempts as anomaly
 128: built 2026-11-15, verified by hand on an empty cage with a test RADIUS
 server, the controller's push captured on 11.0.99 and replayed (MAB and
 the Unauthorized VLAN not built), no image change
-(`docs/drivers/sonic.md` §11.25).
+(`docs/drivers/sonic.md` §11.26).
 UniFi's MAC Address Filter violations (anomaly 256) are counted per port by
 disunified-l2d since 2026-11-14: a secured port's learning is `cpu_trap` in
 APPL_DB behind a kernel-bridge drop, the port stays up (§11.18.2, verified
@@ -101,9 +101,12 @@ deployments and of the image patches by what each enables is
 An eighth, `breakout`, presents a split cage of another bridged switch as a
 five-port switch of its own (`USFXG`, the "lane switch" of
 `docs/breakout-lag.md` §6): built 2026-11-14 with `sonic` as the parent,
-read from the parent's snapshot and written through the parent's plan in
-the parent's process; fixture- and replay-tested, not yet adopted live
-(`docs/drivers/breakout.md` §0, §15 the first adoption).
+and `arista-eos` as the second since 2026-11-15 (its lane groups are
+`Port-Channel<1000+10*cage+lag>`: EOS stops at 2000; the lane batches run
+by hand on the 7160's empty test cage), read from the parent's snapshot and
+written through the parent's plan in the parent's process; fixture- and
+replay-tested, not yet adopted live (`docs/drivers/breakout.md` §0, §7b,
+§15 the first adoption).
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering
@@ -309,13 +312,15 @@ these is marked "not captured".
   `portconf_id` are 36-character UUIDs where 10.x had 24 hex digits; port
   overrides kept their content, with only the network id rewritten. The
   bridge treats ids as opaque, and the first push after the upgrade applied
-  with nothing changed on every bridge in the container. Stale since: the
-  10.6.109 shapes file lists ids as 24 hex digits, so a live
-  `wire-shapes.py audit` on Network 11 reports every id path; and MongoDB
-  is gone from the console (`mongo --port 27117` no longer answers). The
-  one capture from Network 11 is a USW Aggregation's inform and its
-  STP-flap alerts (`controller-11.0.99/`, 2026-11-14); no replay fixture
-  or shapes file is (`docs/wire-shapes.md` §9).
+  with nothing changed on every bridge in the container. MongoDB is gone
+  from the console (`mongo --port 27117` no longer answers). Network 11
+  fixtures (`controller-11.0.99/`, the version the console runs since
+  2026-11-14): a USW Aggregation's inform, the controller's alerts, a
+  shapes file of the site's 41 real switches (2026-11-15) that the shape
+  test holds every payload to beside 10.6.109's, and the Arista bridge's
+  reply log since the upgrade, replayed (`replay_arista_net11_test.go`);
+  against that shapes file a live `wire-shapes.py audit` no longer reports
+  id paths (`docs/wire-shapes.md` §9.1).
 - **Values are held to a real device's shape, not only its keys
   (2026-11-12, `docs/wire-shapes.md`).** The audit after the serial found
   optic readings sent as numbers (real: strings), a `version` with letters
@@ -539,7 +544,12 @@ force-provision` really does push a fresh system_cfg (the bridge logged the
 apply), the one devmgr command whose `rc:ok` has been seen to mean
 something. (An earlier version of this note said the gateway's DNS
 registers every adopted device at the IP its inform reports; it does not --
-see the hostname note above, corrected 2026-09-29.)
+see the hostname note above, corrected 2026-09-29.) The alert log
+(Network 11.0.99, 2026-11-15) is read with a POST that only filters:
+`/proxy/network/v2/api/site/<site>/system-log/device-alert`, body
+`{"timestampFrom": ms, "timestampTo": ms, "pageSize": N, "pageNumber": 0}`,
+answer `data` plus `total_page_count`; scrub it with
+`sanitize-controller.py` as it comes.
 
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; follows the controller, no flag since 2026-10-31).

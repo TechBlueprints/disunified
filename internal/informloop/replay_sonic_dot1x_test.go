@@ -16,7 +16,7 @@ import (
 )
 
 // The DX010's 802.1X pushes of 2026-11-15 (Network 11.0.99,
-// docs/drivers/sonic.md 11.25), replayed on the capture from the collector
+// docs/drivers/sonic.md 11.26), replayed on the capture from the collector
 // that reads 802.1X: the switch with 802.1X off, then 802.1X Control on for
 // the device (every port force-authorised), each method on an empty cage
 // in turn (31 Credentials, 30 Multiple Credentials, 29 MAC Address, 28

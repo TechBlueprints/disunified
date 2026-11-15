@@ -8,7 +8,7 @@ import (
 )
 
 // dot1xFixture is the DX010's live 802.1X runs (docs/drivers/sonic.md
-// §11.25): hostapd's events and station replies on a looped empty cage.
+// §11.26): hostapd's events and station replies on a looped empty cage.
 const dot1xFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt"
 
 // l2d's 802.1X against fakes replaying what the DX010's hostapd said: the

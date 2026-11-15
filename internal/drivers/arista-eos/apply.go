@@ -3,6 +3,8 @@ package aristaeos
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,22 +22,29 @@ import (
 // leads. A breakout slot writes to every lane. `write memory` persists the
 // running config so a switch reboot keeps the controller's intent.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("eos apply: %w", err)
+	}
+	defer unlock()
+	c.noteCageDown(desired)
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
 	if snap == nil {
 		return 0, fmt.Errorf("eos apply: no snapshot yet")
 	}
-	body, _, changed := c.plan(snap, desired)
-	if changed == 0 {
+	pr := c.plan(snap, desired, planScope{})
+	c.logNotes(pr.notes)
+	if pr.changed == 0 {
 		return 0, nil
 	}
-	cmds := append(append([]string{"enable", "configure"}, body...), "end", "write memory")
+	cmds := append(append([]string{"enable", "configure"}, pr.cmds...), "end", "write memory")
 	if c.Log != nil {
-		c.Log.Printf("eos apply: %s", strings.Join(body, " | "))
+		c.Log.Printf("eos apply: %s", strings.Join(pr.cmds, " | "))
 	}
 	if err := c.t.Configure(ctx, cmds); err != nil {
-		return 0, fmt.Errorf("eos apply (%d ports): %w", changed, err)
+		return 0, fmt.Errorf("eos apply (%d ports): %w", pr.changed, err)
 	}
 	// The snapshot is now stale for the ports just written; the next Collect
 	// refreshes it. Mark it so a second ApplyPorts before that does not
@@ -44,59 +53,165 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	if c.last == snap {
 		updated := *snap
 		updated.Ports = append([]devicemodel.Port(nil), snap.Ports...)
-		for i := range updated.Ports {
-			for _, d := range desired {
-				if updated.Ports[i].Index == d.Index {
-					updated.Ports[i].Enabled = d.Enabled
-					updated.Ports[i].Description = d.Description
-					if d.SpeedMbps > 0 || isCopperMedia(updated.Ports[i].Media) {
-						updated.Ports[i].AdminSpeed = d.SpeedMbps
-					}
-					if d.VLANSet {
-						updated.Ports[i].VLAN = desiredVLAN(d)
-						updated.Ports[i].LanesDiverge = false
-					}
-					if d.FEC != nil {
-						updated.Ports[i].FECConfig = *d.FEC
-					}
-					updated.Ports[i].StormCtrl = d.StormCtrl
-					updated.Ports[i].BPDUGuard = d.BPDUGuard
-					updated.Ports[i].STPEdge = d.STPEdge
-					if updated.Ports[i].LAGID != d.LAG {
-						updated.Ports[i].LACP = nil // read again at the next collect
-					}
-					updated.Ports[i].LAGID = d.LAG
-					if d.LAG > 0 {
-						updated.Ports[i].LAG = "Port-Channel" + strconv.Itoa(d.LAG)
-					} else {
-						updated.Ports[i].LAG = ""
-					}
-					updated.Ports[i].MirrorFrom = d.MirrorSource
+		children := c.childCages(snap)
+		markApplied(updated.Ports, desired, 0, children)
+		c.last = &updated
+		// A lane switch's cage took its admin state on every lane.
+		for _, d := range desired {
+			if l := c.lanes[d.Index]; children[d.Index] && len(l) > 0 {
+				marked := slices.Clone(l)
+				for i := range marked {
+					marked[i].Enabled = d.Enabled
 				}
+				c.lanes = maps.Clone(c.lanes)
+				c.lanes[d.Index] = marked
 			}
 		}
-		c.last = &updated
+		c.markPortChannels(pr.pcVLAN)
+		if pr.joins != nil {
+			lanes := map[int][]devicemodel.Port{}
+			for k, v := range c.lanes {
+				if !pr.joins[k] {
+					lanes[k] = v
+				}
+			}
+			c.lanes = lanes
+		}
 	}
 	c.mu.Unlock()
-	return changed, nil
+	return pr.changed, nil
 }
 
-// plan computes the batch for desired against snap -- the commands between
-// `configure` and `end` -- with the ports it changes and the change count
-// ApplyPorts reports. PlanPorts and ApplyPorts share it, so the loop's hold
-// on a first push and the write itself see the same diff.
-func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortDesired) (cmds []string, ports []int, changed int) {
+// markApplied records desired on ports after a batch (Index = the port's,
+// or the lane's in a lane scope; base = the scope's channel-group base). A
+// cage with a lane switch (child) took only its admin state and speed.
+func markApplied(ports []devicemodel.Port, desired []devicemodel.PortDesired, base int, child map[int]bool) {
+	for i := range ports {
+		for _, d := range desired {
+			if ports[i].Index != d.Index {
+				continue
+			}
+			p := &ports[i]
+			p.Enabled = d.Enabled
+			if d.SpeedMbps > 0 || isCopperMedia(p.Media) {
+				if base == 0 {
+					p.AdminSpeed = d.SpeedMbps
+				}
+			}
+			if child[d.Index] {
+				continue
+			}
+			p.Description = d.Description
+			if d.VLANSet {
+				p.VLAN = desiredVLAN(d)
+				p.LanesDiverge = false
+			}
+			if d.FEC != nil {
+				p.FECConfig = *d.FEC
+			}
+			p.StormCtrl = d.StormCtrl
+			if base == 0 {
+				p.BPDUGuard = d.BPDUGuard
+				p.STPEdge = d.STPEdge
+			}
+			if p.LAG != "" && p.LAGID == 0 {
+				continue // another scope's aggregate: left alone
+			}
+			if p.LAGID != d.LAG {
+				p.LACP = nil // read again at the next collect
+			}
+			p.LAGID = d.LAG
+			if d.LAG > 0 {
+				p.LAG = "Port-Channel" + strconv.Itoa(base+d.LAG)
+			} else {
+				p.LAG = ""
+			}
+			p.MirrorFrom = d.MirrorSource
+		}
+	}
+}
+
+// markPortChannels records the Port-Channels a batch wrote (c.mu held).
+func (c *Collector) markPortChannels(written map[string]devicemodel.PortVLAN) {
+	if len(written) == 0 {
+		return
+	}
+	pcs := make(map[string]devicemodel.PortVLAN, len(c.portChannels)+len(written))
+	for k, v := range c.portChannels {
+		pcs[k] = v
+	}
+	for k, v := range written {
+		pcs[k] = v
+	}
+	c.portChannels = pcs
+}
+
+// childCages are snap's split cages with a lane switch attached.
+func (c *Collector) childCages(snap *devicemodel.Snapshot) map[int]bool {
+	out := map[int]bool{}
+	for _, p := range snap.Ports {
+		if _, ok := c.children[p.Index]; ok && p.Lanes > 1 {
+			out[p.Index] = true
+		}
+	}
+	return out
+}
+
+// planScope says which ports a plan is for: the device's own (cage 0), or
+// the lanes of one split cage for its lane switch (lanes.go).
+type planScope struct {
+	cage     int
+	cageDown bool // the device's own push has the cage disabled: no lane comes up
+}
+
+// planResult is a plan: the commands between `configure` and `end`, the
+// ports they change, the change count ApplyPorts reports, what the plan
+// would not write and why, and the cages a join hands back whole.
+type planResult struct {
+	cmds    []string
+	ports   []int
+	changed int
+	notes   []string
+	joins   map[int]bool
+	pcVLAN  map[string]devicemodel.PortVLAN // the Port-Channels written, as the batch leaves them
+}
+
+// plan computes the batch for desired against snap. PlanPorts and
+// ApplyPorts share it, so the loop's hold on a first push and the write
+// itself see the same diff; ApplyLanes and PlanLanes share it with a lane
+// scope (snap.Ports then the cage's lanes, Index = lane).
+func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortDesired, sc planScope) planResult {
+	var pr planResult
+	note := func(format string, args ...any) { pr.notes = append(pr.notes, fmt.Sprintf(format, args...)) }
+	inLanes := sc.cage > 0
+	base := 0
+	if inLanes {
+		base = laneBase(sc.cage)
+	}
+	c.mu.Lock()
+	child := map[int]bool{}
+	childLanes := map[int][]devicemodel.Port{}
+	if !inLanes {
+		for _, p := range snap.Ports {
+			if _, ok := c.children[p.Index]; ok && p.Lanes > 1 {
+				child[p.Index] = true
+				childLanes[p.Index] = c.lanes[p.Index]
+			}
+		}
+	}
+	c.mu.Unlock()
+
 	live := map[int]devicemodel.Port{}
 	for _, p := range snap.Ports {
 		live[p.Index] = p
 	}
 	touched := map[int]bool{}
-	mirror := mirrorCommands(snap.Ports, desired)
+	mirror := mirrorCommands(snap.Ports, desired, base, child, note)
 	if len(mirror) > 0 {
-		cmds = append(cmds, mirror...)
-		changed++
+		pr.cmds = append(pr.cmds, mirror...)
+		pr.changed++
 		for _, d := range desired {
-			if p, ok := live[d.Index]; ok && p.MirrorFrom != d.MirrorSource {
+			if p, ok := live[d.Index]; ok && p.MirrorFrom != d.MirrorSource && !child[d.Index] {
 				touched[d.Index] = true
 			}
 		}
@@ -104,10 +219,12 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 	lagVLAN := map[int]devicemodel.PortDesired{} // LAG id -> the VLAN intent its Port-Channel carries
 	lagPorts := map[int][]int{}                  // LAG id -> its members' indexes
 	for _, d := range desired {
-
 		p, ok := live[d.Index]
 		if !ok {
 			continue // claimed model has more ports than the switch
+		}
+		if inLanes && sc.cageDown && d.Enabled {
+			d.Enabled = false // the cage is disabled on the switch itself: every lane down
 		}
 		var portCmds []string
 		if d.Enabled != p.Enabled {
@@ -117,27 +234,51 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 				portCmds = append(portCmds, "shutdown")
 			}
 		}
-		if d.Description != p.Description {
+		owned := child[d.Index] // the lanes' settings are the lane switch's
+		if owned {
+			if d.LAG > 0 {
+				note("port %d is a lane switch's cage: it cannot join this switch's aggregate %d; not written", d.Index, d.LAG)
+			}
+			note("port %d: a lane switch sets its lanes; the cage's own name, VLANs, FEC and storm control are not applied", d.Index)
+		}
+		if !owned && d.Description != p.Description {
 			if d.Description == "" {
 				portCmds = append(portCmds, "no description")
 			} else {
 				portCmds = append(portCmds, "description "+sanitizeDescription(d.Description))
 			}
 		}
-		if d.LAG > 0 {
-			// VLAN config belongs on the Port-Channel; members inherit it.
-			if _, seen := lagVLAN[d.LAG]; !seen {
-				lagVLAN[d.LAG] = d
-			}
-			lagPorts[d.LAG] = append(lagPorts[d.LAG], d.Index)
-		} else {
-			portCmds = append(portCmds, vlanCommands(p, d)...)
+		foreign := p.LAG != "" && p.LAGID == 0 // another scope's channel group, or one made by hand
+		lag := d.LAG
+		if inLanes && lag >= laneGroupSpan {
+			note("lane %d of cage %d: aggregate %d is past the %d this switch numbers per cage; not written", d.Index, sc.cage, lag, laneGroupSpan-1)
+			lag = 0
 		}
-		portCmds = append(portCmds, lagCommands(p, d)...)
-		portCmds = append(portCmds, fecCommands(p, d)...)
-		portCmds = append(portCmds, stormCommands(p, d)...)
-		portCmds = append(portCmds, bpduGuardCommands(p, d)...)
-		portCmds = append(portCmds, stpEdgeCommands(p, d)...)
+		switch {
+		case owned:
+		case foreign:
+			note("port %d (%s) is in %s, which this plan does not own; its aggregate and VLANs are left alone", d.Index, laneNames(p)[0], p.LAG)
+		case lag > 0:
+			// VLAN config belongs on the Port-Channel; members inherit it.
+			if _, seen := lagVLAN[lag]; !seen {
+				lagVLAN[lag] = d
+			}
+			lagPorts[lag] = append(lagPorts[lag], d.Index)
+			portCmds = append(portCmds, lagCommands(p, lag, base)...)
+		default:
+			portCmds = append(portCmds, vlanCommands(p, d)...)
+			portCmds = append(portCmds, lagCommands(p, 0, base)...)
+		}
+		if !owned {
+			portCmds = append(portCmds, fecCommands(p, d)...)
+			portCmds = append(portCmds, stormCommands(p, d)...)
+		}
+		if !inLanes {
+			// STP port settings stay the cage's, on every lane, with a
+			// lane switch too: the lane switch claims none of them.
+			portCmds = append(portCmds, bpduGuardCommands(p, d)...)
+			portCmds = append(portCmds, stpEdgeCommands(p, d)...)
+		}
 		// Speed on a QSFP cage (verified on the 7160): `speed forced
 		// 25gfull`/`10gfull` on lane 1 splits the cage into 4 lanes and
 		// `100gfull`/`40gfull` on lane 1 joins them back — but changing the
@@ -145,17 +286,35 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		// others go errdisabled "speed-misconfigured". So a join speed goes
 		// to lane 1 only; a lane speed goes to every lane that exists.
 		// Everything else goes to every lane, and a freshly split cage
-		// picks up its VLAN/FEC/storm config on the next reconcile.
-		speedCmds := speedCommands(p, d)
+		// picks up its VLAN/FEC/storm config on the next reconcile. A lane
+		// of a lane switch never sets a speed: every lane of a cage runs
+		// one, the cage's on this switch.
+		var speedCmds []string
+		if inLanes {
+			if d.SpeedMbps > 0 && !slices.Contains(p.SpeedCaps, d.SpeedMbps) {
+				note("lane %d of cage %d: %d Mb/s asked; on EOS every lane of a cage runs one speed (%v), set on the switch's own port %d; not written", d.Index, sc.cage, d.SpeedMbps, p.SpeedCaps, sc.cage)
+			}
+		} else {
+			speedCmds = speedCommands(p, d)
+		}
+		var dissolve []string
+		if owned && len(speedCmds) > 0 && d.SpeedMbps >= 40000 {
+			dissolve = dissolveLanes(d.Index, childLanes[d.Index])
+			if len(dissolve) > 0 {
+				note("port %d: joining the cage removes its lane switch's aggregates and mirror sessions first", d.Index)
+			}
+			if pr.joins == nil {
+				pr.joins = map[int]bool{}
+			}
+			pr.joins[d.Index] = true
+		}
 		if len(portCmds) == 0 && len(speedCmds) == 0 {
 			continue
 		}
-		changed++
+		pr.changed++
 		touched[d.Index] = true
-		lanes := p.Interfaces
-		if len(lanes) == 0 {
-			lanes = []string{p.IfName}
-		}
+		pr.cmds = append(pr.cmds, dissolve...)
+		lanes := laneNames(p)
 		speedEveryLane := d.SpeedMbps > 0 && d.SpeedMbps < 40000
 		for i, ifname := range lanes {
 			laneCmds := portCmds
@@ -165,29 +324,60 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			if len(laneCmds) == 0 {
 				continue
 			}
-			cmds = append(cmds, "interface "+ifname)
-			cmds = append(cmds, laneCmds...)
+			pr.cmds = append(pr.cmds, "interface "+ifname)
+			pr.cmds = append(pr.cmds, laneCmds...)
 		}
 	}
-	for lag, d := range lagVLAN {
-		pc := devicemodel.Port{IfName: "Port-Channel" + strconv.Itoa(lag)}
-		if pv, ok := c.portChannelVLAN(snap, lag); ok {
+	lags := make([]int, 0, len(lagVLAN))
+	for lag := range lagVLAN {
+		lags = append(lags, lag)
+	}
+	sort.Ints(lags)
+	for _, lag := range lags {
+		d := lagVLAN[lag]
+		pc := devicemodel.Port{IfName: "Port-Channel" + strconv.Itoa(base+lag)}
+		if pv, ok := c.portChannelVLAN(pc.IfName); ok {
 			pc.VLAN = pv
 		}
 		if v := vlanCommands(pc, d); len(v) > 0 {
-			cmds = append(cmds, "interface "+pc.IfName)
-			cmds = append(cmds, v...)
-			changed++
+			if pr.pcVLAN == nil {
+				pr.pcVLAN = map[string]devicemodel.PortVLAN{}
+			}
+			pr.pcVLAN[pc.IfName] = desiredVLAN(d)
+			pr.cmds = append(pr.cmds, "interface "+pc.IfName)
+			pr.cmds = append(pr.cmds, v...)
+			pr.changed++
 			for _, i := range lagPorts[lag] {
 				touched[i] = true
 			}
 		}
 	}
 	for i := range touched {
-		ports = append(ports, i)
+		pr.ports = append(pr.ports, i)
 	}
-	sort.Ints(ports)
-	return cmds, ports, changed
+	sort.Ints(pr.ports)
+	return pr
+}
+
+// dissolveLanes removes a lane switch's channel groups and mirror sessions
+// on cage idx ahead of the join that replaces its lanes. The join is the
+// operator's decision on the switch itself, so the lane switch's own groups
+// are this plan's to undo. EOS refuses to remove a session that does not
+// exist, so only those the lanes report go.
+func dissolveLanes(idx int, lanes []devicemodel.Port) []string {
+	base := laneBase(idx)
+	var cmds []string
+	for _, l := range lanes {
+		if l.MirrorFrom > 0 {
+			cmds = append(cmds, "no monitor session "+strconv.Itoa(base+l.Index))
+		}
+	}
+	for _, l := range lanes {
+		if l.LAGID > 0 {
+			cmds = append(cmds, "interface "+laneNames(l)[0], "no channel-group")
+		}
+	}
+	return cmds
 }
 
 // PlanPorts implements devicemodel.Planner: the ports ApplyPorts would
@@ -201,8 +391,7 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 	if snap == nil {
 		return nil
 	}
-	_, ports, _ := c.plan(snap, desired)
-	return ports
+	return c.plan(snap, desired, planScope{}).ports
 }
 
 // speedCommands: an explicit UniFi speed is forced; "auto" is written only
@@ -291,6 +480,11 @@ func uniqueSorted(ids []int) []int {
 // list is the source of truth for existence; VLANs the switch has and UniFi
 // does not are left alone.
 func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("eos ensure vlans: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
@@ -344,9 +538,9 @@ func sanitizeDescription(s string) string {
 
 // portChannelVLAN reads a Port-Channel's 802.1Q state from the snapshot's
 // switchport table (kept per collector for the diff).
-func (c *Collector) portChannelVLAN(snap *devicemodel.Snapshot, lag int) (devicemodel.PortVLAN, bool) {
+func (c *Collector) portChannelVLAN(name string) (devicemodel.PortVLAN, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	v, ok := c.portChannels["Port-Channel"+strconv.Itoa(lag)]
+	v, ok := c.portChannels[name]
 	return v, ok
 }

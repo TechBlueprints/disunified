@@ -50,7 +50,7 @@
 # unseen, the kernel bridge drops them there, and each frame from a source
 # not on the port's list is counted for the port, which stays up.
 #
-# 802.1X (UniFi's 802.1X Control; Dot1xGuard below, 11.25): a hostapd per
+# 802.1X (UniFi's 802.1X Control; Dot1xGuard below, 11.26): a hostapd per
 # controlled port relays its hosts' EAP to the RADIUS servers; each host it
 # authorises is admitted with a static FDB entry, and each failed attempt is
 # counted for the port.
@@ -619,7 +619,7 @@ class L2d(object):
         # fds() and readable(fd) for the main loop's select, teardown().
         self.maclock = MacLockGuard(self)
         self.ucast = UcastSampler(self)  # unknown-unicast storms' samples (11.24)
-        self.dot1x = Dot1xGuard(self)  # 802.1X port authentication (11.25)
+        self.dot1x = Dot1xGuard(self)  # 802.1X port authentication (11.26)
         self.detectors = [self.maclock, self.ucast, self.dot1x]
 
     # --- spanning tree -------------------------------------------------
@@ -1822,7 +1822,7 @@ def eapol_rules(port):
 
 class Dot1xGuard(object):
     """IEEE 802.1X port authentication (UniFi's 802.1X Control) -- docs/
-    drivers/sonic.md 11.25.
+    drivers/sonic.md 11.26.
 
     The driver holds a controlled port closed in CONFIG_DB (learn_mode drop:
     no source is learnt or forwarded by the chip, from boot) and lists it in
@@ -1907,7 +1907,7 @@ class Dot1xGuard(object):
 
     def hostapd_conf(self, port):
         lines = [
-            "# disunified-l2d: 802.1X authenticator for %s (docs/drivers/sonic.md 11.25)" % port,
+            "# disunified-l2d: 802.1X authenticator for %s (docs/drivers/sonic.md 11.26)" % port,
             "interface=%s" % port,
             "driver=wired",
             "ctrl_interface=%s/ctrl" % DOT1X_RUN,

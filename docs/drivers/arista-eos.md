@@ -152,17 +152,53 @@ and the satisfaction score, never as `anomalies` bits (`docs/feature-map.md`
 §2: that field is what a switch detected, and the controller raises an alert
 per bit; it derives its own link-flap and SFP alerts from the raw fields).
 
-- `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps).
-  EOS counts one change at boot on every port (read 2026-11-14: every
-  never-up port at 1, a port up once at 2), so `link_down_count`, which
-  `internal/device` sends as the count halved, is one too many on an up
-  port; its growth is exact.
+- `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps),
+  every transition up or down since `interfaceCounters.lastClear`. The
+  driver turns it into drops (`linkDrops`, since 2026-11-15) and reports
+  `Health.LinkChanges` as the transitions of a link that started down
+  (`2*drops`, `+1` while up), so the halved `link_down_count` is exact:
+  - counted from boot (`lastClear` within 60 s of `show version`'s
+    `bootupTimestamp`; 0.48 s in the 2026-09-19 capture), EOS counts one
+    transition per interface at the start: every never-up port reads 1,
+    a port up once 2 (read 2026-11-14), Ethernet49/1's 18 are 8 drops.
+    Drops = `(n-1)/2`. The halved count was one too many on an up port
+    until then;
+  - counted from a `clear counters` (live 2026-11-15: 0 on every
+    interface, up or down, 14 h after one), the count starts at 0 from the
+    link's state then: drops = `ceil(n/2)` down, `floor(n/2)` up.
+  A cage's drops are its lanes' added (the lanes' transitions summed would
+  count each up lane's rise). `clear counters` lowers the count, as it
+  lowers every counter; a fall raises nothing at the controller. An admin
+  shutdown of a port with no link counts nothing (live 2026-11-15,
+  Ethernet2 in a commit-timer session, aborted:
+  `docs/fixtures/arista-eos-4.26.14M/link-counters/`).
 - `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`,
   the interface's STP state changes (3 for one link-up), sent as
   `stp_state_change_count`, the field the controller's STP-flap alert
-  carries (`docs/feature-map.md` §2). A down interface is not in the list
-  (read 2026-11-14), so its count reads 0 while it is down; whether EOS
-  keeps the count when it comes back is not captured.
+  carries (`docs/feature-map.md` §2). **EOS keeps it per link-up**: a down
+  interface is not listed (read 2026-11-14, and 2026-11-15 for Ethernet2
+  and Ethernet54/1), and a link that comes back starts from nothing
+  (Ethernet49/1 in the 2026-09-19 capture: 9 rises since boot, 3 changes;
+  Ethernet1 at 3 after its one rise, live 2026-11-15). Raw, the count fell
+  to 0 with every drop and came back whole with the next link-up, which
+  between two informs reads as every change of a link-up at once: the
+  STP-flap alert is a rate (`CLAUDE.md` §5). So the driver holds it per
+  interface across collects (`holdSTPChanges`, since 2026-11-15): growth
+  within a link-up adds its growth, a new link-up (the count fell, or the
+  interface's drops grew since the last collect) adds its whole count, a
+  down interface keeps its total, and a lane no longer there (a joined
+  cage) still counts towards its cage. The count never falls while the
+  bridge runs; a bridge restart starts again from EOS's counts (one fall).
+  It is held in the driver, not in `internal/device`, because the shape is
+  EOS's: a generic hold there would also hide a real reset on the other
+  drivers (`sonic`'s l2d count and mstpd's on `proxmox` are per bridge
+  port, kept while the link is down). **Not seen live:** the 7160 has no
+  MAC loopback (`traffic-loopback source system device mac|phy`:
+  "Unavailable command (not supported on this hardware platform)",
+  2026-11-15) and the test ports have no link, so no interface went down
+  and came back in STP during the capture; the per-link-up rule rests on
+  the two captures above. `TestSTPChangesHeldAcrossLinkUps` drives the
+  hold through them.
   (`show spanning-tree`'s `interfaces[].inconsistentFeatures` names the
   guards holding a port; no port field carries it, so it is not read.)
 - `show storm-control` → `interfaces[<lane>].trafficTypes.{broadcast,multicast,unknown-unicast}.drop`
@@ -936,3 +972,60 @@ to MAC ACL instead"), so the rule was Block UDP 198.51.100.0/24 -> the
 switch's address port 68, and the frames were forged from 198.51.100.67:
 five of five reached the CPU before the rule, none with it, all again after
 its removal.
+
+## 10. The 7160 as a lane-switch parent (2026-11-15)
+
+The `breakout` driver presents a split cage as a five-port switch of its
+own (`docs/drivers/breakout.md`); since 2026-11-15 this driver implements
+`devicemodel.LaneProvider` (`lanes.go`, the scoped `plan()` in `apply.go`).
+The design and what departs from its spec are `breakout.md` §7b; the facts
+of the switch it rests on, all from 4.26.14M on 2026-11-15:
+
+- **`channel-group` takes 1..2000**: `channel-group 2000 mode active`
+  accepted, 2001, 5402, 999999 "Invalid input". A lane switch's groups are
+  `1000 + 10*cage + lag` (cage 54: 1541..1549); the switch's own stay
+  below 1000.
+- **`monitor session` takes a name**: "1542" and "5403" accepted, with a
+  lane as source and another lane of the same cage as destination; the
+  running config drops `both`, the default (`monitor session 1542 source
+  Ethernet54/1`).
+- **A cage's lanes exist in the config whole or split.** `Ethernet54/2-4`
+  keep their own `interface` sections (`speed forced 10000full` from an
+  earlier lane-speed run) while the cage runs 100G; `show interfaces`
+  lists them only while it is split. Splitting with lane 1 alone leaves the
+  others at their own speed, errdisabled (speed-misconfigured): the driver
+  writes the lane speed to every lane, as before.
+- **An `interface` range stops at a warning**: `interface Ethernet54/1-4`
+  then `speed forced 25gfull` on the empty cage reached lane 1 only, the
+  "Transceiver for interface Et54/1 is not present" warning ending the
+  range (`split-cage54-diverged/`). The driver writes one `interface` per
+  lane, which carries on past the same warning.
+- **RS FEC on a 25G lane**: `error-correction encoding reed-solomon` is
+  accepted on the split cage's lanes, and `show interfaces
+  error-correction` lists Reed-Solomon and Fire-code as available there
+  (cage 50's 25G mode lists Disabled, ReedSolomon and FireCode in `show
+  interfaces hardware` too). The driver's `CLAUDE.md` said "fire-code only
+  on 25G lanes" until then; what a far end negotiates over a lane is not
+  captured.
+- **A session pending its commit timer cannot be entered again** ("Cannot
+  enter session X, it is in pendingCommitTimer state"); a new session over
+  it starts from the running config with the pending changes in it, which
+  is how the join batch was checked on top of a split with a lane aggregate
+  and a lane mirror.
+
+Captured (scrubbed, one sanitizer run for all four so the MACs agree):
+`docs/fixtures/arista-eos-4.26.14M/split-cage54/` (every start-up and poll
+command, the cage at 4x25G), `split-cage54-lag/` (lanes 3-4 in
+`Port-Channel1541`, session 1542 lane 1 onto lane 2), `split-cage54-flexxg/`
+(the switch after the batch the controller's Flex XG aggregate push makes:
+lanes 2-4 in 1541 with RS, `Port-Channel1541` Allow All),
+`split-cage54-diverged/` (the range that stopped after lane 1). Each was
+taken in a `commit timer` session, aborted after; the deployed bridge did
+not write to the cage in any window, and the switch was left as found (the
+cage at 100G, its lanes' old sections, no session, no `Port-Channel1541`).
+
+Not shown, the cage being empty: a lane with a link, its LLDP neighbour or
+MACs, an LACP partner on a lane aggregate, negotiated FEC, traffic on a
+lane mirror, and whether the 7160 runs a lane mirror beside a session of
+the switch's own. No lane switch has been adopted (Clint's step,
+`breakout.md` §11b).

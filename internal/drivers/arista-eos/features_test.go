@@ -232,7 +232,7 @@ func loadStormCapture(t *testing.T) showStormControl {
 func TestStormControlAllTypesCapture(t *testing.T) {
 	sc := loadStormCapture(t)
 	ports := []devicemodel.Port{{Index: 2}}
-	applyStormControl(ports, sc)
+	applyStormControl(ports, sc, parseEthName)
 	s := ports[0].StormCtrl
 	if s == nil || !pctEqual(s.BroadcastPct, f64(5)) || !pctEqual(s.MulticastPct, f64(1)) || !pctEqual(s.UnknownUnicastPct, f64(2.5)) {
 		t.Fatalf("storm = %+v", s)
@@ -259,7 +259,7 @@ func TestStormControlDropsPerTypeAndLane(t *testing.T) {
 	sc.Interfaces["Ethernet54/1"] = e
 	sc.Interfaces["Ethernet54/2"] = e
 	ports := []devicemodel.Port{{Index: 2}, {Index: 54}}
-	applyStormControl(ports, sc)
+	applyStormControl(ports, sc, parseEthName)
 	if h := ports[0].Health; h.StormDropsBroadcast != 7 || h.StormDropsMulticast != 11 || h.StormDropsUnicast != 13 {
 		t.Errorf("port 2 drops = %d/%d/%d, want 7/11/13", h.StormDropsBroadcast, h.StormDropsMulticast, h.StormDropsUnicast)
 	}

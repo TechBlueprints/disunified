@@ -586,24 +586,76 @@ after:
 every id path on every bridged device (36 characters against 24, `ascii`
 against `hex`), and beyond those only differences this page already lists.
 
-Open on Network 11:
+Open on Network 11 (as of 2026-11-13; §9.1 closes the first item):
 
-- **Almost no fixture is from Network 11.** The replay replies and the
-  shapes file are from 10.6.106 and 10.6.109, and so are three of the four
-  contract informs; the fourth, a USW Aggregation's (switch firmware
-  7.5.15), was printed on the switch while the controller ran 11.0.99
-  (`docs/fixtures/controller-11.0.99/`, 2026-11-14), with the controller's
-  STP-flap alerts for that switch beside it. A new shapes
-  capture (`docs/fixtures/controller-11.0.97/shapes-usw.json`) would quiet
-  the audit; the id-key patterns in `wire-shapes.py` and `shapes_test.go`
-  know 24 hex digits, not UUIDs, and should learn both with it.
-- **No feature was exercised by hand on Network 11**: no port edit, outlet
-  switch, adoption or REST write from the bridge (naming, seeding
-  overrides) has run there. What ran is the inform loop and one unchanged
-  push per device.
+- ~~**Almost no fixture is from Network 11.**~~ Done 2026-11-15, §9.1.
+- **Few features were exercised by hand on Network 11.** Since 11.0.99
+  (2026-11-14) UI edits reached the Arista (two IP rules, each added and
+  removed) and the DX010 (its alert tests), the Arista's bridge renamed
+  port 54 in the controller on each split and join of its cage (a REST
+  write), a stub switch was adopted and forgotten, and on 11.0.97 a port of
+  the Podman bridge was renamed and named back twice through the API
+  (2026-11-13). Not run there yet: an outlet switch, a locate, a port's
+  state or VLANs changed on a hypervisor bridge.
 - The check in issue #3 for an over-long stored serial uses `mongo`, which
   the console no longer runs after the migration. It is only needed before
   it.
+
+### 9.1 Network 11 captures (2026-11-15)
+
+The console runs **11.0.99** (`stat/sysinfo`), so the captures are under
+`docs/fixtures/controller-11.0.99/`, read-only (GETs, the alert log's
+query, and the bridges' state files).
+
+- **Shapes:** `shapes-usw.json`, the site's 41 real `usw` devices (the nine
+  bridged ones left out). Against 10.6.109's: every id is a 36-character
+  UUID, byte counters pass 32 bits, the `stat.sw` block is gone, and a
+  device adopted that week brings `parent_device`, `adopt_state` and
+  `firmware_revert`. The id-key patterns in `wire-shapes.py` and
+  `shapes_test.go` know UUIDs now, and the capture leaves out the shape of
+  a credential path (Network 11 records hold the adoption login).
+- **The shape test** holds every driver's payload to both references
+  (`shapesReferences`). Every excusal still excuses something; one new
+  difference, against 11.0.99 only: the Smart-UPS's
+  `outlet_ac_power_consumption` over 1000 W is 8 characters where every
+  real device on the site now draws under 1000 W. 10.6.109's reference
+  holds a real 8-character value, so the format is a real device's, and
+  it is excused for that reference alone (`shapeExcusalsByRef`). No real
+  payload difference was found.
+- **Replay:** `replies-arista.ndjson` is the Arista bridge's own reply log
+  from the last 10.6.109 push through every setparam since the upgrade
+  (each with the reconcile after it): the upgrade's unchanged push,
+  interval-only replies, Rogue DHCP detection's status pushed `disabled`,
+  port 54 renamed and back twice, two rules added and removed.
+  `TestReplayAristaNetwork11` (`internal/informloop`) drives the driver
+  through it from an adopted start; each reply writes a reconcile's writes
+  plus its own change. No `cmd` (locate or other) reached any bridge after
+  the upgrade (the container's reply logs and the DX010's were read), so
+  there is none to replay. The DX010's pushes since the upgrade (its alert
+  tests) are in its on-switch log and not made a fixture: its replay would
+  need a SONiC capture of the same day.
+- **Alerts:** `scripts/sanitize-controller.py` scrubs the v2
+  `system-log/device-alert` answer itself now (names inside `message`,
+  composite names, ids that are names or MACs), checked over 30 days of
+  alerts (147, 18 kinds) and by `scripts/sanitize-controller_test.py`;
+  `system-log-device-alert-kinds.json` holds one alert of each kind.
+
+`scripts/wire-shapes.py audit --shapes docs/fixtures/controller-11.0.99/shapes-usw.json`
+on 2026-11-15 reports no id path. What it still reports, each known:
+
+| Difference | Devices | Why it stays |
+|---|---|---|
+| `config_network.type` 6 > 4 | five with static IP Settings | `static`; the site's real switches are all on DHCP (§2, "Also seen") |
+| `port_table[].sfp_current`, `sfp_part` longer | Arista, DX010 | 100G modules (§4's excusals) |
+| `psu_table[].part_no` / `serial_no` | Arista, DX010 | the supplies name themselves, as the ECS does (§2) |
+| `sys_stats.mem_buffer` past 32 bits | Arista, Proxmox-1, Podman | memory in bytes on hosts with gigabytes (§8) |
+| `previous_firmware_version` | Arista (`4.26.14M`), DX010 (an image name), the three Proxmox nodes (13 > 12) | the controller's record of a version the device reported earlier, kept through the migration (§9); the Arista's and the DX010's are from before §5's fix, and 10.6.109's reference holds 13 characters |
+| `outlet_table[].name`, `outlet_overrides[].name` 35 > 24 | the Back-UPS | outlet names set in the UI (it allows 128) |
+| `hostname` 32 > 17 | the PDU | §2 finding 3 |
+| `uplink.uplink_source` 15 > 13 | the three power devices | the controller's own label for how it placed the device (`legacy_only_sta`: a switch sees its MAC, no LLDP); no real `usw` here is placed that way. Not in the inform, whose `uplink` is a string |
+
+Against 10.6.109's file the same audit reports 14 to 25 per device, the id
+paths among them.
 
 ## 10. A real shape with the wrong meaning (2026-11-13)
 

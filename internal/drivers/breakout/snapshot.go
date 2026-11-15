@@ -68,6 +68,7 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		uplink.Neighbor.ManagementIP = ps.Addresses[0].IP
 	}
 
+	var drops uint64
 	for i, l := range v.Lanes {
 		p := l
 		p.Index = i + 1
@@ -95,7 +96,7 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		uplink.Up = uplink.Up || p.Up
 		uplink.Enabled = uplink.Enabled || p.Enabled
 		uplink.Counters.Add(p.Counters)
-		uplink.Health.LinkChanges += p.Health.LinkChanges
+		drops += p.Health.LinkChanges / 2 // transitions from down: half are drops
 		uplink.Health.FECCorrected += p.Health.FECCorrected
 		uplink.Health.FECUncorrected += p.Health.FECUncorrected
 		uplink.Health.HasFECCounters = uplink.Health.HasFECCounters || p.Health.HasFECCounters
@@ -106,6 +107,12 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 			Index: i, Lanes: 1, Media: devicemodel.MediaSFP28, Enabled: true,
 			STPState: "disabled", STPRole: "disabled",
 		})
+	}
+	// The cable's drops are its lanes' together; summing the lanes'
+	// transitions would count each up lane's rise.
+	uplink.Health.LinkChanges = 2 * drops
+	if uplink.Up {
+		uplink.Health.LinkChanges++
 	}
 	if uplink.Up {
 		uplink.SpeedMbps, uplink.FullDuplex = native, true

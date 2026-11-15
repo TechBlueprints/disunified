@@ -9,7 +9,7 @@ import (
 )
 
 // fixtureDot1X is the DX010 collected with the collector that reads
-// 802.1X (2026-11-15, docs/drivers/sonic.md §11.25): disunified-l2d
+// 802.1X (2026-11-15, docs/drivers/sonic.md §11.26): disunified-l2d
 // running with spanning tree on, docker present, no hostapd installed yet
 // and no port controlled.
 const fixtureDot1X = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/collect-dot1x.txt"

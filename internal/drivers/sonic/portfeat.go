@@ -98,7 +98,7 @@ type portFeat struct {
 	medPol   map[string]string
 	// dot1xAuth is each 802.1X-controlled interface's hosts disunified-l2d
 	// admitted (STATE_DB DUI_DOT1X_TABLE): l2d writes their FDB entries,
-	// and the plan keeps them (§11.25).
+	// and the plan keeps them (§11.26).
 	dot1xAuth map[string][]string
 }
 

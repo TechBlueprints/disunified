@@ -266,7 +266,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if st != nil && st.pf.medKnown {
 		caps.LLDPMED = true
 	}
-	// 802.1X: hostapd under disunified-l2d (§11.25), the ports closed
+	// 802.1X: hostapd under disunified-l2d (§11.26), the ports closed
 	// through the MAC filter's learn mode, so the collector's sections for
 	// both.
 	if st != nil && !st.stpFeature && c.L2 && st.l2.canDot1X() && st.pf.known {

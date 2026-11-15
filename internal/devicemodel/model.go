@@ -997,8 +997,8 @@ type Battery struct {
 // fault flags, FEC counters for the satisfaction score). Counters are
 // lifetime values.
 type PortHealth struct {
-	LinkChanges    uint64 // link state transitions
-	STPChanges     int    // spanning-tree topology changes seen on this port
+	LinkChanges    uint64 // link state transitions, counted from a link that started down: LinkChanges/2 is the drop count (link_down_count), so a driver whose device counts otherwise converts
+	STPChanges     int    // spanning-tree state changes seen on this port; never falls while the bridge runs (a device that restarts the count per link-up is held by its driver: arista-eos)
 	OpticRxAlarm   bool   // receive fault: the module's loss of signal (sonic), or a receive power outside its alarm thresholds (arista-eos)
 	OpticTxAlarm   bool   // transmit fault: the module's own flag (sonic), or a transmit power or laser bias outside the alarm thresholds (arista-eos)
 	HasFECCounters bool   // FECCorrected/FECUncorrected are populated

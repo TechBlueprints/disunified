@@ -168,7 +168,7 @@ section("l2_storm", "STATE_DB", "DUI_STORM_TABLE|*")
 section("l2_dhcp_rate", "STATE_DB", "DUI_DHCP_RATE_TABLE|*")
 # MAC locking's count per interface (docs/drivers/sonic.md 11.18.2).
 section("l2_maclock", "STATE_DB", "DUI_MACLOCK_TABLE|*")
-# 802.1X (11.25): each controlled interface's mode, admitted hosts and
+# 802.1X (11.26): each controlled interface's mode, admitted hosts and
 # failed attempts since boot.
 section("l2_dot1x", "STATE_DB", "DUI_DOT1X_TABLE|*")
 # orchagent's resource counters: the FDB's used and available entries.
@@ -426,7 +426,7 @@ try:
     if os.access("/usr/local/sbin/mstpd", os.X_OK) and os.access("/usr/local/sbin/mstpctl", os.X_OK):
         _l2["mstpd"] = subprocess.run(["/usr/local/sbin/mstpd", "-V"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                       timeout=5).stdout.decode().strip()
-    # hostapd for 802.1X (11.25), built on the switch as mstpd is
+    # hostapd for 802.1X (11.26), built on the switch as mstpd is
     _l2["hostapd"] = ""
     if os.access("/usr/local/sbin/hostapd", os.X_OK):
         _l2["hostapd"] = subprocess.run(["/usr/local/sbin/hostapd", "-v"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

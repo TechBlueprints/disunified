@@ -1,4 +1,4 @@
-# 802.1X by hand on the DX010 (docs/drivers/sonic.md 11.25), 2026-11-15,
+# 802.1X by hand on the DX010 (docs/drivers/sonic.md 11.26), 2026-11-15,
 # image igmp-202511.20261115-6c8eb1cf7, empty cage 31 (Ethernet120, ce30)
 # in MAC loopback, the installed disunified-l2d paused for the window, the
 # deployed bridge running. hostapd 2.11 built on the switch by

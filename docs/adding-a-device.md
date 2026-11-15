@@ -72,7 +72,8 @@ itself) -- with the guards in [`internal/drivers/CLAUDE.md`](../internal/drivers
    switch of its own by implementing `devicemodel.LaneProvider` (its lanes
    as ports, a lane-scoped apply, the attachment report); the `breakout`
    driver does the rest ([`docs/drivers/breakout.md`](drivers/breakout.md),
-   `sonic` is the reference).
+   `sonic` is the reference, `arista-eos` the second parent: its §7b shows
+   how a command API with a numbering limit maps the ranges).
 
 ### APC network cards: which surface a card offers
 
