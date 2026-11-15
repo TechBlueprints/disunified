@@ -819,6 +819,9 @@ class L2d(object):
                 continue
             self.ports[p] = None
         self.repair_strays(members, vids)
+        # A PortChannel one of whose members holds chip STP ports waits for
+        # the repair: the chip would refuse its STP ports until then.
+        waiting = {self.db.lag_of(p) for p in self.strays if p.startswith("Ethernet")}
         for p in list(self.ports):
             st = kstate(p)
             if st is None:  # left Bridge since bridge_ports() was read
@@ -826,7 +829,8 @@ class L2d(object):
                 continue
             self.count_change(p, self.ports[p], st)
             self.ports[p] = st
-            self.write_state(p, st, vids)
+            if p not in waiting:
+                self.write_state(p, st, vids)
         if time.time() >= self.settle:
             for vid in sorted(vids - self.mapped):
                 self.map_vlan(vid)

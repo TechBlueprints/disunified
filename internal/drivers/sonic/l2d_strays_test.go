@@ -20,7 +20,8 @@ const (
 // l2d writes no state for a port leaving Bridge (the write StpOrch turned
 // into a new bridge port and STP ports for Ethernet0 and Ethernet48), still
 // writes one for a link drop, and repairs the captured stray: the restart's
-// first pass is refused as the chip refused it live, the second removes
+// first pass holds PortChannel1's states back (live the chip refused them at
+// every restart), the second removes
 // Ethernet0's STP ports through StpOrch and writes PortChannel1's again,
 // the third writes nothing.
 func TestL2dLagMemberStrayStpPorts(t *testing.T) {
@@ -46,8 +47,8 @@ func TestL2dLagMemberStrayStpPorts(t *testing.T) {
 	if len(passes) < 4 {
 		t.Fatalf("expected three passes:\n%s", got)
 	}
-	if !strings.Contains(passes[0], "REFUSED PortChannel1:4094") {
-		t.Errorf("first pass: the restart's write for PortChannel1 should be refused while Ethernet0 holds the instance's STP port, as live")
+	if strings.Contains(passes[0], "REFUSED") || strings.Contains(passes[0], "SET STP_PORT_STATE_TABLE:PortChannel1:") {
+		t.Errorf("first pass: PortChannel1's states must wait while its member Ethernet0 holds the instance's STP port (the chip refused them live)")
 	}
 	two := passes[1]
 	if !strings.Contains(two, "DEL STP_PORT_STATE_TABLE:Ethernet0:4094") || !strings.Contains(two, "SET STP_PORT_STATE_TABLE:PortChannel1:4094 4") {
