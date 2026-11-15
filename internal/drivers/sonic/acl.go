@@ -128,6 +128,10 @@ type aclWant map[string]map[string]map[string]string
 // the switch's VLANs, which EnsureVLANs settles before ApplyDevice runs;
 // the ports they bind to are worked out at every apply.
 func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
+	dd := d
+	c.mu.Lock()
+	c.aclFrom = &dd // re-derived when a VLAN is deleted (vlan_prune.go)
+	c.mu.Unlock()
 	want := aclWant{}
 	var notes []string
 	note := func(format string, args ...any) { notes = append(notes, fmt.Sprintf(format, args...)) }
@@ -743,6 +747,24 @@ func (pl *plan) aclUnbind(idx int, ifaces []string, why string, replace map[stri
 // never trails its DROP. A changed rule is deleted and written again
 // (orchagent re-creates a rule from the whole hash).
 func (c *Collector) applyACL(ctx context.Context) (int, error) {
+	n, err := c.applyACLTables(ctx)
+	if err != nil {
+		return n, err
+	}
+	// The kernel mirror follows the tables as they now are (acl_cpu.go):
+	// not a setting of the controller's, so not counted.
+	c.mu.Lock()
+	st := c.state
+	c.mu.Unlock()
+	if _, err := c.applyCPU(ctx, st); err != nil {
+		return n, err
+	}
+	return n, nil
+}
+
+// applyACLTables is applyACL's chip half: the driver's ACL tables and
+// rules in CONFIG_DB.
+func (c *Collector) applyACLTables(ctx context.Context) (int, error) {
 	c.mu.Lock()
 	st, want := c.state, c.acl
 	c.mu.Unlock()

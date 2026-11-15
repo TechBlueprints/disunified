@@ -204,6 +204,8 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 	channels := c.channelCfg
 	child := map[int]bool{}
 	childLanes := map[int][]devicemodel.Port{}
+	attached := map[int]bool{} // cages with a lane switch, split or not
+	var allLanes map[int][]devicemodel.Port
 	if !inLanes {
 		for _, p := range snap.Ports {
 			if _, ok := c.children[p.Index]; ok && p.Lanes > 1 {
@@ -211,6 +213,10 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 				childLanes[p.Index] = c.lanes[p.Index]
 			}
 		}
+		for idx := range c.children {
+			attached[idx] = true
+		}
+		allLanes = c.lanes
 	}
 	c.mu.Unlock()
 
@@ -398,6 +404,16 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		hi = min(hi, laneGroupFloor-1)
 	}
 	remove, kept := staleChannels(channels, members, lo, hi)
+	if !inLanes {
+		r, k := detachedLaneChannels(snap.Ports, allLanes, attached, channels, members, note)
+		remove = append(remove, r...)
+		for n, l := range k {
+			if kept == nil {
+				kept = map[int]string{}
+			}
+			kept[n] = l
+		}
+	}
 	for _, n := range remove {
 		name := "Port-Channel" + strconv.Itoa(n)
 		pr.cmds = append(pr.cmds, "no interface "+name)

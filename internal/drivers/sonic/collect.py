@@ -210,6 +210,10 @@ def acl_counters(name):
 
 
 acl_counters("acl_counters")
+# The kernel mirror of those tables (docs/drivers/sonic.md 11.32): the hash
+# of the iptables raw rules the driver last wrote, from the marker file its
+# write leaves in /run (gone with the rules at a reboot); empty without one.
+text("acl_cpu", path="/run/disunified/acl-cpu", first_line=True)
 # IGMP snooping (the l2mcd series, docs/drivers/sonic.md 8.10): a snooping
 # VLAN's row, its unknown-multicast setting and its static groups, as the
 # CLI and the driver write them. Absent on an image without the series.

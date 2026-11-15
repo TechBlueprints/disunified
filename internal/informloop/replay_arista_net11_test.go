@@ -149,4 +149,19 @@ func TestReplayAristaNetwork11(t *testing.T) {
 	if len(ft.Unmodelled) != 0 {
 		t.Errorf("writes the fixture transport could not show: %q", ft.Unmodelled)
 	}
+	// While a rule was in, each collect read the 57 lists back from the
+	// switch as the session left them (the transport serves the lists it
+	// wrote, fixture_acl.go), with nothing missing and nothing out of place.
+	lists := 0
+	for _, r := range ft.Runs {
+		if len(r) > 1 && r[1] == "show ip access-lists summary" {
+			lists = max(lists, len(r)-2)
+		}
+	}
+	if lists != 57 {
+		t.Errorf("the ACL read-back read %d lists at most, want 57", lists)
+	}
+	if strings.Contains(drv.String(), "ACL read-back:") {
+		t.Errorf("the ACL read-back logged a problem:\n%s", drv.String())
+	}
 }

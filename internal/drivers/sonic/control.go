@@ -72,6 +72,7 @@ type plan struct {
 	pcBase   int
 	cageDown bool
 	owned    map[int]bool
+	attached map[int]bool // the device's plan: cages with a lane switch, split or not
 }
 
 // pc is the PortChannel of the plan's aggregate lag.
@@ -86,6 +87,23 @@ func (pl *plan) mine(pc string) bool {
 		return n > 0 && n < lanePCBase(1)
 	}
 	return n > pl.pcBase && n < pl.pcBase+100
+}
+
+// detachedLane: pc is in the lane range of a cage of this switch with no
+// lane switch attached (the device's plan only; breakout.md §7c). Nobody
+// else's plan reaches it, so an empty one the driver made goes (lagJoins);
+// one with members is left, noted, as every aggregate outside mine.
+func (pl *plan) detachedLane(pc string) bool {
+	n := lagID(pc)
+	if pl.laneCage != 0 || n <= lanePCBase(1) {
+		return false
+	}
+	cage := n / 100
+	if n%100 == 0 || pl.attached[cage] {
+		return false
+	}
+	_, ok := pl.ports[cage]
+	return ok
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
@@ -132,6 +150,18 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
+	if c.siteKnown && site == nil {
+		site = []int{} // the push names no VLAN but 1: known, not missing
+	}
+	if cage > 0 {
+		// A lane switch's Allow All tags what its own push lists; before
+		// its first EnsureVLANs (a held first push) that is unknown, and
+		// the device's own push says nothing about the lanes.
+		site = nil
+		if l, ok := c.laneVLANs[cage]; ok {
+			site = append([]int{}, l...)
+		}
+	}
 	lanes := c.lanes[cage]
 	down := c.cageDown[cage]
 	var attached []int
@@ -151,7 +181,9 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 		for _, p := range snap.Ports {
 			pl.ports[p.Index] = p
 		}
+		pl.attached = map[int]bool{}
 		for _, idx := range attached {
+			pl.attached[idx] = true
 			if len(st.cagePorts(idx)) > 1 {
 				pl.owned[idx] = true
 			}
@@ -501,10 +533,18 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	for _, lag := range ids {
 		wanted[pl.pc(lag)] = true
 	}
+	// A detached lane switch's (breakout.md §7c): only one the driver
+	// made (ownOrphan) and nobody is in; one with members stays, noted.
 	var pcs []string
 	for pc, m := range pl.sim.lags {
-		if len(m) == 0 && !wanted[pc] && pl.mine(pc) && (pl.emptiedHere(pc) || pl.ownOrphan(pc)) {
+		switch {
+		case len(m) == 0 && !wanted[pc] && pl.mine(pc) && (pl.emptiedHere(pc) || pl.ownOrphan(pc)):
 			pcs = append(pcs, pc)
+		case len(m) == 0 && pl.detachedLane(pc) && pl.ownOrphan(pc):
+			pcs = append(pcs, pc)
+		case len(m) > 0 && pl.detachedLane(pc):
+			names := sortIfnames(m)
+			pl.note("%s is port %d's lane switch's aggregate and no lane switch is attached to port %d: left as it is while it has members (%s); attach the lane switch again, or take the members out and the plan removes it", pc, lagID(pc)/100, lagID(pc)/100, strings.Join(names, ", "))
 		}
 	}
 	sort.Strings(pcs)
@@ -1200,6 +1240,28 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	if _, err := c.applyL3(ctx); err != nil {
 		return n, err
 	}
+	// Last, a VLAN no push names any more, now that the ports, the IGMP
+	// rows and a routed network's address have left it (vlan_prune.go).
+	// Only with ports to write: control.ports off writes no VLAN either.
+	if len(desired) > 0 {
+		pruned, err := c.pruneVLANs(ctx)
+		if err != nil {
+			return n, err
+		}
+		if pruned > 0 {
+			// The DHCP guard's rules are per VLAN on the switch (acl.go):
+			// derived again without the deleted ones.
+			c.mu.Lock()
+			d, st := c.aclFrom, c.state
+			c.mu.Unlock()
+			if d != nil && st != nil {
+				c.aclSet(*d, st)
+				if _, err := c.applyACL(ctx); err != nil {
+					return n, err
+				}
+			}
+		}
+	}
 	return n, nil
 }
 
@@ -1265,9 +1327,27 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 
 // EnsureVLANs implements devicemodel.VLANController: it creates the
 // controller's VLANs that are missing (UniFi's 1 is Vlan<native_vlan>) and
-// remembers the list for "Allow All". Never deletes. A list that contains
-// native_vlan itself is refused whole: that id is the stand-in for VLAN 1.
+// remembers the list for "Allow All" and for pruneVLANs, which deletes the
+// ones the push stops naming after the ports have left them. A list that
+// contains native_vlan itself is refused whole: that id is the stand-in
+// for VLAN 1.
 func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	return c.ensureVLANs(ctx, 0, ids)
+}
+
+// EnsureLaneVLANs implements devicemodel.LaneVLANController: an attached
+// lane switch's own list, kept apart from the device's (its push names
+// what its lanes carry), created like the device's and kept by the prune.
+func (c *Collector) EnsureLaneVLANs(ctx context.Context, cage int, ids []int) (int, error) {
+	if cage <= 0 {
+		return 0, fmt.Errorf("sonic ensure lane vlans: cage %d", cage)
+	}
+	return c.ensureVLANs(ctx, cage, ids)
+}
+
+// ensureVLANs is EnsureVLANs for the device's own push (cage 0) or a lane
+// switch's.
+func (c *Collector) ensureVLANs(ctx context.Context, cage int, ids []int) (int, error) {
 	unlock, err := c.lockApply(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("sonic ensure vlans: %w", err)
@@ -1305,7 +1385,14 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 	sort.Ints(site)
 	sort.Ints(missing)
 	c.mu.Lock()
-	c.siteVLANs = site
+	if cage == 0 {
+		c.siteVLANs, c.siteKnown = site, true
+	} else {
+		if c.laneVLANs == nil {
+			c.laneVLANs = map[int][]int{}
+		}
+		c.laneVLANs[cage] = append([]int{}, site...)
+	}
 	c.mu.Unlock()
 	if len(missing) == 0 {
 		return 0, nil

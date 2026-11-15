@@ -6,7 +6,7 @@
       "firmwareRev": "0.0",
       "model": "Toshiba 303038473730",
       "mount": "/mnt/flash",
-      "serialNum": "ea7c1412",
+      "serialNum": "SSJ00000",
       "storageSize": 4
     }
   },
@@ -40,11 +40,11 @@
   "powerSupplySlots": {
     "1": {
       "name": "PWR-500AC-F",
-      "serialNum": "GWCD75B348A"
+      "serialNum": "SSJ00000000"
     },
     "2": {
       "name": "PWR-500AC-F",
-      "serialNum": "DDQT8580CX9"
+      "serialNum": "SSJ00000000"
     }
   },
   "storageDevices": {},
@@ -324,7 +324,7 @@
       "hardwareRev": "1",
       "mfgName": "AOI",
       "modelName": "AQPLACQ4EDOA1294",
-      "serialNum": "34417D10463"
+      "serialNum": "SSJ00000000"
     },
     "5": {
       "hardwareRev": "",
@@ -336,7 +336,7 @@
       "hardwareRev": "",
       "mfgName": "Arista Networks",
       "modelName": "CAB-ZQP-4ZSP-P2M",
-      "serialNum": "ARZ21N50076"
+      "serialNum": "SSJ00000000"
     },
     "51": {
       "hardwareRev": "",
@@ -354,7 +354,7 @@
       "hardwareRev": "A",
       "mfgName": "BROCADE",
       "modelName": "58-0000044-01",
-      "serialNum": "QAMJ2220R01038F"
+      "serialNum": "SSJ000000000000"
     },
     "54": {
       "hardwareRev": "",

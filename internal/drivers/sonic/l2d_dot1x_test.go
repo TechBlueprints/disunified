@@ -17,8 +17,8 @@ const dot1xFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf
 // hostapd authorised gets a static FDB entry and a kernel RETURN, the
 // wrong password counts one failure, the switch's own looped station
 // nothing; a Credentials (auto) port is opened to every host by its first
-// (the chain RETURNs the port, learning in hardware), as a UniFi switch's
-// own firmware runs it (multi-host, docs/drivers/sonic.md §11.26.9), and a
+// (the chain RETURNs the port, learning in hardware), as a UniFi switch
+// is understood to run it (docs/drivers/sonic.md §11.26.9), and a
 // second host that authenticates is admitted too; a multi_host port admits
 // each host on its own, so a port that changes to it closes again and
 // forgets what it learnt; a restart adopts the running hostapd and keeps the

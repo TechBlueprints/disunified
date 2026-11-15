@@ -287,11 +287,13 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixtures: [`
 | **Port mirroring on the DX010 on 202511**: on the stock 202511 orchagent the SAI reports none and the session is created without binding the source port, so the driver refuses it with a note (b26fb67); **on this repo's patched image it works** -- verified live 2026-11-02, cage 5 mirrored onto cage 4 from the controller, both directions in the chip's mirror table, removal clean ([`drivers/sonic.md`](drivers/sonic.md) §11.10). Breakout, refused on 202511 until 2026-11-07 by sonic-yang (eth0's gateway-less `MGMT_INTERFACE` row), works since the row was removed (next row). A PR that closes mirroring's gap: mirroring through an ACL mirror rule, or a SAI whose capability query says yes, verified with traffic on a destination port. | [`drivers/sonic.md`](drivers/sonic.md) §11.8 |
 | **Breakout on the DX010 on 202511, every mode live** (2026-11-07, `igmp-202511.20261106-f2e25f54c`, driven by the controller's REST as the UI sends it, cage 2 empty, restored and a zero-change push after): eth0's `MGMT_INTERFACE` row removed (eth0 on DHCP, `metric 202`; hostcfgd needed a manual `interfaces-config` restart); 4x25G, **the lanes at 10G**, **2x50G** and the join, each checked in CONFIG/APPL/STATE_DB, mstpd and the STP tables (new lanes in every VLAN's instance, Ethernet0 untouched), the IGMP reserved groups (extended to new lanes, removed for gone ones), VLAN membership and the controller's port; **the `DUI_IP_ACL` rebind on a split and a join** (one IP rule scoped to the DX010: `-f` drops the parent from `ports@`, the driver rebinds with the children, `Active` throughout). Two fixes from the run, deployed (29e71ae) and verified live: a join pushed in the cycle after a split was withheld for good (the loop took the new layout for a port the controller knew nothing about); **1G on a split cage's lanes** (claimed from STATE_DB, refused by the plan before) | [`drivers/sonic.md`](drivers/sonic.md) §11.11; `replay_sonic_breakout_test.go`, `breakout_lanes_test.go` |
 | The optic's fault flags (`sfp_rxfault` / `sfp_txfault`) from xcvrd's `TRANSCEIVER_STATUS_FLAG` (the module's per-channel loss of signal and transmit fault; [`drivers/sonic.md`](drivers/sonic.md) §10.10): the healthy state | `-collect-once` against the DX010 (2026-11-14, `igmp-202511.20261114-42cccc87a`): the uplink's 100G CWDM4 read present with no fault, no fault on any other cage; `optic_fault_test.go` on that capture (`collect-optic.txt`) |
+| A VLAN the controller stops pushing is deleted ([`drivers/sonic.md`](drivers/sonic.md) §11.29): the ten site VLANs no port carried, in one `config vlan del -m` with their l2d instances; a custom tagged set adding VLAN 4010 on an empty cage and dropping it (member out, then the VLAN); quiet after | **live**, the DX010 on a test deb, 2026-11-15 (§11.29.6); `TestReplaySonicDX010VLANPrune` replays the run, `vlan_prune_test.go` the rules |
 
 ### Built, untested live — PRs welcome
 
 | Gap | What the PR needs |
 |---|---|
+| A VLAN kept because something the driver does not own holds it (a member on a port outside `control.ports`, an address it did not add, a VRF or link-local interface row, a relay, a snooping row with `options.igmp` off), a lane switch's VLANs kept, and the Inter-VLAN transit and a routed network's VLAN deleted after routing off (§11.29; `vlan_prune_test.go`, the L3 and Network 11 replays) | each case on the switch: the note logged, the VLAN still there; a routed network removed in the UI and Vlan<id> gone in the same cycle; a network deleted from the site (only the ECS's removal of Vlan4040 was seen) |
 | Syslog host changed or removed from the UI (adding one is verified live, 2026-10-27) | the host changed and then remote logging switched off from Settings -> System, the `del`/`add` logged, the entry gone from `SYSLOG_SERVER`; an operator's own entry left alone |
 | SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
 | A move whose new address does not answer (the new address and route removed again) | a move to an address the bridge cannot reach |
@@ -368,6 +370,15 @@ traps' CPU copy alone, so a dropped reply addressed to the switch still
 reaches its CPU (neither table type differs, traced 2026-11-15, §11.7.8).
 There the chip's counters are the evidence: the guard's entry counted its
 frames on the stand-in, and switched replies are dropped.
+**Since 2026-11-15 the driver drops that CPU copy in the kernel**
+(§11.32): the ECS keeps blocked traffic off its own address, because it is a
+switched host behind an internal port. Both L3 tables are mirrored into
+iptables' `raw` table for packets arriving on front-panel interfaces.
+**Verified live by hand on the DX010 2026-11-15**: an untrusted 67 -> 68
+reply and a blocked UDP port were dropped before the switch's sockets while
+the controls arrived; removal restored delivery and the raw table. MAC rules
+are not mirrored: the UI refuses the management network for them, the only
+network the ECS or the DX010 has an address on.
 
 **Which port a rogue server is behind** (§11.7.9, built 2026-11-14): one
 counted DROP per port (`IN_PORTS`) above the guard's shared DROP, in a table
@@ -389,8 +400,9 @@ on the right port only).
 | A breakout or a join with counted rules in place (fixture-tested: the lanes' rules go before the breakout, the new lanes' come once STATE_DB has them) | the split and join of an empty cage with detection on: no stalled breakout, the new lanes' rules `Active` |
 | Replacing a deployed `L3` guard with the counted one (fixture-tested) | a bridge update while detection is on: the old table, then the type, table and rules, all `Active` |
 | More than 256 guard entries (counted rules dropped per VLAN with a note; fixture-tested) | many guarded VLANs on a split switch, CRM's entry counts on the guard table |
+| The kernel mirror written by the deployed bridge from a controller push, and kept through caclmgrd's filter-table rewrite (fixture-tested; caclmgrd's behaviour read from its source, §11.32.4) | an IP rule scoped to the DX010 whose match covers the switch's address: the raw chains written by the bridge, the blocked traffic gone from the switch's sockets, an `ACL_TABLE` event (a breakout's rebind) leaving them in place, and the rule's removal clearing them |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
-| MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, but frames to the switch itself still reach its CPU through the traps' copy, as they do under any ACL drop on this SAI, the guard's included (traced 2026-11-15), and no second port had a link, §11.7.8) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
+| MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, and no second port had a link, §11.7.8. Frames to the switch itself still reach its CPU through the traps' copy, which the UI cannot make a MAC rule reach: it refuses the management network, §11.32) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
 
 ### IGMP snooping (the custom image only)
 
@@ -485,9 +497,22 @@ teardown) and replayed on those answers (`TestL2dMAB`); through the driver
 (a test deb) the push's idle timeout reaches l2d and the cage is trapped
 behind its drop.
 
+**Over an l2d restart, verified live on the DX010** (2026-11-15, §11.26.10;
+a looped empty cage, the real unit restarted, stopped and started): a host
+admitted by its MAC stays admitted with nothing removed or written again
+and no moment in which the kernel drops it, its idle timer carries on from
+its last frame (the row's `mab_seen`, written as l2d stops), one idle past
+its timeout or whose link went during a stop goes at start, a refused host
+is refused again with its count carried over; **a Credentials port opened
+by its first host** (EAP-MD5) stays open over the restart and closes on the
+logoff. The deployed l2d before the fix dropped the admitted hosts in the
+kernel for 40-100 ms at every start and restarted the idle timer; the chip
+was never disturbed. Replayed from the run (`TestL2dMABRestart`).
+
 | Gap | What the PR needs |
 |---|---|
-| An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test as §11.26.8's in a VLAN no STP instance maps |
+| An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test; for MAB a host sending ARP requests in Vlan4094 is enough (§11.26.10) |
+| A restart after a crash or SIGKILL (no `mab_seen` written) | a MAC-authenticated host's idle timer then starts at the restart, as before the fix; a kill test on a looped cage |
 | What a UniFi switch sends in a MAB request beside the user name and password | a UniFi switch with a MAC Address port (a production change) |
 | Unauthorized VLAN, RADIUS-assigned VLAN | the first reaches no push on 11.0.99; the second (`dynvlan`) is disabled in every capture; neither built |
 | Forwarding: an admitted host's frames through the chip, an unadmitted one's dropped | two linked ports (rack day) |

@@ -1012,12 +1012,11 @@ func macTableCapability(snap *devicemodel.Snapshot) map[string]any {
 // dot1xReport is a port's dot1x_mode and dot1x_status as a UniFi switch
 // reports them. Captured: "unknown"/"disabled" with 802.1X off (every
 // capture) and "force_auth"/"authorized" for a force-authorised port (the
-// site's own switches' records). The rest is read from a UniFi switch's
-// inform agent (mcad on a USW-Pro-XG-48-PoE, 2026-11-15, docs/drivers/
-// sonic.md §11.26.9), whose only mode strings are force_auth, force_unauth,
-// auto, mac_based and unknown, and whose statuses are authorized,
-// unauthorized and disabled: Multiple Credentials runs the same port-control
-// auto as Credentials, so both report "auto". A controlled port is
+// site's own switches' records). The rest is not captured (docs/drivers/
+// sonic.md §11.26.9): the mode is taken to be one of force_auth,
+// force_unauth, auto, mac_based and unknown, the status one of authorized,
+// unauthorized and disabled, and Multiple Credentials is taken to report
+// "auto" as Credentials does. A controlled port is
 // "authorized" while any host is admitted. Not captured from a controller.
 func dot1xReport(p devicemodel.Port) (mode, status string) {
 	state := func() string {

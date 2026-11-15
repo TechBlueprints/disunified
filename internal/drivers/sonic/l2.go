@@ -180,14 +180,14 @@ type l2Inst struct {
 	HostapdBuild string  `json:"hostapd_build"` // as Build, for hostapd
 	// Dot1XSecret: the RADIUS secrets file exists (dot1xSecretPath; never
 	// read); nil in a capture from before 2026-11-15.
-	Dot1XSecret *bool `json:"dot1x_secret"`
-	Service      string  `json:"service"`
-	Deadman      string  `json:"deadman"`
-	Build        string  `json:"build"` // "running", "ok", "failed: …", ""
-	Docker       bool    `json:"docker"`
-	STPState     string  `json:"stp_state"`
-	Conf         *l2Conf `json:"conf"`
-	present      bool    // the section was in the capture
+	Dot1XSecret *bool   `json:"dot1x_secret"`
+	Service     string  `json:"service"`
+	Deadman     string  `json:"deadman"`
+	Build       string  `json:"build"` // "running", "ok", "failed: …", ""
+	Docker      bool    `json:"docker"`
+	STPState    string  `json:"stp_state"`
+	Conf        *l2Conf `json:"conf"`
+	present     bool    // the section was in the capture
 }
 
 func parseL2Inst(body string) l2Inst {

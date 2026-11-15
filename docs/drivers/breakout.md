@@ -141,10 +141,12 @@ controller from them at adoption.
 parent's plan PortChannels below 100, a lane plan its cage's 100*cage+1..99.
 A lane in any other PortChannel (a lane switch's on a cage no longer
 attached, the parent's own, one made by hand) is left in it: no member
-del, no VLANs, no MTU, with a note; and an orphan outside the range is
-never deleted. So a lane switch's aggregate survives its config entry
-being removed, and the operator removes it by hand (or re-adds the entry
-and removes it from the UI).
+del, no VLANs, no MTU, with a note. So a lane switch's aggregate survives
+its config entry being removed while it has members, and the operator
+removes it by hand (or re-adds the entry and removes it from the UI). An
+empty one the driver made, in the lane range of a cage with no lane switch
+attached, is the parent's plan's to delete (§7c, since 2026-11-15); any
+other orphan outside the plan's range is never deleted.
 
 **One write at a time.** The child applies from its own loop, beside the
 parent's: `lockApply` (a one-slot semaphore that gives up with the
@@ -388,8 +390,9 @@ either side tells the other's by the id alone:
   100*cage+100` as `LAGID = n - 100*cage`; a lane in any other PortChannel
   (hand-made, or the parent's) reports `LAG` = its name, `LAGID` 0, and the
   lane plan leaves it alone with a note;
-- the parent's cage plan never touches a PortChannel with id ≥ 100
-  (`lagLeaves`, `ownOrphan`), and refuses to put a child cage into one of
+- the parent's cage plan never moves a lane in a PortChannel with id ≥ 100
+  (`lagLeaves`), deletes one only when it is empty, the driver's own and in
+  the range of a cage with no lane switch attached (§7c), and refuses to put a child cage into one of
   its own aggregates (a cage that is a lane switch cannot also be a member
   of the parent's LAG: note, not written).
 
@@ -617,8 +620,9 @@ spec of 2026-11-02 (kept below, marked):
   `no monitor session` for each lane session the lanes report and `no
   channel-group` on each lane in a lane group ahead of the speed, in the
   same batch, and the cage's lanes are dropped from the view until the next
-  collect. The empty Port-Channel interface is left behind (the device's
-  own aggregate path does not delete one either).
+  collect. The emptied Port-Channels go in the same batch, after their
+  members (`no interface Port-Channel<n>`: EOS keeps an emptied one;
+  since 2026-11-15, df0f3bd).
 - **The lane plan** is `plan()` with `planScope{cage}` over the cage's
   lanes: state, name, VLANs (a lane in an aggregate takes them from the
   Port-Channel's, `Port-Channel<laneBase+lag>`, as the device's own),
@@ -628,7 +632,8 @@ spec of 2026-11-02 (kept below, marked):
   A lane in a channel group the scope does not own (another cage's range,
   the device's own, one by hand) is left in it, aggregate and VLANs, with
   a note; so is a cage in a lane group with no child attached (a lane
-  switch's group outlives its config entry). After a batch the lanes and
+  switch's group outlives its config entry while it has members; an empty
+  one goes, §7c). After a batch the lanes and
   the Port-Channels written are marked, so a second apply before the next
   collect writes nothing.
 - **One write at a time**: `lockApply` (a one-slot semaphore that gives up
@@ -697,6 +702,74 @@ to 4x25G (`Ethernet50/1..4`), so every lane test runs on real data.
   *(as built: BPDU guard and STP edge kept, above)*.
 - `LocalChassisID()` from `show lldp local-info`; `LaneAlias` `""`;
   `applyMu` across every write, as for SONiC.
+
+## 7c. A detached lane switch's aggregates (both parents, 2026-11-15)
+
+A lane switch is *detached* when its config entry is removed and the bridge
+restarts: `main` attaches only the entries it reads (`AttachLaneSwitch`
+before the parent's loop starts), and nothing else detaches one. What it
+leaves on the cage's lane range (`Port-Channel<1000+10*cage+1..9>` on EOS,
+`PortChannel<100*cage+1..99>` on sonic) was nobody's: the parent's plan
+owned only its own range, and the lane plan runs only while a lane switch is
+attached. An aggregate with members stayed, noted, which is right; an empty
+one stayed for good, which was not (the case: the lane switch's members
+taken out by hand, a lane batch that failed half-way, SONiC's forced
+breakout dropping a member silently, or EOS keeping the interface when its
+last member leaves).
+
+**The rule.** The contract stands: a parent never touches a PortChannel
+outside its own range while a child is attached, and an attached cage's
+lanes are the child's. For a cage with **no lane switch attached** (split or
+joined), the parent's own plan takes the cage's lane range for one thing,
+removal:
+
+- **empty and the driver's own** -- removed, as an orphan of the plan's own
+  range is: on EOS a Port-Channel carrying only the driver's lines (its
+  VLANs, its own ACL: `driverChannelLine`); on sonic one with the LACP
+  settings only the driver's `config portchannel add` writes (`ownOrphan`),
+  its VLANs stripped and ACL tables unbound first, as `lagJoins` does for
+  its own. It changes no port, so the first-push hold does not wait on it;
+- **with members** -- left as it is, with a note naming them ("... no lane
+  switch is attached to port N: left as it is while it has members ...").
+  It still bundles lanes, maybe toward an LACP partner; the controller's
+  push for the cage says nothing about lane aggregates, so the parent has
+  no intent to replace it with; and a lane switch attached again takes it
+  back as it was. The operator takes the members out (or re-attaches and
+  removes the aggregate from the UI), and the next plan removes it;
+- **with a line the driver never writes** (EOS: a description, an MTU,
+  another ACL; sonic: SONiC's default LACP settings) -- left as made by
+  hand, noted, as anywhere.
+
+Why the parent: an empty PortChannel has no traffic and no intent behind
+it, and it is in a range only the driver's lane switches write, so
+removing it loses nothing, and no other plan ever would. While a lane switch is attached the
+range stays the child's even with the cage joined (a join made by the
+parent's plan dissolves the child's aggregates itself).
+
+Membership is read from every lane, not the fold: the fold carries one
+channel group per cage, and a split cage's lanes can be in two
+(`detachedLaneChannels`, `internal/drivers/arista-eos/portchannel.go`;
+sonic reads `PORTCHANNEL_MEMBER`, `pl.sim.lags`, `detachedLane` in
+`control.go`).
+
+**Tests.** Arista, on captures of the empty test cage (2026-11-15, one
+sanitizer run; `docs/fixtures/arista-eos-4.26.14M/lane-po-*`): the cage split
+to 4x25G with lanes 3-4 put in `Port-Channel1541` and taken out again
+(`lane-po-empty/`: the Port-Channel left with the lanes' inherited
+`switchport mode trunk`; its `show-running-config-handmade.json` the same
+with a description), after `no interface Port-Channel1541`
+(`lane-po-removed/`), and the cage joined back with an empty
+`Port-Channel1541` (`lane-po-joined/`). Each state was made with plain
+`configure` under a hold session, aborted after; the switch was left as
+found (running and startup unchanged, the deployed bridge wrote nothing in
+the window). `lanes_detached_test.go`: the removal from a split and from a
+joined cage, once, read back as the capture after it; an attached lane
+switch keeps its range (its own lane plan removes the Port-Channel); a
+hand-made one and one with members stay, noted. Sonic, on the DX010's split
+capture: a lane switch makes `PortChannel201`, is detached, the members
+are taken out by hand (`config portchannel member del`, the fixture
+runner's model of it), and the device's plan removes it once
+(`lanes_test.go`).
 
 ## 8. Loop, main, config, presentation
 

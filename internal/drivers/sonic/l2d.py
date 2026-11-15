@@ -2119,8 +2119,8 @@ class Dot1xGuard(object):
     - AP-STA-CONNECTED <mac>: the host is admitted -- a static FDB entry in
       every VLAN the port carries (APPL_DB FDB_TABLE, as the MAC filter
       writes its allowed MACs) and a RETURN for the source in the kernel
-      chain DUI_DOT1X. The controller's modes, as a UniFi switch's own
-      firmware runs them (sonic.md 11.26.9): auto ("Credentials") is
+      chain DUI_DOT1X. The controller's modes, as a UniFi switch is
+      understood to run them (sonic.md 11.26.9): auto ("Credentials") is
       port-based -- once one host has authenticated, the port is open to
       every host (the chain RETURNs the whole port and its learning is
       hardware in APPL_DB), until the last one logs off or the link drops,
@@ -2162,11 +2162,16 @@ class Dot1xGuard(object):
         # still authorises them (attach), or the port is gone.
         self.stale = {}
         self.stale_mab = {}  # of those, the ones admitted by their MAC address
+        # (interface, mac) -> when an l2d before this one last saw that
+        # MAC-authenticated host (the row's mab_seen, written as it stopped),
+        # so its idle timer carries on from there.
+        self.stale_seen = {}
         # MAC authentication (mac_based ports, 11.26.8)
         self.idle = {}  # interface -> idle timeout (s) of a MAC-authenticated host; 0 = none
         self.mab = {}  # interface -> MACs admitted by their MAC address
         self.mab_socks = {}  # interface -> packet socket reading its trapped frames
         self.learn = {}  # interface -> the learn mode this daemon set in APPL_DB (cpu_trap, or hardware for an open auto port)
+        self.learn_adopted = False  # an earlier l2d's learn modes taken over (the first sync)
         self.auth_ports, self.mab_ports = set(), set()
         self.flusher = None
         self.seen = {}  # (interface, mac) -> last frame seen from a MAC-authenticated host
@@ -2190,6 +2195,14 @@ class Dot1xGuard(object):
                 mab = set(splitlist(row.get("mab", ""))) & macs
                 if mab:
                     self.stale_mab[port] = mab
+            for item in splitlist(row.get("mab_seen", "")):
+                mac, _, t = item.partition("=")
+                try:
+                    self.stale_seen[(port, mac)] = float(t)
+                except ValueError:
+                    pass
+            if "mab_seen" in row:
+                self.st.hdel(port, "mab_seen")  # read once: a later crash must not find it stale
 
     # --- configuration -----------------------------------------------------
 
@@ -2272,12 +2285,32 @@ class Dot1xGuard(object):
         for port in sorted(set(self.admitted) - set(want)):
             self.revoke_all(port, "no longer controlled")
         self.want = want
-        for port in sorted(set(self.stale) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
+        # A restart: the learn modes an earlier l2d set on the ports it
+        # controlled (CONFIG_DB holds them at drop) are this daemon's to keep
+        # or undo -- judged once the ports' modes are known, so a port that
+        # stays as it was gets no write.
+        if not self.learn_adopted:
+            self.learn_adopted = True
+            for p in sorted(want):
+                have = self.db.hgetall(self.db.appl, "PORT_TABLE:" + p).get("learn_mode")
+                if p not in self.learn and have in (LEARN_TRAP, LEARN_HARDWARE) and self.configured_mode(p) == "drop":
+                    self.learn[p] = have
+        auth = sorted(p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers)
+        for port in sorted(set(self.stale) - set(auth)):
             self.drop_stale(port, set())
+        # An earlier l2d's admissions (a restart) are settled before this
+        # daemon first writes the chain, so that write already holds the
+        # hosts kept and none it drops: a port without link loses them, a
+        # MAC-authenticated host is kept with its idle time; the 802.1X
+        # hosts wait for the port's hostapd (attach).
+        for port in auth:
+            if not self.carrier(port) and self.stale.get(port):
+                self.drop_stale(port, set(), "link down")
+            self.adopt_mab(port)
+        self.learn_sync(close_only=True)  # what they held open in the chip closes first
         # The chain before any authenticator runs: nothing is admitted
         # through the kernel that the chip would not admit either.
         self.write_chain(self.rules())
-        auth = sorted(p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers)
         self.copp(bool(auth))
         for port in auth:
             if not self.carrier(port) and self.admitted.get(port):
@@ -2309,9 +2342,16 @@ class Dot1xGuard(object):
                 continue
             if p in self.mab_ports:
                 out[p] = LEARN_TRAP
-            elif self.want.get(p) == "auto" and self.admitted.get(p):
+            elif self.want.get(p) == "auto" and self.holders(p):
                 out[p] = LEARN_HARDWARE
         return out
+
+    def holders(self, port):
+        """The hosts admitted on the port, with an earlier l2d's admissions
+        not settled yet (stale): over a restart they keep what they had --
+        their RETURN, an open Credentials port -- until the port's hostapd
+        (attach) or its idle timer says otherwise."""
+        return self.admitted.get(port, set()) | self.stale.get(port, set())
 
     def learn_sync(self, close_only=False):
         want = self.learn_wanted()
@@ -2336,7 +2376,7 @@ class Dot1xGuard(object):
                     log("802.1X: %s authenticates by MAC address (unknown sources trapped to the CPU)" % p)
                 else:
                     log("802.1X: %s open to every host (Credentials: %s authenticated)" %
-                        (p, ",".join(sorted(self.admitted.get(p, ())))))
+                        (p, ",".join(sorted(self.holders(p)))))
 
     def flush(self, port):
         """The port's dynamic FDB entries, through fdborch's flush request
@@ -2614,33 +2654,74 @@ class Dot1xGuard(object):
         # Who hostapd already authorised (an authenticator adopted after a
         # restart of this daemon): admitted again.
         have = set()
+        up = self.carrier(port)
         reply = self.ctrl(port, "STA-FIRST")
         while reply and reply != "FAIL\n" and len(have) < 4096:
             mac = reply.split("\n", 1)[0].strip().lower()
             if not mac or mac in have:
                 break
             have.add(mac)
-            if "[AUTHORIZED]" in reply:
-                self.admit(port, mac)
+            if "[AUTHORIZED]" in reply and mac != self.own:
+                if up:
+                    self.admit(port, mac)
+                else:  # the link went while no l2d watched: as a running one does
+                    self.ctrl(port, "DEAUTHENTICATE " + mac)
             reply = self.ctrl(port, "STA-NEXT " + mac)
-        # An earlier l2d's MAC-authenticated hosts are not hostapd's: they
-        # stay admitted while the port still authenticates by MAC (their
-        # idle time starts again).
-        for mac in sorted(self.stale_mab.pop(port, set()) & self.stale.get(port, set())):
-            if self.want.get(port) == "mac_based":
-                self.admit(port, mac, "by its MAC address, kept over a restart")
-                self.mab.setdefault(port, set()).add(mac)
-                self.seen[(port, mac)] = time.time()
+        self.adopt_mab(port)
         self.drop_stale(port, self.admitted.get(port, set()))
 
-    def drop_stale(self, port, keep):
+    def adopt_mab(self, port):
+        """An earlier l2d's MAC-authenticated hosts on the port (they are not
+        hostapd's): kept while the port still authenticates by MAC and has
+        its link, each with the idle time it had when that l2d stopped; one
+        idle for longer than the port's timeout goes. Every host is decided
+        before any is admitted, so no chain write holds one that goes."""
+        macs = self.stale_mab.pop(port, set()) & self.stale.get(port, set())
+        if not macs:
+            return
+        now = time.time()
+        t = self.idle.get(port, 0)
+        if self.want.get(port) != "mac_based" or port not in self.mab_ports or not self.carrier(port):
+            for mac in macs:
+                self.stale_seen.pop((port, mac), None)
+            return  # left to drop_stale (a link down, or hostapd's list)
+        keep, gone = {}, []
+        for mac in sorted(macs):
+            seen = self.stale_seen.pop((port, mac), now)
+            if t > 0 and now - seen > t:
+                gone.append(mac)
+            else:
+                keep[mac] = min(seen, now)
+        for mac in gone:
+            self.stale[port].discard(mac)
+            self.drop_stale_mac(port, mac, "idle for %ds, over a restart" % t)
+        if gone and self.written is not None:
+            self.write_chain(self.rules())
+        for mac, seen in sorted(keep.items()):
+            self.admit(port, mac, "by its MAC address, kept over a restart")
+            self.stale[port].discard(mac)
+            self.mab.setdefault(port, set()).add(mac)
+            self.seen[(port, mac)] = seen
+        if not self.stale.get(port):
+            self.stale.pop(port, None)
+
+    def drop_stale(self, port, keep, why="not authorised after a restart"):
         """An earlier l2d's admissions on the port that hostapd no longer
-        authorises: their FDB entries go."""
-        for mac in sorted(self.stale.pop(port, set()) - keep):
-            for key in self.fdb_keys(port, mac):
-                self.fdb_pst._del(key)
-            log("802.1X: %s no longer authorised on %s (not authorised after a restart)" % (mac, port))
-            self.dirty.add(port)
+        authorises: their FDB entries go, then what they held open (the
+        chain's RETURN, a Credentials port's learning)."""
+        gone = sorted(self.stale.pop(port, set()) - keep)
+        for mac in gone:
+            self.drop_stale_mac(port, mac, why)
+        if gone and self.written is not None:  # before the first write, that write follows
+            self.learn_sync(close_only=True)
+            self.write_chain(self.rules())
+
+    def drop_stale_mac(self, port, mac, why):
+        for key in self.fdb_keys(port, mac):
+            self.fdb_pst._del(key)
+        self.stale_seen.pop((port, mac), None)
+        log("802.1X: %s no longer authorised on %s (%s)" % (mac, port, why))
+        self.dirty.add(port)
 
     def detach(self, port):
         s = self.socks.pop(port, None)
@@ -2662,7 +2743,9 @@ class Dot1xGuard(object):
         keys = self.fdb.setdefault(port, set())
         for key in self.fdb_keys(port, mac):
             if key not in keys:
-                put(self.fdb_pst, key, [("port", port), ("type", "static")])
+                # one an earlier l2d wrote stays as it is (a restart rewrites nothing)
+                if self.db.hgetall(self.db.appl, "FDB_TABLE:" + key) != {"port": port, "type": "static"}:
+                    put(self.fdb_pst, key, [("port", port), ("type", "static")])
                 keys.add(key)
         self.write_chain(self.rules())
         self.dirty.add(port)
@@ -2700,10 +2783,10 @@ class Dot1xGuard(object):
         out = []
         for port in sorted(self.want):
             out += eapol_rules(port)
-            if self.want[port] == "auto" and port in self.auth_ports and self.admitted.get(port):
+            if self.want[port] == "auto" and port in self.auth_ports and self.holders(port):
                 out.append(["-i", port, "-j", "RETURN"])  # opened by a host: every host passes
                 continue
-            for mac in sorted(self.admitted.get(port, ())):
+            for mac in sorted(self.holders(port)):
                 out.append(["-i", port, "-s", mac, "-j", "RETURN"])
             out.append(["-i", port, "-j", "DROP"])
         return out
@@ -2802,6 +2885,16 @@ class Dot1xGuard(object):
             log("802.1X: %s failed to authenticate on %s (%d on this port since boot)" %
                 (mac, port, self.failures[port]), syslog.LOG_WARNING)
 
+    def stopping(self):
+        """This daemon is stopping (a restart): each MAC-authenticated host's
+        last frame goes into its port's row (mab_seen), so the next l2d's
+        idle timer carries on from it; hostapd, the chain and the FDB
+        entries stay for that l2d to adopt."""
+        for port in sorted(self.mab):
+            macs = sorted(m for m in self.mab[port] if (port, m) in self.seen)
+            if macs:
+                put(self.st, port, [("mab_seen", ",".join("%s=%.1f" % (m, self.seen[(port, m)]) for m in macs))])
+
     def teardown(self):
         """Every authenticator stopped, every admission removed, the chain and
         the trap gone; the ports stay closed (CONFIG_DB keeps learn_mode drop).
@@ -2874,4 +2967,8 @@ if __name__ == "__main__":
     elif sys.argv[1:] == ["--deadman"]:
         deadman()
     else:
-        L2d().main()
+        d = L2d()
+        try:
+            d.main()  # SIGTERM ends it with SystemExit
+        finally:
+            d.dot1x.stopping()

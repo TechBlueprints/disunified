@@ -61,7 +61,17 @@ type Collector struct {
 	// siteVLANs are the controller's VLANs in SONiC ids (native_vlan
 	// excluded), from the last EnsureVLANs: what "Allow All" tags.
 	siteVLANs []int
-	warned    map[string]bool
+	// siteKnown: an EnsureVLANs of this run has set siteVLANs from a push,
+	// the condition for deleting a VLAN the push no longer names
+	// (pruneVLANs). laneVLANs are an attached lane switch's own list per
+	// cage (EnsureLaneVLANs), kept by the prune and tagged by its lanes'
+	// Allow All.
+	siteKnown bool
+	laneVLANs map[int][]int
+	// aclFrom is the device intent the ACL rules were last derived from
+	// (aclSet): the DHCP guard's rules follow the VLANs on the switch.
+	aclFrom *devicemodel.DeviceDesired
+	warned  map[string]bool
 	// krSeen is the snapshot state the kernel default route was last
 	// checked against, krMisses how many collects in a row found it missing
 	// while FRR reports it installed (kroute.go).

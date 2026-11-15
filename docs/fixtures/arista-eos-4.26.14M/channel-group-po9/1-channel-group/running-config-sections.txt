@@ -1,0 +1,6 @@
+interface Port-Channel9
+   switchport mode trunk
+interface Ethernet2
+   speed auto
+   switchport mode trunk
+   channel-group 9 mode active

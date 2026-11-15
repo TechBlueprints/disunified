@@ -27,7 +27,7 @@ case "$cmd" in
     tag=$1; only=${2:-}
     cases="igmp-valid igmp-valid-aux igmp-65535-sources igmp-65535-groups igmp-truncated-record
            igmp-aux-claimed igmp-type-0 igmp-type-200 igmp-totlen-beyond-packet igmp-totlen-forwarded
-           igmp-ihl-beyond-totlen igmp-short-message igmp-v3-query-sources igmp-v1-query-group port-list-repeated mld-valid mld-65535-sources
+           igmp-ihl-beyond-totlen igmp-short-message igmp-v3-query-sources igmp-v1-query-group port-list-repeated port-list-breakout port-delete mld-valid mld-65535-sources
            mld-65535-groups mld-zero-sources-with-aux mld-type-0 mld-type-200 mld-no-hbh
            mld-hbh-oversized mld-payload-beyond-packet mld-v2-query-sources
            query-src-addr-before query-src-addr-after query-src-bare-vid"

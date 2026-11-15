@@ -310,8 +310,8 @@ func TestLastPayloadKeepsTheSentAnomalies(t *testing.T) {
 }
 
 // dot1x_mode and dot1x_status per mode: the captured off and
-// force-authorised values, the rest in a UniFi switch's own inform agent's
-// words (docs/drivers/sonic.md §11.26.9).
+// force-authorised values, the rest as docs/drivers/sonic.md §11.26.9
+// gives them (not captured).
 func TestDot1XReport(t *testing.T) {
 	host := []string{"02:00:00:00:00:03"}
 	for _, tc := range []struct {

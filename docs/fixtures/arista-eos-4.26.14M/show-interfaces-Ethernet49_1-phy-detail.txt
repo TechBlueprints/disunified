@@ -6,7 +6,7 @@ Current System Time: Sat Sep 19 20:47:43 2026
   Interface state             up                     18           10:32:09 ago
   HW resets                                           0                  never
   Transceiver                 100GBASE-CWDM4          2   67 days, 4:51:43 ago
-  Transceiver SN              34417D10463     
+  Transceiver SN              SSJ00000000     
   Oper speed                  100Gbps                                         
   Interrupt Count                                    23                       
   Transceiver Reset Count                             0                  never
