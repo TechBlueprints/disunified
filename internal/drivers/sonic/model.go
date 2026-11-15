@@ -228,6 +228,7 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 	}
 	stormPorts(out, db)
 	laneDetail(out, db)
+	opticFaults(out, db)
 	return out
 }
 

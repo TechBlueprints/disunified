@@ -150,6 +150,8 @@ section("counters", "COUNTERS_DB", "COUNTERS:oid:0x10*")
 section("rates", "COUNTERS_DB", "RATES:oid:0x10*")
 section("xcvr", "STATE_DB", "TRANSCEIVER_INFO|*")
 section("dom", "STATE_DB", "TRANSCEIVER_DOM_SENSOR|*")
+# Each module's loss-of-signal and transmit-fault flags (optic_fault.go).
+section("xcvr_flag", "STATE_DB", "TRANSCEIVER_STATUS_FLAG|*")
 section("fan", "STATE_DB", "FAN_INFO|*")
 section("psu", "STATE_DB", "PSU_INFO|*")
 section("temp", "STATE_DB", "TEMPERATURE_INFO|*")
