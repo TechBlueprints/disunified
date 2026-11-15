@@ -1039,3 +1039,11 @@ was restarted.
   takes the old ports out of the tables as `-f` does. The FixtureRunner
   models both (`HeldLAGs`, the breakout's leafref check). Fixture:
   `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
+- **Hand tests on a switch that several sessions share take a lock on the
+  switch**: write `/tmp/dui-dx010.lock` with your session's name and what
+  you are doing, wait while another session holds it, remove it when done.
+  It covers anything the deployed bridge or another session's test would
+  see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
+  row, an l2d run by hand. Read-only commands need no lock. (The
+  convention lived only in session briefs until 2026-11-15; one session
+  used a different file name.)
