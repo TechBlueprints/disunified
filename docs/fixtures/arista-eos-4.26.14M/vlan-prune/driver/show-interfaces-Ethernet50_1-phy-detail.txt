@@ -1,0 +1,43 @@
+Ethernet50/1
+                              Current State     Changes            Last Change
+                              -------------     -------            -----------
+Current System Time: Sun Nov 15 15:25:53 2026
+  PHY state                   linkDown                3    8 days, 2:38:56 ago
+  Interface state             down                    1    8 days, 2:38:57 ago
+  HW resets                                           0                  never
+  Transceiver                 100GBASE-CR4            2    8 days, 2:40:02 ago
+  Transceiver SN              SSJ00000000     
+  Oper speed                  25Gbps                                          
+  Interrupt Count                                     1                       
+  Transceiver Reset Count                             0                  never
+  Transceiver Interrupt Count                         0                  never
+  Transceiver Smbus Failures                          0                  never
+  Diags mode                  normalOperation
+  Model                       xp80 (A2)
+  Loopback                    none
+  Xcvr EEPROM read timeout                            0                  never
+  Spurious xcvr detection                             0                  never
+  DOM control/status fail                             0                       
+  Presence indication         xcvrPresent             2    8 days, 2:40:09 ago
+  Bad EEPROM checksums                                0                  never
+  RX_LOS since system boot    False                   0                  never
+  RX_LOS since insertion                              0                       
+  TX_FAULT since system boot  False                   0                  never
+  TX_FAULT since insertion                            0                       
+  PCS RX link status          down                    0                  never
+  PCS block lock              no block lock           0                  never
+  PCS high BER                ok                      0                  never
+  PCS err blocks              0                                          never
+  PCS BER                     0                       0                  never
+  PCS BIP Errors              0                       0                  never
+  Forward Error Correction    Fire-Code
+  FEC corrected blocks
+    Lane 0                    0                       0                  never
+  FEC uncorrected blocks
+    Lane 0                    0                       0                  never
+  Signal Lock                 not locked              0                  never
+  Electrical Idle             idle                    1    8 days, 2:38:56 ago
+INTF   PCSLK RF LF BLKLK AMLK  LNKST LNKCH LNINT LKOVR
+Et50/1 N     N  Y  00000 00000 0xff0 0x0   0xff  0x0  
+LANE   REV  RATE SIGOK EI ATT POST PRE DC  LF HF BW GAIN STATE STATUS EYE TAPS
+0      2364 25   0     1  0   0    4   56  12 0  13 0    0x1   0x80   0   0.0 0 0 0 0 0 0 0 0 0 0 0 0 

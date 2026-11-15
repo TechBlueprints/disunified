@@ -1,0 +1,81 @@
+{
+  "spanningTreeInstances": {
+    "MST0": {
+      "bridge": {
+        "forwardDelay": 15,
+        "helloTime": 2.0,
+        "macAddress": "02:00:00:00:00:03",
+        "maxAge": 20,
+        "priority": 32768,
+        "systemIdExtension": 0
+      },
+      "interfaces": {
+        "Ethernet49/1": {
+          "boundaryType": "none",
+          "cost": 200,
+          "inconsistentFeatures": {
+            "bridgeAssurance": false,
+            "loopGuard": false,
+            "mstPvstBorder": false,
+            "rootGuard": false
+          },
+          "isEdgePort": false,
+          "linkType": "p2p",
+          "portNumber": 197,
+          "priority": 128,
+          "role": "root",
+          "state": "forwarding"
+        },
+        "Ethernet53/1": {
+          "boundaryType": "none",
+          "cost": 200,
+          "inconsistentFeatures": {
+            "bridgeAssurance": false,
+            "loopGuard": false,
+            "mstPvstBorder": false,
+            "rootGuard": false
+          },
+          "isEdgePort": true,
+          "linkType": "p2p",
+          "portNumber": 213,
+          "priority": 128,
+          "role": "designated",
+          "state": "forwarding"
+        },
+        "Port-Channel1": {
+          "boundaryType": "none",
+          "cost": 99,
+          "inconsistentFeatures": {
+            "bridgeAssurance": false,
+            "loopGuard": false,
+            "mstPvstBorder": false,
+            "rootGuard": false
+          },
+          "isEdgePort": false,
+          "linkType": "p2p",
+          "portNumber": 100,
+          "priority": 128,
+          "role": "designated",
+          "state": "forwarding"
+        }
+      },
+      "protocol": "rstp",
+      "rootBridge": {
+        "forwardDelay": 15,
+        "helloTime": 2.0,
+        "macAddress": "02:00:00:00:00:8d",
+        "maxAge": 20,
+        "priority": 8192,
+        "systemIdExtension": 0
+      },
+      "rootPort": {
+        "cost": {
+          "externalCost": 200,
+          "internalCost": 0
+        },
+        "interface": "Ethernet49/1",
+        "portNumber": 197
+      }
+    }
+  }
+}

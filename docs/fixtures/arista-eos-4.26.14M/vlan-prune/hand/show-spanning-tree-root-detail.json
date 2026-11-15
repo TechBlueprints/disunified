@@ -1,0 +1,22 @@
+{
+  "instances": {
+    "MST0": {
+      "rootBridge": {
+        "forwardDelay": 15,
+        "helloTime": 2.0,
+        "macAddress": "02:00:00:00:00:8d",
+        "maxAge": 20,
+        "priority": 8192,
+        "systemIdExtension": 0
+      },
+      "rootPort": {
+        "cost": {
+          "externalCost": 200,
+          "internalCost": 0
+        },
+        "interface": "Ethernet49/1",
+        "portNumber": 197
+      }
+    }
+  }
+}
