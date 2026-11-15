@@ -783,7 +783,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   link changes (a Backup port is discarding up or down) and read 1 on a
   never-up port; the controller's STP-flap alert is a rate of
   `stp_state_change_count`, so the driver reads l2d's count (2 per drop)
-  and falls back to mstpd's for an older l2d. Facts that cost time:
+  and falls back to mstpd's for an older l2d. Deployed 2026-11-15 (812503a):
+  a cage flapped every ~6.5 s raised the DX010's own STP-flap alert, and a
+  BPDU-guarded looped cage its BPDU-guard alert (§11.23.4). Facts that cost time:
   - **A looped cage with BPDU guard is shut by mstpd within a second**
     ("Received BPDU on BPDU Guarded Port"), but only the netdev: APPL_DB
     `oper_status` stays up while the loopback is on, so the port reports

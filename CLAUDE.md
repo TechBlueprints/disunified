@@ -405,10 +405,10 @@ these is marked "not captured".
   `COUNT` is that inform's count. **BPDU guard and loop protection alert
   from `port_table[].error_disabled: true` with `error_disabled_reason`**
   (2 BPDU guard, 1 loop protection), not from `anomalies`: seen on a stub
-  port; a held DX010 port raised nothing without them, and 512 alone raised
-  nothing. On SONiC the STP count is l2d's own count of kernel state
-  changes since that day: mstpd's counters never move for a looped
-  (Backup) port.
+  port, then from the DX010's own driver after the deploy (812503a); a held
+  port raised nothing without them, and 512 alone raised nothing. On SONiC the STP count is l2d's own count of kernel state
+  changes since that day (deployed; the DX010's own STP-flap alert seen):
+  mstpd's counters never move for a looped (Backup) port.
   **Only loop protection and BPDU guard take a port down** in UniFi's model
   (the UI's own text, 2026-11-14): every other bit is a detection the port
   keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's

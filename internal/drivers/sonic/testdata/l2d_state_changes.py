@@ -101,7 +101,7 @@ print("RESTART %s" % published[port].get("state_changes"))
 # A port that never changed state publishes 0 (mstpd's own count reads 1 for
 # a port that never came up).
 q = fresh()
-q.ports["Ethernet68"] = 0
+q.ports["Ethernet124"] = 0
 published.clear()
 q.publish()
-print("NEVER %s" % published["Ethernet68"].get("state_changes"))
+print("NEVER %s" % published["Ethernet124"].get("state_changes"))

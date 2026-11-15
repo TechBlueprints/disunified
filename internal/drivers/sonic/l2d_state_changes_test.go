@@ -19,6 +19,14 @@ import (
 // counters (num_transition_fwd/blk) did not move once in the whole run.
 const l2dLinkFlapJournal = "../../../docs/fixtures/sonic-igmp-202511.20261114-42cccc87a/l2d-linkflap-20261115.txt"
 
+// l2dSTPFlapJournal is the same daemon on the deployed build (812503a)
+// while cage 18 was flapped every ~6.5 s: the run that raised the DX010's
+// own STP-flap alert (§11.23.4). STATE_DB read 33 at its end against the 32
+// changes its log shows: one change the 2 s poll caught between two logged
+// events (two consecutive lines with the same "from" state), which the
+// replay cannot see.
+const l2dSTPFlapJournal = "../../../docs/fixtures/sonic-igmp-202511.20261114-42cccc87a/l2d-stpflap-20261115.txt"
+
 // l2d counts every change of a port's kernel state, which is what a UniFi
 // switch's stp_state_change_count counts (2 per drop on the real switch's
 // flapping ports, docs/fixtures/controller-11.0.99/; 0 on a port never up):
@@ -30,7 +38,16 @@ func TestL2dCountsStateChanges(t *testing.T) {
 	if err != nil {
 		t.Skip("python3 not found")
 	}
-	f, err := os.Open(l2dLinkFlapJournal)
+	for _, c := range []struct {
+		journal, port string
+		cycles        int
+	}{{l2dLinkFlapJournal, "Ethernet64", 30}, {l2dSTPFlapJournal, "Ethernet68", 15}} {
+		t.Run(filepath.Base(c.journal), func(t *testing.T) { checkStateChanges(t, py, c.journal, c.port, c.cycles) })
+	}
+}
+
+func checkStateChanges(t *testing.T, py, journal, port string, cycles int) {
+	f, err := os.Open(journal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +77,10 @@ func TestL2dCountsStateChanges(t *testing.T) {
 			t.Errorf("journal holds %s -> %s: the looped cage was expected to go only disabled <-> blocking", m[2], m[3])
 		}
 	}
-	if ups < 30 || downs < 30 {
+	if ups < cycles || downs < cycles {
 		t.Fatalf("journal: %d link-ups, %d drops; the capture is the whole run", ups, downs)
 	}
-	out, err := exec.Command(py, "-I", filepath.Join("testdata", "l2d_state_changes.py"), "l2d.py", l2dLinkFlapJournal).CombinedOutput()
+	out, err := exec.Command(py, "-I", filepath.Join("testdata", "l2d_state_changes.py"), "l2d.py", journal).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -75,7 +92,7 @@ func TestL2dCountsStateChanges(t *testing.T) {
 		}
 		got[k] = v
 	}
-	if want := "Ethernet64 " + strconv.Itoa(changes); got["PUBLISH"] != want {
+	if want := port + " " + strconv.Itoa(changes); got["PUBLISH"] != want {
 		t.Errorf("published %q, want %q: one per change of state (2 per drop), none for the poll", got["PUBLISH"], want)
 	}
 	if want := strconv.Itoa(changes + 1); got["RESTART"] != want {

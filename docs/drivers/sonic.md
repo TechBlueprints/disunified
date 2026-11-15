@@ -6177,7 +6177,7 @@ Aggregation's flapping ports count exactly 2 changes per drop
 (`fixtures/controller-11.0.99/`, `stp_changes_test.go`), and a never-up port
 0 (mstpd counts 1 there, its initial entry into blocking).
 
-**Fix (l2d, not yet deployed):** disunified-l2d counts every change of each
+**Fix (l2d; deployed 2026-11-15 as 812503a):** disunified-l2d counts every change of each
 port's kernel state (disabled, blocking, learning, forwarding) from the
 netlink events it already mirrors into StpOrch and from its 2 s poll, and
 publishes it as `state_changes` in `DUI_STP_PORT_TABLE`; the driver reports
@@ -6186,7 +6186,7 @@ without the field. The count is since boot (it carries over an l2d restart
 through STATE_DB; STP off or a reboot clears it). Tested with the journal
 (`l2d_state_changes_test.go`): 2 per drop, none for the poll, 0 for a port
 never up. With it deployed the same looped-cage flap counts twice its
-drops, so it would raise the STP-flap alert too (not yet seen on the DX010).
+drops, so it raises the STP-flap alert too: seen live after the deploy (§11.23.4).
 
 The rate, measured on the stub (its port 3's `stp_changes` grown by the
 test's file every 10 s):
@@ -6210,7 +6210,7 @@ controller (`stp_bpdu_guard_enabled` in its port override, pushed as
 then the cage looped: mstpd logged "Received BPDU on BPDU Guarded Port - Port
 Down" within a second and shut the netdev (`bpdu guard error yes`); the
 capture is `fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-bpduguard.txt`.
-The deployed bridge reported the port with its fault and no anomalies bit,
+The bridge deployed then reported the port with its fault and no anomalies bit,
 and **the controller raised nothing** (three informs).
 
 **The signal: `port_table[].error_disabled` true with
@@ -6224,7 +6224,7 @@ the stub, one port at a time:
 | `error_disabled: true`, `error_disabled_reason: 1`, `anomalies: 512` | **"Port 5 was disabled by Loop Protection to prevent a network loop."** (`NETWORK_LOOP_DETECTED_BY_KEEPALIVE`, "Loop Protection Triggered") at the third inform carrying it (00:31:56 UTC) |
 | `anomalies: 512` alone (the same build with the two fields left out, as the bridge sent a hold until this day) | nothing in six informs (6.5 min) |
 
-**Fix (internal/device, not yet deployed):** a port whose `Port.Fault` names
+**Fix (internal/device; deployed 2026-11-15 as 812503a, raising the alert on the DX010 itself, §11.23.4):** a port whose `Port.Fault` names
 BPDU guard (`bpduguard`) or loop protection (`loop-protect`) is sent with
 `error_disabled: true` and the reason bit (2 or 1); every driver that
 reports those faults (`sonic`, `arista-eos`, `proxmox`) gets it. The
@@ -6246,7 +6246,46 @@ established.
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
 on the stub's port 3 (00:27:02), BPDU guard on the stub's port 4 (00:28:16),
-loop protection on the stub's port 5 (00:31:56).
+loop protection on the stub's port 5 (00:31:56); after the deploy, STP flap
+on the DX010's port 18 (01:17:42) and BPDU guard on its port 17 (01:20:00).
+
+#### 11.23.4 On the DX010 itself, after the deploy (2026-11-15, build 812503a)
+
+With the fixes running on the switch (`disunified -build-version`
+`0.0.0+20261114.812503a`, the container and the DX010 both):
+
+- **STP flap.** Cage 18 (Ethernet68, never flapped before) looped and
+  unlooped every ~6.5 s: between two informs (81 s) `link_down_count` grew
+  0 -> 12 (0.15 drops/s, under the link-flap rate) and `change_count`
+  1 -> 25 (0.30 changes/s, l2d's count: two per drop). The controller raised
+  **"<device> Port 18 is experiencing frequent STP role state changes"** at
+  that inform (01:17:42 UTC, `COUNT` 25) and no link-flap alert. mstpd's own
+  counters stayed at 0/1 through the run; l2d's `state_changes` read 33 at
+  its end (`fixtures/sonic-igmp-202511.20261114-42cccc87a/l2d-stpflap-20261115.txt`,
+  replayed in `l2d_state_changes_test.go`; the replay sees 32: one change the
+  2 s poll caught between two logged events).
+- **BPDU guard.** BPDU guard on port 17 through the controller, the cage
+  looped: mstpd shut the port at once; the next inform carried port 17 with
+  `error_disabled: true`, `error_disabled_reason: 2`, `anomalies: 0`, `up:
+  true` (§11.23.3), and the controller raised **"UniFi disabled <device> Port
+  17 because it detected a network loop. Fix the loop, then re-enable the
+  port."** at that inform (01:20:00 UTC). Restored: the cage unlooped, the
+  override back to its value before the test, `ip link set dev Ethernet64
+  up` and one link-up cleared `bpdu guard error`.
+- **Loop protection was not exercised.** disunified-l2d's loop protection
+  holds a port when a source address moves between it and another port (10
+  moves in 5 s, §11.5). A MAC-looped cage that is not forwarding learns
+  nothing, so it needs two looped cages forwarding in a VLAN of their own
+  with spanning tree off on both. The cages are untagged in Vlan4094, the
+  LAN's VLAN, and cannot leave it while the bridge runs: the driver puts
+  them back as the controller says, and a VLAN-only network for them would
+  be a new site network. Stopping the bridge to do it by hand takes the DX010
+  offline, so no inform would carry the hold. And forwarding looped cages
+  repeat every broadcast in their VLAN without end. The loop-protection
+  alert's field is the stub's result above (reason 1); the DX010's hold sets
+  it from the same `Port.Fault` as before (`contract_sonic_stp_test.go`).
+
+The alerts are `fixtures/controller-11.0.99/system-log-device-alert-dx010-deployed.json`.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

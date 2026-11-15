@@ -441,7 +441,8 @@ const (
 // "UniFi disabled <port> because it detected a network loop" (BPDU guard)
 // when a port turns error-disabled with the bit set, and ends the alert
 // when the port no longer is (Network 11.0.99, seen live with the stub
-// 2026-11-15: docs/drivers/sonic.md §11.23). Neither alert follows
+// 2026-11-15, and BPDU guard from the DX010's own driver after the deploy:
+// docs/drivers/sonic.md §11.23). Neither alert follows
 // anomalies, and no real switch's inform on the site carries the fields
 // (none had a port disabled): the bit values are the live test's.
 const (

@@ -1,0 +1,40 @@
+# disunified-l2d's journal on the deployed build 812503a while cage 18 (Ethernet68, empty) was looped and unlooped
+# every ~6.5 s (bcmcmd "port ce17 lb=mac|none"), 2026-11-15 01:16-01:18 UTC, docs/drivers/sonic.md 11.23.4; then STATE_DB
+# DUI_STP_PORT_TABLE|Ethernet68's counts at the end: l2d's state_changes and mstpd's own counters.
+2026-11-14T18:16:15-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:16:20-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:24-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:16:27-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:31-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:16:34-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:37-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:16:41-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:44-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:16:48-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:51-07:00 host-1 disunified-l2d[369031]: topology change on Ethernet68: FDB flushed in 11 VLANs
+2026-11-14T18:16:54-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:16:58-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:01-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:04-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:08-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:11-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:15-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:18-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:21-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:25-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:28-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:31-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:35-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:38-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:41-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:45-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:48-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:52-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:17:55-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:17:58-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:18:02-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+2026-11-14T18:18:05-07:00 host-1 disunified-l2d[369031]: Ethernet68: disabled -> blocking
+2026-11-14T18:18:07-07:00 host-1 disunified-l2d[369031]: Ethernet68: blocking -> disabled
+# num_transition_fwd	0
+# num_transition_blk	1
+# state_changes	33
