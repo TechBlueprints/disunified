@@ -1250,6 +1250,12 @@ was restarted.
     re-read their chain's count and jumps (`eb_state`) and write it again.
     The fakes run `testdata/l2d_ebtables.py`, which prints `WINDOW` when a
     closed port passes a never-admitted source between two writes.
+    **A looped cage cannot exercise the chain's DROP**: it is STP-blocked, so
+    the kernel bridge drops its frames before ebtables, and the only trapped
+    link-local frame (which reaches INPUT in any port state) is EAPOL, which
+    the chain accepts. Prove a write with `xtables-monitor -e` (one `NEWGEN`
+    per transaction) or in an `ip netns` bridge; seeing the DROP itself needs
+    a cabled host on a forwarding port.
   - **A rig sharing one `SonicV2Connector` across threads segfaults in
     `_swsscommon`** (silently, no traceback): lock every call or give each
     thread its own. `docker exec database redis-cli monitor` outlives a

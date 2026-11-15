@@ -8069,8 +8069,10 @@ written. But:
 - **the kernel chain dropped the admitted hosts at every start.** The new
   l2d wrote the chain before it re-admitted anyone, so for 40-100 ms the
   port had its DROP and no RETURN (24.13-24.22 s for the two MAB hosts;
-  the Credentials port closed for every host 196.80-196.87 s): their
-  frames to the switch itself were dropped in that window;
+  the Credentials port closed for every host 196.80-196.87 s): on a
+  forwarding port their frames to the switch itself would have been
+  dropped in that window (the looped cage is STP-blocked, so none reached
+  ebtables at all: §11.26.12);
 - every re-admission wrote the host's FDB entry again (an identical APPL_DB
   set; orchagent changed nothing in ASIC_DB);
 - **the idle timer started again at the restart**: the silent host went
