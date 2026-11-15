@@ -5725,7 +5725,11 @@ reach of the DX010):
 
 (Since the same day the storm bits 1 and 2 come from disunified-l2d's
 detection instead, from the port's receive counters against its limit:
-§11.21. This section stays the record of why the policers cannot tell.)
+§11.21; and bit 4 from the port's sFlow samples, §11.24. This section
+stays the record of why the policers cannot tell. Corrected the same day,
+§11.24.1: the SAI does answer `get_policer_stats` for a storm-control
+policer, with zeros that do not move while the chip's meter for the port
+is in the red, so a `POLICER` flex group would poll zeros.)
 
 UniFi's broadcast, multicast and unicast storm anomalies (bits 1/2/4) are
 set by `internal/device` when a port's `StormDropsBroadcast` /
@@ -5871,7 +5875,7 @@ have no UniFi control written for bringing it back.
 |---|---|---|
 | 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval), never the uplink, the STP root port or the gateway's port | §11.5 |
 | 1 / 2 | detected by disunified-l2d from the port's own receive counters against the port's storm-control threshold; the port keeps running under its storm-control limit; reported as growth of `StormDropsBroadcast` / `StormDropsMulticast` | §11.21 |
-| 4 | not reported: no counter separates unknown unicast from the rest | §11.21 |
+| 4 | detected by disunified-l2d from the port's sFlow samples of the unicast it floods (no counter separates them), on an image with sonic-buildimage 0014; the port keeps running; growth of `StormDropsUnicast` | §11.24 |
 | 32, 64, 128, 256, 1024 | §11.17, §11.7.9, §11.18 | -- |
 
 ### 11.21 Storm detection on the DX010: anomalies 1 and 2 from the port's own counters (2026-11-14)
@@ -5902,7 +5906,7 @@ took in, before the ingress pipeline's policers and filters:
 |---|---|---|---|
 | Broadcast | `broadcast` | `SAI_PORT_STAT_IF_IN_BROADCAST_PKTS` | exactly the broadcast frames received |
 | Multicast | `unknown-multicast` | `SAI_PORT_STAT_IF_IN_MULTICAST_PKTS` | every multicast frame, known groups too: an upper bound on unknown multicast (UniFi's text speaks of incoming multicast packets, which this is) |
-| Unknown unicast | `unknown-unicast` | none | `IF_IN_UCAST_PKTS` counts all unicast; nothing separates a frame the switch floods (unknown destination) from one it forwards. **Not detected**; bit 4 is never set by this driver |
+| Unknown unicast | `unknown-unicast` | none | `IF_IN_UCAST_PKTS` counts all unicast; nothing separates a frame the switch floods (unknown destination) from one it forwards. Not detected from counters; since the same day detected from the port's sFlow samples instead (§11.24) |
 
 The threshold is bytes per second (kbps × 125, as orchagent programs the
 policer's CIR, §11.19), the counters frames. A frame is at least 64 bytes,
@@ -5931,7 +5935,8 @@ never a false alert.
   `Fault` is not touched.
 - The driver installs and runs l2d for storm control alone (`l2Want.storm`):
   a push with broadcast or multicast storm control on any port is enough,
-  with spanning tree and loop protection off. Unknown unicast alone is not.
+  with spanning tree and loop protection off. Unknown unicast alone is
+  too, on an image that can sample a port (§11.24).
 - Beside the rate limits: the policers keep dropping in the ASIC exactly as
   before; l2d only reads. Rate mode (packets/s) stays refused with its note
   (§11.8): SONiC's policer takes kbps only, and detecting a limit the
@@ -6000,8 +6005,7 @@ alert in the controller (the build is not deployed), a broken-out cage's
 summed lanes, and a PortChannel member. **What a PR needs** for the rest: a
 cabled traffic source on a test port in a VLAN of its own, storm control
 from the UI, the "Broadcast Storm Detected" / "Multicast Storm Detected"
-alert read from the controller's device alerts, and for unicast a counter
-that separates flooded unicast (none on this SAI).
+alert read from the controller's device alerts. Unicast: §11.24.
 
 ### 11.22 IPv6 on the management interface: SLAAC while the controller's network runs IPv6 (2026-11-14)
 
@@ -6286,6 +6290,340 @@ With the fixes running on the switch (`disunified -build-version`
   it from the same `Port.Fault` as before (`contract_sonic_stp_test.go`).
 
 The alerts are `fixtures/controller-11.0.99/system-log-device-alert-dx010-deployed.json`.
+### 11.24 Unknown-unicast storms on the DX010: anomaly 4 from sFlow samples (2026-11-14)
+
+UniFi's unicast storm anomaly (bit 4) is the alert "Incoming unknown
+unicast packets on <device> Port N exceed the Storm Control threshold"
+(§11.20.1). §11.21 left it unset on the DX010: the port's receive counter
+counts all unicast, and nothing that §11.19 and §11.21 looked at separates
+a frame the switch floods because its destination is unknown. Clint asked
+whether there was really no way. Four routes were tried, each on the
+switch itself (image `igmp-202511.20261114-42cccc87a`, 2026-11-14
+16:49-17:05 MST, empty cage 13 = `Ethernet48` = `ce12`; the probe scripts
+and their risks were written down first; the switch was checked and
+restored after each). The detection built on the fourth was proven on
+2026-11-14 20:20-20:24 MST (§11.24.4).
+
+#### 11.24.1 The routes
+
+| Route | What it needs | Verdict | Evidence |
+|---|---|---|---|
+| A counted ACL rule matching "destination not in the FDB" on unicast, per ingress port | the SAI's `SAI_ACL_TABLE_ATTR_FIELD_FDB_NPU_META_DST_HIT` (and the entry's `..._ENTRY_ATTR_...`), an aclorch patch to name it | **refused by the SAI** | below |
+| The storm-control policer's own statistics | `get_policer_stats` answering for a `SAI_POLICER_MODE_STORM_CONTROL` policer, then orchagent registering the policers for polling | **answered with zeros**: the chip's storm meters count nothing | below |
+| Another per-port count the chip keeps for flooded unicast | a register or a debug-counter trigger | **none**: no `DLF` register on the BCM56960, no "destination lookup miss" trigger | below |
+| The ingress sFlow sampler, each sample classified by its destination | sFlow on the port (the SAI's samplepacket), the samples in software | **works** once the image loads `linux-bcm-genl` (sonic-buildimage 0014) | below; built (§11.24.3) |
+
+**The ACL field.** `libsai.so` (libsaibcm 13.2.1.100) carries the names
+`SAI_ACL_TABLE_ATTR_FIELD_FDB_NPU_META_DST_HIT` and its entry twin, and
+the SDK in it the field processor's `L2DestHit` qualifier, so it was
+probed: ACL tables pushed by hand through ASIC_DB's operation queue
+(§11.9's method, op `Screate`/`Dremove`, every object id allocated by
+`INCR VIDCOUNTER`, the encodings copied from orchagent's own lines in
+`sairedis.rec`). One difference from §11.9: **orchagent was stopped
+(`SIGSTOP`) for each push and continued after it, with a 60 s timer to
+continue it whatever happened**, because sairedis' `RedisChannel::wait`
+takes any `getresponse` as the answer to its own pending operation (it
+checks only the op name), so a reply left in the queue could be read as
+the answer to orchagent's next call. Results, `SAI_ACL_STAGE_INGRESS`,
+bind point `PORT`:
+
+| Fields | Status |
+|---|---|
+| `IN_PORTS` | `SAI_STATUS_SUCCESS` (removed again) |
+| `FDB_NPU_META_DST_HIT` | -65535 |
+| `IN_PORTS`, `FDB_NPU_META_DST_HIT` | -65534 |
+| `DST_MAC`, `IN_PORTS`, `FDB_NPU_META_DST_HIT` | -65533 |
+| `ROUTE_NPU_META_DST_HIT`; `NEIGHBOR_NPU_META_DST_HIT` | -65535 each |
+| `FDB_DST_USER_META` | `SAI_STATUS_SUCCESS` (removed again) |
+
+The status is `SAI_STATUS_INVALID_ATTRIBUTE_0` (-0x10000) plus the
+attribute's index in the list (the bind point list is index 0), and it
+moved with the field: this SAI refuses every `*_NPU_META_DST_HIT` field.
+syncd logged each as `api SAI_COMMON_API_CREATE failed in syncd mode` and
+carried on (synchronous mode answers a failure; it throws only when that
+mode is off, `Syncd.cpp`). `FDB_DST_USER_META` is accepted, but it matches
+an FDB entry's `SAI_FDB_ENTRY_ATTR_META_DATA`, which hardware-learned
+entries do not carry, so it cannot tell a miss from a learned
+destination. No upstream change adds the field to aclorch (sonic-swss
+knows it only in `p4orch` and in swss-common's `saiaclschema.cpp`, as a
+comment), and it would not help on this SAI.
+
+**The policer statistics.** With `config interface storm-control add
+Ethernet48 unknown-unicast 1000` the port's
+`SAI_PORT_ATTR_FLOOD_STORM_CONTROL_POLICER_ID` named a policer (`MODE
+STORM_CONTROL`, `CIR 125000`). A hand-pushed `get_stats` of its
+`SAI_POLICER_STAT_PACKETS`, `GREEN_PACKETS` and `RED_PACKETS` answered
+`SAI_STATUS_SUCCESS`, all `0`. Then, with the cage alone in a VLAN of its
+own and MAC-looped (below), 110 000 unknown-unicast frames came in at 4000
+to 5000 a second, two to two and a half times the limit. The chip's meter
+for the port took them: `IFP_STORM_CONTROL_METERS.ipipe0[339]` went from
+`BUCKETCOUNT=0x10000` to `0x3fffff28` (below zero, red) and `0x194c` during
+the flood. The SAI still answered 0, 0, 0. So the SAI answers the call and
+counts nothing, which fits §11.19's reading of the meter's fields (a token
+bucket, no counter). sonic-net/sonic-swss#3491 ("[FC] Policer counter",
+open) would make orchagent poll policer statistics; on this SAI it would
+poll zeros.
+
+**Other counters.** `bcmcmd "listreg dlf"` / `"listmem dlf"` find no
+register or table on the BCM56960. The SDK's receive debug-counter
+triggers (`bcmDbgCnt*` in `libsai.so`, 300 of them) have
+`RxL2DstDiscardDrop` and `RxStormControlDrop` (§11.19) but nothing for a
+destination lookup that missed and was flooded.
+
+**The ECS.** Nothing to copy: it does not claim or offer storm control at
+all (§11.20.2).
+
+**sFlow.** The chip's ingress sampler samples received frames, and the SAI
+can deliver each sample to the CPU with the frame's first bytes, its
+ingress port and where the switch sent it. So the switch can say, a frame
+in N at a time, which of a port's frames it flooded. SONiC's sFlow
+container (`docker-sflow`, feature `sflow` disabled) and the kernel's
+`psample` module are in the image. Turned on for `Ethernet48` alone at 1:256,
+the SAI refused the port's `SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE`:
+
+```
+SAI_API_PORT:_brcm_sai_port_proc_samplerate_set:18439 cannot open knet link sample proc
+sflowAddPort: Failed to set session f000000000822 on port 1000000000015
+```
+
+orchagent logged `handleSaiFailure` and kept running. The proc file the
+SAI opens is `/proc/bcm/genl/psample/rate` (its name is in `libsai.so`),
+and only `linux-bcm-genl` creates it. **The legacy-TH SDK builds that
+module and its package neither installs nor loads it**:
+`saibcm-modules-legacy-th/systems/linux/user/common/Makefile` sets
+`BUILD_BCM_GENL=1` and strips it beside `linux-knet-cb.ko`, but
+`debian/opennsl-modules.install` and `.init` name only `linux-knet-cb`
+(the same on sonic-buildimage master today). Upstream fixed the same gap
+for the XGS package's sdklt module only (sonic-net/sonic-buildimage#26360,
+in 202511). Others have hit the legacy-TH/classic half: a SONiC fork's
+tracker has the identical `cannot open knet link sample proc` on a
+Trident 3 and a fix that ships and loads the module. That one was found
+by search and not read beyond its title and summary.
+
+The module from the build tree that produced the installed modules (its
+`linux-bcm-knet.ko` is byte-identical to the switch's; vermagic
+`6.12.41+deb13-sonic-amd64`, depends `linux-bcm-knet,psample`) was loaded
+by hand (`kernel.panic` 10 and `panic_on_oops` 1 were already set, so an
+oops would have rebooted, not hung). Its proc files appeared, the same
+session then answered `SAI_STATUS_SUCCESS`, and the port delivered
+**168 samples for 40 000 received unknown-unicast frames at 1:256**
+(156 expected). That was with the frames over the limit, so about half of
+them were dropped by storm control: **the sampler sees the frames before
+storm control drops them.** Loaded after syncd had made its netifs, the
+module did not know them (`Failed setting psample rate on unknown network
+interface: 'Ethernet48'`). Its samples carried no ingress ifindex and a
+rate of 1, so it has to be loaded at boot: sonic-buildimage 0014 (§11.24.2).
+Afterwards `rmmod`, `sflow` back to disabled, and nothing left in ASIC_DB.
+
+#### 11.24.2 The image: sonic-buildimage 0014
+
+`contrib/sonic-image/series/sonic-buildimage/0014`: the legacy-TH package
+installs `linux-bcm-genl.ko` and loads it after `linux-knet-cb` (so
+`linux-bcm-knet` already has its parameters), and unloads it before
+`psample`, which it uses. It is #26360 done for the classic-XGS modules.
+`dry-run.sh` checks that every module the init loads is installed, that
+the SDK builds genl, and both orders.
+
+#### 11.24.3 As built
+
+**Which frames count.** A sample is flooded unknown unicast when its
+destination MAC is unicast, and when linux-bcm-genl reports it sent to
+no front-panel port and not to the CPU (`PSAMPLE_ATTR_OIFINDEX` 0xffff;
+bcm-genl-psample.c sets that for a multicast destination, which a flood
+is, and for a frame dropped in forwarding; it sets the port's ifindex for
+a known unicast destination and leaves it out for the CPU). It must also
+be neither the switch's own MAC (`DEVICE_METADATA|localhost mac`) nor in
+the FDB for its VLAN: the tag's VLAN if the frame has one, else the port's
+untagged VLAN (or its PortChannel's). The FDB check is l2d's own copy,
+fed from STATE_DB `FDB_TABLE` for loop protection. The module's
+multicast flag would say "flooded" directly, but it does not reach
+userspace. The switch's own MAC is excluded even where
+the chip floods it: live, frames to it in a VLAN without an interface
+went out as a flood (OIFINDEX 0xffff), but in a VLAN with one a routed or
+CPU-bound frame that is dropped reads the same, and would be a false
+storm. That leaves an undercount in the first case.
+
+**Sessions.** `UcastSampler` in `l2d.py` (a detector beside MAC locking)
+samples each front-panel port that has a `PORT_STORM_CONTROL|<port>|unknown-unicast`
+row, through SONiC's own sFlow configuration, in CONFIG_DB as `config
+sflow` writes it:
+1. `SFLOW_SESSION|all admin_state down`, first, so no other port is sampled;
+2. `SFLOW_SESSION|<port>` (`admin_state up`, `sample_rate`);
+3. `SFLOW|global admin_state up`;
+4. `FEATURE|sflow state enabled`.
+
+sflowmgrd turns the rows into sfloworch's APPL_DB rows, and coppmgrd
+installs the `sample_packet` trap with its group. No collector is
+configured, so hsflowd sends nothing.
+
+A feature l2d turned on is marked (`/etc/sonic/disunified/l2d-sflow`).
+With the last watched port gone, l2d deletes its rows and turns the
+feature off only once sflowmgrd has emptied APPL_DB, or after 10 s. If
+the operator turned the feature on, l2d writes nothing, says so once, and
+reads whatever is sampled on the storm-controlled ports.
+
+**Why not APPL_DB alone** (the first build, proven wrong live). Rows
+written straight into APPL_DB `SFLOW_TABLE`/`SFLOW_SESSION_TABLE` with the
+feature off made sfloworch bind the port. The SAI then sampled it, but
+not one sample reached the CPU: coppmgrd installs the trap only through
+the feature. Its `always_enabled` path (`CoppMgr::addTrap`) writes the
+group's `trap_ids` and nothing else when the group has no other enabled
+trap, and the group's meter and genetlink fields come only with the
+feature's path (`setFeatureTrapIdsStatus`). Tried by hand with
+`COPP_TRAP|sflow always_enabled true`, copporch failed the trap
+(`SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION ... mandatory but not passed`,
+`SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING`; refused by sairedis' metadata
+check, so syncd was untouched). l2d's STP trap is spared only because
+its group already carries BGP and LACP.
+
+That failure sets orchagent's sticky `gOrchUnhealthy`, which re-logs the
+error at ERR every select loop until orchagent restarts. It reaches the
+remote log host, and nothing else reads the flag (system health stayed
+`OK`). The first boot's SAI refusal of the sFlow binding (§11.24.1) set
+it the same way. **Never test a CoPP row by hand on this switch.**
+
+**Breakout.** `SFLOW_SESSION.port` is a leafref to `PORT`
+(sonic-sflow.yang), so `config interface breakout -f`, which the driver
+uses, clears a sampled lane's session with the other dependents. l2d does
+not write it again: the lane has no storm control then. Not exercised
+live.
+
+**The rate** is `kbps × 125 / 64 / 25`, at least 256 (sonic-sflow.yang's
+range is 256 to 8388608): 25 samples a second at the limit when the
+frames are 64 bytes, one a second when they are 1518 bytes, whatever the
+limit (1:78125 at UniFi's lowest level on a 100G port, 1 %). Under
+about 13 Mbps it is the floor, 1:256 (the test's 1000 kbps: 7.6 samples a
+second at the limit). The CPU sees samples in proportion to
+the traffic, and CoPP caps them: the sflow trap has its own queue (2) and
+meter (`queue2_group1`, 1000 packets a second), shared with nothing else.
+A flood large enough to hit the cap is reported low: a lower bound,
+never a false alert.
+
+**The threshold** (`StormWatch.usample`). Each sample stands for `rate`
+frames of its size (`PSAMPLE_ATTR_ORIGSIZE`, the frame with its FCS), so
+the flooded bytes a second are known up to the sampling's noise and are
+compared with the policer's own byte limit (`kbps × 125`). §11.21's
+types have to bound the frames at 64 bytes instead. The rate is taken
+over the shortest of 5, 10, 20 and 30 s that holds 30 samples (else 30
+s). A storm starts when the rate less three standard errors (`3/√n` of
+it) is over the limit, with at least 10 samples, and ends when the rate
+plus them is under it. While a port is over, each second adds its
+flooded frames' share above the limit, `frames × (1 − limit / rate)`,
+to STATE_DB `DUI_STORM_TABLE|<port>` `unicast`. That is the same sense as
+`broadcast` and `multicast`: frames above the limit, monotonic, adopted
+when l2d restarts. The port is never touched.
+
+**The driver.** `collect.py` prints `genl_psample` (`yes` when
+`/proc/bcm/genl/psample/rate` exists). With it, unknown-unicast storm
+control alone makes the driver install and run l2d (`stormWatched`), and
+`stormPorts` adds `unicast` into `Health.StormDropsUnicast`;
+`internal/device` sets bit 4 on growth, as for 1 and 2. On an image
+without it nothing changes from before: no session, `StormDropsUnicast`
+0, and one log line, from the driver ("this image cannot detect an
+unknown-unicast storm ...") and from l2d.
+
+#### 11.24.4 The image and the proof (2026-11-14/15)
+
+**The image: `igmp-202511.20261115-6c8eb1cf7`.** It is
+`igmp-202511.20261114-42cccc87a` plus sonic-buildimage 0014, and its
+`sonic-broadcom-legacy-th.bin` has sha256
+`fa7ae7fffaa2628f13ecd6402f4ff7a3eb0ba1d525c4434307cf7fd409f120f3`.
+- **How it was built.** The 42cccc87a work tree was resumed with 0014
+  `git am`'d onto both of its trees (`RESUME=1 ./build.sh broadcom`); a
+  fresh tree did not fit on the build host.
+  - Two things make such a resume a no-op. slave.mk's deb rules depend on
+    `.platform` and their dependencies' installs, not on a package's
+    files. The top-level Makefile calls an existing `target/*.bin` up to
+    date without entering the slave.
+  - So the module deb and the three `.bin`s were moved aside first.
+  - A `<deb>-clean` target run outside build.sh walked the whole bookworm
+    phase and rebuilt libswsscommon. That was stopped, and its dependents
+    were rebuilt by the image stage (125 min).
+- **0014 is in the image itself:** the `.bin`'s root filesystem has
+  `usr/lib/modules/6.12.41+deb13-sonic-amd64/extra/linux-bcm-genl.ko`
+  beside `linux-knet-cb.ko`, and its `/etc/init.d/opennsl-modules` loads
+  and unloads it. `build_version` is `igmp-202511.20261115-6c8eb1cf7`.
+- **The install** (`sonic-upgrade.sh arm`, reboot, `confirm`; the
+  `f2e25f54c` slot went, `42cccc87a` is the fallback):
+  - rebooted at 02:59:08 UTC and confirmed at 03:07:29;
+  - `linux_bcm_genl` was loaded at boot, its `/proc/bcm/genl/netif` named
+    all 32 front-panel netifs, and the bridge's deb came back.
+
+**The proof, live, 2026-11-15 03:20-03:24 UTC** (20:20-20:24 MST), under
+the shared switch lock.
+- **The setup.** Cage 15 (`Ethernet56` = `ce14`, empty) was taken out of
+  Vlan4094 with its seven reserved static groups (§11.21's lesson) and
+  put alone, untagged, into a test Vlan3999, with spanning tree off on the
+  port (bpdu filter). Then MAC loopback was turned on.
+  - The bridge was stopped for the run and l2d replaced by this branch's.
+  - Storm control was `unknown-unicast 1000` kbps.
+  - 64-byte frames were sent from the CPU (record:
+    `sonic-igmp-202511.20261115-6c8eb1cf7/ucast-samples.ndjson`, the psample
+    messages as l2d reads them, scrubbed).
+- **Sampling started** within 1 s of the storm-control row: `sampling
+  Ethernet56 at 1:256`, `sflow feature on`.
+
+| Sent | Samples | l2d |
+|---|---|---|
+| A: 60 000 frames to an unknown MAC over 15 s (4000/s, 2x the limit) | flooded (OIFINDEX 0xffff), the share of A and B: 273 samples together | **storm 5 s in**: `219546 bytes/s of flooded unicast over 5 s (67 samples), limit 1000 kbps (125000 bytes/s)`; over after the flood: **15 745 frames above the limit** |
+| B: 22 000 to it over 15 s (1450/s, 0.74x) | flooded | nothing |
+| C: 60 000 to a MAC in the FDB on the port itself (static) | 241, OIFINDEX = the port's ifindex (forwarded, then dropped as the ingress port) | nothing |
+| D: 60 000 to the switch's own MAC | 254, flooded (no interface in Vlan3999) | nothing (own MAC) |
+| E: 20 000 broadcast | 75 | nothing (group address) |
+
+A sent 60 000 - 15 × 1953 = 30 703 frames above the limit; the count is
+half of that, the window starting it late: a lower bound, as designed.
+
+- **The driver's read.** The worktree build's `-collect-once` on the
+  switch reported port 15 `StormDropsUnicast` 15745 and every other port
+  0 (`collect-ucast-storm.txt`, scrubbed; `collect.txt` before the run).
+  `TestWireContractSonicUnicastStorm` sets exactly bit 4 on port 15 from
+  that pair and clears it with no further growth.
+  `TestL2dUcastStormOverLiveSamples` replays the samples: the same start
+  line, 16 132 frames (live: 15 745; the replay ticks on the capture's
+  seconds), the sFlow rows written in order and taken out, the feature
+  last.
+- **Restored.** The storm control went first. l2d then deleted its sFlow
+  rows and turned the feature off 8 s later (`unknown-unicast sampling
+  stopped, sflow feature off`): no SFLOW key in CONFIG_DB or APPL_DB, the
+  container stopped, no `queue2_group1` in APPL_DB.
+  - Loopback off, Vlan3999 and the static FDB entry gone, `Ethernet56`
+    untagged in Vlan4094 with its seven groups back.
+  - Main's l2d back (sha256 unchanged), `l2.json` unchanged.
+  - The bridge's first reconcile changed 0 of 32 ports.
+- **The controller** recorded `DEVICE_UNREACHABLE` for the DX010 during
+  each of the two runs with the bridge stopped (03:11:51, 03:23:51 UTC),
+  and `DEVICE_RECONNECTED` after the reboot (03:03:06).
+- **A first run** at 03:09 sampled nothing (the APPL_DB-only design above).
+  The CoPP row tried by hand then is what set orchagent's error flag on
+  this boot (§11.24.3).
+
+#### 11.24.5 Not exercised, and what a deploy has to show
+
+Not exercised:
+- a cabled traffic source;
+- a forwarding port with other VLAN members (the flood went nowhere);
+- frame sizes other than 64 bytes;
+- a rate high enough to reach the CoPP cap;
+- storm control pushed from the UI with the detection running;
+- the operator's own sFlow;
+- a breakout of a sampled cage;
+- split cages and PortChannel members;
+- **the controller's "Incoming unknown unicast packets ... exceed the
+  Storm Control threshold" alert**, which needs this branch's bridge
+  deployed (its l2d and collector).
+
+With it deployed, a UI unknown-unicast level on an empty test cage
+should show these in the bridge's log and on the switch:
+- `sonic apply ... storm-control add ... unknown-unicast`;
+- l2d's `sampling <port> at 1:<rate>`;
+- `FEATURE|sflow` enabled;
+- with no traffic, no storm.
+
+A storm needs a source above the level: UniFi's lowest, 1 % of 100G, is
+far above what the CPU can send. A PR for the alert needs a cabled
+source on a test port in a VLAN of its own and the alert read from the
+controller's device alerts.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

@@ -338,6 +338,11 @@ except Exception:
     sys.stdout.write("error\n")
 
 # --- Linux ---
+# linux-bcm-genl's psample proc (the image kit's sonic-buildimage 0014): the
+# SAI samples a port only with it, and l2d detects unknown-unicast storms
+# from those samples (docs/drivers/sonic.md 11.24).
+s("genl_psample")
+sys.stdout.write("yes\n" if os.path.exists("/proc/bcm/genl/psample/rate") else "no\n")
 # Dynamic port breakout needs the platform's platform.json (absent on the
 # VS): "no", or its interfaces block reduced to what breakout needs -- each
 # parent port's index, lanes and breakout modes (mode -> child aliases) --

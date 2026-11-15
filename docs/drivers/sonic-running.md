@@ -150,6 +150,7 @@ image. Two things do not, and one platform needs help:
 | **IGMP snooping** | no: community SONiC has no snooping daemon; the driver logs the keys | no | the Micas l2mcd series built in and verified on the virtual switch; on the DX010 the chip takes snooping and group entries and refuses optimised flood (§8.14); the driver writes the keys behind `options.igmp` (§3.3) |
 | **The DX010 itself on 202511** | n/a | **does not run**: orchagent's telemetry query crashes the Tomahawk-1 SAI, the CPLD driver panics kernel 6.12 on its first write, pmon has no platform (no fans, PSUs, temperatures) | runs: the four platform patches (§3.1) |
 | **Switch MAC ACL rules** | no: no L2 table type or outer-MAC match in orchagent; refused with a log | no | **yes, written and `Active` in the chip on the DX010 2026-11-06**, the entry matching exactly the blocked MAC's frames (a dropped switched frame not yet seen: one linked port): `sonic-swss 0003` (`sonic.md` §11.7.8) |
+| Unknown-unicast storm detection (anomaly 4) | not on the DX010's legacy-TH SAI (no sampling without `linux-bcm-genl`); untried on other SAIs | the same | **yes, verified by hand on the DX010 2026-11-15**: sonic-buildimage 0014 loads the module the SAI samples through, l2d counts the flooded unicast in the samples ([`sonic.md`](sonic.md) §11.24) |
 | Port isolation, 802.1X, LLDP-MED off | no (refused with a log) | no | no |
 
 The patched image is **not** required for the driver. It is required for
@@ -180,6 +181,7 @@ two of them upstream's own fixes carried unchanged:
 | sonic-buildimage 0011 | `dx010_cpld.c` `setreg_store`: `char clone[count + 1]` | `strcpy` into `char clone[count]` is one byte short; kernel 6.12's FORTIFY_SOURCE traps it (`kernel BUG at lib/string_helpers.c:1040`) on the first CPLD register write, which is the platform watchdog's disarm at boot: the switch never finishes booting 202511 | **sonic-buildimage #26983** ("Fix VLA size in setreg_store for DX010", open; issue #26885), cherry-picked unchanged |
 | sonic-buildimage 0012 | Seastone `fancontrol-F2B`: MINPWM/MINSTOP 89 -> 51 (20 %), MINTEMP 26 -> 35 on all ten fans | not needed to run: the stock table keeps the fans at 35 % or more in any room, loud for a home rack. The boot script copies the direction file over `fancontrol` at every boot and pmon copies that in, so only this file persists a floor; before this patch the floor lived in the running image's overlay and every image install reset it. Measured on the DX010: fans OK at 3,900-4,300 rpm, ASIC ~56 C at a 23-25 C intake (52 at 25 %, 45 at 35 %); 15 % tried and rejected, the ASIC passed 62 C still rising | -- (ours, 2026-11-03) |
 | sonic-buildimage 0013 | Seastone `sensors.conf`: `chip "jc42-*"` with `set temp1_max 85`, `set temp1_crit 95` (and a label) | not needed to run: the SO-DIMM's JC-42.4 thermal sensor comes up with its limit registers at 0 C, so pmon's sensord logged its normal ~35 C as `Sensor alarm: Chip jc42-i2c-1-18 ... [ALARM]` once a minute, ~1,400 syslog lines a day, stock and on every image. The registers take the write; `lm-sensors.sh` runs `sensors -s` from the platform's file at every pmon start. 85/95 C is JEDEC's normal and extended DRAM range | -- (ours, 2026-11-07; nothing upstream handles a jc42 on any platform) |
+| sonic-buildimage 0014 | the legacy-TH module package installs `linux-bcm-genl.ko` (the SDK already builds it) and loads it after `linux-knet-cb`, unloads it before `psample` | the legacy-TH SAI sets a port's sFlow rate through `/proc/bcm/genl/psample/rate`, which only that module makes; without it every sFlow session fails in the SAI (`cannot open knet link sample proc`). The DX010's unknown-unicast storm detection (anomaly 4, [`sonic.md`](sonic.md) §11.24) reads those samples; without 0014 bit 4 is not reported and the driver says so once. Loaded after syncd it knows no netif, so it belongs in the module init | the classic-XGS half of sonic-net/sonic-buildimage#26360 (merged for the sdklt `linux_bcmgenl` only; master's legacy-TH package still omits it) |
 
 **IGMP snooping** -- the Micas Networks series (unmerged upstream drafts,
 2025-26) plus what building and testing it needed:
@@ -252,14 +254,19 @@ The arrival-day procedure for a DX010 is [`sonic.md`](sonic.md) §3; what the
 first install on the hardware exposed (two failed boots and their cause,
 the CPLD watchdog, the trace that found it) is §8.14.
 
-### 3.3 Status on the DX010, 2026-11-14
+### 3.3 Status on the DX010, 2026-11-15
 
-- Running since 2026-11-14 (installed 22:49 UTC, confirmed 22:58 with bridge
+- Running since 2026-11-15 (installed 02:59 UTC, confirmed 03:07 with bridge
+  `812503a`): `igmp-202511.20261115-6c8eb1cf7`, the image below plus
+  sonic-buildimage 0014 (`linux-bcm-genl`: the SAI's sFlow sampling, which
+  the unknown-unicast storm detection reads, `sonic.md` §11.24, proven live
+  on it). The install deleted the `f2e25f54c` slot; the other slot is the
+  image below, the fallback.
+- Before it, 2026-11-14 (installed 22:49 UTC, confirmed 22:58 with bridge
   `c7d8a82`): `igmp-202511.20261114-42cccc87a`, the image below plus
   sonic-swss 0004 (the L2MC count, `sonic.md` §8.15, proven live on it) and
-  sonic-buildimage 0013 (the SO-DIMM sensor limits). The install deleted the
-  `e53777446` slot (install.sh keeps two); the other slot is the image below,
-  the fallback.
+  sonic-buildimage 0013 (the SO-DIMM sensor limits). Its install deleted the
+  `e53777446` slot (install.sh keeps two).
 - Before it, 2026-11-06 to 2026-11-14: `igmp-202511.20261106-f2e25f54c`, the full series of §3.1
   (installed and confirmed 2026-11-06 06:50 UTC with bridge `cc276ad`;
   switch MAC ACL rules verified on it, `sonic.md` §11.7.8). It is the first

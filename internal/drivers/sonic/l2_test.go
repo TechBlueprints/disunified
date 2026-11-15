@@ -25,15 +25,24 @@ type l2Rig struct {
 
 func newL2Rig(t *testing.T, edit func(*FixtureRunner)) *l2Rig {
 	t.Helper()
-	fr, err := NewFixtureRunner(l2Fixture)
+	return newL2RigAt(t, l2Fixture, true, edit)
+}
+
+// newL2RigAt is newL2Rig on another capture; vsHelp takes the help texts
+// and zones from the VS capture (a capture directory without its own).
+func newL2RigAt(t *testing.T, path string, vsHelp bool, edit func(*FixtureRunner)) *l2Rig {
+	t.Helper()
+	fr, err := NewFixtureRunner(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	vs, err := NewFixtureRunner(fixture)
-	if err != nil {
-		t.Fatal(err)
+	if vsHelp {
+		vs, err := NewFixtureRunner(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fr.Help, fr.Zones = vs.Help, vs.Zones
 	}
-	fr.Help, fr.Zones = vs.Help, vs.Zones
 	if edit != nil {
 		edit(fr)
 	}

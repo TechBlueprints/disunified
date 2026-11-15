@@ -1152,6 +1152,9 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	c.mu.Unlock()
 	if st != nil && !st.stpFeature {
 		c.l2SetPorts(desired, st)
+		if !st.psample && stormUnicastAsked(desired) {
+			c.warnOnce("storm unicast", "unknown-unicast storm control is applied, but this image cannot detect an unknown-unicast storm: it has no linux-bcm-genl (the image kit's sonic-buildimage 0014), so the SAI cannot sample a port; anomaly 4 is not reported (docs/drivers/sonic.md §11.24)")
+		}
 		if _, err := c.applyL2(ctx); err != nil {
 			return n, err
 		}

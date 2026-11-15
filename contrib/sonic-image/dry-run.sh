@@ -238,6 +238,19 @@ m=$(grep -l '^SAI_STATS_EXT_SWITCH_SUPPORTED=0$' "$D"/*/sai.profile* | wc -l | t
 grep -q 'LAZY_BUILD_INSTALLS = .*BRCM_LEGACY_TH_OPENNSL_KERNEL' "$BI/platform/broadcom/one-image.mk" && pass "one-image.mk installs the legacy-TH BDE modules" || fail "one-image.mk"
 CEL=$BI/platform/broadcom/sonic-platform-modules-cel/debian
 grep -q '^build-dx010/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_seastone-r0$' "$CEL/platform-modules-dx010.install" && grep -q 'python3 setup.py bdist_wheel -d $(MOD_SRC_DIR)/build-$${mod})' "$CEL/rules" && pass "the DX010's sonic_platform wheel is built and installed for pmon (0007, sonic-net/sonic-buildimage#27355)" || fail "0007: DX010 wheel"
+# 0014: every classic module the legacy-TH init loads is one the package installs, linux-bcm-genl
+# (the SAI's /proc/bcm/genl/psample/rate, sFlow) among them, built by the SDK, loaded after
+# linux-knet-cb and unloaded before psample
+LT=$BI/platform/broadcom/saibcm-modules-legacy-th
+mods=$(awk '/^function load_kernel_modules/,/^}/' "$LT/debian/opennsl-modules.init" | sed -n 's/^ *modprobe \(linux-[a-z-]*\).*/\1/p')
+miss=""
+for k in $mods; do grep -q "^systems/linux/user/x86-smp_generic_64-2_6/$k.ko " "$LT/debian/opennsl-modules.install" || miss="$miss $k"; done
+order=$(awk '/^function load_kernel_modules/,/^}/' "$LT/debian/opennsl-modules.init" | grep -o 'modprobe linux-knet-cb\|modprobe linux-bcm-genl' | tr '\n' ' ')
+unload=$(awk '/^function remove_kernel_modules/,/^}/' "$LT/debian/opennsl-modules.init" | grep -A1 'rmmod linux-bcm-genl' | tr -s ' \n' ' ')
+if [ -z "$miss" ] && grep -qx linux-bcm-genl <<<"$mods" && grep -q '^export BUILD_BCM_GENL=1' "$LT/systems/linux/user/common/Makefile" \
+   && [ "$order" = "modprobe linux-knet-cb modprobe linux-bcm-genl " ] && [ "$unload" = " rmmod linux-bcm-genl rmmod psample " ]; then
+  pass "legacy-TH modules: the $(echo $mods | wc -w | tr -d ' ') the init loads are installed, linux-bcm-genl built, loaded after knet-cb, unloaded first (0014)"
+else fail "0014: legacy-TH modules (not installed:${miss:- none}; load: $order; unload: $unload)"; fi
 grep -q '^LIBSAIBCM_LEGACY_TH_VERSION = ' "$BI/platform/broadcom/sai-legacy-th.mk" && note "legacy-TH SAI $(sed -n 's/^LIBSAIBCM_LEGACY_TH_VERSION = //p' "$BI/platform/broadcom/sai-legacy-th.mk"), XGS SAI $(sed -n 's/^LIBSAIBCM_XGS_VERSION = //p' "$BI/platform/broadcom/sai-xgs.mk")"
 
 echo "== 8. CLI"

@@ -63,6 +63,9 @@ type swState struct {
 
 	stpFeature   bool // FEATURE|stp exists: the image has the STP daemon
 	platformJSON bool // the platform has a platform.json: dynamic port breakout
+	// psample: linux-bcm-genl's /proc/bcm/genl/psample/rate exists, so the SAI
+	// can sample a port and l2d can detect unknown-unicast storms (§11.24).
+	psample bool
 	// platform is platform.json's interfaces block (parent port -> index,
 	// lanes, breakout modes), nil where absent; read-only, shared by clones.
 	platform map[string]platformPort
@@ -316,6 +319,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 	}
 	_, s.stpFeature = db["cfg_feature"]["FEATURE|stp"]
+	s.psample = strings.TrimSpace(sec["genl_psample"]) == "yes"
 	s.bgp = db["cfg_feature"]["FEATURE|bgp"]["state"]
 	s.l2 = parseL2Inst(sec["l2d"])
 	s.platformJSON, s.platform = parsePlatform(sec["platform_json"])
@@ -422,7 +426,7 @@ func (s *swState) clone() *swState {
 		port: map[string]map[string]string{}, vlans: map[int]bool{}, members: map[string]map[int]bool{},
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
-		stpFeature: s.stpFeature, platformJSON: s.platformJSON, platform: s.platform,
+		stpFeature: s.stpFeature, psample: s.psample, platformJSON: s.platformJSON, platform: s.platform,
 		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
