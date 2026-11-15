@@ -8777,12 +8777,40 @@ the loop: the rules and the chain on the first `setparam` with both
 clients, the test client's rule removed on the Unblock's, the cmds writing
 nothing more.
 
-#### 11.33.4 Not run live
+#### 11.33.4 Live on the DX010 (2026-11-15)
 
-The frame test on the DX010 (the rule and the chain written by hand on a
-looped empty cage, a frame with the test source counted dropped by the
-chip, then removed) is still to do, and the deployed bridge has not yet
-written the site's blocked client. Both are in the register.
+- **The deployed driver** (main `ed2d486`, installed 16:08 MST) wrote the
+  site's one blocked client on the first forced provision as listed: the
+  `DUI_MAC_ACL` table (L2, ingress, 30 ports and PortChannel1) with its one
+  `MB_` rule Active in STATE_DB, `DUI_MAC_BLOCK` with one DROP, exactly one
+  `-j DUI_MAC_BLOCK` in `ebtables -L INPUT` (the listing prints the bare
+  line, which the script's grep matches), the marker in `/run/disunified`,
+  and a second cycle that wrote nothing. The chip had the entry (`fp show`:
+  SrcMac, the bound ports, action `Drop`). Checked by the main session.
+- **The frame test** (23:15-23:17 UTC, under the switch lock, Clint's go).
+  A test table `DUI_MBTEST` of type L2, bound to Ethernet84 alone (empty
+  cage 22), held one rule with the driver's `MB_` fields for a made-up
+  source MAC; a 300 s systemd timer stood ready to undo it. The cage went
+  into MAC loopback (`bcmcmd "port ce21 lb=mac"`); l2d reported it
+  Backup/discarding within 10 s. The switch sent 20 frames out of the
+  cage from the test MAC, then 20 from a control MAC (ethertype 0x88B5,
+  which no trap matches).
+  - **The rule's entry counted exactly 20 packets** (`fp stat get` on its
+    stat id: `0x14`). The control MAC's 20 added nothing; the deployed TV
+    entry on the same port stayed at 0.
+  - The port's counters: `RUC` +40 (both sets), `RPORTD` +44 (the 40 and
+    4 other frames, dropped by the port's STP state), `RDBGC7` +20 (its
+    select bit 13; the 20 test-source frames alone).
+  - So the entry matches by source on a port whose STP state also drops
+    the frame. A switched frame forwarded past the drop was not seen
+    (one linked port, the uplink), as in §11.7.8.
+  - **Afterwards.** Loopback off, rule and table removed, no `DUI_MBTEST`
+    key in CONFIG_DB, STATE_DB or `config_db.json`, no test entry in the
+    chip; the deployed rule and chain untouched. The loop lasted about 25 s,
+    under the controller's Auto STP Edge pin (§11.23.3).
+- **Not seen live:** the kernel chain dropping a frame to the switch's own
+  address. Frames on a discarding port never reach the Bridge's INPUT, and
+  the one linked port is the uplink.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

@@ -432,8 +432,10 @@ on the right port only).
 | What | Status |
 |---|---|
 | The controller's blocked clients (`blocked_sta` in every setparam, `block-sta`/`unblock-sta` cmds; captured on 11.0.99) as `MB_<mac>` rules in `DUI_MAC_ACL`, the ECS's own form, outside the MAC rules' limit | fixture- and replay-tested (`block_test.go`, `replay_sonic_block_test.go`, from the DX010's own reply log of a Block and an Unblock); needs the kit's sonic-swss 0003, as every MAC rule |
-| The kernel's copy: ebtables `DUI_MAC_BLOCK` from the Bridge's INPUT (ARP, IPv4, IPv6 to the switch's own address) | fixture-tested; **untested live** |
-| A frame with a blocked source on a looped empty cage, dropped by the chip's entry and by the chain; Unblock removes both | **untested**: the frame test under the switch lock ([`drivers/sonic.md`](drivers/sonic.md) §11.33.4) |
+| The deployed driver writing the site's blocked client (the `MB_` rule Active, the chain with one INPUT jump, a quiet second cycle) | **live**, 2026-11-15 ([`drivers/sonic.md`](drivers/sonic.md) §11.33.4) |
+| A frame with a blocked source on a looped empty cage matched by the rule's entry, a control source not | **live**, 2026-11-15: exactly the 20 test-source frames counted, none of the control's (a test table with the driver's fields, §11.33.4) |
+| The kernel's copy: ebtables `DUI_MAC_BLOCK` from the Bridge's INPUT (ARP, IPv4, IPv6 to the switch's own address) dropping a frame | written and listed live; **untested** with a frame: needs a second linked port or a host on one (a discarding port's frames never reach INPUT) |
+| A switched frame from a blocked source not forwarded | **untested**: needs a second linked port |
 | A routed front-panel port's traffic to the switch | not covered: a routed port is no Bridge member, so the chain does not see it (the chip's rule still drops what it forwards) |
 
 ### IGMP snooping (the custom image only)
