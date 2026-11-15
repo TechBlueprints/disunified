@@ -128,12 +128,38 @@ sections; nothing on the node is installed for the read side. Per section:
 | `vlan` | `bridge -j -compressvlans vlan show` | live 802.1Q state of each member (`-compressvlans` matters: 4093 VLANs × 15 ports is 450 KB otherwise) |
 | `fdb` | `bridge -j -s fdb show br vmbr0 dynamic` | MAC table: `updated` (seconds since the entry's last frame) is the entry's `age`; the FDB has no learn time, so `uptime` is the loop's (`docs/mac-table-times.md`). `dynamic` drops the per-VLAN permanent entries, 4.6 MB otherwise |
 | `bridge` | `/sys/class/net/vmbr0/bridge/*`, `bridge-vids` | STP off/on, priority, IGMP snooping, VLAN range |
-| `phys`, `bonding`, `ethtool`, `ethtoolm`, `carrier` | sysfs, `/proc/net/bonding`, `ethtool`, `ethtool -m`, `carrier_changes` | uplinks: bond membership and active slave, speed caps, FEC support, optic EEPROM/DOM, link flaps |
+| `phys`, `bonding`, `ethtool`, `ethtoolm`, `carrier` | sysfs, `/proc/net/bonding`, `ethtool`, `ethtool -m`, `carrier_changes`, `carrier_up_count`, `carrier_down_count`, `carrier` | uplinks: bond membership and active slave, speed caps, FEC support, optic EEPROM/DOM; every port's link drops (below) |
 | `hwmon` | `/sys/class/hwmon` | temperature (coretemp/k10temp package sensor; overheating at `temp1_max`), fans (`fanN_input` as % of `fanN_max`; Dell's `dell_smm`), labelled `Fan1`, `Fan2`… as the ECS labels its own, or with the chip's `fanN_label` unchanged when it has one |
 | `qemu`, `lxc`, `vmlist` | cluster config files | guests, NIC model/MAC/tag/trunks/link_down/firewall |
 | `lldp` | `lldpcli -f json0 show neighbors details` | uplink neighbours (needs lldpd, §4) |
 | `nft`, `dhcpguard` | `command -v nft`, `nft -j list table bridge disunified` | whether DHCP guarding can be claimed; the driver's guard table, its rule-set fingerprint and each guest port's rogue-DHCP drop count (§4c) |
 | `stat`, `meminfo`, `uptime`, `dmi`, `pveversion`, `chrony` | `/proc`, DMI, `pveversion` | CPU % (delta between polls), memory, uptime, serial (service tag), NTP servers, and the node's PVE version (`9.1.6`, from `pve-manager/9.1.6/…`) — which is the firmware version the controller shows, and the model string `VE 9.1.6` |
+
+**Link drops (`link_down_count`, 2026-11-15).** The kernel counts each
+interface's carrier rises (`carrier_up_count`) and drops
+(`carrier_down_count`); `carrier_changes` is their sum. Both include what
+the NIC driver did between registering the interface and its first link:
+a driver that turns the carrier off after registering counts a drop that
+never happened, one that does it before counts nothing
+(`netif_carrier_off` skips the count while the device is unregistered,
+`net/sched/sch_generic.c`). On kernel 6.17.13-1-pve the nodes' mlx5
+uplinks count from a rise (13 changes = 7 up + 6 down while up), while
+bonds, bridges, the firewall bridges' veths and the e1000e `eno1` count a
+drop first (a bond up since boot reads 1 up + 1 down; `eno1`, never
+linked, reads 1 down); taps count nothing (tun never moves its carrier).
+The Podman host's virtio_net NIC (kernel 6.12, EL10) also counts the
+drop first. So `carrier_changes / 2`, the driver's count until that day,
+was one too many on such an interface while up; no port of a node showed
+it (uplinks are mlx5, guest ports taps, no LXC veths), the Podman uplink
+did. Every real drop ends an up period, so the driver now reports
+`carrier_up_count` less the up period still running, which is exact on
+any driver. The `carrier` section's line is `<name>=<changes> <up> <down>
+<carrier>`; an admin-down interface has no readable carrier (`-`, counted
+as down) and a kernel without the up count (before 4.16) prints `-`, which
+falls back to `carrier_changes / 2`, as does a line from an older script
+(`fixtures/proxmox-9.1.6/collect-node1-carrier.txt`,
+`internal/drivers/proxmox/carrier_test.go`). An LXC guest's veth is
+recreated with the container, so its count starts again then.
 
 Firewall-enabled guests (`firewall=1`) hang off `fwbr<id>i<n>`; their
 member of `vmbr0` is `fwpr<id>p<n>`, which is where VLANs and learned MACs

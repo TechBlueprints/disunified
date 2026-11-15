@@ -1,0 +1,104 @@
+Ethernet49 EEPROM:
+  Identifier (00h:0,128):
+    Lower (00h:0): unknown or unspecified
+    Upper (00h:128): QSFP28 or later (SFF-8665 et al)
+  Status fields (00h:1-2):
+    Revision compliance (00h:1): not specified (parsed via SFF-8636 rev 2.9)
+    Flat mem (00h:2): false
+  Max Power Dissipation (00h:107): 0.0 W (ignore, see Power Class 8 implemented)
+  Far end implementation (00h:113): 0x00
+    Num channels per end (00h:113): Unknown
+    Num ends (00h:113): Unknown
+  Near end implementation (00h:113): 0x00
+    Channel 1 (00h:113): true
+    Channel 2 (00h:113): true
+    Channel 3 (00h:113): true
+    Channel 4 (00h:113): true
+  Checksums (00h:128-223):
+    Base computed (00h:128-190): 0x4E
+    Base (00h:191): 0x4E
+    Extended computed (00h:192-222): 0xAF
+    Extended (00h:223): 0xAF
+  Extended identifier (00h:129):
+    CDR present in RX (00h:129): true
+    CDR present in TX (00h:129): true
+    CLEI in Page 02h (00h:129): false
+    High Power Class (00h:129): unused
+    Power Class (00h:129): 4
+    Power Class 8 implemented (00h:129): false
+  Connector (00h:130): LC (Lucent Connector)
+  Compliance (00h:131-138,192): 0x80 00 00 00 00 00 00 00 06
+    Ethernet (00h:131): Extended
+    Gigabit (00h:134): None
+    Fibre Channel (00h:135-138):
+      Link length (00h:135): None
+      Transmitter technology (00h:135-136): None
+      Transmission media (00h:137): None
+      Speed (00h:138): None
+    Extended (00h:192): 100G CWDM4
+  Encoding (00h:139): 64B/66B
+  Bitrate (00h:140,222):
+    Nominal (00h:140): 25500 Mbps (ignore, see extended bitrate)
+    Extended (00h:222): 25750 Mbps
+  Extended rate select (00h:141,194-195,221):
+    Rate select compliance (00h:141): version 2
+    Rx CDR on/off control implemented (00h:194): true
+    Tx CDR on/off control implemented (00h:194): true
+    RATE_SELECT implemented (00h:195): true
+    Rate select declaration (00h:221): true
+  Length (00h:142-146):
+    SMF (00h:142): 2 km
+    OM3 (00h:143): 0 m
+    OM2 (00h:144): 0 m
+    OM1 (00h:145): 0 m
+    Cable assembly (00h:146): 0 m
+    OM4 (00h:146): 0 m (ignore, type is not separable 850nm VCSEL)
+  Copper cable attenuation (00h:145,186-189): (ignore, optical variant detected)
+    25.78 GHz (00h:145): 0 dB
+    2.5 GHz (00h:186): 101 dB
+    5.0 GHz (00h:187): 164 dB
+    7.0 GHz (00h:188): 5 dB
+    12.9 GHz (00h:189): 20 dB
+  Device Tech (00h:147):
+    Active wavelength control (00h:147): false
+    Cooled Transmitter (00h:147): false
+    Detector Type (00h:147): Pin
+    Transmitter Type (00h:147): 1310nm DFB
+    Tunable Transmitter (00h:147): false
+  Wavelength (00h:186-187): 1301.0 nm
+    Tolerance (00h:188-189): +/-6.0 nm
+  Max case temp (00h:190): 55 C
+  Options (00h:193-195): 0x07 FF BE
+    Rx output amplitude fixed programmable settings implemented (00h:193): true
+    Rx output emphasis fixed programmable settings implemented (00h:193): true
+    Tx input adaptive equalizer freeze capable (00h:193): false
+    Tx input equalization auto adaptive capable (00h:193): false
+    Tx input equalization fixed programmable settings implemented (00h:193): true
+    Rx CDR LOL flag implemented (00h:194): true
+    Rx CDR on/off control implemented (00h:194): true
+    Rx output disable implemented (00h:194): true
+    Rx squelch disable implemented (00h:194): true
+    Tx CDR LOL flag implemented (00h:194): true
+    Tx CDR on/off control implemented (00h:194): true
+    Tx squelch disable implemented (00h:194): true
+    Tx squelch implemented (00h:194): true
+    Memory page 01h provided (00h:195): false
+    Memory page 02h provided (00h:195): true
+    Pages 20-21h implemented (00h:195): false
+    RATE_SELECT implemented (00h:195): true
+    TX_DISABLE implemented (00h:195): true
+    TX_FAULT implemented (00h:195): true
+    Tx LOS implemented (00h:195): true
+    Tx squelch implemented to reduce (00h:195): average power
+  Date code (00h:212-219): "170427  " (YYMMDDLL)
+  DOM type (00h:220):
+    Rx power measurements type (00h:220): average power
+    Supply voltage monitoring implemented (00h:220): false
+    Temperature monitoring implemented (00h:220): false
+    Tx power measurement supported (00h:220): true
+  Enhanced Options (00h:221):
+    Application select table declaration (00h:221): false
+    Initialization complete flag implemented (00h:221): true
+    Rate select declaration (00h:221): true
+    TC readiness flag implemented (00h:221): false
+

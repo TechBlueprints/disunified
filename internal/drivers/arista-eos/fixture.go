@@ -31,7 +31,7 @@ import (
 // before included.
 type FixtureTransport struct {
 	Dir        string
-	Overrides  map[string]string // command -> fixture file name, for scenario variants
+	Overrides  map[string]string // command -> fixture file name, for scenario variants (JSON and text)
 	Runs       [][]string
 	TextRuns   [][]string
 	Configured [][]string
@@ -108,7 +108,11 @@ func (f *FixtureTransport) RunText(_ context.Context, cmds []string) ([]string, 
 			out = append(out, "")
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(f.Dir, fixtureName(c, ".txt")))
+		name := fixtureName(c, ".txt")
+		if o, ok := f.Overrides[c]; ok {
+			name = o
+		}
+		b, err := os.ReadFile(filepath.Join(f.Dir, name))
 		if err != nil {
 			return nil, fmt.Errorf("no text fixture for %q: %w", c, err)
 		}
