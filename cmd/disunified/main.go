@@ -657,8 +657,15 @@ func runOne(ctx context.Context, o options) error {
 			api := unifiapi.New(o.unifiURL, key, o.unifiSite, true)
 			api.PowerPath = desc.Type == "usp"
 			seed := !o.noSeed && o.controlPorts != ""
-			var last time.Time
+			var (
+				mu    sync.Mutex // the loop's callbacks and the retry timer both call provision
+				last  time.Time
+				retry apiRetry
+				timer *time.Timer
+			)
 			provision = func(snap *devicemodel.Snapshot) {
+				mu.Lock()
+				defer mu.Unlock()
 				if !sess.Adopted() || snap == nil || time.Since(last) < 10*time.Second {
 					return
 				}
@@ -669,9 +676,29 @@ func runOne(ctx context.Context, o options) error {
 				for _, note := range r.Notes {
 					log.Printf("provision: seed: %s", note)
 				}
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+				}
+				if err != nil {
+					// Not only on the next layout change or held push: a
+					// controller that cannot be reached when the bridge
+					// starts (no DNS yet early in a boot, the network
+					// late) is asked again on a timer until it answers.
+					if ctx.Err() != nil {
+						return
+					}
+					wait, first := retry.failed()
+					if first {
+						log.Printf("provision: the controller's API cannot be reached yet: %v (asking again in %s, then at growing intervals)", err, wait)
+					}
+					timer = time.AfterFunc(wait, func() { provision(sess.Snapshot()) })
+					return
+				}
+				if retry.succeeded() {
+					log.Printf("provision: the controller's API answers again")
+				}
 				switch {
-				case err != nil:
-					log.Printf("%v (retried on the next layout change or held push)", err)
 				case r.RenamedDevice || r.RenamedPorts > 0 || r.Seeded > 0 || r.Cleared > 0:
 					log.Printf("provision: device renamed=%v, %d ports named after the switch, %d ports seeded from the switch's own config, %d released slots cleared", r.RenamedDevice, r.RenamedPorts, r.Seeded, r.Cleared)
 				}
@@ -1046,4 +1073,37 @@ func cachedManagementIPv6(api *unifiapi.Client, ttl time.Duration) func(context.
 		at, vlanAt, on = time.Now(), vlan, v
 		return v, nil
 	}
+}
+
+// apiRetry spaces the retries of a controller API step that failed: 15 s
+// after the first failure, doubling to five minutes, until a call succeeds.
+type apiRetry struct {
+	wait    time.Duration
+	failing bool
+}
+
+// failed records a failed call and returns how long to wait before the next
+// one, and whether this is the first failure since a success (the one worth
+// a log line).
+func (r *apiRetry) failed() (wait time.Duration, first bool) {
+	first = !r.failing
+	r.failing = true
+	switch {
+	case r.wait == 0:
+		r.wait = 15 * time.Second
+	case r.wait < 5*time.Minute:
+		r.wait *= 2
+		if r.wait > 5*time.Minute {
+			r.wait = 5 * time.Minute
+		}
+	}
+	return r.wait, first
+}
+
+// succeeded records a successful call and reports whether it ends a run of
+// failures.
+func (r *apiRetry) succeeded() (recovered bool) {
+	recovered = r.failing
+	r.failing, r.wait = false, 0
+	return recovered
 }

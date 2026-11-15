@@ -14,7 +14,17 @@ if [ -f /host/machine.conf ]; then            # a SONiC host: persist in /host
     [ -d /host/disunified ] || install -d -m 0700 -o "$u" -g "$u" /host/disunified
     [ -e /etc/disunified ] || ln -s /host/disunified /etc/disunified
     install -d /etc/systemd/system/disunified.service.d
-    printf '[Service]\nUser=%s\nGroup=%s\n' "$u" "$u" > /etc/systemd/system/disunified.service.d/sonic.conf
+    {
+        printf '[Service]\nUser=%s\nGroup=%s\n' "$u" "$u"
+        # The resolver file is on a tmpfs: SONiC writes it from the saved
+        # DNS servers (CONFIG_DB DNS_NAMESERVER, the controller's last push)
+        # in resolv-config.service, which runs well after the bridge starts.
+        # Run the same step first (as root, a failure ignored) so the saved
+        # servers answer from the bridge's first lookup of a boot.
+        if [ -x /usr/bin/resolv-config.sh ]; then
+            printf 'ExecStartPre=-+/usr/bin/timeout 30 /usr/bin/resolv-config.sh start\n'
+        fi
+    } > /etc/systemd/system/disunified.service.d/sonic.conf
 fi
 systemctl enable disunified >/dev/null 2>&1 || true
 if [ -d /run/systemd/system ]; then

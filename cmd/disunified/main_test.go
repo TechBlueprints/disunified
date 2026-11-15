@@ -3,6 +3,7 @@ package main
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/config"
 )
@@ -56,5 +57,28 @@ func TestConfigFirmwareIsTheVersion(t *testing.T) {
 	}
 	if got := configOptions(f, config.Device{Name: "sw"}).version; got != "" {
 		t.Errorf("no firmware: gave version %q, want none (the model's rule decides)", got)
+	}
+}
+
+// A failed controller API step is retried at 15 s, doubling to five minutes;
+// only the first failure of a run is worth a log line, and a success resets
+// the interval.
+func TestAPIRetryIntervals(t *testing.T) {
+	var r apiRetry
+	want := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute}
+	for i, w := range want {
+		got, first := r.failed()
+		if got != w || first != (i == 0) {
+			t.Errorf("failure %d: wait %v first %v, want %v and %v", i+1, got, first, w, i == 0)
+		}
+	}
+	if !r.succeeded() {
+		t.Error("a success after failures did not report a recovery")
+	}
+	if r.succeeded() {
+		t.Error("a second success reported a recovery")
+	}
+	if got, first := r.failed(); got != 15*time.Second || !first {
+		t.Errorf("after a success: wait %v first %v, want 15s and true", got, first)
 	}
 }

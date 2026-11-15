@@ -200,7 +200,7 @@ two SONiC-specific things when it sees `/host/machine.conf`.
 |---|---|---|
 | `/usr/sbin/disunified` | the deb | no -- reinstalled (§5) |
 | `/usr/lib/systemd/system/disunified.service` | the deb | no -- reinstalled |
-| `/etc/systemd/system/disunified.service.d/sonic.conf` (`User=`/`Group=` the login user) | postinst on SONiC | no -- postinst re-creates it |
+| `/etc/systemd/system/disunified.service.d/sonic.conf` (`User=`/`Group=` the login user; the early DNS step, below) | postinst on SONiC | no -- postinst re-creates it |
 | `/etc/disunified` → `/host/disunified` (symlink) | postinst on SONiC | no -- postinst re-creates it |
 | `/host/disunified/config.yaml` | the operator (§8) | **yes** |
 | `/host/disunified/env` (0600: the API key) | the operator | **yes** |
@@ -245,7 +245,12 @@ if [ -f /host/machine.conf ]; then            # a SONiC host: persist in /host
     [ -d /host/disunified ] || install -d -m 0700 -o "$u" -g "$u" /host/disunified
     [ -e /etc/disunified ] || ln -s /host/disunified /etc/disunified
     install -d /etc/systemd/system/disunified.service.d
-    printf '[Service]\nUser=%s\nGroup=%s\n' "$u" "$u" > /etc/systemd/system/disunified.service.d/sonic.conf
+    {
+        printf '[Service]\nUser=%s\nGroup=%s\n' "$u" "$u"
+        if [ -x /usr/bin/resolv-config.sh ]; then
+            printf 'ExecStartPre=-+/usr/bin/timeout 30 /usr/bin/resolv-config.sh start\n'
+        fi
+    } > /etc/systemd/system/disunified.service.d/sonic.conf
 fi
 systemctl daemon-reload
 systemctl enable disunified >/dev/null 2>&1 || true
@@ -259,6 +264,24 @@ and restarts with `--no-block`: on an image's first boot it runs inside
 `rc.local`, and a blocking restart of a unit ordered after swss could wait
 on rc.local itself. The unit ships in `/usr/lib/systemd/system` (trixie is
 merged-`/usr`).
+
+**The early DNS step (2026-11-14).** SONiC keeps `/etc/resolv.conf` on a
+tmpfs (`/run/resolvconf/resolv.conf`) and writes it in
+`resolv-config.service` from the saved servers (CONFIG_DB `DNS_NAMESERVER`,
+which the controller's IP Settings push fills, `sonic.md` §6.4). On the DX010
+that unit ran 71 s after the bridge started, and until then the host had
+no resolver file at all: Go's resolver asks `[::1]:53`, and every lookup of
+a controller named by DNS in `api_url` failed with `connection refused`
+(the naming step once, the management network's IPv6 read every inform).
+The drop-in's `ExecStartPre` runs SONiC's own script first, as root (`+`),
+a failure ignored (`-`), bounded by `timeout`: the servers saved at the
+last boot answer from the bridge's first lookup. It needs CONFIG_DB loaded,
+which the unit's `After=swss.service` gives (swss is ordered after
+`config-setup.service`). The script is idempotent and SONiC runs it again
+at its own time; a container started later copies the host's file at its
+start, as before. The step exists only where the script does. Separately,
+the naming step now retries on a timer after a failed API call (15 s,
+doubling to five minutes) rather than waiting for the next layout change.
 
 `prerm` stops the service on remove; `postrm purge` removes the drop-in and
 the symlink, never `/host/disunified`. On a non-SONiC Debian the deb is a
