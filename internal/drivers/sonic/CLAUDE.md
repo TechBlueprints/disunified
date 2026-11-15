@@ -1207,6 +1207,18 @@ was restarted.
     and `hdel`ed by the next l2d. Before that fix every start dropped the
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
+  - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**
+    (`eb_restore`, §11.26.11, 2026-11-15). The switch's `ebtables` is 1.8.11
+    on nf_tables (`ebtables -V`), so each `ebtables` call is a transaction of
+    its own: a flush and one append per rule passed every frame until the
+    DROP was back. A restore is one transaction: a declared chain is
+    emptied, a refused line refuses the batch. `ebtables-legacy-restore`
+    keeps a declared chain's rules, hence the explicit `-F`. SONiC's
+    `database.sh` loads `/etc/ebtables.filter.cfg` with a plain
+    `ebtables-restore`, which empties the whole filter table: both guards
+    re-read their chain's count and jumps (`eb_state`) and write it again.
+    The fakes run `testdata/l2d_ebtables.py`, which prints `WINDOW` when a
+    closed port passes a never-admitted source between two writes.
   - **A rig sharing one `SonicV2Connector` across threads segfaults in
     `_swsscommon`** (silently, no traceback): lock every call or give each
     thread its own. `docker exec database redis-cli monitor` outlives a

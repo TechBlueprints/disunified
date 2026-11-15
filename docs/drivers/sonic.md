@@ -5872,7 +5872,8 @@ MACs), `disunified-l2d`'s `MacLockGuard`:
 
 1. writes the kernel bridge's chain `DUI_MACLOCK` (jumped to from INPUT and
    FORWARD): per secured port, `-i <port> -s <mac> -j RETURN` for each
-   allowed MAC, then `-i <port> -j DROP`;
+   allowed MAC, then `-i <port> -j DROP`; every write is one
+   `ebtables-restore --noflush` transaction (§11.26.11);
 2. only then sets the port's learning to `cpu_trap` in APPL_DB
    (`PORT_TABLE`, a PortChannel's `LAG_TABLE`, through ProducerStateTable),
    the ECS's mode: an unknown source is still neither learnt nor forwarded
@@ -7634,7 +7635,9 @@ authenticates:
   (ahead of MAC locking's): the port's EAPOL accepted, each admitted
   source RETURNed, the rest of the port's frames dropped, so an
   unauthorised host cannot reach the switch's own CPU through a trapped
-  frame (ARP, DHCP, IGMP) either;
+  frame (ARP, DHCP, IGMP) either; every write is one `ebtables-restore
+  --noflush` transaction, and a chain the kernel lost is written again
+  at the next sync (§11.26.11);
 - the EAPOL trap `COPP_TRAP|dui_eapol` (`trap_ids eapol`, `queue4_group1`,
   `always_enabled true`) while any port authenticates;
 - a hostapd of its own (`-B -P /run/disunified-dot1x/<port>.pid`, config
@@ -8060,7 +8063,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
 **This l2d (run4, a copy of `l2d.py` installed for the run, the deployed
 one put back after):** at the restart the chain was rewritten with both
 RETURNs ahead of the DROP (the rewrite flushes and appends in order, so
-for ~20 ms it passes everything, never drops), no FDB entry was written,
+for ~20 ms it passes everything, never drops; one transaction since,
+§11.26.11), no FDB entry was written,
 and `mab_seen` was written as it stopped and removed 0.5 s after; the
 silent host went 40.2 s after its last frame ("idle for 40s"); the refused
 host was refused again, its count carried over; after the 25 s stop the
