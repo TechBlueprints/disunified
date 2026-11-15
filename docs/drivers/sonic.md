@@ -707,7 +707,7 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 | FEC | `config interface fec <p> rs\|fc\|none` | `PORT\|<p> fec` | only when asked (`FEC != nil`), like the Arista |
 | jumbo (`switch.jumboframes`/`switch.mtu`, device-level in UniFi) | `config interface mtu <p> 9100\|1500` on every front port | `PORT\|<p> mtu` | SONiC's default is 9100; "jumbo off" = 1500; reported `Jumbo` capability true |
 | VLANs (`VLANSet`, `NativeVLAN`, `TaggedAll`, `TaggedVLANs`) | native: `config vlan member add -u <nat> <p>`; tagged: `config vlan member add <id> <p>`; removals: `config vlan member del <id> <p>` | `VLAN_MEMBER\|Vlan<id>\|<p> tagging_mode` | **UniFi VLAN 1 ↔ `Vlan<native_vlan>`** (§5.2a). "Allow All" = untagged native + tagged member of **every VLAN the controller lists** (SONiC has no "all" trunk; `EnsureVLANs` gives the list, the driver remembers it). "Block All" = native only. A port can be untagged in one VLAN only: change native by `del` then `add -u`. |
-| `EnsureVLANs(ids)` | `config vlan add <id>` for missing ids; never deletes | `VLAN\|Vlan<id>` | **collision check:** if `ids` contains `native_vlan`, return an error naming it and write nothing; `ApplyPorts` likewise refuses any desired port that lists `native_vlan` as a tagged VLAN. This is how the §5.2a loop rule is met without UniFi knowledge in the driver. |
+| `EnsureVLANs(ids)` | `config vlan add <id>` for missing ids; a VLAN the push stops naming is deleted at the end of the port apply (§11.29) | `VLAN\|Vlan<id>` | **collision check:** if `ids` contains `native_vlan`, return an error naming it and write nothing; `ApplyPorts` likewise refuses any desired port that lists `native_vlan` as a tagged VLAN. This is how the §5.2a loop rule is met without UniFi knowledge in the driver. |
 | `LAG` | `config portchannel add PortChannel<lag> --fast-rate true --min-links 1` (once; since 2026-10-28, §9), member: `config vlan member del` every membership of the port first, then `config portchannel member add PortChannel<lag> <p>`; leave: `member del`, then the port's own VLAN intent; `config portchannel del` when empty | `PORTCHANNEL\|PortChannel<n>`, `PORTCHANNEL_MEMBER\|…\|<p>`, `LAG_TABLE` | SONiC refuses a member with VLAN config ("Interface configured as VLAN_MEMBER"). The PortChannel carries the VLAN config of its members' intent (`config vlan member add [-u] <id> PortChannel<n>`), reported back on each member port as the Arista does. `lag` is the UniFi id (lowest member index). LACP active is SONiC's default; fast rate (1 s) and min-links 1 are what UniFi's own SONiC switches run (§9). A PortChannel the push names that holds anything else (one made by hand, or by the driver before 2026-10-28: `add` defaults to `fast_rate false`) is brought in line once with `sonic-db-cli CONFIG_DB hset 'PORTCHANNEL\|PortChannel<n>' fast_rate true min_links 1`; **teammgrd reads both only when it creates the team** (sonic-swss 202505 `teammgr.cpp`), so the running LAG takes them at its next start (reboot, `config reload`, teamd restart) -- the saved config holds them at once. Fixture- and replay-tested, **untested live**. |
 | `MirrorSource` (this port is the destination) | session name `dui<dst>`: `config vlan member del` every membership of the destination, `config mirror_session span add dui<dst> <dst> <src> both`; removal: `config mirror_session remove dui<dst>` then the destination's VLAN intent | `MIRROR_SESSION\|dui<dst> {type SPAN, dst_port, src_port, direction BOTH}`; `STATE_DB MIRROR_SESSION_TABLE\|dui<dst> status active` | SONiC refuses a destination with VLAN config ("Destination Interface … has vlan config"); the driver strips it and restores it when the session goes. Report `MirrorFrom` from `MIRROR_SESSION`. |
 | storm control (`StormCtrl`, percent) | `config interface storm-control add <p> broadcast\|unknown-multicast\|unknown-unicast <kbps>`; `del` to clear | `PORT_STORM_CONTROL\|<p>\|<type> kbps` | kbps = pct/100 × port speed (Mbps) × 1000, rounded; report back as a percent of the configured speed; UniFi's multicast = `unknown-multicast` |
@@ -4424,7 +4424,7 @@ image rewrote the saved `config_db.json` as `version_202511_01`.
 | # | Feature (UI action) | What the switch did | Result |
 |---|---|---|---|
 | 1 | Port state and name (cage 2 Disabled + a name, then back) | `config interface shutdown Ethernet4`, `hset 'PORT\|Ethernet4' description <name>`, save (3 s); restore `startup`, `hset description ''`, `hdel description` | pass |
-| 2 | VLANs on cage 2: native kids; Allow All on a non-Default native; Allow All on Default; Block All; Custom kids+visitor; back | `config vlan add 2`, membership moves (`del 4094`, `add -u 2`); Allow All with a non-Default native logged as the stand-in's limit (VLAN 1 tagged cannot be expressed) and left the port; Allow All on Default created the nine other site VLANs (`config vlan add -m ...`) and tagged them; Block All removed them; Custom `add -m 2,69`; each 3-7 s. l2d gave each new VLAN its own STP instance | pass (the ten site VLANs stay on the switch; the driver never deletes a VLAN) |
+| 2 | VLANs on cage 2: native kids; Allow All on a non-Default native; Allow All on Default; Block All; Custom kids+visitor; back | `config vlan add 2`, membership moves (`del 4094`, `add -u 2`); Allow All with a non-Default native logged as the stand-in's limit (VLAN 1 tagged cannot be expressed) and left the port; Allow All on Default created the nine other site VLANs (`config vlan add -m ...`) and tagged them; Block All removed them; Custom `add -m 2,69`; each 3-7 s. l2d gave each new VLAN its own STP instance | pass (the ten site VLANs stay on the switch; the driver never deleted a VLAN until §11.29) |
 | 3 | Forced speed and FEC on cage 3: 40G (the UI picks FC-FEC itself), FEC off, 100G, RS-FEC, FEC off, auto | `config interface speed Ethernet8 40000` then `config interface fec Ethernet8 fc` **refused** (`fec fc is not in ['none', 'rs']`, portconfig's text on stdout, exit 1: the cage's SAI runs none and rs only); the controller re-pushed the same cfgversion every ~70 s until FEC was unticked. 100G, RS, none and auto each 3 s | pass except FC-FEC: **fixed** -- a FEC the cage's `supported_fecs` lacks is skipped with a note and the rest of the port applies (`TestPushedFECTheCageCannotRun`); the bridge's error now carries the command's stdout tail (`sshrun`, `TestRunErrorCarriesStdout`) |
 | 4 | Breakout of cage 2 to 4x25G (REST, no `fec_mode`: the Port drawer refuses every FEC at 25G on a QSFP28 port, `api.err.InvalidFecMode`, and insists on one) | `config interface breakout -f -y Ethernet4 '4x25G[10G]'` **refused by sonic-yang** (202511 validates CONFIG_DB before a breakout): `COPP_TRAP\|stp` → no `COPP_GROUP\|queue4_group1` (l2d wrote the trap only; the group lives in `copp_cfg.json`) and `MGMT_INTERFACE\|eth0\|169.254.1.1/16` → no `MGMT_PORT\|eth0` (the §10.6 hand fix made no port row). Eight retries, nothing changed; reverted through REST. The lane speeds, 2x50G and the join could not run | fail: **fixed** -- l2d puts the COPP group in CONFIG_DB with the trap (`TestL2dWritesTheTrapGroupWithTheTrap`); the driver adds the `MGMT_PORT\|eth0` row before a breakout when the address row has none (`TestBreakoutAddsTheManagementPortRow`). The hand fix for the row was refused by the session's permission check (a root write) |
 | 5a | Storm control on cage 3: 1 % broadcast + multicast (Level), then Rate mode, then off | `config interface storm-control add Ethernet8 broadcast 1000000`, `unknown-multicast 1000000` (kbps: 1 % of 100G); Rate mode made the driver **remove** storm control silently (SONiC storms are kbps only) | pass; Rate mode **fixed** to a note per port (`TestDesiredPortsStormRateIsNotedOnce`) |
@@ -5120,8 +5120,9 @@ switch.
   IP rule set.
 - **Ownership** is the managed record (`sonic-managed.json` `l3`: addresses,
   route prefixes, the transit hop, relay VLANs, DHCP servers): a network
-  leaving the push takes only what the driver made for it. A VLAN the
-  driver created stays (the driver never deletes a VLAN).
+  leaving the push takes only what the driver made for it. The VLAN goes
+  once no push names it (§11.29; until 2026-11-15 the driver never
+  deleted a VLAN).
 
 **Order matters on removal** (both found live): `config interface ip
 remove` refuses the last address of an interface while FRR still lists a
@@ -5313,7 +5314,8 @@ nothing. ospfd killed by hand was started again by the next reconcile
 it with the new file (cost 20 read back); the router deleted stopped ospfd
 and removed the file, and the learnt route left the kernel and APPL_DB.
 Then the peer, the test network (its transit went with it) and VLANs 3999
-and 4040 were removed (the VLANs by hand: the driver never deletes one);
+and 4040 were removed (the VLANs by hand: the driver deleted none before
+§11.29);
 route_check passes, Ethernet0 stayed up throughout.
 
 *Not proven live:* an adjacency over a front-panel port, a real bgp
@@ -5529,7 +5531,8 @@ VLAN, with no member and no address left, was deleted by hand as after the
 2026-11-07 and 2026-11-08 runs (`config vlan del 4040`). And leaving
 Routing + Aggregating, the port editor edits both former members at once
 with the first's settings (Tagged VLAN Management back to Allow All); both
-overrides were put back on their pre-test copy through REST.
+overrides were put back on their pre-test copy through REST. (Since §11.29
+the driver deletes Vlan4040 itself once the push no longer names it.)
 
 **Not proven live:** traffic over a routed port, since the test cages have
 no link (rack day). The subnet's connected route, which SONiC installs when
@@ -7934,6 +7937,162 @@ exact pre-test object (the UI's save in §11.23.3's Edge test had added
 fields and switched BPDU guard on), mstpd's error cleared by one link-up,
 the deployed deb (f3d3572) reinstalled from `/host/disunified`, leftover
 `bpdu_guard_held` fields deleted from STATE_DB, and the lock removed.
+
+### 11.29 A VLAN the controller stops pushing (2026-11-15)
+
+Until 2026-11-15 `EnsureVLANs` only created, so a VLAN outlived what had
+asked for it: the Inter-VLAN transit's Vlan4040 was deleted by hand after
+the 2026-11-07, 11-08 and 11-15 runs (§11.13, §11.16), and ten site VLANs
+the 2026-11-02 Allow All test created (§11.8) were still on the DX010 with
+no member. The driver now deletes a VLAN no push names, at the end of the
+port apply (`vlan_prune.go`).
+
+#### 11.29.1 When the controller stops naming a VLAN
+
+The push's `switch.vlan.*` lists only the VLANs the device uses. The
+DX010's pushes, every port native-only, list VLAN 1 alone while the site
+has ten other networks (every `system_cfg-dx010-*.txt` of 10.6.109 and
+11.0.99). A VLAN appears when a port carries it or the switch routes it:
+
+| Case | Capture |
+|---|---|
+| A tagged set that adds or drops it: the voice VLAN 69 on one port, 31 `exclude` | `controller-10.6.109/system_cfg-dx010-portfeat-4-voice.txt` (1, 69) then `-5-voice-off.txt` (1) |
+| Allow All to Block All and back on the VS: every network, then 1 alone, then every network | `controller-10.6.106/replies-sonic.ndjson` records 2, 95, 101 |
+| The transit of the first routed network: VLAN 4040 with every port `exclude`, gone with the last routed network | `controller-10.6.109/system_cfg-dx010-l3-4-none.txt` then `-l3-5-off.txt`; `controller-11.0.99/replies-dx010.ndjson` records 9 and 12 |
+| A routed network no port carries (VLAN 3999): in `switch.routing_interface.N.vlan` only, never in `switch.vlan.*` | `system_cfg-dx010-l3-1-dhcp-server.txt` |
+| A network deleted from the site | the ECS's own removal of Vlan4040 (next section); no DX010 capture |
+
+So "no port carries it any more", "the network is deleted" and "the
+transit went" reach the switch the same way: the id leaves the list.
+
+#### 11.29.2 What the ECS does
+
+Read-only on the ECS (Ubiquiti's SONiC 4.0.1) on 2026-11-15: its CONFIG_DB
+`VLAN` table is exactly the site's ten networks plus `Vlan1`, every one
+with members (its trunks are Allow All), and its syslog has the transit's
+whole life during that day's routed run: `addVlan: Create an empty VLAN
+Vlan4040` at 17:43:37 UTC, members added on every port, then at 17:45:25
+`removeVlan: Unable to remove non-empty VLAN Vlan4040: ref count 48` and,
+three seconds later with the members gone, `Remove VLAN Vlan4040`. The ECS
+follows its push: a VLAN the push stops naming leaves its tables, members
+first. (A network that stays on the site while no ECS port carries it was
+not seen: every ECS port carries every network.)
+
+#### 11.29.3 Which VLANs on the DX010 the driver made
+
+There is no record: `sonic-managed.json` held only `ntp` and `syslog`
+(2026-11-15), and the L3 record keeps addresses, not VLANs. The DX010's
+CONFIG_DB had `Vlan4094` (the L2 preset's, the `native_vlan` stand-in) and
+2, 8, 9, 10, 69, 1000, 2000, 3000, 4000, 4010: the site's ten networks,
+which the driver created in §11.8's Allow All test (2026-11-02, "the ten
+site VLANs stay on the switch") and no port has carried since. Nothing on
+the switch was made by hand.
+
+#### 11.29.4 The rule, and why
+
+**The push's VLAN list is the switch's, as for NTP and syslog.** Once the
+port plan, the IGMP rows and a routed network's address have left a VLAN,
+a VLAN no push names is deleted (`config vlan del [-m]`, then `config save
+-y`). Clint's rule (2026-10-31): "unifi is in control, not some mishmash
+of control with what's already on the switches", and the controller's list
+replaces the device's. A UniFi switch does the same (the ECS above), and a
+VLAN with no member, address or relay carries nothing, so deleting it
+changes no traffic.
+
+A record of the VLANs the driver created was considered and not built: it
+would leave the ten VLANs above forever (nothing records them), which is
+the mishmash the rule rules out, and it would protect only what a record
+can name. What it was for, "adoption takes the device as it is", is met
+otherwise: the first push after adoption is held while it would change a
+port (a VLAN with members is a port change), and every VLAN that still
+holds something the driver did not take out of it stays.
+
+**Kept**, whatever the push says:
+
+- the `native_vlan` stand-in (UniFi's VLAN 1, the management VLAN on the
+  DX010);
+- every VLAN the device's push names, and every VLAN an attached lane
+  switch's push names (`devicemodel.LaneVLANController`: the lane switch's
+  list is its own since this change; before, it replaced the device's
+  list, so the device's Allow All tagged the lane switch's VLANs and the
+  lane switch's the device's);
+- the VLAN of every network the switch routes (`switch.routing_interface`,
+  which `switch.vlan.*` does not list for a network no port carries);
+- a VLAN that still has a member (a port outside `control.ports`, a lane a
+  lane switch owns, a PortChannel outside the plan's range), an address
+  the driver did not add (the management address on a VLAN other than the
+  stand-in, a hand-made one), a `VLAN_INTERFACE` row with fields (bound to
+  a VRF or running IPv6 link-local: the CLI keeps such a row after the
+  last address), a DHCP relay, or an IGMP snooping row (`options.igmp`
+  off: the driver writes none, and the CLI refuses the delete while one
+  exists). Each is noted once.
+
+**Never from a list the run has not been given.** The prune runs only after
+an `EnsureVLANs` of this run (the device's push), after every attached
+lane switch's first push, and, on an image that routes, after the routing
+intent (`ApplyDevice` runs before the ports). A held first push never
+reaches it. It runs only with ports to write: `control.ports: off` writes
+no VLAN either. The 10.6.106 lab replay never deletes: its pushes predate
+`switch.routing_enabled`, so the routing intent is never known there.
+
+**Order.** The port batch takes the memberships out, l2d's config and the
+IGMP rows follow, the L3 apply (re-run after the ports) has already
+removed a leaving network's routes and address, and the delete comes
+last, in its own batch. The DHCP guard's rules are per VLAN on the switch
+(§11.7.6), so they are derived again and applied after a delete. l2d drops
+a deleted VLAN's STP instance itself (`forget_vlan`: orchagent removes the
+instance with the VLAN). The CLI (`config/vlan.py` `del_vlan`, 202505 and
+202511) checks and deletes one VLAN at a time: an L2MC or MLD_L2MC row, a
+`VLAN_INTERFACE` row or address, a member or a VXLAN map refuses it; it
+clears the VLAN's DHCP relay and `STP_VLAN` rows itself. The FixtureRunner
+models those refusals in that order. An MLD snooping row (collect.py does
+not read MLD) would fail the batch with the CLI's message.
+
+#### 11.29.5 Tests
+
+`vlan_prune_test.go` (collect-l3.txt): nothing deleted before a push or
+before the routing intent, then the ten in one command and nothing after;
+a port outside the written set keeps its VLAN (noted) until it is written
+again, and then the member goes before the VLAN; an address the driver did
+not add and a routed network's VLAN stay; nothing until an attached lane
+switch has applied, then its VLANs stay and its list leaves the device's
+alone; the fixture's CLI refusals. The DX010 replays meet the ten VLANs on
+their first reconcile (`pruneTen`), the Network 11 replay deletes
+Vlan4040 after the transit's address (record 12), and the L3 replay
+Vlans 3999 and 4040 after routing off. `TestReplaySonicDX010VLANPrune`
+replays the live run below over the switch as captured right after it
+(`collect-vlan-prune.txt`, `controller-11.0.99/replies-dx010-vlan-prune.ndjson`).
+
+#### 11.29.6 Live on the DX010 (2026-11-15 21:33-21:49 UTC, test deb 776f052, under the test lock)
+
+- **The ten unpushed VLANs.** The test build's first reconcile under the
+  push in force (VLAN 1 only) ran `config vlan del -m 2,8,9,10,69,1000,
+  2000,3000,4000,4010` and `config save -y`, then "0 of 32 ports changed".
+  orchagent removed each (`removeVlan: Remove VLAN VlanN`), l2d dropped
+  each instance (`VlanN is gone: its STP instance keys dropped`); CONFIG_DB,
+  APPL_DB `VLAN_TABLE`, the kernel's `Vlan<id>` netdevs and l2d's instances
+  kept only 4094, ASIC_DB two VLAN objects (the default and 4094).
+  PortChannel1 and both members stayed up; no ERR in syslog.
+- **A tagged set that adds and drops a VLAN.** Port 20 (Ethernet76, an
+  empty cage) was given a custom tagged set holding DMZ-FutureUse2 (VLAN
+  4010) through the controller's REST, as the UI saves an override
+  (`forward customize`, `tagged_vlan_mgmt custom`, every other network in
+  `excluded_networkconf_ids`): the push listed 4010 with port 20 tagged and
+  31 `exclude`; the bridge created Vlan4010 at MTU 1500, tagged Ethernet76,
+  and the next cycle set the new netdev's MTU (§12). Port 20 back to its
+  pre-test override: the push listed VLAN 1 alone; the bridge ran `config
+  vlan member del 4010 Ethernet76`, then `config vlan del 4010`, and l2d
+  dropped the instance. orchagent logged two WARNINGs at the member
+  removal (`removeMrouterPortFromL2mcEntries: VLAN Vlan4010 not found in
+  IPv4/IPv6 mrouter ports map`): the kit's L2MC orch on a VLAN with no
+  snooping, not an error.
+- **Quiet after.** Ten minutes of reconciles wrote nothing.
+- **Restored:** port 20's override identical to its pre-test copy (the
+  REST answer compared field by field), the deployed deb (fef74fe)
+  reinstalled from `/host/disunified`, the ten VLANs created again by hand
+  at MTU 1500 (CONFIG_DB and the netdevs), CONFIG_DB identical to the
+  pre-run dump in all 37 tables, the lock released. The deployed build
+  will delete those ten again once a build with this change runs.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
