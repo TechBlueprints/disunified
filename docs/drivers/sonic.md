@@ -1993,8 +1993,105 @@ another port's index: Ethernet0's for a lane reported before its netdev,
 Ethernet<ifindex>'s otherwise. That port lost its receive sockets, its tree and its
 group memberships (§11.25.3, from l2mcd's log of a split on the DX010). 0011 gives a
 re-created EthernetN its start-up index again; 0012 frees a closed socket's event.
-The harness's `port-list-breakout` case reproduces it (a heap use-after-free without
-0011) and is clean with both. Not in an image yet.
+The harness's `port-list-breakout` case reproduces it: its checks fail without 0011, a
+LeakSanitizer report remains with 0011 alone, and it is clean with both. (On the trees
+before 0011 it stops earlier, at 0013's use-after-free below.) Not in an image yet.
+
+**0013: `mcgrp_stop_phy_port()` read and cleared a membership it had just freed
+(2026-11-15).** The function (`src/igmp.c` 616-698 at upstream `651a13b`, shared by
+IGMP and MLD) walks a VLAN's groups. For each group it destroys the port's membership with
+`mcgrp_destroy_mbrshp_entry()`, which `free()`s it. Then it called
+`pims_is_pim_snoop_mbrship()` on the freed membership and cleared
+`MLD_OR_IGMP_JOIN_PORT` in its `pims_mbr_flags`. Every way a port's memberships are
+stopped runs it, static groups included:
+- a member port's link going down (`l2mcd_portstate_update` -> ... -> `mld_vport_state_notify`);
+- the port leaving the VLAN (`L2MCD_VLAN_MEM_TABLE_UPDATE` op 0);
+- snooping turned off on the VLAN (`mcgrp_stop_vir_port`);
+- a version change (`mcgrp_handle_intf_ver_change`).
+
+The review of the Micas PR flagged it as Critical on 2026-02-20, and it was never fixed
+([`prior-art.md`](../prior-art.md) §6.1). No patch of the series touched `src/igmp.c`. The
+neighbouring callers of `mcgrp_destroy_mbrshp_entry()` (`igmp.c` 1810, 2043, 2358,
+`igmp_fsm.c` 1934, `l2mcd_mld_port.c` 2454, 2765, `l2mcd_mld_pim_snoop.c` 263) do not use
+the membership after the call. The fix reads the PIM flag into a local before the destroy
+and drops the write. Nothing in the daemon sets `PIMS_WG_MBR_PORT` or `PIMS_SG_MBR_PORT`
+(they are only tested and cleared), so the flag was always false, and the function's
+behaviour is unchanged.
+
+**Why the switch is quiet.** A membership is a 336-byte `calloc` (a 352-byte chunk), and
+`pims_mbr_flags` is at byte 328 (gcc 12, amd64). In a freed chunk of that size, glibc's own
+fields are the first 16 bytes and the next chunk's `prev_size` at byte 336. Nothing
+allocates between the free and the read. The read therefore sees the old flags, and the
+write lands on freed bytes nobody uses. It is a latent fault: a different allocator,
+`MALLOC_PERTURB_`, a change of layout or a sanitizer build makes it real.
+
+**Harness** (`contrib/sonic-image/l2mcd-fuzz`): `member-link-down` (IGMPv3),
+`mld-member-link-down` (MLDv2) and `member-vlan-leave`. In each, Ethernet4 and Ethernet8
+join a group, then Ethernet8 loses link or leaves Vlan100, through l2mcd's own functions.
+The checks: the group keeps Ethernet4 alone, and one member deletion went out, under
+Ethernet8. Results:
+- `651a13b`, and the series 0001-0012: heap-use-after-free in `pims_is_pim_snoop_mbrship`.
+  The free is in `mcgrp_destroy_mbrshp_entry`, called from `mcgrp_stop_phy_port`.
+- With 0013: clean, every check passing.
+- The other 30 cases give the same results with and without 0013, on the series and on
+  `651a13b`. One exception: on `651a13b` + 0013, `port-list-breakout` gets past the
+  use-after-free to 0011's own fault.
+- The IGMP and MLD fuzzers ran 30 minutes with 4 workers each on the series with 0013:
+  6.9 million IGMP and 19.4 million MLD packets, about 1,090 and 1,150 edges, no crash
+  and no sanitizer report.
+- gcc 12 `-Wall` gives no warning in `igmp.c` either way.
+- `dry-run.sh` passed (2026-11-15).
+
+The same work found the harness's APPL_DB stub counting deletions where l2mcd never sends
+them (§11.25.3). It now counts them where l2mcd does.
+
+**On the DX010's image (0001-0010, `igmp-202511.20261115-6c8eb1cf7`), 2026-11-15:
+nothing visible.** The run was under the lock, with the bridge running and no config
+written. The chip's MAC loopback brought empty cage 5 (Ethernet16) up for 13 s, and then
+the loopback was taken off.
+- **Up:** l2mcd activated the cage's seven reserved static groups in Vlan4094 (orchagent:
+  Ethernet16 at 7 members, the VLAN at 14). It also learned the cage as a dynamic router
+  port, from its own looped query.
+- **Down:** `mcgrp_stop_phy_port` ran over the seven memberships it frees. l2mcd sent the
+  seven `Group-DEL`s and the router-port delete under Ethernet16, and orchagent took the
+  VLAN back to its 7 members, the uplink's.
+- **After:** the uplink aggregate stayed the VLAN's router port. l2mcd kept its pid and
+  uptime; there was no new core and no error in its log or syslog.
+
+This is what the heap layout predicts. The seven groups also left l2mcd's own tree (its
+VLAN dump: `ngroups` 7 before, 0 after). The uplink's static rows are in the chip and in
+l2mcd's static-group list, but no membership in that tree held the groups, so the cage's
+departure emptied them. That is the function's normal path and the same with 0013. Why the
+7 groups were in the tree beforehand with no member (another session's looped cage had gone
+down at 15:51) was not chased.
+
+**The risk on a switch with real receivers.** Every member's link-down, leave of the VLAN,
+snooping turned off and version change takes this path. On this image's glibc it changes
+nothing: the read sees the right (always false) PIM flag, and the write lands on unused
+freed bytes. No crash or wrong group state follows from it. The fault is latent until the
+allocator, its tuning or the struct changes. 0013 removes it.
+
+**What an image install with 0013 has to prove**, besides §11.25.3's list for 0011 and
+0012. On an empty cage under the lock: MAC loopback on and then off, as above. Then:
+- l2mcd keeps its pid;
+- the cage's reserved static members leave ASIC_DB and come back on the next link-up;
+- every other port's members and the uplink aggregate's mrouter entry are unchanged.
+
+With no sanitizer on the switch, the install cannot show the fault's absence directly.
+That proof is the harness's.
+
+**A separate fault, seen in the same logs: l2mcd's abort at 11:16:47 on 2026-11-15.** One
+second after Ethernet0 was re-created at index 4131 (§11.25.3), l2mcd died on an uncaught
+`std::logic_error` ("basic_string: construction from null is not valid"; core
+`/var/core/l2mcd.1794766607.26.core.gz`). systemd restarted its container at 11:19:48, so
+snooping was down for three minutes. The likely cause, from the source:
+`receive_igmp_packet()` checks the receiving port's name for NULL before
+`l2mcd_is_peerlink()` (`src/igmp_io.c` 639-640), but the v1/v2 and v3 report paths pass
+`portdb_get_ifname_from_portindex(multicast->source_port)` to it unchecked (`igmp_io.c`
+777 and 835). `l2mcd_is_peerlink()` builds a `std::string` from that name. A report that
+arrives on an index portdb no longer names, as after 0011's fault, therefore aborts the
+daemon. The harness cannot see it: its stub of the C++ layer accepts NULL. Not fixed yet (a
+follow-up). 0011 removes the way it was reached that day.
 
 ### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
@@ -7380,8 +7477,12 @@ from `/var/log/l2mcd.log`) read against its source (`port/l2mcd_utils.c`,
   tree and no receive socket from 10:48:27 until its next link event at
   11:16:46, 28 minutes. That recovery lost Ethernet0's own name and numbered
   it 4131 (4096 + 35), so its tree and its name sat at different indexes
-  (`Err kif_to_if: if:4131`) until l2mcd restarted at 11:19:52 (not part of
-  the run). Ethernet64 had no tree until that restart.
+  (`Err kif_to_if: if:4131`). One second later, at 11:16:47, l2mcd died
+  ("terminate called after throwing an instance of 'std::logic_error'",
+  "basic_string: construction from null is not valid", a core in
+  `/var/core`), and systemd restarted the container at 11:19:48: the
+  "restart" earlier notes took for a hand one (§8.13 has the likely cause).
+  Ethernet64 had no tree until then.
 
 **So the deletions are not confined to the cage being split.** Any breakout
 or join that re-creates a port can give another port's index to a lane:
@@ -7399,14 +7500,15 @@ then; had l2mcmgrd's report come first, 4096). Every later split or join
 re-creates names that the previous one deleted. Under AddressSanitizer the
 harness case below also hits a heap use-after-free on this path; the switch
 logged nothing of the kind. That use-after-free is not the breakout's: it is in
-`mcgrp_stop_phy_port()` (`src/igmp.c` 667-678 at upstream `651a13b`), which
+`mcgrp_stop_phy_port()` (`src/igmp.c` 667-680 at upstream `651a13b`), which
 frees a port's membership with `mcgrp_destroy_mbrshp_entry()` and then reads
 and clears its `pims_mbr_flags`. Every link-down of a port that is a group
 member runs it, breakout or not: a scratch harness case (a member port's
 link-down, nothing else) hits it on upstream, on 0001-0012 and on upstream
 with both fixes (2026-11-15). Nothing allocates between the free and the
-write, so glibc's heap survives it, which is why the switch is quiet. Not
-fixed: a follow-up (`local-information/follow-ups.md`).
+write, so glibc's heap survives it, which is why the switch is quiet. Fixed
+by sonic-l2mcd 0013 (§8.13, with the harness cases and what the running
+image does).
 
 **Not the driver's.** The driver runs `config interface breakout` and nothing
 of l2mcd; the numbering happens inside l2mcd on any port re-creation, by the
@@ -7442,7 +7544,14 @@ before its netdev exists, and Ethernet10 is created as ifindex 40, its link
 event first, as on the switch. The case checks that 4096 is still Ethernet0's
 name; that Ethernet40 keeps its index, name, tree, kif and packet sockets and
 that no group member is deleted; and that each lane has its own index and
-tree. On the build host's bookworm slave:
+tree. (Until 2026-11-15 the harness's APPL_DB stub counted deletions only in
+`l2mcsync_del_l2mc_entry()`, which nothing calls; l2mcd sends them through
+`l2mcsync_add_l2mc_entry()` with `op_code` 0, so the deletion check could not
+fail. With the stub counting them, the results below are unchanged: no
+deletion with 0011, and on upstream with 0013 alone, which gets past the
+use-after-free, the case now shows the fault itself: Ethernet10 holds
+Ethernet40's index and one member deletion goes out under its name.) On the
+build host's bookworm slave:
 
 | Tree | `port-list-breakout` |
 |---|---|
