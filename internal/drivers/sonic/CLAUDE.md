@@ -540,6 +540,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   switch: `bcmcmd "fp show group <gid>"` for the entry's stat id, then
   `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
   was on 202505's `13.2.1.36`.
+  **The kernel drops that copy instead (`acl_cpu.go`, §11.32, live by
+  hand 2026-11-15)**, as the ECS's tables keep blocked traffic off its own
+  address (a switched host behind internal port `Ethernet56`, not a trap).
+  The L3 tables are mirrored into iptables' **`raw`** table: caclmgrd
+  flushes and deletes every filter-table chain on any `ACL_TABLE` event,
+  the driver's own included. The marker is `/run/disunified/acl-cpu`
+  (collect.py `acl_cpu`), so a reboot rewrites it.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
