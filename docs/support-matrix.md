@@ -182,6 +182,8 @@ On 2026-11-14 an unknown-unicast storm was made on the uplink at 0.01 % (the
 lowest level EOS keeps, about 1 Mb/s at 10G), the drop count grew (captured,
 `storm-control-drops/`), and the deployed bridge's inform raised the
 controller's "Unicast Storm Detected" alert for that port
+(`PORT_UNICAST_STORM`, "Incoming unknown unicast packets on <switch> Port 1
+exceed the Storm Control threshold.", 2026-11-14 23:25:59 UTC)
 ([`drivers/arista-eos.md`](drivers/arista-eos.md) §9.8). `clear counters`
 does not reset the count. **Untested live:** bits 1 and 2 (a broadcast or
 multicast storm above 1 Mb/s floods the whole LAN; the same code path, keyed

@@ -878,7 +878,9 @@ MAC toward the Arista, and the host then sent 1000-byte frames to it at
 the uplink as unknown unicast: 18669 of 19660 dropped in 20 s. The
 deployed bridge's next inform carried bit 4 for port 1 and the controller
 raised **"Incoming unknown unicast packets on <switch> Port 1 exceed the
-Storm Control threshold"** (`PORT_UNICAST_STORM`, type `PORT_ANOMALIES`,
+Storm Control threshold."** (`PORT_UNICAST_STORM`, type `PORT_ANOMALIES`,
+severity HIGH, 2026-11-14 23:25:59 UTC, the inform's own second; the
+setting was committed at 23:24:27 and removed by the bridge at 23:26:01;
 `controller-11.0.99/system-log-device-alert-storm-rogue-dhcp.json`); its
 reconcile then removed the setting. A second run captured the JSON
 (`storm-control-drops/`). Bits 1 and 2 were not made to fire: a broadcast
@@ -907,7 +909,9 @@ and re-resolved, and an IPv6 ping to the switch's link-local address
 session was aborted, the deployed bridge removed all 57 lists. In an
 earlier run without the hold, its inform raised **"Rogue DHCP server
 detected on <switch> Port 1."** (`ROGUE_DHCP_SERVER_DETECTED`, type
-`PORT_ANOMALIES`) and its reconcile removed the lists. Rogue DHCP Server
+`PORT_ANOMALIES`, 2026-11-15 00:00:07 UTC) and its reconcile removed the
+lists; the held run raised it again at 00:06:42 UTC, one inform after its
+frames. These three are every alert the tests raised on the Arista. Rogue DHCP Server
 Detection stayed off site-wide throughout: the alert follows the inform's
 `anomalies` bit alone.
 
