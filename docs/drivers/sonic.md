@@ -1987,6 +1987,15 @@ replay in under 10 ms: the harness never runs the daemon's timers, so its group
 state only grows over a run (the daemon caps it with its group pool), and the build
 host was at a load near 35.
 
+**Later, outside the parsers (2026-11-15): 0011 and 0012.** l2mcd numbered a port
+that a breakout deletes and creates again 4096 + its kernel ifindex, which is
+another port's index: Ethernet0's for a lane reported before its netdev,
+Ethernet<ifindex>'s otherwise. That port lost its receive sockets, its tree and its
+group memberships (§11.25.3, from l2mcd's log of a split on the DX010). 0011 gives a
+re-created EthernetN its start-up index again; 0012 frees a closed socket's event.
+The harness's `port-list-breakout` case reproduces it (a heap use-after-free without
+0011) and is clean with both. Not in an image yet.
+
 ### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
 The vs build of the series ran on the VS guest (§2 A0's guest, 4 vCPU / 8 GB,
@@ -7298,6 +7307,137 @@ Then the deployed build went back from `/host/disunified`; the join's lost
 `dhcp_rate_limit 300` (§11.17) was written back and saved, and running and
 saved CONFIG_DB, `l2.json` and the controller's 32 port overrides matched
 the copies taken before.
+
+**The member deletions after the split were another port's (explained
+2026-11-15).** Section 5 of the record shows orchagent's
+`doL2mcMemberTask ... op DEL` for the new `Ethernet113` in five dynamic
+groups, two seconds after the split. They came from l2mcd, and the
+memberships were not Ethernet113's: they were those of **Ethernet0**, the
+uplink then, and l2mcd took Ethernet0's receive sockets with them. The
+evidence is l2mcd's own log of the same run
+(`sonic-igmp-202511.20261115-6c8eb1cf7/l2mcd-breakout-index-20261115.txt`,
+from `/var/log/l2mcd.log`) read against its source (`port/l2mcd_utils.c`,
+`l2mcd_port_list_update`, the kit's sonic-l2mcd 0001-0010):
+
+- l2mcd numbers ports in its port db. At start, every EthernetN is
+  4096 + N (`port_ifname_db_init`): Ethernet0 is 4096, Ethernet64 4160 and
+  Ethernet112 4208. A port that is deleted loses its name there
+  (`portdb delete`). When a port of that name comes back, l2mcd numbered it
+  **4096 + its kernel ifindex**, which is the start index of
+  Ethernet<ifindex>, another port's.
+- At 10:48:27, l2mcmgrd reported Ethernet113-115 before their netdevs existed
+  (an earlier join that day had deleted their names). `if_nametoindex` gave
+  0, so all three took 4096, Ethernet0's index, and the port db's name for
+  4096 became the last of them.
+- 0.1 s later, Ethernet113's link event (`kif:62 ... if_tree not found,
+  recreate`) found Ethernet0's tree (kif 35) at 4096. The daemon's
+  "breakout" branch (a tree at the port's index whose ifindex differs) took
+  it for the lane's own old tree: it closed its IGMP and MLD sockets, dropped
+  it and made 4096 Ethernet113's. The re-created port's first state update
+  then removed every membership 4096 held in Vlan4094 -- five dynamic groups
+  and the router-port entry -- and wrote the deletes to APPL_DB as
+  `Ethernet113` (`Group-DEL key:Vlan4094:0.0.0.0:224.0.1.60:Ethernet113`
+  ..., `Vlan4094:Ethernet113 mrouter entry deleted`). orchagent had no such
+  member, so APPL_DB and the chip kept Ethernet0's own rows. Nothing showed;
+  the damage was in l2mcd's state.
+- Ethernet115's link event (kif 64) numbered it 4160, Ethernet64's index,
+  and did the same to Ethernet64's tree (cage 17, in no group then). The join
+  at 10:49 deleted the lanes again and took index 4160's name with them.
+- Ethernet0 was up the whole time (`portsyncd` logged no down). It had no
+  tree and no receive socket from 10:48:27 until its next link event at
+  11:16:46, 28 minutes. That recovery lost Ethernet0's own name and numbered
+  it 4131 (4096 + 35), so its tree and its name sat at different indexes
+  (`Err kif_to_if: if:4131`) until l2mcd restarted at 11:19:52 (not part of
+  the run). Ethernet64 had no tree until that restart.
+
+**So the deletions are not confined to the cage being split.** Any breakout
+or join that re-creates a port can give another port's index to a lane:
+Ethernet0's (on this switch a member of the uplink aggregate since
+2026-11-15) whenever a lane is reported before its netdev, and Ethernet<k>'s
+for a lane created as ifindex k. A port that loses its tree this way keeps
+its members in the chip as they were (the deletes went out under the lane's
+name), but l2mcd no longer tracks them. l2mcd also hears nothing on that port
+until its next link event: no report, no leave, no query. A receiver's
+leave is never seen, and a router port learned only from queries there is
+not refreshed. The first split after l2mcd starts is the least exposed:
+lanes 2-4 still have their start-up names, and only lane 1 takes a kernel
+number (in the run above, its link event came first: 4157, which no port had
+then; had l2mcmgrd's report come first, 4096). Every later split or join
+re-creates names that the previous one deleted. Under AddressSanitizer the
+harness case below also hits a heap use-after-free on this path; the switch
+logged nothing of the kind.
+
+**Not the driver's.** The driver runs `config interface breakout` and nothing
+of l2mcd; the numbering happens inside l2mcd on any port re-creation, by the
+CLI or anyone else. The only driver-side workaround would be to restart l2mcd
+after every breakout, which drops every port's learned groups. It is not done.
+
+**The fix: sonic-l2mcd 0011 and 0012 (the image kit).**
+`contrib/sonic-image/series/sonic-l2mcd/0011-*`:
+- An EthernetN that the port db does not hold gets 4096 + N again, whatever
+  its ifindex, so each lane gets its own index back (Ethernet113 4209).
+- Any other name (PortChannelN) is numbered by its ifindex as before, but
+  only once its netdev exists and only if no other name holds the index.
+  Otherwise the update waits for the port's link event.
+- The "breakout" branch still closes and drops the re-created port's old
+  tree, but the name keeps its index, and a tree of another name at the index
+  is left alone with a log line.
+
+`0012-*`: `l2mcd_libevent_destroy` called `event_del` and never freed the
+event, so 128 bytes leaked for every port socket closed (two per re-created
+port). Both callers drop the tree, the pointer's only other holder, right
+after, so it now calls `event_free`. Upstream (`jasper-hou-micas/sonic-l2mcd-micas`
+`dev`, still 651a13b on 2026-11-15) has the same code, and both patches
+apply to it as they are (`git apply --check` on 651a13b): they are the
+upstream draft. Nothing has been posted.
+
+**Tests.** The fuzz harness's new regression case `port-list-breakout`
+(`contrib/sonic-image/l2mcd-fuzz/harness.c`) runs the sequence through
+l2mcd's own IPC handler and link-event function, with dummy links in the
+container. A victim Ethernet40 is up, in Vlan100 and a member of 239.1.2.3
+(this namespace's fallback tunnel devices hold the low ifindexes). An earlier
+join deletes Ethernet9 and Ethernet10. Then the split: Ethernet9 is reported
+before its netdev exists, and Ethernet10 is created as ifindex 40, its link
+event first, as on the switch. The case checks that 4096 is still Ethernet0's
+name; that Ethernet40 keeps its index, name, tree, kif and packet sockets and
+that no group member is deleted; and that each lane has its own index and
+tree. On the build host's bookworm slave:
+
+| Tree | `port-list-breakout` |
+|---|---|
+| 0001-0010 (the image) | heap-use-after-free in `pims_is_pim_snoop_mbrship`, from `l2mcd_portstate_update` -> `l2mcd_port_state_notify_handler` -> `mcgrp_stop_phy_port` |
+| + 0011 | every check passes; LeakSanitizer: 4 libevent events (512 bytes) |
+| + 0012 | clean |
+
+With 0012, all 30 regression cases are clean. The IGMP and MLD fuzzers ran
+240 s with 4 workers each on the patched tree (876 k and 718 k runs, no
+crash). gcc `-Wall` with the daemon's flags gives no new warning in the two
+changed files. The kit's `dry-run.sh` passed every check, run with private
+work branches made from the series: the Mac's shared work clones lag it,
+sonic-l2mcd at 0008 and sonic-swss without 0004.
+
+**Not reproduced live on the current image, on purpose.** The 10:48 log is
+the reproduction, on the same image. A second split now would again take some
+other port's tree. If l2mcmgrd's report wins the race against the netdev,
+that port is Ethernet0, the uplink aggregate's member; otherwise it is likely
+an empty cage's (new ifindexes start at 52 after the 13:17 boot: Ethernet52,
+Ethernet56). Only an l2mcd restart or that port's own link event repairs it.
+
+**What an image install with 0011 and 0012 has to prove** (on the DX010,
+under the lock, on an empty cage, the bridge stopped):
+1. Before: save `docker exec l2mcd l2mcd_ctl -s /tmp/dui-l2mcd-c2.txt -c 2`
+   (the port tree: interface, aggregate, index, kif, oper, RxPkts) and
+   `-c 11`.
+2. Split, join, split, join (the second cycle re-creates lanes whose names
+   the first deleted, the 10:48 case).
+3. `/var/log/l2mcd.log` for that window: each re-created EthernetN shows
+   `portdb add port:EthernetN, index:<4096+N>`, and no `delete2`, `Err
+   kif_to_if`, Group-DEL or `mrouter entry deleted` names a lane in a group
+   it never joined.
+4. The port tree again: every port outside the cage has the index, kif and
+   event pointer it had before; Ethernet0's and Ethernet4's RxPkts keep
+   counting (queries from the uplink); the lanes are 4096 + N.
+5. CONFIG_DB compared before and after, as always.
 
 **11.25.4 A table that is not the driver's (2026-11-15).** Until then the
 plan noted such a table and left it, so a PortChannel it bound kept its
