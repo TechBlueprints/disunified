@@ -1,6 +1,7 @@
 package aristaeos
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,4 +132,69 @@ func (c *Collector) forgetPortChannels(names []string) {
 	if c.acl.bound != nil {
 		c.acl.bound = bound
 	}
+}
+
+// A detached lane switch's Port-Channels (docs/drivers/breakout.md §7c).
+//
+// A cage's lane range, laneBase(cage)+1..+9, is its lane switch's while one
+// is attached: the lane plan removes what it empties, and a join's dissolve
+// the rest. Once none is attached (its config entry removed and the bridge
+// restarted), no plan reached the range, and an empty Port-Channel the lane
+// switch left there stayed for good. So the device's own plan takes the
+// range of every cage with no lane switch attached, for removal only: an
+// empty Port-Channel there that carries only the driver's own lines goes,
+// as in its own range. One with a member stays, noted: it still bundles
+// lanes, maybe toward an LACP partner, the controller's push for the cage
+// says nothing about lane aggregates, and a lane switch attached again
+// takes it back as it was. One with a hand-made line stays as anywhere.
+
+// detachedLaneChannels is staleChannels over the lane range of every port
+// of ports with no lane switch attached. Membership is the switch's own:
+// the plan's members (the batch's result) and every lane's channel group
+// (the fold reads one per cage; a split cage's lanes can be in two).
+func detachedLaneChannels(ports []devicemodel.Port, lanes map[int][]devicemodel.Port, attached map[int]bool, have map[int][]string, members map[string]bool, note func(string, ...any)) (remove []int, kept map[int]string) {
+	in := map[string][]string{} // Port-Channel -> its members' names
+	for _, p := range ports {
+		if p.LAG != "" && len(lanes[p.Index]) == 0 {
+			in[p.LAG] = append(in[p.LAG], laneNames(p)...)
+		}
+	}
+	for _, ls := range lanes {
+		for _, l := range ls {
+			if l.LAG != "" {
+				in[l.LAG] = append(in[l.LAG], laneNames(l)...)
+			}
+		}
+	}
+	busy := map[string]bool{}
+	for k := range members {
+		busy[k] = true
+	}
+	for k := range in {
+		busy[k] = true
+	}
+	for _, p := range ports {
+		base := laneBase(p.Index)
+		if attached[p.Index] || p.Index < 1 || base+laneGroupSpan-1 >= laneGroupCeil {
+			continue // a lane switch's range, or none: EOS stops at 2000
+		}
+		r, k := staleChannels(have, busy, base+1, base+laneGroupSpan-1)
+		remove = append(remove, r...)
+		for n, l := range k {
+			if kept == nil {
+				kept = map[int]string{}
+			}
+			kept[n] = l
+		}
+		for n := base + 1; n < base+laneGroupSpan; n++ {
+			name := "Port-Channel" + strconv.Itoa(n)
+			if _, ok := have[n]; ok && len(in[name]) > 0 {
+				m := slices.Clone(in[name])
+				sort.Strings(m)
+				note("%s is port %d's lane switch's aggregate and no lane switch is attached to port %d: left as it is while it has members (%s); attach the lane switch again, or take the members out and the plan removes it", name, p.Index, p.Index, strings.Join(m, ", "))
+			}
+		}
+	}
+	sort.Ints(remove)
+	return remove, kept
 }

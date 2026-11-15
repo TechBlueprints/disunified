@@ -346,8 +346,13 @@ one the batch just emptied, or one the switch already had empty at the
 collect -- with `no interface Port-Channel<n>` after the members' `no
 channel-group`. The range is 1 to the switch's last port for the device's
 own plan and the cage's nine for a lane switch's (a join's dissolve of the
-lane groups removes theirs too); a lane switch's groups are never the
-device's to remove, and anything above the ports is left. A Port-Channel
+lane groups removes theirs too); an attached lane switch's groups are never
+the device's to remove, and anything above the ports is left but for one
+case: the nine of a cage with no lane switch attached are the device's plan's
+for this removal only, so an empty one a detached lane switch left goes too,
+and one with members stays with a note naming them (`detachedLaneChannels`,
+`docs/drivers/breakout.md` §7c; captures `lane-po-empty/`, `-removed/`,
+`-joined/`, tests `lanes_detached_test.go`). A Port-Channel
 that carries a line the driver never writes there (anything but the
 `switchport` VLAN lines and the binding of a `DUI_IP_ACL_` list: a
 description, an MTU, an address, another list) was made by hand: it stays,

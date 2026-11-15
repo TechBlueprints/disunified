@@ -155,7 +155,11 @@ that cost time on Clint's DCS-7160-48TC6-F.
   that does not exist; any `interface Port-Channel<n>` line (an ACL unbind)
   re-creates it empty. The plan removes an empty one in its own range
   (1..last port; a cage's nine for a lane switch) that carries only the
-  driver's lines (`portchannel.go`); a hand-made one stays. The test
+  driver's lines (`portchannel.go`); a hand-made one stays. The device's
+  plan also takes the nine of every cage with no lane switch attached, for
+  that removal only (a detached lane switch's leftovers; one with members
+  stays, noted; `detachedLaneChannels`, `docs/drivers/breakout.md` §7c,
+  captures `lane-po-*/`). The test
   fixtures' switch had four (Po1-4): `removeLeftovers` in the test helpers
   takes them out first.
 - **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
