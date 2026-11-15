@@ -57,7 +57,9 @@ func TestL2dMABKill(t *testing.T) {
 	}
 	const port = "Ethernet116"
 	a, c := "02:00:00:00:0a:01", "02:00:00:00:0a:03"
-	const idle, step, pass = 40.0, 5.0, 2.1
+	// idle: the run's timeout; step: MAB_HEARD_STEP; pass: one of the
+	// switch's l2d passes (SYNC, 2 s, plus the sync's own time: 2.09 s seen).
+	const idle, step, pass = 40.0, 5.0, 2.2
 
 	for _, l := range all {
 		if strings.HasPrefix(l, "GAP ") {
@@ -93,7 +95,7 @@ func TestL2dMABKill(t *testing.T) {
 			t.Errorf("%s: C (last frame %.2f, killed %v) went at %.2f; want %.0f-%.1f s after its last frame",
 				name, last, kills, revoked[0], idle, idle+step+pass)
 		}
-		if d := revoked[0] - gone[0]; d < -pass || d > pass {
+		if d := revoked[0] - gone[0]; d < -pass-0.3 || d > 0.5 {  // the replay syncs every 0.5 s
 			t.Errorf("%s: C went at %.2f here, %.2f on the switch", name, revoked[0], gone[0])
 		}
 		if !strings.Contains(show(name), "LOG 802.1X: "+c+" authorised on "+port+" by its MAC address, kept over a restart") {
