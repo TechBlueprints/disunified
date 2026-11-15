@@ -1,0 +1,63 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "displayName": "Ethernet49/1",
+      "mediaType": "100GBASE-CWDM4",
+      "parameters": {
+        "aggrRxPwr": {
+          "channels": {
+            "-": -Infinity
+          },
+          "unit": "dBm"
+        },
+        "aggrTxPwr": {
+          "channels": {
+            "-": 6.54051339170168
+          },
+          "unit": "dBm"
+        },
+        "rxPower": {
+          "channels": {
+            "1": -30.0,
+            "2": -30.0,
+            "3": -30.0,
+            "4": -30.0
+          },
+          "unit": "dBm"
+        },
+        "temperature": {
+          "channels": {
+            "-": 36.20703125
+          },
+          "unit": "C"
+        },
+        "txBias": {
+          "channels": {
+            "1": 40.782000000000004,
+            "2": 43.274,
+            "3": 42.730000000000004,
+            "4": 40.482
+          },
+          "unit": "mA"
+        },
+        "txPower": {
+          "channels": {
+            "1": 0.3104471658370471,
+            "2": -0.22093572362881275,
+            "3": 1.4101055334232413,
+            "4": 0.4162950847513791
+          },
+          "unit": "dBm"
+        },
+        "voltage": {
+          "channels": {
+            "-": 3.3152000000000004
+          },
+          "unit": "V"
+        }
+      },
+      "updateTime": 1794764612.303481,
+      "vendorSn": "SSJ00000000"
+    }
+  }
+}

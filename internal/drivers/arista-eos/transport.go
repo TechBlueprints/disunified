@@ -11,6 +11,7 @@ package aristaeos
 import (
 	"context"
 	"encoding/json"
+	"strings"
 )
 
 // Transport runs EOS show commands and returns each command's JSON output in
@@ -32,4 +33,65 @@ type Transport interface {
 // transport without it simply leaves those fields unset.
 type TextRunner interface {
 	RunText(ctx context.Context, cmds []string) ([]string, error)
+}
+
+// ConfigWarner is an optional transport capability: Configure that also
+// returns the warnings EOS printed for the batch, in order. A warning is
+// not an error to EOS -- a list the hardware cannot program still commits,
+// with `! Error in ACL commit, ...` as a warning (4.26.14M,
+// docs/drivers/arista-eos.md §9.4) -- so Configure alone never shows it.
+// eAPI returns each command's warnings in its result (`{"warnings":
+// [...]}`); the CLI prints them as `! ` lines (docs/fixtures/
+// arista-eos-4.26.14M/acl-commit-warning/).
+type ConfigWarner interface {
+	ConfigureWarn(ctx context.Context, cmds []string) ([]string, error)
+}
+
+// resultWarnings are the warnings in eAPI results, in command order.
+func resultWarnings(results []json.RawMessage) []string {
+	var out []string
+	for _, r := range results {
+		var v struct {
+			Warnings []string `json:"warnings"`
+		}
+		if json.Unmarshal(r, &v) == nil {
+			out = append(out, v.Warnings...)
+		}
+	}
+	return out
+}
+
+// cliWarnings are the `! ` messages in CLI output, each with the lines that
+// continue it, without the `! ` and the CLI's ` at line N` suffix -- the
+// text eAPI returns for the same warning.
+func cliWarnings(out string) []string {
+	var warns []string
+	cur := -1
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case strings.HasPrefix(line, "! "):
+			warns = append(warns, strings.TrimPrefix(line, "! "))
+			cur = len(warns) - 1
+		case cur >= 0 && line != "" && !strings.HasPrefix(line, ">") && !strings.HasPrefix(line, "{") && !strings.HasPrefix(line, "%"):
+			warns[cur] += "\n" + line
+		default:
+			cur = -1
+		}
+	}
+	for i, w := range warns {
+		if j := strings.LastIndex(w, " at line "); j >= 0 && strings.Trim(w[j+len(" at line "):], "0123456789") == "" {
+			warns[i] = w[:j]
+		}
+	}
+	return warns
+}
+
+// configureWarn runs a config batch through t, with its warnings when the
+// transport can report them.
+func configureWarn(ctx context.Context, t Transport, cmds []string) ([]string, error) {
+	if w, ok := t.(ConfigWarner); ok {
+		return w.ConfigureWarn(ctx, cmds)
+	}
+	return nil, t.Configure(ctx, cmds)
 }

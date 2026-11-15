@@ -52,11 +52,17 @@ func TestFiniteJSONOnTheNoLightCapture(t *testing.T) {
 }
 
 // A poll whose thresholds reply carries the token collects, and the cage
-// with the dark optic reports a receive fault (its lanes read -30 dBm
-// against a low alarm of -10) and no transmit fault.
+// with the dark optic reports a receive fault and no transmit fault. With
+// eAPI the fault is the module's own RX_LOS from `phy detail` (the same
+// module, dark, on 2026-11-15: optic-flags/), not the thresholds: its lanes
+// read -30 dBm against a low alarm of -10, which alone no longer sets it
+// (TestThresholdsAloneSetNoFault).
 func TestCollectWithANoLightOptic(t *testing.T) {
 	ft := NewFixtureTransport(aclFixtureDir)
-	ft.Overrides = map[string]string{"show interfaces transceiver dom thresholds": domNoLight}
+	ft.Overrides = map[string]string{
+		"show interfaces transceiver dom thresholds": domNoLight,
+		"show interfaces Ethernet49/1 phy detail":    darkPHY,
+	}
 	snap, err := NewCollector(ft).Start(context.Background())
 	if err != nil {
 		t.Fatalf("collect with the no-light capture: %v", err)

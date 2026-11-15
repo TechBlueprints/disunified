@@ -1,0 +1,9 @@
+> ip access-group DUI_PROBE_1 in
+
+! Warning: ACL DUI_PROBE_1 contains rules not supported in data-plane.
+Unsupported options will be ignored by hardware.
+dscp not supported at line 1008
+
+> commit timer 00:05:00
+
+! Error in ACL commit, configuration may differ from hardware (Insufficient HW resources on Chip-0,dscp not supported) at line 1010

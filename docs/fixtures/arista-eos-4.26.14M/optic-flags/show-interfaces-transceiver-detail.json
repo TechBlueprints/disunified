@@ -1,0 +1,180 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -30.0,
+      "temperature": 36.20703125,
+      "txBias": 40.782000000000004,
+      "txPower": 0.3104471658370471,
+      "updateTime": 1794764612.303477,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/2": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -30.0,
+      "temperature": 36.20703125,
+      "txBias": 43.274,
+      "txPower": -0.22093572362881275,
+      "updateTime": 1794764612.3034775,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/3": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -30.0,
+      "temperature": 36.20703125,
+      "txBias": 42.730000000000004,
+      "txPower": 1.4101055334232413,
+      "updateTime": 1794764612.303478,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3152000000000004
+    },
+    "Ethernet49/4": {
+      "details": {
+        "rxPower": {
+          "highAlarm": 5.499958515306513,
+          "highWarn": 2.5000502848689585,
+          "lowAlarm": -10.0,
+          "lowWarn": -8.099485822407942
+        },
+        "temperature": {
+          "highAlarm": 65.0,
+          "highWarn": 60.0,
+          "lowAlarm": 10.0,
+          "lowWarn": 15.0
+        },
+        "totalRxPower": {},
+        "txBias": {
+          "highAlarm": 90.0,
+          "highWarn": 85.0,
+          "lowAlarm": 6.0,
+          "lowWarn": 6.5
+        },
+        "txPower": {
+          "highAlarm": 4.500026301731861,
+          "highWarn": 3.4999589926285637,
+          "lowAlarm": -8.498578381514413,
+          "lowWarn": -7.500682433658049
+        },
+        "voltage": {
+          "highAlarm": 3.6,
+          "highWarn": 3.5,
+          "lowAlarm": 3.0,
+          "lowWarn": 3.1
+        }
+      },
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -30.0,
+      "temperature": 36.20703125,
+      "txBias": 40.482,
+      "txPower": 0.4162950847513791,
+      "updateTime": 1794764612.303478,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3152000000000004
+    }
+  }
+}

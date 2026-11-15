@@ -399,8 +399,12 @@ func (l *Loop) informOnce(ctx context.Context) {
 	now := time.Now()
 	enc, err := l.session.EncodeInform(now)
 	if l.cfg.RecordDir != "" {
-		// The last payload as sent, for diagnosis (overwritten every cycle).
-		_ = os.WriteFile(filepath.Join(l.cfg.RecordDir, "payload-last.json"), l.session.BuildPayload(now), 0o600)
+		// The last payload as sent, for diagnosis (overwritten every cycle):
+		// the encoded one itself, since a second build would see no counter
+		// growth (Session.LastPayload).
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(l.cfg.RecordDir, "payload-last.json"), l.session.LastPayload(), 0o600)
+		}
 	}
 	url := l.session.InformURL()
 	key := l.session.AuthKey()

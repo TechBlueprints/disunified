@@ -65,27 +65,27 @@ func TestApplyFanMode(t *testing.T) {
 	if _, err := c.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.ApplyFanMode(ctx, devicemodel.FanModeDefault); err != nil || len(ft.configured) != 0 {
-		t.Fatalf("default on an auto switch: err %v, wrote %q", err, ft.configured)
+	if err := c.ApplyFanMode(ctx, devicemodel.FanModeDefault); err != nil || len(ft.Configured) != 0 {
+		t.Fatalf("default on an auto switch: err %v, wrote %q", err, ft.Configured)
 	}
 	if err := c.ApplyFanMode(ctx, devicemodel.FanModeQuiet); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"enable", "configure", "environment fan-speed override 30", "end", "write memory"}
-	if len(ft.configured) != 1 || !reflect.DeepEqual(ft.configured[0], want) {
-		t.Fatalf("quiet wrote %q, want %q", ft.configured, want)
+	if len(ft.Configured) != 1 || !reflect.DeepEqual(ft.Configured[0], want) {
+		t.Fatalf("quiet wrote %q, want %q", ft.Configured, want)
 	}
-	if err := c.ApplyFanMode(ctx, devicemodel.FanModeQuiet); err != nil || len(ft.configured) != 1 {
-		t.Fatalf("quiet twice: err %v, batches %d", err, len(ft.configured))
+	if err := c.ApplyFanMode(ctx, devicemodel.FanModeQuiet); err != nil || len(ft.Configured) != 1 {
+		t.Fatalf("quiet twice: err %v, batches %d", err, len(ft.Configured))
 	}
 	if err := c.ApplyFanMode(ctx, devicemodel.FanModeDefault); err != nil {
 		t.Fatal(err)
 	}
 	want = []string{"enable", "configure", "no environment fan-speed", "end", "write memory"}
-	if len(ft.configured) != 2 || !reflect.DeepEqual(ft.configured[1], want) {
-		t.Fatalf("default wrote %q, want %q", ft.configured, want)
+	if len(ft.Configured) != 2 || !reflect.DeepEqual(ft.Configured[1], want) {
+		t.Fatalf("default wrote %q, want %q", ft.Configured, want)
 	}
-	if err := c.ApplyFanMode(ctx, "silent"); err == nil || len(ft.configured) != 2 {
-		t.Fatalf("unknown mode: err %v, batches %d", err, len(ft.configured))
+	if err := c.ApplyFanMode(ctx, "silent"); err == nil || len(ft.Configured) != 2 {
+		t.Fatalf("unknown mode: err %v, batches %d", err, len(ft.Configured))
 	}
 }

@@ -33,6 +33,17 @@ func read11(t *testing.T, name string) string {
 
 func newDot1XRig(t *testing.T) (*breakoutRig, *sonic.Collector) {
 	t.Helper()
+	r, coll := newNet11Rig(t, "system_cfg-dx010-dot1x-8-off.txt", "fcc061a99a32e653")
+	if !coll.Capabilities().Dot1X {
+		t.Fatal("the capture does not claim 802.1X")
+	}
+	return r, coll
+}
+
+// newNet11Rig is the DX010 on its 2026-11-15 image (collect-dot1x.txt, the
+// collector that reads 802.1X) under one of Network 11.0.99's pushes.
+func newNet11Rig(t *testing.T, applied, ver string) (*breakoutRig, *sonic.Collector) {
+	t.Helper()
 	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261115-6c8eb1cf7", "collect-dot1x.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -47,15 +58,12 @@ func newDot1XRig(t *testing.T) (*breakoutRig, *sonic.Collector) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !coll.Capabilities().Dot1X {
-		t.Fatal("the capture does not claim 802.1X")
-	}
 	defaults := map[int][]string{}
 	for _, p := range snap.Ports {
 		defaults[p.Index] = coll.DefaultPortNames(p)
 	}
 	desc := inform.Descriptor{MAC: snap.System.MAC}
-	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", CfgVersion: "fcc061a99a32e653", SystemCfg: read11(t, "system_cfg-dx010-dot1x-8-off.txt")}
+	st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", CfgVersion: ver, SystemCfg: read11(t, applied)}
 	sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
 	l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, DefaultPortNames: defaults, ControlIGMP: true})
 	if err != nil {

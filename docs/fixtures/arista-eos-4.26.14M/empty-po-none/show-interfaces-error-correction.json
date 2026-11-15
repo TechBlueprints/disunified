@@ -1,0 +1,94 @@
+{
+  "interfaceErrCorrStatuses": {
+    "Ethernet49/1": {
+      "errCorrEncodingStatus": "reedSolomon",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": true,
+      "fecEncodingConfigReedSolomonEnabled": true,
+      "fecEncodingFireCodeAvailable": false,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet50/1": {
+      "errCorrEncodingStatus": "fireCode",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": true,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet50/2": {
+      "errCorrEncodingStatus": "fireCode",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": true,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet50/3": {
+      "errCorrEncodingStatus": "fireCode",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": true,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet50/4": {
+      "errCorrEncodingStatus": "fireCode",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": true,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet51/1": {
+      "errCorrEncodingStatus": "reedSolomon",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": true,
+      "fecEncodingConfigReedSolomonEnabled": true,
+      "fecEncodingFireCodeAvailable": false,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet52/1": {
+      "errCorrEncodingStatus": "disabled",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": false,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet53/1": {
+      "errCorrEncodingStatus": "reedSolomon",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": true,
+      "fecEncodingConfigReedSolomonEnabled": true,
+      "fecEncodingFireCodeAvailable": false,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    },
+    "Ethernet54/1": {
+      "errCorrEncodingStatus": "disabled",
+      "fecEncodingConfigDisabled": false,
+      "fecEncodingConfigFireCodeEnabled": false,
+      "fecEncodingConfigReedSolomon544Enabled": false,
+      "fecEncodingConfigReedSolomonEnabled": false,
+      "fecEncodingFireCodeAvailable": false,
+      "fecEncodingReedSolomon544Available": false,
+      "fecEncodingReedSolomonAvailable": true
+    }
+  }
+}

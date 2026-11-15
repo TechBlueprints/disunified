@@ -718,9 +718,41 @@ func countersOf(l ipLink) devicemodel.Counters {
 	}
 }
 
+// carrierChanges turns one interface's line of the `carrier` section
+// ("<carrier_changes> <carrier_up_count> <carrier_down_count> <carrier>")
+// into PortHealth.LinkChanges: the transitions of a link that started down,
+// so that half of it is the real drop count.
+//
+// carrier_changes is the kernel's up count plus its down count, and both
+// include whatever the NIC driver did between registering the interface and
+// its first link: a driver that turns the carrier off after registering
+// (bond, bridge, veth, virtio_net, e1000e; mlx5 does it before) counts a
+// drop that never happened. Every real drop ends an up period, so the
+// drops are the up count less the one still running; that holds for any
+// driver (docs/drivers/proxmox.md §2, Link drops). A line with one field
+// (an older collect script) or without an up count (a kernel before 4.16)
+// keeps carrier_changes as it is. An interface that is admin down has no
+// readable carrier ("-") and counts as down.
 func carrierChanges(carrier map[string]string, name string) uint64 {
-	n, _ := strconv.ParseUint(carrier[name], 10, 64)
-	return n
+	f := strings.Fields(carrier[name])
+	if len(f) == 0 {
+		return 0
+	}
+	changes, _ := strconv.ParseUint(f[0], 10, 64)
+	if len(f) < 4 {
+		return changes
+	}
+	ups, err := strconv.ParseUint(f[1], 10, 64)
+	if err != nil {
+		return changes
+	}
+	if f[3] != "1" {
+		return 2 * ups
+	}
+	if ups == 0 {
+		return 1 // up and never counted a rise (a tap: tun never moves its carrier)
+	}
+	return 2*(ups-1) + 1
 }
 
 // macEntry is one FDB entry. The kernel's `updated` is the seconds since

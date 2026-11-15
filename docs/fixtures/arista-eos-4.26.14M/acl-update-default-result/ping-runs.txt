@@ -1,0 +1,24 @@
+# step, pings sent, pings lost, lost runs as icmp_seq ranges (20 ms apart; the CLI batch starts at seq ~100)
+s0-baseline	400	2	234-235
+s0-baseline1	400	0	
+s0-baseline2	400	1	386-386
+s0-baseline3	400	0	
+s2-bind	400	1	69-69
+s3-rewrite-a1	400	2	268-269
+s4-rewrite-b1	400	0	
+s3-rewrite-a2	400	0	
+s4-rewrite-b2	400	0	
+s5-big-a3	800	10	221-230
+s6-big-b3	800	10	217-226
+s5-big-a4	800	10	224-233
+s6-big-b4	800	10	525-534
+s5-big-a5	800	10	222-231
+s6-big-b5	800	10	220-229
+s7-knob	800	0	
+s8-knob-big-a1	800	0	
+s9-knob-big-b1	800	0	
+s8-knob-big-a2	800	0	
+s9-knob-big-b2	800	0	
+s8-knob-big-a3	800	0	
+s9-knob-big-b3	800	0	
+s10-abort	800	0	
