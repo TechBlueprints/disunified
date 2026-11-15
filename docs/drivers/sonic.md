@@ -6014,7 +6014,8 @@ have no UniFi control written for bringing it back.
 
 | Bit | DX010 | Where |
 |---|---|---|
-| 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval), never the uplink, the STP root port or the gateway's port | §11.5 |
+| 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval) or at the operator's Re-enable, never the uplink, the STP root port or the gateway's port | §11.5, §11.28 |
+| -- BPDU guard | mstpd shuts the netdev and disunified-l2d holds the chip's port down until the operator's Re-enable (the controller's `port-recovery`), the guard or STP going off for the port; no timer; reported as `Fault "errdisabled: bpduguard"` | §11.28 |
 | 1 / 2 | detected by disunified-l2d from the port's own receive counters against the port's storm-control threshold; the port keeps running under its storm-control limit; reported as growth of `StormDropsBroadcast` / `StormDropsMulticast` | §11.21 |
 | 4 | detected by disunified-l2d from the port's sFlow samples of the unicast it floods (no counter separates them), on an image with sonic-buildimage 0014; the port keeps running; growth of `StormDropsUnicast` | §11.24 |
 | 32, 64, 128, 256, 1024 | §11.17, §11.7.9, §11.18 | -- |
@@ -6377,12 +6378,10 @@ reports those faults (`sonic`, `arista-eos`, `proxmox`) gets it. The
 loop-protection hold keeps its anomalies bit 512 beside it (`tables.go`,
 `caps.go`; `anomalies_test.go`, `contract_sonic_stp_test.go`).
 
-**What differs from a UniFi switch:** mstpd shuts the port's netdev, and
-StpOrch blocks it in the chip, but the chip's port stays up: SONiC's oper
-status reads up while the cage is looped, so the bridge reports the held
-port `up: true`, and a cabled peer would see link. A UniFi switch's BPDU
-guard is described in the UI as disabling the port; taking the chip's port
-down for it (and up again on the operator's re-enable) is a follow-up.
+**What differed from a UniFi switch until §11.28:** mstpd shuts the
+port's netdev and StpOrch blocks it in the chip, but the chip's port stayed
+up, so a cabled peer kept its link. Since 2026-11-15 disunified-l2d holds a
+tripped port down in the chip until the operator's Re-enable (§11.28).
 
 **A side effect seen, and its cause: the controller's auto edge.** 90 s
 after the link-flap alert the controller's push changed port 17's
@@ -6437,7 +6436,29 @@ logs to `server.log` (read 2026-11-15, placeholders for the identifiers):
   2026-11-12 was found `already_matches` after two restarts). An `enabled`
   value does not: two access ports on a US8 and a USL16LPB were written
   `enabled` again a few minutes after each restart. Whether choosing Edge
-  explicitly in the port's settings clears a pinned value was not tested.
+  explicitly in the port's settings clears a pinned value was not tested
+here; §11.28's run on port 17 tested it (below).
+- **The setting behind it** is the site's `rest/setting`
+  `global_switch.auto_stp_edge_detection_enabled` (true here), the UI's
+  "Auto STP Edge": it "automatically sets ports connected to end devices as
+  Edge ... Not recommended when using third-party switches or bridges."
+- **No flap needed (2026-11-15, §11.28's run).** While cage 17 sat looped
+  and steady as a Backup port with BPDU guard off (18:37-18:42 UTC), the
+  controller's 18:38:34 UTC evaluation found the port up and its value
+  `disabled` already there (`already_matches`).
+- **How an operator un-pins a port** (tested on port 17 the same day).
+  Choose Edge in the port's settings and apply: the UI writes the whole
+  override with `stp_edge_state: enabled` (and, beside it, switched BPDU
+  guard on), shows "Port mode is manually overridden. Auto STP Edge is
+  disabled for this port. Restore Auto STP Edge", and the push says
+  `stp.edge=enabled`. Then click "Restore Auto STP Edge", which applies at
+  once: the override says `stp_edge_state: auto`, `server.log` logs
+  `stp-edge-auto reset no-op reason=nothing_to_clear`, and the push says
+  `stp.edge=auto` again. The next evaluation logged `skipped
+  reason=effective_state_not_auto` while the override still said
+  `enabled`. Port 17's override was then put back to its exact pre-test
+  object through the REST API, and its push stayed `auto`. Ports 9, 10, 13,
+  18 and 31 are still pinned to `disabled`.
 
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
@@ -7157,6 +7178,122 @@ collector (`collect-dot1x.txt`).
   or a real client on a linked port, against the controller's RADIUS
   profile.
 - **The controller's alert for 128**, which needs the bridge deployed.
+
+### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
+
+§11.23.3 left one difference from a UniFi switch: mstpd's BPDU guard shut
+only the port's netdev, so the chip's port stayed up, a cabled peer kept
+its link and the port read up. This section takes the chip's port down for
+the trip and brings it back the way UniFi does.
+
+**What UniFi asks for** (the console's own UI, Network 11.0.99, read
+2026-11-15). BPDU Guard's tooltip: it "shuts down the port and requires
+manual re-enable if a switch is detected (via BPDUs)"; its enable dialog
+says the port "must be manually re-enabled"; the alert's recommended action
+ends "The port must be manually re-enabled." The port panel then reads
+"Blocked by BPDU Guard", and the port's settings carry a **Re-enable**
+button, offered when the port's anomaly list holds `BPDU_GUARD_TRIGGERED`
+or `NETWORK_LOOP_DETECTED_BY_KEEPALIVE` (loop protection) and hidden after
+one click until that list changes. No text mentions a recovery timer, and
+the ECS's `ERROR_DISABLE|bpduguard` row has `auto_recovery_interval 0`
+(§11.20.2). So: no timer; the port stays down until the operator's
+Re-enable.
+
+**What the Re-enable sends** (captured 2026-11-15 by clicking it on the
+DX010's held port 17). The UI posts `cmd/devmgr` with `{"cmd":
+"port-recovery", "mac": ..., "port_idx": 17}` (its bundle's
+`PORT_RECOVERY`); the device receives it at its next inform as
+
+```
+{"_type": "cmd", "cmd": "port-recovery", "port": 17, "_id": ..., "device_id": ..., "datetime": ..., "time": ...}
+```
+
+with the port number as `port`, not `port_idx`
+(`fixtures/controller-11.0.99/reply-port-recovery.ndjson`,
+`TestPortRecoveryCarriesItsPort`). The session turns it into a
+port-recovery effect and the loop calls the driver's
+`devicemodel.PortRecoverer`. A driver without it logs the request and
+ignores it.
+
+#### 11.28.1 The design
+
+- **The trip.** l2d reads mstpd's report every 2 s, and a port with
+  `bpdu-guard-port yes` and `bpdu-guard-error yes` is held: APPL_DB
+  `PORT_TABLE` `admin_status down` through ProducerStateTable, as loop
+  protection's hold already did (§11.5). CONFIG_DB, the saved config and the
+  driver's plan, which reads CONFIG_DB, keep the operator's setting, so the
+  plan never fights the hold, and the controller sees the port enabled and
+  error-disabled. The hold is STATE_DB `DUI_BPDU_GUARD_TABLE|<port>` (`state
+  held`, `since`) and survives an l2d restart. l2d publishes its verdict as
+  `bpdu_guard_held` in `DUI_STP_PORT_TABLE`, and the driver reports the
+  port's `errdisabled: bpduguard` from it (from mstpd's error only for an
+  older l2d without the field).
+- **Re-assert.** portmgrd copies CONFIG_DB's `admin_status` into APPL_DB
+  and runs `ip link set up` whenever anything writes the port's CONFIG_DB
+  row (a description, an MTU), which undid a hold. Every pass, l2d puts a
+  held port's APPL_DB row and netdev down again. That applies to the
+  loop-protection hold too, which had the same gap.
+- **The release.** The driver's `RecoverPort` writes STATE_DB
+  `DUI_PORT_RECOVERY|<interface>` for each interface of the port. l2d reads
+  and deletes those rows each pass, and releases a BPDU-guard hold or a
+  loop-protection hold on that interface or its PortChannel. A release puts
+  CONFIG_DB's `admin_status` back and brings the netdev up (mstpd shut it).
+  A hold is also released when mstpd no longer runs BPDU guard on the port
+  (the guard or STP switched off for it), when the port leaves the bridge,
+  and when spanning tree goes off. `--teardown` releases everything.
+- **Released, not re-tripped, until the link comes back.** mstpd clears
+  its error only when the port's link comes up again, so after a Re-enable
+  on a port with no link (the loop unplugged) mstpd still says error. l2d
+  marks such a port released (the row's `state released` with the port's
+  state-change count). Its error is not a new trip until the port's kernel
+  state has changed since (a link-up), whether the guard stays on or is
+  switched off and on again. If the loop is still there, the link comes up,
+  the next BPDU trips mstpd again and l2d holds the port again within a
+  pass: UniFi's "Fix the loop, then re-enable the port."
+- **Loop protection's hold** keeps its 150 s automatic release (the ECS's
+  `MAC_MOVE_GUARD` action interval, §11.5), and now also ends at the
+  operator's Re-enable, when the port's loop protection is switched off
+  (it used to wait for the whole guard to go off), and is re-asserted as
+  above.
+
+Tests: `l2d_bpdu_guard_test.go` runs l2d's holds against
+`fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-bpduguard.txt`: the
+trip, portmgrd's rewrite, a restart, the Re-enable, a release with no link,
+the link coming back into the loop, the guard off and on again, and the
+loop-protection hold's three releases. `TestWireContractSonicBPDUGuardHeld`
+checks the driver's read side on the held capture
+`fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/collect-bpduguard-held.txt`.
+`TestRecoverPortAsksL2d` checks the STATE_DB write.
+
+#### 11.28.2 Live on the DX010 (2026-11-15 18:25-18:52 UTC, test builds fc73a86 to bd61d4c)
+
+On empty cage 17 (Ethernet64), looped with the chip's MAC loopback, BPDU
+guard on through the controller's port override, and the switch lock held:
+
+| step | result |
+|---|---|
+| loop with the guard on | mstpd "Received BPDU on BPDU Guarded Port - Port Down" and l2d "held down in the chip until re-enabled" in the same second; APPL_DB `admin_status down`, ASIC_DB `SAI_PORT_ATTR_ADMIN_STATE false`, `bcmcmd ps` `!ena` (the port Disabled) |
+| the next inform | port 17 `enable: true`, `error_disabled: true`, reason 2; the UI's Port Manager "Port 17: Blocked by BPDU Guard", STP "Blocked", and the Re-enable button |
+| Re-enable, loop still on | `port-recovery requested for port 17`; l2d "released (re-enabled by the controller)"; the link came up, mstpd tripped again, l2d held the port again 2 s later |
+| an l2d restart while held | still held; the chip port `!ena` |
+| a CONFIG_DB write of the port (`admin_status up` over itself) | portmgrd set APPL_DB up and the chip port up; l2d "admin_status was rewritten under a hold: down again" within a pass. The first build left the netdev up: mstpd then ran the port as Designated and sent BPDUs into the disabled port. The re-assert takes the netdev down too since. |
+| the loop removed, then Re-enable | released: `bcmcmd ps` `down` (enabled, no link), `bpdu_guard_held no`, the next inform without `error_disabled`, the UI's red mark gone |
+| BPDU guard switched off while held, loop on | the first build released on the config alone: the link came up while mstpd still guarded the port, mstpd shut the netdev again, and the port was left down with the guard off. The release now waits for mstpd's own report of the guard off: released cleanly, the port linked into the loop as Backup |
+| guard off and on again over mstpd's old error (no link since) | not held (the released mark) |
+
+**The peer's link could not be seen.** With the MAC loopback the chip's PHY
+reports link even on a disabled port (`*ce16 (Disabled ...`), and APPL_DB
+`oper_status` stays up, so the bridge reported port 17 `up: true` while
+held. A disabled port is what `config interface shutdown` produces; on a
+cabled port the peer loses link and `oper_status` goes down. Seeing that
+needs a cable. The ECS was not re-read for this: §11.20.2 has its
+`ERROR_DISABLE` rows, and no port there has tripped.
+
+Restored after the run: the cage unlooped, port 17's override back to its
+exact pre-test object (the UI's save in §11.23.3's Edge test had added
+fields and switched BPDU guard on), mstpd's error cleared by one link-up,
+the deployed deb (f3d3572) reinstalled from `/host/disunified`, leftover
+`bpdu_guard_held` fields deleted from STATE_DB, and the lock removed.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
