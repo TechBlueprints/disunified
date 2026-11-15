@@ -367,6 +367,23 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   dict; `complianceName` parses it (`'Extended Specification Compliance'`
   when the 10/40G code says Extended). UniFi's own SONiC switch reports
   the same string (`100G CWDM4`) as `sfp_compliance`.
+- **The optic's faults are the module's own flags (§10.10, `optic_fault.go`,
+  2026-11-14).** `sfp_rxfault` on a UniFi switch is the module's loss of
+  receive signal. It is not the link, and on the ECS it is not a
+  threshold: its STATE_DB `rx_los` matched the controller's flags port
+  for port. xcvrd keeps them in `TRANSCEIVER_STATUS_FLAG|<first
+  interface>` as `rx<k>los` / `tx<k>fault` per channel. Each is the string
+  `True`/`False`/`N/A`, the latched SFF-8636 bytes 3-4, re-read every 60 s.
+  Note that `TRANSCEIVER_STATUS` holds only tx-disable on 202505+, and there
+  is no `TRANSCEIVER_DOM_FLAG` for a QSFP28 (sff8636.py has no dom flags).
+  The rules:
+  - any channel's fault counts;
+  - only with `TRANSCEIVER_INFO` present;
+  - a split cage's lane k takes its channels in order.
+
+  The section joins `laterSections` from `optic_fault.go`'s `init`. Every
+  `collect*.txt` must start under the contract tests, so a capture in a
+  new image directory needs that image's `config-help.txt` beside it.
 - **Breakout (`breakout.go`) -- built 2026-10-27; 4x25G split and the join back verified live on the DX010 2026-11-01 (no swss/syncd restart, the uplink unaffected); on 202511 every mode, the lanes at 10G and 1G, and the ACL rebind on a split and a join, 2026-11-07 (§11.11).** A speed no mode lists that every current lane's STATE_DB `supported_speeds` has (1G on a 25G lane) is a lane speed: portconfig checks only that, and the split cage claims it. **The loop must not take a split it wrote for a new port**: `informloop.applyPorts` records the ports a push writes, or a join pushed in the cycle after the split is withheld for good (live, 2026-11-07). The controller refuses a speed outside the port's stored `speed_caps` (`api.err.InvalidInterfaceSpeedDuplex`) until an inform after the split has carried the new caps. A
   cage speed its current `BREAKOUT_CFG` mode does not run picks the mode
   that runs it (its default speed preferred): DX010 100G/40G `1x100G[40G]`,

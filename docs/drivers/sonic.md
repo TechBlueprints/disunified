@@ -2737,6 +2737,116 @@ first push through the loop with cage 1 at 40G (`hold_sonic_test.go`).
 Untested live: the driver's own join and lane-speed writes, and every
 module but the CWDM4.
 
+### 10.10 The optic's fault flags: `sfp_rxfault` and `sfp_txfault` (2026-11-14)
+
+An audit on 2026-11-14 found that the driver never filled
+`Port.Health.OpticRxAlarm` / `OpticTxAlarm`, which `internal/device` sends
+as `sfp_rxfault` / `sfp_txfault` on a cage with a module seated. So the
+controller could never raise its SFP alert for a DX010 port. It now reads
+the module's own flags.
+
+**What a UniFi switch means by the flags.** The flag is the module's loss
+of receive signal. Three sources agree:
+
+- **The informs.** In the ECS Aggregation's informs
+  (`controller-10.6.106/` and `controller-10.6.109/
+  inform-ecs-aggregation-uswf066.json`), `sfp_rxfault` is true only on
+  down optical ports whose `sfp_rxpower` is `"0.00"` (no reading). A down
+  port that receives light (`-1.45` dBm, port 16) has no fault. So do the
+  in-range up ports, the DACs (49-54) and an optic without readings (port
+  7). The USW Aggregation's inform (`controller-11.0.99/
+  inform-usw-aggregation-usl8a.json`, UniFi's own firmware) shows the same
+  on its port 7. `sfp_txfault` is false on every port of every capture.
+- **The ECS's own STATE_DB** (read-only, 2026-11-14 23:48 UTC, firmware
+  4.0.3). Its 202106-era xcvrd keeps `TRANSCEIVER_STATUS|<port>`
+  `rx_los` / `tx_fault` / `status` per cage. The ports with a module
+  (`status` 1) and `rx_los` 1 were exactly Ethernet10, 11, 14 and 26.
+  Those are UniFi ports 11, 12, 15 and 27, the four ports whose
+  `sfp_rxfault` the controller held as true at the same moment
+  (`stat/device`). Ethernet15 (port 16: down, light received) had `rx_los`
+  0. The ECS keeps no `TRANSCEIVER_DOM_THRESHOLD` table, and its alarm
+  thresholds sit in `TRANSCEIVER_DOM_SENSOR` beside the readings, so it
+  could not be comparing readings to thresholds for the flag. Its empty
+  cages read `status` 0 with `rx_los` 1 and `tx_fault` 1, yet the inform
+  sends false for them: the flags count only with a module present.
+- **The controller's alerts**
+  (`controller-11.0.99/system-log-device-alert-sfp-rx.json`, the v2
+  `system-log/device-alert` reduced to the SFP alerts of the last 30 days,
+  scrubbed). Every one is `SFP_RECEIVED_FAULT`, "Loss of receive signal
+  detected on SFP inserted into {DEVICE_WITH_PORT}." (title "Receive SFP
+  Signal Loss", severity HIGH). They fired on the ECS's ports 11, 12, 15
+  and 27, the USW Aggregation's 5 and 7 and the US-16-XG's 1, 2 and 5. A
+  standing fault is raised again about once a day. No transmit-fault alert
+  is in the log, so its key and text are **not captured**.
+
+Neither the link nor the readings decide the flag. A down port with light
+has none. Whether a reading below the module's low alarm threshold with
+LOS clear would raise one is not captured: every faulted port in the
+captures had both. The Arista driver (`arista-eos` `applyOpticAlarms`)
+flags a reading outside the alarm thresholds instead, and that rule also
+catches a dark receiver.
+
+**What the DX010 keeps** (read-only, 2026-11-14, `igmp-202511.20261114-42cccc87a`;
+`docs/fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-optic.txt`).
+xcvrd (sonic-platform-daemons `d74bc9b`, May 2025, in both 202505 and
+202511) splits a module's state over several STATE_DB tables, all keyed by
+the cage's first interface:
+
+| Table | What it holds on the uplink's 100G CWDM4 |
+|---|---|
+| `TRANSCEIVER_STATUS_FLAG` | `rx1los`..`rx4los`, `tx1fault`..`tx4fault`, each `"False"`; `last_update_time` |
+| `TRANSCEIVER_STATUS_FLAG_CHANGE_COUNT` / `_SET_TIME` / `_CLEAR_TIME` | per flag: `0` / `never` / `never` |
+| `TRANSCEIVER_STATUS` | `tx<k>disable`, `tx_disabled_channel` |
+| `TRANSCEIVER_STATUS_SW` | `cmis_state` (`READY`; `REMOVED` on the 31 empty cages), `status`, `error` `N/A` |
+| `TRANSCEIVER_DOM_SENSOR` | temperature, voltage, per-channel bias and powers (rx -3.35 .. -2.65 dBm, alarm floor -10.0) |
+| `TRANSCEIVER_DOM_THRESHOLD` | the module's alarm and warning thresholds |
+
+There is no `TRANSCEIVER_DOM_FLAG` (the threshold-crossing flags) for this
+module. That table is written only from an API's `get_transceiver_dom_flags`,
+and the SFF-8636 API in sonic-platform-common 202511 does not implement it.
+The flags come from `get_transceiver_status_flags`
+(`sonic_xcvr/api/public/sff8636.py`, `sff8472.py`, `cmis.py`). On SFF-8636
+these are the module's latched indicators: page 0 byte 3 (Rx LOS, a bit
+per channel) and byte 4 (Tx fault). Each is written as the string `"True"`
+or `"False"`. It is `"N/A"` where the module does not implement the flag
+(`get_rx_los_support` / `get_tx_fault_support`). xcvrd's DOM thread
+(`dom/dom_mgr.py`, `DOM_INFO_UPDATE_PERIOD_SECS = 60`) re-reads them every
+60 s, and again shortly after a link change. Reading clears the latch. A
+fault that lasts shows on every read. One that cleared inside a minute
+shows once. The capture's `last_update_time` was 21 s old. The image's `config --help` texts were captured beside it (`config-help.txt`, the same 28 commands as the 20261106 build's; only click's option order differs), since the contract tests start the driver on every capture.
+
+**The read.** `collect.py` prints `xcvr_flag` (STATE_DB
+`TRANSCEIVER_STATUS_FLAG|*`), and `optic_fault.go` maps it:
+
+- A cage's `OpticRxAlarm` is true when any channel's `rx<k>los` is
+  `"True"`, and `OpticTxAlarm` when any `tx<k>fault` is. `"False"`, `"N/A"`
+  and a missing channel are no fault.
+- Only a cage with a module seated reads its flags (`TRANSCEIVER_INFO`, the
+  same test as `sfp_found`), so an empty cage never carries a fault.
+- Nothing is inferred from the link or from the readings.
+- **A split cage's lanes take the channels they run on, in order.** With
+  four channels, a 4x25G lane gets one each and a 2x50G lane two. The
+  cage itself (the parent's port) gets any channel's fault. xcvrd keys the
+  flags by the first subport only. The lane order is the SFF breakout
+  convention (subport k on the module's host lane k). It is not verified
+  on a split module, since the DX010 has no breakout cable. A module with
+  fewer channels than lanes gives every lane all its channels.
+
+Tests: `optic_fault_test.go`. The healthy state (no fault anywhere, the
+CWDM4 present) is the capture as taken. No capture holds a fault: the one
+module cannot be made to fault, and upstream's own test data (sonic-utilities'
+`tests/mock_tables/state_db.json`, sonic-platform-common's
+`test_sff8636.py`) holds only `False`. So the fault cases are the capture's
+own entry with one field set to `"True"` (LOS on a channel, a transmit
+fault, both), every field `"N/A"`, the entry copied onto an empty cage,
+and the 4x25G capture's split cage given the uplink module's entries with
+one channel's flags set. The wire side (`sfp_rxfault` / `sfp_txfault` only
+with a module seated) is `internal/device/anomalies_test.go` and the
+contract tests. Live: a `-collect-once` from the branch against the DX010
+(2026-11-14 23:58 UTC) read port 1 present (`100G CWDM4`) with no fault
+and no fault on any other port. A real fault, the controller's alert for
+a DX010 port and a split module are **untested**.
+
 ## 11. Parity with a UniFi switch (planned 2026-10-31)
 
 Clint, 2026-10-31: keep working on the DX010 until it is on parity with a
@@ -5274,12 +5384,14 @@ signal, which is what a far end rebooting or a cable being pulled gives; a
 remote fault is the far end saying the same. Mapping either to 2048 would
 raise "Port Failure Detected" for an uplink that is working.
 
-**The module's faults are already sent, as their own fields.** xcvrd's
+**The module's faults are their own fields.** xcvrd's
 `TRANSCEIVER_STATUS_SW` carries an `error` field (`N/A` on every cage) and
-`TRANSCEIVER_STATUS` the module's flags; the bridge sends a module's
-faults as `sfp_rxfault`/`sfp_txfault`, from which the controller derives
-its own SFP alerts (`custom_anomalies` 1/2/4, `docs/feature-map.md` §2).
-A module fault is not this bit.
+`TRANSCEIVER_STATUS_FLAG` the module's loss-of-signal and transmit-fault
+flags. The bridge sends those as `sfp_rxfault`/`sfp_txfault`, and the
+controller derives its own SFP alerts from them (`custom_anomalies` 1/2/4,
+`docs/feature-map.md` §2). This paragraph first said they were already
+sent; the driver never filled them until §10.10 (2026-11-14). A module
+fault is not this bit.
 
 **The ECS gives the bit no observable meaning either** (read-only,
 2026-11-14, firmware 4.0.1.995). Its error-disable table has no cause for a
