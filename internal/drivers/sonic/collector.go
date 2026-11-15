@@ -71,7 +71,7 @@ type Collector struct {
 	// aclFrom is the device intent the ACL rules were last derived from
 	// (aclSet): the DHCP guard's rules follow the VLANs on the switch.
 	aclFrom *devicemodel.DeviceDesired
-	warned    map[string]bool
+	warned  map[string]bool
 	// krSeen is the snapshot state the kernel default route was last
 	// checked against, krMisses how many collects in a row found it missing
 	// while FRR reports it installed (kroute.go).
