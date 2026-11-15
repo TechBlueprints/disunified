@@ -1210,3 +1210,14 @@ was restarted.
   (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
+- **A cage left up as a non-edge port (looped, or facing a switch) for more
+  than about five minutes gets pinned to `stp.edge=disabled`.** That is the
+  controller's Auto STP Edge (`docs/drivers/sonic.md` §11.23.3). It does
+  not go back by itself, and l2d keeps auto edge off on the cage. Un-pin it
+  at the end of the test with one call, which needs no override change and
+  no UI:
+  `POST /proxy/network/v2/api/site/<site>/ports/<mac>/reset-auto-edge` with
+  body `[{"port_idx":N}, ...]`, using the API key (answer 204). Then check
+  that the next push says `switch.port.N.stp.edge=auto`. Do not use the
+  port editor's Edge-then-Restore saves: the save rewrites the whole
+  override (BPDU guard on and more).
