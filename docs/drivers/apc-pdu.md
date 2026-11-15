@@ -200,7 +200,7 @@ Round trip on Network 10.6.106, 2026-09-21, against the real AP7931:
 | UI outlet editor: **Disabled** → Apply Changes | relay open ~20 s later; `1 of 16 outlets changed` |
 | UI outlet editor: **Active** → Apply Changes | relay closed; `1 of 16 outlets changed` |
 | UI **Power Cycle** button | `relayctl` → the card's immediate-reboot: relay open 4 s, then closed; the following reconcile writes nothing |
-| Overview | model, parent (`garage-switch Port 9`), IP, MAC, version, uptime; Power Usage / Current / `0W of 1440W` |
+| Overview | model, parent (the switch port it is cabled to), IP, MAC, version, uptime; Power Usage / Current / `0W of 1440W` |
 | Reachability keys | `gateway_mac` (matches what the real PDUs report for the same gateway), `lldp_table: []`, `netmask` |
 
 Every UI screen for the device was walked: list entry, overview, Outlets

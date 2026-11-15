@@ -438,7 +438,7 @@ What it does when on:
   unit holds. A refused write is a logged warning, not a failed start. The
   Main group is never written. Absent, the unit's policy is left as it is
   -- the bridge never clears a policy. Chosen 2026-09-27: the expendable
-  PDU (`rack-pdu-noups`-class load, ~130 W of ~1080 W) is on Group 1, so
+  PDU (~130 W of ~1080 W) is on Group 1, so
   shedding it 30 s into an outage leaves the important PDU the battery.
   **Applied live 2026-09-27 15:31 UTC**: the SmartConnect port accepted
   both function-16 writes (the first writes the bridge has ever made to
