@@ -1,0 +1,19 @@
+{
+  "architecture": "i686",
+  "bootupTimestamp": 1794080517.0,
+  "configMacAddress": "02:00:00:00:00:3e",
+  "hardwareRevision": "11.00",
+  "hwMacAddress": "02:00:00:00:00:3f",
+  "imageFormatVersion": "1.0",
+  "internalBuildId": "064b904a-b91a-456f-955d-a6eaf0a2cd12",
+  "internalVersion": "4.26.14M-36966788.42614M",
+  "isIntlVersion": false,
+  "memFree": 6617016,
+  "memTotal": 8098984,
+  "mfgName": "Arista",
+  "modelName": "DCS-7160-48TC6-F",
+  "serialNumber": "SSJ00000000",
+  "systemMacAddress": "02:00:00:00:00:3f",
+  "uptime": 695760.28,
+  "version": "4.26.14M"
+}

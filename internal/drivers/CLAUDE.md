@@ -83,7 +83,9 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   (`PortChannel<100*cage+lag>` on sonic; `Port-Channel<1000+10*cage+lag>`
   on EOS, whose ids stop at 2000), leaves an attached cage's lanes to the
   child but for the breakout, the admin state and the STP port settings,
-  never touches a channel group outside its own range, and serialises its
+  never touches a channel group outside its own range (but removes an
+  empty one of its own making in the lane range of a cage with no lane
+  switch attached; one with members stays, noted: breakout.md §7c), and serialises its
   writes and collects (the child applies from its own loop). `sonic` and
   `arista-eos` are the parents.
 - **`stub` is an instrument**, not a device: a snapshot from a file, no

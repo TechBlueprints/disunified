@@ -2,13 +2,22 @@
  * replaced by no-ops so the harness runs without Redis. */
 #include <stdint.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include "l2mcd.h"
 
 void l2mcsync_add_vlan_entry(uint16_t vlan_id) { (void)vlan_id; }
 int l2mcdsync_get_l2mcmgr_debug_prio(void) { return 0; }
 void l2mcsync_del_vlan_entry(uint16_t vlan_id) { (void)vlan_id; }
 void l2mcsync_add_l2mc_entry(L2MCD_APP_TABLE_ENTRY *msg) { (void)msg; }
-void l2mcsync_del_l2mc_entry(L2MCD_APP_TABLE_ENTRY *msg) { (void)msg; }
+/* the group-member deletions l2mcd would write to APPL_DB, counted for the
+ * port-list-breakout case */
+unsigned stub_l2mc_dels;
+char stub_l2mc_del_port[L2MCD_IFNAME_SIZE];
+void l2mcsync_del_l2mc_entry(L2MCD_APP_TABLE_ENTRY *msg)
+{
+    stub_l2mc_dels++;
+    snprintf(stub_l2mc_del_port, sizeof(stub_l2mc_del_port), "%s", msg->port.pnames);
+}
 void l2mcsync_process_mrouterentry(L2MCD_APP_TABLE_ENTRY *msg) { (void)msg; }
 void l2mcsync_debug_print(const char *fmt, ...) { (void)fmt; }
 int l2mcd_is_peerlink(char *portname) { (void)portname; return 0; }

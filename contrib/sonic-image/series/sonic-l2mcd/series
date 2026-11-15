@@ -8,3 +8,5 @@
 0008-igmp-elect-against-an-older-version-querier-and-quer.patch
 0009-igmp-mld-find-the-VLAN-s-address-whatever-ve_ifindex.patch
 0010-l2mcd-keep-per-packet-lines-out-of-syslog-at-the-def.patch
+0011-l2mcd-a-re-created-port-keeps-its-own-index-not-anot.patch
+0012-l2mcd-free-a-closed-port-socket-s-event.patch

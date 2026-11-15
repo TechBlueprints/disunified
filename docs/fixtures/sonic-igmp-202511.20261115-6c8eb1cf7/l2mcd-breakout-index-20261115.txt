@@ -1,0 +1,117 @@
+# DX010, igmp-202511.20261115-6c8eb1cf7, 2026-11-15 (local time, MST): l2mcd's
+# own log (/var/log/l2mcd.log; l2mcd and l2mcmgrd) during the hand run of
+# breakout-l2mc-20261115.txt (empty cage 29, Ethernet112: the split at 10:48:25,
+# the join at 10:49:12), Ethernet0's recovery at 11:16:46 and l2mcd's restart at
+# 11:19:52 (not part of the run). docs/drivers/sonic.md 11.25.3. Scrubbed:
+# hostname. Kept: port-db adds and deletes, tree adds, recreations, state
+# changes, the Group-DEL/ADD and router-port lines; left out: repeats of the same
+# PortInfo RX line, socket-exists and per-update lines, l2mcmgrd's start-up
+# replay of the VLAN members at 11:19:52 except Ethernet0's.
+#
+# At start l2mcd numbers every EthernetN 4096 + N (port_ifname_db_init): Ethernet0
+# is 4096, Ethernet64 4160, Ethernet112 4208. A port the breakout deletes loses
+# its name from the port db; when it comes back it is numbered 4096 + its kernel
+# ifindex (l2mcd_port_list_update), or 4096 + 0 when l2mcmgrd reports it before
+# its netdev exists. Ethernet113-115 (deleted by an earlier join) came back as
+# 4096, Ethernet0's index; Ethernet115 then as 4160 (kif 64), Ethernet64's.
+2026 Nov 15 10:48:26.016699 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4153 oper:0 is_add:1 is_lag:0, kif:57
+2026 Nov 15 10:48:26.047073 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:DEL iname:Ethernet112 Ethernet112 vlan:4094 tagged:0
+2026 Nov 15 10:48:26.199677 host-1 NOTICE l2mcmgrd: doL2McInterfaceUpdateTask: L2MCD_CFG: IF:Ethernet112 op:DEL oper:0
+2026 Nov 15 10:48:26.205935 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4153 oper:0 is_add:0 is_lag:0, kif:0
+2026 Nov 15 10:48:26.247455 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete port:Ethernet112, index:4153 rc:0
+2026 Nov 15 10:48:27.139417 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet112 kif:61 state:0 if_tree not found, recreate
+2026 Nov 15 10:48:27.139417 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet112, index:4157 rc:0
+2026 Nov 15 10:48:27.139417 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4157 oper:0 is_add:1 is_lag:0, kif:61
+2026 Nov 15 10:48:27.161682 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4157 if:61 iname:Ethernet112 sk:0 ev:0x562da285ad80
+2026 Nov 15 10:48:27.191525 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:61 port:Ethernet112 state:DOWN changed
+2026 Nov 15 10:48:27.344108 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet113, index:4096 rc:0
+2026 Nov 15 10:48:27.349231 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet113, ifidx:4096 oper:0 is_add:1 is_lag:0, kif:0
+2026 Nov 15 10:48:27.349231 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet113, if:0 is_add:1 oper_state:0 not available
+2026 Nov 15 10:48:27.354888 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet114, index:4096 rc:0
+2026 Nov 15 10:48:27.360412 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet114, ifidx:4096 oper:0 is_add:1 is_lag:0, kif:0
+2026 Nov 15 10:48:27.360412 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet114, if:0 is_add:1 oper_state:0 not available
+2026 Nov 15 10:48:27.366097 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet115, index:4096 rc:0
+2026 Nov 15 10:48:27.371494 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet115, ifidx:4096 oper:0 is_add:1 is_lag:0, kif:0
+2026 Nov 15 10:48:27.371494 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet115, if:0 is_add:1 oper_state:0 not available
+2026 Nov 15 10:48:27.445942 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet113 kif:62 state:0 if_tree not found, recreate
+2026 Nov 15 10:48:27.446074 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet113, ifidx:4096 oper:0 is_add:1 is_lag:0, kif:62
+2026 Nov 15 10:48:27.488426 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete2 port:Ethernet113, index:4096 rc:0
+2026 Nov 15 10:48:27.511175 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4096 if:62 iname:Ethernet113 sk:0 ev:0x562da2861f70
+2026 Nov 15 10:48:27.524827 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:224.0.1.60:Ethernet113 vid:4094 G:224.0.1.60 sa:0.0.0.0 port Ethernet113 static:0 is_remote:0 
+2026 Nov 15 10:48:27.525419 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:224.0.1.187:Ethernet113 vid:4094 G:224.0.1.187 sa:0.0.0.0 port Ethernet113 static:0 is_remote:0 
+2026 Nov 15 10:48:27.527533 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:233.89.188.1:Ethernet113 vid:4094 G:233.89.188.1 sa:0.0.0.0 port Ethernet113 static:0 is_remote:0 
+2026 Nov 15 10:48:27.528398 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:239.254.127.63:Ethernet113 vid:4094 G:239.254.127.63 sa:0.0.0.0 port Ethernet113 static:0 is_remote:0 
+2026 Nov 15 10:48:27.529494 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:239.255.255.250:Ethernet113 vid:4094 G:239.255.255.250 sa:0.0.0.0 port Ethernet113 static:0 is_remote:0 
+2026 Nov 15 10:48:27.532032 host-1 NOTICE l2mcd: :- processL2mcMrouterTableEntry: APP_L2MC_MROUTER_TABLE:Key:Vlan4094:Ethernet113:V4 stateKey:Vlan4094|Ethernet113|V4 Vlan4094:Ethernet113 mrouter entry deleted
+2026 Nov 15 10:48:27.533281 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:62 port:Ethernet113 state:DOWN changed
+2026 Nov 15 10:48:27.533281 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet113, index:4158 rc:0
+2026 Nov 15 10:48:27.533281 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet113, ifidx:4158 oper:0 is_add:1 is_lag:0, kif:62
+2026 Nov 15 10:48:27.548062 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.583416 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.604172 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.635689 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.651691 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.667740 host-1 NOTICE l2mcd: Err kif_to_if: if:4158  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.667740 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet114 kif:63 state:0 if_tree not found, recreate
+2026 Nov 15 10:48:27.667740 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet114, ifidx:4096 oper:0 is_add:1 is_lag:0, kif:63
+2026 Nov 15 10:48:27.707951 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete2 port:Ethernet114, index:4096 rc:-1
+2026 Nov 15 10:48:27.731959 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4096 if:63 iname:Ethernet114 sk:0 ev:0x562da285dbf0
+2026 Nov 15 10:48:27.747800 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:63 port:Ethernet114 state:DOWN changed
+2026 Nov 15 10:48:27.763460 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4158 if:62 iname:Ethernet113 sk:0 ev:0x562da285cc40
+2026 Nov 15 10:48:27.785185 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet114, index:4159 rc:0
+2026 Nov 15 10:48:27.785185 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet114, ifidx:4159 oper:0 is_add:1 is_lag:0, kif:63
+2026 Nov 15 10:48:27.804256 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.823830 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.824510 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet115 kif:64 state:0 if_tree not found, recreate
+2026 Nov 15 10:48:27.824510 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet115, index:4160 rc:0
+2026 Nov 15 10:48:27.824510 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet115, ifidx:4160 oper:0 is_add:1 is_lag:0, kif:64
+2026 Nov 15 10:48:27.859601 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete2 port:Ethernet115, index:4160 rc:0
+2026 Nov 15 10:48:27.883751 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4160 if:64 iname:Ethernet115 sk:0 ev:0x562da28643b0
+2026 Nov 15 10:48:27.933132 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:64 port:Ethernet115 state:DOWN changed
+2026 Nov 15 10:48:27.947578 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.964115 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.979546 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:27.996043 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:28.011504 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:28.028007 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:48:28.028741 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet115, index:4160 rc:0
+2026 Nov 15 10:49:12.596011 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:DEL iname:Ethernet112 Ethernet112 vlan:4094 tagged:0
+2026 Nov 15 10:49:12.659543 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:DEL iname:Ethernet113 Ethernet113 vlan:4094 tagged:0
+2026 Nov 15 10:49:12.705932 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:DEL iname:Ethernet114 Ethernet114 vlan:4094 tagged:0
+2026 Nov 15 10:49:12.705932 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:49:12.755991 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:DEL iname:Ethernet115 Ethernet115 vlan:4094 tagged:0
+2026 Nov 15 10:49:12.927301 host-1 NOTICE l2mcmgrd: doL2McInterfaceUpdateTask: L2MCD_CFG: IF:Ethernet112 op:DEL oper:0
+2026 Nov 15 10:49:12.935388 host-1 NOTICE l2mcd: Err kif_to_if: if:4159  get found. if_to_kif exists  
+2026 Nov 15 10:49:12.935447 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4157 oper:0 is_add:0 is_lag:0, kif:0
+2026 Nov 15 10:49:12.987494 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete port:Ethernet112, index:4157 rc:0
+2026 Nov 15 10:49:13.373414 host-1 NOTICE l2mcmgrd: doL2McInterfaceUpdateTask: L2MCD_CFG: IF:Ethernet113 op:DEL oper:0
+2026 Nov 15 10:49:13.377940 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet113, ifidx:4158 oper:0 is_add:0 is_lag:0, kif:0
+2026 Nov 15 10:49:13.415773 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete port:Ethernet113, index:4158 rc:0
+2026 Nov 15 10:49:13.619628 host-1 NOTICE l2mcmgrd: doL2McInterfaceUpdateTask: L2MCD_CFG: IF:Ethernet114 op:DEL oper:0
+2026 Nov 15 10:49:13.626292 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet114, ifidx:4159 oper:0 is_add:0 is_lag:0, kif:0
+2026 Nov 15 10:49:13.854519 host-1 NOTICE l2mcmgrd: doL2McInterfaceUpdateTask: L2MCD_CFG: IF:Ethernet115 op:DEL oper:0
+2026 Nov 15 10:49:13.859423 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet115, ifidx:4160 oper:0 is_add:0 is_lag:0, kif:0
+2026 Nov 15 10:49:13.911156 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete port:Ethernet115, index:4160 rc:0
+2026 Nov 15 10:49:14.664439 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet112 kif:65 state:0 if_tree not found, recreate
+2026 Nov 15 10:49:14.664439 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet112, index:4161 rc:0
+2026 Nov 15 10:49:14.664439 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4161 oper:0 is_add:1 is_lag:0, kif:65
+2026 Nov 15 10:49:14.664811 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4161 if:65 iname:Ethernet112 sk:0 ev:0x562da28671c0
+2026 Nov 15 10:49:14.689304 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:65 port:Ethernet112 state:DOWN changed
+2026 Nov 15 11:16:46.721197 host-1 NOTICE l2mcd: l2mcd_portstate_update Port:Ethernet0 kif:35 state:1 if_tree not found, recreate
+2026 Nov 15 11:16:46.721234 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet0, ifidx:4096 oper:1 is_add:1 is_lag:0, kif:35
+2026 Nov 15 11:16:46.748444 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb delete2 port:Ethernet0, index:4096 rc:-1
+2026 Nov 15 11:16:46.775554 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4096 if:35 iname:Ethernet0 sk:0 ev:0x562da285bac0
+2026 Nov 15 11:16:46.795817 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:Ethernet0 vid:4094 G:224.0.1.1 sa:0.0.0.0 port Ethernet0 static:0,is_remote:0  
+2026 Nov 15 11:16:46.808755 host-1 NOTICE l2mcd: l2mcd_portstate_update kif:35 port:Ethernet0 state:UP changed
+2026 Nov 15 11:16:46.809390 host-1 NOTICE l2mcd: l2mcd_port_list_update portdb add port:Ethernet0, index:4131 rc:0
+2026 Nov 15 11:16:46.809390 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet0, ifidx:4131 oper:1 is_add:1 is_lag:0, kif:35
+2026 Nov 15 11:16:46.834027 host-1 NOTICE l2mcd: Err kif_to_if: if:4131  get found. if_to_kif exists  
+2026 Nov 15 11:16:46.851711 host-1 NOTICE l2mcd: Err kif_to_if: if:4131  get found. if_to_kif exists  
+2026 Nov 15 11:19:52.735545 host-1 NOTICE l2mcmgrd: doL2McVlanMemUpdateTask: L2MCD_CFG:VLAN_MEMBER op:SET iname:Ethernet0 Ethernet0 vlan:4094 tagged:0
+2026 Nov 15 11:19:52.844111 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet112, ifidx:4208 oper:0 is_add:1 is_lag:0, kif:65
+2026 Nov 15 11:19:52.864263 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4208 if:65 iname:Ethernet112 sk:0 ev:0x5605e97c0c80
+2026 Nov 15 11:19:53.714505 host-1 NOTICE l2mcd: l2mcd_port_list_update PortInfo RX: Ethernet64, ifidx:4160 oper:0 is_add:1 is_lag:0, kif:43
+2026 Nov 15 11:19:53.731162 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4160 if:43 iname:Ethernet64 sk:0 ev:0x5605e97ca610
+2026 Nov 15 11:19:53.761321 host-1 NOTICE l2mcd: l2mcd_add_kif_to_if kif_to_if: kif:4096 if:35 iname:Ethernet0 sk:0 ev:0x5605e97cac90
+2026 Nov 15 11:19:53.896359 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:Ethernet0 vid:4094 G:224.0.1.1 sa:0.0.0.0 port Ethernet0 static:0,is_remote:0  
+2026 Nov 15 11:19:53.898026 host-1 NOTICE l2mcd: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:Ethernet0 vid:4094 G:224.0.1.1 sa:0.0.0.0 port Ethernet0 static:1,is_remote:0  
