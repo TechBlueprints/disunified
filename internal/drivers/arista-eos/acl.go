@@ -736,22 +736,38 @@ func portClause(port, lo, hi int) (string, error) {
 // before the error in it, and entering the session again would resume it;
 // it is aborted (`configure session <name> abort`, which also reverts one
 // pending on its timer).
-func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable bool, err error) {
+//
+// A commit EOS answers with `Error in ACL commit` (a warning: the lists
+// commit whatever the hardware took, 4.26.14M, §9.4) is aborted too, and
+// reported as unprogrammable: the same rules would fail the same way.
+func (c *Collector) commitACL(ctx context.Context, body []string) (held string, err error) {
 	session := sessionName(aclSession)
 	cmds := append([]string{"enable", "configure session " + session}, body...)
 	cmds = append(cmds, "commit timer "+commitTimer)
 	c.logConfig(cmds)
-	if err := c.t.Configure(ctx, cmds); err != nil {
+	warns, err := configureWarn(ctx, c.t, cmds)
+	if err == nil {
+		if bad := aclCommitError(warns); bad != "" {
+			abort := []string{"enable", "configure session " + session + " abort"}
+			c.logConfig(abort)
+			why := fmt.Sprintf("EOS could not program the ACL change (%s; lists written: %s)", bad, listsIn(body))
+			if aerr := c.t.Configure(ctx, abort); aerr != nil {
+				return why, fmt.Errorf("arista-eos: %s; aborting session %s: %v; the switch reverts it in %s", why, session, aerr, commitTimer)
+			}
+			return why, fmt.Errorf("arista-eos: %s; session %s aborted", why, session)
+		}
+	}
+	if err != nil {
 		abort := []string{"enable", "configure session " + session + " abort"}
 		c.logConfig(abort)
 		if aerr := c.t.Configure(ctx, abort); aerr != nil {
-			return false, fmt.Errorf("arista-eos: ACL change: %w (aborting session %s: %v)", err, session, aerr)
+			return "", fmt.Errorf("arista-eos: ACL change: %w (aborting session %s: %v)", err, session, aerr)
 		}
-		return false, fmt.Errorf("arista-eos: ACL change: %w", err)
+		return "", fmt.Errorf("arista-eos: ACL change: %w", err)
 	}
 	select {
 	case <-ctx.Done():
-		return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
+		return "", fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
 	case <-time.After(c.aclSettle):
 	}
 	check := c.t
@@ -762,16 +778,45 @@ func (c *Collector) commitACL(ctx context.Context, body []string) (unreachable b
 	if _, err := check.Run(ctx, []string{"enable", "show version"}); err != nil {
 		if ctx.Err() != nil {
 			// The write budget ran out, which says nothing about the rules.
-			return false, fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
+			return "", fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
 		}
-		return true, fmt.Errorf("arista-eos: the switch does not answer a new connection after the ACL change (%v); leaving session %s to revert in %s", err, session, commitTimer)
+		return "the switch did not answer a new connection after it", fmt.Errorf("arista-eos: the switch does not answer a new connection after the ACL change (%v); leaving session %s to revert in %s", err, session, commitTimer)
 	}
 	confirm := []string{"enable", "configure session " + session + " commit", "write memory"}
 	c.logConfig(confirm)
 	if err := check.Configure(ctx, confirm); err != nil {
-		return false, fmt.Errorf("arista-eos: confirm session %s: %w; the switch reverts it in %s", session, err, commitTimer)
+		return "", fmt.Errorf("arista-eos: confirm session %s: %w; the switch reverts it in %s", session, err, commitTimer)
 	}
-	return false, nil
+	return "", nil
+}
+
+// aclCommitError is the commit's `Error in ACL commit` warning, "" when the
+// hardware took every list.
+func aclCommitError(warns []string) string {
+	for _, w := range warns {
+		if strings.HasPrefix(w, "Error in ACL commit") {
+			return w
+		}
+	}
+	return ""
+}
+
+// listsIn names the lists a session body writes (the first five, then a
+// count).
+func listsIn(body []string) string {
+	var names []string
+	for _, l := range body {
+		if n, ok := strings.CutPrefix(l, "ip access-list "); ok {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return "none, bindings only"
+	}
+	if len(names) > 5 {
+		return strings.Join(names[:5], ", ") + fmt.Sprintf(" and %d more", len(names)-5)
+	}
+	return strings.Join(names, ", ")
 }
 
 // applyACL brings the switch's lists to want. A change the switch would not
@@ -801,7 +846,7 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 	}
 	key := blockHash(body)
 	if key == c.aclHeld {
-		return 0, fmt.Errorf("arista-eos: holding the ACL change that left the switch unreachable; it is sent again once the controller's rules change")
+		return 0, fmt.Errorf("arista-eos: holding the ACL change (%s); it is sent again once the controller's rules change", c.aclHeldWhy)
 	}
 	if c.Log != nil {
 		if len(skipped) > 0 {
@@ -814,13 +859,13 @@ func (c *Collector) applyACL(ctx context.Context, snap *devicemodel.Snapshot, wa
 			c.Log.Printf("arista: the guarded lists need %d counted entries and the chip has %d counters: writing every list without `%s`, so no rogue DHCP count is reported (the guard itself is unchanged; docs/drivers/arista-eos.md §9.4)", over, aclCounterPool, aclCounters)
 		}
 	}
-	if unreachable, err := c.commitACL(ctx, body); err != nil {
-		if unreachable {
-			c.aclHeld = key
+	if held, err := c.commitACL(ctx, body); err != nil {
+		if held != "" {
+			c.aclHeld, c.aclHeldWhy = key, held
 		}
 		return 0, err
 	}
-	c.aclHeld = ""
+	c.aclHeld, c.aclHeldWhy = "", ""
 	c.mu.Lock()
 	c.acl = next
 	c.mu.Unlock()

@@ -1,0 +1,16 @@
+{
+  "interfaces": {
+    "Ethernet2": {
+      "adminSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "mediaType": "10GBASE-T",
+      "operSpeed": {
+        "duplex": "auto",
+        "speed": "auto"
+      },
+      "xcvrCapabilities": []
+    }
+  }
+}

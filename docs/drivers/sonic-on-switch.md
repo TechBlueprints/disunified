@@ -214,8 +214,11 @@ The unit (`deploy/deb/disunified.service`):
 [Unit]
 Description=disunified bridge: this device as an adopted UniFi switch
 Documentation=https://github.com/TechBlueprints/disunified
-# On SONiC: the Redis databases and swss must be up before a collect can
-# succeed; Start retries with backoff anyway (main.go).
+# On SONiC: the Redis databases must be up before a collect can succeed.
+# swss.service counts as started once its container runs, long before the
+# ports and the VLAN interfaces exist, so the driver's Start waits for them
+# itself (internal/drivers/sonic/starting.go, docs/drivers/sonic.md
+# §6.4.2); a failed Start is retried with backoff (main.go).
 After=network-online.target database.service swss.service
 Wants=network-online.target
 
@@ -229,6 +232,13 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+`After=swss.service` orders the bridge after the swss *container*, not
+after the ports: on the DX010's boot of 2026-11-14 the bridge's first
+collect came while portsyncd was still reading CONFIG_DB, with no VLAN
+netdev and so no in-band address. Start now collects again until APPL_DB
+has `PORT_TABLE:PortInitDone` and the kernel carries the dialled address
+CONFIG_DB names (`sonic.md` §6.4.2).
 
 No sandboxing directives (`ProtectSystem`, `NoNewPrivileges`): the
 driver's writes are `sudo` children of the service and share its mount

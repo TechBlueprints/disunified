@@ -127,6 +127,11 @@ type Collector struct {
 	// L2Wait is the pause before each check that a first STP enable left
 	// the switch reachable (default 5 s; tests set 0).
 	L2Wait *time.Duration
+	// StartWait bounds how long Start waits for a switch that is still
+	// starting, collecting again every StartPoll (starting.go, §6.4.2);
+	// starting is why the last collect found it still starting, "" if not.
+	StartWait, StartPoll time.Duration
+	starting             string
 
 	// DHCP guarding and the IP ACL rules (acl.go): the tables and rules the
 	// last push asks for, and whether a write awaits orchagent's verdict
@@ -170,7 +175,8 @@ type Collector struct {
 // NewCollector wraps a runner.
 func NewCollector(r sshrun.Runner) *Collector {
 	return &Collector{r: r, NativeVLAN: DefaultNativeVLAN, L2: true, Log: log.Default(), aliases: map[int]string{}, ifnames: map[int][]string{}, warned: map[string]bool{},
-		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}, pinned: map[string]string{}}
+		managedNTP: map[string]bool{}, managedSyslog: map[string]bool{}, pinned: map[string]string{},
+		StartWait: defaultStartWait, StartPoll: defaultStartPoll}
 }
 
 // runner is the current transport (the address controller may swap it).
@@ -192,9 +198,10 @@ func (c *Collector) warnOnce(key, format string, args ...any) {
 	}
 }
 
-// Start runs the collector once and checks it saw a SONiC switch.
+// Start runs the collector once the switch has finished starting
+// (startSnapshot) and checks it saw a SONiC switch.
 func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
-	snap, err := c.Collect(ctx)
+	snap, err := c.startSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +408,9 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
-	sys := buildSystem(db, sec, addrs, routes, neigh, dialAddrs(c.CurrentAddress()))
+	dial := dialAddrs(c.CurrentAddress())
+	starting := startingWhy(db, addrs, dial)
+	sys := buildSystem(db, sec, addrs, routes, neigh, dial)
 	if _, pvst := db["cfg_feature"]["FEATURE|stp"]; !pvst {
 		l2System(&sys, db, now)
 	}
@@ -421,6 +430,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	c.prevCPU = cpu
 	c.host = sys.Hostname
+	c.starting = starting
 	c.state = newState(db, sec)
 	c.state.l3Hop = c.managedL3.Hop
 	macsBy := staticMACs(c.state.pf)

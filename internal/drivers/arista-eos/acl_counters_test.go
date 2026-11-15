@@ -1,9 +1,11 @@
 package aristaeos
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -50,7 +52,7 @@ func TestCollectReadsTheDriversLists(t *testing.T) {
 // The captured switch without lists runs no read-back at all.
 func TestCollectReadsNoListsWhenThereAreNone(t *testing.T) {
 	_, ft := startedCollector(t)
-	for _, r := range ft.runs {
+	for _, r := range ft.Runs {
 		for _, cmd := range r {
 			if strings.HasPrefix(cmd, "show ip access-lists") {
 				t.Errorf("ran %q with no list of the driver's", cmd)
@@ -163,5 +165,41 @@ func TestACLStatusCountersIncomplete(t *testing.T) {
 	st := aclState{lists: map[string]aclList{"DUI_PROBE_1": {}}}
 	if s := aclStatus(sum, st); !strings.Contains(s, "DUI_PROBE_1 has entries without a counter") || strings.Contains(s, "not active") {
 		t.Errorf("status %q", s)
+	}
+}
+
+// A list written outside the bridge is counted in the first collect that
+// sees it, not one later: the read-back takes its lists from the same
+// collect's running config. Here the live run's guarded list on Ethernet1
+// (2026-11-14, §9.8) is written by hand between two collects, from the
+// sequence its capture shows, and the next collect reports the capture's 7
+// dropped replies on port 1.
+func TestACLWrittenOutsideIsCountedAtOnce(t *testing.T) {
+	c, ft := aclCollector(t, nil)
+	ctx := context.Background()
+	var l showIPACLs
+	const capture = "show-ip-access-lists-DUI_IP_ACL_Ethernet1-guard-drops.json"
+	readACLFixture(t, capture, &l)
+	cmds := []string{"enable", "configure", "ip access-list DUI_IP_ACL_Ethernet1", aclCounters}
+	for _, s := range l.ACLList[0].Sequence {
+		cmds = append(cmds, strconv.Itoa(s.SequenceNumber)+" "+s.Text)
+	}
+	cmds = append(cmds, "exit", "interface Ethernet1", "ip access-group DUI_IP_ACL_Ethernet1 in", "end")
+	if err := ft.Configure(ctx, cmds); err != nil {
+		t.Fatal(err)
+	}
+	ft.Overrides = map[string]string{"show ip access-lists DUI_IP_ACL_Ethernet1": capture}
+	snap, err := c.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range snap.Ports {
+		want := uint64(0)
+		if p.Index == 1 {
+			want = 7
+		}
+		if p.Health.RogueDHCPDrops != want {
+			t.Errorf("port %d: %d dropped replies in the first collect that sees the list, want %d", p.Index, p.Health.RogueDHCPDrops, want)
+		}
 	}
 }

@@ -225,8 +225,9 @@ func TestReplayAristaLaneSwitchAggregate(t *testing.T) {
 }
 
 // The parent joins the cage (100G on port 54): the lane aggregate's members
-// leave it first, then lane 1 takes the cage speed, and the lane switch
-// stops answering once the cage is whole.
+// leave it first and its Port-Channel goes, then lane 1 takes the cage
+// speed, and the lane switch stops answering once the cage is whole. The
+// capture's own empty Port-Channel1..4 go in the same batch.
 func TestReplayAristaLaneSwitchJoin(t *testing.T) {
 	r := newAristaLaneRig(t)
 	r.afterFlexXG()
@@ -240,7 +241,7 @@ func TestReplayAristaLaneSwitchJoin(t *testing.T) {
 	if n == 0 || len(got) != 1 {
 		t.Fatalf("the join wrote %q (%d)", got, n)
 	}
-	head := "enable | configure | interface Ethernet54/2 | no channel-group | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | interface Ethernet54/1 | speed forced 100gfull"
+	head := "enable | configure | interface Ethernet54/2 | no channel-group | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | no interface Port-Channel1541 | interface Ethernet54/1 | speed forced 100gfull"
 	if !strings.HasPrefix(got[0], head) {
 		t.Errorf("the join wrote\n%s\nwant it to start\n%s", got[0], head)
 	}

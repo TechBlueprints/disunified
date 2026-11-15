@@ -866,8 +866,9 @@ real loss of the Bridge's carrier.
   and before zebra in the new one.
 - **The driver's address and MTU writes.** The IP Settings apply at
   21:36:20 wrote nothing ("no interface carries the bridge's own target",
-  an early snapshot). The `ip link set … mtu 1500` at 21:36:40 is the
-  second "Link up" zebra counted: zebra calls `if_up` on any RTM_NEWLINK
+  Start's snapshot from before swss, §6.4.2). The `ip link set … mtu
+  1500` at 21:36:40 is the second "Link up" zebra counted: zebra calls
+  `if_up` on any RTM_NEWLINK
   of an operative interface. That came a minute after the route was gone.
 - **An address bounce.** The connected route's uptime matches the flap,
   not a later event, and bgpcfgd saw the address once.
@@ -933,6 +934,101 @@ l2d's spanning-tree start at boot (`ip -4 route show default` with no
 
 Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/collect-route-{nhid,
 missing,fixed}.txt`.
+
+### 6.4.2 The first snapshot after a boot (`starting.go`, 2026-11-15)
+
+**Found on the DX010's boot of 2026-11-14 (21:34:39 MST):** the IP
+Settings apply at 21:36:20 refused with "no interface carries the bridge's
+own target". Start had reported "32 ports (0 up), 0 MACs". Nothing was
+due to change, so nothing was lost. A push moving the address in that
+window would have been refused once and applied a cycle later.
+
+**The journal** (`journalctl -b -u disunified` and `/var/log/syslog`;
+the switch's name, its address and the controller's host replaced):
+
+```
+21:35:13.40 systemd[1]: Started swss.service              <- the container only
+21:35:13.43 systemd[1]: Starting disunified.service
+21:35:21.99 swss#supervisord: spawned: 'portsyncd'
+21:35:22.23 swss#portsyncd: handlePortConfigFromConfigDB: Getting port configuration from ConfigDB...
+21:35:22.70 disunified: disunified ... starting           <- Start's collect, until ~21:35:24.9
+21:35:24.95 disunified: sonic : pmon's /etc/fancontrol could not be read (docker exec pmon)
+21:35:34.64 swss#supervisord: wait_for_link Waiting until interface Vlan4094 is ready...
+21:35:34.75 swss#supervisord: spawned: 'intfmgrd'
+21:35:38.16 swss#supervisord: wait_for_link Interface Vlan4094 is ready!
+21:35:44.63 bgp#bgpcfgd: Received message : '('Vlan4094|192.0.2.1/16', 'SET', (('state', 'ok'),))'
+21:35:46.87 swss#orchagent: :- addIp2MeRoute: Create IP2me route ip:192.0.2.1
+21:35:55.77 disunified: sonic: <switch>, Celestica Seastone-DX010, ..., 32 ports (0 up), 0 MACs, uplink hint 0
+21:36:05.79 disunified: [dx010] ... informing http://<controller>:8080/inform as USWF07D ...
+21:36:20.60 disunified: sonic <switch>: sonic: BGP: bgpd could not be read (vtysh); BGP not written
+21:36:20.61 disunified: [dx010] ... apply IP Settings: sonic: no interface carries the bridge's own target 192.0.2.1; not changing an address blind
+21:36:20.64 disunified: [dx010] ... reconciled system_cfg ...: 0 of 32 ports changed
+21:36:37.92 disunified: sonic apply switch: sudo sonic-db-cli CONFIG_DB hdel 'NTP|global' src_intf ; sudo config save -y
+```
+
+**The cause, in two parts:**
+
+1. **Start collected before swss had made anything.** The address is read
+   from the kernel (`ip -j addr show`), not from a Redis table, and no
+   section failed. At 21:35:23 the kernel had no `Vlan4094` netdev at all:
+   vlanmgrd made it at about 21:35:38, intfmgrd gave it its address by
+   21:35:44. APPL_DB had no port rows (portsyncd had just started), so no
+   port was up, and STATE_DB had no FDB. CONFIG_DB was whole (the database
+   and config-setup ran at 21:35:02-07), so Start's own checks passed: a
+   SONiC version and a non-empty CONFIG_DB `PORT`. The unit's
+   `After=swss.service` is met when the swss container runs (21:35:13),
+   not when the ports exist. The premise that `Vlan4094` "already had its
+   address" holds for 21:36:20, not for 21:35:23.
+2. **That snapshot was acted on 40 s later.** Start's `config --help`
+   checks took 30 s (21:35:25-55), the naming step's TLS timeout 10 s, and
+   `informloop.Run` reconciles once before its first inform, on the
+   session's snapshot: Start's. Every loop collect from 21:36:20 on was
+   whole. The NTP step at 21:36:37, on the first loop collect, already
+   found the address on `Vlan4094` (`ntpSource`).
+
+**What consumed the empty snapshot, and what it wrote: nothing.**
+
+- **IP Settings:** refused (the line above).
+- **Ports:** planned from CONFIG_DB, 0 of 32 changed. The LLDP TLVs at
+  21:37:07 came from a later collect, once the lldp container ran.
+- **Device apply:** no address, so no NTP source; FRR's section was from
+  before the bgp container, so BGP was not written; IGMP only noted.
+- **IPv6:** the controller's API did not answer. Had it answered,
+  `ntpSource` would have been empty and the apply skipped with a one-time
+  warning.
+- **Kernel default route** (§6.4.1): not in that build (da68007). With
+  `frr_route` "error" before the bgp container, it writes nothing.
+- **Naming and seeding:** `provision` got Start's snapshot, but the API did
+  not answer; its retry at 21:37:00 took the session's fresh snapshot.
+- **ACL hold** (`mgmtL2`): no address reads as "every VLAN may carry the
+  management path", the conservative side.
+- **The informs:** the first one followed a fresh collect, so Start's
+  snapshot never reached the controller.
+
+**The fix:** Start collects again, every 5 s for up to 5 min, until
+`startingWhy` has nothing to say:
+
+- APPL_DB has `PORT_TABLE:PortInitDone` (portsyncd has seen every port's
+  netdev; disunified-l2d waits for the same marker);
+- the kernel carries the address the bridge dials, where CONFIG_DB puts it
+  on an in-band interface (`VLAN_INTERFACE`, `INTERFACE`,
+  `PORTCHANNEL_INTERFACE`, `LOOPBACK_INTERFACE`).
+
+An address CONFIG_DB does not hold (eth0's own, a lease, a name that does
+not resolve) says nothing about starting. After 5 min Start fails and
+`main` retries it with its backoff, so no half-started snapshot reaches the
+loop, the naming step or the first reconcile. A collect during the run is
+unchanged. The kernel was already the earliest true source for the address:
+CONFIG_DB holds it from the first second, but it is not yet true there.
+
+**Needs a reboot to prove:** at boot the journal shows "the switch is still
+starting: ..." lines, then "the switch has finished starting", before the
+"32 ports (N up)" line, and no "no interface carries the bridge's own
+target". No collect from a booting switch was ever captured. The tests
+(`starting_test.go`) derive the two boot states, no `PortInitDone` and no
+`Vlan` netdevs, from
+`sonic-igmp-202511.20261115-6c8eb1cf7/collect.txt`, a running switch's
+capture.
 
 ### 6.5 Verification plan (what "done" means for A4)
 
@@ -2924,9 +3020,10 @@ of receive signal. Three sources agree:
 Neither the link nor the readings decide the flag. A down port with light
 has none. Whether a reading below the module's low alarm threshold with
 LOS clear would raise one is not captured: every faulted port in the
-captures had both. The Arista driver (`arista-eos` `applyOpticAlarms`)
-flags a reading outside the alarm thresholds instead, and that rule also
-catches a dark receiver.
+captures had both. The Arista driver reads the module's own RX_LOS and
+TX_FAULT too since 2026-11-15 (EOS prints them in `phy detail`;
+[`arista-eos.md`](arista-eos.md) §4), keeping its old threshold rule only
+for the SSH transport.
 
 **What the DX010 keeps** (read-only, 2026-11-14, `igmp-202511.20261114-42cccc87a`;
 `docs/fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-optic.txt`).
@@ -3868,8 +3965,8 @@ or not seen by `tcpdump` on `Vlan4094` (the switch's CPU).
 | Check | Done | Result |
 |---|---|---|
 | The guard's push | Rogue DHCP Server Detection on for 7 min | The DX010's push carried **one** guard group, VLAN 1 trusting the gateway (the ECS got six for its three guarded VLANs: the controller sends a switch only the guards of VLANs it carries). The bridge wrote `DUI_DHCP_GUARD` 2 s after the push: `V1_S1` (FORWARD from the gateway/32) and `V1_DROP`, `VLAN_ID 4094`, bound to all 32 ports; table and rules `Active`, `show acl rule` lists both. |
-| `VLAN_ID` on the native stand-in | UDP 67 → switch:68 from a host that is not the gateway; control 66 → 68 | The 67s never reached the CPU, the 66s did: **`VLAN_ID 4094` matches untagged frames** of the stand-in (the field processor qualifies after VLAN assignment), and the guard drops an untrusted server's replies. |
-| Guard drop vs ACL forward | Forged 192.0.2.10:67 → switch:68 with the guard alone, then with a `DUI_IP_ACL` Allow (UDP from 192.0.2.0/24 to any port 68) Active; control from port 66 | Dropped both times; the 66s arrived both times: **the guard's DROP wins** over a FORWARD in the other table, as expected. A UniFi Allow cannot open a hole in DHCP guarding. |
+| `VLAN_ID` on the native stand-in | UDP 67 → switch:68 from a host that is not the gateway; control 66 → 68 | The 67s never reached the CPU, the 66s did: **`VLAN_ID 4094` matches untagged frames** of the stand-in (the field processor qualifies after VLAN assignment), and the guard drops an untrusted server's replies. (On 202505's libsaibcm `13.2.1.36`, with no 67 sent without the guard. On 202511's `13.2.1.100` the CPU gets a copy of a dropped frame to the switch, and the chip's counter is the evidence: §11.7.8, 2026-11-15.) |
+| Guard drop vs ACL forward | Forged 192.0.2.10:67 → switch:68 with the guard alone, then with a `DUI_IP_ACL` Allow (UDP from 192.0.2.0/24 to any port 68) Active; control from port 66 | Dropped both times; the 66s arrived both times: **the guard's DROP wins** over a FORWARD in the other table, as expected. A UniFi Allow cannot open a hole in DHCP guarding. (Read at the CPU, on the 202505 SAI: see the note in the row above.) |
 | Entry capacity | CRM `CRM:ACL_TABLE_STATS:<oid>` (polled every 300 s) | `DUI_DHCP_GUARD` 2 used / 766 available while it was the only table; `DUI_IP_ACL` 1 / 511. **At least 512 entries per table**; the claim stays at 128 (a fourfold margin, rules of one UI rule per port included). Ingress tables free before: 3 per PORT and LAG bind point. |
 | Removal | Snooping off; the Allow rule deleted | `DUI_DHCP_GUARD` went in the designed order (DROP, FORWARD, table) 74 s after the save, `DUI_IP_ACL` 23 s after its delete; CONFIG_DB, STATE_DB and `config_db.json` hold no `DUI_` key afterwards. |
 
@@ -3983,21 +4080,115 @@ hand-made table stood in.
   counted **6 packets, 384 bytes**. Those are exactly the six frames from
   the test MAC; none of the control MAC's six hit it.
 - **Frames addressed to the switch still reached its CPU**, the blocked
-  MAC's included. The to-CPU traps are field-processor entries in other
-  groups whose action is `GpCopyToCpu`. On Broadcom a Drop in one group
-  does not cancel a CPU copy made by another, so the drop removes only the
-  forwarding copy. The broadcast frames reached the CPU from neither MAC,
-  so they show nothing either way.
+  MAC's included, through the to-CPU traps' copy (traced below). The
+  broadcast frames reached the CPU from neither MAC, so they show nothing
+  either way.
 - **Not observed: a dropped switched frame.** That is the case UniFi's MAC
   rules are for ("traffic between devices on the same VLAN"), and seeing
   it needs a second port with a link. Every other port of the DX010 is
   down, so the check stops at the hit counter.
-- **Open difference.** In §11.7.7 an L3 rule (`DUI_DHCP_GUARD`) did keep
-  DHCP replies from the switch's CPU. Whether that trap's action differs,
-  or the L3 table's drop does, was not traced.
 - **Afterwards.** The timer removed the table (no `MACTEST` key in any DB,
   no ACL table or entry in ASIC_DB). Ethernet0 stayed up and the bridge
   informed every minute throughout.
+
+**Why a drop does not keep a frame from the CPU** (traced 2026-11-15 on
+`igmp-202511.20261115-6c8eb1cf7`, libsaibcm `13.2.1.100` legacy-TH).
+§11.7.7 had seen the guard's L3 DROP keep forged replies from the CPU,
+and this check saw the L2 DROP not do so. The trace shows the two tables
+land in the chip the same way. On this SAI no ACL drop keeps a frame
+addressed to the switch from its CPU. The §11.7.7 result came from the
+older SAI, with no baseline.
+
+- **The traps** are one ingress field-processor group, GID 1, at group
+  priority -1. That group's TCAM resolves to one entry per packet, the
+  highest-priority match. Its entries for traffic to the switch itself:
+
+  | Entry | Match | Actions | Prio | Stat |
+  |---|---|---|---|---|
+  | ip2me (EID 0x0f) | `MyStationHit`, `DstClassL3` 1 | `RpDrop`, `GpCopyToCpu`, CPU queue 1 | 1 | 9 |
+  | DHCP to the switch (EIDs 0x12, 0x13) | the same plus UDP, `L4DstPort` 67 or 68 | `RpDrop`, `GpCopyToCpu`, CPU queue 3 | 3 | 10 (all six DHCP entries) |
+  | DHCP broadcast (EIDs 0x10, 0x11) | broadcast `DstMac`, UDP, `L4DstPort` 67 or 68 | `UnmodifiedPacketRedirectPort` to the CPU, `RpDrop`, `GpCopyToCpu`, CPU queue 3 | 3 | 10 |
+  | ARP (EIDs 0x1c-0x1f) | ARP to broadcast or to the switch | `GpCopyToCpu`, `YpCopyToCpu`, queue 4 | 4 | 12 |
+
+  `GpCopyToCpu` copies green packets to the CPU. `RpDrop` drops only what
+  the CoPP policer has marked red. CoPP (`copp_cfg.json` plus
+  CONFIG_DB) gives `ip2me` and `dhcp,dhcpv6` the action `trap`. On this
+  SAI, `trap` for a unicast frame to the switch is that copy-only entry.
+  The redirect appears only on the broadcast entries.
+- **The ACL tables.** Each orchagent table is its own ingress group. Every
+  table's member priority is 100 (`portsorch.cpp`
+  `SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY`), and the chip shows
+  `group_priority= 100`. Two throwaway tables were bound to Ethernet0 at
+  once: `TRACEL3`, type `L3`, and `TRACEL2`, type `L2`.
+  - Each rule's entry has the single action `Drop`, all colours.
+  - `TRACEL3` landed in GID 4 on slice 3, `TRACEL2` in GID 5 on slice 2.
+  - The MACTEST table above landed the same way: GID 4, slice 2,
+    priority 100, `Drop`.
+  - So the stage, the group priority and the drop encoding are the same
+    for both table types.
+- **The cross** (2026-11-15 18:16-18:23 UTC, under the test lock with a
+  300 s timed removal). Frames from a LAN host to the switch's MAC and
+  address, three of each:
+
+  | Frames | `TRACEL3` R1 (DROP UDP from 192.0.2.10, port 67) | `TRACEL2` R1 (DROP src 02:00:00:00:00:01, VLAN 4094) | Trap path | On Ethernet0 and Vlan4094 |
+  |---|---|---|---|---|
+  | 192.0.2.10:67 -> :68 | hit | -- | DHCP | **3 of 3** |
+  | 192.0.2.10:67 -> :9 | hit | -- | ip2me | **3 of 3** |
+  | from 02:..:01, :66 -> :68 | -- | hit | DHCP | **3 of 3** |
+  | from 02:..:01, :66 -> :9 | -- | hit | ip2me | **3 of 3** |
+  | controls, :66 -> :68 and -> :9 | -- | -- | both | 6 of 6 |
+
+  - The two drop entries counted 6 each, exactly their frames.
+  - The DHCP traps' stat 10 counted the dropped DHCP frames too. One
+    entry per group hits, so the trap fired on frames the ACL group
+    dropped.
+  - A repeat with the guard's own shape gave the same result. That rule
+    was a DROP at 8000 with `VLAN_ID 4094`, `IP_PROTOCOL 17`,
+    `L4_SRC_PORT 67`, `L4_DST_PORT 68` and the forged source. Its entry
+    counted 3, and 3 of 3 reached the CPU.
+  - The guard's `VLAN_ID` on the stand-in's untagged frames is therefore
+    confirmed by the chip's own counter on this image.
+- **How the chip resolves it.** A drop in a group at priority 100 removes
+  the forwarding copy (the switched or routed packet, or the redirect).
+  It leaves the trap group's `GpCopyToCpu` alone, whichever table type
+  made the drop. Counters agree: what the drop entry counts, the trap's
+  stat counts too, and the CPU sees it.
+- **§11.7.7 again.** That run was on 202505.1238526 with libsaibcm
+  `13.2.1.36`. A port-67 reply to the switch did not reach the CPU under
+  the guard, while port 66 did. No one sent a port-67 reply without the
+  guard, and that SAI's field processor was never read. So it is open
+  whether `13.2.1.36` encoded the drop or the trap differently, or
+  whether something else dropped those frames. That image is no longer
+  installed (only 202511 images are, `sonic-installer list`).
+  - Every guard statement since then rests on the chip's counters:
+    VLAN_ID, the per-port count (§11.7.9) and today's repeat.
+  - The ARP and DHCP traps' policers (`RpDrop`) are unrelated: three
+    frames stay green.
+- **The guard still guards.** A rogue reply switched to a client is dropped
+  in the chip. Its CPU copy dies at the kernel bridge: `ebtables` FORWARD
+  drops `-d Multicast` (broadcast included) and ARP, so nothing re-floods
+  a trapped frame in software. The switch's own DHCP use is untouched:
+  - its address is static, so it runs no DHCP client;
+  - the relay and udhcpd listen on 67, and the guard matches only 67 -> 68.
+- **What follows for the driver.**
+  - **No ACL rule protects the switch's own address on this SAI**, a
+    UniFi IP Block included. A Block to the switch's address or MAC drops
+    the routed or switched copy, but the ip2me copy still reaches the CPU.
+  - The management guards (`cutsManagementMAC` and its IP twin) still
+    stay. They matter on a SAI that drops to-CPU frames, and they cost
+    nothing here.
+  - **A MAC rule that kept frames from the CPU** would need SAI's `DENY`
+    (drop plus copy cancel). `DENY` is not in orchagent's ACL action
+    lookup, which has only FORWARD, DROP and COPY
+    (`aclPacketActionLookup`). STATE_DB's
+    `ACL_ACTION|PACKET_ACTION COPY,DROP,FORWARD` lists only those, so
+    whether `13.2.1.100` would take `DENY` on an ACL entry is not known.
+    The other route is a kernel `ebtables` INPUT drop by source MAC on
+    the rule's VLAN.
+  - **Not built.** UniFi's MAC rules are for traffic between devices on
+    one VLAN, which the chip drops. The UI refuses the management network
+    for a MAC rule. What a real UniFi switch does with a blocked MAC's
+    frames to itself is not captured.
 
 **Not verified live:**
 - **A switched frame dropped**, which needs two linked ports (above).
@@ -5235,6 +5426,22 @@ OK for the test networks, 2026-11-08); bit names from upstream unifi-emu's
   first, but the push leaves them out, with or without an override of their
   own (the cfgversion was the same both ways). Any device, a UniFi one too,
   gets a one-member aggregate from that push.
+- **Network 11.0.99, re-captured 2026-11-15** (Routing + Aggregating on
+  empty cages 15 and 16 from the port editor, then removed;
+  `controller-11.0.99/system_cfg-dx010-routed-agg-{1-aggregate,2-removed}.txt`,
+  the push before and after being `system_cfg-dx010-dot1x-8-off.txt`):
+  **unchanged.** Against 10.6.109's, key by key, the routing interface is
+  the same nine keys (`id`, `name`, `type=lag`, `opmode manual`, `ip`,
+  `mask`, `default_route`, `purpose`, `lag=<first member>`), the first
+  member is still `opmode=aggregate`, `lag=1`, with no VLAN, the second
+  member is still in no key, and no DHCP key comes with it. The controller
+  record's override lists both (`aggregate_members [15,16]`, `lag_idx 1`),
+  and its port table shows port 16 `aggregated_by` 15. The removal renames
+  the second member to the controller's default (`QSFP28 16`) until the
+  operator's name is put back. The deployed bridge (f3d3572) built
+  PortChannel1 with Ethernet56 alone, as replayed in
+  `replay_sonic_routed_net11_test.go`, and took it down again in the same
+  order as on 10.6.109. The last push wrote nothing.
 - A fixed IP is `dhcp_server.static_ip.K.{id,mac,ip}` under the network's
   routing interface, inside the DHCP range or outside it.
 
@@ -5290,11 +5497,22 @@ the six pushes over `collect-l3.txt`):
   The DX010's port overrides equal their pre-test copy, and
   `config_db.json` holds no trace. Ethernet0 stayed up throughout.
 
+**The same run again through the deployed bridge (2026-11-15 17:43-17:47
+UTC, dx010-live-runs, under the test lock)** showed the same push and the
+same writes (replayed in `TestReplaySonicDX010Network11`), and two things
+beside them. **Vlan4040 stays behind** when the controller removes the
+transit with the last routed network: `EnsureVLANs` only creates, so the
+VLAN, with no member and no address left, was deleted by hand as after the
+2026-11-07 and 2026-11-08 runs (`config vlan del 4040`). And leaving
+Routing + Aggregating, the port editor edits both former members at once
+with the first's settings (Tagged VLAN Management back to Allow All); both
+overrides were put back on their pre-test copy through REST.
+
 **Not proven live:** traffic over a routed port, since the test cages have
 no link (rack day). The subnet's connected route, which SONiC installs when
 the port comes up. An OSPF adjacency or a static route over a routed port.
 A routed aggregate of more than one member: the controller pushes only the
-first.
+first (10.6.109 and 11.0.99).
 
 ### 11.17 DHCP packet rate (anomaly 32): counted by disunified-l2d (2026-11-14)
 
@@ -5454,11 +5672,31 @@ CoPP cap that lets a count pass it. A flood test on a port other than the
 uplink, and a CPU reading of l2d at the full 600/s, are not planned (no
 other cage is cabled; a loopback cage would loop the VLAN).
 
-**Not exercised:** the alert raised in
-the controller (the deployed bridge does not read the table yet: it needs
-this branch deployed), and l2d running the detector as a service (the
-harness ran the class alone; the service path is `sync` -> `configure`
-every 2 s and the main loop's `select`, fixture-tested only).
+**Through the deployed build (2026-11-15 17:33 UTC, main f3d3572 on
+igmp-202511.20261115-6c8eb1cf7, Network 11.0.99, under the test lock).**
+The same burst as above, 400 BOOTREQUESTs a second for 5 s from a LAN host
+to the switch's own address, with the installed l2d running the detector as
+a service (its `queue3_group1` and `dhcp_relay` CoPP rows in CONFIG_DB
+before the burst): l2d logged `dhcp rate: Ethernet0 received 401 DHCP
+requests in one second (threshold 300)`, STATE_DB
+`DUI_DHCP_RATE_TABLE|Ethernet0` read `over 397`, `peak 401`, and the first
+inform after it carried bit 32 on port 1. The controller raised
+`PORT_DHCP_STORM` at that inform's time, "Incoming DHCP packets exceed
+300/sec on <switch> Port 1." (severity HIGH, title "Excessive DHCP Packets
+Detected"; read from `system-log/device-alert`), and port 1's stats drawer
+showed Broadcasts & Discovery "Degraded -- Excessive DHCP Packets Detected"
+with the alert in its activity log. The next inform, with the count no
+longer growing, carried no bit. Nothing to restore: the CoPP rows are l2d's
+standing ones. One finding on the way: the record dir's `payload-last.json`
+showed `anomalies 0` for the very inform that raised the alert. The loop
+built the payload a second time for that file after `EncodeInform` had
+moved the per-port history forward, so the copy never showed a growth bit
+(or a byte rate); it is written from the encoded payload now
+(`Session.LastPayload`, `TestLastPayloadKeepsTheSentAnomalies`). The wire
+was right throughout.
+
+**Not exercised:** a flood on a port other than the uplink (Clint's limit
+above).
 
 ### 11.18 Switch-detected anomalies: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
 
@@ -6309,7 +6547,9 @@ nightly -- consistent with drops that never arrive faster than the rate. One
 alert per condition: the two faster intervals after it raised nothing new.
 A UniFi switch on 7.6.11 also sends `link_flap_count` on a few ports (1 on
 each, sparse, beside a `link_down_count` of 0 to 7); the alert above came
-without it. What that field counts is not known; the bridge does not send it.
+without it. It does not count drops (it counts the switch's own link-flap
+detector), and the bridge does not send it
+(`docs/feature-map.md` §2, below the table).
 
 **The bridge's count was right; nothing changed for it.** Every toggle was
 counted: SONiC's `flap_count` grew by two per cycle.
@@ -6388,10 +6628,60 @@ port `up: true`, and a cabled peer would see link. A UniFi switch's BPDU
 guard is described in the UI as disabling the port; taking the chip's port
 down for it (and up again on the operator's re-enable) is a follow-up.
 
-**A side effect seen:** 90 s after the link-flap alert the controller's
-push changed port 17's `stp.edge` from `auto` to `disabled` with no change
-to its port override (l2d: "Ethernet64 auto edge off"); the cause is not
-established.
+**A side effect seen, and its cause: the controller's auto edge.** 90 s
+after the link-flap alert the controller's push changed port 17's
+`stp.edge` from `auto` to `disabled` with no change to its port override
+(l2d: "Ethernet64 auto edge off"). The flap did not cause it. The
+controller (Network 11.0.99) runs its own edge evaluation per switch, which
+logs to `server.log` (read 2026-11-15, placeholders for the identifiers):
+
+```
+<stp-edge-eval:aa:bb:cc:dd:ee:ff> INFO ... - stp-edge-auto written site=... mac=aa:bb:cc:dd:ee:ff port_idx=17 unit_id=null value=disabled
+<stp-edge-eval:aa:bb:cc:dd:ee:ff> INFO ... - stp-edge-auto skipped reason=already_matches ... port_idx=1 unit_id=null value=disabled
+```
+
+- **What it does.** About every 5-6 minutes for each switch, it takes each
+  port that is up and whose edge is left to the controller (no Edge choice
+  in the override), and records the switch's own `stp_edge_port`: `true`
+  is recorded as `enabled`, `false` as `disabled`. From then on the push
+  carries that value as `switch.port.N.stp.edge`. The match holds without
+  exception: 109 ports on the site's switches were evaluated in a
+  ten-minute window, and on each one the recorded value equals the
+  `stp_edge_port` the controller stores for it (`stat/device`). It writes
+  both ways on real switches (`enabled` on access ports, `disabled` on a
+  USXG's switch-to-switch port). The recorded value is not in the
+  override: `port_overrides` and `port_table` in the API show none.
+- **Why port 17.** The write came at 00:19:14.308 UTC, the same inform as
+  the link-flap alert. The 5-minute sample happened to land on that inform,
+  and port 17 was up in it (the looped cage) and reported
+  `stp_edge_port: false`. That value is correct: mstpd's `oper_edge_port`
+  is `no` on a port that hears BPDUs, and a looped port hears its own. The
+  push 89 s later was the next reply that carried a config. Every DX010
+  test port that was up in one of these samples was pinned the same way,
+  flapping or not: ports 9, 10 and 13 on 2026-11-14 (other tests), 18 at
+  01:21:21 UTC (the STP-flap run, below the link-flap rate), and 31 on
+  2026-11-15 15:53 UTC. Only port 1, the uplink, is evaluated at every
+  sample (`disabled`, matching).
+- **A UniFi switch does the same.** The ECS's push already carried
+  `stp.edge=disabled` on 2026-10-31 (Network 10.6) on 8 of its up
+  ports, and each of them reported `stp_edge_port: false` in its own inform
+  that evening. Its firmware applies `disabled` exactly as l2d does: each
+  pinned port has `UBNT_STP|interface|EthernetN` `intf_autoedge disabled`
+  and mstpd's `auto edge port no`, while the others keep `auto edge port
+  yes` (read only, 2026-11-15). So the bridge reports this as a UniFi
+  switch would, and the driver does not change.
+- **It does not go back by itself.** Down ports are not evaluated, so
+  port 17 is still pushed `disabled` 17 hours later. Once a port is
+  pinned, auto edge is off on both switches, so `oper_edge_port` cannot
+  become `yes` again and the evaluator keeps finding `disabled`. A host
+  cabled to such a port later is a non-edge RSTP port: it reaches
+  forwarding through the forward delay (about 30 s), not the 3 s of auto
+  edge, and every link-up is a topology change. A `disabled` value lasts
+  through the controller's nightly restart (02:29 local; a USXG port pinned
+  2026-11-12 was found `already_matches` after two restarts). An `enabled`
+  value does not: two access ports on a US8 and a USL16LPB were written
+  `enabled` again a few minutes after each restart. Whether choosing Edge
+  explicitly in the port's settings clears a pinned value was not tested.
 
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
@@ -6751,22 +7041,37 @@ Not exercised:
 - a forwarding port with other VLAN members (the flood went nowhere);
 - frame sizes other than 64 bytes;
 - a rate high enough to reach the CoPP cap;
-- storm control pushed from the UI with the detection running;
+- storm control pushed from the UI with the detection running (done
+  through the deployed build 2026-11-15, below; no storm);
 - the operator's own sFlow;
 - a breakout of a sampled cage;
 - split cages and PortChannel members;
 - **the controller's "Incoming unknown unicast packets ... exceed the
-  Storm Control threshold" alert**, which needs this branch's bridge
-  deployed (its l2d and collector).
+  Storm Control threshold" alert**: the build is deployed, the alert
+  needs a storm (below).
 
-With it deployed, a UI unknown-unicast level on an empty test cage
-should show these in the bridge's log and on the switch:
-- `sonic apply ... storm-control add ... unknown-unicast`;
-- l2d's `sampling <port> at 1:<rate>`;
-- `FEATURE|sflow` enabled;
-- with no traffic, no storm.
+**Storm control from the UI through the deployed build (2026-11-15
+17:40-17:42 UTC, main f3d3572, Network 11.0.99, under the test lock).**
+Port 16 (Ethernet60, an empty cage) in the port editor: Advanced Manual,
+Storm Control, Unknown Unicast 1 %. The push carried
+`switch.port.16.stormctrl.{status=enabled,type=level,ucast=1}` and nothing
+else new; the bridge ran `sudo config interface storm-control add
+Ethernet60 unknown-unicast 1000000`, and 3 s later l2d logged `sampling
+Ethernet60 at 1:78125 for unknown unicast`, `sflow feature on for
+unknown-unicast sampling` and `reading psample samples`: `FEATURE|sflow`
+`state enabled`, CONFIG_DB `SFLOW|global`, `SFLOW_SESSION|all` and
+`SFLOW_SESSION|Ethernet60`, and `/etc/sonic/disunified/l2d-sflow` present.
+With no traffic, no storm. Removing the level (Storm Control off, Advanced
+back to Auto) pushed the three keys away; the bridge ran `storm-control del
+Ethernet60 unknown-unicast`, l2d logged `unknown-unicast sampling stopped,
+sflow feature off`, and `FEATURE|sflow` was `disabled` again with no
+`SFLOW*` row, no `PORT_STORM_CONTROL` row and no marker. The UI left the
+port's override expanded with every default; it was put back on its
+pre-test copy through REST. Both pushes are replayed in
+`TestReplaySonicDX010Network11`.
 
-A storm needs a source above the level: UniFi's lowest, 1 % of 100G, is
+Still not exercised: a storm against the level. A storm needs a source
+above the level: UniFi's lowest, 1 % of 100G, is
 far above what the CPU can send. A PR for the alert needs a cabled
 source on a test port in a VLAN of its own and the alert read from the
 controller's device alerts.

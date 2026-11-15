@@ -232,6 +232,19 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **A dummy port's `carrier off` under a bridge reaches the bridge only
     after linkwatch's 1 s rate limit**: under 1 s it is coalesced and
     nothing happens.
+- **At boot the bridge starts before the switch is one (`starting.go`,
+  `docs/drivers/sonic.md` §6.4.2, 2026-11-15).** `After=swss.service` is
+  met once the swss container runs. On the DX010's boot Start collected
+  15 s before vlanmgrd made `Vlan4094`, with CONFIG_DB whole, APPL_DB
+  portless and no in-band address. `informloop.Run`'s first reconcile ran
+  on that snapshot 40 s later: Start's 20 `config --help` reads take
+  ~30 s. Start now collects again (5 s, up to 5 min, then fails for
+  `main` to retry) until APPL_DB has `PORT_TABLE:PortInitDone` and the
+  kernel carries the dialled address CONFIG_DB names. Runtime collects
+  are unchanged. **A boot's timeline is in `/var/log/syslog`, not the
+  journal**: `journalctl -b` holds the kernel, systemd and the bridge,
+  but the containers' daemons (`swss#portsyncd`, `swss#intfmgrd`,
+  `swss#orchagent`, `bgp#bgpcfgd`) log only to syslog.
 - **`promote_secondaries` is 0 on SONiC** (`/proc/sys/net/ipv4/conf/<iface>/promote_secondaries`):
   deleting a subnet's primary address deletes its secondaries, and a new
   address in the same subnet is a secondary. A live move removed the old
@@ -517,10 +530,16 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   with a log. A MAC set whose Block would drop the switch's own management
   frames is held (`cutsManagementMAC`). The UI refuses the management
   network for a MAC rule, and the DX010's one link carries only that
-  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8). On
-  Broadcom the rule's Drop does not cancel a to-CPU trap's `GpCopyToCpu`
-  in another field-processor group: frames to the switch itself still
-  reach its CPU; `bcmcmd "fp stat get si=<n> t=Packets"` shows the hits.
+  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8).
+  **No ACL drop keeps a frame addressed to the switch from its CPU** on
+  202511's libsaibcm `13.2.1.100` (traced 2026-11-15, §11.7.8). Every
+  table is an ingress field-processor group at priority 100 whose entry
+  is a plain `Drop`. That drop leaves the trap group's (GID 1, priority
+  -1) `GpCopyToCpu` alone, for ip2me and DHCP alike, L3 and L2 tables
+  alike. So judge a drop by the chip's counter, never by `tcpdump` on the
+  switch: `bcmcmd "fp show group <gid>"` for the entry's stat id, then
+  `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
+  was on 202505's `13.2.1.36`.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
@@ -1123,6 +1142,9 @@ was restarted.
   you are doing, wait while another session holds it, remove it when done.
   It covers anything the deployed bridge or another session's test would
   see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
-  row, an l2d run by hand. Read-only commands need no lock. (The
+  row, an l2d run by hand. Read-only commands need no lock. **Take it
+  with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
+  so that a held lock refuses the write. A plain `>` replaced a held lock
+  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)

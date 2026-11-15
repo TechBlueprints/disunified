@@ -59,6 +59,14 @@ the media from the identifier and speeds. ethtool can print several
 "Transceiver type" lines for one module; the parser keeps the last, and no
 capture has more than one.
 
+**Link drops (2026-11-15, `docs/drivers/proxmox.md` §2):** `link_down_count`
+is the kernel's `carrier_up_count` less the up period still running:
+`carrier_down_count` and `carrier_changes` include the carrier-off a NIC
+driver makes after registering (bond, bridge, veth, e1000e, virtio_net on
+the Podman host; mlx5 makes it before, so the uplinks were exact anyway).
+Taps count nothing at all; an admin-down interface's carrier is unreadable
+and counts as down.
+
 **Guest ports, decided 2026-11-13 (Clint):** a guest port reports
 `sfp_found: true` with empty module fields, and stays that way -- real
 switches send the same for a port with something in it and no module

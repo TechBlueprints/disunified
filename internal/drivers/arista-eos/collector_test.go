@@ -2,9 +2,6 @@ package aristaeos
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,67 +9,13 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// fixtureTransport serves docs/fixtures/arista-eos-4.26.14M/<cmd>.json, where the
-// file name is the command with spaces -> "-" and "/" -> "_" (the naming the
-// capture script used).
-type fixtureTransport struct {
-	dir        string
-	runs       [][]string
-	textRuns   [][]string // RunText calls (text-only commands), counted separately
-	configured [][]string
-	overrides  map[string]string // command -> fixture file name, for scenario variants
-}
-
-func (f *fixtureTransport) Run(_ context.Context, cmds []string) ([]json.RawMessage, error) {
-	f.runs = append(f.runs, cmds)
-	out := make([]json.RawMessage, 0, len(cmds))
-	for _, c := range cmds {
-		if c == "enable" {
-			out = append(out, json.RawMessage("{}"))
-			continue
-		}
-		name := strings.NewReplacer(" ", "-", "/", "_").Replace(c) + ".json"
-		if o, ok := f.overrides[c]; ok {
-			name = o
-		}
-		b, err := os.ReadFile(filepath.Join(f.dir, name))
-		if err != nil {
-			return nil, fmt.Errorf("no fixture for %q: %w", c, err)
-		}
-		out = append(out, b)
-	}
-	return out, nil
-}
-
-// RunText serves <cmd>.txt fixtures (text-only commands).
-func (f *fixtureTransport) RunText(_ context.Context, cmds []string) ([]string, error) {
-	f.textRuns = append(f.textRuns, cmds)
-	out := make([]string, 0, len(cmds))
-	for _, c := range cmds {
-		if c == "enable" {
-			out = append(out, "")
-			continue
-		}
-		name := strings.NewReplacer(" ", "-", "/", "_").Replace(c) + ".txt"
-		b, err := os.ReadFile(filepath.Join(f.dir, name))
-		if err != nil {
-			return nil, fmt.Errorf("no text fixture for %q: %w", c, err)
-		}
-		out = append(out, string(b))
-	}
-	return out, nil
-}
-
-func (f *fixtureTransport) Configure(_ context.Context, cmds []string) error {
-	f.configured = append(f.configured, cmds)
-	return nil
-}
-
-func (f *fixtureTransport) Close() error { return nil }
+// fixtureTransport is the exported FixtureTransport (fixture.go): one
+// transport for every test of the driver.
+type fixtureTransport = FixtureTransport
 
 func newFixtureCollector(t *testing.T) (*Collector, *fixtureTransport) {
 	t.Helper()
-	ft := &fixtureTransport{dir: filepath.Join("..", "..", "..", "docs", "fixtures", "arista-eos-4.26.14M")}
+	ft := NewFixtureTransport(filepath.Join("..", "..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
 	return NewCollector(ft), ft
 }
 
@@ -92,8 +35,8 @@ func TestStartRunsEveryCommandOnce(t *testing.T) {
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(ft.runs) != 2 {
-		t.Fatalf("Start made %d transport calls, want 2 (startup + first poll)", len(ft.runs))
+	if len(ft.Runs) != 2 {
+		t.Fatalf("Start made %d transport calls, want 2 (startup + first poll)", len(ft.Runs))
 	}
 }
 
