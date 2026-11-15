@@ -91,6 +91,12 @@ supports Red Hat and Ubuntu, not Debian, and whether it names a tower's
 fans was not established; OpenManage Server Administrator is the servers'.
 Neither would change what the UI shows.
 
+**Client Block (built 2026-11-15, `block.go`, `docs/drivers/proxmox.md`
+§4d), fixture-tested only.** Its own table `bridge disunified_block`, one
+prerouting rule over every bridge port (uplinks too), needs `nft` only; a
+capture without the `macblock` section leaves the driver its own record of
+the table.
+
 **Rogue DHCP (built 2026-11-14, `dhcpguard.go`, `docs/drivers/proxmox.md`
 §4c).** `DHCPSnooping` is claimed where the node has `nft` and the bridge is
 VLAN-aware; the guard is the driver's own `table bridge disunified`, never
@@ -108,3 +114,12 @@ are not guarded. Any hand test of a rule set goes in a throwaway network
 namespace (`docs/fixtures/proxmox-9.1.6/dhcpguard-netns-test.sh`): nothing
 in the node's own namespace changes. Storms (1/2/4) and the DHCP rate (32)
 are not reported: a node applies no limiter and none is built.
+
+**Two faults found on the SONiC driver on 2026-11-15, checked here, and
+neither exists (`docs/drivers/proxmox.md` §3c).** A VLAN the push stops
+naming leaves the guest NIC's `tag`/`trunks`, and Proxmox rebuilds the
+tap's VLAN rows from those options (nothing device-wide is created, so
+there is nothing to prune; `bridge-vids` is the operator's). mstpd's
+ports are the bridge's ports, so a bond is one STP port, and the driver
+writes mstpd per-port settings to guest members only, never a bond or a
+leg. Held by `vlan_stp_test.go`.

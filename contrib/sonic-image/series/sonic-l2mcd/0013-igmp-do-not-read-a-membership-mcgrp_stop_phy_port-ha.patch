@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 15 Nov 2026 16:30:00 -0700
+Subject: [PATCH] igmp: do not read a membership mcgrp_stop_phy_port() has
+ freed
+
+mcgrp_stop_phy_port() destroyed each of the port's group memberships with
+mcgrp_destroy_mbrshp_entry(), which frees it, then called
+pims_is_pim_snoop_mbrship() on it and cleared MLD_OR_IGMP_JOIN_PORT in its
+pims_mbr_flags: a read and a write of freed memory for every group the port
+had joined, IGMP and MLD alike. A member port's link going down, the port
+leaving the VLAN, snooping turned off on the VLAN and a version change all
+get there. The harness's member-link-down, mld-member-link-down and
+member-vlan-leave cases report a heap-use-after-free in
+pims_is_pim_snoop_mbrship() without it. The PIM flag is read before the
+destroy; the write is dropped, as the membership it cleared is gone.
+---
+ src/igmp.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/src/igmp.c b/src/igmp.c
+index b1a9382..b93ad6c 100644
+--- a/src/igmp.c
++++ b/src/igmp.c
+@@ -625,6 +625,7 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+     MCGRP_STATIC_ENTRY  *mcgrp_static_entry;
+     UINT16               vir_port_id = mcgrp_vport->vir_port_id;
+     UINT32               phy_port_id = mcgrp_pport->phy_port_id;
++    BOOLEAN              is_pim_snp_mbr;
+ 
+ 
+     mcgrp_entry = (MCGRP_ENTRY *) M_AVLL_FIRST(mcgrp_vport->sptr_grp_tree);
+@@ -659,14 +660,17 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+             }
+         }
+ 
+-        // Remove this port from the group membership
++        // Remove this port from the group membership. The membership is
++        // freed by mcgrp_destroy_mbrshp_entry(), so what is needed of it is
++        // read first.
++        is_pim_snp_mbr = pims_is_pim_snoop_mbrship(mcgrp_mbrshp);
+         L2MCD_VLAN_LOG_DEBUG(vir_port_id, "%s:%d:[vlan:%d] pim_snoop_mbrship:%d  w_g:%d %d ", FN, LN,vir_port_id,
+-                pims_is_pim_snoop_mbrship(mcgrp_mbrshp),
++                is_pim_snp_mbr,
+                 mcgrp_mbrshp->pims_mbr_flags, (mcgrp_mbrshp->pims_mbr_flags & PIMS_WG_MBR_PORT));
+ 
+         mcgrp_destroy_mbrshp_entry(mcgrp, mcgrp_entry, mcgrp_mbrshp);
+ 
+-        if(pims_is_pim_snoop_mbrship(mcgrp_mbrshp))
++        if(is_pim_snp_mbr)
+         {
+             if(mcgrp_entry->pims_num_wg_join_ports > 0)
+                 mcgrp_entry->pims_num_wg_join_ports--;
+@@ -676,8 +680,6 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+                     FN, LN, mcgrp_entry->pims_num_wg_join_ports,
+                     mcgrp_entry->pims_num_sg_join_ports);
+         }
+-        //else
+-        mcgrp_mbrshp->pims_mbr_flags &= ~MLD_OR_IGMP_JOIN_PORT;
+ 
+         // If no member ports left in this group, remove this group from this virtual port
+         if (mcgrp_entry->num_mbr_ports == 0)

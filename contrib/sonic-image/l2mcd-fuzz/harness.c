@@ -554,6 +554,74 @@ static int open_sockets(void)
     return n;
 }
 
+/* The member-* cases (found while testing sonic-l2mcd 0011, 2026-11-15):
+ * mcgrp_stop_phy_port() read and cleared pims_mbr_flags of the membership
+ * mcgrp_destroy_mbrshp_entry() had just freed, so every way a port's
+ * memberships are stopped reached a freed one. Ethernet4 and Ethernet8 join
+ * 239.1.2.3 (afi 1) or ff3e::1 (afi 2), then Ethernet8 loses link (leave 0)
+ * or leaves Vlan100 (leave 1). Ethernet8's membership must go, with one
+ * deletion sent under its name; the group must stay, with Ethernet4's.
+ * Returns 0, 1 when the state after is wrong, 2 when the setup failed. */
+static int member_stop(int afi, int leave)
+{
+    static uint8_t m[64], pk[128];
+    MCGRP_CLASS *mcgrp = MCGRP_GET_INSTANCE_FROM_VRFINDEX(afi, L2MCD_DEFAULT_VRF_IDX);
+    UINT16 vir = (USHORT)vnode->ifindex;
+    char ln[L2MCD_IFNAME_SIZE];
+    IPV6_ADDRESS a6;
+    MADDR_ST g;
+    MCGRP_ENTRY *e;
+    unsigned dels;
+    size_t n, t;
+    int p, bad;
+
+    if (afi == L2MCD_IPV4_AFI) {
+        mcast_set_ipv4_addr(&g, 0xef010203);                    /* 239.1.2.3 */
+        n = igmpv3_hdr(m, 1);
+        n += igmpv3_rec(m + n, 4, 0, 0, 0, 0);
+        t = mk_ip4(pk, m, n, 0, v3_reports);
+        for (p = 0; p < 2; p++)
+            feed_ip4(p, pk, t);
+    } else {
+        memset(&a6, 0, sizeof(a6));
+        a6.address.address8[0] = 0xff; a6.address.address8[1] = 0x3e; a6.address.address8[15] = 1;
+        mcast_set_ipv6_addr(&g, &a6);                           /* ff3e::1 */
+        n = mldv2_hdr(m, 1);
+        n += mldv2_rec(m + n, 4, 0, 0, 0, 0);
+        t = mk_ip6(pk, m, n, 1, 0, 0x16);
+        for (p = 0; p < 2; p++)
+            feed_ip6(p, pk, t);
+    }
+    e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+    fprintf(stderr, "  %s joined by Ethernet4 and Ethernet8: %d member(s)\n",
+            mcast_print_addr(&g), e ? (int)e->num_mbr_ports : -1);
+    if (!e || e->num_mbr_ports != 2 || !mcgrp_find_mbrshp_entry(e, port_idx[0]) ||
+        !mcgrp_find_mbrshp_entry(e, port_idx[1])) {
+        fprintf(stderr, "harness: setup failed: the group has not both members\n");
+        return 2;
+    }
+    dels = stub_l2mc_dels;
+    if (leave) {
+        port_msg_type(L2MCD_VLAN_MEM_TABLE_UPDATE, "Ethernet8", 0, 1);
+    } else {
+        /* the link event's name, as l2mcd_nl_msg_handler() passes it */
+        snprintf(ln, sizeof(ln), "Ethernet8");
+        l2mcd_portstate_update(if_nametoindex("Ethernet8"), 0, ln);
+    }
+    e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+    fprintf(stderr, "  after Ethernet8 %s: %s has %d member(s), Ethernet4's %s, Ethernet8's %s; "
+            "%u member deletion(s) sent%s%s\n", leave ? "left Vlan100" : "lost link",
+            mcast_print_addr(&g), e ? (int)e->num_mbr_ports : -1,
+            e && mcgrp_find_mbrshp_entry(e, port_idx[0]) ? "kept" : "gone",
+            e && mcgrp_find_mbrshp_entry(e, port_idx[1]) ? "kept" : "gone",
+            stub_l2mc_dels - dels, stub_l2mc_dels != dels ? ", the last under " : "",
+            stub_l2mc_dels != dels ? stub_l2mc_del_port : "");
+    bad = !e || e->num_mbr_ports != 1 || !mcgrp_find_mbrshp_entry(e, port_idx[0]) ||
+          mcgrp_find_mbrshp_entry(e, port_idx[1]) ||
+          stub_l2mc_dels - dels != 1 || strcmp(stub_l2mc_del_port, "Ethernet8");
+    return bad;
+}
+
 static const char *only;
 static int run(const char *name)
 {
@@ -806,6 +874,46 @@ int main(int argc, char **argv)
         }
         if (bad)
             abort();
+    }
+    /* a port that is deleted from the port list: l2mcd_igmprx_sock_close() and
+     * l2mcd_mldrx_sock_close() closed its two sockets, but
+     * l2mcd_libevent_destroy() only event_del()ed their events, so both stayed
+     * allocated (LeakSanitizer: 2 libevent events). Ethernet44 is created in the
+     * case, so its events are not hidden with the setup's. */
+    if (run("port-delete")) {
+        if (system("ip link add Ethernet44 type dummy && ip link set Ethernet44 up"))
+            return 2;
+        port_msg("Ethernet44", 1, 1);
+        fprintf(stderr, "  Ethernet44 added: index %u, packet sockets %d\n",
+                portdb_get_portindex_from_ifname("Ethernet44"), packet_sockets_on("Ethernet44"));
+        if (packet_sockets_on("Ethernet44") != 2) {
+            fprintf(stderr, "harness: setup failed: Ethernet44 has no sockets\n");
+            return 2;
+        }
+        port_msg("Ethernet44", 0, 0);
+        fprintf(stderr, "  Ethernet44 deleted: index %u, packet sockets %d\n",
+                portdb_get_portindex_from_ifname("Ethernet44"), packet_sockets_on("Ethernet44"));
+    }
+    /* a group member loses link or leaves the VLAN (member_stop above) */
+    {
+        static const struct { const char *name; int afi, leave; } mc[] = {
+            { "member-link-down", L2MCD_IPV4_AFI, 0 },
+            { "mld-member-link-down", L2MCD_IPV6_AFI, 0 },
+            { "member-vlan-leave", L2MCD_IPV4_AFI, 1 },
+        };
+        unsigned i;
+        int r;
+
+        for (i = 0; i < sizeof(mc) / sizeof(mc[0]); i++) {
+            /* each changes Ethernet8 for good: only when named (run.sh runs each in its own process) */
+            if (!only || strcmp(only, mc[i].name))
+                continue;
+            run(mc[i].name);
+            if ((r = member_stop(mc[i].afi, mc[i].leave)) == 2)
+                return 2;
+            if (r)
+                abort();
+        }
     }
     if (run("mld-valid")) {
         n = mldv2_hdr(m, 3);

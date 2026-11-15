@@ -73,6 +73,7 @@ The why, the validation plan and the hard unknowns are in
 | | 0010 | the per-VLAN debug lines that `-n 1` routes to syslog go at INFO, not NOTICE (l2mcmgrd sets l2mcd to its swss level, NOTICE, at start, so ~75 lines/s reached the remote log host); the per-frame IPv6 ERRs of a VLAN without MLD snooping are counted (`mld-off`, `non-mld` in `l2mcd_ctl -c 10`) |
 | | 0011 | a port a breakout deletes and creates again keeps its own index (4096 + N for EthernetN) instead of 4096 + its kernel ifindex, which was another port's: Ethernet0's for a lane reported before its netdev, Ethernet<ifindex>'s otherwise; that port lost its sockets, its tree and its group memberships (found on the DX010 2026-11-15, `docs/drivers/sonic.md` §11.25.3) |
 | | 0012 | a closed port socket's libevent event is freed, not only deleted (128 bytes per socket) |
+| | 0013 | `mcgrp_stop_phy_port()` no longer reads and clears the membership `mcgrp_destroy_mbrshp_entry()` has just freed: every group member's link-down, a port leaving its VLAN, snooping turned off on a VLAN and a version change reached the freed memory (IGMP and MLD; flagged in the Micas PR's review on 2026-02-20, never fixed; harmless with glibc's allocator, `docs/drivers/sonic.md` §8.13) |
 
 ## `l2mcd-fuzz/`: the daemon's packet parsers under ASan, UBSan and libFuzzer
 
@@ -94,6 +95,15 @@ The three `query-src-*` cases (0009) are not packet cases: each sends Vlan100's
 address before or after the snooping enable, or forces `ve_ifindex` to the bare
 VLAN id the DX010 runs with, and checks the source of the group queries and of a
 general query; each must be run by name (`run.sh regress` does).
+
+`member-link-down`, `mld-member-link-down` and `member-vlan-leave` (0013) are not
+packet cases: Ethernet4 and Ethernet8 join 239.1.2.3 (ff3e::1 for MLD), then
+Ethernet8's link goes down, or it leaves Vlan100, through l2mcd's own link-event
+function or IPC handler. Each checks that the group keeps Ethernet4 alone and that
+one member deletion went to APPL_DB, under Ethernet8; each must be run by name.
+The APPL_DB stub counts a deletion where l2mcd sends it, `l2mcsync_add_l2mc_entry()`
+with `op_code` 0 (before 2026-11-15 it counted only `l2mcsync_del_l2mc_entry()`,
+which no C file calls, so no case could see a deletion).
 
 `port-list-breakout` (0011, 0012) is not a packet case either: it drives the port-list messages and link events of a breakout through l2mcd's own handlers, with dummy links it adds and deletes in the container (one created as ifindex 40), and checks that a port outside the split keeps its index, tree, sockets and group membership.
 

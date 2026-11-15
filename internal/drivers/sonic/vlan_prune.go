@@ -99,15 +99,8 @@ func (c *Collector) planPrune() ([]int, []string) {
 		}
 	}
 	if c.l3 != nil {
-		for _, in := range c.l3.L3Interfaces {
-			if in.Port > 0 || in.LAG > 0 {
-				continue
-			}
-			if in.VLAN == 1 {
-				keep[c.NativeVLAN] = true
-			} else if in.VLAN > 1 {
-				keep[in.VLAN] = true
-			}
+		for _, id := range c.routedVLANs() {
+			keep[id] = true
 		}
 	} else if st.bgpOn() {
 		return nil, nil // the routing intent is not known yet (ApplyDevice runs first)
@@ -125,6 +118,32 @@ func (c *Collector) planPrune() ([]int, []string) {
 		del = append(del, id)
 	}
 	return del, notes
+}
+
+// routedVLANs is the SONiC VLAN ids of the networks the last push routes
+// on a VLAN (not a routed port or aggregate), ascending; UniFi's VLAN 1 is
+// the native stand-in. Called with c.mu held.
+func (c *Collector) routedVLANs() []int {
+	if c.l3 == nil {
+		return nil
+	}
+	seen := map[int]bool{}
+	var ids []int
+	for _, in := range c.l3.L3Interfaces {
+		if in.Port > 0 || in.LAG > 0 || in.VLAN < 1 {
+			continue
+		}
+		id := in.VLAN
+		if id == 1 {
+			id = c.NativeVLAN
+		}
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	return ids
 }
 
 // vlanHeld says what keeps a VLAN on the switch whatever the push says:

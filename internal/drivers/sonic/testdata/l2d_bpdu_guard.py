@@ -138,7 +138,7 @@ def set_flags(dev, up):
         f.write("0x1003\n" if up else "0x1002\n")
 
 
-def run(args, check=False):
+def run(args, check=False, stdin=None):
     print("RUN " + " ".join(args))
     if args[:4] == ["ip", "link", "set", "dev"] and args[5] in ("up", "down"):
         set_flags(args[4], args[5] == "up")

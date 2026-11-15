@@ -155,6 +155,27 @@ The daemon's review happens in
 | [jasper-hou-micas/sonic-l2mcd-micas#3](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/3) | 0008, election half | a v3 VLAN elects against an IGMPv2 querier |
 | [jasper-hou-micas/sonic-l2mcd-micas#7](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/7) | 0008 address half + 0009 | the VLAN's address as the query source, whatever `ve_ifindex` holds |
 | [jasper-hou-micas/sonic-l2mcd-micas#4](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/4) | 0010 (counters on their own lines, so it stands alone) | per-packet lines out of syslog at the default level |
+| [jasper-hou-micas/sonic-l2mcd-micas#8](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/8) (posted 2026-11-15) | 0011 | a port a breakout or join re-creates keeps its own index, not another port's (§11.25.3 of [`drivers/sonic.md`](drivers/sonic.md)) |
+| [jasper-hou-micas/sonic-l2mcd-micas#9](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/9) (posted 2026-11-15) | 0012 | free a closed port socket's libevent event |
+
+#8 and #9 were cut the same way, from branches `fix/breakout-port-index` and `fix/free-socket-event`, on `651a13b` (`dev` and `l2mcd-pre`, both still there on
+2026-11-15; no upstream change to either file since). Each applies and builds alone, and the
+harness case `port-delete` gives 0012 a reproduction of its own on upstream. `port-list-breakout`
+is clean only with both. That case's use-after-free on `651a13b` comes from
+`mcgrp_stop_phy_port()`, which any member port's link-down reaches. Neither PR fixes it
+(§11.25.3). #8 notes it as a separate fault, to be reported separately.
+
+It had been reported already: the review of #1 flagged it as Critical
+([r2832640927](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/1#discussion_r2832640927),
+aidan-gallagher, 2026-02-20; answered "Will further revise and optimize accordingly"), and
+`651a13b` (2026-08-13) still has it. Its fix is the kit's sonic-l2mcd 0013 (§8.13 of
+[`drivers/sonic.md`](drivers/sonic.md)), cut the same way as branch
+`fix/stop-phy-port-freed-membership` (one commit on `651a13b`, `src/igmp.c` +7 -5) and
+credited to that review. **Prepared, not posted**: posting is Clint's decision. Its harness
+link needs disunified `85017b5` on GitHub first. The same commit corrects the harness's APPL_DB
+stub, which counted no member deletion at all (l2mcd sends them through
+`l2mcsync_add_l2mc_entry()` with `op_code` 0), so #8's "no member deleted" check could not
+fail at the commit #8 links; re-run with the counting stub, #8's results are unchanged.
 
 The four sonic-net drafts each got a comment linking a rebase branch on
 Clint's forks (`igmp-snp-202511`, on the commits `series/BASES` pins):
@@ -184,7 +205,9 @@ patch): none of the fixes exists anywhere.
   `igmp_sock_fd`/`mld_sock_fd`.
 - The MLD path came into the Micas tree in `0297ac8` (2025-11).
 - No CVE or advisory names l2mcd.
-- The Micas review (sonic-l2mcd-micas#1, 2026-02-20) covers other functions.
+- The Micas review (sonic-l2mcd-micas#1, 2026-02-20) covers other functions, with one
+  exception found on 2026-11-15: it flagged `mcgrp_stop_phy_port()`'s use-after-free (0013),
+  which was never fixed.
 
 **Not posted:**
 

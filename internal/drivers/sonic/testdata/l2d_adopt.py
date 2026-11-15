@@ -109,7 +109,7 @@ class R(object):
         self.returncode, self.stdout, self.stderr = rc, out, ""
 
 
-def run(args, check=False):
+def run(args, check=False, stdin=None):
     print("RUN " + " ".join(args))
     if args[0] == l2d.MSTPCTL:
         rest = args[1:]

@@ -1,0 +1,185 @@
+{
+  "igmpSnoopingState": "enabled",
+  "immediateLeave": "enabled",
+  "reportFlooding": "disabled",
+  "reportFloodingSwitchPorts": [],
+  "robustness": 2,
+  "vlans": {
+    "1": {
+      "floodingTraffic": false,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": true,
+      "reportFlooding": "disabled"
+    },
+    "10": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "1000": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "2": {
+      "floodingTraffic": false,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": true,
+      "reportFlooding": "disabled"
+    },
+    "2000": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "3000": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "3977": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "disabled"
+    },
+    "3978": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "3979": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "disabled"
+    },
+    "3980": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "disabled"
+    },
+    "4000": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "4010": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "4040": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "69": {
+      "floodingTraffic": false,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "enabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": true,
+      "reportFlooding": "disabled"
+    },
+    "8": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    },
+    "9": {
+      "floodingTraffic": true,
+      "groupsOverrun": false,
+      "igmpSnoopingState": "disabled",
+      "immediateLeave": "default",
+      "maxGroups": 65534,
+      "multicastRouterLearningMode": "pim-dvmrp",
+      "proxyActive": false,
+      "pruningActive": false,
+      "reportFlooding": "default"
+    }
+  }
+}

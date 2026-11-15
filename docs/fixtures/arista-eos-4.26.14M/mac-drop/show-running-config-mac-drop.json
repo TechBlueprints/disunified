@@ -1,0 +1,5 @@
+{
+  "cmds": {
+    "mac address-table static 0200.0000.0001 vlan 1 drop": null
+  }
+}

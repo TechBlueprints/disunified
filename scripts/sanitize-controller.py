@@ -40,6 +40,10 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            replayed against a driver capture: the switch's own address and
            its gateway must be the capture's); addresses already in a test
            range stay, and every other one is numbered past the seeded ones
+       scripts/sanitize-controller.py [--mac <real>=<test>]... <file>...
+           maps one MAC as another capture's scrub did, or to a placeholder
+           of its own (a blocked client that must not collide with a driver
+           capture's switch MAC); every other one is numbered past the seeded
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -84,8 +88,13 @@ def map_mac(m):
     if '01' not in format(int(key, 16), '048b'):
         return m
     if key not in macs:
-        n = len(macs) + 1
-        macs[key] = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'
+        used, n = set(macs.values()), len(macs)
+        while True:   # past any MAC --mac seeded
+            n += 1
+            cand = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'
+            if cand not in used:
+                break
+        macs[key] = cand
     return macs[key]
 
 # --subnet A=B (repeatable): an address inside the real subnet A becomes the
@@ -356,8 +365,14 @@ def scrub(o, key=None):
     return o
 
 args = sys.argv[1:]
-while args and args[0] in ('--subnet', '--ip'):
+while args and args[0] in ('--subnet', '--ip', '--mac'):
     real, _, test = args[1].partition('=')
+    if args[0] == '--mac':
+        if not MAC_RE.fullmatch(real) or not MAC_RE.fullmatch(test):
+            sys.exit(f'--mac {args[1]}: not two MAC addresses')
+        macs[re.sub(r'[^0-9a-f]', '', real.lower())] = test.lower()
+        args = args[2:]
+        continue
     if args[0] == '--ip':
         ipaddress.ip_address(real), ipaddress.ip_address(test)
         ips[real] = test
