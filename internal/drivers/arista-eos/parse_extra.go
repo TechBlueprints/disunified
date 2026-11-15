@@ -135,13 +135,13 @@ type showSTPTopologyStatus struct {
 
 // applyOpticAlarms flags ports whose optic reports a receive or transmit
 // parameter outside its own alarm thresholds (any lane, any channel).
-func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds) {
+func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, e := range th.Interfaces {
-		slot, _, ok := parseEthName(name)
+		slot, _, ok := key(name)
 		if !ok || byIndex[slot] == nil {
 			continue
 		}
@@ -251,27 +251,27 @@ func (c *Collector) holdSTPChanges(raw map[string]int, drops map[string]uint64) 
 // (holdSTPChanges); an interface the switch no longer has (a lane of a
 // cage since joined) still counts towards its cage, so a join does not
 // lower the cage's count either.
-func applySTPChanges(ports []devicemodel.Port, totals map[string]int) {
+func applySTPChanges(ports []devicemodel.Port, totals map[string]int, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, n := range totals {
-		if slot, _, ok := parseEthName(name); ok && byIndex[slot] != nil {
+		if slot, _, ok := key(name); ok && byIndex[slot] != nil {
 			byIndex[slot].Health.STPChanges += n
 		}
 	}
 }
 
 // applySTPRoles sets each port's STP role.
-func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull) {
+func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for _, inst := range st.Instances {
 		for name, e := range inst.Interfaces {
-			slot, _, ok := parseEthName(name)
+			slot, _, ok := key(name)
 			if !ok || byIndex[slot] == nil {
 				continue
 			}
@@ -371,20 +371,20 @@ func fecFor(status string) devicemodel.FEC {
 // taken from lane 1 or, for FEC/flow control, from any lane that reports it).
 func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	xcvr showInterfacesTransceiver, inv showInventory, fec showInterfacesErrorCorrection,
-	fc showInterfaceFlowControl, pc showPortChannelSummary, stp showSpanningTreeFull) {
+	fc showInterfaceFlowControl, pc showPortChannelSummary, stp showSpanningTreeFull, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, st := range static {
-		if slot, lane, ok := parseEthName(name); ok && lane <= 1 {
+		if slot, lane, ok := key(name); ok && lane <= 1 {
 			if p := byIndex[slot]; p != nil {
 				p.AutoNeg = st.autoNeg
 			}
 		}
 	}
 	for name, x := range xcvr.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok || lane > 1 {
 			continue
 		}
@@ -406,14 +406,14 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 		p.Optic = o
 	}
 	for name, st := range fec.Statuses {
-		if slot, _, ok := parseEthName(name); ok {
+		if slot, _, ok := key(name); ok {
 			if p := byIndex[slot]; p != nil && (p.FEC == devicemodel.FECUnknown || p.FEC == devicemodel.FECDisabled) {
 				p.FEC = fecFor(st.Status)
 			}
 		}
 	}
 	for name, st := range fc.Interfaces {
-		if slot, _, ok := parseEthName(name); ok {
+		if slot, _, ok := key(name); ok {
 			if p := byIndex[slot]; p != nil {
 				p.FlowCtrlRx = p.FlowCtrlRx || st.RxOper == "on"
 				p.FlowCtrlTx = p.FlowCtrlTx || st.TxOper == "on"
@@ -424,7 +424,7 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 		id, _ := strconv.Atoi(strings.TrimPrefix(lag, "Port-Channel"))
 		for _, members := range []map[string]any{ch.Ports, ch.ActivePorts, ch.InactivePorts} {
 			for name, v := range members {
-				if slot, _, ok := parseEthName(name); ok {
+				if slot, _, ok := key(name); ok {
 					if p := byIndex[slot]; p != nil {
 						p.LAG = lag
 						p.LAGID = id
@@ -446,7 +446,7 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	}
 	for _, inst := range stp.Instances {
 		for name, e := range inst.Interfaces {
-			if slot, _, ok := parseEthName(name); ok {
+			if slot, _, ok := key(name); ok {
 				if p := byIndex[slot]; p != nil && p.STPPathCost == 0 {
 					p.STPPathCost = e.Cost
 				}
@@ -465,14 +465,14 @@ func isCopperMedia(m devicemodel.Media) bool {
 
 // macTable converts the unicast table. Entries on non-front-panel ports
 // (Cpu, Port-Channel, Vlan) keep PortIndex 0.
-func macTable(mt showMACAddressTable) []devicemodel.MACEntry {
+func macTable(mt showMACAddressTable, key ifKey) []devicemodel.MACEntry {
 	out := make([]devicemodel.MACEntry, 0, len(mt.UnicastTable.Entries))
 	for _, e := range mt.UnicastTable.Entries {
 		if e.EntryType == "static" && e.Interface == "Cpu" {
 			continue // the switch's own address
 		}
 		m := devicemodel.MACEntry{MAC: strings.ToLower(e.MACAddress), VLAN: e.VLANID}
-		if slot, _, ok := parseEthName(e.Interface); ok {
+		if slot, _, ok := key(e.Interface); ok {
 			m.PortIndex = slot
 		}
 		// lastMove is when EOS learned the address on this interface (or

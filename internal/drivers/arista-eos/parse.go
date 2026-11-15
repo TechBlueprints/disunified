@@ -242,7 +242,7 @@ func linkChanges(drops uint64, up bool) uint64 {
 // folding breakout lanes (Ethernet50/1..4) into their slot. media is keyed by
 // EOS interface name (from `show interfaces status`, captured at startup);
 // bootAt is `show version`'s bootupTimestamp (linkDrops).
-func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media, bootAt float64) ([]devicemodel.Port, error) {
+func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media, bootAt float64, key ifKey) ([]devicemodel.Port, error) {
 	type slotAcc struct {
 		port  devicemodel.Port
 		lanes []string
@@ -251,7 +251,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media, 
 	slots := map[int]*slotAcc{}
 
 	for name, ifc := range si.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok {
 			continue // Management1, Port-ChannelN, VlanN, ...
 		}
@@ -352,13 +352,13 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media, 
 
 // applyLLDP attaches neighbours to ports. Lane names (Ethernet50/2) are
 // mapped onto their folded slot.
-func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail) {
+func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for ifname, entry := range ld.LLDPNeighbors {
-		slot, _, ok := parseEthName(ifname)
+		slot, _, ok := key(ifname)
 		if !ok || len(entry.Info) == 0 {
 			continue
 		}
@@ -391,11 +391,11 @@ func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail) {
 
 // applySTP sets STPState from whichever instance lists the port; ports STP
 // does not mention are left "" (the presentation layer decides a default).
-func applySTPStates(ports []devicemodel.Port, st showSpanningTreeFull) {
+func applySTPStates(ports []devicemodel.Port, st showSpanningTreeFull, key ifKey) {
 	states := map[int]string{}
 	for _, inst := range st.Instances {
 		for ifname, e := range inst.Interfaces {
-			if slot, _, ok := parseEthName(ifname); ok {
+			if slot, _, ok := key(ifname); ok {
 				if cur, seen := states[slot]; !seen || cur != "forwarding" {
 					states[slot] = e.State
 				}

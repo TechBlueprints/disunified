@@ -77,10 +77,12 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   read from the parent's last snapshot and written through the parent's
   own plan, in the parent's process. A parent keeps its split cages' lanes
   as ports of their own, scopes its plan to one cage's lanes
-  (`PortChannel<100*cage+lag>`), leaves an attached cage's lanes to the
-  child but for the breakout and the admin state, never touches a
-  PortChannel outside its own range, and serialises its writes and
-  collects (the child applies from its own loop). `sonic` is the parent.
+  (`PortChannel<100*cage+lag>` on sonic; `Port-Channel<1000+10*cage+lag>`
+  on EOS, whose ids stop at 2000), leaves an attached cage's lanes to the
+  child but for the breakout, the admin state and the STP port settings,
+  never touches a channel group outside its own range, and serialises its
+  writes and collects (the child applies from its own loop). `sonic` and
+  `arista-eos` are the parents.
 - **`stub` is an instrument**, not a device: a snapshot from a file, no
   write interface. Use it to ask the controller a question before building
   a driver for the answer (`docs/drivers/stub.md`).

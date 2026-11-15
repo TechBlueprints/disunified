@@ -9,7 +9,9 @@ that cost time on Clint's DCS-7160-48TC6-F.
   batches start with `enable`; eAPI does not expand abbreviations; TLS 1.2
   RSA-kex only.
 - 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
-  RS-FEC on 100G, fire-code only on 25G lanes.
+  RS-FEC on 100G; a 25G lane offers RS and fire-code (cage 50's hardware
+  table; RS accepted and operational on the empty cage's lanes,
+  2026-11-15).
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
@@ -116,6 +118,17 @@ that cost time on Clint's DCS-7160-48TC6-F.
   keeps a per-interface total that never falls. The 7160 has **no MAC
   loopback** (`traffic-loopback ...` is "not supported on this hardware
   platform"), so a linkless test port cannot be brought up.
+- **Lane-switch parent (2026-11-15, `docs/drivers/arista-eos.md` §10,
+  `docs/drivers/breakout.md` §7b):** `channel-group` stops at **2000**, so
+  a lane switch's groups and mirror sessions are `1000+10*cage+lag|lane`
+  (not sonic's `100*cage+lag`); the switch's own stay below 1000 and the
+  fold never reads one of 1000+ as its own. Every per-interface parser
+  takes an `ifKey`: `parseEthName` for the fold, the lane key for split
+  cages' lanes (`buildLanes`) -- a new reading must take one too, or the
+  lanes miss it. `lockApply` serialises collects and every write (a lane
+  switch applies from its own loop). An `interface A-B` range stops at the
+  first warning (an empty cage's "transceiver not present"): write one
+  `interface` per lane.
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is

@@ -94,9 +94,12 @@ deployments and of the image patches by what each enables is
 An eighth, `breakout`, presents a split cage of another bridged switch as a
 five-port switch of its own (`USFXG`, the "lane switch" of
 `docs/breakout-lag.md` §6): built 2026-11-14 with `sonic` as the parent,
-read from the parent's snapshot and written through the parent's plan in
-the parent's process; fixture- and replay-tested, not yet adopted live
-(`docs/drivers/breakout.md` §0, §15 the first adoption).
+and `arista-eos` as the second since 2026-11-15 (its lane groups are
+`Port-Channel<1000+10*cage+lag>`: EOS stops at 2000; the lane batches run
+by hand on the 7160's empty test cage), read from the parent's snapshot and
+written through the parent's plan in the parent's process; fixture- and
+replay-tested, not yet adopted live (`docs/drivers/breakout.md` §0, §7b,
+§15 the first adoption).
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering

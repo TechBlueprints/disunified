@@ -1,0 +1,77 @@
+{
+  "numberOfAggregators": 0,
+  "numberOfChannelsInUse": 0,
+  "portChannels": {
+    "Port-Channel1541": {
+      "inactive": false,
+      "lacpMode": "active",
+      "linkState": "down",
+      "ports": {
+        "Ethernet54/2": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet54/2",
+          "lacpMisconfig": {
+            "status": "noAgg"
+          },
+          "lacpState": {
+            "activity": true,
+            "aggregation": true,
+            "collecting": false,
+            "defaulted": true,
+            "distributing": false,
+            "expired": false,
+            "synchronization": false,
+            "timeout": false
+          },
+          "lagMember": false,
+          "linkDown": true,
+          "staticLag": false,
+          "suspended": false
+        },
+        "Ethernet54/3": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet54/3",
+          "lacpMisconfig": {
+            "status": "noAgg"
+          },
+          "lacpState": {
+            "activity": true,
+            "aggregation": true,
+            "collecting": false,
+            "defaulted": true,
+            "distributing": false,
+            "expired": false,
+            "synchronization": false,
+            "timeout": false
+          },
+          "lagMember": false,
+          "linkDown": true,
+          "staticLag": false,
+          "suspended": false
+        },
+        "Ethernet54/4": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet54/4",
+          "lacpMisconfig": {
+            "status": "noAgg"
+          },
+          "lacpState": {
+            "activity": true,
+            "aggregation": true,
+            "collecting": false,
+            "defaulted": true,
+            "distributing": false,
+            "expired": false,
+            "synchronization": false,
+            "timeout": false
+          },
+          "lagMember": false,
+          "linkDown": true,
+          "staticLag": false,
+          "suspended": false
+        }
+      },
+      "protocol": "lacp"
+    }
+  }
+}

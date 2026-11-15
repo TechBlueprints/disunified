@@ -972,3 +972,60 @@ to MAC ACL instead"), so the rule was Block UDP 198.51.100.0/24 -> the
 switch's address port 68, and the frames were forged from 198.51.100.67:
 five of five reached the CPU before the rule, none with it, all again after
 its removal.
+
+## 10. The 7160 as a lane-switch parent (2026-11-15)
+
+The `breakout` driver presents a split cage as a five-port switch of its
+own (`docs/drivers/breakout.md`); since 2026-11-15 this driver implements
+`devicemodel.LaneProvider` (`lanes.go`, the scoped `plan()` in `apply.go`).
+The design and what departs from its spec are `breakout.md` §7b; the facts
+of the switch it rests on, all from 4.26.14M on 2026-11-15:
+
+- **`channel-group` takes 1..2000**: `channel-group 2000 mode active`
+  accepted, 2001, 5402, 999999 "Invalid input". A lane switch's groups are
+  `1000 + 10*cage + lag` (cage 54: 1541..1549); the switch's own stay
+  below 1000.
+- **`monitor session` takes a name**: "1542" and "5403" accepted, with a
+  lane as source and another lane of the same cage as destination; the
+  running config drops `both`, the default (`monitor session 1542 source
+  Ethernet54/1`).
+- **A cage's lanes exist in the config whole or split.** `Ethernet54/2-4`
+  keep their own `interface` sections (`speed forced 10000full` from an
+  earlier lane-speed run) while the cage runs 100G; `show interfaces`
+  lists them only while it is split. Splitting with lane 1 alone leaves the
+  others at their own speed, errdisabled (speed-misconfigured): the driver
+  writes the lane speed to every lane, as before.
+- **An `interface` range stops at a warning**: `interface Ethernet54/1-4`
+  then `speed forced 25gfull` on the empty cage reached lane 1 only, the
+  "Transceiver for interface Et54/1 is not present" warning ending the
+  range (`split-cage54-diverged/`). The driver writes one `interface` per
+  lane, which carries on past the same warning.
+- **RS FEC on a 25G lane**: `error-correction encoding reed-solomon` is
+  accepted on the split cage's lanes, and `show interfaces
+  error-correction` lists Reed-Solomon and Fire-code as available there
+  (cage 50's 25G mode lists Disabled, ReedSolomon and FireCode in `show
+  interfaces hardware` too). The driver's `CLAUDE.md` said "fire-code only
+  on 25G lanes" until then; what a far end negotiates over a lane is not
+  captured.
+- **A session pending its commit timer cannot be entered again** ("Cannot
+  enter session X, it is in pendingCommitTimer state"); a new session over
+  it starts from the running config with the pending changes in it, which
+  is how the join batch was checked on top of a split with a lane aggregate
+  and a lane mirror.
+
+Captured (scrubbed, one sanitizer run for all four so the MACs agree):
+`docs/fixtures/arista-eos-4.26.14M/split-cage54/` (every start-up and poll
+command, the cage at 4x25G), `split-cage54-lag/` (lanes 3-4 in
+`Port-Channel1541`, session 1542 lane 1 onto lane 2), `split-cage54-flexxg/`
+(the switch after the batch the controller's Flex XG aggregate push makes:
+lanes 2-4 in 1541 with RS, `Port-Channel1541` Allow All),
+`split-cage54-diverged/` (the range that stopped after lane 1). Each was
+taken in a `commit timer` session, aborted after; the deployed bridge did
+not write to the cage in any window, and the switch was left as found (the
+cage at 100G, its lanes' old sections, no session, no `Port-Channel1541`).
+
+Not shown, the cage being empty: a lane with a link, its LLDP neighbour or
+MACs, an LACP partner on a lane aggregate, negotiated FEC, traffic on a
+lane mirror, and whether the 7160 runs a lane mirror beside a session of
+the switch's own. No lane switch has been adopted (Clint's step,
+`breakout.md` §11b).

@@ -1,0 +1,25 @@
+{
+  "interfaceStatuses": {
+    "Ethernet54/2": {
+      "causes": [
+        "speed-misconfigured"
+      ],
+      "description": "",
+      "status": "errdisabled"
+    },
+    "Ethernet54/3": {
+      "causes": [
+        "speed-misconfigured"
+      ],
+      "description": "",
+      "status": "errdisabled"
+    },
+    "Ethernet54/4": {
+      "causes": [
+        "speed-misconfigured"
+      ],
+      "description": "",
+      "status": "errdisabled"
+    }
+  }
+}
