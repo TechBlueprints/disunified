@@ -89,6 +89,7 @@ func (f *FixtureTransport) configure(cmds []string) {
 		}
 	}
 	f.apply(plain)
+	f.syncACLSummary()
 }
 
 func (f *FixtureTransport) commitSession(s *fixtureSession, timer bool) {
@@ -175,6 +176,7 @@ func (f *FixtureTransport) apply(cmds []string) {
 		case strings.HasPrefix(c, "ip access-list "):
 			mode, arg = "acl", strings.TrimPrefix(c, "ip access-list ")
 			f.rcSection("ip access-list "+arg, true)
+			f.aclList(arg, false)
 		case strings.HasPrefix(c, "vlan "):
 			mode, arg = "vlan", strings.TrimPrefix(c, "vlan ")
 			f.createVLANs(arg)
@@ -253,7 +255,9 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		// The list goes from the running config (the noacl round of
 		// 2026-11-14 read back no list: docs/drivers/arista-eos.md §9.7).
 		if top := f.rcTop(); top != nil {
-			delete(top, "ip access-list "+strings.TrimPrefix(c, "no ip access-list "))
+			name := strings.TrimPrefix(c, "no ip access-list ")
+			delete(top, "ip access-list "+name)
+			f.aclList(name, true)
 			return true
 		}
 	case strings.HasPrefix(c, "no interface Port-Channel"):
@@ -344,6 +348,9 @@ func (f *FixtureTransport) removePortChannel(name string) bool {
 		return false
 	}
 	n, _ := strconv.Atoi(m[1])
+	for _, l := range aclListsBoundIn(f.rcSection("interface "+name, false)) {
+		f.aclList(l, false) // its binding goes with the interface
+	}
 	members := f.members(n)
 	for _, iface := range members {
 		if !f.canLeave(iface) {
@@ -670,10 +677,12 @@ func (f *FixtureTransport) ifLine(iface, c string) bool {
 	default:
 		if name, ok := strings.CutPrefix(c, "no ip access-group "); ok {
 			delete(s, "ip access-group "+name)
+			f.aclList(strings.TrimSuffix(name, " in"), false)
 			return true
 		}
 		if strings.HasPrefix(c, "ip access-group ") && strings.HasSuffix(c, " in") {
 			s[c] = nil
+			f.aclList(strings.TrimSuffix(strings.TrimPrefix(c, "ip access-group "), " in"), false)
 			return true
 		}
 		return false
@@ -756,8 +765,10 @@ func (f *FixtureTransport) aclCmd(name, c string) bool {
 	switch {
 	case c == aclCounters:
 		s[c] = nil
+		f.aclList(name, false)["countersEnabled"] = true
 	case c == "no "+aclCounters:
 		delete(s, aclCounters)
+		f.aclList(name, false)["countersEnabled"] = false
 	case strings.HasPrefix(c, "no "):
 		seq := strings.TrimPrefix(c, "no ")
 		if _, err := strconv.Atoi(seq); err != nil {
@@ -768,6 +779,8 @@ func (f *FixtureTransport) aclCmd(name, c string) bool {
 				delete(s, k)
 			}
 		}
+		n, _ := strconv.Atoi(seq)
+		f.aclDropEntry(name, n)
 	default:
 		seq, rule, ok := strings.Cut(c, " ")
 		if _, err := strconv.Atoi(seq); !ok || err != nil {
@@ -778,6 +791,8 @@ func (f *FixtureTransport) aclCmd(name, c string) bool {
 			f.unmodelled("ip access-list "+name, c+" (how EOS shows port "+unknown+" is not captured)")
 		}
 		s[seq+" "+shown] = nil
+		n, _ := strconv.Atoi(seq)
+		f.aclSetEntry(name, n, shown)
 	}
 	return true
 }
