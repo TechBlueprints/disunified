@@ -958,6 +958,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `IFP_STORM_CONTROL_METERS` are token buckets with no counter; the SDK's
   one debug trigger (`bcmDbgCntRxStormControlDrop`) covers all three types
   together. Do not report a total as a type.
+- **A fresh capture** is `ssh <switch> 'python3 -' < internal/drivers/sonic/collect.py
+  > raw` (as the login user, read-only), then `scripts/sanitize-sonic.py raw
+  <image dir>/collect-<name>.txt` beside that image's `config-help.txt`. A
+  reply log replayed over it is scrubbed with `sanitize-controller.py --ip
+  <real>=<test>` for every address the capture's scrub mapped (pair the raw
+  and scrubbed lines: same line count), its `resolv.host.1.name` set to the
+  capture's `host-1` (`replies-dx010-vlan-prune.ndjson`, 2026-11-15).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name
