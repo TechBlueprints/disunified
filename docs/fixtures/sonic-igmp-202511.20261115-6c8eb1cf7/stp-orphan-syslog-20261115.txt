@@ -1,0 +1,76 @@
+# syslog excerpt (/var/log/syslog, hostname scrubbed; the bridge's inform lines and FDB/attribute dumps left out) of the DX010 on 2026-11-15, docs/drivers/sonic.md 11.35:
+# 15:10:11-15 a deploy: the bridge's VLAN prune (10 VLANs) 15 ms after l2d's restart; orchagent removes each VLAN with its STG, then StpOrch makes nine STGs again
+# from l2d's queued states, with no VLAN. 16:37:03-16:38:05 the repro on an empty cage: VLAN 3001 made and deleted (clean), made again, deleted, and one
+# state for Ethernet112:3001 sent through StpOrch's producer just after removeVlan (16:38:03.305): STG 8 made again with no VLAN.
+2026 Nov 15 15:10:11.592705 host-1 INFO systemd[1]: Stopping disunified-l2d.service - disunified spanning tree and loop protection (mstpd, StpOrch glue)...
+2026 Nov 15 15:10:11.654045 host-1 INFO systemd[1]: disunified-l2d.service: Deactivated successfully.
+2026 Nov 15 15:10:11.654537 host-1 INFO systemd[1]: disunified-l2d.service: Unit process 5758 (mstpd) remains running after unit stopped.
+2026 Nov 15 15:10:11.655413 host-1 INFO systemd[1]: Stopped disunified-l2d.service - disunified spanning tree and loop protection (mstpd, StpOrch glue).
+2026 Nov 15 15:10:11.655907 host-1 INFO systemd[1]: disunified-l2d.service: Consumed 1min 25.020s CPU time, 21M memory peak.
+2026 Nov 15 15:10:11.657945 host-1 WARNING systemd[1]: disunified-l2d.service: Found left-over process 5758 (mstpd) in control group while starting unit. Ignoring.
+2026 Nov 15 15:10:11.658667 host-1 WARNING systemd[1]: disunified-l2d.service: This usually indicates unclean termination of a previous run, or service implementation deficiencies.
+2026 Nov 15 15:10:11.661982 host-1 INFO systemd[1]: Started disunified-l2d.service - disunified spanning tree and loop protection (mstpd, StpOrch glue).
+2026 Nov 15 15:10:11.676715 host-1 INFO disunified[380972]: 2026/11/15 15:10:11.676528 sonic: deleting VLANs [2 8 9 10 69 1000 2000 3000 4000 4010], which the controller no longer pushes: sudo config vlan del -m 2,8,9,10,69,1000,2000,3000,4000,4010 ; sudo config save -y
+2026 Nov 15 15:10:12.015029 host-1 INFO disunified-l2d[383499]: started
+2026 Nov 15 15:10:12.029898 host-1 INFO disunified-l2d[383499]: spanning tree on: rstp, priority 32768
+2026 Nov 15 15:10:12.394711 host-1 INFO disunified-l2d[383499]: dhcp rate: counting DHCP requests per port (threshold 300/s)
+2026 Nov 15 15:10:13.539095 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 3 deleted
+2026 Nov 15 15:10:13.543602 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan10 vid:10
+2026 Nov 15 15:10:13.660864 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 4 deleted
+2026 Nov 15 15:10:13.664348 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan1000 vid:1000
+2026 Nov 15 15:10:13.720715 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 5 deleted
+2026 Nov 15 15:10:13.724125 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan2 vid:2
+2026 Nov 15 15:10:13.812307 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 6 deleted
+2026 Nov 15 15:10:13.817877 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan2000 vid:2000
+2026 Nov 15 15:10:13.932105 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 7 deleted
+2026 Nov 15 15:10:13.938883 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan3000 vid:3000
+2026 Nov 15 15:10:14.013160 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 2 deleted
+2026 Nov 15 15:10:14.017751 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan4000 vid:4000
+2026 Nov 15 15:10:14.097124 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 10 deleted
+2026 Nov 15 15:10:14.103043 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan69 vid:69
+2026 Nov 15 15:10:14.203576 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 11 deleted
+2026 Nov 15 15:10:14.208586 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan8 vid:8
+2026 Nov 15 15:10:14.311910 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 12 deleted
+2026 Nov 15 15:10:14.318878 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan9 vid:9
+2026 Nov 15 15:10:14.328216 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 2 created
+2026 Nov 15 15:10:14.333999 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 3 created
+2026 Nov 15 15:10:14.344772 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 4 created
+2026 Nov 15 15:10:14.353756 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 5 created
+2026 Nov 15 15:10:14.367884 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 6 created
+2026 Nov 15 15:10:14.379663 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 7 created
+2026 Nov 15 15:10:14.397250 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 10 created
+2026 Nov 15 15:10:14.414056 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 11 created
+2026 Nov 15 15:10:14.433296 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 12 created
+2026 Nov 15 15:10:14.435955 host-1 INFO disunified-l2d[383499]: Vlan4000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.444945 host-1 INFO disunified-l2d[383499]: Vlan2 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.453600 host-1 INFO disunified-l2d[383499]: Vlan69 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.461073 host-1 INFO disunified-l2d[383499]: Vlan1000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.468209 host-1 INFO disunified-l2d[383499]: Vlan9 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.474877 host-1 INFO disunified-l2d[383499]: Vlan4010 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.482356 host-1 INFO disunified-l2d[383499]: Vlan10 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.490591 host-1 INFO disunified-l2d[383499]: Vlan8 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.498337 host-1 INFO disunified-l2d[383499]: Vlan2000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.515492 host-1 INFO disunified-l2d[383499]: Vlan3000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.550330 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000009 in STG 9
+2026 Nov 15 15:10:14.552425 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 4094 status 4294967295
+2026 Nov 15 15:10:14.552425 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 4094 state 4 
+2026 Nov 15 15:10:14.554172 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 15:10:14.694249 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 8 deleted
+2026 Nov 15 15:10:14.697422 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan4010 vid:4010
+2026 Nov 15 16:37:04.420688 host-1 NOTICE swss#orchagent: :- addVlan: Create an empty VLAN Vlan3001 vid:3001 vlan_oid:26000000000c8e
+2026 Nov 15 16:37:04.482031 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 8 created
+2026 Nov 15 16:37:04.564549 host-1 INFO disunified-l2d[687709]: Vlan3001 in STP instance 3001 (31 ports)
+2026 Nov 15 16:37:05.496084 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet112 to VLAN Vlan3001 vid:3001 pid100000000001d
+2026 Nov 15 16:37:24.629830 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet112 from VLAN Vlan3001 lid:bb9 vmid:27000000000caf
+2026 Nov 15 16:37:25.778511 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 8 deleted
+2026 Nov 15 16:37:25.782277 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan3001 vid:3001
+2026 Nov 15 16:37:27.426072 host-1 INFO disunified-l2d[687709]: Vlan3001 is gone: its STP instance keys dropped
+2026 Nov 15 16:37:51.801039 host-1 NOTICE swss#orchagent: :- addVlan: Create an empty VLAN Vlan3001 vid:3001 vlan_oid:26000000000cb0
+2026 Nov 15 16:37:52.496135 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 8 created
+2026 Nov 15 16:37:52.579578 host-1 INFO disunified-l2d[687709]: Vlan3001 in STP instance 3001 (31 ports)
+2026 Nov 15 16:37:52.889083 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet112 to VLAN Vlan3001 vid:3001 pid100000000001d
+2026 Nov 15 16:38:02.121675 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet112 from VLAN Vlan3001 lid:bb9 vmid:27000000000cd1
+2026 Nov 15 16:38:03.269519 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_remove_stp:163 STG instance 8 deleted
+2026 Nov 15 16:38:03.274190 host-1 NOTICE swss#orchagent: :- removeVlan: Remove VLAN Vlan3001 vid:3001
+2026 Nov 15 16:38:03.309192 host-1 NOTICE syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp:102 STG instance 8 created
+2026 Nov 15 16:38:05.089340 host-1 INFO disunified-l2d[687709]: Vlan3001 is gone: its STP instance keys dropped

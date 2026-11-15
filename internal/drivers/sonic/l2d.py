@@ -17,13 +17,20 @@
 #   moved into it blocks every port that has no state there yet, so every
 #   bridge port gets a state in a VLAN's instance before the VLAN is mapped
 #   (checked in ASIC_DB);
-# - deleting a VLAN removes every port state of the VLAN's instance, so each
+# - deleting a VLAN removes its instance with every STP port in it, so each
 #   VLAN has its own instance (instance id = VLAN id) and the others keep
 #   theirs;
+# - but a state StpOrch takes after the VLAN went makes the instance again,
+#   with no VLAN, and StpOrch never removes an instance but when a VLAN
+#   leaves it: busy, orchagent lets the VLAN's DEL overtake states queued
+#   before it (portsorch runs before StpOrch). So a gone VLAN's port keys go
+#   out through the producer, and repair_orphans removes an instance no VLAN
+#   uses by mapping a VLAN made in orchagent alone into it and out again
+#   (docs/drivers/sonic.md 11.35);
 # - a port-state key naming a port orchagent does not know stops that
 #   table's queue for good (`return`, not `continue`), so only ports present
-#   in APPL_DB and STATE_DB are written, and keys of ports or VLANs that are
-#   gone are dropped from APPL_DB directly, never through the producer;
+#   in APPL_DB and STATE_DB are written, and keys of ports that are gone are
+#   dropped from APPL_DB directly, never through the producer;
 # - a state for a port with no bridge port makes addStpPort create one (and
 #   the STP port), so nothing is written for a port leaving Bridge: taken
 #   after portsorch removed the bridge port, it left a PortChannel member
@@ -106,6 +113,14 @@ PROC = "/proc"
 HOOK = "/usr/sbin/bridge-stp"
 SYS = "/sys/class/net"
 SYNC = 2.0  # seconds between full reconciliations
+# STP instance ids of VLANs that went (one id per line, "<vid> <time>"):
+# what repair_orphans may remove an instance no VLAN uses by (11.35). In
+# /run: a reboot or a swss restart empties the chip's instances too, and an
+# l2d restart must keep them.
+STP_RETIRED = "/run/disunified-l2d/stp-retired"
+STP_REPAIR = "/run/disunified-l2d/stp-repair"  # the id an unmap is under way for
+RETIRE_SETTLE = 4.0  # seconds after a VLAN went before its id is unmapped
+RETIRE_HOLD = 60.0  # seconds an id is kept while the chip shows no instance no VLAN uses
 # BPDUs to the CPU while mstpd runs: copporch maps trap id "stp" to
 # SAI_HOSTIF_TRAP_TYPE_STP; the image's copp_cfg.json has no stp entry, and
 # always_enabled installs it without FEATURE|stp. Removed again with STP
@@ -181,6 +196,27 @@ def wr(path, value):
         f.write(value)
 
 
+def load_retired():
+    out = {}
+    for line in rd(STP_RETIRED).splitlines():
+        f = line.split()
+        try:
+            out[int(f[0])] = float(f[1]) if len(f) > 1 else 0.0
+        except (ValueError, IndexError):
+            pass
+    return out
+
+
+def save_retired(retired):
+    try:
+        os.makedirs(os.path.dirname(STP_RETIRED), mode=0o755, exist_ok=True)
+        tmp = STP_RETIRED + ".tmp"
+        wr(tmp, "".join("%d %.1f\n" % (v, t) for v, t in sorted(retired.items())))
+        os.replace(tmp, STP_RETIRED)
+    except OSError as e:
+        log("cannot write %s: %s" % (STP_RETIRED, e), syslog.LOG_WARNING)
+
+
 def load_conf():
     try:
         with open(CONF) as f:
@@ -222,6 +258,7 @@ class DB(object):
         self.port_pst = sw.ProducerStateTable(self.appl, "STP_PORT_STATE_TABLE")
         self.vlan_pst = sw.ProducerStateTable(self.appl, "STP_VLAN_INSTANCE_TABLE")
         self.flush_pst = sw.ProducerStateTable(self.appl, "STP_FASTAGEING_FLUSH_TABLE")
+        self.vlan_tbl_pst = sw.ProducerStateTable(self.appl, "VLAN_TABLE")  # repair_orphans only
         self.ifport_pst = sw.ProducerStateTable(self.appl, "PORT_TABLE")
         self.port_raw = sw.Table(self.appl, "STP_PORT_STATE_TABLE")
         self.vlan_raw = sw.Table(self.appl, "STP_VLAN_INSTANCE_TABLE")
@@ -244,18 +281,38 @@ class DB(object):
 
     def vlans(self):
         """VLAN ids orchagent has created (CONFIG_DB and the ASIC agree)."""
-        cfg = set()
-        for k in self.keys(self.cfg, "VLAN|Vlan*"):
-            try:
-                cfg.add(int(k.split("|Vlan", 1)[1]))
-            except ValueError:
-                pass
+        cfg = self.cfg_vlans()
         asic = set()
         for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_VLAN:*"):
             v = self.hgetall(self.asic, k).get("SAI_VLAN_ATTR_VLAN_ID")
             if v:
                 asic.add(int(v))
         return cfg & asic
+
+    def cfg_vlans(self):
+        out = set()
+        for k in self.keys(self.cfg, "VLAN|Vlan*"):
+            try:
+                out.add(int(k.split("|Vlan", 1)[1]))
+            except ValueError:
+                pass
+        return out
+
+    def cfg_vlan(self, vid):
+        return bool(self.keys(self.cfg, "VLAN|Vlan%d" % vid))
+
+    def asic_vlan(self, vid):
+        """ASIC_DB's VLAN object of the id (its attributes), or None."""
+        for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_VLAN:*"):
+            h = self.hgetall(self.asic, k)
+            if h.get("SAI_VLAN_ATTR_VLAN_ID") == str(vid):
+                return h
+        return None
+
+    def stp_objects(self):
+        """ASIC_DB's STP objects (oids): the switch's default one and one per
+        instance StpOrch made."""
+        return {k.split(":", 2)[2] for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_STP:*")}
 
     def known(self, name):
         """True if orchagent knows the port or PortChannel and it is ready."""
@@ -663,6 +720,9 @@ class L2d(object):
         self.written = {}  # (port, vid) -> stporch state in APPL_DB
         self.strays = {}  # interface outside Bridge with chip STP ports -> first seen
         self.stray_scan = 0.0  # the next look at ASIC_DB for them without a cue
+        self.retired = load_retired()  # instance id of a VLAN that went -> when (11.35)
+        self.orphan_scan = 0.0  # the next look at ASIC_DB for instances no VLAN uses
+        self.orphans_noted = 0  # instances no VLAN uses, logged once without an id to unmap
         self.mapped = set()  # vids whose VLAN is in its own instance
         self.flush_due = {}  # port -> time a flush is due (coalesced)
         self.root_port = ""
@@ -837,6 +897,7 @@ class L2d(object):
         for vid in self.mapped:
             if not self.db.hgetall(self.db.appl, "STP_VLAN_INSTANCE_TABLE:Vlan%d" % vid):
                 put(self.db.vlan_pst, "Vlan%d" % vid, [("stp_instance", str(vid))])
+        self.repair_orphans(vids)
 
     def pending_vlan_delete(self, vids):
         return any(v not in vids for v in self.mapped)
@@ -908,17 +969,174 @@ class L2d(object):
                      ", %s's states written again" % lag if lag else ""), syslog.LOG_WARNING)
 
     def forget_vlan(self, vid):
-        # orchagent removed the instance with the VLAN; drop our keys without
-        # telling it (a producer DEL for a missing VLAN would never complete).
+        """The VLAN went. orchagent removes its instance with it (removeVlan ->
+        removeVlanFromStpInstance -> removeStpInstance: every STP port in it,
+        then the object), but a state of ours that StpOrch takes after that
+        makes addStpPort create the instance again, with no VLAN and nothing
+        that ever removes it. That happens when orchagent is busy as the VLAN
+        goes (an l2d restart's burst of states, live 2026-11-15): portsorch
+        runs before StpOrch in each of orchagent's passes, so the VLAN's DEL
+        overtakes states queued before it (11.35). So the port keys go out
+        through the producer: a DEL replaces a SET still queued, and removes
+        the STP port of an instance StpOrch already made anew -- only for
+        ports orchagent knows (a DEL for one it does not stops the table's
+        queue). The id is retired: repair_orphans removes the instance if the
+        chip turns out to hold one no VLAN uses. The VLAN key goes from
+        APPL_DB directly (a producer DEL for a missing VLAN never
+        completes)."""
         for (p, v) in list(self.written):
             if v == vid:
                 del self.written[(p, v)]
-                self.db.port_raw._del("%s:%d" % (p, v))
+                if p in self.ports and self.db.known(p):
+                    self.db.port_pst._del("%s:%d" % (p, v))
+                else:
+                    self.db.port_raw._del("%s:%d" % (p, v))
         self.db.vlan_raw._del("Vlan%d" % vid)
         self.db.flush_raw._del("Vlan%d" % vid)
         self.mapped.discard(vid)
         self.asic_floor = min(self.asic_floor, len(self.written))
+        self.retired[vid] = time.time()
+        save_retired(self.retired)
         log("Vlan%d is gone: its STP instance keys dropped" % vid)
+
+    def orphans(self, vids):
+        """How many STP instances the chip holds that no VLAN uses: ASIC_DB's
+        STP objects less the switch's default one and one per VLAN that has
+        an instance of ours (StpOrch makes it at the first state written,
+        before the VLAN is mapped). Low, never high, while StpOrch has not
+        yet made the instance of a VLAN just written."""
+        live = {v for (_, v) in self.written if v in vids} | (self.mapped & vids)
+        return len(self.db.stp_objects()) - 1 - len(live)
+
+    def repair_orphans(self, vids):
+        """STP instances no VLAN uses (11.35). StpOrch removes an instance only
+        when a VLAN leaves it (removeVlanFromStpInstance); a port-state DEL
+        removes the STP port, never the instance. So an instance left behind
+        is removed the one way StpOrch offers: unmap_instance. Ids are tried
+        oldest first, one per pass, RETIRE_SETTLE after their VLAN went (for
+        orchagent to drain), and only an id no VLAN has in CONFIG_DB, ASIC_DB
+        or APPL_DB -- so never an instance a VLAN uses, Vlan<native>'s
+        included. An id leaves the list once tried, when its VLAN comes back
+        (StpOrch reuses the instance), or RETIRE_HOLD after its VLAN went
+        while the chip holds no instance no VLAN uses."""
+        self.unmap_finish()
+        now = time.time()
+        changed = False
+        for v in list(self.retired):
+            if v in vids:
+                del self.retired[v]
+                changed = True
+        if changed:
+            save_retired(self.retired)
+            changed = False
+        if not self.retired and now < self.orphan_scan:
+            return
+        if vids - {w for (_, w) in self.written}:
+            return  # a VLAN without states yet: the count would be wrong
+        self.orphan_scan = now + 60
+        n = self.orphans(vids)
+        if n <= 0:
+            for v, t in list(self.retired.items()):
+                if now - t > RETIRE_HOLD:
+                    del self.retired[v]
+                    changed = True
+            self.orphans_noted = 0
+        elif not self.retired:
+            if n != self.orphans_noted:
+                log("the chip holds %d STP instances no VLAN uses, and no retired VLAN id to remove them by "
+                    "(ids go in %s)" % (n, STP_RETIRED), syslog.LOG_WARNING)
+                self.orphans_noted = n
+        else:
+            cfg = self.db.cfg_vlans()
+            for t, v in sorted((t, v) for v, t in self.retired.items()):
+                if now - t < RETIRE_SETTLE:
+                    break
+                if not 2 <= v <= 4094:
+                    del self.retired[v]
+                    changed = True
+                    continue
+                if v in cfg or self.db.asic_vlan(v) is not None or \
+                        self.db.hgetall(self.db.appl, "VLAN_TABLE:Vlan%d" % v):
+                    continue  # a VLAN of that id exists, or is coming or going: not now
+                found = self.unmap_instance(v)
+                del self.retired[v]
+                changed = True
+                if found:
+                    log("STP instance %d (its VLAN gone) was still in the chip: removed, %d left" %
+                        (v, max(0, n - 1)), syslog.LOG_WARNING)
+                break
+        if changed:
+            save_retired(self.retired)
+
+    def wait(self, cond, timeout=5.0):
+        deadline = time.time() + timeout
+        while True:
+            got = cond()
+            if got or time.time() > deadline:
+                return got
+            time.sleep(0.05)
+
+    def unmap_instance(self, vid):
+        """Removes STP instance `vid` through StpOrch: a VLAN of that id made in
+        orchagent alone (APPL_DB VLAN_TABLE through the producer: no
+        CONFIG_DB row, no member, no kernel netdev, no host interface), mapped
+        into the instance (addVlanToStpInstance reuses it) and out again
+        (removeVlanFromStpInstance -> removeStpInstance: every port's STP port
+        in it, then the object), then removed. The caller has checked that no
+        VLAN of that id exists. Returns True if the instance was there before
+        (StpOrch makes an empty one for an id it had none of, and the unmap
+        removes it again)."""
+        key = "Vlan%d" % vid
+        try:
+            os.makedirs(os.path.dirname(STP_REPAIR), mode=0o755, exist_ok=True)
+            wr(STP_REPAIR, "%d\n" % vid)
+        except OSError as e:
+            log("cannot write %s: %s" % (STP_REPAIR, e), syslog.LOG_WARNING)
+            return False
+        before = self.db.stp_objects()
+        put(self.db.vlan_tbl_pst, key, [("admin_status", "up")])
+        if not self.wait(lambda: self.db.asic_vlan(vid) is not None):
+            log("STP instance %d: orchagent made no %s to unmap it by" % (vid, key), syslog.LOG_WARNING)
+            self.unmap_finish()
+            return False
+        put(self.db.vlan_pst, key, [("stp_instance", str(vid))])
+        oid = self.wait(lambda: (self.db.asic_vlan(vid) or {}).get("SAI_VLAN_ATTR_STP_INSTANCE"))
+        if oid:
+            self.db.vlan_pst._del(key)
+            if not self.wait(lambda: oid not in self.db.stp_objects()):
+                log("STP instance %d: %s unmapped, the instance is still in ASIC_DB" % (vid, key), syslog.LOG_WARNING)
+        else:
+            log("STP instance %d: %s was not mapped into it" % (vid, key), syslog.LOG_WARNING)
+        self.unmap_finish()
+        return bool(oid) and oid in before
+
+    def unmap_finish(self):
+        """The end of unmap_instance, also for one an earlier l2d left half
+        done: the transient VLAN's mapping out (while orchagent still has the
+        VLAN, so the DEL completes) and the VLAN out, unless CONFIG_DB has a
+        VLAN of that id by now (then vlanmgrd's row is the VLAN's, and its
+        mapping l2d's own)."""
+        v = rd(STP_REPAIR)
+        if not v:
+            return
+        try:
+            vid = int(v)
+        except ValueError:
+            vid = 0
+        key = "Vlan%d" % vid
+        if vid and not self.db.cfg_vlan(vid):
+            if self.db.hgetall(self.db.appl, "STP_VLAN_INSTANCE_TABLE:" + key) and self.db.asic_vlan(vid) is not None:
+                self.db.vlan_pst._del(key)
+                self.wait(lambda: not self.db.hgetall(self.db.appl, "STP_VLAN_INSTANCE_TABLE:" + key))
+            self.db.vlan_raw._del(key)
+            if self.db.hgetall(self.db.appl, "VLAN_TABLE:" + key) or self.db.asic_vlan(vid) is not None:
+                self.db.vlan_tbl_pst._del(key)
+                if not self.wait(lambda: self.db.asic_vlan(vid) is None):
+                    log("STP instance %d: the transient %s is still in ASIC_DB" % (vid, key), syslog.LOG_WARNING)
+        try:
+            os.unlink(STP_REPAIR)
+        except OSError:
+            pass
 
     def forget_port(self, port):
         # portsorch removed the port's STP ports with its bridge port.
@@ -955,7 +1173,10 @@ class L2d(object):
             # one: 11.34).
             self.forget_port(name)
             return
-        vids = self.mapped | {v for (_, v) in self.written}
+        # Only VLANs CONFIG_DB still has: a state for an instance whose VLAN
+        # is going reaches StpOrch after portsorch removed the VLAN and
+        # makes the instance anew, with no VLAN (11.35).
+        vids = (self.mapped | {v for (_, v) in self.written}) & self.db.cfg_vlans()
         if state != self.ports[name]:
             log("%s: %s -> %s" % (name, KNAME.get(self.ports[name], "?"), KNAME.get(state, "?")))
             self.count_change(name, self.ports[name], state)

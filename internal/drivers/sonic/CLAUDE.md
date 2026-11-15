@@ -915,6 +915,25 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     holds none in).
   - **Only an up port triggers it**: a down port is already disabled, so
     leaving makes no state change (Ethernet4 was clean, Ethernet0 not).
+- **A deleted VLAN's STP instance can come back with no VLAN (`l2d.py`
+  `forget_vlan`, `repair_orphans`, `unmap_instance`; `docs/drivers/sonic.md`
+  §11.35, 2026-11-15).** portsorch's `removeVlan` removes the instance and
+  its STP ports. But orchagent runs portsorch before StpOrch in each pass,
+  so a busy orchagent lets the VLAN's DEL overtake states l2d queued before
+  it. `addStpPort` then makes the instance again, and StpOrch never removes
+  one but when a VLAN leaves it. A deploy that restarted l2d 15 ms before
+  the prune left nine. Facts that cost time:
+  - **`bcmcmd "stg show"` is the check**: `contains 0 VLANs` with ports in
+    it. ASIC_DB's STP objects carry no instance id: StpOrch keeps the ids
+    in memory, so l2d keeps the ids of gone VLANs in
+    `/run/disunified-l2d/stp-retired`.
+  - **The one removal path is a VLAN mapped in and out**: a VLAN made in
+    orchagent alone (APPL_DB `VLAN_TABLE` through the producer), mapped
+    into the id and unmapped, then removed. Never for an id CONFIG_DB,
+    ASIC_DB or APPL_DB has a VLAN for.
+  - **Reproduce it with one late state**: `config vlan del`, then a
+    producer SET `<port>:<vid>` right after `removeVlan`. A quiet delete
+    is clean.
 - **BPDU guard holds the chip's port down until the UI's Re-enable
   (`l2d.py` "BPDU guard", `recover.go`, `docs/drivers/sonic.md` §11.28,
   verified live on a looped cage 2026-11-15).** l2d holds a port mstpd

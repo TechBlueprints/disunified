@@ -157,6 +157,9 @@ class FakeDB(object):
     def asic_stp_ports(self):
         return {}  # no interface outside Bridge holds a chip STP port here
 
+    def stp_objects(self):
+        return {"default"} | {"inst%d" % v for v in vids}  # no instance without a VLAN here
+
     def keys(self, conn, pattern):
         return []
 
