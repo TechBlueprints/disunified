@@ -3863,8 +3863,8 @@ or not seen by `tcpdump` on `Vlan4094` (the switch's CPU).
 | Check | Done | Result |
 |---|---|---|
 | The guard's push | Rogue DHCP Server Detection on for 7 min | The DX010's push carried **one** guard group, VLAN 1 trusting the gateway (the ECS got six for its three guarded VLANs: the controller sends a switch only the guards of VLANs it carries). The bridge wrote `DUI_DHCP_GUARD` 2 s after the push: `V1_S1` (FORWARD from the gateway/32) and `V1_DROP`, `VLAN_ID 4094`, bound to all 32 ports; table and rules `Active`, `show acl rule` lists both. |
-| `VLAN_ID` on the native stand-in | UDP 67 → switch:68 from a host that is not the gateway; control 66 → 68 | The 67s never reached the CPU, the 66s did: **`VLAN_ID 4094` matches untagged frames** of the stand-in (the field processor qualifies after VLAN assignment), and the guard drops an untrusted server's replies. |
-| Guard drop vs ACL forward | Forged 192.0.2.10:67 → switch:68 with the guard alone, then with a `DUI_IP_ACL` Allow (UDP from 192.0.2.0/24 to any port 68) Active; control from port 66 | Dropped both times; the 66s arrived both times: **the guard's DROP wins** over a FORWARD in the other table, as expected. A UniFi Allow cannot open a hole in DHCP guarding. |
+| `VLAN_ID` on the native stand-in | UDP 67 → switch:68 from a host that is not the gateway; control 66 → 68 | The 67s never reached the CPU, the 66s did: **`VLAN_ID 4094` matches untagged frames** of the stand-in (the field processor qualifies after VLAN assignment), and the guard drops an untrusted server's replies. (On 202505's libsaibcm `13.2.1.36`, with no 67 sent without the guard. On 202511's `13.2.1.100` the CPU gets a copy of a dropped frame to the switch, and the chip's counter is the evidence: §11.7.8, 2026-11-15.) |
+| Guard drop vs ACL forward | Forged 192.0.2.10:67 → switch:68 with the guard alone, then with a `DUI_IP_ACL` Allow (UDP from 192.0.2.0/24 to any port 68) Active; control from port 66 | Dropped both times; the 66s arrived both times: **the guard's DROP wins** over a FORWARD in the other table, as expected. A UniFi Allow cannot open a hole in DHCP guarding. (Read at the CPU, on the 202505 SAI: see the note in the row above.) |
 | Entry capacity | CRM `CRM:ACL_TABLE_STATS:<oid>` (polled every 300 s) | `DUI_DHCP_GUARD` 2 used / 766 available while it was the only table; `DUI_IP_ACL` 1 / 511. **At least 512 entries per table**; the claim stays at 128 (a fourfold margin, rules of one UI rule per port included). Ingress tables free before: 3 per PORT and LAG bind point. |
 | Removal | Snooping off; the Allow rule deleted | `DUI_DHCP_GUARD` went in the designed order (DROP, FORWARD, table) 74 s after the save, `DUI_IP_ACL` 23 s after its delete; CONFIG_DB, STATE_DB and `config_db.json` hold no `DUI_` key afterwards. |
 
@@ -3978,21 +3978,115 @@ hand-made table stood in.
   counted **6 packets, 384 bytes**. Those are exactly the six frames from
   the test MAC; none of the control MAC's six hit it.
 - **Frames addressed to the switch still reached its CPU**, the blocked
-  MAC's included. The to-CPU traps are field-processor entries in other
-  groups whose action is `GpCopyToCpu`. On Broadcom a Drop in one group
-  does not cancel a CPU copy made by another, so the drop removes only the
-  forwarding copy. The broadcast frames reached the CPU from neither MAC,
-  so they show nothing either way.
+  MAC's included, through the to-CPU traps' copy (traced below). The
+  broadcast frames reached the CPU from neither MAC, so they show nothing
+  either way.
 - **Not observed: a dropped switched frame.** That is the case UniFi's MAC
   rules are for ("traffic between devices on the same VLAN"), and seeing
   it needs a second port with a link. Every other port of the DX010 is
   down, so the check stops at the hit counter.
-- **Open difference.** In §11.7.7 an L3 rule (`DUI_DHCP_GUARD`) did keep
-  DHCP replies from the switch's CPU. Whether that trap's action differs,
-  or the L3 table's drop does, was not traced.
 - **Afterwards.** The timer removed the table (no `MACTEST` key in any DB,
   no ACL table or entry in ASIC_DB). Ethernet0 stayed up and the bridge
   informed every minute throughout.
+
+**Why a drop does not keep a frame from the CPU** (traced 2026-11-15 on
+`igmp-202511.20261115-6c8eb1cf7`, libsaibcm `13.2.1.100` legacy-TH).
+§11.7.7 had seen the guard's L3 DROP keep forged replies from the CPU,
+and this check saw the L2 DROP not do so. The trace shows the two tables
+land in the chip the same way. On this SAI no ACL drop keeps a frame
+addressed to the switch from its CPU. The §11.7.7 result came from the
+older SAI, with no baseline.
+
+- **The traps** are one ingress field-processor group, GID 1, at group
+  priority -1. That group's TCAM resolves to one entry per packet, the
+  highest-priority match. Its entries for traffic to the switch itself:
+
+  | Entry | Match | Actions | Prio | Stat |
+  |---|---|---|---|---|
+  | ip2me (EID 0x0f) | `MyStationHit`, `DstClassL3` 1 | `RpDrop`, `GpCopyToCpu`, CPU queue 1 | 1 | 9 |
+  | DHCP to the switch (EIDs 0x12, 0x13) | the same plus UDP, `L4DstPort` 67 or 68 | `RpDrop`, `GpCopyToCpu`, CPU queue 3 | 3 | 10 (all six DHCP entries) |
+  | DHCP broadcast (EIDs 0x10, 0x11) | broadcast `DstMac`, UDP, `L4DstPort` 67 or 68 | `UnmodifiedPacketRedirectPort` to the CPU, `RpDrop`, `GpCopyToCpu`, CPU queue 3 | 3 | 10 |
+  | ARP (EIDs 0x1c-0x1f) | ARP to broadcast or to the switch | `GpCopyToCpu`, `YpCopyToCpu`, queue 4 | 4 | 12 |
+
+  `GpCopyToCpu` copies green packets to the CPU. `RpDrop` drops only what
+  the CoPP policer has marked red. CoPP (`copp_cfg.json` plus
+  CONFIG_DB) gives `ip2me` and `dhcp,dhcpv6` the action `trap`. On this
+  SAI, `trap` for a unicast frame to the switch is that copy-only entry.
+  The redirect appears only on the broadcast entries.
+- **The ACL tables.** Each orchagent table is its own ingress group. Every
+  table's member priority is 100 (`portsorch.cpp`
+  `SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY`), and the chip shows
+  `group_priority= 100`. Two throwaway tables were bound to Ethernet0 at
+  once: `TRACEL3`, type `L3`, and `TRACEL2`, type `L2`.
+  - Each rule's entry has the single action `Drop`, all colours.
+  - `TRACEL3` landed in GID 4 on slice 3, `TRACEL2` in GID 5 on slice 2.
+  - The MACTEST table above landed the same way: GID 4, slice 2,
+    priority 100, `Drop`.
+  - So the stage, the group priority and the drop encoding are the same
+    for both table types.
+- **The cross** (2026-11-15 18:16-18:23 UTC, under the test lock with a
+  300 s timed removal). Frames from a LAN host to the switch's MAC and
+  address, three of each:
+
+  | Frames | `TRACEL3` R1 (DROP UDP from 192.0.2.10, port 67) | `TRACEL2` R1 (DROP src 02:00:00:00:00:01, VLAN 4094) | Trap path | On Ethernet0 and Vlan4094 |
+  |---|---|---|---|---|
+  | 192.0.2.10:67 -> :68 | hit | -- | DHCP | **3 of 3** |
+  | 192.0.2.10:67 -> :9 | hit | -- | ip2me | **3 of 3** |
+  | from 02:..:01, :66 -> :68 | -- | hit | DHCP | **3 of 3** |
+  | from 02:..:01, :66 -> :9 | -- | hit | ip2me | **3 of 3** |
+  | controls, :66 -> :68 and -> :9 | -- | -- | both | 6 of 6 |
+
+  - The two drop entries counted 6 each, exactly their frames.
+  - The DHCP traps' stat 10 counted the dropped DHCP frames too. One
+    entry per group hits, so the trap fired on frames the ACL group
+    dropped.
+  - A repeat with the guard's own shape gave the same result. That rule
+    was a DROP at 8000 with `VLAN_ID 4094`, `IP_PROTOCOL 17`,
+    `L4_SRC_PORT 67`, `L4_DST_PORT 68` and the forged source. Its entry
+    counted 3, and 3 of 3 reached the CPU.
+  - The guard's `VLAN_ID` on the stand-in's untagged frames is therefore
+    confirmed by the chip's own counter on this image.
+- **How the chip resolves it.** A drop in a group at priority 100 removes
+  the forwarding copy (the switched or routed packet, or the redirect).
+  It leaves the trap group's `GpCopyToCpu` alone, whichever table type
+  made the drop. Counters agree: what the drop entry counts, the trap's
+  stat counts too, and the CPU sees it.
+- **§11.7.7 again.** That run was on 202505.1238526 with libsaibcm
+  `13.2.1.36`. A port-67 reply to the switch did not reach the CPU under
+  the guard, while port 66 did. No one sent a port-67 reply without the
+  guard, and that SAI's field processor was never read. So it is open
+  whether `13.2.1.36` encoded the drop or the trap differently, or
+  whether something else dropped those frames. That image is no longer
+  installed (only 202511 images are, `sonic-installer list`).
+  - Every guard statement since then rests on the chip's counters:
+    VLAN_ID, the per-port count (§11.7.9) and today's repeat.
+  - The ARP and DHCP traps' policers (`RpDrop`) are unrelated: three
+    frames stay green.
+- **The guard still guards.** A rogue reply switched to a client is dropped
+  in the chip. Its CPU copy dies at the kernel bridge: `ebtables` FORWARD
+  drops `-d Multicast` (broadcast included) and ARP, so nothing re-floods
+  a trapped frame in software. The switch's own DHCP use is untouched:
+  - its address is static, so it runs no DHCP client;
+  - the relay and udhcpd listen on 67, and the guard matches only 67 -> 68.
+- **What follows for the driver.**
+  - **No ACL rule protects the switch's own address on this SAI**, a
+    UniFi IP Block included. A Block to the switch's address or MAC drops
+    the routed or switched copy, but the ip2me copy still reaches the CPU.
+  - The management guards (`cutsManagementMAC` and its IP twin) still
+    stay. They matter on a SAI that drops to-CPU frames, and they cost
+    nothing here.
+  - **A MAC rule that kept frames from the CPU** would need SAI's `DENY`
+    (drop plus copy cancel). `DENY` is not in orchagent's ACL action
+    lookup, which has only FORWARD, DROP and COPY
+    (`aclPacketActionLookup`). STATE_DB's
+    `ACL_ACTION|PACKET_ACTION COPY,DROP,FORWARD` lists only those, so
+    whether `13.2.1.100` would take `DENY` on an ACL entry is not known.
+    The other route is a kernel `ebtables` INPUT drop by source MAC on
+    the rule's VLAN.
+  - **Not built.** UniFi's MAC rules are for traffic between devices on
+    one VLAN, which the chip drops. The UI refuses the management network
+    for a MAC rule. What a real UniFi switch does with a blocked MAC's
+    frames to itself is not captured.
 
 **Not verified live:**
 - **A switched frame dropped**, which needs two linked ports (above).

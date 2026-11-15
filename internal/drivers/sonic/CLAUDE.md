@@ -517,10 +517,16 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   with a log. A MAC set whose Block would drop the switch's own management
   frames is held (`cutsManagementMAC`). The UI refuses the management
   network for a MAC rule, and the DX010's one link carries only that
-  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8). On
-  Broadcom the rule's Drop does not cancel a to-CPU trap's `GpCopyToCpu`
-  in another field-processor group: frames to the switch itself still
-  reach its CPU; `bcmcmd "fp stat get si=<n> t=Packets"` shows the hits.
+  VLAN, so no UI rule there matches a frame that reaches it (§11.7.8).
+  **No ACL drop keeps a frame addressed to the switch from its CPU** on
+  202511's libsaibcm `13.2.1.100` (traced 2026-11-15, §11.7.8). Every
+  table is an ingress field-processor group at priority 100 whose entry
+  is a plain `Drop`. That drop leaves the trap group's (GID 1, priority
+  -1) `GpCopyToCpu` alone, for ip2me and DHCP alike, L3 and L2 tables
+  alike. So judge a drop by the chip's counter, never by `tcpdump` on the
+  switch: `bcmcmd "fp show group <gid>"` for the entry's stat id, then
+  `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
+  was on 202505's `13.2.1.36`.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client

@@ -361,7 +361,12 @@ DX010 capture read for it (`acl_test.go`, `informloop/acl_test.go`); claims
 2026-11-01** (§11.7.7): the push (the IP count alone gates it; the five shapes
 the ECS round lacked), the guard on the native VLAN dropping an untrusted
 server's replies even under a matching ACL Allow, an IP rule written and
-removed, 512+ entries per table.
+removed, 512+ entries per table. That run read the drop at the switch's
+CPU, on 202505's SAI. On the 202511 legacy-TH SAI an ACL drop leaves the
+traps' CPU copy alone, so a dropped reply addressed to the switch still
+reaches its CPU (neither table type differs, traced 2026-11-15, §11.7.8).
+There the chip's counters are the evidence: the guard's entry counted its
+frames on the stand-in, and switched replies are dropped.
 
 **Which port a rogue server is behind** (§11.7.9, built 2026-11-14): one
 counted DROP per port (`IN_PORTS`) above the guard's shared DROP, in a table
@@ -384,7 +389,7 @@ on the right port only).
 | Replacing a deployed `L3` guard with the counted one (fixture-tested) | a bridge update while detection is on: the old table, then the type, table and rules, all `Active` |
 | More than 256 guard entries (counted rules dropped per VLAN with a note; fixture-tested) | many guarded VLANs on a split switch, CRM's entry counts on the guard table |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
-| MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, but frames to the switch itself still reach its CPU through the traps' copy, and no second port had a link, §11.7.8) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
+| MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, but frames to the switch itself still reach its CPU through the traps' copy, as they do under any ACL drop on this SAI, the guard's included (traced 2026-11-15), and no second port had a link, §11.7.8) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
 
 ### IGMP snooping (the custom image only)
 
