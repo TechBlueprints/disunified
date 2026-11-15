@@ -1068,10 +1068,21 @@ class L2d(object):
             run(["ip", "link", "set", "dev", port, "up"])
 
     def reassert(self):
+        """portmgrd's copy also runs `ip link set up` on the netdev; a held
+        port's netdev goes down again too, so mstpd sees the port disabled
+        as it did after the trip (seen 2026-11-15: with the netdev up mstpd
+        cleared its error and ran the port as Designated, sending BPDUs into
+        a disabled chip port)."""
         for p in sorted(self.holding()):
             if self.db.hgetall(self.db.appl, "PORT_TABLE:" + p).get("admin_status") != "down":
                 put(self.db.ifport_pst, p, [("admin_status", "down")])
                 log("%s: admin_status was rewritten under a hold: down again" % p, syslog.LOG_WARNING)
+            try:
+                up = int(rd("%s/%s/flags" % (SYS, p), "0"), 16) & 1
+            except ValueError:
+                up = 0
+            if up:
+                run(["ip", "link", "set", "dev", p, "down"])
 
     # --- BPDU guard -------------------------------------------------------
     #
@@ -1098,6 +1109,7 @@ class L2d(object):
         self.bpdu_held[port] = since
         self.bpdu_stale.pop(port, None)
         self.hold_down(port)
+        self.db.st_bpdu._del(port)  # a set merges: no field of a release stays
         put(self.db.st_bpdu, port, [("state", "held"), ("since", since)])
         log("bpdu guard: %s received a BPDU: held down in the chip until re-enabled" % port, syslog.LOG_WARNING)
 

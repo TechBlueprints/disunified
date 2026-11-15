@@ -58,7 +58,7 @@ func TestL2dHoldsATrippedBPDUGuard(t *testing.T) {
 	}{
 		{"trip", "yes", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=down", "PUT STATE_DB DUI_BPDU_GUARD_TABLE Ethernet64 state=held"}, nil},
 		{"again", "yes", nil, []string{"PUT APPL_DB"}},
-		{"portmgrd", "yes", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=down", "LOG Ethernet64: admin_status was rewritten under a hold"}, nil},
+		{"portmgrd", "yes", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=down", "LOG Ethernet64: admin_status was rewritten under a hold", "RUN ip link set dev Ethernet64 down"}, nil},
 		{"restart", "yes", nil, []string{"PUT APPL_DB", "RUN "}},
 		{"recover", "no", []string{"DEL STATE_DB DUI_PORT_RECOVERY Ethernet64", "PUT APPL_DB PORT_TABLE Ethernet64 admin_status=up", "RUN ip link set dev Ethernet64 up", "LOG bpdu guard: Ethernet64 released (re-enabled by the controller)"}, nil},
 		{"nolink", "no", nil, []string{"PUT APPL_DB"}},

@@ -13,7 +13,9 @@
 import fnmatch
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 import types
 
 
@@ -126,8 +128,20 @@ class R(object):
     returncode, stdout, stderr = 0, "", ""
 
 
+# /sys/class/net: each netdev's flags, IFF_UP set or not by `ip link set`.
+l2d.SYS = tempfile.mkdtemp()
+
+
+def set_flags(dev, up):
+    os.makedirs(os.path.join(l2d.SYS, dev), exist_ok=True)
+    with open(os.path.join(l2d.SYS, dev, "flags"), "w") as f:
+        f.write("0x1003\n" if up else "0x1002\n")
+
+
 def run(args, check=False):
     print("RUN " + " ".join(args))
+    if args[:4] == ["ip", "link", "set", "dev"] and args[5] in ("up", "down"):
+        set_flags(args[4], args[5] == "up")
     return R()
 
 
@@ -182,8 +196,9 @@ step("trip")
 tick(d)
 step("again")
 tick(d)
-step("portmgrd")  # a CONFIG_DB write of the port: portmgrd copies admin_status up
+step("portmgrd")  # a CONFIG_DB write of the port: portmgrd copies admin_status up, netdev up
 dbs["APPL_DB"]["PORT_TABLE:" + P]["admin_status"] = "up"
+set_flags(P, True)
 tick(d)
 step("restart")  # a new l2d adopts the hold from STATE_DB
 d = fresh()
