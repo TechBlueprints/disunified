@@ -1,0 +1,5 @@
+enable
+configure
+hardware access-list update default-result permit
+end
+show running-config | include hardware access-list

@@ -1008,9 +1008,24 @@ the frames because that is the first collect after them.
 1. ~~**Traffic through the guard**~~ -- done 2026-11-14 on the uplink, not
    a test port (§9.8): an untrusted reply dropped and counted on the right
    port, a trusted one passed, ARP and IPv6 unaffected, the count through a
-   collect and the alert. Left: whether `hardware access-list update
-   default-result permit` shortens a rewrite's drop (binding the lists cost
-   one or two 50 ms pings, §9.8; the knob was not tried).
+   collect and the alert. **`hardware access-list update default-result
+   permit`, measured 2026-11-15** (`docs/fixtures/arista-eos-4.26.14M/
+   acl-update-default-result/`): with a test list on the uplink and the
+   switch's own pings every 20 ms through it, rewriting a 500-rule list
+   lost exactly 10 consecutive pings (about 200 ms) in each of six runs;
+   with the knob set, six runs lost none. A 4-rule list's rewrite and a
+   1-rule list's bind lost nothing measurable either way. So the knob
+   removes the drop. **Its cost**: Arista's EOS manual ("ACLs and Route
+   Maps", "Permit All Traffic During ACL Update") says that by default
+   "all traffic is blocked on any interface using the ACL" while it is
+   modified, and that the knob permits all traffic there instead -- it
+   fails open for that window, switch-wide, every list included (the
+   guard's drop and a Block rule pass whatever they match until the new
+   rules are in the hardware). The manual's platform list does not name
+   the 7160; 4.26.14M accepts it and it works. **Not set by the driver**:
+   the choice between dropping all traffic on a rewritten interface for
+   ~200 ms and letting it all pass for as long is the operator's (Clint's
+   register), not a code fact.
 2. **The end-to-end guard push** (Rogue DHCP Server Detection on, the guard
    groups this switch gets): not run. Detection stays off site-wide by
    Clint's decision (2026-11-14), so the controller pushes

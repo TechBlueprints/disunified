@@ -56,9 +56,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   per interface, and why `RogueDHCPDrops` is per port (the guard drop
   entry's `packetCount`, `acl_counters.go`, §9.6).
 - An interface takes **one IPv4 ACL per direction**; reprogramming a bound
-  list may block its traffic while it lasts (`hardware access-list update
-  default-result permit` is offered on this switch but not set by the
-  driver, and its effect is unmeasured). ACL changes go through a `commit
+  list blocks its traffic while it is reprogrammed: a 500-rule rewrite on
+  the uplink cost 10 consecutive 20 ms pings, every time (2026-11-15,
+  `acl-update-default-result/`). `hardware access-list update
+  default-result permit` removes that drop (no ping lost) by letting all
+  traffic pass instead for the window (fail-open, per Arista's manual), so
+  the driver does not set it: that trade is the operator's. ACL changes go through a `commit
   timer` session like an address move, confirmed over a fresh connection;
   `configure session NAME abort` reverts a session pending its timer at once.
 - **Every configuration session needs a name of its own** (`sessionName`:
