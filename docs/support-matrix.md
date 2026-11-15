@@ -495,14 +495,17 @@ mode. Every push captured on the DX010 and replayed
 VLAN and gets its address in one cycle, and returns to switching cleanly. A
 routed aggregate is a PortChannel with the address and no VLAN. A fixed IP is
 udhcpd's `static_lease`: each test MAC leased its address, and no other
-client got it.
+client got it. Network 11.0.99 pushes a routed aggregate exactly as
+10.6.109 did (re-captured 2026-11-15, `controller-11.0.99/system_cfg-dx010-routed-agg-*.txt`,
+replayed by `informloop/replay_sonic_routed_net11_test.go`): the first
+member alone, the others in no key.
 
 | Gap | What the PR needs |
 |---|---|
 | The default route through the transit | VLAN 4040 (the Inter-VLAN routing network) allowed on the uplink at both ends; then the row `<mgmt>,<transit>` / `200,0` and FRR selecting the transit |
 | Routed traffic, isolation dropping it, a relayed reply | a host on a routed network's port (rack day), and a DHCP server with a scope for the relayed network |
 | Traffic over a routed port, its connected route (installed when the port comes up), OSPF or a static route over one | a cabled peer on a routed port (rack day) |
-| A routed aggregate of two or more members | the controller (10.6.109) pushes only the aggregate's first member; a push naming the others, then a cabled peer |
+| A routed aggregate of two or more members | the controller (10.6.109 and 11.0.99) pushes only the aggregate's first member; a push naming the others, then a cabled peer |
 | VRRP (`feature_caps` 268435456) | not a single switch's: UniFi offers it only as an MC-LAG group's L3 Automatic Failover, so it needs MC-LAG (a second switch) first |
 
 ### BGP (2026-11-07)

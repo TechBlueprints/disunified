@@ -5230,6 +5230,22 @@ OK for the test networks, 2026-11-08); bit names from upstream unifi-emu's
   first, but the push leaves them out, with or without an override of their
   own (the cfgversion was the same both ways). Any device, a UniFi one too,
   gets a one-member aggregate from that push.
+- **Network 11.0.99, re-captured 2026-11-15** (Routing + Aggregating on
+  empty cages 15 and 16 from the port editor, then removed;
+  `controller-11.0.99/system_cfg-dx010-routed-agg-{1-aggregate,2-removed}.txt`,
+  the push before and after being `system_cfg-dx010-dot1x-8-off.txt`):
+  **unchanged.** Against 10.6.109's, key by key, the routing interface is
+  the same nine keys (`id`, `name`, `type=lag`, `opmode manual`, `ip`,
+  `mask`, `default_route`, `purpose`, `lag=<first member>`), the first
+  member is still `opmode=aggregate`, `lag=1`, with no VLAN, the second
+  member is still in no key, and no DHCP key comes with it. The controller
+  record's override lists both (`aggregate_members [15,16]`, `lag_idx 1`),
+  and its port table shows port 16 `aggregated_by` 15. The removal renames
+  the second member to the controller's default (`QSFP28 16`) until the
+  operator's name is put back. The deployed bridge (f3d3572) built
+  PortChannel1 with Ethernet56 alone, as replayed in
+  `replay_sonic_routed_net11_test.go`, and took it down again in the same
+  order as on 10.6.109. The last push wrote nothing.
 - A fixed IP is `dhcp_server.static_ip.K.{id,mac,ip}` under the network's
   routing interface, inside the DHCP range or outside it.
 
@@ -5289,7 +5305,7 @@ the six pushes over `collect-l3.txt`):
 no link (rack day). The subnet's connected route, which SONiC installs when
 the port comes up. An OSPF adjacency or a static route over a routed port.
 A routed aggregate of more than one member: the controller pushes only the
-first.
+first (10.6.109 and 11.0.99).
 
 ### 11.17 DHCP packet rate (anomaly 32): counted by disunified-l2d (2026-11-14)
 
