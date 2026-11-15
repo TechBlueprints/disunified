@@ -102,6 +102,22 @@ func protectionHold(fault string) int {
 	return 0
 }
 
+// errorDisabled is a held port's error_disabled_reason bit: the cause a
+// driver names in Port.Fault for a port its loop protection (keepalive) or
+// BPDU guard shut down; 0 for any other fault or none.
+func errorDisabled(fault string) int {
+	f := strings.ToLower(fault)
+	switch {
+	case !strings.HasPrefix(f, "errdisabled"):
+		return 0
+	case strings.Contains(f, "bpduguard"), strings.Contains(f, "bpdu-guard"):
+		return errDisabledBPDUGuard
+	case strings.Contains(f, "loop-protect"), strings.Contains(f, "loopprotect"):
+		return errDisabledLoopProtection
+	}
+	return 0
+}
+
 func portAnomalies(p devicemodel.Port, isUplink bool, prev *portHistory) (bits int, satisfaction int, reason int) {
 	bits |= protectionHold(p.Fault)
 	if prev != nil {
@@ -183,6 +199,14 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 			}
 			bits, sat, reason := portAnomalies(p, pp.IsUplink, ph)
 			e["anomalies"] = bits
+			// A port the switch's own loop protection or BPDU guard shut
+			// down: the controller raises its "disabled by Loop
+			// Protection" and BPDU-guard alerts from these two fields
+			// (caps.go, errorDisabled), not from anomalies.
+			if why := errorDisabled(p.Fault); why != 0 {
+				e["error_disabled"] = true
+				e["error_disabled_reason"] = why
+			}
 			// No custom_anomalies: the controller computes that field per
 			// port from the raw fields and stores it itself (caps.go).
 			if sat >= 0 {

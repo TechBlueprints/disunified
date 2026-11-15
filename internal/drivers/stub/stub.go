@@ -95,6 +95,15 @@ type FilePort struct {
 	IsUplink     bool      `yaml:"is_uplink"`
 	MTU          int       `yaml:"mtu"` // default 1500
 	Neighbor     *FileLLDP `yaml:"neighbor"`
+	// For alert experiments: the port's fault (a devicemodel Port.Fault,
+	// "errdisabled: bpduguard"), its spanning-tree state and role, and the
+	// cumulative counts behind link_down_count (link changes, two per drop)
+	// and stp_state_change_count.
+	Fault       string `yaml:"fault"`
+	STPState    string `yaml:"stp_state"`
+	STPRole     string `yaml:"stp_role"`
+	LinkChanges uint64 `yaml:"link_changes"`
+	STPChanges  int    `yaml:"stp_changes"`
 }
 
 // FileLLDP is a port's LLDP neighbour, when the experiment wants one.
@@ -231,6 +240,8 @@ func (d *Device) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
 			p.IfName = fmt.Sprintf("Port %d", fp.Index)
 		}
 		p.Name = p.IfName
+		p.Fault, p.STPState, p.STPRole = fp.Fault, fp.STPState, fp.STPRole
+		p.Health.LinkChanges, p.Health.STPChanges = fp.LinkChanges, fp.STPChanges
 		if p.MTU == 0 {
 			p.MTU = 1500
 		}

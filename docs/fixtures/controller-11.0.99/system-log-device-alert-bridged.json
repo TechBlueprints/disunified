@@ -1,0 +1,143 @@
+{
+ "data": [
+  {
+   "category": "UNIFI_ETHERNET_PORTS",
+   "event": "LOG_SWITCH_PORT_LINK_FLAP",
+   "key": "LOG_SWITCH_PORT_LINK_FLAP",
+   "message": "device-1 Port 17 is experiencing frequent link state changes.",
+   "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent link state changes.",
+   "severity": "HIGH",
+   "status": "STALED",
+   "subcategory": "MONITORING_WIRED",
+   "target": "DEVICE",
+   "timestamp": 1794701954302,
+   "title_raw": "Port Link Flapping",
+   "type": "PORT_ANOMALIES",
+   "parameters": {
+    "ACTION": {
+     "id": "VERIFY_LINK_SPEED_AND_CHECK_CABLE_DAMAGE",
+     "name": "Verify that the Link Speed configuration matches on both sides and check for damaged cables or SFP modules."
+    },
+    "COUNT": {
+     "name": "123",
+     "not_actionable": true
+    },
+    "PORT": {
+     "id": "17",
+     "name": "17"
+    },
+    "DEVICE": {
+     "id": "02:00:00:00:00:01",
+     "ip": "192.0.2.1",
+     "model": "ECS-Core",
+     "model_name": "USWF07D",
+     "name": "device-1",
+     "version": "4.0.1"
+    }
+   }
+  },
+  {
+   "category": "UNIFI_ETHERNET_PORTS",
+   "event": "LOG_SWITCH_PORT_STP_FLAP",
+   "key": "LOG_SWITCH_PORT_STP_FLAP",
+   "message": "device-2 Port 3 is experiencing frequent STP role state changes.",
+   "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+   "severity": "HIGH",
+   "status": "STALED",
+   "subcategory": "MONITORING_WIRED",
+   "target": "DEVICE",
+   "timestamp": 1794702422946,
+   "title_raw": "STP State Flapping",
+   "type": "PORT_ANOMALIES",
+   "parameters": {
+    "ACTION": {
+     "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY",
+     "name": "Investigate possible network loops caused by third-party switches, redundant links, meshed APs, or IoT and Sonos devices. Set STP priorities to ensure that the core switch becomes the STP root switch."
+    },
+    "COUNT": {
+     "name": "63",
+     "not_actionable": true
+    },
+    "PORT": {
+     "id": "3",
+     "name": "3"
+    },
+    "DEVICE": {
+     "id": "02:00:00:00:00:02",
+     "ip": "192.0.2.2",
+     "model": "USW-Aggregation",
+     "model_name": "USL8A",
+     "name": "device-2",
+     "version": "7.4.1"
+    }
+   }
+  },
+  {
+   "category": "UNIFI_ETHERNET_PORTS",
+   "event": "BPDU_GUARD_TRIGGERED",
+   "key": "BPDU_GUARD_TRIGGERED",
+   "message": "UniFi disabled device-2 Port 4 because it detected a network loop. Fix the loop, then re-enable the port.",
+   "message_raw": "UniFi disabled {DEVICE_WITH_PORT} because it detected a network loop. Fix the loop, then re-enable the port.",
+   "severity": "HIGH",
+   "status": "STALED",
+   "subcategory": "SYSTEM_NETWORK",
+   "target": "DEVICE_WITH_PORT",
+   "timestamp": 1794702496958,
+   "title_raw": "Loop Protection Disabled a Port",
+   "type": "SWITCH_ISSUE",
+   "parameters": {
+    "ACTION": {
+     "id": "ADDRESS_THE_LOOP",
+     "name": "Address the loop then re-enable the port."
+    },
+    "PORT": {
+     "name": "4"
+    },
+    "DEVICE": {
+     "id": "02:00:00:00:00:02",
+     "ip": "192.0.2.2",
+     "model": "USW-Aggregation",
+     "model_name": "USL8A",
+     "name": "device-2",
+     "version": "7.4.1"
+    }
+   }
+  },
+  {
+   "category": "UNIFI_ETHERNET_PORTS",
+   "event": "NETWORK_LOOP_DETECTED_BY_KEEPALIVE",
+   "key": "NETWORK_LOOP_DETECTED_BY_KEEPALIVE",
+   "message": "device-2 Port 5 was disabled by Loop Protection to prevent a network loop.",
+   "message_raw": "{DEVICE_WITH_PORT} was disabled by Loop Protection to prevent a network loop.",
+   "severity": "VERY_HIGH",
+   "status": "STALED",
+   "subcategory": "SYSTEM_NETWORK",
+   "target": "DEVICE_WITH_PORT",
+   "timestamp": 1794702716998,
+   "title_raw": "Loop Protection Triggered",
+   "type": "SWITCH_ISSUE",
+   "parameters": {
+    "ACTION": {
+     "id": "ADDRESS_THE_LOOP",
+     "name": "Address the loop then re-enable the port."
+    },
+    "PORT": {
+     "id": "5",
+     "name": "5"
+    },
+    "DOWNLINK_MACS": {
+     "id": "02:00:00:00:00:02",
+     "list_values": []
+    },
+    "DEVICE": {
+     "id": "02:00:00:00:00:02",
+     "ip": "192.0.2.2",
+     "model": "USW-Aggregation",
+     "model_name": "USL8A",
+     "name": "device-2",
+     "version": "7.4.1"
+    }
+   }
+  }
+ ]
+}
