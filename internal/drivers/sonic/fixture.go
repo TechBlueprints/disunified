@@ -448,6 +448,9 @@ func (f *FixtureRunner) apply(line string) error {
 	if ok, err := f.l3Write(w); ok {
 		return err
 	}
+	if ok, err := f.krouteWrite(w); ok {
+		return err
+	}
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
 		return nil

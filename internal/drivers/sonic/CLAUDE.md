@@ -203,6 +203,35 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   known_hosts must carry the switch's key under the new address. Default
   route lives in `STATIC_ROUTE|default|0.0.0.0/0` (`cfg_route`), DNS in
   `DNS_NAMESERVER` (`cfg_dns`).
+- **The kernel loses zebra's routes on a carrier blink on 202511
+  (`kroute.go`, `docs/drivers/sonic.md` §6.4.1, 2026-11-15).** 202511's
+  zebra.conf has `zebra nexthop kernel enable` (sonic-buildimage #25117;
+  202505 forced it off). Kernel 6.12 deletes a nexthop object and every
+  route using it, without a netlink message, when its interface loses
+  carrier. zebra re-creates the object on up, never the route, unless it
+  re-resolved the route while the interface was down (FRRouting/frr#20747,
+  open). l2d's spanning-tree start blinks the Bridge's carrier for ~90 ms
+  (every port blocking until the dummy forwards). At boot that cost the
+  DX010 its IPv4 default for 11 h, while FRR said installed and offloaded.
+  Facts that cost time:
+  - **The fix is SONiC's own knob.** The driver writes `DEVICE_METADATA
+    zebra_nexthop disabled` (saved), and `no zebra nexthop kernel enable`
+    into the running zebra.
+  - **The repair** takes the running config's `ip route 0.0.0.0/0` lines
+    out and back in, when the kernel misses FRR's installed default on two
+    collects in a row or still has it through an `nhid`.
+  - **Re-install through `vtysh -c` lines, never `vtysh -f`.** A file is
+    one mgmtd transaction in FRR 10, so a `no` and an add of the same route
+    change nothing.
+  - **The symptom to look for**: FRR's nexthop without `fib` while the
+    route says installed.
+  - **`ip nexthop del id <n>` reproduces the end state**: zebra re-creates
+    the object within 10 ms and leaves the route out.
+  - **`show running-config` from vtysh carries `password` lines**:
+    collect.py takes only the lines it needs.
+  - **A dummy port's `carrier off` under a bridge reaches the bridge only
+    after linkwatch's 1 s rate limit**: under 1 s it is coalesced and
+    nothing happens.
 - **`promote_secondaries` is 0 on SONiC** (`/proc/sys/net/ipv4/conf/<iface>/promote_secondaries`):
   deleting a subnet's primary address deletes its secondaries, and a new
   address in the same subnet is a secondary. A live move removed the old

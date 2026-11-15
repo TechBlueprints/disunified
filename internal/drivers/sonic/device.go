@@ -228,19 +228,26 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if err != nil {
 		return n, err
 	}
+	// Not a UniFi setting: the default route the driver configures must
+	// be in the kernel as well as in FRR (kroute.go).
+	m, err := c.applyKernelRoute(ctx)
+	n += m
+	if err != nil {
+		return n, err
+	}
 	c.mu.Lock()
 	st := c.state
 	c.mu.Unlock()
 	if st != nil && !st.stpFeature {
 		c.l2SetSTP(d)
-		m, err := c.applyL2(ctx)
+		m, err = c.applyL2(ctx)
 		n += m
 		if err != nil {
 			return n, err
 		}
 	}
 	c.l3Set(d)
-	m, err := c.applyL3(ctx)
+	m, err = c.applyL3(ctx)
 	n += m
 	if err != nil {
 		return n, err

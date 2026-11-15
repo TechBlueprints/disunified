@@ -797,6 +797,143 @@ VLAN membership, LAG joins and the LAG's own membership, mirror adds,
 - **Firmware, fault reporting:** generic in `internal/device`; nothing
   driver-side beyond fans/PSUs/temperatures on hardware (§5).
 
+### 6.4.1 The kernel's default route (`kroute.go`, 2026-11-15)
+
+**Found on the DX010, 11 h after a boot:** the kernel had no IPv4 default
+route. `ip -4 route` showed only the connected /16 on `Vlan4094`, and
+`ping` to any off-subnet host failed with "Network is unreachable". Every
+layer above the kernel had it: CONFIG_DB `STATIC_ROUTE|default|0.0.0.0/0`,
+APPL_DB `ROUTE_TABLE:0.0.0.0/0`, FRR's `show ip route 0.0.0.0/0` (static,
+selected, installed, offloaded, nexthop group 32), and the kernel's own
+`ip nexthop show` (id 32 via the gateway, `proto zebra`). The route's
+nexthop lacked FRR's `fib` flag (flags 1, active only); a healthy one shows
+flags 3. Nothing depended on the route at the time: the controller, DNS,
+NTP and syslog were all on the LAN. With no kernel default the snapshot
+also had no gateway, so the informs carried no `gateway_mac` for those
+11 h.
+
+**The cause, in three parts:**
+
+1. **zebra installs routes through kernel nexthop objects on 202511.**
+   `zebra.conf.j2` renders `zebra nexthop kernel enable` unless
+   `DEVICE_METADATA|localhost zebra_nexthop` is `disabled`.
+   sonic-buildimage #23459 had forced it off on 202505 ("netscan loss on
+   production devices"); #23500 made it this metadata field; #25117
+   (202511) made enabled the default.
+2. **The kernel deletes those objects silently on carrier loss.** In
+   kernel 6.12's `net/ipv4/nexthop.c`, `nh_netdev_event` runs
+   `nexthop_flush_dev` on `NETDEV_CHANGE` without `IFF_RUNNING`/`LOWER_UP`.
+   That calls `remove_nexthop(net, nh, NULL)`: with no `nl_info` there is
+   no RTM_DELNEXTHOP, and the routes using the object go with no
+   RTM_DELROUTE. A route with inline nexthops only gains `linkdown` and
+   stays (`fib_sync_down_dev`). Both were shown live on a test bridge in
+   table 100: across a 2 s carrier loss the nhid route and its object
+   vanished, no `Deleted` line, while the inline route read `linkdown`
+   and came back.
+3. **zebra brings back the object, not the route.** On interface up,
+   `if_up()` calls `zebra_interface_nhg_reinstall()` (FRR 10.4.1
+   `zebra/zebra_nhg.c`), which re-creates the interface's singleton
+   nexthop groups. A route comes back only if zebra re-resolved it while
+   the interface was down: a new group id, sent again on up. Seen live:
+   an idle zebra does this for every flap down to 17 ms. If the down and
+   the up are handled before the RIB queue runs, the route resolves as
+   before. It keeps its group id and `installed` flag, and is never sent
+   again.
+
+   Upstream FRR has this open: FRRouting/frr#20747 ("quick flap of
+   interface"; adds a route back-pointer to each nexthop group to
+   re-install its routes). The other open PRs cover the group, not the
+   routes: #23747, #23022, and #22383, which a maintainer prefers. None is
+   merged.
+
+**The trigger on the DX010** was the driver's own disunified-l2d. At
+21:35:46.68 (boot) it started spanning tree on the kernel `Bridge`, and
+mstpd set every port blocking. The dummy port, an admin edge, was
+forwarding again 88 ms later. For that moment no port forwarded, so
+`br_port_state_selection` took the Bridge's carrier down, and `Vlan4094`,
+stacked on it, followed. zebra logged the link down at 21:35:46.77, 6 s
+after it had installed the default (~21:35:40-44). Group 32 and the route
+both date from before the flap, so zebra never re-resolved them.
+
+The same blink comes back whenever mstpd starts on a running bridge (an
+l2d restart, a deb upgrade that restarts it). It also comes back on any
+real loss of the Bridge's carrier.
+
+**Ruled out:**
+
+- **The early DNS step** (da68007, `resolv-config.sh` before the bridge's
+  start). It touches resolv.conf only. It ran at 21:33 in the old boot
+  and before zebra in the new one.
+- **The driver's address and MTU writes.** The IP Settings apply at
+  21:36:20 wrote nothing ("no interface carries the bridge's own target",
+  an early snapshot). The `ip link set … mtu 1500` at 21:36:40 is the
+  second "Link up" zebra counted: zebra calls `if_up` on any RTM_NEWLINK
+  of an operative interface. That came a minute after the route was gone.
+- **An address bounce.** The connected route's uptime matches the flap,
+  not a later event, and bgpcfgd saw the address once.
+
+The direct link from the 88 ms flap to the lost route was not reproduced
+on demand. An idle zebra handles every flap the test could make, so the
+boot case needs zebra busy (fpm connecting, orchagent's first sync).
+That is where the timeline puts it.
+
+**Reproduced end state** (`collect-route-missing.txt`). `sudo ip nexthop
+del id <n>` makes the same deletion. Its RTM_DELNEXTHOP made zebra
+re-create the object within 10 ms. The route stayed missing, and FRR
+reported it installed with `fib` set. It was still missing a minute later.
+
+**The fix (`kroute.go`, run from `ApplyDevice` every cycle):**
+
+- **The cause.** `sonic-db-cli CONFIG_DB hset 'DEVICE_METADATA|localhost'
+  zebra_nexthop disabled` plus `config save -y` sets zebra.conf for the
+  bgp container's next start. The same line, `no zebra nexthop kernel
+  enable`, goes into the running zebra at once. It is a hidden command in
+  FRR 10.4.1 and changes only how later installs are encoded. zebra then
+  installs inline nexthops, so a carrier blink can no longer delete the
+  route. The YANG model knows the field, and nothing but the template
+  reads it.
+- **The repair.** If FRR selects and installs 0.0.0.0/0 and the kernel's
+  main table has no default through any of its hops on two collects in a
+  row, the driver logs it loudly. It then takes out the running config's
+  own `ip route 0.0.0.0/0 …` lines and puts them back. It does the same
+  at once when the kernel's default still uses a nexthop object, which is
+  how every 202511 boot leaves it.
+
+  The repair is one `docker exec bgp vtysh -c 'configure terminal' -c 'no
+  <line>' -c '<line>'`, with each `-c` committed on its own. **Not `vtysh
+  -f`**: in FRR 10 a file is one mgmtd transaction, so a delete and an add
+  of the same route cancel out (live: the route's uptime ran on and the
+  kernel stayed empty). Between the two lines the route leaves the chip for
+  a few milliseconds.
+
+  Two collects, because zebra's own correct re-install leaves the kernel
+  briefly without the route. A route FRR holds through another protocol
+  (no static line) is only logged, once.
+- `collect.py`'s `frr_route` carries FRR's view, the static lines and the
+  zebra setting. It takes no other line from `show running-config`, which
+  holds the daemons' passwords. It is "error" when the bgp container does
+  not answer. Captures before 2026-11-15 lack it, which writes nothing.
+
+**Verified live (by hand, the driver's exact commands, 2026-11-15):**
+
+- the broken state reproduced;
+- the zebra line taken at runtime;
+- the `-c` repair putting the default back inline (`proto 196 metric 20`);
+- off-subnet ping answering;
+- with inline nexthops, a 1 s carrier loss on a test bridge leaving the
+  route in the kernel (`linkdown`) until zebra's own delete and re-add.
+
+`DEVICE_METADATA zebra_nexthop` was set for the capture and removed again,
+unsaved, so the deployed driver's own write is what proves that half.
+
+**Needs a reboot to prove:** that with the saved field the bgp container
+renders `no zebra nexthop kernel enable`, and that the default survives
+l2d's spanning-tree start at boot (`ip -4 route show default` with no
+`nhid`, right after boot).
+
+Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/collect-route-{nhid,
+missing,fixed}.txt`.
+
 ### 6.5 Verification plan (what "done" means for A4)
 
 1. Unit tests per apply sequence against the fixture, each verifying the

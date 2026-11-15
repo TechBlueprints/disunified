@@ -145,6 +145,9 @@ type swState struct {
 	// v6: router advertisements and SLAAC on the in-band interfaces
 	// (ipv6.go, §11.22).
 	v6 v6State
+	// kr: zebra's IPv4 default route against the kernel's (kroute.go,
+	// §6.4.1).
+	kr kroute4
 
 	// BGP (bgp.go, §11.14): the top-level objects bgpd runs (collect.py's
 	// frr_bgp: "router bgp 65010", "route-map X", ...); frrKnown false on a
@@ -312,6 +315,7 @@ func newState(db map[string]table, sec map[string]string) *swState {
 	}
 	s.mgmtPortMissing = mgmtAddr && !mgmtPort
 	s.v6 = parseV6(sec["ipv6_ra"], db["appl_intf"], addrs)
+	s.kr = parseKRoute4(sec["frr_route"], sec["route"])
 	sort.Strings(s.mgmtNoGateway)
 	for _, line := range strings.Split(sec["authorized_keys"], "\n") {
 		if line = strings.TrimSpace(line); line != "" {
@@ -537,6 +541,7 @@ func (s *swState) clone() *swState {
 		c.ifaddrs[k] = true
 	}
 	c.v6 = s.v6.clone()
+	c.kr = s.kr // read-only after parsing
 	return c
 }
 

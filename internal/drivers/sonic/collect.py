@@ -337,6 +337,36 @@ try:
 except Exception:
     sys.stdout.write("error\n")
 
+# zebra's IPv4 default route (kroute.go, docs/drivers/sonic.md 6.4.1): what
+# FRR selected and believes installed ("route", reduced from `show ip route
+# 0.0.0.0/0 json`), the running config's own lines for it ("static"), and
+# whether zebra installs routes through kernel nexthop objects
+# ("kernel_nexthops": no "no zebra nexthop kernel enable" line). Only those
+# lines are taken from the running config, which also holds the daemons'
+# passwords. "error" when the bgp container cannot be read.
+s("frr_route")
+try:
+    _r = subprocess.run(["docker", "exec", "bgp", "sh", "-c",
+                         "vtysh -c 'show ip route 0.0.0.0/0 json' && echo @@@@ && vtysh -c 'show running-config'"],
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15)
+    if _r.returncode != 0:
+        raise IOError("docker exec")
+    _js, _sep, _cfg = _r.stdout.decode("utf-8", "replace").partition("\n@@@@\n")
+    if not _sep:
+        raise IOError("vtysh")
+    _rt = []
+    for _e in (json.loads(_js or "{}") or {}).get("0.0.0.0/0", []):
+        _rt.append({"protocol": _e.get("protocol", ""), "selected": bool(_e.get("selected")),
+                    "installed": bool(_e.get("installed")), "nexthops": [
+                        {"ip": _h.get("ip", ""), "interface": _h.get("interfaceName", ""),
+                         "active": bool(_h.get("active")), "fib": bool(_h.get("fib"))}
+                        for _h in _e.get("nexthops", [])]})
+    _lines = [_l.strip() for _l in _cfg.split("\n")]
+    dump({"route": _rt, "static": [_l for _l in _lines if _l.startswith("ip route 0.0.0.0/0 ")],
+          "kernel_nexthops": "no zebra nexthop kernel enable" not in _lines})
+except Exception:
+    sys.stdout.write("error\n")
+
 # --- Linux ---
 # linux-bcm-genl's psample proc (the image kit's sonic-buildimage 0014): the
 # SAI samples a port only with it, and l2d detects unknown-unicast storms

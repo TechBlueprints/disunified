@@ -62,6 +62,11 @@ type Collector struct {
 	// excluded), from the last EnsureVLANs: what "Allow All" tags.
 	siteVLANs []int
 	warned    map[string]bool
+	// krSeen is the snapshot state the kernel default route was last
+	// checked against, krMisses how many collects in a row found it missing
+	// while FRR reports it installed (kroute.go).
+	krSeen   *swState
+	krMisses int
 
 	// Redial opens a runner to the switch at another address, with the same
 	// user, key and known_hosts (set by Open; tests set a fixture's). The
