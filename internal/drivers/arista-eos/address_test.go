@@ -171,3 +171,34 @@ func TestApplyAddressRefusesAMoveItCannotConfirm(t *testing.T) {
 		t.Errorf("changed=%v err=%v", changed, err)
 	}
 }
+
+// The move read back (fixture_state.go): the new address, gateway and name
+// server are what the next collect sees, through the transport at the new
+// address (the same switch), and the same desire writes nothing more.
+func TestAddressMoveIsReadBackOnTheNextCollect(t *testing.T) {
+	newT := &answering{}
+	c, ft := addressCollector(t, func(string) Transport { return newT })
+	newT.FixtureTransport = ft // one switch, dialled twice
+	ctx := context.Background()
+	want := devicemodel.AddressDesired{IP: "192.0.2.40", PrefixLen: 24, Gateway: "192.0.2.9", DNS: []string{"192.0.2.9"}}
+	if changed, err := c.ApplyAddress(ctx, want); err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	snap, err := c.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iface, a := managementInterface(snap, "192.0.2.40"); iface != "Management1" || a.PrefixLen != 24 {
+		t.Errorf("after the move: %q %+v (addresses %+v)", iface, a, snap.System.Addresses)
+	}
+	if snap.System.Gateway != "192.0.2.9" || strings.Join(c.nameServers, ",") != "192.0.2.9" {
+		t.Errorf("gateway %q, name servers %v", snap.System.Gateway, c.nameServers)
+	}
+	n := len(ft.Configured)
+	if changed, err := c.ApplyAddress(ctx, want); err != nil || changed || len(ft.Configured) != n {
+		t.Errorf("the same address again: changed=%v err=%v wrote %v", changed, err, ft.Configured[n:])
+	}
+	if len(ft.Unmodelled) != 0 {
+		t.Errorf("unmodelled: %q", ft.Unmodelled)
+	}
+}

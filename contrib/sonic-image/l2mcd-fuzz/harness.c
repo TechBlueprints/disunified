@@ -27,11 +27,13 @@
 #define VID 100
 static const char *ports[] = { "Ethernet4", "Ethernet8" };
 static mld_vlan_node_t *vnode;
-static unsigned int port_idx[2];        /* l2mcd's port index per port */
+static unsigned int port_idx[3];        /* l2mcd's port index per port (2: port-list-breakout's Ethernet40) */
 static size_t tx_count, tx_bytes;       /* what l2mcd_fwd_pkt would have sent */
 static uint32_t tx_igmp_src;            /* source address of the last IGMP frame sent */
 static int tx_igmp_type = -1;           /* and its IGMP type */
 static int addr_order;                  /* query-src cases: Vlan100's address 1 before, 2 after the snooping enable */
+extern unsigned stub_l2mc_dels;          /* stubs.c: group-member deletions sent to APPL_DB */
+extern char stub_l2mc_del_port[];
 #define VLAN_ADDR "192.0.2.200"
 #define VLAN_ADDR_U32 0xc00002c8u
 
@@ -99,6 +101,30 @@ static void cfg(int type, int afi, int version, int opcode, int nports)
     l2mcd_process_ipc_msg(m, sizeof(L2MCD_IPC_MSG) + dlen, none);
     free(m);
 }
+
+/* A one-port message as l2mcmgrd sends it: L2MCD_SNOOP_PORT_LIST_MSG when a
+ * port appears in or leaves PORT_TABLE (op 1 add, 0 delete), or
+ * L2MCD_VLAN_MEM_TABLE_UPDATE for its membership of Vlan100. */
+static void port_msg_type(int type, const char *name, int op, int oper)
+{
+    size_t dlen = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
+    L2MCD_IPC_MSG *m = calloc(1, sizeof(L2MCD_IPC_MSG) + dlen);
+    L2MCD_CONFIG_MSG *c = (L2MCD_CONFIG_MSG *)m->data;
+    struct sockaddr_un none;
+
+    memset(&none, 0, sizeof(none));
+    m->msg_type = type;
+    m->msg_len = dlen;
+    c->op_code = op;
+    c->afi = L2MCD_IPV4_AFI;
+    c->vlan_id = VID;
+    c->count = 1;
+    strncpy(c->ports[0].pnames, name, L2MCD_IFNAME_SIZE - 1);
+    c->ports[0].oper_state = oper;
+    l2mcd_process_ipc_msg(m, sizeof(L2MCD_IPC_MSG) + dlen, none);
+    free(m);
+}
+#define port_msg(name, op, oper) port_msg_type(L2MCD_SNOOP_PORT_LIST_MSG, name, op, oper)
 
 /* Vlan100's address as l2mcmgrd sends it from INTERFACE_TABLE (Vlan100|<addr>/24) */
 static void vlan_addr(void)
@@ -685,6 +711,100 @@ int main(int argc, char **argv)
         fprintf(stderr, "  Ethernet8: if_tree %p igmp fd %d mld fd %d\n", (void *)t, t ? t->igmp_sock_fd : -1, t ? t->mld_sock_fd : -1);
         fprintf(stderr, "  open sockets: %d, then %d after three more port lists\n", before, after);
         if (after != before)
+            abort();
+    }
+    /* found on the DX010 (2026-11-15): after a breakout, a lane whose name
+     * portdb no longer held (an earlier join had deleted the port) was numbered
+     * 4096 + its kernel ifindex, which is the start index of Ethernet<ifindex>:
+     * 4096 itself (Ethernet0, the uplink) for a lane reported before its netdev
+     * existed, 4160 (Ethernet64) for one created as ifindex 64. l2mcd then
+     * closed that port's sockets, dropped its tree, gave its index the lane's
+     * name and deleted its group memberships under that name. Here Ethernet9
+     * is reported before its netdev exists, and Ethernet10 is created as
+     * ifindex 40, its link event first, as on the switch: 4096 + 40 is the index
+     * of Ethernet40, a member of Vlan100 that has joined 239.1.2.3. Ethernet40
+     * must keep its membership, its tree, its name and its sockets, and each
+     * lane must get its own index. (This namespace's fallback tunnel devices
+     * hold the low ifindexes, so the victim is not one of the VLAN's ports.) */
+    if (run("port-list-breakout")) {
+        const char *lane[2] = { "Ethernet9", "Ethernet10" };
+        char spare[IF_NAMESIZE], linkname[L2MCD_IFNAME_SIZE];
+        unsigned dels, v = L2MCD_PORTDB_PHYIF_START_IDX + 40;
+        int k40, socks40, bad = 0, i;
+        l2mcd_if_tree_t *t;
+        char *nm;
+
+        if (if_indextoname(40, spare)) {
+            fprintf(stderr, "harness: setup failed: ifindex 40 is taken (%s)\n", spare);
+            return 2;
+        }
+        /* Ethernet40: up, in Vlan100, a member of 239.1.2.3 */
+        if (system("ip link add Ethernet40 type dummy && ip link set Ethernet40 up"))
+            return 2;
+        k40 = if_nametoindex("Ethernet40");
+        port_msg("Ethernet40", 1, 1);
+        port_msg_type(L2MCD_VLAN_MEM_TABLE_UPDATE, "Ethernet40", 1, 1);
+        port_idx[2] = portdb_get_portindex_from_ifname("Ethernet40");
+        n = igmpv3_hdr(m, 1);
+        n += igmpv3_rec(m + n, 4, 0, 0, 0, 0);
+        {
+            size_t tl = mk_ip4(pk, m, n, 0, v3_reports);
+            feed_ip4(2, pk, tl);
+        }
+        socks40 = packet_sockets_on("Ethernet40");
+        fprintf(stderr, "  Ethernet40: kif %d index %u, in Vlan100: %d, packet sockets %d\n", k40, port_idx[2],
+                mld_is_port_member_of_vlan(vnode, port_idx[2]), socks40);
+        if (port_idx[2] != v || !mld_is_port_member_of_vlan(vnode, v)) {
+            fprintf(stderr, "harness: setup failed: Ethernet40 not set up\n");
+            return 2;
+        }
+        dels = stub_l2mc_dels;
+        /* an earlier join deleted both lanes: their netdevs, then their names */
+        if (system("ip link add Ethernet9 type dummy && ip link add Ethernet10 type dummy"))
+            return 2;
+        port_msg("Ethernet9", 1, 0);
+        port_msg("Ethernet10", 1, 0);
+        if (system("ip link del Ethernet9 && ip link del Ethernet10"))
+            return 2;
+        port_msg("Ethernet9", 0, 0);
+        port_msg("Ethernet10", 0, 0);
+        /* the split: Ethernet9 before its netdev exists; Ethernet10 as ifindex 40 */
+        port_msg("Ethernet9", 1, 0);
+        if (system("ip link add Ethernet10 index 40 type dummy"))
+            return 2;
+        /* the link event's name, as l2mcd_nl_msg_handler() passes it: from a buffer, not a short string */
+        snprintf(linkname, sizeof(linkname), "Ethernet10");
+        l2mcd_portstate_update(40, 0, linkname);
+        port_msg("Ethernet10", 1, 0);
+        if (system("ip link add Ethernet9 type dummy"))
+            return 2;
+        snprintf(linkname, sizeof(linkname), "Ethernet9");
+        l2mcd_portstate_update(if_nametoindex("Ethernet9"), 0, linkname);
+        port_msg("Ethernet9", 1, 0);
+
+        nm = portdb_get_ifname_from_portindex(L2MCD_PORTDB_PHYIF_START_IDX);
+        fprintf(stderr, "  index %d is %s\n", L2MCD_PORTDB_PHYIF_START_IDX, nm ? nm : "(none)");
+        bad |= !nm || strcmp(nm, "Ethernet0");
+        nm = portdb_get_ifname_from_portindex(v);
+        t = l2mcd_if_to_kif(v);
+        fprintf(stderr, "  Ethernet40: index %u is %s, tree %s kif %d (want %d) igmp fd %d, packet sockets %d (were %d), in Vlan100: %d\n",
+                v, nm ? nm : "(none)", t ? t->iname : "(none)", t ? (int)t->kif : -1, k40,
+                t ? t->igmp_sock_fd : -1, packet_sockets_on("Ethernet40"), socks40, mld_is_port_member_of_vlan(vnode, v));
+        bad |= !nm || strcmp(nm, "Ethernet40") || portdb_get_portindex_from_ifname("Ethernet40") != v;
+        bad |= !t || strcmp(t->iname, "Ethernet40") || (int)t->kif != k40 || t->igmp_sock_fd <= 0 ||
+               packet_sockets_on("Ethernet40") != socks40;
+        fprintf(stderr, "  group members deleted: %u%s%s\n", stub_l2mc_dels - dels,
+                stub_l2mc_dels != dels ? ", the last under " : "", stub_l2mc_dels != dels ? stub_l2mc_del_port : "");
+        bad |= stub_l2mc_dels != dels;
+        for (i = 0; i < 2; i++) {
+            unsigned want = L2MCD_PORTDB_PHYIF_START_IDX + 9 + i, got = portdb_get_portindex_from_ifname((char *)lane[i]);
+            int kif = if_nametoindex(lane[i]);
+            t = l2mcd_kif_to_if(kif);
+            fprintf(stderr, "  %s: index %u (want %u), tree at kif %d: %s index %d\n", lane[i], got, want, kif,
+                    t ? t->iname : "(none)", t ? (int)t->ifid : -1);
+            bad |= got != want || !t || strcmp(t->iname, lane[i]) || t->ifid != want;
+        }
+        if (bad)
             abort();
     }
     if (run("mld-valid")) {

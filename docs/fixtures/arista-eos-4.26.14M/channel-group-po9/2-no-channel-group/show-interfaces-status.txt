@@ -1,0 +1,2 @@
+Port       Name   Status       Vlan     Duplex Speed  Type           Flags Encapsulation
+Po9               notconnect   trunk    full   unconf N/A                               

@@ -72,6 +72,7 @@ type plan struct {
 	pcBase   int
 	cageDown bool
 	owned    map[int]bool
+	attached map[int]bool // the device's plan: cages with a lane switch, split or not
 }
 
 // pc is the PortChannel of the plan's aggregate lag.
@@ -86,6 +87,23 @@ func (pl *plan) mine(pc string) bool {
 		return n > 0 && n < lanePCBase(1)
 	}
 	return n > pl.pcBase && n < pl.pcBase+100
+}
+
+// detachedLane: pc is in the lane range of a cage of this switch with no
+// lane switch attached (the device's plan only; breakout.md §7c). Nobody
+// else's plan reaches it, so an empty one the driver made goes (lagJoins);
+// one with members is left, noted, as every aggregate outside mine.
+func (pl *plan) detachedLane(pc string) bool {
+	n := lagID(pc)
+	if pl.laneCage != 0 || n <= lanePCBase(1) {
+		return false
+	}
+	cage := n / 100
+	if n%100 == 0 || pl.attached[cage] {
+		return false
+	}
+	_, ok := pl.ports[cage]
+	return ok
 }
 
 func (pl *plan) add(idx int, cmd string, effect func(*swState)) {
@@ -163,7 +181,9 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 		for _, p := range snap.Ports {
 			pl.ports[p.Index] = p
 		}
+		pl.attached = map[int]bool{}
 		for _, idx := range attached {
+			pl.attached[idx] = true
 			if len(st.cagePorts(idx)) > 1 {
 				pl.owned[idx] = true
 			}
@@ -513,10 +533,18 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	for _, lag := range ids {
 		wanted[pl.pc(lag)] = true
 	}
+	// A detached lane switch's (breakout.md §7c): only one the driver
+	// made (ownOrphan) and nobody is in; one with members stays, noted.
 	var pcs []string
 	for pc, m := range pl.sim.lags {
-		if len(m) == 0 && !wanted[pc] && pl.mine(pc) && (pl.emptiedHere(pc) || pl.ownOrphan(pc)) {
+		switch {
+		case len(m) == 0 && !wanted[pc] && pl.mine(pc) && (pl.emptiedHere(pc) || pl.ownOrphan(pc)):
 			pcs = append(pcs, pc)
+		case len(m) == 0 && pl.detachedLane(pc) && pl.ownOrphan(pc):
+			pcs = append(pcs, pc)
+		case len(m) > 0 && pl.detachedLane(pc):
+			names := sortIfnames(m)
+			pl.note("%s is port %d's lane switch's aggregate and no lane switch is attached to port %d: left as it is while it has members (%s); attach the lane switch again, or take the members out and the plan removes it", pc, lagID(pc)/100, lagID(pc)/100, strings.Join(names, ", "))
 		}
 	}
 	sort.Strings(pcs)

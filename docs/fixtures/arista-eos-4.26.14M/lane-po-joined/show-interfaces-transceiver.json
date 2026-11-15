@@ -1,0 +1,68 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -1.1616828667054726,
+      "temperature": 34.8359375,
+      "txBias": 40.044000000000004,
+      "txPower": 0.3104471658370471,
+      "updateTime": 1794776259.4026875,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3176
+    },
+    "Ethernet49/2": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": -3.7059040089728086,
+      "temperature": 34.8359375,
+      "txBias": 43.21,
+      "txPower": -0.2186515260171049,
+      "updateTime": 1794776259.4026887,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3176
+    },
+    "Ethernet49/3": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.5472793208219784,
+      "temperature": 34.8359375,
+      "txBias": 42.238,
+      "txPower": 1.3972170481520436,
+      "updateTime": 1794776259.4026887,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3176
+    },
+    "Ethernet49/4": {
+      "mediaType": "100GBASE-CWDM4",
+      "narrowBand": false,
+      "rxPower": 0.3261876085072011,
+      "temperature": 34.8359375,
+      "txBias": 39.99,
+      "txPower": 0.4048366420627012,
+      "updateTime": 1794776259.4026885,
+      "vendorSn": "SSJ00000000",
+      "voltage": 3.3176
+    },
+    "Ethernet50/1": {},
+    "Ethernet50/2": {},
+    "Ethernet50/3": {},
+    "Ethernet50/4": {},
+    "Ethernet51/1": {},
+    "Ethernet51/2": {},
+    "Ethernet51/3": {},
+    "Ethernet51/4": {},
+    "Ethernet52/1": {},
+    "Ethernet52/2": {},
+    "Ethernet52/3": {},
+    "Ethernet52/4": {},
+    "Ethernet53/1": {},
+    "Ethernet53/2": {},
+    "Ethernet53/3": {},
+    "Ethernet53/4": {},
+    "Ethernet54/1": {},
+    "Ethernet54/2": {},
+    "Ethernet54/3": {},
+    "Ethernet54/4": {}
+  }
+}

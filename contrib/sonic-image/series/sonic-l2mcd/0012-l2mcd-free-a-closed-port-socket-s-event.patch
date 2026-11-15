@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 15 Nov 2026 14:45:00 -0700
+Subject: [PATCH] l2mcd: free a closed port socket's event
+
+l2mcd_libevent_destroy() only deleted the event, so every port socket
+l2mcd_igmprx_sock_close() and l2mcd_mldrx_sock_close() closed left its
+libevent event (128 bytes) allocated: two for each port a breakout or a
+join deletes or creates again. LeakSanitizer reports them in the
+harness's port-list-breakout case. Both callers drop the port's tree,
+the only other holder of the pointer, right after, so the event is freed
+with event_free(), which deletes it first.
+---
+ port/l2mcd_system.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/port/l2mcd_system.c b/port/l2mcd_system.c
+index 2056745..bfd144d 100644
+--- a/port/l2mcd_system.c
++++ b/port/l2mcd_system.c
+@@ -1298,7 +1298,7 @@ void l2mcd_100ms_timer(evutil_socket_t fd, short what, void *arg)
+ void l2mcd_libevent_destroy(struct event *ev)
+ {
+     g_l2mcd_stats_libev_no_of_sockets--;
+-    event_del(ev);
++    event_free(ev);     /* event_del() and the event's own memory */
+ }
+ 
+ /*

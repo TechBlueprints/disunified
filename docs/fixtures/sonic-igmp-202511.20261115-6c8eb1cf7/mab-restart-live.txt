@@ -1,0 +1,1606 @@
+# MAC authentication (MAB) and a Credentials port over restarts of
+# disunified-l2d (docs/drivers/sonic.md 11.26.10), 2026-11-15, image
+# igmp-202511.20261115-6c8eb1cf7, under the test lock: empty cage 30
+# (Ethernet116, ce29) in MAC loopback, STP-blocked (Backup) in Vlan4094; the
+# deployed bridge stopped; l2.json's dot1x section written by hand
+# (Ethernet116 mac_based, later auto; idle timeout 40 s; the RADIUS server
+# 127.0.0.1:18120, NAS 127.0.0.1); CONFIG_DB PORT|Ethernet116 learn_mode drop
+# by hand, as the driver writes it. The RADIUS server is hostapd's integrated
+# one: MACACL users 020000000A01 and 020000000A03, the EAP-MD5 user
+# "dui-user", the test secret "dui-test-secret"; 02:00:00:00:0a:02 is no
+# user. A host is a raw socket on the port's netdev sending an untagged ARP
+# request (sender 0.0.0.0, target 192.0.2.1) from a test MAC every 2 s
+# ("HOST tx"); the loop brings it back in, and ARP's trap takes it to the
+# CPU though the port is blocked. 02:00:00:00:0b:01 is an 802.1X host
+# (EAP-MD5 from a raw socket). The loop also brings back the LAN's multicast
+# (snooping's static groups flood every port), whose sources l2d asks about
+# and the server refuses: those are 02:00:00:00:0c:NN after the scrub, and
+# they count in "failures". The switch's own MAC is 02:00:00:00:00:02.
+#
+# run1: the deployed l2d (fef74fe); run4: this change's l2d. Each run, in
+# seconds since its START:
+#   @@@ <run>          the rig's log: steps, l2d restarted/stopped/started,
+#                      the loop on/off, every host frame sent, hostapd's
+#                      events (EV), the kernel chain DUI_DOT1X polled every
+#                      ~20 ms (CHAIN, on change; a line with fewer rules is a
+#                      chain being rewritten), and snapshots (SNAP: the
+#                      STATE_DB row, APPL_DB and ASIC_DB FDB entries, the learn
+#                      modes, the chain, pids, hostapd's raw STA-FIRST /
+#                      STA-NEXT replies as JSON strings)
+#   @@@ <run>_monitor  Redis writes (MONITOR; db0 APPL, db1 ASIC, db4 CONFIG,
+#                      db6 STATE) naming the port or a test MAC; Lua-internal,
+#                      STP, LLDP, L2MC and process-stats lines dropped
+#   @@@ <run>_radius   the exchange on lo: each test host's request decoded
+#                      (its Message-Authenticator not kept), each answer as
+#                      received; a LAN source's request on one line
+#   @@@ <run>_journal  l2d's 802.1X lines
+# Scrubbed by hand: the switch's MAC and the LAN sources' MACs mapped in
+# every form (colons, dashes, bare hex); no address but 127.0.0.1 and
+# 0.0.0.0 remains.
+@@@ run1
+   0.00 START run1 2026-11-15T21:06:40Z own 02:00:00:00:00:02
+   3.94 RADIUS UNCONN 0      0            0.0.0.0:18120      0.0.0.0:*    users:(("hostapd",pid=119716,fd=4))
+   4.08 WAIT APPL learn drop: yes
+   4.99 LOOP on
+   5.11 WAIT link up: yes
+   6.12 WAIT blocked by STP (looped): yes
+   6.14 STEP mab start
+   6.14 CHAIN (none)
+   6.14 CONF dot1x {"servers": [{"ip": "127.0.0.1", "port": 18120}], "nas_ip": "127.0.0.1", "ports": {"Ethernet116": "mac_based"}, "idle_timeout": {"Ethernet116": 40}}
+   6.14 L2D reload
+   6.28 L2D reload done, pid 110063
+   6.52 CHAIN 
+   6.54 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+   6.56 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+   6.63 EVMON attached
+   6.68 WAIT cpu_trap: yes
+   6.68 WAIT hostapd: yes
+   8.68 SNAP mab start
+   8.68   ROW {"authorized": "", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "mac_based"}
+   8.69   APPL FDB []
+   8.69   ASIC FDB []
+   8.69   LEARN appl=cpu_trap config=drop
+   8.70   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+   8.71   INPUT -j DUI_DOT1X
+   8.74   PIDS l2d=110063 hostapd=120110
+   8.75   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+   8.75   STA 0 ""
+   8.75 STEP admit
+   8.75 HOST 02:00:00:00:0a:01 sending (an ARP every 2 s)
+   8.75 HOST 02:00:00:00:0a:03 sending (an ARP every 2 s)
+   9.75 HOST 02:00:00:00:0a:02 one ARP
+  10.19 CHAIN 
+  10.21 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+  10.23 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  10.27 CHAIN 
+  10.29 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  10.30 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  10.32 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  14.75 SNAP admitted
+  14.75   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "6", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  14.76   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  14.76   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  14.76   LEARN appl=cpu_trap config=drop
+  14.77   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  14.77   INPUT -j DUI_DOT1X
+  14.80   PIDS l2d=110063 hostapd=120110
+  14.81   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  14.81 HOST 02:00:00:00:0a:03 silent
+  22.81 STEP restart
+  22.81 SNAP before restart
+  22.81   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "6", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  22.81   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  22.81   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  22.81   LEARN appl=cpu_trap config=drop
+  22.83   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  22.83   INPUT -j DUI_DOT1X
+  22.86   PIDS l2d=110063 hostapd=120110
+  22.87   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  22.87   STA 0 ""
+  22.87 L2D restart
+  23.00 L2D restart done, pid 122850
+  24.10 CHAIN 
+  24.11 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  24.13 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+  24.17 CHAIN 
+  24.19 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  24.20 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  24.22 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  24.24 CHAIN 
+  24.26 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  24.28 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  24.30 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  26.00 SNAP restart +3
+  26.00   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "6", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  26.01   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  26.01   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  26.01   LEARN appl=cpu_trap config=drop
+  26.02   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  26.03   INPUT -j DUI_DOT1X
+  26.05   PIDS l2d=122850 hostapd=120110
+  26.06   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  26.06   STA 0 ""
+  31.06 SNAP restart +8
+  31.06   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "6", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  31.06   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  31.06   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  31.06   LEARN appl=cpu_trap config=drop
+  31.07   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  31.08   INPUT -j DUI_DOT1X
+  31.11   PIDS l2d=122850 hostapd=120110
+  31.12   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  64.72 CHAIN 
+  64.74 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  64.75 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  64.77 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  64.84 WAIT C idle: yes
+  64.84 SNAP C idle
+  64.85   ROW {"authorized": "02:00:00:00:0a:01", "failures": "7", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+  64.86   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  64.86   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+  64.86   LEARN appl=cpu_trap config=drop
+  64.87   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  64.88   INPUT -j DUI_DOT1X
+  64.92   PIDS l2d=122850 hostapd=120110
+  64.93   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  64.93 STEP refused after restart
+  64.93 HOST 02:00:00:00:0a:02 one ARP
+  67.93 SNAP refused
+  68.01   ROW {"authorized": "02:00:00:00:0a:01", "failures": "8", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+  68.01   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  68.01   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+  68.01   LEARN appl=cpu_trap config=drop
+  68.02   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  68.03   INPUT -j DUI_DOT1X
+  68.06   PIDS l2d=122850 hostapd=120110
+  68.07   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  68.07 STEP gone during a stop
+  68.07 HOST 02:00:00:00:0a:03 sending (an ARP every 2 s)
+  68.19 CHAIN 
+  68.20 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  68.22 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  68.23 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  71.07 HOST 02:00:00:00:0a:03 silent
+  71.07 SNAP C again
+  71.07   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "8", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  71.07   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  71.07   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  71.07   LEARN appl=cpu_trap config=drop
+  71.08   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  71.09   INPUT -j DUI_DOT1X
+  71.12   PIDS l2d=122850 hostapd=120110
+  71.13   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  91.07 SNAP before stop
+  91.07   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "8", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  91.08   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  91.08   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  91.08   LEARN appl=cpu_trap config=drop
+  91.09   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  91.10   INPUT -j DUI_DOT1X
+  91.14   PIDS l2d=122850 hostapd=120110
+  91.15   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  91.15 L2D stop
+  91.32 L2D stop done, pid 0
+ 116.32 SNAP stopped 25 s
+ 116.32   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "8", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+ 116.33   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 116.33   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 116.33   LEARN appl=cpu_trap config=drop
+ 116.34   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 116.34   INPUT -j DUI_DOT1X
+ 116.37   PIDS l2d=0 hostapd=120110
+ 116.38   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 116.38 L2D start
+ 116.45 L2D start done, pid 138975
+ 117.50 CHAIN 
+ 117.52 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 117.54 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 117.58 CHAIN 
+ 117.60 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 117.62 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ 117.64 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 117.66 CHAIN 
+ 117.68 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 117.70 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 117.71 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ 117.73 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 119.45 SNAP start +3
+ 119.45   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "13", "last_failed_mac": "02:00:00:00:0c:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+ 119.45   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 119.45   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 119.46   LEARN appl=cpu_trap config=drop
+ 119.47   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 119.48   INPUT -j DUI_DOT1X
+ 119.51   PIDS l2d=138975 hostapd=120110
+ 119.51   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 119.51   STA 0 ""
+ 158.62 CHAIN 
+ 158.64 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 158.65 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 158.67 WAIT C revoked: yes
+ 158.67 SNAP after C
+ 158.67   ROW {"authorized": "02:00:00:00:0a:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 158.68   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 158.68   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 158.68   LEARN appl=cpu_trap config=drop
+ 158.69   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 158.69   INPUT -j DUI_DOT1X
+ 158.72   PIDS l2d=138975 hostapd=120110
+ 158.75   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 158.75 STEP link lost during a stop
+ 158.75 L2D stop
+ 158.90 L2D stop done, pid 0
+ 159.78 LOOP off
+ 162.78 L2D start
+ 162.85 L2D start done, pid 146631
+ 163.85 SNAP start +1 (no link)
+ 163.85   ROW {"authorized": "02:00:00:00:0a:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 163.85   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 163.85   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 163.85   LEARN appl=cpu_trap config=drop
+ 163.87 CHAIN 
+ 163.87   CHAIN 
+ 163.89   INPUT -j DUI_DOT1X
+ 163.89 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 163.91 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 163.94   PIDS l2d=146631 hostapd=120110
+ 163.95   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 163.95 CHAIN 
+ 163.97 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 163.99 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ 164.00 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 166.28 CHAIN 
+ 166.29 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 166.31 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 166.95 SNAP start +4 (no link)
+ 166.95   ROW {"authorized": "", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "mac_based"}
+ 166.95   APPL FDB []
+ 166.95   ASIC FDB []
+ 166.95   LEARN appl=cpu_trap config=drop
+ 166.96   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 166.97   INPUT -j DUI_DOT1X
+ 167.01   PIDS l2d=146631 hostapd=120110
+ 167.08   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 168.02 LOOP on
+ 168.10 WAIT link up: yes
+ 168.12 WAIT blocked by STP (looped): yes
+ 168.22 CHAIN 
+ 168.24 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 168.26 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 168.27 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ 168.29 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 174.12 SNAP link back
+ 174.12   ROW {"authorized": "02:00:00:00:0a:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 174.12   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 174.12   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 174.12   LEARN appl=cpu_trap config=drop
+ 174.13   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 174.14   INPUT -j DUI_DOT1X
+ 174.17   PIDS l2d=146631 hostapd=120110
+ 174.18   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 174.18 STEP credentials
+ 174.18 HOST 02:00:00:00:0a:01 silent
+ 174.18 CONF dot1x {"servers": [{"ip": "127.0.0.1", "port": 18120}], "nas_ip": "127.0.0.1", "ports": {"Ethernet116": "auto"}, "idle_timeout": {"Ethernet116": 40}}
+ 174.18 L2D reload
+ 174.29 L2D reload done, pid 146631
+ 174.49 CHAIN 
+ 174.51 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 174.53 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 178.29 SNAP credentials start
+ 178.29   ROW {"authorized": "", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "auto"}
+ 178.29   APPL FDB []
+ 178.29   ASIC FDB []
+ 178.30   LEARN appl=drop config=drop
+ 178.31   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 178.32   INPUT -j DUI_DOT1X
+ 178.35   PIDS l2d=146631 hostapd=120110
+ 178.36   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 178.36   STA 0 ""
+ 178.38 SUPP tx EAPOL-Start 02:00:00:00:0b:01
+ 178.38 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:0b:01
+ 178.38 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 178.38 SUPP rx EAP-Request/Identity id 1
+ 178.38 SUPP tx EAP-Response type 1 id 1
+ 178.38 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+ 178.38 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 178.38 SUPP rx EAP-Request/Identity id 22
+ 178.38 SUPP tx EAP-Response type 1 id 22
+ 178.38 SUPP rx EAP-Request/MD5-Challenge id 2
+ 178.38 SUPP tx EAP-Response type 4 id 2
+ 178.38 EV <3>CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:0b:01
+ 178.38 EV <3>AP-STA-CONNECTED 02:00:00:00:0b:01
+ 178.38 SUPP rx EAP-Success id 2
+ 178.41 CHAIN 
+ 178.43 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 178.45 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 181.38 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 181.38 SUPP rx EAP-Request/Identity id 22
+ 181.38 SUPP tx EAP-Response type 1 id 22
+ 187.38 SUPP rx EAP-Request/Identity id 22
+ 187.38 SUPP tx EAP-Response type 1 id 22
+ 187.39 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 195.48 SNAP opened
+ 195.48   ROW {"authorized": "02:00:00:00:0b:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "auto"}
+ 195.48   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 195.48   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 195.48   LEARN appl=hardware config=drop
+ 195.49   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 195.50   INPUT -j DUI_DOT1X
+ 195.53   PIDS l2d=146631 hostapd=120110
+ 195.53   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 195.54   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=3\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2810\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=E79AFCB16B0538B4\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 195.54   STA 1 "02:00:00:00:0b:01\nflags=[AUTHORIZED]\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=5\ndot1xAuthBackendAuthState=6\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=1\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=1\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=2\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2810\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=EFD98B0CB931B14A\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 195.54   STA 2 ""
+ 195.54 STEP credentials restart
+ 195.54 L2D restart
+ 195.67 L2D restart done, pid 152951
+ 196.75 CHAIN 
+ 196.76 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 196.78 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 196.80 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 196.83 CHAIN 
+ 196.85 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 196.87 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 198.67 SNAP credentials restart +3
+ 198.67   ROW {"authorized": "02:00:00:00:0b:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "auto"}
+ 198.67   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 198.67   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 198.67   LEARN appl=hardware config=drop
+ 198.68   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 198.69   INPUT -j DUI_DOT1X
+ 198.72   PIDS l2d=152951 hostapd=120110
+ 198.72   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 198.72   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=3\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2813\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=E79AFCB16B0538B4\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 198.72   STA 1 "02:00:00:00:0b:01\nflags=[AUTHORIZED]\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=5\ndot1xAuthBackendAuthState=6\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=1\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=1\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=2\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2813\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=EFD98B0CB931B14A\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 198.72   STA 2 ""
+ 199.39 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 203.72 SNAP credentials restart +8
+ 203.73   ROW {"authorized": "02:00:00:00:0b:01", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "auto"}
+ 203.73   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 203.73   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 203.73   LEARN appl=hardware config=drop
+ 203.74   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 203.75   INPUT -j DUI_DOT1X
+ 203.78   PIDS l2d=152951 hostapd=120110
+ 203.78   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 203.78 STEP logoff
+ 203.79 SUPP tx EAPOL-Logoff 02:00:00:00:0b:01
+ 203.79 EV <3>AP-STA-DISCONNECTED 02:00:00:00:0b:01
+ 203.79 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:0b:01
+ 203.79 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 203.83 CHAIN 
+ 203.85 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 203.87 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 203.89 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 206.79 SNAP logoff
+ 206.79   ROW {"authorized": "", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": "auto"}
+ 206.79   APPL FDB []
+ 206.79   ASIC FDB []
+ 206.79   LEARN appl=drop config=drop
+ 206.80   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 206.81   INPUT -j DUI_DOT1X
+ 206.84   PIDS l2d=152951 hostapd=120110
+ 206.84   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 206.84   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=8\ndot1xAuthEapolFramesTx=4\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=4\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=4\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2822\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=E79AFCB16B0538B4\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 206.84   STA 1 "02:00:00:00:0b:01\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=REMOVE\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=1\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=7\ndot1xAuthEapolFramesTx=4\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=1\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=2\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=2\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=1\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=2822\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=EFD98B0CB931B14A\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 206.84   STA 2 ""
+ 206.84 RESTORE
+ 207.77 LOOP off
+ 209.98 EV <3>AP-DISABLED
+ 209.98 EV <3>CTRL-EVENT-TERMINATING
+ 210.07 CHAIN 
+ 210.10 CHAIN (none)
+ 214.87 SNAP restored
+ 214.87   ROW {"authorized": "", "failures": "65", "last_failed_mac": "02:00:00:00:0c:03", "mab": "", "mode": ""}
+ 214.87   APPL FDB []
+ 214.87   ASIC FDB []
+ 214.88   LEARN appl=hardware config=hardware
+ 214.88   CHAIN (none)
+ 214.89   INPUT 
+ 214.92   PIDS l2d=152951 hostapd=-
+ 214.93   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 214.95   learn after hdel: appl=hardware
+ 217.07   after: learn appl=hardware config=None chain=(none) copp={} hostapd=156149 /bin/sh -c pgrep -af 'hostapd' || true
+ 217.07 DONE
+@@@ run1_monitor
+   4.24 db4 "hset" "PORT|Ethernet116" "learn_mode" "drop"
+   4.24 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "9" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0" "learn_mode" "drop"
+   4.25 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "INSERTED"
+   4.25 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+   4.26 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+   4.28 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "REMOVED"
+   5.28 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "up"
+   5.28 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "3" "last_up_time" "Sun Nov 15 21:06:45 2026"
+   5.29 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+   5.29 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+   5.29 db6 "HSET" "PORT_TABLE|Ethernet116" "speed" "100000"
+   5.30 db6 "HSET" "PORT_TABLE|Ethernet116" "fec" "none"
+   6.84 db4 "HSET" "COPP_TRAP|dui_eapol" "trap_ids" "eapol" "trap_group" "queue4_group1" "always_enabled" "true"
+   6.84 db6 "HSET" "COPP_TRAP_TABLE|dui_eapol" "state" "ok"
+   6.87 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "cpu_trap"
+   6.89 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "4" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+   7.04 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+  10.02 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "6" "last_failed_mac" "02:00:00:00:0a:02" "mab" ""
+  10.40 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+  10.41 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+  10.41 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+  10.42 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+  10.42 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+  10.42 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+  10.49 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "6" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01"
+  10.50 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  10.50 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+  10.50 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+  10.50 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+  10.51 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+  10.51 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  10.58 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "6" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  24.39 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+  24.47 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  37.02 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "7" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  64.94 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:03" "''" "''"
+  64.94 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+  64.95 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03"
+  64.95 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+  64.95 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+  64.95 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:03\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+  65.02 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "7" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01"
+  65.28 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "8" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01"
+  68.41 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  68.41 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+  68.42 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+  68.42 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+  68.42 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+  68.42 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  68.49 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "8" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 117.80 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 117.89 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+ 118.33 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "9" "last_failed_mac" "02:00:00:00:0c:04" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 119.19 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "10" "last_failed_mac" "02:00:00:00:0c:05" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 119.19 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "11" "last_failed_mac" "02:00:00:00:0c:06" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 119.20 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "12" "last_failed_mac" "02:00:00:00:0c:07" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 119.25 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "13" "last_failed_mac" "02:00:00:00:0c:02" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 126.98 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "14" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 127.52 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "15" "last_failed_mac" "02:00:00:00:0c:08" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 127.71 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "16" "last_failed_mac" "02:00:00:00:0c:09" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 127.96 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "17" "last_failed_mac" "02:00:00:00:0c:0a" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.46 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "18" "last_failed_mac" "02:00:00:00:0c:0b" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.54 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "19" "last_failed_mac" "02:00:00:00:0c:0c" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.58 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "20" "last_failed_mac" "02:00:00:00:0c:0d" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.64 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "21" "last_failed_mac" "02:00:00:00:0c:0e" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.70 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "22" "last_failed_mac" "02:00:00:00:0c:0f" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 128.89 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "23" "last_failed_mac" "02:00:00:00:0c:10" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 129.33 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "24" "last_failed_mac" "02:00:00:00:0c:11" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 129.56 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "25" "last_failed_mac" "02:00:00:00:0c:12" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 129.71 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "26" "last_failed_mac" "02:00:00:00:0c:13" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 129.79 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "27" "last_failed_mac" "02:00:00:00:0c:14" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 129.97 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "28" "last_failed_mac" "02:00:00:00:0c:15" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.04 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "29" "last_failed_mac" "02:00:00:00:0c:16" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.07 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "30" "last_failed_mac" "02:00:00:00:0c:17" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.34 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "31" "last_failed_mac" "02:00:00:00:0c:18" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.43 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "32" "last_failed_mac" "02:00:00:00:0c:19" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.47 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "33" "last_failed_mac" "02:00:00:00:0c:1a" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 130.58 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "34" "last_failed_mac" "02:00:00:00:0c:1b" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.08 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "35" "last_failed_mac" "02:00:00:00:0c:1c" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.09 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "36" "last_failed_mac" "02:00:00:00:0c:1d" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.20 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "37" "last_failed_mac" "02:00:00:00:0c:1e" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.36 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "38" "last_failed_mac" "02:00:00:00:0c:1f" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.37 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "39" "last_failed_mac" "02:00:00:00:0c:20" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.56 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "40" "last_failed_mac" "02:00:00:00:0c:21" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.87 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "41" "last_failed_mac" "02:00:00:00:0c:22" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 131.97 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "42" "last_failed_mac" "02:00:00:00:0c:23" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 132.48 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "43" "last_failed_mac" "02:00:00:00:0c:24" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 132.71 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "44" "last_failed_mac" "02:00:00:00:0c:25" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 132.71 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "45" "last_failed_mac" "02:00:00:00:0c:26" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 132.95 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "46" "last_failed_mac" "02:00:00:00:0c:27" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 133.39 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "47" "last_failed_mac" "02:00:00:00:0c:28" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 133.81 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "48" "last_failed_mac" "02:00:00:00:0c:29" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.05 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "49" "last_failed_mac" "02:00:00:00:0c:2a" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.32 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "50" "last_failed_mac" "02:00:00:00:0c:2b" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.43 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "51" "last_failed_mac" "02:00:00:00:0c:2c" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.56 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "52" "last_failed_mac" "02:00:00:00:0c:2d" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.57 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "53" "last_failed_mac" "02:00:00:00:0c:2e" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.72 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "54" "last_failed_mac" "02:00:00:00:0c:2f" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.97 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "55" "last_failed_mac" "02:00:00:00:0c:30" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 134.99 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "56" "last_failed_mac" "02:00:00:00:0c:31" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 135.18 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "57" "last_failed_mac" "02:00:00:00:0c:32" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 135.46 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "58" "last_failed_mac" "02:00:00:00:0c:33" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 136.05 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "59" "last_failed_mac" "02:00:00:00:0c:34" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 136.69 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "60" "last_failed_mac" "02:00:00:00:0c:35" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 137.09 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "61" "last_failed_mac" "02:00:00:00:0c:36" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 149.01 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "62" "last_failed_mac" "02:00:00:00:0c:37" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 157.00 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "63" "last_failed_mac" "02:00:00:00:0c:38" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 157.47 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "64" "last_failed_mac" "02:00:00:00:0c:39" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 158.11 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+ 158.85 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:03" "''" "''"
+ 158.86 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 158.86 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 158.86 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03"
+ 158.86 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 158.86 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:03\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 158.92 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" "02:00:00:00:0a:01"
+ 160.03 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "down"
+ 160.03 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "4" "last_down_time" "Sun Nov 15 21:09:20 2026"
+ 160.04 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 160.05 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 160.05 db6 "HSET" "PORT_OPERR_TABLE|Ethernet116" "oper_error_status" "1" "oper_error_status_time" "2026-11-15 21:09:20" "mac_local_fault_count" "2" "mac_local_fault_time" "2026-11-15 21:09:20"
+ 164.17 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 166.50 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:01" "''" "''"
+ 166.50 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 166.51 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 166.51 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01"
+ 166.51 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 166.51 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 166.58 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" ""
+ 168.28 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "up"
+ 168.28 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "5" "last_up_time" "Sun Nov 15 21:09:28 2026"
+ 168.38 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+ 168.38 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+ 168.39 db6 "HSET" "PORT_TABLE|Ethernet116" "speed" "100000"
+ 168.40 db6 "HSET" "PORT_TABLE|Ethernet116" "fec" "none"
+ 168.43 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 168.55 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" "02:00:00:00:0a:01"
+ 168.56 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+ 168.56 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+ 168.56 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+ 168.56 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+ 168.56 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 174.71 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "drop"
+ 174.71 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:01" "''" "''"
+ 174.74 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 174.74 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 174.74 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01"
+ 174.74 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 174.74 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 174.81 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" ""
+ 178.65 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "G" "Vlan4094:02:00:00:00:0b:01" "port" "Ethernet116" "type" "static"
+ 178.65 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+ 178.66 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+ 178.66 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0b:01" "port" "Ethernet116" "type" "static"
+ 178.66 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+ 178.66 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+ 178.70 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "hardware"
+ 178.71 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "02:00:00:00:0b:01" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" ""
+ 197.06 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "G" "Vlan4094:02:00:00:00:0b:01" "port" "Ethernet116" "type" "static"
+ 204.05 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0b:01" "''" "''"
+ 204.05 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 204.06 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "drop"
+ 204.06 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 204.06 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0b:01"
+ 204.06 db0 "PUBLISH" "FLUSHFDBREQUEST" "[\"PORT\",\"Ethernet116\"]"
+ 204.07 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 204.07 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0B:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 204.14 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" ""
+ 208.02 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "down"
+ 208.02 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "6" "last_down_time" "Sun Nov 15 21:10:08 2026"
+ 208.03 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 208.04 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 208.06 db6 "HSET" "PORT_OPERR_TABLE|Ethernet116" "oper_error_status" "1" "oper_error_status_time" "2026-11-15 21:10:08" "mac_local_fault_count" "3" "mac_local_fault_time" "2026-11-15 21:10:08"
+ 208.07 db4 "hset" "PORT|Ethernet116" "learn_mode" "hardware"
+ 208.08 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "9" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0" "learn_mode" "hardware"
+ 208.09 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+ 208.11 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+ 208.11 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "INSERTED"
+ 208.12 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "REMOVED"
+ 210.37 db4 "DEL" "COPP_TRAP|dui_eapol"
+ 210.37 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "" "authorized" "" "failures" "65" "last_failed_mac" "02:00:00:00:0c:03" "mab" ""
+ 210.37 db6 "DEL" "COPP_TRAP_TABLE|dui_eapol"
+ 215.21 db4 "hdel" "PORT|Ethernet116" "learn_mode"
+ 215.21 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "8" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0"
+ 215.22 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+ 215.23 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+@@@ run1_radius
+   7.04 REQ id=2 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+  10.02 REQ code=1 id=3 auth=b9ada9d6-58cd7f5c-395462e3-3c04bf42
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A02
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-02
+       attr Called-Station-Id 02-00-00-00-00-02
+  10.02 ANS id=3 reject 0303002ca151f3174f1fcefd2fd6271e38c883e050125852e3a3ee07d867431d484572aad7ad4f0604000004
+  10.40 REQ code=1 id=4 auth=2990195e-9317a238-ca5f39f6-82b1d268
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+  10.40 ANS id=4 accept 02040026502c37722574c247f089480cd3934fe85012607244f06c02caca077bb87a78c71e3d
+  10.50 REQ code=1 id=5 auth=a15b0296-a73c7b9f-5004d8ed-dd39d1cc
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A03
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-03
+       attr Called-Station-Id 02-00-00-00-00-02
+  10.50 ANS id=5 accept 02050026aa17c2628aa3d3b8ed6c33dfb39f6a9650127e29b709c1b9963c2b879e2c9acd4560
+  37.02 REQ id=0 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+  65.20 REQ code=1 id=1 auth=ebf534eb-1d09a86f-3f9164d8-8091b8d2
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A02
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-02
+       attr Called-Station-Id 02-00-00-00-00-02
+  65.20 ANS id=1 reject 0301002cb173c2d595529bf7789c97c743b93a545012c0d26c017a493d3c25f72ce59f27aec14f0604000004
+  68.41 REQ code=1 id=2 auth=e60c381b-6c210e12-5bd7823f-468521e4
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A03
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-03
+       attr Called-Station-Id 02-00-00-00-00-02
+  68.41 ANS id=2 accept 02020026b8d4c0e4e61ee6d048f8d972acbe4170501245795eb7447a2db959aee9cefe797fc1
+ 118.33 REQ id=0 for 02:00:00:00:0c:04 (a LAN source's multicast, back round the loop): reject
+ 119.18 REQ id=1 for 02:00:00:00:0c:05 (a LAN source's multicast, back round the loop): reject
+ 119.18 REQ id=2 for 02:00:00:00:0c:06 (a LAN source's multicast, back round the loop): reject
+ 119.20 REQ id=3 for 02:00:00:00:0c:07 (a LAN source's multicast, back round the loop): reject
+ 119.24 REQ id=4 for 02:00:00:00:0c:02 (a LAN source's multicast, back round the loop): reject
+ 126.98 REQ id=5 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+ 127.52 REQ id=6 for 02:00:00:00:0c:08 (a LAN source's multicast, back round the loop): reject
+ 127.71 REQ id=7 for 02:00:00:00:0c:09 (a LAN source's multicast, back round the loop): reject
+ 127.96 REQ id=8 for 02:00:00:00:0c:0a (a LAN source's multicast, back round the loop): reject
+ 128.46 REQ id=9 for 02:00:00:00:0c:0b (a LAN source's multicast, back round the loop): reject
+ 128.54 REQ id=10 for 02:00:00:00:0c:0c (a LAN source's multicast, back round the loop): reject
+ 128.57 REQ id=11 for 02:00:00:00:0c:0d (a LAN source's multicast, back round the loop): reject
+ 128.64 REQ id=12 for 02:00:00:00:0c:0e (a LAN source's multicast, back round the loop): reject
+ 128.70 REQ id=13 for 02:00:00:00:0c:0f (a LAN source's multicast, back round the loop): reject
+ 128.88 REQ id=14 for 02:00:00:00:0c:10 (a LAN source's multicast, back round the loop): reject
+ 129.32 REQ id=15 for 02:00:00:00:0c:11 (a LAN source's multicast, back round the loop): reject
+ 129.56 REQ id=16 for 02:00:00:00:0c:12 (a LAN source's multicast, back round the loop): reject
+ 129.70 REQ id=17 for 02:00:00:00:0c:13 (a LAN source's multicast, back round the loop): reject
+ 129.79 REQ id=18 for 02:00:00:00:0c:14 (a LAN source's multicast, back round the loop): reject
+ 129.97 REQ id=19 for 02:00:00:00:0c:15 (a LAN source's multicast, back round the loop): reject
+ 130.03 REQ id=20 for 02:00:00:00:0c:16 (a LAN source's multicast, back round the loop): reject
+ 130.07 REQ id=21 for 02:00:00:00:0c:17 (a LAN source's multicast, back round the loop): reject
+ 130.34 REQ id=22 for 02:00:00:00:0c:18 (a LAN source's multicast, back round the loop): reject
+ 130.43 REQ id=23 for 02:00:00:00:0c:19 (a LAN source's multicast, back round the loop): reject
+ 130.47 REQ id=24 for 02:00:00:00:0c:1a (a LAN source's multicast, back round the loop): reject
+ 130.58 REQ id=25 for 02:00:00:00:0c:1b (a LAN source's multicast, back round the loop): reject
+ 131.08 REQ id=26 for 02:00:00:00:0c:1c (a LAN source's multicast, back round the loop): reject
+ 131.08 REQ id=27 for 02:00:00:00:0c:1d (a LAN source's multicast, back round the loop): reject
+ 131.19 REQ id=28 for 02:00:00:00:0c:1e (a LAN source's multicast, back round the loop): reject
+ 131.28 REQ id=29 for 02:00:00:00:0c:1f (a LAN source's multicast, back round the loop): reject
+ 131.37 REQ id=30 for 02:00:00:00:0c:20 (a LAN source's multicast, back round the loop): reject
+ 131.56 REQ id=31 for 02:00:00:00:0c:21 (a LAN source's multicast, back round the loop): reject
+ 131.87 REQ id=32 for 02:00:00:00:0c:22 (a LAN source's multicast, back round the loop): reject
+ 131.96 REQ id=33 for 02:00:00:00:0c:23 (a LAN source's multicast, back round the loop): reject
+ 132.47 REQ id=34 for 02:00:00:00:0c:24 (a LAN source's multicast, back round the loop): reject
+ 132.70 REQ id=35 for 02:00:00:00:0c:25 (a LAN source's multicast, back round the loop): reject
+ 132.71 REQ id=36 for 02:00:00:00:0c:26 (a LAN source's multicast, back round the loop): reject
+ 132.95 REQ id=37 for 02:00:00:00:0c:27 (a LAN source's multicast, back round the loop): reject
+ 133.39 REQ id=38 for 02:00:00:00:0c:28 (a LAN source's multicast, back round the loop): reject
+ 133.81 REQ id=39 for 02:00:00:00:0c:29 (a LAN source's multicast, back round the loop): reject
+ 134.05 REQ id=40 for 02:00:00:00:0c:2a (a LAN source's multicast, back round the loop): reject
+ 134.32 REQ id=41 for 02:00:00:00:0c:2b (a LAN source's multicast, back round the loop): reject
+ 134.42 REQ id=42 for 02:00:00:00:0c:2c (a LAN source's multicast, back round the loop): reject
+ 134.56 REQ id=43 for 02:00:00:00:0c:2d (a LAN source's multicast, back round the loop): reject
+ 134.56 REQ id=44 for 02:00:00:00:0c:2e (a LAN source's multicast, back round the loop): reject
+ 134.72 REQ id=45 for 02:00:00:00:0c:2f (a LAN source's multicast, back round the loop): reject
+ 134.96 REQ id=46 for 02:00:00:00:0c:30 (a LAN source's multicast, back round the loop): reject
+ 134.99 REQ id=47 for 02:00:00:00:0c:31 (a LAN source's multicast, back round the loop): reject
+ 135.18 REQ id=48 for 02:00:00:00:0c:32 (a LAN source's multicast, back round the loop): reject
+ 135.45 REQ id=49 for 02:00:00:00:0c:33 (a LAN source's multicast, back round the loop): reject
+ 136.05 REQ id=50 for 02:00:00:00:0c:34 (a LAN source's multicast, back round the loop): reject
+ 136.69 REQ id=51 for 02:00:00:00:0c:35 (a LAN source's multicast, back round the loop): reject
+ 137.09 REQ id=52 for 02:00:00:00:0c:36 (a LAN source's multicast, back round the loop): reject
+ 149.01 REQ id=53 for 02:00:00:00:0c:37 (a LAN source's multicast, back round the loop): reject
+ 156.99 REQ id=54 for 02:00:00:00:0c:38 (a LAN source's multicast, back round the loop): reject
+ 157.46 REQ id=55 for 02:00:00:00:0c:39 (a LAN source's multicast, back round the loop): reject
+ 158.11 REQ id=56 for 02:00:00:00:0c:03 (a LAN source's multicast, back round the loop): reject
+ 168.43 REQ code=1 id=0 auth=808ed224-18992239-6aa356c0-b97dc6bc
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+ 168.43 ANS id=0 accept 020000266a0201ae3c21bbf50980b01240f79b6b50129628c20a4b7fcd4e5fe47747eaa228c0
+ 178.65 REQ code=1 id=0 auth=2e46b7e8-8ef0e0d5-89c13c56-4a65c863
+       attr Message-Authenticator <16 bytes>
+       attr User-Name dui-user
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr Called-Station-Id 02-00-00-00-00-02:
+       attr NAS-Port-Type 19
+       attr Service-Type 2
+       attr Calling-Station-Id 02-00-00-00-0B-01
+       attr 77 <21 bytes>
+       attr 12 <4 bytes>
+       attr 79 <13 bytes>
+ 178.65 ANS id=0 challenge 0b000044d8a12d5ef9c82cdecb285452f3b459ed5012adb98f2e764c067b1374a8c5e0d7911b1806000000044f180102001604109585d0af33f77abc90f6c80fc9652721
+ 178.65 REQ code=1 id=1 auth=dbc71ec1-e71ecd5d-5201182c-ab7bc08c
+       attr Message-Authenticator <16 bytes>
+       attr User-Name dui-user
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr Called-Station-Id 02-00-00-00-00-02:
+       attr NAS-Port-Type 19
+       attr Service-Type 2
+       attr Calling-Station-Id 02-00-00-00-0B-01
+       attr 77 <21 bytes>
+       attr 12 <4 bytes>
+       attr 79 <22 bytes>
+       attr 24 <4 bytes>
+ 178.65 ANS id=1 accept 0201002c9723f4e23825aca1675543a9b9c623255012c98e8b76fdece295d701ffa52c9f1f894f0603020004
+@@@ run1_journal
+ -29.49 802.1X: authenticator on Ethernet116 stopped
+ -29.35 802.1X: kernel bridge rules removed
+ -29.35 802.1X: EAPOL trap removed
+   6.84 802.1X: EAPOL trapped to the CPU
+   6.86 802.1X: authenticator started on Ethernet116 (mac_based, 1 RADIUS servers)
+   6.87 802.1X: Ethernet116 authenticates by MAC address (unknown sources trapped to the CPU)
+   7.04 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+   7.04 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (5 failures on this port since boot)
+  10.02 802.1X: 02:00:00:00:0a:02 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  10.02 802.1X: 02:00:00:00:0a:02 refused by its MAC address on Ethernet116 (6 failures on this port since boot)
+  10.40 802.1X: 02:00:00:00:0a:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  10.49 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address
+  10.50 802.1X: 02:00:00:00:0a:03 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  10.58 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address
+  23.61 started
+  24.47 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address, kept over a restart
+  24.47 802.1X: Ethernet116 authenticates by MAC address (unknown sources trapped to the CPU)
+  24.55 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address, kept over a restart
+  37.02 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  37.02 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (7 failures on this port since boot)
+  65.02 802.1X: 02:00:00:00:0a:03 no longer authorised on Ethernet116 (idle for 40s)
+  65.20 802.1X: 02:00:00:00:0a:02 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  65.20 802.1X: 02:00:00:00:0a:02 refused by its MAC address on Ethernet116 (8 failures on this port since boot)
+  68.41 802.1X: 02:00:00:00:0a:03 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  68.49 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address
+ 117.03 started
+ 117.89 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address, kept over a restart
+ 117.89 802.1X: Ethernet116 authenticates by MAC address (unknown sources trapped to the CPU)
+ 117.98 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address, kept over a restart
+ 118.33 802.1X: 02:00:00:00:0c:04 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 118.33 802.1X: 02:00:00:00:0c:04 refused by its MAC address on Ethernet116 (9 failures on this port since boot)
+ 119.18 802.1X: 02:00:00:00:0c:05 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 119.18 802.1X: 02:00:00:00:0c:06 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 119.18 802.1X: 02:00:00:00:0c:05 refused by its MAC address on Ethernet116 (10 failures on this port since boot)
+ 119.19 802.1X: 02:00:00:00:0c:06 refused by its MAC address on Ethernet116 (11 failures on this port since boot)
+ 119.20 802.1X: 02:00:00:00:0c:07 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 119.20 802.1X: 02:00:00:00:0c:07 refused by its MAC address on Ethernet116 (12 failures on this port since boot)
+ 119.24 802.1X: 02:00:00:00:0c:02 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 119.24 802.1X: 02:00:00:00:0c:02 refused by its MAC address on Ethernet116 (13 failures on this port since boot)
+ 126.98 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 126.98 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (14 failures on this port since boot)
+ 127.52 802.1X: 02:00:00:00:0c:08 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 127.52 802.1X: 02:00:00:00:0c:08 refused by its MAC address on Ethernet116 (15 failures on this port since boot)
+ 127.71 802.1X: 02:00:00:00:0c:09 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 127.71 802.1X: 02:00:00:00:0c:09 refused by its MAC address on Ethernet116 (16 failures on this port since boot)
+ 127.95 802.1X: 02:00:00:00:0c:0a on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 127.96 802.1X: 02:00:00:00:0c:0a refused by its MAC address on Ethernet116 (17 failures on this port since boot)
+ 128.45 802.1X: 02:00:00:00:0c:0b on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.46 802.1X: 02:00:00:00:0c:0b refused by its MAC address on Ethernet116 (18 failures on this port since boot)
+ 128.54 802.1X: 02:00:00:00:0c:0c on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.54 802.1X: 02:00:00:00:0c:0c refused by its MAC address on Ethernet116 (19 failures on this port since boot)
+ 128.57 802.1X: 02:00:00:00:0c:0d on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.58 802.1X: 02:00:00:00:0c:0d refused by its MAC address on Ethernet116 (20 failures on this port since boot)
+ 128.64 802.1X: 02:00:00:00:0c:0e on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.64 802.1X: 02:00:00:00:0c:0e refused by its MAC address on Ethernet116 (21 failures on this port since boot)
+ 128.70 802.1X: 02:00:00:00:0c:0f on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.70 802.1X: 02:00:00:00:0c:0f refused by its MAC address on Ethernet116 (22 failures on this port since boot)
+ 128.88 802.1X: 02:00:00:00:0c:10 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 128.88 802.1X: 02:00:00:00:0c:10 refused by its MAC address on Ethernet116 (23 failures on this port since boot)
+ 129.32 802.1X: 02:00:00:00:0c:11 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 129.33 802.1X: 02:00:00:00:0c:11 refused by its MAC address on Ethernet116 (24 failures on this port since boot)
+ 129.56 802.1X: 02:00:00:00:0c:12 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 129.56 802.1X: 02:00:00:00:0c:12 refused by its MAC address on Ethernet116 (25 failures on this port since boot)
+ 129.70 802.1X: 02:00:00:00:0c:13 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 129.71 802.1X: 02:00:00:00:0c:13 refused by its MAC address on Ethernet116 (26 failures on this port since boot)
+ 129.79 802.1X: 02:00:00:00:0c:14 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 129.79 802.1X: 02:00:00:00:0c:14 refused by its MAC address on Ethernet116 (27 failures on this port since boot)
+ 129.97 802.1X: 02:00:00:00:0c:15 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 129.97 802.1X: 02:00:00:00:0c:15 refused by its MAC address on Ethernet116 (28 failures on this port since boot)
+ 130.03 802.1X: 02:00:00:00:0c:16 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.03 802.1X: 02:00:00:00:0c:16 refused by its MAC address on Ethernet116 (29 failures on this port since boot)
+ 130.07 802.1X: 02:00:00:00:0c:17 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.07 802.1X: 02:00:00:00:0c:17 refused by its MAC address on Ethernet116 (30 failures on this port since boot)
+ 130.34 802.1X: 02:00:00:00:0c:18 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.34 802.1X: 02:00:00:00:0c:18 refused by its MAC address on Ethernet116 (31 failures on this port since boot)
+ 130.42 802.1X: 02:00:00:00:0c:19 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.43 802.1X: 02:00:00:00:0c:19 refused by its MAC address on Ethernet116 (32 failures on this port since boot)
+ 130.47 802.1X: 02:00:00:00:0c:1a on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.47 802.1X: 02:00:00:00:0c:1a refused by its MAC address on Ethernet116 (33 failures on this port since boot)
+ 130.57 802.1X: 02:00:00:00:0c:1b on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 130.58 802.1X: 02:00:00:00:0c:1b refused by its MAC address on Ethernet116 (34 failures on this port since boot)
+ 131.08 802.1X: 02:00:00:00:0c:1c on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.08 802.1X: 02:00:00:00:0c:1d on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.08 802.1X: 02:00:00:00:0c:1c refused by its MAC address on Ethernet116 (35 failures on this port since boot)
+ 131.08 802.1X: 02:00:00:00:0c:1d refused by its MAC address on Ethernet116 (36 failures on this port since boot)
+ 131.19 802.1X: 02:00:00:00:0c:1e on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.19 802.1X: 02:00:00:00:0c:1e refused by its MAC address on Ethernet116 (37 failures on this port since boot)
+ 131.28 802.1X: 02:00:00:00:0c:1f on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.28 802.1X: 02:00:00:00:0c:1f refused by its MAC address on Ethernet116 (38 failures on this port since boot)
+ 131.37 802.1X: 02:00:00:00:0c:20 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.37 802.1X: 02:00:00:00:0c:20 refused by its MAC address on Ethernet116 (39 failures on this port since boot)
+ 131.56 802.1X: 02:00:00:00:0c:21 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.56 802.1X: 02:00:00:00:0c:21 refused by its MAC address on Ethernet116 (40 failures on this port since boot)
+ 131.86 802.1X: 02:00:00:00:0c:22 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.87 802.1X: 02:00:00:00:0c:22 refused by its MAC address on Ethernet116 (41 failures on this port since boot)
+ 131.96 802.1X: 02:00:00:00:0c:23 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 131.96 802.1X: 02:00:00:00:0c:23 refused by its MAC address on Ethernet116 (42 failures on this port since boot)
+ 132.47 802.1X: 02:00:00:00:0c:24 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 132.47 802.1X: 02:00:00:00:0c:24 refused by its MAC address on Ethernet116 (43 failures on this port since boot)
+ 132.70 802.1X: 02:00:00:00:0c:25 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 132.71 802.1X: 02:00:00:00:0c:25 refused by its MAC address on Ethernet116 (44 failures on this port since boot)
+ 132.71 802.1X: 02:00:00:00:0c:26 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 132.71 802.1X: 02:00:00:00:0c:26 refused by its MAC address on Ethernet116 (45 failures on this port since boot)
+ 132.95 802.1X: 02:00:00:00:0c:27 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 132.95 802.1X: 02:00:00:00:0c:27 refused by its MAC address on Ethernet116 (46 failures on this port since boot)
+ 133.39 802.1X: 02:00:00:00:0c:28 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 133.39 802.1X: 02:00:00:00:0c:28 refused by its MAC address on Ethernet116 (47 failures on this port since boot)
+ 133.81 802.1X: 02:00:00:00:0c:29 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 133.81 802.1X: 02:00:00:00:0c:29 refused by its MAC address on Ethernet116 (48 failures on this port since boot)
+ 134.05 802.1X: 02:00:00:00:0c:2a on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.05 802.1X: 02:00:00:00:0c:2a refused by its MAC address on Ethernet116 (49 failures on this port since boot)
+ 134.32 802.1X: 02:00:00:00:0c:2b on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.32 802.1X: 02:00:00:00:0c:2b refused by its MAC address on Ethernet116 (50 failures on this port since boot)
+ 134.42 802.1X: 02:00:00:00:0c:2c on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.43 802.1X: 02:00:00:00:0c:2c refused by its MAC address on Ethernet116 (51 failures on this port since boot)
+ 134.56 802.1X: 02:00:00:00:0c:2d on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.56 802.1X: 02:00:00:00:0c:2d refused by its MAC address on Ethernet116 (52 failures on this port since boot)
+ 134.56 802.1X: 02:00:00:00:0c:2e on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.56 802.1X: 02:00:00:00:0c:2e refused by its MAC address on Ethernet116 (53 failures on this port since boot)
+ 134.72 802.1X: 02:00:00:00:0c:2f on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.72 802.1X: 02:00:00:00:0c:2f refused by its MAC address on Ethernet116 (54 failures on this port since boot)
+ 134.96 802.1X: 02:00:00:00:0c:30 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.96 802.1X: 02:00:00:00:0c:30 refused by its MAC address on Ethernet116 (55 failures on this port since boot)
+ 134.99 802.1X: 02:00:00:00:0c:31 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 134.99 802.1X: 02:00:00:00:0c:31 refused by its MAC address on Ethernet116 (56 failures on this port since boot)
+ 135.18 802.1X: 02:00:00:00:0c:32 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 135.18 802.1X: 02:00:00:00:0c:32 refused by its MAC address on Ethernet116 (57 failures on this port since boot)
+ 135.45 802.1X: 02:00:00:00:0c:33 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 135.45 802.1X: 02:00:00:00:0c:33 refused by its MAC address on Ethernet116 (58 failures on this port since boot)
+ 136.05 802.1X: 02:00:00:00:0c:34 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 136.05 802.1X: 02:00:00:00:0c:34 refused by its MAC address on Ethernet116 (59 failures on this port since boot)
+ 136.69 802.1X: 02:00:00:00:0c:35 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 136.69 802.1X: 02:00:00:00:0c:35 refused by its MAC address on Ethernet116 (60 failures on this port since boot)
+ 137.08 802.1X: 02:00:00:00:0c:36 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 137.09 802.1X: 02:00:00:00:0c:36 refused by its MAC address on Ethernet116 (61 failures on this port since boot)
+ 149.01 802.1X: 02:00:00:00:0c:37 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 149.01 802.1X: 02:00:00:00:0c:37 refused by its MAC address on Ethernet116 (62 failures on this port since boot)
+ 156.99 802.1X: 02:00:00:00:0c:38 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 157.00 802.1X: 02:00:00:00:0c:38 refused by its MAC address on Ethernet116 (63 failures on this port since boot)
+ 157.46 802.1X: 02:00:00:00:0c:39 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 157.46 802.1X: 02:00:00:00:0c:39 refused by its MAC address on Ethernet116 (64 failures on this port since boot)
+ 158.11 802.1X: 02:00:00:00:0c:03 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 158.11 802.1X: 02:00:00:00:0c:03 refused by its MAC address on Ethernet116 (65 failures on this port since boot)
+ 158.92 802.1X: 02:00:00:00:0a:03 no longer authorised on Ethernet116 (idle for 40s)
+ 163.48 started
+ 164.26 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address, kept over a restart
+ 164.27 802.1X: Ethernet116 authenticates by MAC address (unknown sources trapped to the CPU)
+ 166.57 802.1X: 02:00:00:00:0a:01 no longer authorised on Ethernet116 (link down)
+ 168.43 802.1X: 02:00:00:00:0a:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 168.55 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address
+ 174.79 802.1X: 02:00:00:00:0a:01 no longer authorised on Ethernet116 (no longer authenticated by MAC address)
+ 178.70 802.1X: 02:00:00:00:0b:01 authorised on Ethernet116
+ 178.70 802.1X: Ethernet116 open to every host (Credentials: 02:00:00:00:0b:01 authenticated)
+ 196.38 started
+ 197.13 802.1X: 02:00:00:00:0b:01 authorised on Ethernet116
+ 197.13 802.1X: Ethernet116 open to every host (Credentials: 02:00:00:00:0b:01 authenticated)
+ 204.06 802.1X: Ethernet116 closed again (no host authenticated); its learnt addresses flushed
+ 204.14 802.1X: 02:00:00:00:0b:01 no longer authorised on Ethernet116 (logged off or timed out)
+ 210.24 802.1X: authenticator on Ethernet116 stopped
+ 210.36 802.1X: kernel bridge rules removed
+ 210.37 802.1X: EAPOL trap removed
+@@@ run4
+   0.05 START run4 2026-11-15T21:26:59Z epoch 1794778019.912 own 02:00:00:00:00:02 l2d this-change
+   3.84 RADIUS UNCONN 0      0            0.0.0.0:18120      0.0.0.0:*    users:(("hostapd",pid=242861,fd=4))
+   3.96 WAIT APPL learn drop: yes
+   4.82 LOOP on
+   4.82 WAIT link up: yes
+   5.82 WAIT blocked by STP (looped): yes
+   5.83 STEP mab start
+   5.83 CONF dot1x {"servers": [{"ip": "127.0.0.1", "port": 18120}], "nas_ip": "127.0.0.1", "ports": {"Ethernet116": "mac_based"}, "idle_timeout": {"Ethernet116": 40}}
+   5.83 L2D reload
+   5.84 CHAIN (none)
+   5.94 L2D reload done, pid 242651
+   6.21 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+   6.23 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+   6.27 WAIT cpu_trap: yes
+   6.27 WAIT hostapd: yes
+   6.33 EVMON attached
+   8.27 SNAP mab start
+   8.27   ROW {"authorized": "", "failures": "0", "last_failed_mac": "", "mab": "", "mode": "mac_based"}
+   8.27   APPL FDB []
+   8.27   ASIC FDB []
+   8.28   LEARN appl=cpu_trap config=drop
+   8.29   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+   8.29   INPUT -j DUI_DOT1X
+   8.30   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+   8.34   PIDS l2d=242651 hostapd=243147
+   8.34   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+   8.34   STA 0 ""
+   8.34 STEP admit
+   8.34 HOST 02:00:00:00:0a:01 sending (an ARP every 2 s)
+   8.34 HOST 02:00:00:00:0a:03 sending (an ARP every 2 s)
+   9.34 HOST 02:00:00:00:0a:02 one ARP
+   9.83 HOST tx 02:00:00:00:0a:01
+   9.83 HOST tx 02:00:00:00:0a:03
+   9.87 CHAIN 
+   9.88 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+   9.90 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+   9.94 CHAIN 
+   9.95 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+   9.97 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+   9.99 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  11.83 HOST tx 02:00:00:00:0a:01
+  11.83 HOST tx 02:00:00:00:0a:03
+  13.83 HOST tx 02:00:00:00:0a:01
+  13.83 HOST tx 02:00:00:00:0a:03
+  14.34 SNAP admitted
+  14.34   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  14.35   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  14.35   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  14.35   LEARN appl=cpu_trap config=drop
+  14.36   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  14.37   INPUT -j DUI_DOT1X
+  14.38   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  14.40   PIDS l2d=242651 hostapd=243147
+  14.41   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  14.41 HOST 02:00:00:00:0a:03 silent
+  15.83 HOST tx 02:00:00:00:0a:01
+  17.83 HOST tx 02:00:00:00:0a:01
+  19.83 HOST tx 02:00:00:00:0a:01
+  21.83 HOST tx 02:00:00:00:0a:01
+  22.41 STEP restart
+  22.41 SNAP before restart
+  22.41   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "2", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  22.41   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  22.41   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  22.41   LEARN appl=cpu_trap config=drop
+  22.42   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  22.43   INPUT -j DUI_DOT1X
+  22.44   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  22.47   PIDS l2d=242651 hostapd=243147
+  22.47   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  22.47   STA 0 ""
+  22.47 L2D restart
+  22.61 L2D restart done, pid 245780
+  23.79 CHAIN 
+  23.81 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  23.83 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+  23.83 HOST tx 02:00:00:00:0a:01
+  23.85 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+  23.86 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  25.61 SNAP restart +3
+  25.61   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "2", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  25.62   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  25.62   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  25.62   LEARN appl=cpu_trap config=drop
+  25.63   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  25.64   INPUT -j DUI_DOT1X
+  25.64   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  25.67   PIDS l2d=245780 hostapd=243147
+  25.68   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  25.68   STA 0 ""
+  25.83 HOST tx 02:00:00:00:0a:01
+  27.83 HOST tx 02:00:00:00:0a:01
+  29.83 HOST tx 02:00:00:00:0a:01
+  30.68 SNAP restart +8
+  30.68   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "2", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  30.69   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  30.69   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  30.70   LEARN appl=cpu_trap config=drop
+  30.71   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  30.72   INPUT -j DUI_DOT1X
+  30.73   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  30.75   PIDS l2d=245780 hostapd=243147
+  30.76   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  31.83 HOST tx 02:00:00:00:0a:01
+  33.83 HOST tx 02:00:00:00:0a:01
+  35.83 HOST tx 02:00:00:00:0a:01
+  37.83 HOST tx 02:00:00:00:0a:01
+  39.83 HOST tx 02:00:00:00:0a:01
+  41.83 HOST tx 02:00:00:00:0a:01
+  43.84 HOST tx 02:00:00:00:0a:01
+  45.84 HOST tx 02:00:00:00:0a:01
+  47.84 HOST tx 02:00:00:00:0a:01
+  49.84 HOST tx 02:00:00:00:0a:01
+  51.84 HOST tx 02:00:00:00:0a:01
+  53.84 HOST tx 02:00:00:00:0a:01
+  53.98 CHAIN 
+  54.00 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  54.01 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+  54.03 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  54.06 WAIT C idle: yes
+  54.06 SNAP C idle
+  54.07   ROW {"authorized": "02:00:00:00:0a:01", "failures": "3", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+  54.16   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  54.16   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+  54.16   LEARN appl=cpu_trap config=drop
+  54.17   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  54.18   INPUT -j DUI_DOT1X
+  54.19   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  54.22   PIDS l2d=245780 hostapd=243147
+  54.23   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  54.23 STEP refused after restart
+  54.23 HOST 02:00:00:00:0a:02 one ARP
+  55.84 HOST tx 02:00:00:00:0a:01
+  57.23 SNAP refused
+  57.23   ROW {"authorized": "02:00:00:00:0a:01", "failures": "4", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+  57.23   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  57.23   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+  57.23   LEARN appl=cpu_trap config=drop
+  57.24   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  57.25   INPUT -j DUI_DOT1X
+  57.26   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  57.29   PIDS l2d=245780 hostapd=243147
+  57.29   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  57.29 STEP gone during a stop
+  57.29 HOST 02:00:00:00:0a:03 sending (an ARP every 2 s)
+  57.83 HOST tx 02:00:00:00:0a:03
+  57.84 HOST tx 02:00:00:00:0a:01
+  57.88 CHAIN 
+  57.89 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+  57.91 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+  57.92 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  59.83 HOST tx 02:00:00:00:0a:03
+  59.84 HOST tx 02:00:00:00:0a:01
+  60.29 HOST 02:00:00:00:0a:03 silent
+  60.29 SNAP C again
+  60.29   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "4", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  60.30   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  60.30   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  60.30   LEARN appl=cpu_trap config=drop
+  60.31   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  60.32   INPUT -j DUI_DOT1X
+  60.33   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  60.38   PIDS l2d=245780 hostapd=243147
+  60.39   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  61.84 HOST tx 02:00:00:00:0a:01
+  63.84 HOST tx 02:00:00:00:0a:01
+  65.84 HOST tx 02:00:00:00:0a:01
+  67.84 HOST tx 02:00:00:00:0a:01
+  69.84 HOST tx 02:00:00:00:0a:01
+  71.84 HOST tx 02:00:00:00:0a:01
+  73.84 HOST tx 02:00:00:00:0a:01
+  75.84 HOST tx 02:00:00:00:0a:01
+  77.84 HOST tx 02:00:00:00:0a:01
+  79.84 HOST tx 02:00:00:00:0a:01
+  80.29 SNAP before stop
+  80.29   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "4", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mode": "mac_based"}
+  80.30   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+  80.30   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+  80.30   LEARN appl=cpu_trap config=drop
+  80.31   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+  80.32   INPUT -j DUI_DOT1X
+  80.32   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+  80.35   PIDS l2d=245780 hostapd=243147
+  80.36   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+  80.36 L2D stop
+  80.50 L2D stop done, pid 0
+  81.84 HOST tx 02:00:00:00:0a:01
+  83.84 HOST tx 02:00:00:00:0a:01
+  85.84 HOST tx 02:00:00:00:0a:01
+  87.84 HOST tx 02:00:00:00:0a:01
+  89.84 HOST tx 02:00:00:00:0a:01
+  91.84 HOST tx 02:00:00:00:0a:01
+  93.84 HOST tx 02:00:00:00:0a:01
+  95.85 HOST tx 02:00:00:00:0a:01
+  97.85 HOST tx 02:00:00:00:0a:01
+  99.85 HOST tx 02:00:00:00:0a:01
+ 101.85 HOST tx 02:00:00:00:0a:01
+ 103.85 HOST tx 02:00:00:00:0a:01
+ 105.50 SNAP stopped 25 s
+ 105.50   ROW {"authorized": "02:00:00:00:0a:01,02:00:00:00:0a:03", "failures": "4", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01,02:00:00:00:0a:03", "mab_seen": "02:00:00:00:0a:01=1794778099.8,02:00:00:00:0a:03=1794778079.7", "mode": "mac_based"}
+ 105.51   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}", "FDB_TABLE:Vlan4094:02:00:00:00:0a:03 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 105.51   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC", "02:00:00:00:0A:03 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 105.51   LEARN appl=cpu_trap config=drop
+ 105.52   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 105.53   INPUT -j DUI_DOT1X
+ 105.54   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 105.57   PIDS l2d=0 hostapd=243147
+ 105.57   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 105.57 L2D start
+ 105.65 L2D start done, pid 260535
+ 105.85 HOST tx 02:00:00:00:0a:01
+ 106.88 CHAIN 
+ 106.90 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 106.92 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 106.93 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ 106.95 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 107.85 HOST tx 02:00:00:00:0a:01
+ 108.65 SNAP start +3
+ 108.65   ROW {"authorized": "02:00:00:00:0a:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 108.65   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 108.65   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 108.65   LEARN appl=cpu_trap config=drop
+ 108.66   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 108.67   INPUT -j DUI_DOT1X
+ 108.68   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 108.71   PIDS l2d=260535 hostapd=243147
+ 108.72   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 108.73   STA 0 ""
+ 108.73 WAIT C revoked: yes
+ 108.73 SNAP after C
+ 108.73   ROW {"authorized": "02:00:00:00:0a:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 108.73   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 108.73   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 108.73   LEARN appl=cpu_trap config=drop
+ 108.74   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 108.75   INPUT -j DUI_DOT1X
+ 108.77   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 108.80   PIDS l2d=260535 hostapd=243147
+ 108.81   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 108.81 STEP link lost during a stop
+ 108.81 L2D stop
+ 108.98 L2D stop done, pid 0
+ 109.85 HOST tx 02:00:00:00:0a:01
+ 110.03 LOOP off
+ 111.85 HOST tx 02:00:00:00:0a:01
+ 113.03 L2D start
+ 113.09 L2D start done, pid 261844
+ 113.85 HOST tx 02:00:00:00:0a:01
+ 114.04 CHAIN 
+ 114.06 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 114.08 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 114.09 SNAP start +1 (no link)
+ 114.10   ROW {"authorized": "02:00:00:00:0a:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 114.21   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 114.21   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 114.21   LEARN appl=cpu_trap config=drop
+ 114.23   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 114.25   INPUT -j DUI_DOT1X
+ 114.27   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 114.30   PIDS l2d=261844 hostapd=243147
+ 114.31   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 115.85 HOST tx 02:00:00:00:0a:01
+ 117.31 SNAP start +4 (no link)
+ 117.31   ROW {"authorized": "", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "mac_based"}
+ 117.31   APPL FDB []
+ 117.31   ASIC FDB []
+ 117.31   LEARN appl=cpu_trap config=drop
+ 117.33   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 117.34   INPUT -j DUI_DOT1X
+ 117.35   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 117.38   PIDS l2d=261844 hostapd=243147
+ 117.39   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 117.85 HOST tx 02:00:00:00:0a:01
+ 118.29 LOOP on
+ 118.30 WAIT link up: yes
+ 118.31 WAIT blocked by STP (looped): yes
+ 119.85 HOST tx 02:00:00:00:0a:01
+ 119.90 CHAIN 
+ 119.92 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 119.93 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 121.86 HOST tx 02:00:00:00:0a:01
+ 123.86 HOST tx 02:00:00:00:0a:01
+ 124.31 SNAP link back
+ 124.31   ROW {"authorized": "02:00:00:00:0a:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 124.32   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0a:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 124.32   ASIC FDB ["02:00:00:00:0A:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 124.32   LEARN appl=cpu_trap config=drop
+ 124.33   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+ 124.34   INPUT -j DUI_DOT1X
+ 124.35   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 124.38   PIDS l2d=261844 hostapd=243147
+ 124.39   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 124.39 STEP credentials
+ 124.39 HOST 02:00:00:00:0a:01 silent
+ 124.39 CONF dot1x {"servers": [{"ip": "127.0.0.1", "port": 18120}], "nas_ip": "127.0.0.1", "ports": {"Ethernet116": "auto"}, "idle_timeout": {"Ethernet116": 40}}
+ 124.39 L2D reload
+ 124.48 L2D reload done, pid 261844
+ 124.63 CHAIN 
+ 124.65 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 124.67 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 128.48 SNAP credentials start
+ 128.48   ROW {"authorized": "", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "auto"}
+ 128.48   APPL FDB []
+ 128.48   ASIC FDB []
+ 128.49   LEARN appl=drop config=drop
+ 128.50   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 128.51   INPUT -j DUI_DOT1X
+ 128.52   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 128.54   PIDS l2d=261844 hostapd=243147
+ 128.55   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 128.55   STA 0 ""
+ 128.57 SUPP tx EAPOL-Start 02:00:00:00:0b:01
+ 128.57 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:0b:01
+ 128.57 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 128.57 SUPP rx EAP-Request/Identity id 1
+ 128.57 SUPP tx EAP-Response type 1 id 1
+ 128.57 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+ 128.57 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 128.57 SUPP rx EAP-Request/Identity id 22
+ 128.57 SUPP tx EAP-Response type 1 id 22
+ 128.58 SUPP rx EAP-Request/MD5-Challenge id 2
+ 128.58 SUPP tx EAP-Response type 4 id 2
+ 128.58 SUPP rx EAP-Success id 2
+ 128.58 EV <3>CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:0b:01
+ 128.58 EV <3>AP-STA-CONNECTED 02:00:00:00:0b:01
+ 128.62 CHAIN 
+ 128.63 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 128.65 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 131.57 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 131.57 SUPP rx EAP-Request/Identity id 22
+ 131.57 SUPP tx EAP-Response type 1 id 22
+ 137.58 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 137.58 SUPP rx EAP-Request/Identity id 22
+ 137.58 SUPP tx EAP-Response type 1 id 22
+ 146.09 SNAP opened
+ 146.09   ROW {"authorized": "02:00:00:00:0b:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "auto"}
+ 146.09   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 146.09   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 146.09   LEARN appl=hardware config=drop
+ 146.11   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 146.12   INPUT -j DUI_DOT1X
+ 146.13   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 146.15   PIDS l2d=261844 hostapd=243147
+ 146.21   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 146.22   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=3\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3981\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=91C84551B5D72830\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 146.22   STA 1 "02:00:00:00:0b:01\nflags=[AUTHORIZED]\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=5\ndot1xAuthBackendAuthState=6\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=1\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=1\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=2\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3981\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=5FE2309AD4B1AAA1\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 146.22   STA 2 ""
+ 146.22 STEP credentials restart
+ 146.22 L2D restart
+ 146.35 L2D restart done, pid 267196
+ 147.47 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ 147.49 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 149.35 SNAP credentials restart +3
+ 149.35   ROW {"authorized": "02:00:00:00:0b:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "auto"}
+ 149.35   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 149.35   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 149.36   LEARN appl=hardware config=drop
+ 149.37   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 149.38   INPUT -j DUI_DOT1X
+ 149.39   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 149.43   PIDS l2d=267196 hostapd=243147
+ 149.44   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 149.44   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=3\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3984\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=91C84551B5D72830\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 149.44   STA 1 "02:00:00:00:0b:01\nflags=[AUTHORIZED]\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=5\ndot1xAuthBackendAuthState=6\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=1\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=6\ndot1xAuthEapolFramesTx=3\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=1\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=2\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3984\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=5FE2309AD4B1AAA1\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 149.44   STA 2 ""
+ 149.59 EV <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+ 154.45 SNAP credentials restart +8
+ 154.45   ROW {"authorized": "02:00:00:00:0b:01", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "auto"}
+ 154.45   APPL FDB ["FDB_TABLE:Vlan4094:02:00:00:00:0b:01 {\"port\": \"Ethernet116\", \"type\": \"static\"}"]
+ 154.45   ASIC FDB ["02:00:00:00:0B:01 SAI_FDB_ENTRY_TYPE_STATIC"]
+ 154.45   LEARN appl=hardware config=drop
+ 154.47   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j RETURN
+ 154.49   INPUT -j DUI_DOT1X
+ 154.50   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 154.54   PIDS l2d=267196 hostapd=243147
+ 154.55   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 154.56 STEP logoff
+ 154.56 SUPP tx EAPOL-Logoff 02:00:00:00:0b:01
+ 154.56 EV <3>AP-STA-DISCONNECTED 02:00:00:00:0b:01
+ 154.56 EV <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:0b:01
+ 154.56 EV <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+ 154.64 CHAIN 
+ 154.66 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT
+ 154.67 CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 157.56 SNAP logoff
+ 157.56   ROW {"authorized": "", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": "auto"}
+ 157.56   APPL FDB []
+ 157.56   ASIC FDB []
+ 157.56   LEARN appl=drop config=drop
+ 157.57   CHAIN -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+ 157.58   INPUT -j DUI_DOT1X
+ 157.59   FORWARD -j DUI_DOT1X | -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 157.61   PIDS l2d=267196 hostapd=243147
+ 157.62   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":1500,"master":"Bridge","state":"blocking","priority":32,"cost":1}] appl4094=1
+ 157.62   STA 0 "02:00:00:00:00:02\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=NULLFUNC POLL\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=4\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=8\ndot1xAuthEapolFramesTx=4\ndot1xAuthEapolStartFramesRx=0\ndot1xAuthEapolLogoffFramesRx=0\ndot1xAuthEapolRespIdFramesRx=0\ndot1xAuthEapolRespFramesRx=0\ndot1xAuthEapolReqIdFramesTx=4\ndot1xAuthEapolReqFramesTx=0\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:00:02\ndot1xAuthEntersConnecting=1\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=0\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=0\ndot1xAuthBackendResponses=0\ndot1xAuthBackendAccessChallenges=0\ndot1xAuthBackendOtherRequestsToSupplicant=4\ndot1xAuthBackendAuthSuccesses=0\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3992\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=N/A\nauthMultiSessionId=91C84551B5D72830\nlast_eap_type_as=0 (unknown)\nlast_eap_type_sta=0 (unknown)\n"
+ 157.62   STA 1 "02:00:00:00:0b:01\nflags=\naid=0\ncapability=0x0\nlisten_interval=0\nsupported_rates=\ntimeout_next=REMOVE\ndot1xPaePortNumber=0\ndot1xPaePortProtocolVersion=2\ndot1xPaePortCapabilities=1\ndot1xPaePortInitialize=0\ndot1xPaePortReauthenticate=FALSE\ndot1xAuthPaeState=1\ndot1xAuthBackendAuthState=1\ndot1xAuthAdminControlledDirections=0\ndot1xAuthOperControlledDirections=0\ndot1xAuthAuthControlledPortStatus=2\ndot1xAuthAuthControlledPortControl=2\ndot1xAuthQuietPeriod=60\ndot1xAuthServerTimeout=30\ndot1xAuthReAuthPeriod=3600\ndot1xAuthReAuthEnabled=TRUE\ndot1xAuthKeyTxEnabled=FALSE\ndot1xAuthEapolFramesRx=7\ndot1xAuthEapolFramesTx=4\ndot1xAuthEapolStartFramesRx=1\ndot1xAuthEapolLogoffFramesRx=1\ndot1xAuthEapolRespIdFramesRx=1\ndot1xAuthEapolRespFramesRx=5\ndot1xAuthEapolReqIdFramesTx=2\ndot1xAuthEapolReqFramesTx=2\ndot1xAuthInvalidEapolFramesRx=0\ndot1xAuthEapLengthErrorFramesRx=0\ndot1xAuthLastEapolFrameVersion=2\ndot1xAuthLastEapolFrameSource=02:00:00:00:0b:01\ndot1xAuthEntersConnecting=2\ndot1xAuthEapLogoffsWhileConnecting=0\ndot1xAuthEntersAuthenticating=0\ndot1xAuthAuthSuccessesWhileAuthenticating=1\ndot1xAuthAuthTimeoutsWhileAuthenticating=0\ndot1xAuthAuthFailWhileAuthenticating=0\ndot1xAuthAuthEapStartsWhileAuthenticating=0\ndot1xAuthAuthEapLogoffWhileAuthenticating=0\ndot1xAuthAuthReauthsWhileAuthenticated=0\ndot1xAuthAuthEapStartsWhileAuthenticated=0\ndot1xAuthAuthEapLogoffWhileAuthenticated=1\ndot1xAuthBackendResponses=2\ndot1xAuthBackendAccessChallenges=1\ndot1xAuthBackendOtherRequestsToSupplicant=3\ndot1xAuthBackendAuthSuccesses=1\ndot1xAuthBackendAuthFails=0\ndot1xAuthSessionId=0000000000000000\ndot1xAuthSessionAuthenticMethod=1\ndot1xAuthSessionTime=3992\ndot1xAuthSessionTerminateCause=999\ndot1xAuthSessionUserName=dui-user\nauthMultiSessionId=5FE2309AD4B1AAA1\nlast_eap_type_as=4 (MD5)\nlast_eap_type_sta=1 (Identity)\n"
+ 157.62   STA 2 ""
+ 157.62 RESTORE
+ 158.51 LOOP off
+ 160.80 EV <3>AP-DISABLED
+ 160.80 EV <3>CTRL-EVENT-TERMINATING
+ 160.89 CHAIN 
+ 160.92 CHAIN (none)
+ 165.63 SNAP restored
+ 165.63   ROW {"authorized": "", "failures": "5", "last_failed_mac": "02:00:00:00:0c:01", "mab": "", "mode": ""}
+ 165.64   APPL FDB []
+ 165.64   ASIC FDB []
+ 165.65   LEARN appl=hardware config=hardware
+ 165.66   CHAIN (none)
+ 165.67   INPUT 
+ 165.68   FORWARD -d BGA -j DROP | -p ARP -j DROP | -p 802_1Q --vlan-encap 0806 -j DROP | -d Multicast -j DROP
+ 165.71   PIDS l2d=267196 hostapd=-
+ 165.72   STP kernel=[{"ifindex":48,"ifname":"Ethernet116","flags":["NO-CARRIER","BROADCAST","MULTICAST","UP"],"mtu":1500,"master":"Bridge","state":"disabled","priority":32,"cost":1}] appl4094=0
+ 165.74   learn after hdel: appl=hardware
+ 167.95   after: learn appl=hardware config=None chain=(none) copp={} hostapd=268264 bash -c sleep 50; cd /tmp/dui-mabr; pgrep -f rig.py >/dev/null && echo running || echo ended; grep "DONE\|ERROR\|WATCHDOG\|after:" run4.txt | cut -c1-120; pgrep -af "redis-cli -s|tcpdump|hostapd" | grep -v pgrep || echo clean; head -n 1 run4.txt; sudo journalctl -u disunified-l2d --since "2026-11-15 14:26:50" --until "2026-11-15 14:30:30" -o short-iso-precise --no-pager > run4-journal.txt; sudo chmod a+r run4*; sudo install -m 0755 -o root -g root disunified-l2d.deployed /usr/local/sbin/disunified-l2d; md5sum /usr/local/sbin/disunified-l2d; sudo systemctl restart disunified-l2d; sleep 4; sudo systemctl start disunified; sleep 3; systemctl is-active disunified disunified-l2d
+271407 /bin/sh -c pgrep -af 'hostapd' || true
+ 167.95 DONE
+@@@ run4_monitor
+   3.86 db4 "hset" "PORT|Ethernet116" "learn_mode" "drop"
+   3.86 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "INSERTED"
+   3.86 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "9" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0" "learn_mode" "drop"
+   3.87 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+   3.87 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "REMOVED"
+   3.88 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+   4.80 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "up"
+   4.80 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "15" "last_up_time" "Sun Nov 15 21:27:04 2026"
+   4.81 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+   4.82 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+   4.84 db6 "HSET" "PORT_TABLE|Ethernet116" "speed" "100000"
+   4.84 db6 "HSET" "PORT_TABLE|Ethernet116" "fec" "none"
+   6.24 db4 "HSET" "COPP_TRAP|dui_eapol" "trap_ids" "eapol" "trap_group" "queue4_group1" "always_enabled" "true"
+   6.25 db6 "HSET" "COPP_TRAP_TABLE|dui_eapol" "state" "ok"
+   6.27 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "cpu_trap"
+   6.29 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "0" "last_failed_mac" "" "mab" ""
+   9.35 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "1" "last_failed_mac" "02:00:00:00:0a:02" "mab" ""
+   9.83 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+   9.83 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+   9.83 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+   9.83 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+   9.83 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+   9.84 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+   9.90 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "1" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01"
+   9.90 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+   9.90 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+   9.91 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+   9.91 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+   9.91 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+   9.91 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+   9.97 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "1" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  17.29 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "2" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  22.49 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen" "02:00:00:00:0a:01=1794778041.7,02:00:00:00:0a:03=1794778033.7"
+  22.95 db6 "HDEL" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen"
+  47.27 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "3" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  53.95 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:03" "''" "''"
+  53.95 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+  53.95 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+  53.95 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03"
+  53.96 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+  53.96 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:03\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+  54.02 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "3" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01"
+  54.23 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "4" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01"
+  57.84 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "G" "Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  57.84 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+  57.84 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+  57.84 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+  57.84 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03" "port" "Ethernet116" "type" "static"
+  57.84 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+  57.92 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01,02:00:00:00:0a:03" "failures" "4" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01,02:00:00:00:0a:03"
+  80.38 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen" "02:00:00:00:0a:01=1794778099.8,02:00:00:00:0a:03=1794778079.7"
+ 105.98 db6 "HDEL" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen"
+ 106.84 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:03" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:03" "''" "''"
+ 106.96 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "4" "last_failed_mac" "02:00:00:00:0a:02" "mab" "02:00:00:00:0a:01"
+ 107.07 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 107.07 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 107.07 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:03"
+ 107.11 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:03\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 107.14 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:03\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 107.25 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01"
+ 108.83 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen" "02:00:00:00:0a:01=1794778127.8"
+ 110.01 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "down"
+ 110.01 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "16" "last_down_time" "Sun Nov 15 21:28:49 2026"
+ 110.02 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 110.03 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 110.04 db6 "HSET" "PORT_OPERR_TABLE|Ethernet116" "oper_error_status" "1" "oper_error_status_time" "2026-11-15 21:28:49" "mac_local_fault_count" "8" "mac_local_fault_time" "2026-11-15 21:28:49"
+ 113.40 db6 "HDEL" "DUI_DOT1X_TABLE|Ethernet116" "mab_seen"
+ 114.00 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:01" "''" "''"
+ 114.11 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+ 114.69 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 114.70 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 114.70 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01"
+ 114.70 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 114.70 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 118.27 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "up"
+ 118.28 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "17" "last_up_time" "Sun Nov 15 21:28:58 2026"
+ 118.29 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+ 118.30 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "up" "admin_status" "up" "mtu" "1500"
+ 118.31 db6 "HSET" "PORT_TABLE|Ethernet116" "speed" "100000"
+ 118.32 db6 "HSET" "PORT_TABLE|Ethernet116" "fec" "none"
+ 119.86 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "G" "Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 119.86 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+ 119.86 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+ 119.86 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+ 119.86 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01" "port" "Ethernet116" "type" "static"
+ 119.86 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+ 119.93 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "mac_based" "authorized" "02:00:00:00:0a:01" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" "02:00:00:00:0a:01"
+ 124.58 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "drop"
+ 124.58 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0a:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0a:01" "''" "''"
+ 124.59 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 124.60 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 124.60 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0a:01"
+ 124.60 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0A:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 124.60 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0A:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 124.68 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+ 128.58 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "G" "Vlan4094:02:00:00:00:0b:01" "port" "Ethernet116" "type" "static"
+ 128.58 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "[\"SAI_FDB_ENTRY_ATTR_TYPE\",\"SAI_FDB_ENTRY_TYPE_STATIC\",\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"oid:0x3a000000000672\",\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"SAI_PACKET_ACTION_FORWARD\"]" "Screate" "G"
+ 128.58 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_TYPE" "SAI_FDB_ENTRY_TYPE_STATIC"
+ 128.59 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID" "oid:0x3a000000000672"
+ 128.59 db6 "HSET" "FDB_TABLE|Vlan4094:02:00:00:00:0b:01" "port" "Ethernet116" "type" "static"
+ 128.59 db1 "HSET" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "SAI_FDB_ENTRY_ATTR_PACKET_ACTION" "SAI_PACKET_ACTION_FORWARD"
+ 128.64 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "hardware"
+ 128.65 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "02:00:00:00:0b:01" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+ 154.56 db0 "EVALSHA" "88ba6312b8de850b3506966425174d8899aadd93" "4" "FDB_TABLE_CHANNEL@0" "FDB_TABLE_KEY_SET" "_FDB_TABLE:Vlan4094:02:00:00:00:0b:01" "FDB_TABLE_DEL_SET" "G" "Vlan4094:02:00:00:00:0b:01" "''" "''"
+ 154.57 db1 "EVALSHA" "d171e04fd79e95ca2287f3b067c46ae76a82208b" "2" "ASIC_STATE_KEY_VALUE_OP_QUEUE" "ASIC_STATE_CHANNEL@1" "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}" "{}" "Dremove" "G"
+ 154.57 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "learn_mode" "drop"
+ 154.58 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 154.58 db6 "DEL" "FDB_TABLE|Vlan4094:02:00:00:00:0b:01"
+ 154.58 db0 "PUBLISH" "FLUSHFDBREQUEST" "[\"PORT\",\"Ethernet116\"]"
+ 154.58 db1 "DEL" "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x260000000005d6\",\"mac\":\"02:00:00:00:0B:01\",\"switch_id\":\"oid:0x21000000000000\"}"
+ 154.58 db1 "PUBLISH" "NOTIFICATIONS" "[\"fdb_event\",\"[{\\\"fdb_entry\\\":\\\"{\\\\\\\"bvid\\\\\\\":\\\\\\\"oid:0x260000000005d6\\\\\\\",\\\\\\\"mac\\\\\\\":\\\\\\\"02:00:00:00:0B:01\\\\\\\",\\\\\\\"switch_id\\\\\\\":\\\\\\\"oid:0x21000000000000\\\\\\\"}\\\",\\\"fdb_event\\\":\\\"SAI_FDB_EVENT_AGED\\\",\\\"list\\\":[{\\\"id\\\":\\\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\\\",\\\"value\\\":\\\"oid:0x3a000000000672\\\"}]}]\"]"
+ 154.67 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "auto" "authorized" "" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+ 158.49 db0 "HSET" "PORT_TABLE:Ethernet116" "oper_status" "down"
+ 158.49 db0 "HSET" "PORT_TABLE:Ethernet116" "flap_count" "18" "last_down_time" "Sun Nov 15 21:29:38 2026"
+ 158.50 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 158.51 db6 "HSET" "PORT_TABLE|Ethernet116" "state" "ok" "netdev_oper_status" "down" "admin_status" "up" "mtu" "1500"
+ 158.53 db6 "HSET" "PORT_OPERR_TABLE|Ethernet116" "oper_error_status" "1" "oper_error_status_time" "2026-11-15 21:29:38" "mac_local_fault_count" "9" "mac_local_fault_time" "2026-11-15 21:29:38"
+ 158.55 db4 "hset" "PORT|Ethernet116" "learn_mode" "hardware"
+ 158.56 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "9" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0" "learn_mode" "hardware"
+ 158.57 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+ 158.59 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+ 158.62 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "INSERTED"
+ 158.64 db6 "HSET" "TRANSCEIVER_STATUS_SW|Ethernet116" "cmis_state" "REMOVED"
+ 160.92 db4 "DEL" "COPP_TRAP|dui_eapol"
+ 160.92 db6 "HSET" "DUI_DOT1X_TABLE|Ethernet116" "mode" "" "authorized" "" "failures" "5" "last_failed_mac" "02:00:00:00:0c:01" "mab" ""
+ 160.93 db6 "DEL" "COPP_TRAP_TABLE|dui_eapol"
+ 165.74 db4 "hdel" "PORT|Ethernet116" "learn_mode"
+ 165.74 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "8" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "alias" "Eth30" "dhcp_rate_limit" "300" "index" "30" "lanes" "117,118,119,120" "speed" "100000" "subport" "0"
+ 165.75 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "mtu" "1500"
+ 165.76 db0 "EVALSHA" "c7faa1a7e03275dadf2e8be09c0b6208cebff3f5" "3" "PORT_TABLE_CHANNEL@0" "PORT_TABLE_KEY_SET" "_PORT_TABLE:Ethernet116" "G" "Ethernet116" "admin_status" "up"
+@@@ run4_radius
+   9.34 REQ code=1 id=0 auth=55f74d13-0fca476f-c97bea11-55b0c2ab
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A02
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-02
+       attr Called-Station-Id 02-00-00-00-00-02
+   9.34 ANS id=0 reject 0300002cf0ad59dd9d642422579d669785942e7550124898dbe00bceb0b55c6aa95e79f720014f0604000004
+   9.83 REQ code=1 id=1 auth=b71c53e2-1403d463-db23fbc9-18b85da9
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+   9.83 ANS id=1 accept 02010026d997e796a578fa79671a43649a313f0b50122cc5892d282c1505ef7bc1a0c63fa62b
+   9.90 REQ code=1 id=2 auth=a2d31635-9b75c0af-2a16f6ca-624b2344
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A03
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-03
+       attr Called-Station-Id 02-00-00-00-00-02
+   9.90 ANS id=2 accept 02020026c3369fe60707e04a3fd0057a114348bc5012390cc1f2f6d822e008fac641e5d80b56
+  17.28 REQ id=3 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+  47.27 REQ id=0 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+  54.23 REQ code=1 id=1 auth=ced3c948-efc8ef60-b6ae69a9-42435a92
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A02
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-02
+       attr Called-Station-Id 02-00-00-00-00-02
+  54.23 ANS id=1 reject 0301002c1008122a9b725eb7cc7fa8db2035b36b50122d16424804404cd67ec72602132fd60f4f0604000004
+  57.83 REQ code=1 id=2 auth=3a747ca9-188583d8-6dc43abc-fc6e673b
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A03
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-03
+       attr Called-Station-Id 02-00-00-00-00-02
+  57.84 ANS id=2 accept 0202002606a344d93a77c01c01fc641b84d5ca945012d7e1338de4012d55d35b1f3855039731
+ 107.24 REQ id=0 for 02:00:00:00:0c:01 (a LAN source's multicast, back round the loop): reject
+ 119.86 REQ code=1 id=0 auth=9284e691-c98cfcc8-7424773c-69d63577
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet116
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+ 119.86 ANS id=0 accept 02000026911f6b4febc60fd1cfc5661d9cb4295f5012aba13d2f07e04af4c75dca0d34b06a01
+ 128.57 REQ code=1 id=0 auth=7808bb32-0d5ce34f-263ead1d-7c0cc06d
+       attr Message-Authenticator <16 bytes>
+       attr User-Name dui-user
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr Called-Station-Id 02-00-00-00-00-02:
+       attr NAS-Port-Type 19
+       attr Service-Type 2
+       attr Calling-Station-Id 02-00-00-00-0B-01
+       attr 77 <21 bytes>
+       attr 12 <4 bytes>
+       attr 79 <13 bytes>
+ 128.58 ANS id=0 challenge 0b000044fac3cc8e775e4e0ea623cb4d1fd02df5501207f270d65a65422d26c019e4b2c5326a1806000000044f18010200160410d1c6c88f38df8870f9585831b706fa00
+ 128.58 REQ code=1 id=1 auth=00f876a3-6bf357d0-b612ca70-1269d9a5
+       attr Message-Authenticator <16 bytes>
+       attr User-Name dui-user
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr Called-Station-Id 02-00-00-00-00-02:
+       attr NAS-Port-Type 19
+       attr Service-Type 2
+       attr Calling-Station-Id 02-00-00-00-0B-01
+       attr 77 <21 bytes>
+       attr 12 <4 bytes>
+       attr 79 <22 bytes>
+       attr 24 <4 bytes>
+ 128.58 ANS id=1 accept 0201002c11c876d5e1b69fbeaf031a1809df5418501278a9dee95996351fe170d1a08abd54a84f0603020004
+@@@ run4_journal
+  -5.87 started
+   6.24 802.1X: EAPOL trapped to the CPU
+   6.27 802.1X: authenticator started on Ethernet116 (mac_based, 1 RADIUS servers)
+   6.27 802.1X: Ethernet116 authenticates by MAC address (unknown sources trapped to the CPU)
+   9.34 802.1X: 02:00:00:00:0a:02 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+   9.34 802.1X: 02:00:00:00:0a:02 refused by its MAC address on Ethernet116 (1 failures on this port since boot)
+   9.83 802.1X: 02:00:00:00:0a:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+   9.90 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address
+   9.90 802.1X: 02:00:00:00:0a:03 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+   9.97 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address
+  17.28 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  17.29 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (2 failures on this port since boot)
+  22.99 started
+  23.86 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address, kept over a restart
+  23.87 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address, kept over a restart
+  47.27 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  47.27 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (3 failures on this port since boot)
+  54.02 802.1X: 02:00:00:00:0a:03 no longer authorised on Ethernet116 (idle for 40s)
+  54.23 802.1X: 02:00:00:00:0a:02 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  54.23 802.1X: 02:00:00:00:0a:02 refused by its MAC address on Ethernet116 (4 failures on this port since boot)
+  57.83 802.1X: 02:00:00:00:0a:03 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+  57.91 802.1X: 02:00:00:00:0a:03 authorised on Ethernet116 by its MAC address
+ 106.00 started
+ 106.84 802.1X: 02:00:00:00:0a:03 no longer authorised on Ethernet116 (idle for 40s, over a restart)
+ 106.93 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address, kept over a restart
+ 107.24 802.1X: 02:00:00:00:0c:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 107.24 802.1X: 02:00:00:00:0c:01 refused by its MAC address on Ethernet116 (5 failures on this port since boot)
+ 113.43 started
+ 114.00 802.1X: 02:00:00:00:0a:01 no longer authorised on Ethernet116 (link down)
+ 119.86 802.1X: 02:00:00:00:0a:01 on Ethernet116 sent no EAPOL; asking the RADIUS server about its MAC address
+ 119.93 802.1X: 02:00:00:00:0a:01 authorised on Ethernet116 by its MAC address
+ 124.66 802.1X: 02:00:00:00:0a:01 no longer authorised on Ethernet116 (no longer authenticated by MAC address)
+ 128.64 802.1X: 02:00:00:00:0b:01 authorised on Ethernet116
+ 128.65 802.1X: Ethernet116 open to every host (Credentials: 02:00:00:00:0b:01 authenticated)
+ 146.69 started
+ 147.48 802.1X: 02:00:00:00:0b:01 authorised on Ethernet116
+ 154.58 802.1X: Ethernet116 closed again (no host authenticated); its learnt addresses flushed
+ 154.67 802.1X: 02:00:00:00:0b:01 no longer authorised on Ethernet116 (logged off or timed out)
+ 160.79 802.1X: authenticator on Ethernet116 stopped
+ 160.92 802.1X: kernel bridge rules removed
+ 160.92 802.1X: EAPOL trap removed

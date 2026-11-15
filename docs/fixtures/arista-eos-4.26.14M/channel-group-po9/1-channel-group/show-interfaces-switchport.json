@@ -1,0 +1,56 @@
+{
+  "switchports": {
+    "Ethernet2": {
+      "enabled": true,
+      "switchportInfo": {
+        "accessVlanId": 1,
+        "accessVlanName": "default",
+        "dot1qVlanTagDisallowed": false,
+        "dot1qVlanTagRequired": false,
+        "dot1qVlanTagRequiredStatus": false,
+        "dynamicAllowedVlans": {},
+        "dynamicBlockedVlans": {},
+        "dynamicTrunkGroups": [],
+        "macLearning": true,
+        "mode": "trunk",
+        "phoneTrunk": false,
+        "phoneTrunkUntagged": false,
+        "phoneVlan": 0,
+        "sourceportFilterMode": "enabled",
+        "staticTrunkGroups": [],
+        "tpid": "0x8100",
+        "tpidStatus": true,
+        "trunkAllowedVlans": "ALL",
+        "trunkingNativeVlanId": 1,
+        "trunkingNativeVlanName": "default",
+        "vlanForwardingMode": "allowedVlansOnly"
+      }
+    },
+    "Port-Channel9": {
+      "enabled": true,
+      "switchportInfo": {
+        "accessVlanId": 1,
+        "accessVlanName": "default",
+        "dot1qVlanTagDisallowed": false,
+        "dot1qVlanTagRequired": false,
+        "dot1qVlanTagRequiredStatus": false,
+        "dynamicAllowedVlans": {},
+        "dynamicBlockedVlans": {},
+        "dynamicTrunkGroups": [],
+        "macLearning": true,
+        "mode": "trunk",
+        "phoneTrunk": false,
+        "phoneTrunkUntagged": false,
+        "phoneVlan": 0,
+        "sourceportFilterMode": "enabled",
+        "staticTrunkGroups": [],
+        "tpid": "0x8100",
+        "tpidStatus": true,
+        "trunkAllowedVlans": "ALL",
+        "trunkingNativeVlanId": 1,
+        "trunkingNativeVlanName": "default",
+        "vlanForwardingMode": "allowedVlansOnly"
+      }
+    }
+  }
+}

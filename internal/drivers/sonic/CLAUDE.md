@@ -554,6 +554,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   switch: `bcmcmd "fp show group <gid>"` for the entry's stat id, then
   `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
   was on 202505's `13.2.1.36`.
+  **The kernel drops that copy instead (`acl_cpu.go`, §11.32, live by
+  hand 2026-11-15)**, as the ECS's tables keep blocked traffic off its own
+  address (a switched host behind internal port `Ethernet56`, not a trap).
+  The L3 tables are mirrored into iptables' **`raw`** table: caclmgrd
+  flushes and deletes every filter-table chain on any `ACL_TABLE` event,
+  the driver's own included. The marker is `/run/disunified/acl-cpu`
+  (collect.py `acl_cpu`), so a reboot rewrites it.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
@@ -671,7 +678,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   NOT_IMPLEMENTED) and orchagent retries it twice a second while a row says
   enable, so every `L2MC_SUPPRESS` row is deleted and
   `forward_unknown_multicast=false` only logged. **l2mcd programs a member
-  only on an oper-up port**; `bcmcmd "port ceN lb=mac"` brings a cage up
+  only on an oper-up port**. **l2mcd and l2mcmgrd log to `/var/log/l2mcd.log`,
+  not syslog**: an L2MC line in orchagent's syslog is explained there (a
+  breakout's "deletes for a new lane" were another port's, found only in that
+  file, §11.25.3). `bcmcmd "port ceN lb=mac"` brings a cage up
   with no cable (keep that port in a test VLAN only). Writes are whole rows
   through one `sudo python3 - disunified-l2mc` script (`ConfigDBConnector`,
   the ops as a JSON string on its last line), never a CLI call per field: a
@@ -1114,7 +1124,10 @@ was restarted.
   module rule keeps the mode only, a join dissolves the child's aggregates
   and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
   (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
-  PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
+  PortChannel's MTU. One exception (2026-11-15, `docs/drivers/breakout.md`
+  §7c): the device's plan deletes an empty `ownOrphan` in the lane range of
+  a cage with no lane switch attached (`plan.detachedLane`), what a detached
+  lane switch left; one with members stays, noted. `lockApply` serialises `Collect`, `ApplyPorts`,
   `ApplyLanes`, `EnsureVLANs`, `ApplyDevice`, `ApplyManagementIPv6`, `ApplyAddress` and `Reboot`; the fan mode, the SSH keys and locate stay outside it on purpose (they share nothing with a plan). Facts from the capture
   (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
@@ -1196,8 +1209,23 @@ was restarted.
   - **A looped cage's frames never reach `cpu_trap` in a VLAN whose STP
     instance does not forward the port**: the chip drops them at ingress
     first (`RPORTD`); only trapped protocols (EAPOL, ARP) get through.
-    Test MAB in a hand-made VLAN no instance maps, with the bridge stopped
-    (its VLAN plan strips a hand-made membership on the next reconcile).
+    So a MAB test host sends ARP requests: they reach l2d on the blocked
+    cage in Vlan4094 itself, and an admitted host's ARP keeps its idle
+    timer going (§11.26.10). The loop also brings back the LAN's
+    multicast (static groups flood a blocked port too): MAB asks about each
+    source and counts the refusal.
+  - **Over a restart l2d keeps what the previous one admitted**
+    (§11.26.10, live 2026-11-15): the STATE_DB row's hosts are held in the
+    chain and in an open Credentials port's learning until settled, and
+    settled before the first chain write; a MAC-authenticated host's last
+    frame is the row's `mab_seen`, written in `main`'s `finally` on SIGTERM
+    and `hdel`ed by the next l2d. Before that fix every start dropped the
+    admitted hosts in the kernel for 40-100 ms. Check a restart with a
+    5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
+  - **A rig sharing one `SonicV2Connector` across threads segfaults in
+    `_swsscommon`** (silently, no traceback): lock every call or give each
+    thread its own. `docker exec database redis-cli monitor` outlives a
+    `killpg` of its pipeline: kill the in-container process by pid too.
   - **ARP proves nothing in such a probe** (its own trap): use an
     ethertype no trap matches (0x88B5). In a VLAN without the switch's
     address no copy of a known host's frames reaches the CPU at all.
@@ -1222,3 +1250,14 @@ was restarted.
   (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
+- **A cage left up as a non-edge port (looped, or facing a switch) for more
+  than about five minutes gets pinned to `stp.edge=disabled`.** That is the
+  controller's Auto STP Edge (`docs/drivers/sonic.md` §11.23.3). It does
+  not go back by itself, and l2d keeps auto edge off on the cage. Un-pin it
+  at the end of the test with one call, which needs no override change and
+  no UI:
+  `POST /proxy/network/v2/api/site/<site>/ports/<mac>/reset-auto-edge` with
+  body `[{"port_idx":N}, ...]`, using the API key (answer 204). Then check
+  that the next push says `switch.port.N.stp.edge=auto`. Do not use the
+  port editor's Edge-then-Restore saves: the save rewrites the whole
+  override (BPDU guard on and more).

@@ -115,6 +115,11 @@ type swState struct {
 	// aclCRM the CRM ACL counters: read-only, shared by clones.
 	aclStatus map[string]string
 	aclCRM    table
+	// aclCPU is the hash of the kernel mirror of the driver's L3 tables
+	// (acl_cpu.go, §11.32) as its marker file records it, "" without one;
+	// aclCPUKnown says the collector reads the marker (acl_cpu).
+	aclCPU      string
+	aclCPUKnown bool
 	// gc: the guard's per-port count (acl_count.go, §11.7.9).
 	gc guardCountState
 
@@ -369,6 +374,9 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		}
 		s.aclCRM = db["crm_acl"]
 		parseGuardCount(s, db, sec)
+		if m, ok := sec["acl_cpu"]; ok {
+			s.aclCPUKnown, s.aclCPU = true, strings.TrimSpace(m)
+		}
 	}
 	for iface, f := range db["asic_bridge_port"] {
 		if f["admin"] == "false" {
@@ -447,7 +455,7 @@ func (s *swState) clone() *swState {
 		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
-		aclStatus: s.aclStatus, aclCRM: s.aclCRM, gc: s.gc.clone(),
+		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, gc: s.gc.clone(),
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{}, bridgeDown: s.bridgeDown,
 		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn), vlanIfRows: s.vlanIfRows,
 	}

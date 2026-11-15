@@ -124,8 +124,25 @@ func TestReplayAristaIPRulePushes(t *testing.T) {
 			if len(ft.Configured) != n {
 				t.Errorf("the reconcile wrote %q", ft.Configured[n:])
 			}
+			// The collect read the 57 lists back as the session wrote them.
+			if got := aclReadBack(ft); got != 57 {
+				t.Errorf("the ACL read-back read %d lists, want 57", got)
+			}
+			if strings.Contains(buf.String(), "ACL read-back:") || len(ft.Unmodelled) != 0 {
+				t.Errorf("read-back or transport: %q\n%s", ft.Unmodelled, buf.String())
+			}
 		})
 	}
+}
+
+// aclReadBack is how many lists the last ACL read-back batch read.
+func aclReadBack(ft *aristaeos.FixtureTransport) int {
+	for i := len(ft.Runs) - 1; i >= 0; i-- {
+		if r := ft.Runs[i]; len(r) > 1 && r[1] == "show ip access-lists summary" {
+			return len(r) - 2
+		}
+	}
+	return 0
 }
 
 // listBody is the numbered lines of one list in a session body.
@@ -200,6 +217,12 @@ func TestReplayAristaIPRuleLiveRound(t *testing.T) {
 				confirmed = append(confirmed, strings.TrimSuffix(name, " commit"))
 			}
 		}
+		if _, err := coll.Collect(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got := aclReadBack(ft); i == 0 && got != 57 {
+			t.Errorf("after %s the ACL read-back read %d lists, want 57", push, got)
+		}
 		switch i {
 		case 0:
 			if strings.Count(body, "\nip access-group DUI_IP_ACL_") != 57 || strings.Count(body, "\n20 deny tcp 203.0.113.0/24 198.51.100.0/24 eq 9\n") != 57 {
@@ -223,6 +246,9 @@ func TestReplayAristaIPRuleLiveRound(t *testing.T) {
 	l.reconcile(context.Background())
 	if len(ft.Configured) != n {
 		t.Errorf("a reconcile after the removal wrote %q", ft.Configured[n:])
+	}
+	if strings.Contains(buf.String(), "ACL read-back:") || len(ft.Unmodelled) != 0 {
+		t.Errorf("read-back or transport: %q\n%s", ft.Unmodelled, buf.String())
 	}
 	if len(opened) != 2 || opened[0] == opened[1] || strings.Join(confirmed, ",") != strings.Join(opened, ",") {
 		t.Errorf("sessions opened %q, confirmed %q: want two, each its own name, each confirmed", opened, confirmed)

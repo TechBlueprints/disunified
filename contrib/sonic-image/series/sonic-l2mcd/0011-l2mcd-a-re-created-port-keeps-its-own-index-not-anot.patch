@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 15 Nov 2026 14:40:00 -0700
+Subject: [PATCH] l2mcd: a re-created port keeps its own index, not another
+ port's
+
+l2mcd numbers ports in portdb: at start port_ifname_db_init() gives
+every EthernetN the index 4096 + N. A port that is deleted and created
+again, as a breakout does, loses its name from portdb with the delete;
+l2mcd_port_list_update() then numbered it 4096 + its kernel ifindex.
+That is the start index of Ethernet<ifindex>, another port's: 4096
+itself (Ethernet0) for a port l2mcmgrd reports before its netdev exists
+(if_nametoindex() 0), and 4096 + 64 (Ethernet64) for a lane created as
+ifindex 64. portdb_add_ifname() overwrote that index's name, and the
+"breakout" branch, finding the other port's tree at the index with a
+different ifindex, closed that port's IGMP and MLD sockets, dropped its
+tree and deleted the lane's name from portdb again, so the next update
+took yet another index. The re-created lane's first port-state update
+then removed the other port's group memberships and its router-port
+role, written to APPL_DB under the lane's name.
+
+Seen on a Celestica DX010 (SONiC 202511) splitting an empty cage
+4x25G: Ethernet113-115 were reported with ifindex 0 and numbered 4096;
+Ethernet113's link event closed the uplink Ethernet0's sockets, and
+five dynamic groups and the uplink's router-port entry were deleted as
+"Ethernet113" (orchagent: doL2mcMemberTask op DEL for a member that did
+not exist, so the uplink's own APPL_DB rows stayed behind). Ethernet0
+had no tree and no receive socket for the 28 minutes until its next
+link event. Ethernet115, created as ifindex 64, took 4160 and
+did the same to Ethernet64, which had no tree until l2mcd restarted.
+
+- An EthernetN without a portdb entry gets 4096 + N again, whatever its
+  ifindex, so a breakout gives each lane its own index back.
+- Any other name (PortChannelN) is numbered by its ifindex as before,
+  but only once the netdev exists and only if no other name holds the
+  index; otherwise the update waits for the port's link event.
+- The re-created port's old tree is still closed and dropped, but its
+  name keeps its index, and a tree of another name at the index is left
+  alone.
+---
+ port/l2mcd_utils.c | 63 ++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 55 insertions(+), 8 deletions(-)
+
+diff --git a/port/l2mcd_utils.c b/port/l2mcd_utils.c
+index b3f4520..a541467 100644
+--- a/port/l2mcd_utils.c
++++ b/port/l2mcd_utils.c
+@@ -269,9 +269,47 @@ int l2mcd_portstate_update(int kif, int state, char *iname)
+ 
+     return 0;
+ }
++
++/*
++ * The port index for a name portdb does not hold, as when a breakout deleted
++ * the port and creates it again. An EthernetN is given the index that
++ * port_ifname_db_init() gives it at start, 4096 + N, so it gets its own index
++ * back. The kernel's ifindex is no basis for a front-panel port: 4096 + ifindex
++ * is the start index of Ethernet<ifindex>, and a port l2mcmgrd reports before
++ * its netdev exists has ifindex 0, which is Ethernet0's. Any other name
++ * (PortChannelN) is numbered by its ifindex as before, but only once its netdev
++ * exists and only when no other name holds that index.
++ */
++static int l2mcd_port_index_for(const char *pnames, int kif)
++{
++    char canon[L2MCD_IFNAME_SIZE];
++    char *holder;
++    unsigned long n;
++    int ifidx;
++
++    if (!strncmp(pnames, "Ethernet", 8) && pnames[8] >= '0' && pnames[8] <= '9') {
++        n = strtoul(pnames + 8, NULL, 10);
++        snprintf(canon, sizeof(canon), "Ethernet%lu", n);
++        if (n < L2MCD_PORTDB_PHYIF_MAX_IDX && !strcmp(canon, pnames))
++            return L2MCD_PORTDB_PHYIF_START_IDX + n;
++    }
++    if (kif <= 0)
++        return NO_SUCH_PORT;
++    if (strstr(pnames, "PortChannel"))
++        ifidx = L2MCD_PORTDB_LAGIF_START_IDX + kif;
++    else
++        ifidx = L2MCD_PORTDB_PHYIF_START_IDX + kif;
++    holder = portdb_get_ifname_from_portindex(ifidx);
++    if (holder && strcmp(holder, pnames)) {
++        L2MCD_LOG_NOTICE("%s port:%s kif:%d: index %d is %s's", __FUNCTION__, pnames, kif, ifidx, holder);
++        return NO_SUCH_PORT;
++    }
++    return ifidx;
++}
++
+ int l2mcd_port_list_update(char *pnames, int oper_state, int is_add)
+ {
+-    int ifidx, kif, rc = 0;
++    int ifidx, kif, old_kif, rc = 0;
+     l2mcd_if_tree_t *if_tree = NULL;
+     struct event *igmp_rx_event = NULL;
+     struct event *mld_rx_event = NULL;
+@@ -281,10 +319,11 @@ int l2mcd_port_list_update(char *pnames, int oper_state, int is_add)
+ 
+     if ((ifidx <= 0) || (ifidx == NO_SUCH_PORT)) {
+         kif = if_nametoindex(pnames);
+-        if (strstr(pnames, "PortChannel")) {
+-            ifidx = L2MCD_PORTDB_LAGIF_START_IDX + kif;
+-        } else {
+-            ifidx = L2MCD_PORTDB_PHYIF_START_IDX + kif;
++        ifidx = l2mcd_port_index_for(pnames, kif);
++        if (ifidx == NO_SUCH_PORT) {
++            /* no netdev yet: its link event (l2mcd_portstate_update) comes back here */
++            L2MCD_LOG_NOTICE("%s port:%s kif:%d is_add:%d: no index yet", __FUNCTION__, pnames, kif, is_add);
++            return is_add ? -1 : 0;
+         }
+         rc = portdb_add_ifname(pnames, strlen(pnames)+1, ifidx);
+         L2MCD_LOG_NOTICE("%s portdb add port:%s, index:%d rc:%d", __FUNCTION__, pnames, ifidx, rc);
+@@ -327,16 +366,24 @@ int l2mcd_port_list_update(char *pnames, int oper_state, int is_add)
+         return -1;
+     }
+ 
+-    // breakout
++    // breakout: the port was deleted and created again, a new netdev. The tree
++    // at its index is its old one (the index is the name's own): close the old
++    // netdev's sockets and drop the tree; the name keeps its index. A tree of
++    // another name there is that port's, and is left alone.
+     if (if_tree && if_tree->kif != kif) {
++        if (strncmp(if_tree->iname, pnames, L2MCD_IFNAME_SIZE)) {
++            L2MCD_LOG_NOTICE("%s port:%s kif:%d: index %d is %s's (kif %d), left alone",
++                             __FUNCTION__, pnames, kif, ifidx, if_tree->iname, if_tree->kif);
++            return -1;
++        }
+         if (if_tree->igmp_sock_fd)
+             l2mcd_igmprx_sock_close(pnames, if_tree->igmp_sock_fd, if_tree->igmp_rx_event);
+         if (if_tree->mld_sock_fd)
+             l2mcd_mldrx_sock_close(pnames, if_tree->mld_sock_fd, if_tree->mld_rx_event);
+ 
++        old_kif = if_tree->kif;
+         l2mcd_del_if_tree(ifidx);
+-        rc = portdb_delete_ifname(pnames);
+-        L2MCD_LOG_NOTICE("%s portdb delete2 port:%s, index:%d rc:%d", __FUNCTION__, pnames, ifidx, rc);
++        L2MCD_LOG_NOTICE("%s port:%s, index:%d: new interface kif:%d (was %d)", __FUNCTION__, pnames, ifidx, kif, old_kif);
+         if_tree = NULL;
+     }
+ 
