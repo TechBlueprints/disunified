@@ -156,8 +156,8 @@ def log(msg, prio=syslog.LOG_INFO):
     syslog.syslog(prio, msg)
 
 
-def run(args, check=False):
-    p = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+def run(args, check=False, stdin=None):
+    p = subprocess.run(args, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if check and p.returncode != 0:
         log("%s: exit %d: %s" % (" ".join(args), p.returncode, p.stderr.strip()), syslog.LOG_WARNING)
     return p
@@ -1758,11 +1758,46 @@ class UcastSampler(object):
 MACLOCK_CHAIN = "DUI_MACLOCK"
 MACLOCK_TABLE = "DUI_MACLOCK_TABLE"
 EBTABLES = "/usr/sbin/ebtables"
+EBTABLES_RESTORE = "/usr/sbin/ebtables-restore"
 ETH_P_ALL = 3
 PACKET_OUTGOING = 4
 LEARN_TRAP = "cpu_trap"
 LEARN_HARDWARE = "hardware"
 MACLOCK_LOG_EVERY = 600.0  # seconds between log lines for one port and source
+
+
+def eb_restore(lines):
+    """Applies lines (ebtables commands without the program name) to the
+    filter table in one ebtables-restore --noflush, which the switch's
+    ebtables (1.8, nf_tables) commits as one transaction: a frame meets the
+    chains as they were before or as they are after, never in between, and
+    a refused line refuses the whole batch (docs/drivers/sonic.md 11.26.11).
+    One ebtables call per rule left a rewritten chain empty, i.e. passing
+    every frame, until its last rule was back."""
+    return run([EBTABLES_RESTORE, "--noflush"], check=True,
+               stdin="\n".join(["*filter"] + lines) + "\n").returncode == 0
+
+
+def eb_chain(chain, rules, jumps, first):
+    """The restore lines that leave chain (policy RETURN) holding exactly
+    rules, jumped to from INPUT and FORWARD: ahead of every other rule
+    (first) or after them. jumps: the hooks that already jump to it. The
+    declaration creates the chain or keeps it; the flush is explicit
+    because ebtables-legacy-restore keeps a declared chain's rules."""
+    out = [":%s RETURN" % chain, "-F " + chain]
+    out += ["-A %s %s" % (chain, " ".join(r)) for r in rules]
+    for c in ("INPUT", "FORWARD"):
+        if c not in jumps:
+            out.append(("-I %s 1 -j %s" if first else "-A %s -j %s") % (c, chain))
+    return out
+
+
+def eb_unchain(chain, jumps, exists):
+    """The restore lines that remove chain and its jumps."""
+    out = ["-D %s -j %s" % (c, chain) for c in sorted(jumps)]
+    if exists:
+        out += ["-F " + chain, "-X " + chain]
+    return out
 
 
 def mac_text(b):
@@ -1858,30 +1893,22 @@ class MacLockGuard(object):
     def write_chain(self, rules):
         exists, count, jumps = self.chain_state()
         if not rules:
+            ok = True
             if exists or jumps:
-                for c in sorted(jumps):
-                    run([EBTABLES, "-D", c, "-j", MACLOCK_CHAIN], check=True)
-                if exists:
-                    run([EBTABLES, "-F", MACLOCK_CHAIN], check=True)
-                    run([EBTABLES, "-X", MACLOCK_CHAIN], check=True)
-                log("MAC locking: kernel bridge rules removed")
-            self.written = []
-            return True
+                ok = eb_restore(eb_unchain(MACLOCK_CHAIN, jumps, exists))
+                if ok:
+                    log("MAC locking: kernel bridge rules removed")
+            self.written = [] if ok else None
+            return ok
         if exists and count == len(rules) and jumps == {"INPUT", "FORWARD"} and rules == self.written:
             return True
-        if not exists:
-            run([EBTABLES, "-N", MACLOCK_CHAIN, "-P", "RETURN"], check=True)
-        else:
-            run([EBTABLES, "-F", MACLOCK_CHAIN], check=True)
-        ok = True
-        for r in rules:
-            ok = run([EBTABLES, "-A", MACLOCK_CHAIN] + r, check=True).returncode == 0 and ok
-        for c in ("INPUT", "FORWARD"):
-            if c not in jumps:
-                ok = run([EBTABLES, "-A", c, "-j", MACLOCK_CHAIN], check=True).returncode == 0 and ok
+        # One transaction: the chain is never empty, and so never passes
+        # every frame, while it is rewritten (11.26.11).
+        ok = eb_restore(eb_chain(MACLOCK_CHAIN, rules, jumps, False))
         self.written = rules if ok else None
-        log("MAC locking: kernel bridge rules for %s (%d allowed sources)" %
-            (",".join(sorted(self.want)), sum(len(m) for m in self.want.values())))
+        if ok:
+            log("MAC locking: kernel bridge rules for %s (%d allowed sources)" %
+                (",".join(sorted(self.want)), sum(len(m) for m in self.want.values())))
         return ok
 
     def sync(self, conf):
@@ -2804,24 +2831,18 @@ class Dot1xGuard(object):
             elif line.strip() == "-j " + DOT1X_CHAIN and chain in ("INPUT", "FORWARD"):
                 jumps.add(chain)
         if not rules:
-            for c in sorted(jumps):
-                run([EBTABLES, "-D", c, "-j", DOT1X_CHAIN], check=True)
-            if exists:
-                run([EBTABLES, "-F", DOT1X_CHAIN], check=True)
-                run([EBTABLES, "-X", DOT1X_CHAIN], check=True)
-                log("802.1X: kernel bridge rules removed")
-            self.written = []
+            ok = True
+            if exists or jumps:
+                ok = eb_restore(eb_unchain(DOT1X_CHAIN, jumps, exists))
+                if ok and exists:
+                    log("802.1X: kernel bridge rules removed")
+            self.written = [] if ok else None
             return
-        if exists:
-            run([EBTABLES, "-F", DOT1X_CHAIN], check=True)
-        else:
-            run([EBTABLES, "-N", DOT1X_CHAIN, "-P", "RETURN"], check=True)
-        ok = True
-        for r in rules:
-            ok = run([EBTABLES, "-A", DOT1X_CHAIN] + r, check=True).returncode == 0 and ok
-        for c in ("INPUT", "FORWARD"):
-            if c not in jumps:  # first, ahead of MAC locking's chain
-                ok = run([EBTABLES, "-I", c, "1", "-j", DOT1X_CHAIN], check=True).returncode == 0 and ok
+        # One transaction (11.26.11): an admission, a revocation or a start
+        # never leaves a closed port's DROP out of the chain, as a flush and
+        # one append per rule did for ~20 ms; the jumps go first, ahead of
+        # MAC locking's chain. A refused batch leaves the chain as it was.
+        ok = eb_restore(eb_chain(DOT1X_CHAIN, rules, jumps, True))
         self.written = rules if ok else None
 
     def publish(self):
