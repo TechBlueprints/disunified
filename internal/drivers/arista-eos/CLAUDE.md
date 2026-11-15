@@ -129,6 +129,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   switch applies from its own loop). An `interface A-B` range stops at the
   first warning (an empty cage's "transceiver not present"): write one
   `interface` per lane.
+- **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
+  detail`** (text; its `| json` wraps the text): the `... since system
+  boot` rows' Current State. Per interface, not per channel; no
+  `transceiver` form, `eeprom` or `idprom` prints them (2026-11-15,
+  `docs/drivers/arista-eos.md` §4). They are `sfp_rxfault` / `sfp_txfault`;
+  the DOM thresholds are not (only the SSH transport's fallback).
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is
