@@ -70,6 +70,14 @@ that cost time on Clint's DCS-7160-48TC6-F.
   dui-acl, it is already complete"): with a fixed name the second ACL change
   failed, live 2026-11-14. `no configure session NAME` deletes a completed
   one by hand, and fails for a name that does not exist.
+- **Hand tests on the Arista take the test lock**, as the DX010's do
+  (`internal/drivers/sonic/CLAUDE.md`): write
+  `local-information/locks/arista.lock` (in the main checkout) with your
+  session's name and what you are doing, wait while another session holds
+  it, remove it when done; read-only commands need none. Check `show
+  configuration sessions` and `show logging last 15 minutes | include
+  CONFIG_SESSION` first: on 2026-11-15 two sessions ran hold sessions on
+  the switch minutes apart, one with a lock file of another name.
 - **A session pending its commit timer blocks every other commit** ("Cannot
   commit because another session, X is pending commit timer"), the
   bridge's included: open one (a harmless `alias`) to hold the deployed
