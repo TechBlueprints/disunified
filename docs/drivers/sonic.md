@@ -470,7 +470,16 @@ Redis sections (key pattern → use):
   CONFIG `speed`, `MTU` = `mtu`, `FEC`/`FECConfig` from STATE/CONFIG `fec`
   (`rs` → `rs-fec`, `fc` → fire-code, `none` → disabled, `N/A` → unknown),
   `SpeedCaps` from STATE `supported_speeds` when non-empty, else the SKU's
-  speed only. `Health.LinkChanges` = `flap_count`. No PCS/FEC counters on
+  speed only. `Health.LinkChanges` = `flap_count` (portsorch adds one on
+  every oper-status change, and a port starts down, so half of it, rounded
+  down, is the drops). **A split cage adds its lanes' drops, not their
+  changes** (2026-11-15, as the Arista's e3d5218): `LinkChanges` = twice
+  the summed drops, plus one while the cage is up. Summing the lanes'
+  `flap_count` counted every up lane as half a drop: on the DX010 (cage 32
+  split 4x25G, lanes 1-3 in MAC loopback, lane 1 dropped and brought back
+  once, lane 4 down; `flap_count` 3, 1, 1, 0) the cage read 5 changes, 2
+  drops, for the one drop there was (`TestSplitCageLinkDrops`,
+  `sonic-igmp-202511.20261115-6c8eb1cf7/collect-split-loop.txt`). No PCS/FEC counters on
   the VS (`PORT_COUNTER_CAPABILITIES|PORT_FEC_COUNTER` is empty); on
   hardware `SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES` /
   `_NOT_CORRECTABLE_FRAMES` fill `FECCorrected`/`FECUncorrected`.
