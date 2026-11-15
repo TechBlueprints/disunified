@@ -93,7 +93,12 @@ no fans or temperature (said outright: `has_fan`/`has_temperature` false),
 no PSU, no spanning tree.
 
 The uplink NIC: speed from ethtool when the kernel knows it; a virtio NIC
-(speed `-1`) is shown as 100G, the way its node shows it.
+(speed `-1`) is shown as 100G, the way its node shows it. Its link drops
+(`link_down_count`) are the kernel's `carrier_up_count` less the up period
+still running, the proxmox driver's rule ([`proxmox.md`](proxmox.md) §2,
+Link drops): virtio_net turns the carrier off after registering, so the
+host's NIC, up since boot, reads 1 up and 1 down, and `carrier_changes / 2`
+(the count until 2026-11-15) reported one drop that never happened.
 
 ## 3. Reading
 
@@ -180,6 +185,8 @@ container and network names other than the bridge's own, DMI/machine ids).
 2026-11-13, with the bridge's own container also on the macvlan network:
 the capture with a client behind a port, used for the MAC learn time
 (`internal/drivers/podman/mactimes_test.go`, `docs/mac-table-times.md` §6).
+`collect-carrier.txt` (2026-11-15) is the first with the carrier counts
+(`internal/drivers/podman/carrier_test.go`).
 `internal/drivers/podman/collector_test.go` drives the driver against the first;
 `internal/device/contract_podman_test.go` holds its payload to the wire
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP

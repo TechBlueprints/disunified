@@ -416,8 +416,13 @@ these is marked "not captured".
   grows faster than about 0.2/s (0.27, not 0.19, on a stub); each alert's
   `COUNT` is that inform's count. `link_flap_count`, which UniFi switches on
   7.5.15 and 7.6.11 send on a few ports, is not its basis and is not a count
-  of drops (a USL8A port with 190 000 drops has none); the bridge does not
-  send it (`docs/feature-map.md` §2). **BPDU guard and loop protection alert
+  of drops (a USL8A port with 190 000 drops has none): it counts the
+  switch's own link-flap detector, one per "Link flapping detected" line in
+  the switch's log (2026-11-15, `controller-11.0.99/link-flap-count-20261115.json`),
+  and `link_down_count` its logged drops since boot. The bridge does not
+  send it (`docs/feature-map.md` §2); the Linux drivers count drops as
+  `carrier_up_count` less the running up period (`docs/drivers/proxmox.md`
+  §2). **BPDU guard and loop protection alert
   from `port_table[].error_disabled: true` with `error_disabled_reason`**
   (2 BPDU guard, 1 loop protection), not from `anomalies`: seen on a stub
   port, then from the DX010's own driver after the deploy (812503a); a held
