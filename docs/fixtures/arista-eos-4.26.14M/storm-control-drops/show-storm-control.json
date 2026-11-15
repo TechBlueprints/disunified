@@ -1,0 +1,18 @@
+{
+  "aggregateTrafficClasses": {},
+  "interfaces": {
+    "Ethernet1": {
+      "active": true,
+      "reason": "",
+      "trafficTypes": {
+        "unknown-unicast": {
+          "dormant": false,
+          "drop": 2230,
+          "level": 1,
+          "rate": 1,
+          "thresholdType": "percentage"
+        }
+      }
+    }
+  }
+}

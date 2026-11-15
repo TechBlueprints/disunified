@@ -1,0 +1,2 @@
+Port       Type             Level    Units Rate(Mbps) Status        Drops Reason
+Et1        unknown-unicast  0.01     %     1          active         2230 
