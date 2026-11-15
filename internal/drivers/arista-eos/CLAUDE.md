@@ -39,7 +39,10 @@ that cost time on Clint's DCS-7160-48TC6-F.
   DSCP match. ACLs on subinterfaces are unavailable. **A list that fails to
   program still commits** (`! Error in ACL commit`, a warning), and the
   summary still says "Active on Ingress". The commit's warning is the
-  signal.
+  signal: eAPI returns it in the `commit timer` command's result
+  (`warnings`), the CLI as a `! ` line; `ConfigWarner` reads both, and
+  `commitACL` aborts such a session and holds the change (2026-11-15,
+  `acl-commit-warning/`).
 - A rule set blocking TCP to the address and port the bridge dials (eAPI
   443) is held before it is written (`devicemodel.IPRulesCutManagement`),
   every source counted.

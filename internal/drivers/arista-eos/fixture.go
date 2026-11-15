@@ -42,6 +42,10 @@ type FixtureTransport struct {
 	// Stateless serves the captures whatever was written (the transport
 	// before 2026-11-15).
 	Stateless bool
+	// Warnings are the warnings EOS returned for a config command, as a
+	// capture shows them (ConfigureWarn returns them for each batch that
+	// runs the command).
+	Warnings map[string][]string
 
 	mu       sync.Mutex
 	docs     map[string]*fixtureDoc // command -> its reply as written to
@@ -165,4 +169,17 @@ func (f *FixtureTransport) doc(cmd string) *fixtureDoc {
 	d := &fixtureDoc{path: p, v: v}
 	f.docs[cmd] = d
 	return d
+}
+
+// ConfigureWarn implements ConfigWarner: Configure, with the Warnings of the
+// batch's commands.
+func (f *FixtureTransport) ConfigureWarn(ctx context.Context, cmds []string) ([]string, error) {
+	if err := f.Configure(ctx, cmds); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, c := range cmds {
+		out = append(out, f.Warnings[c]...)
+	}
+	return out, nil
 }

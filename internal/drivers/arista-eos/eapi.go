@@ -180,6 +180,13 @@ func (t *EAPI) Configure(ctx context.Context, cmds []string) error {
 	return err
 }
 
+// ConfigureWarn implements ConfigWarner: each command's result carries the
+// warnings EOS printed for it.
+func (t *EAPI) ConfigureWarn(ctx context.Context, cmds []string) ([]string, error) {
+	out, err := t.Run(ctx, cmds)
+	return resultWarnings(out), err
+}
+
 // Close is a no-op; eAPI is stateless.
 func (t *EAPI) Close() error { return nil }
 

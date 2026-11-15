@@ -909,10 +909,21 @@ does.
   interfaces, 57 port ACL ids in the chip's PortCfg table (1-57), every
   list active, no commit warning, both for one IP rule and for the guard. **A list the hardware cannot
   program does not fail the commit**: EOS prints `! Error in ACL commit
-  ... Insufficient HW resources` and commits anyway (§9.1). The driver does
-  not read that warning, and the summary's "Active" does not show it.
-  Within the claim the measured room makes it unlikely; reading the
-  warning (eAPI returns it apart from the output) is a follow-up. The ECS
+  ... Insufficient HW resources` and commits anyway (§9.1), and the
+  summary's "Active" does not show it. **Since 2026-11-15 the driver reads
+  the warning** (`ConfigWarner`, `docs/fixtures/arista-eos-4.26.14M/
+  acl-commit-warning/`): eAPI returns it in the `commit timer` command's
+  own result (`{"warnings": ["Error in ACL commit, configuration may
+  differ from hardware (...)"]}`, every other result `{}`), the CLI over
+  SSH as a `! ` line ending ` at line N`; both carry the same text. A
+  commit that reports it is aborted at once (never confirmed), and the
+  same change is held with a note naming the lists it wrote until the
+  controller's rules change, as an unreachable switch's change is. The
+  warning names no list. The summary has a switch-wide `warnings` entry
+  ("Not all ACLs are programmed in the hardware!") meanwhile, which the
+  read-back logs with the lists' status. Provoked on test port 2 with
+  1000 DSCP+TTL rules through eAPI and over SSH, each aborted. Within the
+  claim the measured room makes it unlikely. The ECS
   claims 512 and the DX010 128. 32 is what this chip's counters allow on
   every port at once.
 - **MAC rules are not claimed** (§9.1).
