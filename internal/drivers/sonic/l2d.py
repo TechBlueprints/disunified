@@ -1766,6 +1766,28 @@ LEARN_HARDWARE = "hardware"
 MACLOCK_LOG_EVERY = 600.0  # seconds between log lines for one port and source
 
 
+def eb_state(name):
+    """(chain exists, its rule count, the hooks of INPUT and FORWARD that
+    jump to it), from the kernel: a chain that is gone or shorter than
+    written (an operator's flush; SONiC's database.sh runs a plain
+    ebtables-restore of /etc/ebtables.filter.cfg, which empties the whole
+    filter table) is written again."""
+    txt = run([EBTABLES, "-L"]).stdout
+    exists, count, jumps, chain = False, 0, set(), ""
+    for line in txt.splitlines():
+        if line.startswith("Bridge chain: "):
+            chain = line[len("Bridge chain: "):].split(",")[0]
+            if chain == name:
+                exists = True
+                try:
+                    count = int(line.split("entries: ")[1].split(",")[0])
+                except (IndexError, ValueError):
+                    count = -1
+        elif line.strip() == "-j " + name and chain in ("INPUT", "FORWARD"):
+            jumps.add(chain)
+    return exists, count, jumps
+
+
 def eb_restore(lines):
     """Applies lines (ebtables commands without the program name) to the
     filter table in one ebtables-restore --noflush, which the switch's
@@ -1874,21 +1896,7 @@ class MacLockGuard(object):
         return out
 
     def chain_state(self):
-        """(chain exists, its rule count, jumps from INPUT and FORWARD)."""
-        txt = run([EBTABLES, "-L"]).stdout
-        exists, count, jumps, chain = False, 0, set(), ""
-        for line in txt.splitlines():
-            if line.startswith("Bridge chain: "):
-                chain = line[len("Bridge chain: "):].split(",")[0]
-                if chain == MACLOCK_CHAIN:
-                    exists = True
-                    try:
-                        count = int(line.split("entries: ")[1].split(",")[0])
-                    except (IndexError, ValueError):
-                        count = -1
-            elif line.strip() == "-j " + MACLOCK_CHAIN and chain in ("INPUT", "FORWARD"):
-                jumps.add(chain)
-        return exists, count, jumps
+        return eb_state(MACLOCK_CHAIN)
 
     def write_chain(self, rules):
         exists, count, jumps = self.chain_state()
@@ -2819,17 +2827,14 @@ class Dot1xGuard(object):
         return out
 
     def write_chain(self, rules):
-        if rules == self.written:
+        if rules == self.written == []:
             return
-        txt = run([EBTABLES, "-L"]).stdout
-        exists = ("Bridge chain: %s," % DOT1X_CHAIN) in txt
-        jumps = set()
-        chain = ""
-        for line in txt.splitlines():
-            if line.startswith("Bridge chain: "):
-                chain = line[len("Bridge chain: "):].split(",")[0]
-            elif line.strip() == "-j " + DOT1X_CHAIN and chain in ("INPUT", "FORWARD"):
-                jumps.add(chain)
+        exists, count, jumps = eb_state(DOT1X_CHAIN)
+        if rules and rules == self.written and count == len(rules) and jumps == {"INPUT", "FORWARD"}:
+            return
+        if rules and rules == self.written:
+            log("802.1X: kernel bridge rules were removed or changed under this daemon; written again",
+                syslog.LOG_WARNING)
         if not rules:
             ok = True
             if exists or jumps:

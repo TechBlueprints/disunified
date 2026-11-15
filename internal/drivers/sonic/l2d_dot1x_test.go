@@ -79,8 +79,17 @@ func TestL2dDot1X(t *testing.T) {
 		!has("start", `STATE conf mode "0o600"`) {
 		t.Errorf("start: hostapd's config (wired driver, the NAS address, the server and its secret) is root's alone:\n%s", show("start"))
 	}
-	if len(steps["second sync"]) != 0 {
-		t.Errorf("a second sync wrote:\n%s", show("second sync"))
+	for _, l := range steps["second sync"] {
+		if l != "RUN /usr/sbin/ebtables -L" {
+			t.Errorf("a second sync wrote:\n%s", show("second sync"))
+			break
+		}
+	}
+	if !has("filter table reloaded", "RUN /usr/sbin/ebtables-restore --noflush") ||
+		!has("filter table reloaded", "EB -A DUI_DOT1X -i Ethernet120 -j DROP") ||
+		!has("filter table reloaded", `STATE input [["-j", "DUI_DOT1X"]]`) ||
+		!has("filter table reloaded", `STATE forward [["-j", "DUI_DOT1X"], ["-d", "BGA", "-j", "DROP"]]`) {
+		t.Errorf("filter table reloaded: the chain and its jumps (ahead of the image's FORWARD rules) written again:\n%s", show("filter table reloaded"))
 	}
 
 	ev := "captured events"

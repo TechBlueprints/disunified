@@ -308,6 +308,20 @@ state("conf mode", oct(os.stat(l2d.DOT1X_RUN + "/Ethernet120.conf").st_mode & 0o
 step("second sync")
 g.sync(CONF)
 
+# SONiC's database.sh loads /etc/ebtables.filter.cfg with a plain
+# ebtables-restore, which empties the whole filter table: the next sync
+# finds its chain gone and writes it again, jumps included, in one restore.
+step("filter table reloaded")
+for c in list(CHAINS):
+    if c in ("INPUT", "FORWARD", "OUTPUT"):
+        CHAINS[c] = []
+    else:
+        del CHAINS[c]
+CHAINS["FORWARD"] = [["-d", "BGA", "-j", "DROP"]]
+g.sync(CONF)
+print("STATE input %s" % json.dumps(CHAINS["INPUT"]))
+print("STATE forward %s" % json.dumps(CHAINS["FORWARD"]))
+
 step("captured events")
 h = HOSTAPDS["Ethernet120"][1]
 for ev in events["run_hostapd"]:
