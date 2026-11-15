@@ -6304,7 +6304,9 @@ nightly -- consistent with drops that never arrive faster than the rate. One
 alert per condition: the two faster intervals after it raised nothing new.
 A UniFi switch on 7.6.11 also sends `link_flap_count` on a few ports (1 on
 each, sparse, beside a `link_down_count` of 0 to 7); the alert above came
-without it. What that field counts is not known; the bridge does not send it.
+without it. It counts the switch's own link-flap detector, not drops (read
+the same day against two switches' logs, [`feature-map.md`](../feature-map.md)
+§2, `link_down_count`); no driver has one, so the bridge does not send it.
 
 **The bridge's count was right; nothing changed for it.** Every toggle was
 counted: SONiC's `flap_count` grew by two per cycle.

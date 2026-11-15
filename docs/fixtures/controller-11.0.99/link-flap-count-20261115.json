@@ -1,0 +1,552 @@
+{
+ "source": "Two real UniFi switches on Network 11.0.99, read-only, 2026-11-15 10:44-10:46 MST: each switch's inform printed with mca-dump on the switch (port_table reduced to the link fields; a key the switch omitted is omitted here too) and the link lines of its own /var/log/messages (the device name replaced by 'switch'). See docs/feature-map.md (link_down_count / link_flap_count) and internal/device/link_flap_test.go.",
+ "switches": [
+  {
+   "model": "USWPXG48P",
+   "version": "7.6.11.17272",
+   "uptime": 150019,
+   "interfaces": "port_idx 1-16 = tw1/0/1-16, 17-48 = te1/0/1-32, 49-52 = tf1/0/1-4 (from each port's media and the switch's STP lines)",
+   "log_since_boot": true,
+   "ports": [
+    {
+     "port_idx": 1,
+     "media": "2P5GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 2,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 3,
+     "media": "2P5GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 4,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 5,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 6,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 7,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 8,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 9,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 10,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 11,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 2
+    },
+    {
+     "port_idx": 12,
+     "media": "2P5GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 13,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 14,
+     "media": "2P5GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 15,
+     "media": "2P5GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 16,
+     "media": "2P5GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 17,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 18,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 19,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 20,
+     "media": "10GE",
+     "up": true,
+     "speed": 5000,
+     "link_down_count": 7,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 21,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 22,
+     "media": "10GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 1
+    },
+    {
+     "port_idx": 23,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 24,
+     "media": "10GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 1
+    },
+    {
+     "port_idx": 25,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 26,
+     "media": "10GE",
+     "up": true,
+     "speed": 5000,
+     "link_down_count": 1,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 27,
+     "media": "10GE",
+     "up": true,
+     "speed": 2500,
+     "link_down_count": 0,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 28,
+     "media": "10GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 29,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 30,
+     "media": "10GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 31,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 32,
+     "media": "10GE",
+     "up": true,
+     "speed": 100,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 33,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 34,
+     "media": "10GE",
+     "up": true,
+     "speed": 2500,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 35,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 36,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 37,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 38,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 39,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 40,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 41,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 42,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 43,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 44,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 45,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 46,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 47,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 48,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 49,
+     "media": "SFP28",
+     "up": true,
+     "speed": 25000,
+     "link_down_count": 1,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 50,
+     "media": "SFP28",
+     "up": true,
+     "speed": 25000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 51,
+     "media": "SFP28",
+     "up": true,
+     "speed": 25000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 52,
+     "media": "SFP28",
+     "up": true,
+     "speed": 25000,
+     "link_down_count": 0
+    }
+   ],
+   "log": [
+    "Nov 13 17:07:58 switch user.info rosserve[742]: LINK-I-Up:  tf1/0/4",
+    "Nov 13 17:08:13 switch user.info rosserve[742]: LINK-I-Up:  tf1/0/2",
+    "Nov 13 17:08:31 switch user.info rosserve[742]: LINK-I-Up:  tf1/0/3",
+    "Nov 13 17:10:32 switch user.warn rosserve[742]: LINK-W-Down:  tf1/0/1",
+    "Nov 13 17:14:02 switch user.info rosserve[742]: LINK-I-Up:  tf1/0/1",
+    "Nov 13 17:14:36 switch user.warn rosserve[742]: LNK_STABL-W-LinkFlap: Link flapping detected on port tf1/0/1, flapped 1 time(s)",
+    "Nov 14 11:07:23 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 11:07:24 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/10",
+    "Nov 14 11:07:26 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 11:07:26 switch user.info rosserve[742]: LINK-I-Up:  te1/0/10",
+    "Nov 14 11:07:29 switch user.warn rosserve[742]: LNK_STABL-W-LinkFlap: Link flapping detected on port te1/0/4, flapped 1 time(s)",
+    "Nov 14 11:07:29 switch user.warn rosserve[742]: LNK_STABL-W-LinkFlap: Link flapping detected on port te1/0/10, flapped 1 time(s)",
+    "Nov 14 12:13:06 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:13:17 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 12:13:18 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:13:22 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 12:14:49 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:14:51 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 12:16:41 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:16:43 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 12:18:16 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:18:19 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 14 12:23:22 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/4",
+    "Nov 14 12:23:26 switch user.info rosserve[742]: LINK-I-Up:  te1/0/4",
+    "Nov 15 01:06:11 switch user.warn rosserve[742]: LINK-W-Down:  tw1/0/11",
+    "Nov 15 01:06:13 switch user.info rosserve[742]: LINK-I-Up:  tw1/0/11",
+    "Nov 15 01:06:18 switch user.warn rosserve[742]: LINK-W-Down:  tw1/0/11",
+    "Nov 15 01:06:19 switch user.info rosserve[742]: LINK-I-Up:  tw1/0/11",
+    "Nov 15 10:43:32 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/6",
+    "Nov 15 10:43:33 switch user.warn rosserve[742]: LINK-W-Down:  te1/0/8",
+    "Nov 15 10:43:33 switch user.info rosserve[742]: LINK-I-Up:  te1/0/6",
+    "Nov 15 10:43:34 switch user.info rosserve[742]: LINK-I-Up:  te1/0/8"
+   ]
+  },
+  {
+   "model": "USXG",
+   "version": "7.5.15.17146",
+   "uptime": 684243,
+   "interfaces": "port_idx N = 0/N",
+   "log_since_boot": false,
+   "ports": [
+    {
+     "port_idx": 1,
+     "media": "SFP+",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 2,
+     "link_flap_count": 3
+    },
+    {
+     "port_idx": 2,
+     "media": "SFP+",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 2,
+     "link_flap_count": 4
+    },
+    {
+     "port_idx": 3,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 4,
+     "media": "SFP+",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 5,
+     "media": "SFP+",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 6,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 7,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 8,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 9,
+     "media": "SFP+",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 10,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 11,
+     "media": "SFP+",
+     "up": false,
+     "speed": 10000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 12,
+     "media": "SFP+",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 19,
+     "link_flap_count": 1
+    },
+    {
+     "port_idx": 13,
+     "media": "10GE",
+     "up": true,
+     "speed": 1000,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 14,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 15,
+     "media": "10GE",
+     "up": false,
+     "speed": 0,
+     "link_down_count": 0
+    },
+    {
+     "port_idx": 16,
+     "media": "10GE",
+     "up": true,
+     "speed": 10000,
+     "link_down_count": 0
+    }
+   ],
+   "log": [
+    "Nov 14 08:46:40 switch daemon.notice switch: TRAPMGR: Link Up: 0/1",
+    "Nov 14 08:46:47 switch daemon.notice switch: TRAPMGR: Link Up: 0/2",
+    "Nov 14 08:47:31 switch daemon.warn switch: DRIVER: Link flapping detected on port 0/1, flapped 1 time(s)",
+    "Nov 14 08:47:31 switch daemon.warn switch: DRIVER: Link flapping detected on port 0/2, flapped 1 time(s)",
+    "Nov 15 10:43:30 switch daemon.notice switch: TRAPMGR: Link Down: 0/12",
+    "Nov 15 10:43:33 switch daemon.notice switch: TRAPMGR: Link Up: 0/12",
+    "Nov 15 10:45:20 switch daemon.notice switch: TRAPMGR: Link Down: 0/12",
+    "Nov 15 10:45:23 switch daemon.notice switch: TRAPMGR: Link Up: 0/12"
+   ]
+  }
+ ]
+}

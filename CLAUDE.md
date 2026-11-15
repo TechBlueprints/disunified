@@ -414,7 +414,14 @@ these is marked "not captured".
   when `link_down_count` grows faster than about 0.3 drops/s (seen at 0.32,
   not at 0.24, on the DX010's looped cage), STP flap when `change_count`
   grows faster than about 0.2/s (0.27, not 0.19, on a stub); each alert's
-  `COUNT` is that inform's count. **BPDU guard and loop protection alert
+  `COUNT` is that inform's count. `link_down_count` on a real switch is the
+  drops since boot (equal to its own logged link-downs, 7.6.11);
+  **`link_flap_count` is the switch's own flap detector, not drops**, sent
+  only where not zero (7.5.15 and 7.6.11, 2026-11-15:
+  `controller-11.0.99/link-flap-count-20261115.json`); the bridge has no
+  detector and sends none, and the Linux drivers count drops as
+  `carrier_up_count` less the running up period (`docs/drivers/proxmox.md`
+  §2). **BPDU guard and loop protection alert
   from `port_table[].error_disabled: true` with `error_disabled_reason`**
   (2 BPDU guard, 1 loop protection), not from `anomalies`: seen on a stub
   port, then from the DX010's own driver after the deploy (812503a); a held
