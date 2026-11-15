@@ -1099,7 +1099,10 @@ was restarted.
   module rule keeps the mode only, a join dissolves the child's aggregates
   and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
   (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
-  PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
+  PortChannel's MTU. One exception (2026-11-15, `docs/drivers/breakout.md`
+  §7c): the device's plan deletes an empty `ownOrphan` in the lane range of
+  a cage with no lane switch attached (`plan.detachedLane`), what a detached
+  lane switch left; one with members stays, noted. `lockApply` serialises `Collect`, `ApplyPorts`,
   `ApplyLanes`, `EnsureVLANs`, `ApplyDevice`, `ApplyManagementIPv6`, `ApplyAddress` and `Reboot`; the fan mode, the SSH keys and locate stay outside it on purpose (they share nothing with a plan). Facts from the capture
   (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
@@ -1207,3 +1210,14 @@ was restarted.
   (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
+- **A cage left up as a non-edge port (looped, or facing a switch) for more
+  than about five minutes gets pinned to `stp.edge=disabled`.** That is the
+  controller's Auto STP Edge (`docs/drivers/sonic.md` §11.23.3). It does
+  not go back by itself, and l2d keeps auto edge off on the cage. Un-pin it
+  at the end of the test with one call, which needs no override change and
+  no UI:
+  `POST /proxy/network/v2/api/site/<site>/ports/<mac>/reset-auto-edge` with
+  body `[{"port_idx":N}, ...]`, using the API key (answer 204). Then check
+  that the next push says `switch.port.N.stp.edge=auto`. Do not use the
+  port editor's Edge-then-Restore saves: the save rewrites the whole
+  override (BPDU guard on and more).

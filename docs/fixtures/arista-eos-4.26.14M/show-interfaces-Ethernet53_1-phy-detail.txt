@@ -6,7 +6,7 @@ Current System Time: Sat Sep 19 20:52:49 2026
   Interface state             up                      4    1 day, 22:45:12 ago
   HW resets                                           0                  never
   Transceiver                 100GBASE-CR4            2   67 days, 4:56:53 ago
-  Transceiver SN              QAMJ2220R01038F 
+  Transceiver SN              SSJ000000000000 
   Oper speed                  100Gbps                                         
   Interrupt Count                                    11                       
   Transceiver Reset Count                             0                  never
