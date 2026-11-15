@@ -251,6 +251,8 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 			delete(top, "ip access-list "+strings.TrimPrefix(c, "no ip access-list "))
 			return true
 		}
+	case strings.HasPrefix(c, "no interface Port-Channel"):
+		return f.removePortChannel(strings.TrimPrefix(c, "no interface "))
 	case strings.HasPrefix(c, "ntp server "), strings.HasPrefix(c, "no ntp server "):
 		// One line per server, as written (`ntp server 192.0.2.2`, the
 		// capture's running config).
@@ -318,6 +320,36 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		return true
 	}
 	return false
+}
+
+// removePortChannel is `no interface Port-Channel<n>` on a Port-Channel no
+// port is in: it leaves `show interfaces`, `show interfaces switchport`,
+// `show interfaces status` and the running config (empty-po-leftovers/,
+// then empty-po-none/ after the driver removed Port-Channel1-4). One with
+// members (EOS takes them out of the group too) is not modelled; one that
+// does not exist is silent, as on the switch.
+func (f *FixtureTransport) removePortChannel(name string) bool {
+	top := f.rcTop()
+	if top == nil {
+		return false
+	}
+	for section, body := range top {
+		if !strings.HasPrefix(section, "interface Ethernet") {
+			continue
+		}
+		for l := range child(obj(body), "cmds", false) {
+			if strings.HasPrefix(l, "channel-group "+strings.TrimPrefix(name, "Port-Channel")+" ") {
+				return false
+			}
+		}
+	}
+	delete(top, "interface "+name)
+	for _, cmd := range []string{"show interfaces", "show interfaces status"} {
+		delete(child(f.doc(cmd).vOrNil(), "interfaceStatuses", false), name)
+		delete(child(f.doc(cmd).vOrNil(), "interfaces", false), name)
+	}
+	delete(child(f.doc("show interfaces switchport").vOrNil(), "switchports", false), name)
+	return true
 }
 
 // rcLine adds or removes a one-line config-mode command (prefix + value);

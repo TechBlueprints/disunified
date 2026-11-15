@@ -1185,6 +1185,7 @@ a reply only in forms the switch printed after such a command:
 | `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `error-correction encoding ...`, `no error-correction encoding`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
 | `ip access-list` (`counters per-entry`, `<seq> <rule>`, `no <seq>`), `no ip access-list` | the running config; a port EOS names is shown by name (9 `discard`, 22 `ssh`, 67 `bootps`, 68 `bootpc`, 443 `https`; 1001 kept) | `session-dui-acl-test-ports.txt` -> `show-running-config-dui-acl.json`, `write-forms/` |
 | `ntp server`, `logging host` (shown with port 514), `monitor session ... both` (shown without `both`) | the running config | the poll capture, `write-forms/`, `split-cage54-lag/` |
+| `no interface Port-Channel<n>` (no member left) | gone from `show interfaces`, its switchport and status, and the running config | `empty-po-leftovers/` -> `empty-po-none/` |
 | `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState` | `split-cage54/` |
 | `environment fan-speed override 30` / `no environment fan-speed` | `show system environment cooling` `coolingMode`, `overrideFanSpeed` | `show-system-environment-cooling-override30.json`, `-default-20261114-after-quiet.json` |
 
@@ -1192,7 +1193,7 @@ A `configure session` is applied at its `commit timer`, kept by `configure
 session NAME commit` and reverted by `... abort`. Everything else is recorded
 in `FixtureTransport.Unmodelled` and changes no reply: a speed that splits or
 joins a cage (the tests switch `Dir` to a capture of the cage after it),
-`channel-group`, a shutdown of a port with a link, the switch's own
+`channel-group` (and removing a Port-Channel that still has members), a shutdown of a port with a link, the switch's own
 addressing, STP mode and priority, SNMP communities, the hostname, SSH keys
 and MTU. A replay can require `Unmodelled` empty. Changing `Dir` or an
 `Overrides` entry makes the new capture the switch's state for the commands

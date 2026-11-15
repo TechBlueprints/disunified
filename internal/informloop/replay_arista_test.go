@@ -73,9 +73,9 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			// 8: Port State: Disabled again, with the ports renamed: port 2 is
 			// already shut, so only the names are written.
 			8:  {must: []string{"interface Ethernet2 | description Ethernet2 |"}, mustNot: []string{"shutdown"}},
-			9:  {exactly: "enable | configure | interface Ethernet2 | no shutdown | end | write memory"}, // Port State: Active
+			9:  {exactly: "enable | configure | interface Ethernet2 | no shutdown | end | write memory"},                                                                                                            // Port State: Active
 			10: {exactly: "enable | configure | interface Ethernet2 | switchport mode trunk | switchport trunk native vlan 2 | switchport trunk allowed vlan 1-2,8-10,69,1000,2000,3000,4000 | end | write memory"}, // native VLAN kids
-			11: {exactly: "enable | configure | interface Ethernet2 | switchport mode trunk | no switchport trunk native vlan | switchport trunk allowed vlan all | end | write memory"},           // native VLAN back to Default
+			11: {exactly: "enable | configure | interface Ethernet2 | switchport mode trunk | no switchport trunk native vlan | switchport trunk allowed vlan all | end | write memory"},                            // native VLAN back to Default
 			// 12: set-locate, 13: unset-locate
 			// 14-15: Global Switch Settings -> Rogue DHCP Server Detection on, then off
 			// (site-wide; pushed only because the device claimed DHCP snooping at the
