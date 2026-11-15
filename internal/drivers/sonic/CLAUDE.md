@@ -1019,7 +1019,7 @@ was restarted.
   and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
   (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
   PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
-  `ApplyLanes`, `EnsureVLANs`, `ApplyDevice` and `ApplyManagementIPv6`. Facts from the capture
+  `ApplyLanes`, `EnsureVLANs`, `ApplyDevice`, `ApplyManagementIPv6`, `ApplyAddress` and `Reboot`; the fan mode, the SSH keys and locate stay outside it on purpose (they share nothing with a plan). Facts from the capture
   (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
   (so the Flex XG aggregate push's `cl-91` is refused); the controller's

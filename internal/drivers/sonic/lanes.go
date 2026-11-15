@@ -114,7 +114,12 @@ func reportChildren(ports []cagePort, macs []devicemodel.MACEntry, children map[
 
 // lockApply takes the write lock: one write (or collect) at a time, so two
 // plans never interleave their batches or diff against a state the other
-// is changing. It gives up when ctx does.
+// is changing. It gives up when ctx does. Every write that touches what a
+// plan reads or writes takes it, and so do the address move (it swaps the
+// runner and saves the config) and the reboot (it waits for a batch under
+// way). Three stay outside on purpose: the fan mode (pmon's fancontrol
+// files), the SSH keys (the login user's authorized_keys) and locate (an
+// LED, and its blink runs between calls) share nothing with a plan.
 func (c *Collector) lockApply(ctx context.Context) (func(), error) {
 	c.applyOnce.Do(func() { c.applySem = make(chan struct{}, 1) })
 	select {

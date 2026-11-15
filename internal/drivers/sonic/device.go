@@ -853,8 +853,15 @@ func keysScript(lines []string) string {
 // way, not a failure. The connection goes with the switch, so it is closed
 // and the next collect dials the rebooted switch afresh.
 func (c *Collector) Reboot(ctx context.Context) error {
+	// Wait for a write under way (a lane switch's batch runs from its own
+	// loop) rather than cut it between its commands and its config save.
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return fmt.Errorf("sonic reboot: %w", err)
+	}
+	defer unlock()
 	c.Log.Printf("sonic: rebooting the switch at the controller's request")
-	_, err := c.run(ctx, "sudo reboot", "")
+	_, err = c.run(ctx, "sudo reboot", "")
 	if sshrun.SessionDropped(err) {
 		c.Log.Printf("sonic: the connection dropped while `sudo reboot` ran (%v): the switch is going down", err)
 		err = nil
