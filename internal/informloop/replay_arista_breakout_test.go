@@ -136,15 +136,17 @@ func (r *aristaLaneRig) writes() []string {
 
 // cycleParent runs the parent's collect and reconcile: whatever its own
 // (stale) push asks of its own ports, nothing may reach cage 54's lanes.
-func (r *aristaLaneRig) cycleParent(after string) {
+func (r *aristaLaneRig) cycleParent(after string) []string {
 	r.t.Helper()
 	r.parent.collect(context.Background())
 	r.parent.reconcile(context.Background())
-	for _, w := range r.writes() {
+	ws := r.writes()
+	for _, w := range ws {
 		if strings.Contains(w, "Ethernet54/") || strings.Contains(w, "Port-Channel15") || strings.Contains(w, "monitor session 15") {
 			r.t.Errorf("the parent's reconcile after %s touched the lane switch's cage: %q", after, w)
 		}
 	}
+	return ws
 }
 
 func (r *aristaLaneRig) cycleChild(after string) {
@@ -204,23 +206,38 @@ func TestReplayAristaLaneSwitchAggregate(t *testing.T) {
 		t.Errorf("a second apply before the collect wrote %q", got)
 	}
 
-	// The switch as the batch left it: both loops' next cycle writes
-	// nothing for the lanes; the lanes report the aggregate.
-	r.afterFlexXG()
-	r.cycleParent("the lane aggregate")
-	r.cycleChild("the lane aggregate")
-	csnap, err := r.lanes.Collect(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	// The switch as the batch left it, first as the fixture transport
+	// shows the batch (fixture_lag.go), then as the switch printed it
+	// after the same batch: both loops' next cycle writes nothing for the
+	// lanes; the lanes report the aggregate.
+	for _, after := range []string{"the lane aggregate", "the lane aggregate (captured)"} {
+		if after != "the lane aggregate" {
+			r.afterFlexXG()
+		}
+		// From the switch as the transport left it the parent's own push
+		// is applied already: its cycle writes nothing at all. (A new Dir
+		// is a fresh capture, its descriptions scrubbed: the names are
+		// written again.)
+		if w := r.cycleParent(after); after == "the lane aggregate" && len(w) != 0 {
+			t.Errorf("the parent's cycle after the lane aggregate wrote %q", w)
+		}
+		r.cycleChild(after)
+		csnap, err := r.lanes.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range csnap.Ports {
+			want := 0
+			if p.Index >= 2 && p.Index <= 4 {
+				want = 1
+			}
+			if p.LAGID != want {
+				t.Errorf("%s: lane switch port %d: LAGID %d, want %d", after, p.Index, p.LAGID, want)
+			}
+		}
 	}
-	for _, p := range csnap.Ports {
-		want := 0
-		if p.Index >= 2 && p.Index <= 4 {
-			want = 1
-		}
-		if p.LAGID != want {
-			t.Errorf("lane switch port %d: LAGID %d, want %d", p.Index, p.LAGID, want)
-		}
+	if len(r.ft.Unmodelled) != 0 {
+		t.Errorf("writes the fixture transport could not show: %q", r.ft.Unmodelled)
 	}
 }
 
@@ -244,6 +261,11 @@ func TestReplayAristaLaneSwitchJoin(t *testing.T) {
 	head := "enable | configure | interface Ethernet54/2 | no channel-group | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | no interface Port-Channel1541 | interface Ethernet54/1 | speed forced 100gfull"
 	if !strings.HasPrefix(got[0], head) {
 		t.Errorf("the join wrote\n%s\nwant it to start\n%s", got[0], head)
+	}
+	// The lane aggregate's removal reads back (fixture_lag.go); the join
+	// itself is the one write no read can show: the lanes go.
+	if got := strings.Join(r.ft.Unmodelled, "; "); got != "interface Ethernet54/1: speed forced 100gfull" {
+		t.Errorf("unmodelled: %q", r.ft.Unmodelled)
 	}
 	r.ft.Dir = aristaFixtures("") // the cage whole again (the 2026-09-19 capture)
 	r.parent.collect(context.Background())
