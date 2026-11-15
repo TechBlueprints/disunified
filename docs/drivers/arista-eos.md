@@ -222,8 +222,73 @@ per bit; it derives its own link-flap and SFP alerts from the raw fields).
   caught on the uplink (`storm-control-drops/`, `drop` 2230), and the
   deployed bridge's next inform raised the controller's "Unicast Storm
   Detected" alert for that port.
-- `show interfaces transceiver dom thresholds` → per-parameter `channels` +
-  `threshold{lowAlarm,highAlarm}` for optics with DOM (none for DACs/empty cages).
+- **Optic fault flags (`sfp_rxfault` / `sfp_txfault`, 2026-11-15).** On a
+  UniFi switch they are the module's own loss of receive signal and transmit
+  fault, sent only with a module seated, never the link and never a DOM
+  threshold. The SONiC driver established it on the ECS
+  ([`sonic.md`](sonic.md) §10.10), and the site's 41 real devices agree on
+  Network 11.0.99 (`stat/device`, read 2026-11-15): every `sfp_rxfault` true
+  is on a down port whose optic reads no light (`sfp_rxpower` `0.00`, or
+  `-40.00` on the US-16-XG), on the ECS, the USW Aggregation and the
+  US-16-XG alike; a down port that still receives light (the ECS's port
+  16, -1.52 dBm) has none; no lit port is faulted; `sfp_txfault` is false
+  everywhere; and **no inform carries a threshold**, so the controller
+  cannot compare one either. The site's UniFi gateway reports the same pair
+  as `sfp_rx_los` / `sfp_tx_fault`. Whether a lit reading beyond its
+  warning or alarm threshold faults a UniFi switch's port is **not
+  captured**: no real port on the site has such a reading.
+
+  **What EOS 4.26.14M gives** (`docs/fixtures/arista-eos-4.26.14M/optic-flags/`,
+  read 2026-11-15 with a 100GBASE-CWDM4 seated in cage 49 with no fibre, a
+  100G DAC linked in cage 53, cage 54 empty; the 2026-09-19 capture is the
+  same CWDM4 linked, with light):
+
+  | Command | Module flags? |
+  |---|---|
+  | `show interfaces X phy detail` (text) | **yes**: `RX_LOS since system boot` and `TX_FAULT since system boot`, Current State `True`/`False`, then a change count and the last change. Dark CWDM4: RX_LOS `True` (1 change, when it was seated), TX_FAULT `False`; the same module lit (2026-09-19): `False`/`False`, 6 changes; DAC and empty cage: `False`/`False`. Per interface: the inactive Et49/2 of the unsplit cage also reads `True` |
+  | `... phy detail \| json` | only `phyStatuses[].text`, the same text in a string |
+  | `show interfaces transceiver` / `dom` / `dom thresholds` / `detail` | readings and thresholds only (`dom` and `dom thresholds` print the dark module's aggregate RX power as `-Infinity`, `finiteJSON`) |
+  | `show interfaces transceiver hardware` / `properties` | media type, power, wavelength |
+  | `show interfaces transceiver eeprom` | the decoded static pages (identifier, compliance, the options that say `TX_FAULT implemented`), no status bytes |
+  | `show interfaces transceiver channels` | `This is an unconverted command` (JSON); empty text |
+  | `show interfaces transceiver performance-monitoring` | empty |
+  | `show idprom transceiver X` | a hex dump of page 00h upper only (static) |
+
+  So the flags are EOS's live copy of the module's indicators, per
+  interface, not per optical channel: no 4.26.14M command prints a QSFP's
+  four channels' LOS apart.
+
+  **The mapping.** With eAPI (the deployed transport) `applyPHYDetail` reads
+  phy detail for every up port (as for FEC) and for every optical cage with
+  a module seated that is down, one command per lane interface, the down
+  cages in a batch of their own (eAPI stops a batch at its first error, so
+  a cage the switch cannot read costs no FEC counter). `OpticRxAlarm` is
+  any lane's RX_LOS, `OpticTxAlarm` any lane's TX_FAULT; a split cage's
+  lane port takes its own interface's. An empty cage is not read and never
+  sends the flags (`internal/device`: with a module seated only). The DOM
+  thresholds no longer set the flags: a reading beyond its alarm is no
+  fault (`TestThresholdsAloneSetNoFault`). The SSH transport cannot run
+  text, so there the flags stay the old rule as a fallback
+  (`applyOpticAlarms`: a receive, transmit or bias reading outside the
+  module's alarm thresholds, or a power with no finite reading, on any
+  channel); it agrees for a dark receiver and may fault a weak but lit one
+  that a UniFi switch would not. `show interfaces transceiver dom
+  thresholds` stays in the poll for it.
+
+  **Not closed:** a single dark channel of an unsplit cage (is Et49/1's
+  RX_LOS any channel's? every channel of the module was dark or lit
+  together), a split module's lanes (no breakout optic), and a real
+  TX_FAULT were never seen. There is no lit optic on the switch now (the
+  only optic is the dark one; the linked cage is a DAC), so the lit case is
+  the 2026-09-19 capture. Live from the branch (a `-collect-once` over eAPI,
+  2026-11-15 17:53 UTC): cage 49 (dark, down) `OpticRxAlarm` true and
+  `OpticTxAlarm` false, read in the down cages' batch; the DACs in cages 50
+  (seated, no link) and 53 (linked, FEC counters still read) and the up
+  copper port 1 no fault; the empty cages 51, 52 and 54 not read. The
+  controller's alert for it was already raised by the old rule (its record
+  held `sfp_rxfault` true on port 49 the same morning), so the deploy
+  changes nothing visible for this module. Tests: `optic_flags_test.go`,
+  `finite_test.go`.
 - FEC codeword counters exist **only in text**: `show interfaces EthernetX phy detail`
   prints `FEC corrected codewords N …` / `FEC uncorrected codewords N …` (first
   number is the counter), and for every port — 10GBASE-T included — `PCS err blocks N`

@@ -1,0 +1,36 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "detectedMediaType": "100GBASE-CWDM4",
+      "maxPowerSupportedCharacteristic": 0.0,
+      "mediaType": "100GBASE-CWDM4",
+      "power": {},
+      "powerCharacteristic": 3.5,
+      "wavelength": 1301.0
+    },
+    "Ethernet49/2": {
+      "detectedMediaType": "100GBASE-CWDM4",
+      "maxPowerSupportedCharacteristic": 0.0,
+      "mediaType": "100GBASE-CWDM4",
+      "power": {},
+      "powerCharacteristic": 3.5,
+      "wavelength": 1301.0
+    },
+    "Ethernet49/3": {
+      "detectedMediaType": "100GBASE-CWDM4",
+      "maxPowerSupportedCharacteristic": 0.0,
+      "mediaType": "100GBASE-CWDM4",
+      "power": {},
+      "powerCharacteristic": 3.5,
+      "wavelength": 1301.0
+    },
+    "Ethernet49/4": {
+      "detectedMediaType": "100GBASE-CWDM4",
+      "maxPowerSupportedCharacteristic": 0.0,
+      "mediaType": "100GBASE-CWDM4",
+      "power": {},
+      "powerCharacteristic": 3.5,
+      "wavelength": 1301.0
+    }
+  }
+}
