@@ -1993,8 +1993,105 @@ another port's index: Ethernet0's for a lane reported before its netdev,
 Ethernet<ifindex>'s otherwise. That port lost its receive sockets, its tree and its
 group memberships (§11.25.3, from l2mcd's log of a split on the DX010). 0011 gives a
 re-created EthernetN its start-up index again; 0012 frees a closed socket's event.
-The harness's `port-list-breakout` case reproduces it (a heap use-after-free without
-0011) and is clean with both. Not in an image yet.
+The harness's `port-list-breakout` case reproduces it: its checks fail without 0011, a
+LeakSanitizer report remains with 0011 alone, and it is clean with both. (On the trees
+before 0011 it stops earlier, at 0013's use-after-free below.) Not in an image yet.
+
+**0013: `mcgrp_stop_phy_port()` read and cleared a membership it had just freed
+(2026-11-15).** The function (`src/igmp.c` 616-698 at upstream `651a13b`, shared by
+IGMP and MLD) walks a VLAN's groups. For each group it destroys the port's membership with
+`mcgrp_destroy_mbrshp_entry()`, which `free()`s it. Then it called
+`pims_is_pim_snoop_mbrship()` on the freed membership and cleared
+`MLD_OR_IGMP_JOIN_PORT` in its `pims_mbr_flags`. Every way a port's memberships are
+stopped runs it, static groups included:
+- a member port's link going down (`l2mcd_portstate_update` -> ... -> `mld_vport_state_notify`);
+- the port leaving the VLAN (`L2MCD_VLAN_MEM_TABLE_UPDATE` op 0);
+- snooping turned off on the VLAN (`mcgrp_stop_vir_port`);
+- a version change (`mcgrp_handle_intf_ver_change`).
+
+The review of the Micas PR flagged it as Critical on 2026-02-20, and it was never fixed
+([`prior-art.md`](../prior-art.md) §6.1). No patch of the series touched `src/igmp.c`. The
+neighbouring callers of `mcgrp_destroy_mbrshp_entry()` (`igmp.c` 1810, 2043, 2358,
+`igmp_fsm.c` 1934, `l2mcd_mld_port.c` 2454, 2765, `l2mcd_mld_pim_snoop.c` 263) do not use
+the membership after the call. The fix reads the PIM flag into a local before the destroy
+and drops the write. Nothing in the daemon sets `PIMS_WG_MBR_PORT` or `PIMS_SG_MBR_PORT`
+(they are only tested and cleared), so the flag was always false, and the function's
+behaviour is unchanged.
+
+**Why the switch is quiet.** A membership is a 336-byte `calloc` (a 352-byte chunk), and
+`pims_mbr_flags` is at byte 328 (gcc 12, amd64). In a freed chunk of that size, glibc's own
+fields are the first 16 bytes and the next chunk's `prev_size` at byte 336. Nothing
+allocates between the free and the read. The read therefore sees the old flags, and the
+write lands on freed bytes nobody uses. It is a latent fault: a different allocator,
+`MALLOC_PERTURB_`, a change of layout or a sanitizer build makes it real.
+
+**Harness** (`contrib/sonic-image/l2mcd-fuzz`): `member-link-down` (IGMPv3),
+`mld-member-link-down` (MLDv2) and `member-vlan-leave`. In each, Ethernet4 and Ethernet8
+join a group, then Ethernet8 loses link or leaves Vlan100, through l2mcd's own functions.
+The checks: the group keeps Ethernet4 alone, and one member deletion went out, under
+Ethernet8. Results:
+- `651a13b`, and the series 0001-0012: heap-use-after-free in `pims_is_pim_snoop_mbrship`.
+  The free is in `mcgrp_destroy_mbrshp_entry`, called from `mcgrp_stop_phy_port`.
+- With 0013: clean, every check passing.
+- The other 30 cases give the same results with and without 0013, on the series and on
+  `651a13b`. One exception: on `651a13b` + 0013, `port-list-breakout` gets past the
+  use-after-free to 0011's own fault.
+- The IGMP and MLD fuzzers ran 30 minutes with 4 workers each on the series with 0013:
+  6.9 million IGMP and 19.4 million MLD packets, about 1,090 and 1,150 edges, no crash
+  and no sanitizer report.
+- gcc 12 `-Wall` gives no warning in `igmp.c` either way.
+- `dry-run.sh` passed (2026-11-15).
+
+The same work found the harness's APPL_DB stub counting deletions where l2mcd never sends
+them (§11.25.3). It now counts them where l2mcd does.
+
+**On the DX010's image (0001-0010, `igmp-202511.20261115-6c8eb1cf7`), 2026-11-15:
+nothing visible.** The run was under the lock, with the bridge running and no config
+written. The chip's MAC loopback brought empty cage 5 (Ethernet16) up for 13 s, and then
+the loopback was taken off.
+- **Up:** l2mcd activated the cage's seven reserved static groups in Vlan4094 (orchagent:
+  Ethernet16 at 7 members, the VLAN at 14). It also learned the cage as a dynamic router
+  port, from its own looped query.
+- **Down:** `mcgrp_stop_phy_port` ran over the seven memberships it frees. l2mcd sent the
+  seven `Group-DEL`s and the router-port delete under Ethernet16, and orchagent took the
+  VLAN back to its 7 members, the uplink's.
+- **After:** the uplink aggregate stayed the VLAN's router port. l2mcd kept its pid and
+  uptime; there was no new core and no error in its log or syslog.
+
+This is what the heap layout predicts. The seven groups also left l2mcd's own tree (its
+VLAN dump: `ngroups` 7 before, 0 after). The uplink's static rows are in the chip and in
+l2mcd's static-group list, but no membership in that tree held the groups, so the cage's
+departure emptied them. That is the function's normal path and the same with 0013. Why the
+7 groups were in the tree beforehand with no member (another session's looped cage had gone
+down at 15:51) was not chased.
+
+**The risk on a switch with real receivers.** Every member's link-down, leave of the VLAN,
+snooping turned off and version change takes this path. On this image's glibc it changes
+nothing: the read sees the right (always false) PIM flag, and the write lands on unused
+freed bytes. No crash or wrong group state follows from it. The fault is latent until the
+allocator, its tuning or the struct changes. 0013 removes it.
+
+**What an image install with 0013 has to prove**, besides §11.25.3's list for 0011 and
+0012. On an empty cage under the lock: MAC loopback on and then off, as above. Then:
+- l2mcd keeps its pid;
+- the cage's reserved static members leave ASIC_DB and come back on the next link-up;
+- every other port's members and the uplink aggregate's mrouter entry are unchanged.
+
+With no sanitizer on the switch, the install cannot show the fault's absence directly.
+That proof is the harness's.
+
+**A separate fault, seen in the same logs: l2mcd's abort at 11:16:47 on 2026-11-15.** One
+second after Ethernet0 was re-created at index 4131 (§11.25.3), l2mcd died on an uncaught
+`std::logic_error` ("basic_string: construction from null is not valid"; core
+`/var/core/l2mcd.1794766607.26.core.gz`). systemd restarted its container at 11:19:48, so
+snooping was down for three minutes. The likely cause, from the source:
+`receive_igmp_packet()` checks the receiving port's name for NULL before
+`l2mcd_is_peerlink()` (`src/igmp_io.c` 639-640), but the v1/v2 and v3 report paths pass
+`portdb_get_ifname_from_portindex(multicast->source_port)` to it unchecked (`igmp_io.c`
+777 and 835). `l2mcd_is_peerlink()` builds a `std::string` from that name. A report that
+arrives on an index portdb no longer names, as after 0011's fault, therefore aborts the
+daemon. The harness cannot see it: its stub of the C++ layer accepts NULL. Not fixed yet (a
+follow-up). 0011 removes the way it was reached that day.
 
 ### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
@@ -7405,8 +7502,12 @@ from `/var/log/l2mcd.log`) read against its source (`port/l2mcd_utils.c`,
   tree and no receive socket from 10:48:27 until its next link event at
   11:16:46, 28 minutes. That recovery lost Ethernet0's own name and numbered
   it 4131 (4096 + 35), so its tree and its name sat at different indexes
-  (`Err kif_to_if: if:4131`) until l2mcd restarted at 11:19:52 (not part of
-  the run). Ethernet64 had no tree until that restart.
+  (`Err kif_to_if: if:4131`). One second later, at 11:16:47, l2mcd died
+  ("terminate called after throwing an instance of 'std::logic_error'",
+  "basic_string: construction from null is not valid", a core in
+  `/var/core`), and systemd restarted the container at 11:19:48: the
+  "restart" earlier notes took for a hand one (§8.13 has the likely cause).
+  Ethernet64 had no tree until then.
 
 **So the deletions are not confined to the cage being split.** Any breakout
 or join that re-creates a port can give another port's index to a lane:
@@ -7424,14 +7525,15 @@ then; had l2mcmgrd's report come first, 4096). Every later split or join
 re-creates names that the previous one deleted. Under AddressSanitizer the
 harness case below also hits a heap use-after-free on this path; the switch
 logged nothing of the kind. That use-after-free is not the breakout's: it is in
-`mcgrp_stop_phy_port()` (`src/igmp.c` 667-678 at upstream `651a13b`), which
+`mcgrp_stop_phy_port()` (`src/igmp.c` 667-680 at upstream `651a13b`), which
 frees a port's membership with `mcgrp_destroy_mbrshp_entry()` and then reads
 and clears its `pims_mbr_flags`. Every link-down of a port that is a group
 member runs it, breakout or not: a scratch harness case (a member port's
 link-down, nothing else) hits it on upstream, on 0001-0012 and on upstream
 with both fixes (2026-11-15). Nothing allocates between the free and the
-write, so glibc's heap survives it, which is why the switch is quiet. Not
-fixed: a follow-up (`local-information/follow-ups.md`).
+write, so glibc's heap survives it, which is why the switch is quiet. Fixed
+by sonic-l2mcd 0013 (§8.13, with the harness cases and what the running
+image does).
 
 **Not the driver's.** The driver runs `config interface breakout` and nothing
 of l2mcd; the numbering happens inside l2mcd on any port re-creation, by the
@@ -7467,7 +7569,14 @@ before its netdev exists, and Ethernet10 is created as ifindex 40, its link
 event first, as on the switch. The case checks that 4096 is still Ethernet0's
 name; that Ethernet40 keeps its index, name, tree, kif and packet sockets and
 that no group member is deleted; and that each lane has its own index and
-tree. On the build host's bookworm slave:
+tree. (Until 2026-11-15 the harness's APPL_DB stub counted deletions only in
+`l2mcsync_del_l2mc_entry()`, which nothing calls; l2mcd sends them through
+`l2mcsync_add_l2mc_entry()` with `op_code` 0, so the deletion check could not
+fail. With the stub counting them, the results below are unchanged: no
+deletion with 0011, and on upstream with 0013 alone, which gets past the
+use-after-free, the case now shows the fault itself: Ethernet10 holds
+Ethernet40's index and one member deletion goes out under its name.) On the
+build host's bookworm slave:
 
 | Tree | `port-list-breakout` |
 |---|---|
@@ -8104,7 +8213,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
   host's last frame, written as l2d stops (SIGTERM ends the main loop with
   `SystemExit`; `stopping()` runs in its `finally`, so an exception does it
   too), read and removed (`hdel`) by the next l2d. A SIGKILL leaves none
-  and the timer starts at the restart, as before;
+  (the timer then started at the restart; since §11.26.13 the row's
+  `mab_heard`, written as l2d runs, stands in);
 - an FDB entry already in APPL_DB as wanted is not written again;
 - the learn modes an earlier l2d set (APPL_DB `cpu_trap` or `hardware` over
   CONFIG_DB's `drop`) are the new l2d's from its first sync, so a port it
@@ -8285,6 +8395,101 @@ jumps back (FORWARD's ahead of the image's own rules) in one restore.
 `TestDot1xChainAtomicLive` holds the capture to the table: 14 transactions
 by `ebtables-restore` with the DROP after each for the new run, 88 and 71
 for the old.
+
+#### 11.26.13 A MAC-authenticated host's idle timer after a SIGKILL (2026-11-15)
+
+§11.26.10's `mab_seen` is written only as l2d stops. A SIGKILL, an
+out-of-memory kill or an interpreter crash writes nothing, and systemd starts
+l2d again 3 s later (`Restart=always`, `RestartSec=3`; `KillMode=process`,
+so hostapd, the chain and the FDB entries stay).
+
+**What happened (the l2d on main before this change, run `base` of
+`mab-kill-live.txt`).** The new l2d found the hosts in the row but no last
+frame, so each host's idle timer started again at the restart. A silent
+host went 40 s after the restart, not 40 s after its last frame. In the
+run:
+
+| host C before the kill | base: C went after its last frame | this l2d |
+|---|---|---|
+| silent 8.4 s, one kill | 52.6 s (restart + 41 s) | 46.3 s |
+| silent 13.3 s, two kills 15 s apart | 73.0 s (second restart + 41 s) | 45.3 s |
+| one frame after 25 s of silence, killed 0.6 s after it | 45.1 s (restart + 41 s) | 47.2 s |
+
+With the idle timeout at 40 s, each restart gave a silent host up to a
+whole timeout more. If l2d crashed in a loop faster than the timeout, the
+host was never removed. An operator saw the host still listed in the row's
+`authorized` and in the MAC table (its static FDB entry), as a client of
+the port, until the timeout after the last restart. The talking host (A,
+an ARP every 2 s) was kept through every kill in both runs: its FDB entry
+was written once, at its admission, and never again. Nothing in the chip
+moved. No host was thrown out early.
+
+**The options.**
+
+- **Re-authenticate every MAC-authenticated host at start.** A RADIUS
+  accept says the MAC is still a user, not that the host is talking, so the
+  timer would still start at the restart. Revoking every host at start
+  instead ("let the next frame re-admit it") would throw out the talking
+  hosts, which lose a frame and a RADIUS round trip.
+- **Derive the last frame from the kernel or the chip.** The admitted
+  host's FDB entry is static, so neither the chip nor the kernel ages it,
+  and the chip forwards the host's frames without the CPU. The kernel bridge
+  and `DUI_DOT1X`'s RETURN see only what the CPU sees, which is what l2d
+  counts already. The RETURN rule's counter is a count, not a time, and
+  every chain rewrite resets it. So neither holds a time to start from.
+- **Persist the last frame as l2d runs (chosen).** It costs a few small
+  writes and the bound follows from the write rule alone.
+
+**As built (`Dot1xGuard`).** The row gains `mab_heard`
+(`<mac>=<epoch>,...`, `mab_seen`'s form): each MAC-authenticated host's
+last frame, rewritten for the whole port when a frame finds the stored
+value `MAB_HEARD_STEP` (5 s) or more behind (a new admission counts too),
+and on the 2 s pass when the port's hosts change. Its last host's
+revocation removes the field. So the stored value is never later than a
+host's last frame and never 5 s or more before it, whenever l2d dies. A
+clean stop still writes the exact `mab_seen`, which the next l2d prefers.
+After a death without it, the next l2d takes `mab_heard` as each host's
+last frame and adds 5 s to its idle timeout until its next frame (in
+memory only, so a crash loop does not add it twice). `publish()` now
+compares only the fields it writes, so the extra field does not make it
+rewrite the row every pass.
+
+**The bound.** After any number of kills, a silent host goes between
+`idle_timeout` and `idle_timeout` + 5 s + one pass (2 s plus the sync's own
+time; 2.09 s seen) after its last frame. If l2d is down past that, it goes
+at the first sync after the restart. A host that talks is never removed by
+a kill. A host whose frame came while no l2d ran is not credited with it.
+Its next frame starts the timer, as it does over a clean stop. The write
+cost: one `HSET` of one field per port every 5-6 s while a host on it
+talks (35 in the 180 s `fix` run, one port, a host every 2 s), and none for
+a port whose hosts are silent.
+
+**Live, 2026-11-15 22:44-22:52 UTC** (image `igmp-202511.20261115-6c8eb1cf7`,
+under the test lock): §11.26.10's rig on empty cage 30 in MAC loopback, the
+deployed bridge stopped, l2.json's `dot1x` by hand (`mac_based`, idle
+timeout 40 s), hostapd's integrated RADIUS server on lo. Each l2d was
+installed as a copy: `base` main's (aa21c73); `fix` this change's, the file
+the test deb `0.0.0+20261115.mabkcaeb045` embeds, checked byte for byte on
+the switch. No test bridge ran: a build carrying main's VLAN delete
+(§11.29) or the kernel ACL mirror would have changed the switch beyond l2d.
+In each run, A talks throughout and C goes silent before each `kill -9` of
+the unit's main pid. Every row of the table above is a journal line `idle
+for 40s` at the first sync after C's bound. The switch was put back after:
+the deployed l2d (fef74fe) reinstalled and the bridge started, cage 30
+without loop or link, APPL_DB learning `hardware`, l2.json as before, the
+lock released. The candidate in that run predates §11.26.12's transaction.
+The replay runs the merged code.
+
+`TestL2dMABKill` replays run `fix` (`testdata/l2d_mab_kill.py`, built on
+`l2d_mab_restart.py`'s fakes). It uses the captured frames, RADIUS answers
+and kills, each restart at the new l2d's first logged sync, and a sync
+every 0.5 s. The switch's l2d also syncs on netlink and FDB events, so the
+moment of its sync is not in the capture. The test asserts that C goes
+within the bound in each of the three cases and within 0.5 s of the
+switch's revocation (up to 2.5 s before it, for the switch's 2 s pass), and
+that A is never removed or written again. It fails with main's l2d (C is
+not removed by the switch's time) and without the grace or the write on a
+frame.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
@@ -8704,12 +8909,94 @@ datagrams to the switch's own address are the test.
 - **Throughout**, the bridge on the switch kept informing (an inform reply
   at 21:32:35, mid-test), and the SSH session the test ran over was
   untouched.
-- **Not run live:** the mirror written by the deployed bridge from a
-  controller push (it runs from the same function, fixture-tested), and
-  caclmgrd's rewrite of the filter table leaving `raw` alone. The latter
-  is read from 202511's `caclmgrd`, whose rewrite lists and flushes only
-  filter chains and ip6tables' `raw`. Seeing it live needs an `ACL_TABLE`
-  event, which the test kept clear of.
+- **Not run in this hand test:** the mirror written by the bridge from a
+  controller push, and caclmgrd's rewrite of the filter table leaving `raw`
+  alone. Both ran the same evening through the driver (§11.32.5).
+
+#### 11.32.5 Through the driver (2026-11-15)
+
+Run 22:28-22:44 UTC under the switch lock, on `igmp-202511.20261115-6c8eb1cf7`
+with Network 11.0.99. A build of main (70a5a6d) replaced the deployed bridge
+for the run, and the deployed one was put back after. The site's ACL rule
+list was empty before and after.
+- **The rule.** An IPv4 Block saved in the UI, scoped to the DX010 alone:
+  UDP from a documentation address (198.51.100.7) to the switch's own
+  address, destination port 9999. The next inform's push carried it as
+  `switch.acl.ip.1.*` (both addresses as /32, the source side
+  `port_range=1-65535`).
+- **What the driver wrote.** The chip half as before: `config acl add
+  table DUI_IP_ACL L3` over the free ports and PortChannel1 (not its
+  members), `RULE_1` (`Active`), the save. Three seconds later, the mirror:
+  `DUI_ACL_CPU` hooked from `PREROUTING` on `Vlan+`, `Ethernet+` and
+  `PortChannel+`, jumping to `DUI_IP_ACL`, which held the one DROP. The
+  marker held the hash the journal logged. The next two cycles wrote
+  nothing.
+- **Traffic.** The Podman host sent single datagrams from a raw socket,
+  with the rule's documentation address as the source. The switch's
+  reverse-path filter is loose (2) on Vlan4094, so they arrive. It sent
+  three each to 9999 (matched), 9998 and 9997, and three to 9999 from
+  another documentation address. None of the three matched ones reached the
+  listener, and the DROP counted 3. The other nine arrived.
+- **Edited** to ports 9998 and 9999. The push carried two groups
+  (`-1`, `-2`). The driver deleted and rewrote `RULE_1` (9998, priority
+  9998) and added `RULE_2` (9999, 9997). The mirror held two DROPs in that
+  order under a new marker. Both ports were dropped (2 each counted), and
+  9997 arrived.
+- **caclmgrd.** The driver's own `config acl add table` set caclmgrd off at
+  once, but that rewrite came a second before the first mirror write, so it
+  proves nothing. A second `ACL_TABLE` event was made by hand (the table's
+  description written again with its own value). caclmgrd then flushed and
+  rewrote INPUT, FORWARD and OUTPUT and ip6tables' `raw` within half a
+  second. IPv4's `raw` table was byte for byte the same (`iptables -t raw
+  -S` unchanged).
+- **A bridge restart** wrote nothing: the start-up reconcile found the
+  marker equal to the tables' hash.
+- **A lost marker** (deleted by hand, as a reboot clears `/run` with the
+  rules) was written again on the next cycle, with the same hash and rules
+  and no second set of hooks.
+- **Removed.** The driver deleted the rules lowest first, removed the table
+  and saved. Then it removed the mirror: the hooks, the chains (the
+  dispatcher too) and the marker. `iptables -t raw -S` was back to its two
+  policies. ASIC_DB held no ACL table afterwards. CRM still counted one
+  table until its 300 s poll; that was stale, not a leak.
+- **The guard half, without a push.** Rogue DHCP Server Detection stays off
+  site-wide (Clint's decision), so the controller sends no guard.
+  - **The setup.** The bridge was stopped and the guard's rows written by
+    hand: `V1_S1` FORWARD from 192.0.2.1, a counted `V1_IN_Ethernet120` and
+    `V1_DROP`, all on VLAN_ID 4094. They were `ACL_RULE` rows with no
+    `ACL_TABLE`, so nothing was bound and the chip had no entry (orchagent
+    waits for the table).
+  - **The reconcile's own step.** A test build ran the driver's own
+    `Collect` and then `applyACL` on the switch. With no push the chip half
+    writes nothing and the mirror follows CONFIG_DB. The mirror was the
+    trusted server's RETURN and the VLAN's DROP, on `-i Vlan4094`, with the
+    counted rule left out. A second cycle wrote nothing.
+  - **Traffic.** Three replies (67 -> 68) from the trusted address arrived
+    (RETURN counted 3). Three from an untrusted one were dropped (DROP 3),
+    and three from source port 66 arrived. dhclient holds `0.0.0.0:68` for
+    eth0, so the listener bound the switch's own address with
+    `SO_REUSEADDR` to take the unicast.
+  - **The bridge started again.** Its reconcile, under the site's
+    snooping-off push, deleted the three rows (orchagent: "Skip removing
+    rule ... Table does not exist") and removed the mirror.
+- **What the run showed about the design:**
+  - Every restore declares both table chains, so a table with no rules has
+    an empty, unreferenced chain. The cost is cosmetic. The gain is that a
+    table that loses its last rule is emptied in the same transaction.
+  - The marker is the reconcile's only view of the kernel, because
+    `collect.py` runs without root. A hand `iptables -t raw -F` that leaves
+    the marker is not repaired until the tables change or the marker goes.
+    A reboot clears both.
+- **Not run:** the guard from a real push (detection stays off), and a
+  breakout's rebind as the `ACL_TABLE` event. A description rewrite stood
+  in for it: caclmgrd handles both as the same table event.
+- **Fixtures:** the collect before the run
+  (`sonic-igmp-202511.20261115-6c8eb1cf7/collect-acl-mirror.txt`) and the
+  three pushes (`controller-11.0.99/system_cfg-dx010-acl-mirror-{1-add,
+  2-edit,3-removed}.txt`), replayed in
+  `TestReplaySonicDX010ACLMirror`: each push's chip writes and restore
+  input as the journal had them, a lost marker rewritten, and a cycle
+  after each that writes nothing.
 
 ### 11.33 UniFi's client Block (2026-11-15)
 
@@ -8811,6 +9098,211 @@ nothing more.
 - **Not seen live:** the kernel chain dropping a frame to the switch's own
   address. Frames on a discarding port never reach the Bridge's INPUT, and
   the one linked port is the uplink.
+
+### 11.34 A PortChannel member's own chip STP ports, and an l2d restart that logged the chip's refusal (2026-11-15)
+
+On 2026-11-15 the DX010's uplink became a two-member LACP aggregate,
+PortChannel1 = Ethernet0 + Ethernet4 (the controller's push, 13:38-13:41
+local). From then on every start of disunified-l2d made syncd log, once per
+VLAN instance, `_brcm_sai_stp_lag_member_check: Lag member 68 exists as STP
+PORT 0x0044012e000000NN in STG NN` and `brcm_sai_create_stp_port: STP lag
+member check failed`, and orchagent `addStpPort: Failed to add STP port
+PortChannel1 instance <vid>`. The uplink stayed up and mstpd made it the root
+port; orchagent did not abort. Fixtures:
+`sonic-igmp-202511.20261115-6c8eb1cf7/lag-stp-stray-syslog-20261115.txt`
+(the syslog of both occurrences and of a later restart) and
+`stp-stray-20261115.json` (the STP tables, read-only, 15:15 local).
+
+#### 11.34.1 What happened
+
+- **It began at the join, not at a restart.** The first refusals are at
+  13:38:49, as PortChannel1 entered Vlan4094 and l2d wrote its first state
+  (`state 0`, disabled). Each later l2d start wrote PortChannel1's states
+  afresh and was refused the same way: 44 lines per start (11 instances x
+  the four lines), at every restart the other sessions made that afternoon,
+  and again at the 15:10 deploy (by then only Vlan4094's instance was left:
+  below).
+- **Port 68 is Ethernet0** (`port:0x44` in its own FDB events; `ps ce0`
+  `ce0( 68)`). Ethernet4 was never named.
+- **Ethernet0 got a bridge port back 50 ms after losing it.** The join's
+  sequence (syslog, 13:38:43): l2d logs `Ethernet0: forwarding -> disabled`
+  as the kernel takes the port out of `Bridge` (`left promiscuous mode`,
+  `entered disabled state`), orchagent removes Ethernet0 from Vlan4094 and
+  `Remove bridge port Ethernet0` (.556), then **`Add bridge port Ethernet0`**
+  (.605), and only after that `Add member Ethernet0 to LAG PortChannel1`
+  (.957). Ethernet4 left Vlan4094 down (no cable until 13:49): already
+  disabled, so no state change, no write, and no bridge port came back.
+- **The tables at 15:15**: ASIC_DB holds a bridge port for Ethernet0, which
+  is in no VLAN and not in the kernel `Bridge`, and one STP port of it
+  (BLOCKING) in Vlan4094's instance; PortChannel1 has none there. APPL_DB
+  holds `STP_PORT_STATE_TABLE:Ethernet0:<vid>` for all eleven VLANs of
+  13:38, though l2d had deleted them as Ethernet0 left. In the other ten
+  instances PortChannel1 had STP ports: the VLAN-delete test (§11.29.6,
+  21:33-21:49 UTC) deleted those ten VLANs and made them again, deleting a
+  VLAN removes every STP port of its instance (Ethernet0's too), and the
+  re-made instances took PortChannel1's. The 15:10 deploy then pruned them
+  for good (§11.29).
+- **The chip** (`bcmcmd "stg show"`, read-only): STG 9, Vlan4094's,
+  `Disable: ce1` and `Block: ce0,ce2-ce31`, against `Forward: ce0-ce1` in the
+  re-made instances. So in the chip **neither uplink member forwarded the
+  native VLAN**, while mstpd and the kernel had PortChannel1 forwarding as
+  root port. The switch stayed reachable because frames to its own address
+  reach the CPU through the traps' copy whatever the STP state (§11.7.8);
+  a host behind any other DX010 port in the native VLAN would have been cut
+  off from the LAN. None was cabled.
+- **A second occurrence** earlier the same day: Ethernet48, a looped empty
+  cage, leaving its last VLAN at 12:01:30 (`blocking -> disabled`, bridge
+  port re-added 213 ms after its removal). It joined no PortChannel, so the
+  chip never refused anything. A scan of the syslog back to 2026-11-07 finds
+  no other removal followed by an add within a second.
+
+#### 11.34.2 The cause
+
+StpOrch's `addStpPort` (202505 and 202511 `stporch.cpp`) creates a bridge
+port for a port that has none (`gPortsOrch->addBridgePort(port)`) before it
+creates the STP port. orchagent drains its consumers in its own order, so
+the state l2d wrote at .321 was taken after portsorch had processed the VLAN
+member removal and removed the bridge port (.556, `removeStpPorts` with it):
+StpOrch then made a new bridge port and an STP port in every instance for a
+port about to become a LAG member. When PortChannel1 asked for its own STP
+port in an instance, the Broadcom SAI refused it because a member already
+had one (`_brcm_sai_stp_lag_member_check`). l2d's own bookkeeping was right:
+it forgot Ethernet0 on the bridge's `RTM_DELLINK` and dropped its keys from
+APPL_DB, but its write was already in the producer's queue, and orchagent
+put the keys back when it took it.
+
+Neither the driver's plan nor l2.json had anything to do with it:
+`l2SetPorts` names PortChannel1, never its members, and l2d writes states
+only for kernel `Bridge` members. What l2d wrote that it should not have is
+the departing port's "disabled". The kernel's own order makes it
+recognisable: `del_nbp` removes `Bridge/brif/<port>` before
+`br_stp_disable_port` sends the disabled notification, so when l2d reads it
+the port is no longer listed (seen live, §11.34.5).
+
+**The ECS** (read-only, 2026-11-15): one instance, `STP_PORT_STATE_TABLE`
+rows for every plain port and for PortChannel1, 2 and 6, none for their six
+members, and 51 chip STP ports for its 52 rows (`dummy` is no orchagent
+port). The aggregate is the only STP port, which is what l2d meant to do.
+
+No kit patch: StpOrch did what it was asked, for a port it knows, and the
+bridge port it adds is what upstream relies on when a state arrives before
+the VLAN membership. Refusing a port in no VLAN would change that ordering
+for upstream's own stpd. The write was l2d's to avoid.
+
+#### 11.34.3 The fix (`l2d.py`)
+
+- **No state for a port leaving `Bridge`.** `on_link` checks `in_bridge`
+  (`Bridge/brif/<port>`) before it writes; a port gone from it is forgotten
+  instead. `kstate` is None for a port with no `brport` (the 2 s pass read
+  a missing state file as 0, disabled, which would have been the same
+  write), and the pass forgets such a port.
+- **The repair (`repair_strays`).** A state key in APPL_DB for an interface
+  outside `Bridge` (the late write leaves one) sends l2d to ASIC_DB, as
+  does a timer once a minute: STP ports whose bridge port belongs to an
+  interface outside `Bridge` are strays. One seen on two passes is removed
+  through StpOrch (a producer DEL for each of its keys, its chip VLANs and
+  the current VLANs: a no-op for an instance it holds no STP port in), l2d
+  waits up to 2 s for ASIC_DB to lose them, and drops its record of the
+  member's PortChannel's states so the same pass writes them again (the
+  DEL goes first; orchagent's queue is ordered by key, `Ethernet...` before
+  `PortChannel...`). Keys of an outside interface with no chip STP port
+  are only deleted from APPL_DB, as before. The DEL is sent only for an
+  interface orchagent knows (APPL_DB and STATE_DB), as every l2d write is:
+  a key for an unknown port stops StpOrch's queue (§11.5).
+- **What stays**: the bridge port StpOrch made. No orchagent path removes a
+  bridge port of a port in no VLAN; it is harmless to the LAG (the SAI's
+  check is on STP ports) and a reboot clears it. l2d logs it with the
+  repair.
+- **A PortChannel waits for its member's repair.** While one of its
+  members is a stray, `sync_stp` writes nothing for the PortChannel (the
+  chip would refuse it), so a restart over a stray logs no refusal: the
+  PortChannel's states and its VLAN's mapping follow two seconds later.
+- **The narrow race left**: a state written while the port was still a
+  member (an mstpd change in the same millisecond) and taken after the
+  removal. The repair clears it within two passes.
+
+#### 11.34.4 Tests
+
+`TestL2dLagMemberStrayStpPorts` (`testdata/l2d_strays.py`) replays the
+syslog's two departing ports (Ethernet0 and Ethernet48) into `on_link`
+gone from `brif` (no write, forgotten) and still in it (a link drop: one
+write), then runs a fresh l2d (a restart) over the captured tables under a
+model of StpOrch and the SAI's LAG-member check: the first pass writes
+nothing for PortChannel1 and is refused nothing; the second removes
+Ethernet0's STP ports and writes PortChannel1's (FORWARDING); the third
+writes nothing. Run with the l2d.py before this change, the leaving port
+writes, the first pass is refused for PortChannel1 in Vlan4094's instance
+as it was live, and the refusal never clears.
+
+#### 11.34.5 Live on the DX010 (2026-11-15 22:58-23:10 UTC, under the test lock)
+
+Two empty cages, 25 and 26 (Ethernet96, Ethernet100), made PortChannel9 by
+hand in the driver's order (their snooping static rows out, `config vlan
+member del 4094`, `config portchannel add PortChannel9 --fast-rate true
+--min-links 1`, the PortChannel's MTU to the members' 1500, the members in,
+`config vlan member add -u 4094 PortChannel9`), with Ethernet96 in MAC
+loopback (`bcmcmd "port ce24 lb=mac"`: up, blocking, so it leaves with a
+state change, as Ethernet0 did) and the bridge stopped. A netlink listener
+recorded `brif/<port>` at each notification. The uplink was left alone but
+for the one restart of the fixed l2d, which a timed revert covered (below).
+
+- **The kernel's order**, seen: `NEW Ethernet96 state=0 master=5
+  brif=False`, then `DEL Ethernet96`. The leaving port's disabled arrives
+  with the port already gone from `brif`.
+- **The deployed l2d (fef74fe) wrote it every time** (`Ethernet96:
+  blocking -> disabled`, and APPL_DB kept `Ethernet96:4094` afterwards),
+  but in five joins StpOrch took the write before portsorch's removal
+  (about 70 ms apart, one VLAN): no bridge port came back and PortChannel9
+  got its STP port. On the uplink the same write was one of eleven, with
+  the snooping orch busy, and lost the race.
+- **Reproduced** by sending that write through StpOrch's producer just after
+  the removal, where it landed live: `Add bridge port Ethernet96`, then at
+  PortChannel9's first state `Lag member 17 exists as STP PORT
+  0x0011012e00000009 in STG 9` and `Failed to add STP port PortChannel9
+  instance 4094`; STG 9 showed ce24 `Block` and ce25 `Disable`. A restart
+  of the deployed l2d then logged the refusal for both PortChannel1 and
+  PortChannel9.
+- **The fixed l2d, started over both strays**, with the revert armed
+  (`systemd-run` of a script that pinged the gateway every 10 s for 8 min
+  and, after three misses, would have put the deployed l2d back and then
+  run its `--deadman`): the first start still logged both refusals (that
+  build wrote the PortChannels at once), then two seconds later `Ethernet0
+  is no bridge port (a member of PortChannel1) but held 1 STP ports in the
+  chip: removed, PortChannel1's states written again`, and the same for
+  Ethernet96. **STG 9 went to `Forward: ce0-ce1`**: the uplink forwarded the
+  native VLAN in the chip for the first time since 13:38. APPL_DB lost
+  every key of an interface outside `Bridge`; the gateway answered
+  throughout.
+- **The hold-back, live**: l2d stopped (mstpd and the chip stay as they
+  are), a fresh stray made on Ethernet96 the same way, the build with the
+  hold-back started: no syncd or orchagent error at all, the stray removed
+  at 2 s, Vlan4094 mapped at 6 s. A plain restart after that: `started` and
+  the mapping, nothing else.
+- **The other transitions with the fixed l2d**: a join by the CLI alone
+  (no injected write) wrote nothing for the departing Ethernet96 and left
+  no key behind; the reverse (PortChannel9 out of Vlan4094, members out,
+  deleted, members back untagged) gave each member its own STP port in
+  Vlan4094's instance; three link drops of the looped member wrote and
+  refused nothing (PortChannel9 stayed LACP-down: teamd does not select a
+  port that hears its own LACPDUs, so it never forwarded).
+- **Not run live**: BPDU guard and loop protection on an aggregate that is
+  up (the loopback rig cannot bring a LACP aggregate up; both act on a
+  PortChannel through its members as before, §11.28, and this change does
+  not touch them), and the lane switch's `PortChannel<100*cage+lag>` (it
+  needs a breakout). Neither path names its PortChannel differently in
+  l2d: `in_bridge`, the repair and the hold-back go by kernel membership
+  and CONFIG_DB `PORTCHANNEL_MEMBER`, whatever the PortChannel's number.
+- **Left as found**: PortChannel9 deleted, both cages back untagged in
+  Vlan4094 with their 14 snooping rows, loopback off, the deployed l2d
+  (fef74fe) back in place and restarted (quiet: `started`, the mapping, no
+  ERR), the bridge started (`0 of 32 ports changed`), CONFIG_DB identical
+  to the pre-test dump in all 37 tables, `l2.json` unchanged.
+- **What stays until a reboot**: the bridge port StpOrch made for Ethernet0
+  (ASIC_DB: a bridge port for an interface outside `Bridge`). Ethernet96's
+  went when it rejoined Vlan4094 and left again. The check after the next
+  reboot: no bridge port in ASIC_DB for a port that is not in
+  `Bridge/brif`, and `bcmcmd "stg show"` with every PortChannel member
+  forwarding in each STG whose VLAN the PortChannel carries.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

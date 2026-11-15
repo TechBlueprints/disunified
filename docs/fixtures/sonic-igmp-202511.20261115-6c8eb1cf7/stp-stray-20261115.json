@@ -1,0 +1,939 @@
+{
+ "APPL_DB": {
+  "LAG_TABLE:PortChannel1": {
+   "admin_status": "up",
+   "oper_status": "up"
+  },
+  "PORT_TABLE:Ethernet0": {
+   "admin_status": "up",
+   "oper_status": "up"
+  },
+  "PORT_TABLE:Ethernet100": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet104": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet108": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet112": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet116": {
+   "admin_status": "up",
+   "oper_status": "up"
+  },
+  "PORT_TABLE:Ethernet12": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet120": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet124": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet16": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet20": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet24": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet28": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet32": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet36": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet4": {
+   "admin_status": "up",
+   "oper_status": "up"
+  },
+  "PORT_TABLE:Ethernet40": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet44": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet48": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet52": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet56": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet60": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet64": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet68": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet72": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet76": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet8": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet80": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet84": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet88": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet92": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "PORT_TABLE:Ethernet96": {
+   "admin_status": "up",
+   "oper_status": "down"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:10": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:1000": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:2": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:2000": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:3000": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:4000": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:4010": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:69": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:8": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet0:9": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet100:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet104:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet108:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet112:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet116:4094": {
+   "state": "1"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet120:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet124:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet12:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet16:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet20:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet24:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet28:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet32:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet36:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet40:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet44:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet48:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet52:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet56:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet60:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet64:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet68:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet72:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet76:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet80:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet84:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet88:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet8:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet92:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:Ethernet96:4094": {
+   "state": "0"
+  },
+  "STP_PORT_STATE_TABLE:PortChannel1:4094": {
+   "state": "4"
+  },
+  "STP_VLAN_INSTANCE_TABLE:Vlan4094": {
+   "stp_instance": "4094"
+  }
+ },
+ "ASIC_DB": {
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005dc": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000006",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005de": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000007",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005e0": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000008",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005e2": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000014",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005e4": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000009",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005e6": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000a",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005e8": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000b",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005ea": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000c",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005ec": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000d",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005ee": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000e",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005f2": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000000f",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005f4": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000010",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005f6": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000015",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005f8": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000016",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005fa": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000017",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005fc": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000018",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000005fe": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000019",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000600": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001a",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000602": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001b",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000604": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000001",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000606": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000002",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000608": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000003",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a00000000060a": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000004",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a00000000060c": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000005",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000666": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001d",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000672": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001e",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a00000000067e": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001f",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a00000000068a": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000020",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a000000000751": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x100000000001c",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a00000000077e": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000013",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000007bc": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x1000000000011",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:oid:0x3a0000000007ca": {
+   "SAI_BRIDGE_PORT_ATTR_PORT_ID": "oid:0x20000000007b9",
+   "SAI_BRIDGE_PORT_ATTR_TYPE": "SAI_BRIDGE_PORT_TYPE_PORT"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000022": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x1000000000063d": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ac1": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ac3": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ac5": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ac7": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ac9": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000acb": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000acf": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ad1": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP:oid:0x10000000000ad4": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000064c": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005dc",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000657": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005de",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000662": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005e0",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000066e": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000666",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000067a": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000672",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000686": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000067e",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000692": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000068a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000069d": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005e2",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006a8": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005e4",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006b3": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005e6",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006be": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005e8",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006c9": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005ea",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006d4": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005ec",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006df": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005ee",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006ea": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005f2",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000006f5": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005f4",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000700": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005f6",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000716": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005f8",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000721": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005fa",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000072c": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005fc",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000737": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000005fe",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000742": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000600",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000074d": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000602",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000759": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000751",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000764": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000604",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000076f": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000606",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000077a": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000608",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000786": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000077e",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000791": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e00000000079c": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e0000000007c4": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007bc",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x1000000000063d"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ac2": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000608",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ac4": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000608",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac3"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ac6": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a000000000608",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac5"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ac8": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac7"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000aca": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac9"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000acc": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acb"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000acd": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ace": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac3"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad0": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acf"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad2": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad3": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac5"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad5": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060a",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad4"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad6": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac7"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad7": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac9"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad8": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acb"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ad9": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ada": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac3"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000adb": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acf"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000adc": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000add": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac5"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ade": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a00000000060c",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_BLOCKING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad4"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000adf": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac7"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae0": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac9"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae1": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acb"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae2": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae3": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac3"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae4": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000acf"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae6": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad1"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae7": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ac5"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:oid:0x2e000000000ae8": {
+   "SAI_STP_PORT_ATTR_BRIDGE_PORT": "oid:0x3a0000000007ca",
+   "SAI_STP_PORT_ATTR_STATE": "SAI_STP_PORT_STATE_FORWARDING",
+   "SAI_STP_PORT_ATTR_STP": "oid:0x10000000000ad4"
+  },
+  "ASIC_STATE:SAI_OBJECT_TYPE_VLAN:oid:0x2600000000002e": {},
+  "ASIC_STATE:SAI_OBJECT_TYPE_VLAN:oid:0x260000000005d6": {
+   "SAI_VLAN_ATTR_STP_INSTANCE": "oid:0x1000000000063d",
+   "SAI_VLAN_ATTR_VLAN_ID": "4094"
+  }
+ },
+ "CONFIG_DB": {
+  "PORTCHANNEL_MEMBER|PortChannel1|Ethernet0": {
+   "NULL": "NULL"
+  },
+  "PORTCHANNEL_MEMBER|PortChannel1|Ethernet4": {
+   "NULL": "NULL"
+  },
+  "VLAN|Vlan4094": {
+   "vlanid": "4094"
+  }
+ },
+ "COUNTERS_DB": {
+  "COUNTERS_LAG_NAME_MAP": {
+   "": "",
+   "PortChannel1": "oid:0x20000000007b9"
+  },
+  "COUNTERS_PORT_NAME_MAP": {
+   "Ethernet0": "oid:0x1000000000011",
+   "Ethernet100": "oid:0x1000000000006",
+   "Ethernet104": "oid:0x1000000000007",
+   "Ethernet108": "oid:0x1000000000008",
+   "Ethernet112": "oid:0x100000000001d",
+   "Ethernet116": "oid:0x100000000001e",
+   "Ethernet12": "oid:0x1000000000014",
+   "Ethernet120": "oid:0x100000000001f",
+   "Ethernet124": "oid:0x1000000000020",
+   "Ethernet16": "oid:0x1000000000009",
+   "Ethernet20": "oid:0x100000000000a",
+   "Ethernet24": "oid:0x100000000000b",
+   "Ethernet28": "oid:0x100000000000c",
+   "Ethernet32": "oid:0x100000000000d",
+   "Ethernet36": "oid:0x100000000000e",
+   "Ethernet4": "oid:0x1000000000012",
+   "Ethernet40": "oid:0x100000000000f",
+   "Ethernet44": "oid:0x1000000000010",
+   "Ethernet48": "oid:0x1000000000015",
+   "Ethernet52": "oid:0x1000000000016",
+   "Ethernet56": "oid:0x1000000000017",
+   "Ethernet60": "oid:0x1000000000018",
+   "Ethernet64": "oid:0x1000000000019",
+   "Ethernet68": "oid:0x100000000001a",
+   "Ethernet72": "oid:0x100000000001b",
+   "Ethernet76": "oid:0x100000000001c",
+   "Ethernet8": "oid:0x1000000000013",
+   "Ethernet80": "oid:0x1000000000001",
+   "Ethernet84": "oid:0x1000000000002",
+   "Ethernet88": "oid:0x1000000000003",
+   "Ethernet92": "oid:0x1000000000004",
+   "Ethernet96": "oid:0x1000000000005"
+  }
+ },
+ "STATE_DB": {
+  "LAG_TABLE|PortChannel1": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet0": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet100": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet104": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet108": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet112": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet116": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet12": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet120": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet124": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet16": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet20": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet24": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet28": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet32": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet36": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet4": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet40": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet44": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet48": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet52": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet56": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet60": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet64": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet68": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet72": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet76": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet8": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet80": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet84": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet88": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet92": {
+   "state": "ok"
+  },
+  "PORT_TABLE|Ethernet96": {
+   "state": "ok"
+  }
+ },
+ "_comment": "disunified-l2d's STP tables on the DX010 (igmp-202511.20261115-6c8eb1cf7) at 2026-11-15 15:15 local, read-only (stpcap, docs/drivers/sonic.md 11.34): Ethernet0, a member of PortChannel1 since 13:38, holds a bridge port and an STP port (BLOCKING) in Vlan4094's instance, which StpOrch made for a state l2d wrote as the port left Bridge; PortChannel1 has none there (the chip refused it: 'Lag member 68 exists as STP PORT ... in STG 9'). Fields reduced to what l2d reads; the chip's 'stg show' had STG 9 (VLAN 4094) Disable ce1, Block ce0,ce2-ce31.",
+ "kernel": {
+  "brif": [
+   "Ethernet100",
+   "Ethernet104",
+   "Ethernet108",
+   "Ethernet112",
+   "Ethernet116",
+   "Ethernet12",
+   "Ethernet120",
+   "Ethernet124",
+   "Ethernet16",
+   "Ethernet20",
+   "Ethernet24",
+   "Ethernet28",
+   "Ethernet32",
+   "Ethernet36",
+   "Ethernet40",
+   "Ethernet44",
+   "Ethernet48",
+   "Ethernet52",
+   "Ethernet56",
+   "Ethernet60",
+   "Ethernet64",
+   "Ethernet68",
+   "Ethernet72",
+   "Ethernet76",
+   "Ethernet8",
+   "Ethernet80",
+   "Ethernet84",
+   "Ethernet88",
+   "Ethernet92",
+   "Ethernet96",
+   "PortChannel1",
+   "dummy"
+  ],
+  "brport_state": {
+   "Ethernet100": "0",
+   "Ethernet104": "0",
+   "Ethernet108": "0",
+   "Ethernet112": "0",
+   "Ethernet116": "4",
+   "Ethernet12": "0",
+   "Ethernet120": "0",
+   "Ethernet124": "0",
+   "Ethernet16": "0",
+   "Ethernet20": "0",
+   "Ethernet24": "0",
+   "Ethernet28": "0",
+   "Ethernet32": "0",
+   "Ethernet36": "0",
+   "Ethernet40": "0",
+   "Ethernet44": "0",
+   "Ethernet48": "0",
+   "Ethernet52": "0",
+   "Ethernet56": "0",
+   "Ethernet60": "0",
+   "Ethernet64": "0",
+   "Ethernet68": "0",
+   "Ethernet72": "0",
+   "Ethernet76": "0",
+   "Ethernet8": "0",
+   "Ethernet80": "0",
+   "Ethernet84": "0",
+   "Ethernet88": "0",
+   "Ethernet92": "0",
+   "Ethernet96": "0",
+   "PortChannel1": "3",
+   "dummy": "3"
+  }
+ }
+}

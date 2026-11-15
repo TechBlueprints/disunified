@@ -555,12 +555,20 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
   was on 202505's `13.2.1.36`.
   **The kernel drops that copy instead (`acl_cpu.go`, §11.32, live by
-  hand 2026-11-15)**, as the ECS's tables keep blocked traffic off its own
+  hand and then through the driver from a UI rule, 2026-11-15, §11.32.5)**,
+  as the ECS's tables keep blocked traffic off its own
   address (a switched host behind internal port `Ethernet56`, not a trap).
   The L3 tables are mirrored into iptables' **`raw`** table: caclmgrd
   flushes and deletes every filter-table chain on any `ACL_TABLE` event,
-  the driver's own included. The marker is `/run/disunified/acl-cpu`
-  (collect.py `acl_cpu`), so a reboot rewrites it.
+  the driver's own included (seen live: IPv4 `raw` untouched). The marker
+  is `/run/disunified/acl-cpu` (collect.py `acl_cpu`), so a reboot
+  rewrites it. It is the reconcile's only view of the kernel: a hand
+  `iptables -t raw -F` that leaves the marker is not repaired. Testing it:
+  a LAN host's raw socket can send from a documentation source address
+  (Vlan4094's `rp_filter` is loose), so a rule needs no real host's
+  address; dhclient holds `0.0.0.0:68` for eth0, so a 68 listener binds
+  the switch's own address with `SO_REUSEADDR`; `ACL_RULE|DUI_…` rows with
+  no `ACL_TABLE` reach no chip (orchagent waits) but are mirrored.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
@@ -886,6 +894,27 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
     about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
     the payloads, not the period.
+- **A PortChannel member must hold no chip STP port (`l2d.py`
+  `in_bridge`, `repair_strays`, `docs/drivers/sonic.md` §11.34,
+  2026-11-15).** StpOrch's `addStpPort` creates a bridge port for a port
+  that has none, so a state for a port leaving Bridge, taken after
+  portsorch removed its bridge port, gave it a new bridge port and an STP
+  port in every instance. When the port then joins a PortChannel the chip
+  refuses the PortChannel's own STP ports ("Lag member N exists as STP
+  PORT ... in STG n"), on the join and on every l2d restart, and the
+  PortChannel's VLANs are not forwarded on that member in the chip:
+  `bcmcmd "stg show"` is the check (`Block`/`Disable` on a member in a
+  VLAN's STG while mstpd forwards). The ECS has the same shape l2d now
+  keeps: a row for the PortChannel, none for its members. Facts that cost
+  time:
+  - **The kernel unlinks `brif/<port>` before it announces the leaving
+    port disabled** (`del_nbp`), so "gone from brif" tells a departure from
+    a link drop at the notification itself.
+  - **The stray's bridge port has no orchagent path out** but a reboot;
+    its STP ports go through a producer DEL (a no-op for an instance it
+    holds none in).
+  - **Only an up port triggers it**: a down port is already disabled, so
+    leaving makes no state change (Ethernet4 was clean, Ethernet0 not).
 - **BPDU guard holds the chip's port down until the UI's Re-enable
   (`l2d.py` "BPDU guard", `recover.go`, `docs/drivers/sonic.md` §11.28,
   verified live on a looped cage 2026-11-15).** l2d holds a port mstpd
@@ -1235,7 +1264,10 @@ was restarted.
     chain and in an open Credentials port's learning until settled, and
     settled before the first chain write; a MAC-authenticated host's last
     frame is the row's `mab_seen`, written in `main`'s `finally` on SIGTERM
-    and `hdel`ed by the next l2d. Before that fix every start dropped the
+    and `hdel`ed by the next l2d; after a SIGKILL or a crash, the row's
+    `mab_heard` (rewritten as l2d runs, never 5 s behind) plus 5 s
+    (§11.26.13; a silent host goes by idle + 5 s + a pass after its last
+    frame, however many kills). Before that fix every start dropped the
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
   - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**

@@ -44,7 +44,14 @@ func newDot1XRig(t *testing.T) (*breakoutRig, *sonic.Collector) {
 // collector that reads 802.1X) under one of Network 11.0.99's pushes.
 func newNet11Rig(t *testing.T, applied, ver string) (*breakoutRig, *sonic.Collector) {
 	t.Helper()
-	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261115-6c8eb1cf7", "collect-dot1x.txt"))
+	return newNet11RigFrom(t, "collect-dot1x.txt", applied, ver)
+}
+
+// newNet11RigFrom: the loop over a capture in the 20261115 fixture dir,
+// with the Network 11.0.99 push in file applied (cfgversion ver) already.
+func newNet11RigFrom(t *testing.T, collect, applied, ver string) (*breakoutRig, *sonic.Collector) {
+	t.Helper()
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261115-6c8eb1cf7", collect))
 	if err != nil {
 		t.Fatal(err)
 	}
