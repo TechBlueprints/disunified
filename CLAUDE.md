@@ -302,13 +302,15 @@ these is marked "not captured".
   `portconf_id` are 36-character UUIDs where 10.x had 24 hex digits; port
   overrides kept their content, with only the network id rewritten. The
   bridge treats ids as opaque, and the first push after the upgrade applied
-  with nothing changed on every bridge in the container. Stale since: the
-  10.6.109 shapes file lists ids as 24 hex digits, so a live
-  `wire-shapes.py audit` on Network 11 reports every id path; and MongoDB
-  is gone from the console (`mongo --port 27117` no longer answers). The
-  one capture from Network 11 is a USW Aggregation's inform and its
-  STP-flap alerts (`controller-11.0.99/`, 2026-11-14); no replay fixture
-  or shapes file is (`docs/wire-shapes.md` §9).
+  with nothing changed on every bridge in the container. MongoDB is gone
+  from the console (`mongo --port 27117` no longer answers). Network 11
+  fixtures (`controller-11.0.99/`, the version the console runs since
+  2026-11-14): a USW Aggregation's inform, the controller's alerts, a
+  shapes file of the site's 41 real switches (2026-11-15) that the shape
+  test holds every payload to beside 10.6.109's, and the Arista bridge's
+  reply log since the upgrade, replayed (`replay_arista_net11_test.go`);
+  against that shapes file a live `wire-shapes.py audit` no longer reports
+  id paths (`docs/wire-shapes.md` §9.1).
 - **Values are held to a real device's shape, not only its keys
   (2026-11-12, `docs/wire-shapes.md`).** The audit after the serial found
   optic readings sent as numbers (real: strings), a `version` with letters
