@@ -38,6 +38,13 @@
 # setting) for `hold` seconds -- never the STP root port nor the port the
 # default gateway is learned on.
 #
+# BPDU guard: mstpd shuts a guarded port's netdev when a BPDU arrives; l2d
+# then holds the port down in the chip the same way (APPL_DB admin_status)
+# until the operator's Re-enable in UniFi (the controller's port-recovery,
+# which the driver posts as STATE_DB DUI_PORT_RECOVERY|<port>), the guard or
+# STP going off for the port, or spanning tree off (§11.28). The same
+# Re-enable ends a loop-protection hold early.
+#
 # Storm detection (StormWatch, section 11.21): a port whose incoming broadcast
 # or multicast exceeds its storm-control limit is counted, never taken down.
 #
@@ -57,12 +64,13 @@
 #
 # Everything the bridge reads back is published in STATE_DB:
 # DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>,
+# DUI_BPDU_GUARD_TABLE|<port>,
 # DUI_STORM_TABLE|<port>, DUI_DHCP_RATE_TABLE|<port>, DUI_MACLOCK_TABLE|<interface>,
 # DUI_DOT1X_TABLE|<interface>.
 #
 # `disunified-l2d --teardown` undoes it: every VLAN back to the default STP
 # instance, every port forwarding in the kernel, stp_state 0, mstpd stopped,
-# guarded ports restored, secured ports back to their CONFIG_DB learn mode.
+# guarded and BPDU-guarded ports restored, secured ports back to their CONFIG_DB learn mode.
 # A stop of the service does NOT tear down (mstpd
 # keeps running and the next start adopts it), so a restart never opens a
 # window with no spanning tree.
@@ -213,6 +221,8 @@ class DB(object):
         self.st_bridge = sw.Table(self.state, "DUI_STP_TABLE")
         self.st_port = sw.Table(self.state, "DUI_STP_PORT_TABLE")
         self.st_guard = sw.Table(self.state, "DUI_LOOP_GUARD_TABLE")
+        self.st_bpdu = sw.Table(self.state, "DUI_BPDU_GUARD_TABLE")
+        self.st_recover = sw.Table(self.state, "DUI_PORT_RECOVERY")
         self.copp = sw.Table(self.cfg, "COPP_TRAP")
         self.copp_group = sw.Table(self.cfg, "COPP_GROUP")
 
@@ -610,6 +620,8 @@ class L2d(object):
         self.fdb_port = {}  # (vlan, mac) -> port
         self.moves = collections.defaultdict(collections.deque)
         self.blocked = {}  # port -> unblock time
+        self.bpdu_held = {}  # bridge port BPDU guard holds down -> since (UTC)
+        self.bpdu_stale = {}  # released port -> its state_changes at the release
         self.fdb_sub = None
         self.nl = None
         self.storm = StormWatch(self.db)  # storm detection (11.21): self.storm.tick() in main
@@ -791,6 +803,8 @@ class L2d(object):
                 del self.written[(p, v)]
                 self.db.port_raw._del("%s:%d" % (p, v))
         self.ports.pop(port, None)
+        self.bpdu_release(port, "no longer a bridge port")
+        self.bpdu_forget(port)
         self.changes.pop(port, None)
         self.db.st_port._del(port)
         self.asic_floor = min(self.asic_floor, len(self.written))
@@ -860,6 +874,11 @@ class L2d(object):
             self.db.port_raw._del(k.split(":", 1)[1])
         for k in self.db.keys(self.db.appl, "STP_FASTAGEING_FLUSH_TABLE:*"):
             self.db.flush_raw._del(k.split(":", 1)[1])
+        self.stp_on = False
+        for p in list(self.bpdu_held):
+            self.bpdu_release(p, "spanning tree off")
+        for p in list(self.bpdu_stale):
+            self.bpdu_forget(p)
         self.mstp.stop()
         for p in bridge_ports():
             run(["/usr/sbin/bridge", "link", "set", "dev", p, "state", "3"])
@@ -911,6 +930,8 @@ class L2d(object):
                 "num-rx-bpdu", "num-tx-bpdu", "num-rx-tcn", "num-transition-fwd",
                 "num-transition-blk", "point-to-point")]
             fields.append(("state_changes", str(self.state_changes(p))))
+            self.bpdu_check(p, d)
+            fields.append(("bpdu_guard_held", "yes" if p in self.bpdu_held else "no"))
             put(self.db.st_port, p, fields)
 
     # --- loop protection ------------------------------------------------
@@ -968,27 +989,27 @@ class L2d(object):
     def block(self, port, vlan, mac, peer):
         hold = self.conf["loop_guard"]["hold"]
         until = time.time() + hold
-        for p in (self.db.lag_members(port) if port.startswith("PortChannel") else [port]):
-            put(self.db.ifport_pst, p, [("admin_status", "down")])
         self.blocked[port] = until
+        self.hold_down(port)
         put(self.db.st_guard, port, [("state", "blocked"), ("until", "%d" % until), ("vlan", vlan),
                                     ("mac", mac), ("peer", peer)])
         log("loop protection: %s down for %ds (%s %s flapping with %s)" % (port, hold, vlan, mac, peer),
             syslog.LOG_WARNING)
 
-    def unblock(self, port):
-        for p in (self.db.lag_members(port) if port.startswith("PortChannel") else [port]):
-            admin = self.db.hgetall(self.db.cfg, "PORT|" + p).get("admin_status", "down")
-            put(self.db.ifport_pst, p, [("admin_status", admin)])
+    def unblock(self, port, why="restored"):
         self.blocked.pop(port, None)
         self.db.st_guard._del(port)
-        log("loop protection: %s restored" % port)
+        self.restore(port)
+        log("loop protection: %s %s" % (port, why))
 
     def guard_tick(self):
         now = time.time()
+        g = self.conf["loop_guard"]
         for p, t in list(self.blocked.items()):
-            if t <= now or not self.conf["loop_guard"]["enabled"]:
+            if t <= now:
                 self.unblock(p)
+            elif not g["enabled"] or p not in g["ports"]:
+                self.unblock(p, "restored (loop protection off)")
 
     def adopt_guard_state(self):
         for k in self.db.keys(self.db.state, "DUI_LOOP_GUARD_TABLE|*"):
@@ -997,6 +1018,167 @@ class L2d(object):
                 self.blocked[p] = float(self.db.hgetall(self.db.state, k).get("until", "0"))
             except ValueError:
                 self.blocked[p] = 0
+        for k in self.db.keys(self.db.state, "DUI_BPDU_GUARD_TABLE|*"):
+            p = k.split("|", 1)[1]
+            row = self.db.hgetall(self.db.state, k)
+            if row.get("state") == "held":
+                self.bpdu_held[p] = row.get("since", "")
+            elif row.get("state") == "released":
+                self.bpdu_stale[p] = int(row.get("changes", "0") or 0)
+
+    # --- ports held down in the chip ------------------------------------
+    #
+    # Loop protection and BPDU guard are the two protections that take a
+    # port down in UniFi's model (§11.20); each hold is APPL_DB PORT_TABLE
+    # admin_status down, so CONFIG_DB, the saved config and the driver's
+    # plan (which reads CONFIG_DB) keep the operator's setting. portmgrd
+    # rewrites APPL_DB's admin_status from CONFIG_DB whenever anything
+    # writes the port's CONFIG_DB row (a description, an MTU, a speed), so
+    # every pass puts a held port down again (reassert).
+
+    def members(self, port):
+        return self.db.lag_members(port) if port.startswith("PortChannel") else [port]
+
+    def holding(self):
+        """Every interface some hold keeps down."""
+        out = set()
+        for p in list(self.blocked) + list(self.bpdu_held):
+            out.update(self.members(p))
+        return out
+
+    def hold_down(self, port):
+        for p in self.members(port):
+            put(self.db.ifport_pst, p, [("admin_status", "down")])
+
+    def restore(self, port):
+        """A released port's admin state back to CONFIG_DB's (an interface
+        another hold still covers stays down), and its netdev up when the
+        operator's setting is up: mstpd's BPDU guard shut the netdev itself
+        (bridge port and member), which nothing else brings back."""
+        still = self.holding()
+        for p in self.members(port):
+            if p in still:
+                continue
+            admin = self.db.hgetall(self.db.cfg, "PORT|" + p).get("admin_status", "down")
+            put(self.db.ifport_pst, p, [("admin_status", admin)])
+            if admin == "up":
+                run(["ip", "link", "set", "dev", p, "up"])
+        if port.startswith("PortChannel") and port not in still and \
+                self.db.hgetall(self.db.cfg, "PORTCHANNEL|" + port).get("admin_status", "up") == "up":
+            run(["ip", "link", "set", "dev", port, "up"])
+
+    def reassert(self):
+        """portmgrd's copy also runs `ip link set up` on the netdev; a held
+        port's netdev goes down again too, so mstpd sees the port disabled
+        as it did after the trip (seen 2026-11-15: with the netdev up mstpd
+        cleared its error and ran the port as Designated, sending BPDUs into
+        a disabled chip port)."""
+        for p in sorted(self.holding()):
+            if self.db.hgetall(self.db.appl, "PORT_TABLE:" + p).get("admin_status") != "down":
+                put(self.db.ifport_pst, p, [("admin_status", "down")])
+                log("%s: admin_status was rewritten under a hold: down again" % p, syslog.LOG_WARNING)
+            try:
+                up = int(rd("%s/%s/flags" % (SYS, p), "0"), 16) & 1
+            except ValueError:
+                up = 0
+            if up:
+                run(["ip", "link", "set", "dev", p, "down"])
+
+    # --- BPDU guard -------------------------------------------------------
+    #
+    # mstpd's BPDU guard shuts only the port's netdev ("Received BPDU on
+    # BPDU Guarded Port - Port Down"); the chip's port stays up, so a
+    # cabled peer keeps its link (§11.23.3). A UniFi switch "shuts down the
+    # port and requires manual re-enable" (the UI's tooltip), so l2d holds a
+    # tripped port down in the chip until one of: the operator's Re-enable
+    # (the controller's port-recovery command, posted by the driver as
+    # STATE_DB DUI_PORT_RECOVERY|<port>), BPDU guard or STP switched off for
+    # the port, the port leaving the bridge, spanning tree off, teardown.
+    # No timer: the ECS's bpduguard cause has auto_recovery_interval 0.
+    #
+    # mstpd clears its error only when the port's link comes up again, so a
+    # port released while it has no link (an empty cage) still reads
+    # bpdu-guard-error yes. Such a port is "released": its error is not a
+    # new trip until the port's kernel state has changed since (a link-up,
+    # which is the only way out of disabled). The hold and the release
+    # survive an l2d restart in DUI_BPDU_GUARD_TABLE; the driver reads
+    # bpdu_guard_held from DUI_STP_PORT_TABLE.
+
+    def bpdu_hold(self, port):
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        self.bpdu_held[port] = since
+        self.bpdu_stale.pop(port, None)
+        self.hold_down(port)
+        self.db.st_bpdu._del(port)  # a set merges: no field of a release stays
+        put(self.db.st_bpdu, port, [("state", "held"), ("since", since)])
+        log("bpdu guard: %s received a BPDU: held down in the chip until re-enabled" % port, syslog.LOG_WARNING)
+
+    def bpdu_release(self, port, why):
+        if port not in self.bpdu_held:
+            return
+        del self.bpdu_held[port]
+        n = self.state_changes(port)
+        self.bpdu_stale[port] = n
+        put(self.db.st_bpdu, port, [("state", "released"), ("changes", str(n))])
+        self.restore(port)
+        log("bpdu guard: %s released (%s)" % (port, why))
+
+    def bpdu_forget(self, port):
+        self.bpdu_stale.pop(port, None)
+        self.db.st_bpdu._del(port)
+
+    def bpdu_check(self, port, d):
+        """One port of mstpd's report (read after reconcile set mstpd's
+        settings): a new trip holds the port; a held port whose guard
+        mstpd no longer runs is released. Released only then, never on
+        the config alone: a release while mstpd still guards the port
+        lets the link come up into the guard, which shuts the netdev
+        again with the guard about to go off (live, 2026-11-15)."""
+        if port in self.bpdu_held and d.get("bpdu-guard-port") != "yes":
+            self.bpdu_release(port, "BPDU guard off")
+            return
+        if d.get("bpdu-guard-port") != "yes" or d.get("bpdu-guard-error") != "yes":
+            if port in self.bpdu_stale and d.get("bpdu-guard-error") != "yes":
+                self.bpdu_forget(port)
+            return
+        if port in self.bpdu_held:
+            return
+        if port in self.bpdu_stale and self.state_changes(port) <= self.bpdu_stale[port]:
+            return  # the error of the trip already released: no link since
+        self.bpdu_hold(port)
+
+    def bpdu_tick(self):
+        """Releases what no longer has a reason to be held."""
+        for p in list(self.bpdu_held):
+            if not self.stp_on:
+                self.bpdu_release(p, "spanning tree off")
+            elif p not in self.ports:
+                self.bpdu_release(p, "no longer a bridge port")
+        # A released port keeps its mark until mstpd's error clears or the
+        # port leaves the bridge, guard on or off: a guard switched on again
+        # over the old error must not hold an unlinked port.
+        for p in list(self.bpdu_stale):
+            if p not in self.ports:
+                self.bpdu_forget(p)
+
+    def recoveries(self):
+        """The operator's Re-enable (UniFi's port-recovery): releases a BPDU
+        guard hold or a loop-protection hold on the named port, a member of
+        a held PortChannel included."""
+        for k in self.db.keys(self.db.state, "DUI_PORT_RECOVERY|*"):
+            name = k.split("|", 1)[1]
+            self.db.st_recover._del(name)
+            hit = False
+            for p in list(self.bpdu_held):
+                if name == p or name in self.members(p):
+                    self.bpdu_release(p, "re-enabled by the controller")
+                    hit = True
+            for p in list(self.blocked):
+                if name == p or name in self.members(p):
+                    self.unblock(p, "re-enabled by the controller")
+                    hit = True
+            if not hit:
+                log("port recovery for %s: nothing holds it" % name)
 
     # --- main loop -------------------------------------------------------
 
@@ -1030,9 +1212,14 @@ class L2d(object):
             self.stp_on = self.stp_up()
         if self.stp_on:
             self.sync_stp()
+        # Releases first, so the port rows published next say so.
+        self.recoveries()
+        self.bpdu_tick()
+        if self.stp_on:
             self.publish()
         self.gw_port = self.gateway_port()
         self.guard_tick()
+        self.reassert()
         self.dhcp.configure(self.conf["dhcp_rate"])
         for d in self.detectors:
             d.sync(self.conf)
@@ -2276,8 +2463,8 @@ def splitlist(s):
 def teardown():
     syslog.openlog("disunified-l2d", syslog.LOG_PID, syslog.LOG_DAEMON)
     d = L2d()
-    d.stp_down("teardown")
     d.adopt_guard_state()
+    d.stp_down("teardown")  # releases BPDU guard holds
     for p in list(d.blocked):
         d.unblock(p)
     d.dhcp.stop("teardown")

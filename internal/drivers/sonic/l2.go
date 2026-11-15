@@ -936,7 +936,15 @@ func l2Ports(out []cagePort, db map[string]table) {
 		} else {
 			p.Health.STPChanges = atoi(s["num_transition_fwd"]) + atoi(s["num_transition_blk"])
 		}
-		if s["bpdu_guard_error"] == "yes" {
+		// BPDU guard: an l2d that holds a tripped port down in the chip
+		// publishes bpdu_guard_held, its own verdict (§11.28): mstpd's error
+		// outlives the operator's Re-enable on a port with no link. Older
+		// builds publish only mstpd's error.
+		if held, ok := s["bpdu_guard_held"]; ok {
+			if held == "yes" {
+				p.Fault = "errdisabled: bpduguard"
+			}
+		} else if s["bpdu_guard_error"] == "yes" {
 			p.Fault = "errdisabled: bpduguard"
 		}
 	}

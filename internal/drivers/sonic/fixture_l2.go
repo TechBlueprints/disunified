@@ -22,6 +22,26 @@ func (f *FixtureRunner) l2Inst() l2Inst {
 	return in
 }
 
+// CurrentL2d makes the capture's installed disunified-l2d files the ones
+// this build ships (l2d.py, the bridge-stp hook, the unit), as on a switch
+// that runs this build. A replay of the controller's pushes uses it: a
+// capture taken under an older l2d.py would otherwise ask every reconcile to
+// install the new one, which is no fault of the pushes.
+func (f *FixtureRunner) CurrentL2d() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	in := f.l2Inst()
+	if !in.present {
+		return
+	}
+	for path, body := range map[string]string{l2dPath: l2dScript, bridgeSTP: bridgeSTPScript, l2dUnitPath: l2dUnit} {
+		if in.Files[path] != "" {
+			in.Files[path] = sha(body)
+		}
+	}
+	f.setL2Inst(in)
+}
+
 func (f *FixtureRunner) setL2Inst(in l2Inst) {
 	b, _ := json.Marshal(in)
 	f.setSection("l2d", string(b)+"\n")
