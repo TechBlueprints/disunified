@@ -22,6 +22,20 @@ func (f *FixtureRunner) l2Inst() l2Inst {
 	return in
 }
 
+// L2Deployed models this build's disunified-l2d (the daemon, the kernel
+// hook, the unit) as the one installed, as after a deploy of this build: a
+// capture keeps the hashes of the build that ran when it was taken, so a
+// replay of reconciles would otherwise see every later change to l2d.py as
+// the install a deploy makes once.
+func (f *FixtureRunner) L2Deployed() {
+	in := f.l2Inst()
+	if !in.present {
+		return
+	}
+	in.Files[l2dPath], in.Files[bridgeSTP], in.Files[l2dUnitPath] = sha(l2dScript), sha(bridgeSTPScript), sha(l2dUnit)
+	f.setL2Inst(in)
+}
+
 func (f *FixtureRunner) setL2Inst(in l2Inst) {
 	b, _ := json.Marshal(in)
 	f.setSection("l2d", string(b)+"\n")
