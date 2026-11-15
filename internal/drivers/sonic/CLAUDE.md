@@ -951,7 +951,7 @@ was restarted.
     switch's own address arrives on the uplink through the same trap.
     Fixtures: `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`
     (`testdata/l2d_dhcp_rate.py` runs the filter through a cBPF interpreter).
-- **Port anomalies 128/1024/2048 have no source on the image (256 does
+- **Port anomalies 1024/2048 have no source on the image (256 and 128 do
   since, below;
   `docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
   `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before
@@ -963,7 +963,7 @@ was restarted.
   `DUI_MAC_ACL` cannot name its port; STATE_DB `PORT_OPERR_TABLE` (MAC
   local/remote fault per oper-down) counts ordinary drops of a healthy link,
   not a failed port; the image has no 802.1X authenticator (202511's
-  `src/sonic-pac` is unbuilt).
+  `src/sonic-pac` is unbuilt; 802.1X is hostapd under l2d since, below).
 - **DoS (1024) and PHY failure (2048): the ECS has nothing to copy**
   (§11.18.4, §11.18.1; read-only 2026-11-14). Its `ERROR_DISABLE|denial-of-service`
   row is configuration only: nothing in its databases, chip attributes, CoPP
@@ -1026,3 +1026,40 @@ was restarted.
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
   STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
   by cage; a lane aggregate without lane 1 is not named to l2d (open).
+- **802.1X (`l2d.py` `Dot1xGuard`, `l2.go` `dot1x`, `build-hostapd.sh`,
+  `docs/drivers/sonic.md` §11.25, built 2026-11-15, verified by hand on an
+  empty cage).** hostapd 2.11 (wired driver, a RADIUS client) built on the
+  switch like mstpd, one per controlled port under l2d; the port closed by
+  the MAC filter's CONFIG_DB `learn_mode drop`; each host hostapd
+  authorises gets a static FDB entry (APPL_DB, ProducerStateTable) and a
+  RETURN in ebtables `DUI_DOT1X`; failures (`CTRL-EVENT-EAP-FAILURE2`) in
+  STATE_DB `DUI_DOT1X_TABLE` -> `Health.Dot1XFailures` -> anomaly 128.
+  No image change. Facts that cost time:
+  - **The EAPOL trap is the macsec feature's** in the image's
+    `copp_cfg.json` and not installed; `COPP_TRAP|dui_eapol` with
+    `always_enabled` installs it, as STP's. A trapped EAPOL frame reaches
+    the port's netdev **tagged with the port's VLAN**.
+  - **ebtables INPUT decides whether hostapd sees EAPOL at all**: the
+    bridge passes a link-local frame to the port's protocol sockets
+    (hostapd's `ETH_P_PAE`) only after NF_BR_LOCAL_IN; a port-wide DROP
+    starved it while tcpdump (an `ETH_P_ALL` tap) still showed the frame.
+    The chain accepts EAPOL first, untagged and 802.1Q.
+  - **hostapd 2.11 built without `CONFIG_DEBUG_SYSLOG` has no `-s`**
+    (usage and exit 1); `logger_syslog` in its config sends its events to
+    syslog.
+  - **The RADIUS secrets never go in l2.json** (collect.py reads it as
+    the login user): `/etc/sonic/disunified/dot1x-radius`, root 0600,
+    rewritten once per bridge start; the bridge keeps the sha in memory
+    only.
+  - **The MAC filter's plan deletes every static FDB entry it does not
+    want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
+    wanted while their port is controlled.
+  - **A looped test cage makes hostapd a station of the switch's own
+    MAC** (its own frames come back): l2d ignores the switch's MAC.
+  - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
+    (FRR: installed, offloaded; `ip route`: none), so the switch reached
+    no IPv4 host off the LAN: the build took a tarball placed beside the
+    script (the hash decides).
+  - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt` (the
+    hand runs: hostapd's events and station replies, the guard's writes),
+    `collect-dot1x.txt`.
