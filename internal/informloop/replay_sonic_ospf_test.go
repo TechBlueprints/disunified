@@ -43,7 +43,21 @@ func TestReplaySonicDX010OSPF(t *testing.T) {
 		{"system_cfg-dx010-ospf-4-passive-stub.txt", "8e103ca3867d4876", []string{" ip ospf area 0.0.0.1", " ip ospf passive", " area 0.0.0.1 stub"}},
 		{"system_cfg-dx010-ospf-5-nssa.txt", "52e4a7483b989bf4", []string{" ip ospf area 0.0.0.2", " area 0.0.0.2 nssa"}},
 	} {
-		got := ospfWrites(r.push(step.file, step.ver))
+		all := r.push(step.file, step.ver)
+		if step.file == "system_cfg-dx010-ospf-1-defaults.txt" && !containsInOrder(all,
+			// The capture is the deployed driver's own state of the run:
+			// the routed network's Vlan3999, which no port carries and the
+			// push lists in switch.routing_interface only, at SONiC's 9100
+			// (no mtu in CONFIG_DB, the netdev at 9100) while the transit's
+			// Vlan4040 and every port were at 1500. It follows the ports
+			// now (docs/drivers/sonic.md §11.13).
+			"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan3999' mtu 1500",
+			"sudo ip link set dev Vlan3999 mtu 1500",
+			brkSave,
+		) {
+			t.Errorf("the routed network's VLAN kept SONiC's 9100:\n  %s", strings.Join(all, "\n  "))
+		}
+		got := ospfWrites(all)
 		if len(got) != 1 || got[0] != start {
 			t.Fatalf("%s wrote %q", step.file, got)
 		}

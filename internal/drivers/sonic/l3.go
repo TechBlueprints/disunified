@@ -524,9 +524,22 @@ func (c *Collector) planL3(st *swState, d devicemodel.DeviceDesired, m l3Managed
 		// vtysh would read the rest of the batch (live, 2026-11-07).
 		add(strip, "config interface ip remove "+iface+" "+cidr+" </dev/null", func(s *swState) { delete(s.ifaddrs, key) })
 	}
+	// A routed network's VLAN is made at the ports' MTU, as EnsureVLANs
+	// makes the pushed ones: SONiC's 9100 behind 1500-byte ports otherwise
+	// (§11.13). The port plan keeps it there (vlanMTUs).
+	mtu := 0
+	for _, p := range ports {
+		if p.MTU > 0 && (mtu == 0 || p.MTU < mtu) {
+			mtu = p.MTU
+		}
+	}
 	for _, r := range want {
 		if id := r.in.VLAN; id > 1 && !sim.vlans[id] {
 			add(build, "config vlan add "+strconv.Itoa(id), func(s *swState) { s.vlans[id] = true })
+			if mtu > 0 && mtu != defaultMTU {
+				m := strconv.Itoa(mtu)
+				add(build, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("VLAN|Vlan"+strconv.Itoa(id))+" mtu "+m, func(s *swState) { s.vlanMTU[id] = m })
+			}
 		}
 		if sim.ifaddrs[r.key] {
 			continue
