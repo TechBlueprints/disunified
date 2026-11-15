@@ -262,6 +262,11 @@ func TestReplayAristaLaneSwitchJoin(t *testing.T) {
 	if !strings.HasPrefix(got[0], head) {
 		t.Errorf("the join wrote\n%s\nwant it to start\n%s", got[0], head)
 	}
+	// The lane aggregate's removal reads back (fixture_lag.go); the join
+	// itself is the one write no read can show: the lanes go.
+	if got := strings.Join(r.ft.Unmodelled, "; "); got != "interface Ethernet54/1: speed forced 100gfull" {
+		t.Errorf("unmodelled: %q", r.ft.Unmodelled)
+	}
 	r.ft.Dir = aristaFixtures("") // the cage whole again (the 2026-09-19 capture)
 	r.parent.collect(context.Background())
 	if _, err := r.lanes.Collect(context.Background()); err == nil || !strings.Contains(err.Error(), "not split") {

@@ -171,7 +171,10 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - **The fixture transport remembers what it wrote** (2026-11-15,
   `fixture_state.go`, `docs/drivers/arista-eos.md` §11): a new write the
   driver makes needs its read-back form captured on the test ports
-  (`write-forms/` is the pattern) or it lands in `Unmodelled`. Only the
+  (`write-forms/` is the pattern) or it lands in `Unmodelled`. Aggregates
+  (`fixture_lag.go`) and the per-list ACL read-back (`fixture_acl.go`) are
+  modelled and held to before/after capture pairs; STP mode/priority, SNMP
+  and SSH keys are not (no capture shows them). Only the
   whole `show running-config` has JSON on 4.26.14M (`... interfaces X |
   json` is "unconverted"). The admin speed is a startup read
   (`show interfaces transceiver properties`): a batch that writes a speed

@@ -1217,22 +1217,58 @@ a reply only in forms the switch printed after such a command:
 | `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `error-correction encoding ...`, `no error-correction encoding`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
 | `ip access-list` (`counters per-entry`, `<seq> <rule>`, `no <seq>`), `no ip access-list` | the running config; a port EOS names is shown by name (9 `discard`, 22 `ssh`, 67 `bootps`, 68 `bootpc`, 443 `https`; 1001 kept) | `session-dui-acl-test-ports.txt` -> `show-running-config-dui-acl.json`, `write-forms/` |
 | `ntp server`, `logging host` (shown with port 514), `monitor session ... both` (shown without `both`) | the running config | the poll capture, `write-forms/`, `split-cage54-lag/` |
-| `no interface Port-Channel<n>` (no member left) | gone from `show interfaces`, its switchport and status, and the running config | `empty-po-leftovers/` -> `empty-po-none/` |
+| `channel-group N mode active` (a port without a link) | `show port-channel summary` (`lacp`, `active`, link `down`; the member `lagMember` false, `linkDown` true, a cage lane's with `lacpState`), the member's `forwardingModel` `dataLink` and `Member of Port-ChannelN` in `show interfaces`, `in PoN` in the status table, its `channel-group` line; a new Port-Channel (from a plain trunk member) with `switchport mode trunk`, the member's switchport entry and address | `channel-group-po9/`, `empty-po-leftovers/` -> `empty-po-lag5/`, `split-cage54/` -> `split-cage54-flexxg/` |
+| `no channel-group` | the member as before (bridged, its own mode in the status table); the Port-Channel stays, out of the summary once its last member left | `channel-group-po9/`, `empty-po-lag5/` -> `empty-po-lag5-removed/` |
+| `interface Port-Channel<n>` (none yet) | a bare one: access, VLAN 1, nothing in the running config | Po4 of `empty-po-leftovers/` (what an ACL unbind left, §4) |
+| `no interface Port-Channel<n>` | gone from `show interfaces`, its switchport and status, and the running config; its members out of the group, its binding gone | `empty-po-leftovers/` -> `empty-po-none/`, `channel-group-po9/`, `empty-po-lag5/` -> `empty-po-lag5-removed-fixed/` |
+| a list written (`ip access-list`, bound or unbound) | `show ip access-lists <name>`: entries by number with the running config's text, a rule's action and an empty `counterData` (its `ruleFilter` left out: the driver never reads it); `countersEnabled`; `show ip access-lists summary`: the list's inbound interfaces, configured and active, and its length | `session-dui-acl-test-ports.txt` -> `show-ip-access-lists-DUI_IP_ACL_*.json`, `show-ip-access-lists-summary-dui-acl.json`; `mDNS-block` uncounted |
+| `ip address A/N` on an interface, `ip route 0.0.0.0/0 G`, `ip name-server vrf default S` (the address move's session) | the interface's `ip address` line and `show interfaces` `primaryIp`; the route and name server lines as written | the poll capture (on Management1) and `empty-po-*` (on Vlan1, after the address was moved there) |
 | `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState` | `split-cage54/` |
 | `environment fan-speed override 30` / `no environment fan-speed` | `show system environment cooling` `coolingMode`, `overrideFanSpeed` | `show-system-environment-cooling-override30.json`, `-default-20261114-after-quiet.json` |
 
 A `configure session` is applied at its `commit timer`, kept by `configure
 session NAME commit` and reverted by `... abort`. Everything else is recorded
-in `FixtureTransport.Unmodelled` and changes no reply: a speed that splits or
-joins a cage (the tests switch `Dir` to a capture of the cage after it),
-`channel-group` (and removing a Port-Channel that still has members), a shutdown of a port with a link, the switch's own
-addressing, STP mode and priority, SNMP communities, the hostname, SSH keys
-and MTU. A replay can require `Unmodelled` empty. Changing `Dir` or an
+in `FixtureTransport.Unmodelled` and changes no reply, each for want of a
+capture:
+
+- a speed that splits or joins a cage (the tests switch `Dir` to a capture
+  of the cage after it);
+- an aggregate member with a link (LACP would bundle it with a partner,
+  which no capture shows), a move from one group straight to another, a
+  mode but `active`, a new Port-Channel from a member that is not a plain
+  trunk, a member joining a Port-Channel whose VLANs differ from its own;
+- a shutdown of a port with a link;
+- `ip address dhcp` (the driver declines DHCP anyway);
+- STP mode and priority: every capture runs `spanning-tree mode rstp`, none
+  shows `spanning-tree priority` or another mode, and no hand test may
+  change them on the live switch;
+- SNMP communities: no capture has one (the site's SNMP is off; the forms
+  were checked only inside an aborted session, 2026-10-31);
+- SSH keys: every capture's key line is scrubbed, so how EOS shows a written
+  key's comment is not shown (the driver diffs keys by type and value, read
+  once at start);
+- MTU (the driver writes none). The driver writes no hostname either.
+
+Two field-level gaps inside modelled families: a Port-Channel whose last
+member left keeps the address it had (the captures disagree: all zeros in
+`channel-group-po9/`, another in `empty-po-lag5-removed/`), and whether an
+entry EOS rewrote keeps its count is not captured (a written entry reads
+an empty `counterData`, one nothing wrote keeps the reply's). A replay can
+require `Unmodelled` empty. Changing `Dir` or an
 `Overrides` entry makes the new capture the switch's state for the commands
 it serves. `Stateless` gives the old behaviour.
 
 `show running-config interfaces X | json` answers "This is an unconverted
 command" on 4.26.14M; only the whole running config has JSON.
+
+The aggregate and ACL models are held to their captures by applying the
+same batch to the before-capture and comparing every changed reply with
+the after-capture (`fixture_lag_test.go`, `fixture_acl_test.go`). With
+them, the lane-aggregate replay runs the parent's and the lane switch's
+next cycle on the transport's own state (the parent writes nothing), the
+lane undo and the build read back on the next collect, and the ACL replays
+read all 57 lists back after the session (until then the read-back logged
+a missing fixture for 55 of them).
 
 The first test on it found a driver bug: the admin speed is read from `show
 interfaces transceiver properties`, one of the startup commands the

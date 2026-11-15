@@ -21,9 +21,14 @@ import (
 //     link joining an aggregate (LACP would bundle it; fixture_lag.go has
 //     what is modelled), shutdown of a port with a link (its LLDP, MAC and
 //     counters would change too);
-//   - the switch's addressing (ApplyAddress: an interface address, a
-//     route, a name server), STP mode and priority, SNMP communities, the
-//     hostname and SSH keys, MTU and any command not listed here.
+//   - `ip address dhcp` (the driver declines DHCP), STP mode and priority
+//     (no capture shows `spanning-tree priority` or a mode but rstp), SNMP
+//     communities (no capture has one), SSH keys (every capture's key is
+//     scrubbed, so how EOS shows a written one's comment is not shown), MTU
+//     and any command not listed here. The driver writes no hostname.
+//
+// The aggregates are in fixture_lag.go and the ACL read-back (`show ip
+// access-lists`, per list and summary) in fixture_acl.go.
 //
 // Configuration sessions are modelled as EOS runs them: the commands of a
 // `configure session NAME` are applied at its `commit timer` (EOS commits
@@ -266,6 +271,13 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		// One line per server, as written (`ntp server 192.0.2.2`, the
 		// capture's running config).
 		return f.rcLine(c, "ntp server ", func(v string) string { return v })
+	case strings.HasPrefix(c, "ip route 0.0.0.0/0 "), strings.HasPrefix(c, "no ip route 0.0.0.0/0 "):
+		// The default route as written (`ip route 0.0.0.0/0 192.0.2.2`, the
+		// running config of every capture), the address move's gateway.
+		return f.rcLine(c, "ip route 0.0.0.0/0 ", func(v string) string { return v })
+	case strings.HasPrefix(c, "ip name-server vrf default "), strings.HasPrefix(c, "no ip name-server vrf default "):
+		// As written (`ip name-server vrf default 192.0.2.2`, every capture).
+		return f.rcLine(c, "ip name-server vrf default ", func(v string) string { return v })
 	case strings.HasPrefix(c, "logging host "), strings.HasPrefix(c, "no logging host "):
 		// EOS shows the default port: `logging host 192.0.2.5 514`
 		// (the running config of the split-cage54 captures, written as
@@ -444,6 +456,7 @@ func (f *FixtureTransport) createVLANs(list string) {
 // ---- interface mode ----
 
 var (
+	ipAddressRe  = regexp.MustCompile(`^ip address (\d+\.\d+\.\d+\.\d+)/(\d+)$`)
 	stormLevelRe = regexp.MustCompile(`^storm-control (broadcast|multicast|unknown-unicast) level ([0-9.]+)$`)
 	speedRe      = regexp.MustCompile(`^speed forced (\S+)$`)
 )
@@ -493,14 +506,49 @@ func (f *FixtureTransport) interfaceCmd(iface, c string) bool {
 		if !f.leaveChannel(iface) {
 			f.unmodelled("interface "+iface, c)
 		}
-	case strings.HasPrefix(c, "mtu "), strings.HasPrefix(c, "ip address "), strings.HasPrefix(c, "no ip address"),
-		c == "ip address dhcp":
+	case ipAddressRe.MatchString(c):
+		if !f.ipAddress(iface, c) {
+			f.unmodelled("interface "+iface, c)
+		}
+	case strings.HasPrefix(c, "mtu "), strings.HasPrefix(c, "ip address "), strings.HasPrefix(c, "no ip address"):
 		f.unmodelled("interface "+iface, c)
 	default:
 		return false
 	}
 	return true
 }
+
+// ipAddress is an interface's primary address, the address move's write:
+// the running config's `ip address A/N` (one primary per interface) and
+// `show interfaces` interfaceAddress[0].primaryIp (address, maskLen), as
+// the captures show it on Management1 (the poll capture, 2026-09-19) and on
+// Vlan1 (empty-po-*, 2026-11-15, after the address was moved there). An
+// interface with no address yet takes the entry those captures print.
+func (f *FixtureTransport) ipAddress(iface, c string) bool {
+	m := ipAddressRe.FindStringSubmatch(c)
+	e := f.ifEntry("show interfaces", "interfaces", iface)
+	s := f.rcSection("interface "+iface, true)
+	if e == nil || s == nil {
+		return false
+	}
+	plen, _ := strconv.Atoi(m[2])
+	addrs, _ := e["interfaceAddress"].([]any)
+	if len(addrs) == 0 {
+		addrs = []any{decodeTemplate(ifAddressJSON)}
+		e["interfaceAddress"] = addrs
+	}
+	child(obj(addrs[0]), "primaryIp", true)["address"] = m[1]
+	child(obj(addrs[0]), "primaryIp", true)["maskLen"] = json.Number(strconv.Itoa(plen))
+	for k := range s {
+		if strings.HasPrefix(k, "ip address ") && !strings.HasSuffix(k, " secondary") {
+			delete(s, k)
+		}
+	}
+	s[c] = nil
+	return true
+}
+
+const ifAddressJSON = `{"broadcastAddress": "255.255.255.255", "dhcp": false, "primaryIp": {"address": "0.0.0.0", "maskLen": 0}, "secondaryIps": {}, "secondaryIpsOrderedList": [], "virtualIp": {"address": "0.0.0.0", "maskLen": 0}, "virtualSecondaryIps": {}, "virtualSecondaryIpsOrderedList": []}`
 
 func (d *fixtureDoc) vOrNil() map[string]any {
 	if d == nil {
