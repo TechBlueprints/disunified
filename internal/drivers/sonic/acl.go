@@ -128,6 +128,10 @@ type aclWant map[string]map[string]map[string]string
 // the switch's VLANs, which EnsureVLANs settles before ApplyDevice runs;
 // the ports they bind to are worked out at every apply.
 func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
+	dd := d
+	c.mu.Lock()
+	c.aclFrom = &dd // re-derived when a VLAN is deleted (vlan_prune.go)
+	c.mu.Unlock()
 	want := aclWant{}
 	var notes []string
 	note := func(format string, args ...any) { notes = append(notes, fmt.Sprintf(format, args...)) }

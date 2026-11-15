@@ -51,6 +51,13 @@ type swState struct {
 	// from VLAN_INTERFACE, INTERFACE, PORTCHANNEL_INTERFACE and
 	// LOOPBACK_INTERFACE (MGMT_INTERFACE, eth0's, is not among them).
 	ifaddrs map[string]bool
+	// vlanIfRows are VLAN_INTERFACE's bare rows (no address in the key) by
+	// VLAN interface, with their fields: the CLI writes one with the first
+	// address and deletes it with the last unless the interface is bound to
+	// a VRF or runs IPv6 link-local (config/main.py `ip remove`), so a row
+	// with fields beyond NULL is a setting UniFi does not make. Read-only,
+	// shared by clones.
+	vlanIfRows map[string]map[string]string
 
 	meta map[string]string // DEVICE_METADATA|localhost (hostname, timezone)
 	// kernelHost is the Linux hostname (collect.py's hostname section),
@@ -312,6 +319,12 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		case parts[0] == "VLAN_INTERFACE", parts[0] == "INTERFACE", parts[0] == "PORTCHANNEL_INTERFACE", parts[0] == "LOOPBACK_INTERFACE":
 			s.ifaddrs[parts[1]+"|"+parts[2]] = true
 		}
+		if len(parts) == 2 && parts[0] == "VLAN_INTERFACE" {
+			if s.vlanIfRows == nil {
+				s.vlanIfRows = map[string]map[string]string{}
+			}
+			s.vlanIfRows[parts[1]] = fv
+		}
 	}
 	s.mgmtPortMissing = mgmtAddr && !mgmtPort
 	s.v6 = parseV6(sec["ipv6_ra"], db["appl_intf"], addrs)
@@ -436,7 +449,7 @@ func (s *swState) clone() *swState {
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM, gc: s.gc.clone(),
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{}, bridgeDown: s.bridgeDown,
-		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
+		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn), vlanIfRows: s.vlanIfRows,
 	}
 	for k, v := range s.l2mc {
 		c.l2mc[k] = copyFields(v)

@@ -246,9 +246,14 @@ func (d *Device) PlanPorts(desired []devicemodel.PortDesired) []int {
 	return d.lp.PlanLanes(d.opt.Cage, d.split(desired))
 }
 
-// EnsureVLANs implements devicemodel.VLANController: the site's VLANs are
-// the parent's to create; the lane switch's push names the same ones.
+// EnsureVLANs implements devicemodel.VLANController: the VLANs are the
+// parent's to create. The lane switch's push names only what its lanes
+// carry, which can differ from the parent's own push, so a parent that
+// keeps the lists apart (devicemodel.LaneVLANController) gets it per cage.
 func (d *Device) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	if lc, ok := d.parent.(devicemodel.LaneVLANController); ok {
+		return lc.EnsureLaneVLANs(ctx, d.opt.Cage, ids)
+	}
 	if vc, ok := d.parent.(devicemodel.VLANController); ok {
 		return vc.EnsureVLANs(ctx, ids)
 	}

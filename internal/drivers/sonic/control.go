@@ -132,6 +132,18 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
+	if c.siteKnown && site == nil {
+		site = []int{} // the push names no VLAN but 1: known, not missing
+	}
+	if cage > 0 {
+		// A lane switch's Allow All tags what its own push lists; before
+		// its first EnsureVLANs (a held first push) that is unknown, and
+		// the device's own push says nothing about the lanes.
+		site = nil
+		if l, ok := c.laneVLANs[cage]; ok {
+			site = append([]int{}, l...)
+		}
+	}
 	lanes := c.lanes[cage]
 	down := c.cageDown[cage]
 	var attached []int
@@ -1200,6 +1212,28 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	if _, err := c.applyL3(ctx); err != nil {
 		return n, err
 	}
+	// Last, a VLAN no push names any more, now that the ports, the IGMP
+	// rows and a routed network's address have left it (vlan_prune.go).
+	// Only with ports to write: control.ports off writes no VLAN either.
+	if len(desired) > 0 {
+		pruned, err := c.pruneVLANs(ctx)
+		if err != nil {
+			return n, err
+		}
+		if pruned > 0 {
+			// The DHCP guard's rules are per VLAN on the switch (acl.go):
+			// derived again without the deleted ones.
+			c.mu.Lock()
+			d, st := c.aclFrom, c.state
+			c.mu.Unlock()
+			if d != nil && st != nil {
+				c.aclSet(*d, st)
+				if _, err := c.applyACL(ctx); err != nil {
+					return n, err
+				}
+			}
+		}
+	}
 	return n, nil
 }
 
@@ -1265,9 +1299,27 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 
 // EnsureVLANs implements devicemodel.VLANController: it creates the
 // controller's VLANs that are missing (UniFi's 1 is Vlan<native_vlan>) and
-// remembers the list for "Allow All". Never deletes. A list that contains
-// native_vlan itself is refused whole: that id is the stand-in for VLAN 1.
+// remembers the list for "Allow All" and for pruneVLANs, which deletes the
+// ones the push stops naming after the ports have left them. A list that
+// contains native_vlan itself is refused whole: that id is the stand-in
+// for VLAN 1.
 func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	return c.ensureVLANs(ctx, 0, ids)
+}
+
+// EnsureLaneVLANs implements devicemodel.LaneVLANController: an attached
+// lane switch's own list, kept apart from the device's (its push names
+// what its lanes carry), created like the device's and kept by the prune.
+func (c *Collector) EnsureLaneVLANs(ctx context.Context, cage int, ids []int) (int, error) {
+	if cage <= 0 {
+		return 0, fmt.Errorf("sonic ensure lane vlans: cage %d", cage)
+	}
+	return c.ensureVLANs(ctx, cage, ids)
+}
+
+// ensureVLANs is EnsureVLANs for the device's own push (cage 0) or a lane
+// switch's.
+func (c *Collector) ensureVLANs(ctx context.Context, cage int, ids []int) (int, error) {
 	unlock, err := c.lockApply(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("sonic ensure vlans: %w", err)
@@ -1305,7 +1357,14 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 	sort.Ints(site)
 	sort.Ints(missing)
 	c.mu.Lock()
-	c.siteVLANs = site
+	if cage == 0 {
+		c.siteVLANs, c.siteKnown = site, true
+	} else {
+		if c.laneVLANs == nil {
+			c.laneVLANs = map[int][]int{}
+		}
+		c.laneVLANs[cage] = append([]int{}, site...)
+	}
 	c.mu.Unlock()
 	if len(missing) == 0 {
 		return 0, nil
