@@ -169,6 +169,14 @@ fix, then `RESUME=1 ./build.sh vs` (or `broadcom`). A patch that stops applying
 under `FOLLOW_HEAD=1` is the moment to rebase the series (the work clones are
 under `src/` on the Mac, branch `igmp-202511`).
 
+**A new patch on an already-built tree needs more than `RESUME=1`** (2026-11-15,
+0014). make does not track a package's `debian/` files, so after the patch is
+applied the old `.deb` counts as up to date. The top Makefile does the same for an
+existing `target/sonic-*.bin`. Move aside the changed package's `.deb` under
+`target/debs/<dist>/` and the platform's `.bin`s, then run `RESUME=1`. Don't
+use a package's clean target: it walks the bookworm phase again and rebuilt
+unrelated packages (libswsscommon) for an hour before it was stopped.
+
 ## How long
 
 Estimated, not yet measured (the first run's `durations` file replaces this):

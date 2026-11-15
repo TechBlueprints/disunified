@@ -7,6 +7,10 @@ the chassis serial, IPv4 addresses (into 192.0.2.0/24 and 198.51.100.0/24 test
 nets, consistent per-address), and LLDP neighbor hostnames.
 
 Usage: scripts/sanitize-arista-eos.py docs/fixtures/<eos-version>/*.json
+
+The mapping lives for one run only: captures a test reads together (two states
+of one switch, a scenario's overrides) must be scrubbed in one invocation, or the
+same real MAC comes out as two different placeholders.
 """
 import json, re, sys, ipaddress
 
