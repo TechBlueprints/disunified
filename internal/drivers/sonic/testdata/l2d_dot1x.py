@@ -308,6 +308,23 @@ pump(g)
 state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
 state("chain", CHAINS.get(l2d.DOT1X_CHAIN))
 
+step("second host, single device")
+connected = [e for e in events["run_hostapd"] if "AP-STA-CONNECTED" in e][0]
+OTHER = [e for e in events["run_hostapd"] if "EAP-FAILURE2" in e][0].split()[-1]
+h.send(connected.replace(HOST, OTHER))
+pump(g)
+state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
+
+step("second host, multiple devices")
+CONF["dot1x"]["ports"]["Ethernet120"] = "multi_host"
+g.want["Ethernet120"] = "multi_host"
+h.send(connected.replace(HOST, OTHER))
+pump(g)
+state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
+h.send("<3>AP-STA-DISCONNECTED " + OTHER)
+pump(g)
+CONF["dot1x"]["ports"]["Ethernet120"] = "auto"
+
 step("restart")
 g = l2d.Dot1xGuard(l2)
 g.sync(CONF)

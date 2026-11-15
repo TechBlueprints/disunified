@@ -145,6 +145,21 @@ type l2Dot1X struct {
 	Ports   map[string]string `json:"ports"`
 }
 
+// authenticates: a port runs an authenticator (a force-authorised or
+// force-unauthorised one needs none, so hostapd is built only for these).
+func (d *l2Dot1X) authenticates() bool {
+	if d == nil {
+		return false
+	}
+	for _, m := range d.Ports {
+		switch devicemodel.Dot1XMode(m) {
+		case devicemodel.Dot1XAuto, devicemodel.Dot1XMultiHost, devicemodel.Dot1XMACBased:
+			return true
+		}
+	}
+	return false
+}
+
 type l2RADIUS struct {
 	IP   string `json:"ip"`
 	Port int    `json:"port"`
@@ -485,7 +500,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 			return started, nil // installed once mstpd is there
 		}
 	}
-	if want.Dot1X != nil && in.hostapd() == "" {
+	if want.Dot1X.authenticates() && in.hostapd() == "" {
 		// The ports stay closed (CONFIG_DB learn_mode drop, the plan's);
 		// nobody is admitted until hostapd is there.
 		switch {

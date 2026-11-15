@@ -45,7 +45,7 @@ UUID_RE = re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 HEX24_RE = re.compile(r'\b[0-9a-f]{24}\b')   # Mongo object ids (device_id, _id, site id)
 HEX32_RE = re.compile(r'\b[0-9a-f]{32}\b')   # auth keys, site key, guest tokens
 
-SECRET_KEYS = {'_authkey', 'x_authkey', 'authkey', 'guest_token', 'password', 'x_password',
+SECRET_KEYS = {'_authkey', 'x_authkey', 'authkey', 'guest_token', 'password', 'x_password', 'x_secret', 'secret',
                'username', 'credential', 'community', 'psk', 'x_ssh_hostkey_fingerprint'}
 ID_KEYS = {'anon_id', 'guid', 'hash_id', '_id', '_devsiteid', 'device_id', 'uuid', 'id', 'site_id',
            'unifi.anonymous_controller_id', 'unifi.anonymous_site_id', 'unifi.siteid', 'unifi.reporterid'}
@@ -162,6 +162,8 @@ def scrub_cfg_text(text):
             v = '<key>'
         elif k.endswith('.password'):
             v = '<hash>'
+        elif k.endswith('.secret') or k.endswith('.x_secret'):
+            v = '<secret>'   # a RADIUS server's shared secret (switch.radius.auth.N.secret, 2026-11-15)
         elif re.match(r'sshd\.auth\.key\.\d+\.value$', k):
             v = '<pubkey>'
         elif re.match(r'sshd\.auth\.key\.\d+\.comment$', k):
@@ -172,6 +174,8 @@ def scrub_cfg_text(text):
             v = '<community>'
         elif re.match(r'users\.\d+\.name$', k) and v not in ('admin', 'nobody', 'root', 'ubnt'):
             v = map_host(v)
+        elif re.match(r'resolv\.host\.\d+\.name$', k):
+            v = map_host(v)   # the device's own UniFi name, spaces removed (2026-11-15)
         elif re.match(r'sshd\.auth\.key\.\d+\.name$', k):
             v = map_host(v)   # key comments carry the owner's machine name
         elif k in ('system.timezone', 'locale.timezone', 'unifi.version'):

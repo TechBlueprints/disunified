@@ -16,7 +16,8 @@ const dot1xFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf
 // config file holds the RADIUS secret and is root's alone; the host
 // hostapd authorised gets a static FDB entry and a kernel RETURN, the
 // wrong password counts one failure, the switch's own looped station
-// nothing; a restart adopts the running hostapd and keeps the admission
+// nothing; a single-device (auto) port turns a second host away, a
+// multi_host one admits it too; a restart adopts the running hostapd and keeps the admission
 // without removing it first; a logoff removes it and reaches STATE_DB; an
 // unwatched port loses its authenticator, chain and trap, and keeps its
 // count.
@@ -85,6 +86,18 @@ func TestL2dDot1X(t *testing.T) {
 	}
 	if strings.Contains(show(ev), "02:00:00:00:00:02") {
 		t.Errorf("the switch's own looped station was admitted or counted:\n%s", show(ev))
+	}
+
+	one := "second host, single device"
+	if !has(one, "CTRL DEAUTHENTICATE 02:00:00:00:00:01") || strings.Contains(show(one), "PST FDB_TABLE") ||
+		!has(one, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "auto"}`) {
+		t.Errorf("auto (Credentials) admits a single device; a second one is turned away:\n%s", show(one))
+	}
+	many := "second host, multiple devices"
+	if !has(many, "PST FDB_TABLE Vlan4094:02:00:00:00:00:01 port=Ethernet120 type=static") ||
+		!has(many, `STATE row {"authorized": "02:00:00:00:00:01,02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "multi_host"}`) ||
+		strings.Contains(show(many), "learn_mode") {
+		t.Errorf("multi_host (Multiple Credentials) admits each device on its own, the port stays closed to the rest:\n%s", show(many))
 	}
 
 	if strings.Contains(show("restart"), "PSTDEL") || strings.Contains(show("restart"), "/hostapd -B") ||

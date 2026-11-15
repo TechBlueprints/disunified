@@ -1836,8 +1836,11 @@ class Dot1xGuard(object):
     - AP-STA-CONNECTED <mac>: the host is admitted -- a static FDB entry in
       every VLAN the port carries (APPL_DB FDB_TABLE, as the MAC filter
       writes its allowed MACs) and a RETURN for the source in the kernel
-      chain DUI_DOT1X; with multi_host the first admission opens the port
-      (learning back to hardware in APPL_DB, the whole port RETURNed);
+      chain DUI_DOT1X. The controller's modes, as its UI words them: auto
+      ("Credentials") authenticates a single wired device, so a second host
+      that authenticates while one is admitted is turned away
+      (deauthenticated, logged); multi_host ("Multiple Credentials")
+      authenticates each device individually, so each is admitted;
     - AP-STA-DISCONNECTED <mac>: the admission goes;
     - CTRL-EVENT-EAP-FAILURE2 <mac>: a failed attempt, counted for the port
       (STATE_DB DUI_DOT1X_TABLE|<port> failures, since boot; the anomaly 128
@@ -1864,7 +1867,6 @@ class Dot1xGuard(object):
         self.socks = {}  # interface -> event socket (attached)
         self.admitted = {}  # interface -> set of MACs
         self.fdb = {}  # interface -> set of FDB_TABLE keys written
-        self.opened = set()  # multi_host ports whose learning is back to hardware
         self.failures = {}  # interface -> count, carried over a restart
         self.last_fail = {}
         self.dirty = set()
@@ -2111,6 +2113,12 @@ class Dot1xGuard(object):
         if mac == self.own:
             return  # the switch's own frames, looped back to it
         macs = self.admitted.setdefault(port, set())
+        if self.want.get(port) == "auto" and macs and mac not in macs:
+            # a single wired device per port: the first one holds it
+            log("802.1X: %s authenticated on %s, which admits a single device and has %s; not admitted" %
+                (mac, port, ",".join(sorted(macs))), syslog.LOG_WARNING)
+            self.ctrl(port, "DEAUTHENTICATE " + mac)
+            return
         new = mac not in macs
         macs.add(mac)
         keys = self.fdb.setdefault(port, set())
@@ -2118,9 +2126,6 @@ class Dot1xGuard(object):
             if key not in keys:
                 put(self.fdb_pst, key, [("port", port), ("type", "static")])
                 keys.add(key)
-        if self.want.get(port) == "multi_host" and port not in self.opened:
-            put(self.db.ifport_pst, port, [("learn_mode", "hardware")])
-            self.opened.add(port)
         self.write_chain(self.rules())
         self.dirty.add(port)
         if new:
@@ -2136,10 +2141,6 @@ class Dot1xGuard(object):
             if key in keys:
                 self.fdb_pst._del(key)
                 keys.discard(key)
-        if not macs and port in self.opened:
-            mode = self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
-            put(self.db.ifport_pst, port, [("learn_mode", mode)])
-            self.opened.discard(port)
         self.write_chain(self.rules())
         self.dirty.add(port)
         log("802.1X: %s no longer authorised on %s (%s)" % (mac, port, why))
@@ -2156,8 +2157,6 @@ class Dot1xGuard(object):
         out = []
         for port in sorted(self.want):
             out += eapol_rules(port)
-            if port in self.opened:
-                out.append(["-i", port, "-j", "RETURN"])
             for mac in sorted(self.admitted.get(port, ())):
                 out.append(["-i", port, "-s", mac, "-j", "RETURN"])
             out.append(["-i", port, "-j", "DROP"])
@@ -2255,16 +2254,13 @@ class Dot1xGuard(object):
             for mac in sorted(self.admitted.get(port, ())):
                 for key in self.fdb_keys(port, mac):
                     self.fdb_pst._del(key)
-        for port in sorted(self.opened):
-            mode = self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
-            put(self.db.ifport_pst, port, [("learn_mode", mode)])
         try:
             names = [n[:-4] for n in os.listdir(DOT1X_RUN) if n.endswith(".pid")]
         except OSError:
             names = []
         for port in sorted(set(names) | set(self.started)):
             self.stop(port)
-        self.admitted, self.opened, self.want = {}, set(), {}
+        self.admitted, self.want = {}, {}
         self.written = None
         self.write_chain([])
         self.copp(False)

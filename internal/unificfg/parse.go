@@ -67,6 +67,12 @@ type Config struct {
 	MACACLs []MACACL
 	IPACLs  []IPACL
 	SNMP    *SNMP // switch.snmp.*, nil if absent
+	// Dot1X is switch.dot1x.* and switch.radius.auth.N.*: the device's
+	// 802.1X Control and the RADIUS servers its ports authenticate
+	// against (captured 2026-11-15 on 11.0.99, docs/fixtures/
+	// controller-11.0.99/system_cfg-dx010-dot1x-*.txt). nil when the push
+	// carries no switch.dot1x.status (a device that does not claim DOT1X).
+	Dot1X *Dot1X
 	// NUTServer is nutserver.*: the controller's "NUT Server" switch for a
 	// UPS, pushed only to a device claiming smart_power_caps bit 1. Nil if
 	// the block is absent (the switch off, or the capability unclaimed).
@@ -419,6 +425,25 @@ func (c *Config) Unsupported(features map[string]string) map[string][]string {
 	return out
 }
 
+// Dot1X is the device's 802.1X. The Unauthorized VLAN set in the UI
+// reached no push (stored on the device record as
+// dot1x_fallback_networkconf_id; not even a force-provision sent a key), so
+// nothing here carries it.
+type Dot1X struct {
+	Enabled bool // switch.dot1x.status == enabled
+	DynVLAN bool // switch.dot1x.dynvlan == enabled (disabled in every capture)
+	// Servers is switch.radius.auth.N.{ip,port,secret} in N order: the
+	// device's RADIUS profile (UniFi Integrated = the gateway; External = the
+	// profile's servers). Secret is a credential.
+	Servers []RADIUSServer
+}
+
+type RADIUSServer struct {
+	IP     string
+	Port   int
+	Secret string
+}
+
 // Port is one switch.port.N.* group plus its switch.vlan.<slot>.port.N.mode lines.
 type Port struct {
 	Index   int
@@ -466,6 +491,14 @@ type Port struct {
 	// EgressKbps is switch.port.N.egress_rate_limit_kbps (absent = no
 	// limit; the UI's Mbps x 1000).
 	EgressKbps int
+	// Dot1XMode is switch.port.N.dot1x.mode, pushed for every port while the
+	// device's 802.1X is on: force_authorized (802.1X off on the port, the
+	// default), auto (the UI's Credentials), multi_host (Multiple
+	// Credentials), mac_based (MAC Address), force_unauthorized (Always
+	// Unauthorized); "" when absent. Dot1XIdleTimeout is
+	// switch.port.N.dot1x.idle_timeout (seconds; pushed with mac_based).
+	Dot1XMode        string
+	Dot1XIdleTimeout int
 	// VoiceVLAN is the VLAN whose switch.vlan.<slot>.port.N.voice is
 	// enabled (the UI's Voice VLAN; the VLAN is tagged on the port too); 0 =
 	// none (captured 2026-11-07).
@@ -944,6 +977,10 @@ func Parse(text string) *Config {
 				p.PortSecurity = v == "enabled"
 			case "egress_rate_limit_kbps":
 				p.EgressKbps, _ = strconv.Atoi(v)
+			case "dot1x.mode":
+				p.Dot1XMode = v
+			case "dot1x.idle_timeout":
+				p.Dot1XIdleTimeout, _ = strconv.Atoi(v)
 			default:
 				if n, ok := strings.CutPrefix(m[2], "port-security.mac."); ok {
 					if k, err := strconv.Atoi(n); err == nil && k > 0 {
@@ -1317,6 +1354,7 @@ func Parse(text string) *Config {
 	if c.Timezone == "" {
 		c.Timezone = localeTZ
 	}
+	c.Dot1X = parseDot1X(c.Raw)
 	if c.Address != nil {
 		for n, gw := range routeGW {
 			if defaultRoute[n] {
@@ -1390,4 +1428,49 @@ func sortedKeys[V any](m map[int]V) []int {
 	}
 	sort.Ints(out)
 	return out
+}
+
+var radiusRe = regexp.MustCompile(`^switch\.radius\.auth\.(\d+)\.(ip|port|secret)$`)
+
+func parseDot1X(raw map[string]string) *Dot1X {
+	st, ok := raw["switch.dot1x.status"]
+	if !ok {
+		return nil
+	}
+	d := &Dot1X{Enabled: st == "enabled", DynVLAN: raw["switch.dot1x.dynvlan"] == "enabled"}
+	byN := map[int]*RADIUSServer{}
+	for k, v := range raw {
+		m := radiusRe.FindStringSubmatch(k)
+		if m == nil {
+			continue
+		}
+		n, _ := strconv.Atoi(m[1])
+		s := byN[n]
+		if s == nil {
+			s = &RADIUSServer{}
+			byN[n] = s
+		}
+		switch m[2] {
+		case "ip":
+			s.IP = v
+		case "port":
+			s.Port, _ = strconv.Atoi(v)
+		case "secret":
+			s.Secret = v
+		}
+	}
+	ns := make([]int, 0, len(byN))
+	for n := range byN {
+		ns = append(ns, n)
+	}
+	sort.Ints(ns)
+	for _, n := range ns {
+		if s := byN[n]; s.IP != "" {
+			if s.Port == 0 {
+				s.Port = 1812
+			}
+			d.Servers = append(d.Servers, *s)
+		}
+	}
+	return d
 }
