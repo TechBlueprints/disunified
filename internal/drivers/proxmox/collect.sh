@@ -51,7 +51,9 @@ for h in /sys/class/hwmon/hwmon*; do
     echo "$(basename "$f")=$(cat "$f" 2>/dev/null)"
   done
 done
-s carrier;    for d in /sys/class/net/*; do [ -e "$d/carrier_changes" ] && echo "$(basename "$d")=$(cat "$d/carrier_changes" 2>/dev/null)"; done
+# carrier: "<name>=<carrier_changes> <up count> <down count> <carrier>";
+# "-" where the kernel has no such file or the interface is admin down.
+s carrier;    for d in /sys/class/net/*; do [ -e "$d/carrier_changes" ] && echo "$(basename "$d")=$(cat "$d/carrier_changes" 2>/dev/null) $(cat "$d/carrier_up_count" 2>/dev/null || echo -) $(cat "$d/carrier_down_count" 2>/dev/null || echo -) $(cat "$d/carrier" 2>/dev/null || echo -)"; done
 s vmlist;     cat /etc/pve/.vmlist 2>/dev/null
 s qemu
 for f in /etc/pve/nodes/*/qemu-server/*.conf; do

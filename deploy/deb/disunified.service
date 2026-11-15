@@ -1,8 +1,11 @@
 [Unit]
 Description=disunified bridge: this device as an adopted UniFi switch
 Documentation=https://github.com/TechBlueprints/disunified
-# On SONiC: the Redis databases and swss must be up before a collect can
-# succeed; Start retries with backoff anyway (main.go).
+# On SONiC: the Redis databases must be up before a collect can succeed.
+# swss.service counts as started once its container runs, long before the
+# ports and the VLAN interfaces exist, so the driver's Start waits for them
+# itself (internal/drivers/sonic/starting.go, docs/drivers/sonic.md
+# §6.4.2); a failed Start is retried with backoff (main.go).
 After=network-online.target database.service swss.service
 Wants=network-online.target
 

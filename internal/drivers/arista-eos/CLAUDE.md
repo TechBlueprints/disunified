@@ -139,6 +139,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   driver's lines (`portchannel.go`); a hand-made one stays. The test
   fixtures' switch had four (Po1-4): `removeLeftovers` in the test helpers
   takes them out first.
+- **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
+  detail`** (text; its `| json` wraps the text): the `... since system
+  boot` rows' Current State. Per interface, not per channel; no
+  `transceiver` form, `eeprom` or `idprom` prints them (2026-11-15,
+  `docs/drivers/arista-eos.md` §4). They are `sfp_rxfault` / `sfp_txfault`;
+  the DOM thresholds are not (only the SSH transport's fallback).
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is

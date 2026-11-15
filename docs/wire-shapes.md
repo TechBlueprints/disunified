@@ -266,9 +266,10 @@ New findings, outside package A's files, not fixed:
   informs carry 32 characters where the real ones had 16: a scrub that
   changes a length, as the serial's did. Not rewritten (§4.4's rule).
 
-Not testable without a live device or controller: that the controller and
-its UI take the string readings as they take the ECS's (the readings on a
-port's SFP tab), and how a bias of 10 mA or more displays; the scrubbers
+Not testable without a live device or controller (since checked, §8: the
+SFP tab shows the string readings as it shows a real optic's, a bias near
+39 mA included): that the controller and its UI take the string readings
+as they take the ECS's, and how a bias of 10 mA or more displays; the scrubbers
 on a new raw capture (each was run on throwaway input; the Podman and SONiC ones also over
 their committed captures, with the same output as before the change).
 
@@ -553,7 +554,29 @@ next day):
   (`4.26.14M` there now, beside `4.26.14`). The device re-provisioned once
   and was connected again within about a minute.
 - The stored device object holds the optic readings as strings
-  (`"3.317"`, `"-2.97"`). The port's SFP tab in the UI was not looked at.
+  (`"3.317"`, `"-2.97"`).
+- **The SFP tab shows them as a real switch's (checked 2026-11-15, Network
+  11.0.99).** Ports -> SFP lists every port with a module, site-wide:
+  Vendor, Serial, Part Number, Compliance, Temperature, Output Power, Input
+  Power, Voltage, Current. The UI reads each string as a number and prints
+  it with trailing zeros dropped, ours and the real switches' alike: the
+  DX010's CWDM4 module as `29.43℃`, `0.6 dBm`, `-3.06 dBm`, `3.318V`,
+  `39.466 mA` (the switch's own `show interfaces transceiver eeprom --dom`
+  within an inform's drift), a USW Aggregation's 10G-SR as `44.445℃`,
+  `-2.56 dBm`. A missing or no-light reading is treated the same way for
+  both: the Arista's CWDM4 module with no fibre shows `-30 dBm` input power
+  (EOS's own floor, `show interfaces transceiver` says `-30.00`) beside a
+  USW Aggregation's unlit port at `-40 dBm`, and its "Receive SFP Signal
+  Loss" anomaly; an input power of exactly `0.00` (the ECS's unlit ports)
+  and a reading not sent at all both show `-`, so the Arista's breakout
+  cable and its DAC without DOM read like the real switches' DACs:
+  identity, then `-` across. No blank, `NaN` or unit off by a factor; the
+  ECS's own whole-number readings (`3V`, `6 mA`, `46℃`) are the truncation
+  decided above not to copy. Nothing to change in `internal/device`. One
+  identity field was wrong on the wire, though no column shows it: the
+  Arista sent `sfp_rev` empty for every module. It is now `show inventory`'s
+  `hardwareRev` (`1`, `A`; empty for Arista's own cable, as EOS has none),
+  held by the 4.26.14M fixture in `extras_test.go`.
 
 ## 9. Network 11 (2026-11-13)
 
@@ -631,9 +654,16 @@ query, and the bridges' state files).
   through it from an adopted start; each reply writes a reconcile's writes
   plus its own change. No `cmd` (locate or other) reached any bridge after
   the upgrade (the container's reply logs and the DX010's were read), so
-  there is none to replay. The DX010's pushes since the upgrade (its alert
-  tests) are in its on-switch log and not made a fixture: its replay would
-  need a SONiC capture of the same day.
+  there is none to replay. **The DX010 since 2026-11-15:**
+  `replies-dx010.ndjson` is its on-switch reply log over the live runs of
+  that morning (an unknown-unicast storm level set and removed in the UI,
+  a routed aggregate made and removed), with the push current before them
+  and the REST restore after, scrubbed with its addresses seeded from the
+  capture of the switch taken the same morning
+  (`sonic-igmp-202511.20261115-6c8eb1cf7/collect-net11.txt`).
+  `TestReplaySonicDX010Network11` drives the sonic driver through it: each
+  push writes what the deployed bridge wrote live, every other record
+  nothing.
 - **Alerts:** `scripts/sanitize-controller.py` scrubs the v2
   `system-log/device-alert` answer itself now (names inside `message`,
   composite names, ids that are names or MACs), checked over 30 days of

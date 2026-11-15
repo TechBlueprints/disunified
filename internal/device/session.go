@@ -38,6 +38,7 @@ type Session struct {
 
 	versionPinned  bool                // the operator named a version: never follow the switch's
 	prevHistory    map[int]portHistory // per port, at the last inform (byte rates, drop-counter growth)
+	lastPayload    []byte              // the payload EncodeInform last encrypted, for the record dir
 	caps           devicemodel.Capabilities
 	smartPowerCaps int             // smart_power_caps claim, SmartPowerCapsNone unless a bridge feature claims a bit
 	nutClients     func() []string // addresses of NUT clients served, for nut_client_ips; nil = none
@@ -248,6 +249,7 @@ func (s *Session) deviceVersion() string {
 func (s *Session) EncodeInform(now time.Time) ([]byte, error) {
 	s.mu.Lock()
 	payload := s.buildPayload(now)
+	s.lastPayload = payload
 	key, gcm := s.st.Key, s.st.UseAESGCM
 	s.mu.Unlock()
 	pkt := &inform.Packet{MAC: s.macHeader, Payload: payload}
@@ -257,7 +259,20 @@ func (s *Session) EncodeInform(now time.Time) ([]byte, error) {
 	return pkt.Encode(key)
 }
 
+// LastPayload is the payload EncodeInform last encrypted, byte for byte (nil
+// before the first). The record dir's payload-last.json is written from it:
+// building the payload again would not reproduce what was sent, because a
+// build moves the per-port history forward -- a second build sees no
+// counter growth, so the anomalies bits and byte rates the inform carried
+// would read 0 (seen live 2026-11-15, the DHCP-rate alert's inform).
+func (s *Session) LastPayload() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastPayload
+}
+
 // BuildPayload renders the payload for the current state (for tests/debug).
+// Each build moves the per-port history forward, as an inform does.
 func (s *Session) BuildPayload(now time.Time) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()

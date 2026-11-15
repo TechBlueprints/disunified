@@ -563,8 +563,7 @@ func nicPort(idx int, name string, l ipLink, et ethtoolInfo, phys map[string]str
 	} else {
 		p.SpeedMbps = 0
 	}
-	n, _ := strconv.ParseUint(carrier[name], 10, 64)
-	p.Health.LinkChanges = n
+	p.Health.LinkChanges = carrierChanges(carrier, name)
 	return p
 }
 
@@ -637,4 +636,35 @@ func (c *Collector) warnOnceLocked(key, format string, args ...any) {
 	}
 	c.warned[key] = true
 	c.Log.Printf("podman %s: "+format, append([]any{c.host}, args...)...)
+}
+
+// carrierChanges turns one interface's line of the `carrier` section
+// ("<carrier_changes> <carrier_up_count> <carrier_down_count> <carrier>")
+// into PortHealth.LinkChanges, the transitions of a link that started
+// down: the drops are the kernel's up count less the up period still
+// running, since its down count includes the carrier-off a NIC driver
+// (virtio_net among them) makes after registering, before any link. The
+// same rule as the proxmox driver's (docs/drivers/proxmox.md §2, Link
+// drops); one field or no up count keeps carrier_changes as it is, and an
+// admin-down interface ("-") counts as down.
+func carrierChanges(carrier map[string]string, name string) uint64 {
+	f := strings.Fields(carrier[name])
+	if len(f) == 0 {
+		return 0
+	}
+	changes, _ := strconv.ParseUint(f[0], 10, 64)
+	if len(f) < 4 {
+		return changes
+	}
+	ups, err := strconv.ParseUint(f[1], 10, 64)
+	if err != nil {
+		return changes
+	}
+	if f[3] != "1" {
+		return 2 * ups
+	}
+	if ups == 0 {
+		return 1
+	}
+	return 2*(ups-1) + 1
 }

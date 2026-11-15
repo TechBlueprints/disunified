@@ -267,3 +267,44 @@ func TestErrorDisabled(t *testing.T) {
 		}
 	}
 }
+
+// LastPayload is the inform as encoded: a growth bit the inform carried is in
+// it, though a second build of the same state no longer sees the growth
+// (2026-11-15: payload-last.json read anomalies 0 for the very inform that
+// raised the DHCP-rate alert).
+func TestLastPayloadKeepsTheSentAnomalies(t *testing.T) {
+	snap := &devicemodel.Snapshot{TakenAt: time.Now(), Ports: []devicemodel.Port{{Index: 1, Up: true, SpeedMbps: 10000, SpeedCaps: []int{1000, 10000}}}}
+	desc, err := DescriptorFor("USWF07D", snap, Identity{MAC: "02:00:00:00:00:01", IP: "192.0.2.9", Hostname: "sw", UDAPIVersion: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := NewSession(desc, "http://192.0.2.1:8080/inform", State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "abc"}, nil, time.Now())
+	if sess.LastPayload() != nil {
+		t.Fatal("LastPayload before any inform: want nil")
+	}
+	sess.SetSnapshot(snap)
+	if _, err := sess.EncodeInform(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	next := *snap
+	next.TakenAt = snap.TakenAt.Add(70 * time.Second)
+	next.Ports = append([]devicemodel.Port(nil), snap.Ports...)
+	next.Ports[0].Health.DHCPRateDrops = 397
+	sess.SetSnapshot(&next)
+	if _, err := sess.EncodeInform(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	anomalies := func(b []byte) any {
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return portEntry(t, m, 1)["anomalies"]
+	}
+	if a := anomalies(sess.LastPayload()); a != float64(portAnomalyDHCPRate) {
+		t.Errorf("LastPayload: anomalies %v, want %d (the growth the inform carried)", a, portAnomalyDHCPRate)
+	}
+	if a := anomalies(sess.BuildPayload(time.Now())); a != float64(0) {
+		t.Errorf("a second build: anomalies %v, want 0 (the history has moved on)", a)
+	}
+}
