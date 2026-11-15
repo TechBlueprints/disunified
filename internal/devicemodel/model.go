@@ -422,6 +422,14 @@ type PortCycler interface {
 	CyclePort(ctx context.Context, idx int) error
 }
 
+// PortRecoverer re-enables a port the device's own protection holds down
+// (BPDU guard, loop protection): the controller's "port-recovery" command,
+// which the UI's Re-enable sends for such a port. A port nothing holds is
+// left as it is.
+type PortRecoverer interface {
+	RecoverPort(ctx context.Context, idx int) error
+}
+
 // OutletCycler power-cycles one outlet on a power device: the controller's
 // "relayctl" command, which the UI's per-outlet Power Cycle sends. Optional,
 // discovered with a type assertion like PortCycler.

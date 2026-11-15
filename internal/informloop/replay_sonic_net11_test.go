@@ -50,8 +50,9 @@ func TestReplaySonicDX010Network11(t *testing.T) {
 	// on the switch the same day (the bridge logged the L2 ACL table type;
 	// orchagent holds 0004's notice).
 	fr.OrchL2, fr.OrchL2MCFix = "1", "1"
-	// The reconciles ran after a deploy: this build's l2d is the installed one.
-	fr.L2Deployed()
+	// The capture's l2d.py is the one deployed that day; this replay is about
+	// the controller's pushes, not an l2d.py update.
+	fr.CurrentL2d()
 	var drv strings.Builder
 	coll := sonic.NewCollector(fr)
 	coll.Log = log.New(&drv, "", 0)

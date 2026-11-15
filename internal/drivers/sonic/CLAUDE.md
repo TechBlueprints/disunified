@@ -666,7 +666,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   CLI's bookkeeping, kept in step. **The CLI refuses `vlan member del` of a
   port a static group names in that VLAN**, so the port plan deletes those
   rows first (`vlanMembers`), and `ApplyPorts` re-runs `applyIGMP` after
-  the batch; the FixtureRunner models the refusal. `config vlan del` is
+  the batch; the FixtureRunner models the refusal. **A breakout keeps the
+  cage's L2MC rows** (§11.25.3, live 2026-11-15): the kit's sonic-buildimage
+  0010 made every interface in the snooping YANG a string, so `-f` sees no
+  dependency; the old port's rows become the new port's of the same name
+  and a vanished lane's name nothing. The batch takes them out before the
+  breakout (`l2mcUnbind`, one `python3 -c ... disunified-l2mc` line) and
+  `applyIGMP` writes the new ports' after; the FixtureRunner's
+  `SavedDangling` catches a save that writes one. `config vlan del` is
   refused while snooping is on (the driver never deletes a VLAN). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
@@ -715,7 +722,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     2026-11-14: RSTP Backup/discarding does not stop the trapped queries),
     so on an unpatched image every loop-and-drop leaks its count: never
     move such a cage out of its last VLAN before a swss restart or reboot.
-    The race with members but no router port needs a cabled host.
+    The race with members but no router port needs a cabled host. The
+    looped one ran on the patched image 2026-11-15 (§8.15): each router
+    member is `removed with its port`, the count goes to 0, a new bridge
+    port admin true (`l2mc-0004-stepc-20261115.txt`).
   - The orch tests run in the build host's bookworm slave
     (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
     (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
@@ -835,10 +845,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   a cage flapped every ~6.5 s raised the DX010's own STP-flap alert, and a
   BPDU-guarded looped cage its BPDU-guard alert (§11.23.4). Facts that cost time:
   - **A looped cage with BPDU guard is shut by mstpd within a second**
-    ("Received BPDU on BPDU Guarded Port"), but only the netdev: APPL_DB
-    `oper_status` stays up while the loopback is on, so the port reports
-    up. After the guard is turned off, `ip link set dev <port> up` and the
-    next link-up clear `bpdu guard error`.
+    ("Received BPDU on BPDU Guarded Port"), but only the netdev; l2d holds
+    the chip's port down since (next item). mstpd clears `bpdu guard
+    error` only at the next link-up.
   - **`pkill -f <pattern>` over SSH matches the remote shell's own command
     line** when the pattern is in it, and kills the session (exit 255): use
     a script file, or `pgrep -f "[x]yz"` with a pattern the command line
@@ -846,6 +855,30 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
     about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
     the payloads, not the period.
+- **BPDU guard holds the chip's port down until the UI's Re-enable
+  (`l2d.py` "BPDU guard", `recover.go`, `docs/drivers/sonic.md` §11.28,
+  verified live on a looped cage 2026-11-15).** l2d holds a port mstpd
+  reports tripped with APPL_DB `admin_status down`, as loop protection
+  does. It is released by the controller's `port-recovery` (the driver
+  writes STATE_DB `DUI_PORT_RECOVERY|<interface>`), by mstpd no longer
+  guarding the port, or by STP off. The driver's fault follows l2d's
+  `bpdu_guard_held`. Facts that cost time:
+  - **portmgrd undoes an APPL_DB hold** whenever anything writes the
+    port's CONFIG_DB row: it copies `admin_status` and runs `ip link set
+    up`. l2d re-asserts both every pass, for loop protection's hold too.
+  - **Release on mstpd's report, not on the config.** Released one pass
+    before mstpd's guard went off, the port linked into the guard and was
+    shut again with the guard off: left down (live).
+  - **mstpd's error outlives a release with no link**, so a released port
+    is not a new trip until its kernel state changes (a link-up). That
+    holds even if the guard is switched off and on.
+  - **The MAC loopback keeps the chip's PHY up on a disabled port**
+    (`bcmcmd "port ce16"`: `*ce16 (Disabled ...`): APPL_DB `oper_status`
+    stays up and the port reports up while held. The admin state is
+    `bcmcmd ps`'s `!ena` and ASIC_DB `SAI_PORT_ATTR_ADMIN_STATE false`.
+    A peer losing link needs a cable to see.
+  - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/collect-bpduguard-held.txt`,
+    `controller-11.0.99/reply-port-recovery.ndjson`.
 - **Storms are detected, never held (2026-11-14, `docs/drivers/sonic.md`
   §11.20, §11.21).** UniFi's UI text: a storm anomaly is incoming traffic
   of the type over the Storm Control threshold, and Storm Control
@@ -1087,6 +1120,13 @@ was restarted.
   takes the old ports out of the tables as `-f` does. The FixtureRunner
   models both (`HeldLAGs`, the breakout's leafref check). Fixture:
   `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
+  **A table that is not the driver's** (an operator's; collect.py reads
+  every `ACL_TABLE` entry since 2026-11-15, §11.25.4) loses the names the
+  aggregate takes and gets their replacements (a joining lane's
+  PortChannel, a deleted PortChannel's former members) through an `hset`
+  of `ports@` alone, never `config acl add table` (it rewrites the whole
+  entry); no port left is an `hdel` of the field, as breakout `-f` leaves
+  it. Noted each time; only the driver's tables are checked for `Active`.
 - **802.1X (`l2d.py` `Dot1xGuard`, `l2.go` `dot1x`, `build-hostapd.sh`,
   `docs/drivers/sonic.md` §11.26, built 2026-11-15, verified by hand on an
   empty cage).** hostapd 2.11 (wired driver, a RADIUS client) built on the
@@ -1155,6 +1195,13 @@ was restarted.
   row, an l2d run by hand. Read-only commands need no lock. **Take it
   with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
   so that a held lock refuses the write. A plain `>` replaced a held lock
-  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
+  on 2026-11-15, while a test's tables were still bound to Ethernet0.
+  **To wait, retry that write itself** every few seconds, in one loop
+  detached on the switch (`setsid nohup … &`, its output in a file you
+  watch): the lock passes from one session to the next within seconds, so
+  a poll that reads the file and writes later misses the gap, and a loop
+  under a background `ssh` outlives a dropped session -- check `pgrep` for
+  a second one before you release, or it takes the lock again after you
+  (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)

@@ -340,7 +340,7 @@ func (pl *plan) dissolveLanes(idx, cage int, write func(int, string, func(*swSta
 	// refused by sonic-yang ("Invalid value ... in \"ports\" element"),
 	// both seen live on the DX010 (sonic.md §11.25).
 	if len(pcs) > 0 {
-		pl.aclUnbind(idx, pcs, "is to be deleted")
+		pl.aclUnbind(idx, pcs, "is to be deleted", nil) // its lanes go with the breakout that follows
 	}
 	for _, pc := range pcs {
 		name := pc

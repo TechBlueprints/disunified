@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -445,6 +446,127 @@ func (s *swState) applyL2MC(o l2mcOp) {
 		return
 	}
 	s.l2mc[o.Key] = copyFields(o.Fields)
+}
+
+// l2mcArgScript is l2mcScript taking its ops as sys.argv[2], so that the
+// rows can be written from inside a port batch (one line per command).
+const l2mcArgScript = l2mcScriptHead + "import sys\nrun(json.loads(sys.argv[2]))\n"
+
+// l2mcArgCommand runs l2mcArgScript (base64, as applCommand); the batch's
+// sudo comes from plan.add. Its first argument names it in the process list.
+var l2mcArgCommand = "python3 -c " + sshrun.ShellQuote("import base64; exec(base64.b64decode('"+base64.StdEncoding.EncodeToString([]byte(l2mcArgScript))+"'))") + " disunified-l2mc"
+
+// l2mcArgLogged stands for l2mcArgCommand in the apply log line, its ops
+// summarised as applyIGMP's are.
+const l2mcArgLogged = "python3 <ConfigDBConnector> disunified-l2mc"
+
+// L2MCArgOps decodes a batch line of l2mcArgCommand (as sent, with sudo)
+// into its ops: "del <key>" or "set <key>"; ok is false for any other line.
+func L2MCArgOps(cmd string) (ops []string, ok bool) {
+	raw, ok := l2mcArgJSON(cmd)
+	if !ok {
+		return nil, false
+	}
+	var os []l2mcOp
+	if json.Unmarshal([]byte(raw), &os) != nil {
+		return nil, false
+	}
+	for _, o := range os {
+		if o.Fields == nil {
+			ops = append(ops, "del "+o.Key)
+		} else {
+			ops = append(ops, "set "+o.Key)
+		}
+	}
+	return ops, true
+}
+
+// l2mcArgJSON is the ops argument of an l2mcArgCommand line.
+func l2mcArgJSON(cmd string) (string, bool) {
+	rest, ok := strings.CutPrefix(cmd, "sudo "+l2mcArgCommand+" ")
+	if !ok || len(rest) < 2 || rest[0] != '\'' || rest[len(rest)-1] != '\'' {
+		return "", false
+	}
+	return strings.ReplaceAll(rest[1:len(rest)-1], `'\''`, "'"), true
+}
+
+// loggedCmds is cmds as the apply log prints them: an l2mcArgCommand line
+// as l2mcArgLogged with its ops summarised.
+func loggedCmds(cmds []string) []string {
+	out := make([]string, len(cmds))
+	for i, c := range cmds {
+		out[i] = c
+		if raw, ok := l2mcArgJSON(c); ok {
+			var ops []l2mcOp
+			if json.Unmarshal([]byte(raw), &ops) == nil {
+				out[i] = "sudo " + l2mcArgLogged + " (" + l2mcSummary(ops) + ")"
+			}
+		}
+	}
+	return out
+}
+
+// l2mcUnbind takes every L2MC row naming one of ifaces out of CONFIG_DB
+// before a breakout replaces them: the static members and router ports
+// keyed by them, and their place in the static groups' member lists.
+// `config interface breakout -f` removes a port's dependencies the YANG
+// models declare, and the image kit's sonic-buildimage 0010 made every
+// interface in sonic-igmp-snooping.yang a plain string, so these rows
+// outlived the port -- the old port's rows became the new port's of the
+// same name, a vanished lane's named nothing (docs/drivers/sonic.md
+// §11.25.3). With them gone first, l2mcd drops the members before the
+// breakout takes the VLAN membership (§8.15's order), and applyIGMP writes
+// the new ports' rows after the batch.
+func (pl *plan) l2mcUnbind(idx int, ifaces []string, write func(int, string, func(*swState))) {
+	gone := setOf(ifaces)
+	var members, groups []string
+	for k := range pl.sim.l2mc {
+		parts := strings.Split(k, "|")
+		switch {
+		case parts[0] == strings.TrimSuffix(l2mcMember, "|") && len(parts) == 4 && gone[parts[3]],
+			parts[0] == strings.TrimSuffix(l2mcRouter, "|") && len(parts) == 3 && gone[parts[2]]:
+			members = append(members, k)
+		case parts[0] == strings.TrimSuffix(l2mcGroup, "|"):
+			for _, m := range strings.Split(pl.sim.l2mc[k]["static-members@"], ",") {
+				if gone[m] {
+					groups = append(groups, k)
+					break
+				}
+			}
+		}
+	}
+	sort.Strings(members)
+	sort.Strings(groups)
+	var ops []l2mcOp
+	for _, k := range members {
+		ops = append(ops, l2mcOp{Key: k})
+	}
+	// A group keeps its other members (its row is CLI-only: l2mcmgrd reads
+	// the member rows); one left with none goes, applyIGMP sets it again.
+	for _, k := range groups {
+		var keep []string
+		for _, m := range strings.Split(pl.sim.l2mc[k]["static-members@"], ",") {
+			if m != "" && !gone[m] {
+				keep = append(keep, m)
+			}
+		}
+		if len(keep) == 0 {
+			ops = append(ops, l2mcOp{Key: k})
+			continue
+		}
+		f := copyFields(pl.sim.l2mc[k])
+		f["static-members@"] = strings.Join(keep, ",")
+		ops = append(ops, l2mcOp{Key: k, Fields: f})
+	}
+	if len(ops) == 0 {
+		return
+	}
+	b, _ := json.Marshal(ops)
+	write(idx, l2mcArgCommand+" "+sshrun.ShellQuote(string(b)), func(s *swState) {
+		for _, o := range ops {
+			s.applyL2MC(o)
+		}
+	})
 }
 
 // staticsOf are the static-member rows naming iface in VLAN id.

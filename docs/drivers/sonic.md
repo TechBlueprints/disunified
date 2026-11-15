@@ -470,7 +470,16 @@ Redis sections (key pattern → use):
   CONFIG `speed`, `MTU` = `mtu`, `FEC`/`FECConfig` from STATE/CONFIG `fec`
   (`rs` → `rs-fec`, `fc` → fire-code, `none` → disabled, `N/A` → unknown),
   `SpeedCaps` from STATE `supported_speeds` when non-empty, else the SKU's
-  speed only. `Health.LinkChanges` = `flap_count`. No PCS/FEC counters on
+  speed only. `Health.LinkChanges` = `flap_count` (portsorch adds one on
+  every oper-status change, and a port starts down, so half of it, rounded
+  down, is the drops). **A split cage adds its lanes' drops, not their
+  changes** (2026-11-15, as the Arista's e3d5218): `LinkChanges` = twice
+  the summed drops, plus one while the cage is up. Summing the lanes'
+  `flap_count` counted every up lane as half a drop: on the DX010 (cage 32
+  split 4x25G, lanes 1-3 in MAC loopback, lane 1 dropped and brought back
+  once, lane 4 down; `flap_count` 3, 1, 1, 0) the cage read 5 changes, 2
+  drops, for the one drop there was (`TestSplitCageLinkDrops`,
+  `sonic-igmp-202511.20261115-6c8eb1cf7/collect-split-loop.txt`). No PCS/FEC counters on
   the VS (`PORT_COUNTER_CAPABILITIES|PORT_FEC_COUNTER` is empty); on
   hardware `SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES` /
   `_NOT_CORRECTABLE_FRAMES` fill `FECCorrected`/`FECUncorrected`.
@@ -1483,7 +1492,9 @@ patches came out of the build itself, none of them snooping logic:
   interface and VLAN-name fields plain strings without those imports: all 214 tests
   of the two files pass. Lost: the schema's check that a named VLAN or port exists,
   which nothing here uses (the snooping CLI writes unvalidated, the driver writes
-  rows directly).
+  rows directly) -- and, found 2026-11-15, the breakout's knowledge that these rows
+  depend on a port: `config interface breakout -f` keeps them, so the driver takes
+  them out itself (§11.25.3).
 
 **The build host and the time.** Debian 12 x86_64, 16 cores, 64 GB, 400 GB, Docker
 (20.10.10 or newer), `j2`, a non-root user in the docker and kvm groups, `/dev/kvm`
@@ -1703,7 +1714,8 @@ Global keys:
 
 Order rules the driver inherits from the CLI: enable snooping before writing
 suppression or static entries; disable snooping (or delete the statics) before
-removing a VLAN or a member; UniFi's VLAN 1 settings land on `Vlan<native_vlan>`
+removing a VLAN or a member; take a cage's rows out before breaking it out (the
+breakout does not, §11.25.3); UniFi's VLAN 1 settings land on `Vlan<native_vlan>`
 (§5.2a). As everywhere else, UniFi's list replaces the switch's: a snooping VLAN the
 push does not name is disabled.
 
@@ -2416,7 +2428,9 @@ strand the uplink: install an image with the fix (below) before that
 every change that takes a port out of its **last** VLAN goes through
 `removeBridgePort` -- a native-VLAN move on an access port, a port that
 becomes routed, a port joining an aggregate or becoming a mirror destination
-(the driver strips its VLANs first), and a breakout's deleted lanes. A tagged
+(the driver strips its VLANs first), and a breakout's deleted lanes (whose
+static rows the breakout itself leaves; the driver deletes them before it
+since 2026-11-15, §11.25.3). A tagged
 VLAN taken off a port that keeps another never removes the bridge port: not
 affected (its group members in that VLAN only linger until l2mcd deletes
 them). On an empty cage none of it shows: l2mcd programs members only on an
@@ -2598,10 +2612,24 @@ Clint's go; the kit's procedure, step by step as planned
   references" line since the boot. Restored afterwards: Ethernet48
   untagged in Vlan4094 with its seven static rows, and the controller's 32
   port overrides equal to the pre-test copy.
-- **Not run:** a move while the cage is looped (members programmed when the
-  VLAN member goes: the race, which the patched image lets a cable-less cage
-  try; `removeL2mcPortMembers` should log a line per member). The wait failing
-  on a leaked count cannot happen on this image and stays fixture-tested.
+- **A move while the cage is looped** (step C, 2026-11-15, on
+  `igmp-202511.20261115-6c8eb1cf7`, the bridge stopped; the driver's plan
+  run by hand, since nothing in it depends on where the push came from;
+  `sonic-igmp-202511.20261115-6c8eb1cf7/l2mc-0004-stepc-20261115.txt`).
+  Looped in Vlan4094, cage 13 took its seven static members and became a
+  router port in four more groups: **count 11**. The static rows out took
+  it to 5. Then `config vlan member del 4094` set the race going: the
+  router-port members were still programmed when the VLAN member went, and
+  orchagent logged `removeL2mcPortMembers: ... l2mc group member
+  Ethernet48 removed with its port` for each of the four, the count going
+  to **0**. The bridge port was removed 50 ms after, and `add -u 4000`
+  made a new one (oid changed, `ADMIN_STATE true`), with no "still has
+  references" line. With the loop off, the move back gave another new
+  bridge port, admin true. The bridge's start-up reconcile put the seven
+  rows back, and CONFIG_DB equalled the snapshot taken before, saved and
+  running. The race with members but no router port needs a cabled host.
+  The wait failing on a leaked count cannot happen on this image and stays
+  fixture-tested.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
@@ -6252,7 +6280,8 @@ have no UniFi control written for bringing it back.
 
 | Bit | DX010 | Where |
 |---|---|---|
-| 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval), never the uplink, the STP root port or the gateway's port | §11.5 |
+| 512 | the port is taken down for 150 s and reported as `Fault "errdisabled: loop-protect (...)"`; recovery is automatic after the hold (the ECS's `MAC_MOVE_GUARD` action interval) or at the operator's Re-enable, never the uplink, the STP root port or the gateway's port | §11.5, §11.28 |
+| -- BPDU guard | mstpd shuts the netdev and disunified-l2d holds the chip's port down until the operator's Re-enable (the controller's `port-recovery`), the guard or STP going off for the port; no timer; reported as `Fault "errdisabled: bpduguard"` | §11.28 |
 | 1 / 2 | detected by disunified-l2d from the port's own receive counters against the port's storm-control threshold; the port keeps running under its storm-control limit; reported as growth of `StormDropsBroadcast` / `StormDropsMulticast` | §11.21 |
 | 4 | detected by disunified-l2d from the port's sFlow samples of the unicast it floods (no counter separates them), on an image with sonic-buildimage 0014; the port keeps running; growth of `StormDropsUnicast` | §11.24 |
 | 32, 64, 128, 256, 1024 | §11.17, §11.7.9, §11.18 | -- |
@@ -6616,12 +6645,10 @@ reports those faults (`sonic`, `arista-eos`, `proxmox`) gets it. The
 loop-protection hold keeps its anomalies bit 512 beside it (`tables.go`,
 `caps.go`; `anomalies_test.go`, `contract_sonic_stp_test.go`).
 
-**What differs from a UniFi switch:** mstpd shuts the port's netdev, and
-StpOrch blocks it in the chip, but the chip's port stays up: SONiC's oper
-status reads up while the cage is looped, so the bridge reports the held
-port `up: true`, and a cabled peer would see link. A UniFi switch's BPDU
-guard is described in the UI as disabling the port; taking the chip's port
-down for it (and up again on the operator's re-enable) is a follow-up.
+**What differed from a UniFi switch until §11.28:** mstpd shuts the
+port's netdev and StpOrch blocks it in the chip, but the chip's port stayed
+up, so a cabled peer kept its link. Since 2026-11-15 disunified-l2d holds a
+tripped port down in the chip until the operator's Re-enable (§11.28).
 
 **A side effect seen, and its cause: the controller's auto edge.** 90 s
 after the link-flap alert the controller's push changed port 17's
@@ -6676,7 +6703,29 @@ logs to `server.log` (read 2026-11-15, placeholders for the identifiers):
   2026-11-12 was found `already_matches` after two restarts). An `enabled`
   value does not: two access ports on a US8 and a USL16LPB were written
   `enabled` again a few minutes after each restart. Whether choosing Edge
-  explicitly in the port's settings clears a pinned value was not tested.
+  explicitly in the port's settings clears a pinned value was not tested
+here; §11.28's run on port 17 tested it (below).
+- **The setting behind it** is the site's `rest/setting`
+  `global_switch.auto_stp_edge_detection_enabled` (true here), the UI's
+  "Auto STP Edge": it "automatically sets ports connected to end devices as
+  Edge ... Not recommended when using third-party switches or bridges."
+- **No flap needed (2026-11-15, §11.28's run).** While cage 17 sat looped
+  and steady as a Backup port with BPDU guard off (18:37-18:42 UTC), the
+  controller's 18:38:34 UTC evaluation found the port up and its value
+  `disabled` already there (`already_matches`).
+- **How an operator un-pins a port** (tested on port 17 the same day).
+  Choose Edge in the port's settings and apply: the UI writes the whole
+  override with `stp_edge_state: enabled` (and, beside it, switched BPDU
+  guard on), shows "Port mode is manually overridden. Auto STP Edge is
+  disabled for this port. Restore Auto STP Edge", and the push says
+  `stp.edge=enabled`. Then click "Restore Auto STP Edge", which applies at
+  once: the override says `stp_edge_state: auto`, `server.log` logs
+  `stp-edge-auto reset no-op reason=nothing_to_clear`, and the push says
+  `stp.edge=auto` again. The next evaluation logged `skipped
+  reason=effective_state_not_auto` while the override still said
+  `enabled`. Port 17's override was then put back to its exact pre-test
+  object through the REST API, and its push stayed `auto`. Ports 9, 10, 13,
+  18 and 31 are still pinned to `disabled`.
 
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
@@ -7144,11 +7193,10 @@ the live message. Tests: `TestLaneJoinUnbindsTheACLTables` (fails with the
 live refusal without the fix), `TestACLTablesFollowThePorts` (the parent's
 own aggregate).
 
-Not covered: a table that is not the driver's shape binding a PortChannel
-the plan deletes (noted and left alone, so its dangling name would refuse a
-later breakout), and a driver table bound to nothing but the PortChannel
-(noted: it cannot be rebound to nothing). Neither occurs while the driver
-binds every port.
+Not covered here: a table that is not the driver's binding a PortChannel
+the plan deletes (§11.25.4 since), and a driver table bound to nothing but
+the PortChannel (noted: it cannot be rebound to nothing; it does not occur
+while the driver binds every port).
 
 **11.25.3 After the test.** The deployed bridge's start-up reconcile restored
 cage 29's MTU, VLAN and snooping static groups. The only CONFIG_DB
@@ -7158,10 +7206,159 @@ by hand and saved. Running and saved config then matched the snapshot,
 and `l2.json` was byte-identical. Side observation: after the split, lane 1
 could not leave Vlan4094 by hand ("remove all associated static Layer 2
 multicast group entries first") though nothing had written its static groups
-since the breakout. The driver's IGMP apply after the join logged `7 rows ...
-7 removed`, then `7 members set`, so the breakout appears to leave the old
-port's `L2MC_STATIC_MEMBER` rows, which carry no YANG dependency, behind. Not
-chased.
+since the breakout, and the start-up reconcile's IGMP apply logged `7 rows,
+0 members set, 7 removed`, then (after the port apply) `7 members set`.
+Chased the same day, below.
+
+**A breakout keeps the cage's multicast rows (live 2026-11-15).** On empty
+cage 29 again, by hand with the bridge stopped for 90 s, recorded in
+`docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/breakout-l2mc-20261115.txt`
+(CONFIG_DB, APPL_DB, STATE_DB and ASIC_DB for the cage at each step,
+syslog):
+
+- **The split** (`config interface breakout -f -y Ethernet112 '4x25G[10G]'`):
+  ConfigMgmt deleted `VLAN_MEMBER|Vlan4094|Ethernet112` and the port, and
+  nothing else. All seven `L2MC_STATIC_MEMBER|Vlan4094|<group>|Ethernet112`
+  rows stayed, and every `L2MC_STATIC_GROUP` row still listed `Ethernet112`
+  in `static-members@`. Lane 1 has the parent's name, so the rows now named
+  the new 25G port. With lane 1 put back in Vlan4094 (as the driver's plan
+  does), `config vlan member del 4094 Ethernet112` was refused: the
+  observation above.
+- **The join** with lanes 2-4 in Vlan4094 and their 21 rows (as the
+  driver's IGMP apply leaves a split cage): ConfigMgmt deleted the four
+  VLAN memberships and the four ports; the 21 rows of `Ethernet113`-`115`
+  stayed, naming ports that no longer exist, and the joined `Ethernet112`
+  inherited lane 1's seven, so it too was refused leaving the VLAN.
+
+**The cause is the image kit, not upstream's model.** #24327's
+`sonic-igmp-snooping.yang` makes `out-intf`, `port`, `mrouter-intf` and
+`static-members` leafrefs to PORT or PORTCHANNEL, and with them
+`config_mgmt`'s `_deletePorts` (`find_data_dependencies`, the schema
+backlinks of `PORT_LIST/name`) would delete these rows with the port, as it
+does an ACL table's `ports`. The kit's sonic-buildimage 0010 made every one
+of them a plain string (§8.6: the leafrefs broke the generic config updater's
+tests), and the installed model has none (`grep -c leafref` 0): `sonic_yang`
+over the running config finds only the VLAN membership as Ethernet112's
+dependency. Putting the leafrefs back would bring back what 0010 fixed, so
+the image stays as it is.
+
+**What the rows do.** orchagent never reads them. l2mcmgrd reads
+`L2MC_STATIC_MEMBER` (and `L2MC_MROUTER`) on a change, and again from
+CONFIG_DB whenever a port's VLAN membership becomes ready while the port is
+up (`VLAN_MEMBER_READY`, `LINK_STATUS up`): so a kept row is live
+configuration for the new port of the same name the moment it is in the VLAN
+and up, written for a port that no longer exists, and a vanished lane's rows
+match nothing until a lane of that name comes back. `L2MC_STATIC_GROUP` is
+the CLI's bookkeeping only. On the empty cage no L2MC member reached the
+chip at any step (members are programmed on oper-up ports only), and with
+sonic-swss 0004 a breakout of a live cage drops the old port's members with
+its VLAN membership (§8.15) in any case. The driver itself was never
+refused: its plan deletes a port's static rows before any VLAN removal
+(§8.14), and its IGMP apply after the batch removed the rows of vanished
+lanes, because its own model of the breakout kept them too. But the
+batch's `config save` wrote them to `config_db.json` first, they stayed for
+good if the IGMP apply did not run (`options.igmp` off, an error earlier in
+`ApplyPorts`), and the rows of the parent's name were never rewritten for
+the new port.
+
+**The fix (the driver; no image change).** `l2mcUnbind` (`igmp.go`), run in
+the breakout's batch beside the ACL rules' `dropInPortRules` and before
+`config interface breakout`: every `L2MC_STATIC_MEMBER` and `L2MC_MROUTER`
+row naming one of the cage's interfaces is deleted and each static group's
+list is rewritten without them (a group left empty is deleted), in one
+`ConfigDBConnector` call (`python3 -c ... disunified-l2mc '<ops>'`, logged as
+`static groups: N rows, ..., M removed`). That is what `-f` would do with
+the leafrefs in place, and it is §8.15's order: the statics go before the
+breakout takes the port's last VLAN. `applyIGMP` after the batch then writes
+the new ports' rows, lane 1's included. The FixtureRunner's breakout keeps
+`cfg_l2mc` as the switch does and records every L2MC row a `config save`
+writes for an interface without a PORT or PORTCHANNEL row
+(`SavedDangling`). `TestReplaySonicDX010BreakoutSeries` (split, lane speeds,
+2x50G, join) checks the unbind, that lane 1's rows are written again after
+the split, and that no save writes a dangling row; without the fix it fails
+on all three. Not covered: hand-made `MLD_L2MC_*` rows (the driver writes
+none, and the collector does not read them), and a PortChannel the plan
+deletes: its member rows go with its VLAN membership as before, its
+`L2MC_MROUTER` row and its place in the groups' lists until the IGMP apply
+after the batch.
+
+**Live through the fixed build (2026-11-15, 18:53-19:00 UTC).** A test deb of
+the branch (3d2d07e) on the DX010 under the lock, cage 29 changed through
+the controller's REST as the UI saves it (same record, section 7):
+
+| # | Push | The batch | Result |
+|---|---|---|---|
+| 1 | 25G | `disunified-l2mc (static groups: 7 rows, 0 members set, 7 removed)`, then the breakout to `4x25G[10G]`, the lanes' intent; the IGMP apply after it `28 members set, 0 removed` | lane 1's rows written anew (21 before the fix); 28 rows, every lane in each group's list |
+| 2 | native DMZ-FutureUse (4000) | per lane: its 7 static rows, `vlan member del 4094`, `add -u 4000` | all four lanes in Vlan4000, new bridge ports admin true, no L2MC row names the cage |
+| 3 | native Default | per lane: `del 4000`, `add -u 4094`; IGMP `28 members set` | back as after step 1 |
+| 4 | 100G | `disunified-l2mc (... 28 removed)`, then the join; IGMP `7 members set, 0 removed` | nothing left for the IGMP apply to remove: no save wrote a dangling row |
+| 5 | the pre-test override (auto) | none | 0 of 32 ports changed |
+
+Then the deployed build went back from `/host/disunified`; the join's lost
+`dhcp_rate_limit 300` (§11.17) was written back and saved, and running and
+saved CONFIG_DB, `l2.json` and the controller's 32 port overrides matched
+the copies taken before.
+
+**11.25.4 A table that is not the driver's (2026-11-15).** Until then the
+plan noted such a table and left it, so a PortChannel it bound kept its
+name there after `config portchannel del`: orchagent held the LAG and the
+next breakout's YANG check refused (§11.25.2), and a joining lane it bound
+refused `config portchannel member add`. collect.py read only the `DUI_`
+tables, so an operator's own table was not even seen.
+
+**The decision follows Clint's rule** (UniFi is the source of truth for
+what it configures; a hand-made table is not UniFi's): the aggregate is the
+controller's and wins, and the table is the operator's and keeps
+everything but the names the aggregate takes away.
+- collect.py's `cfg_acl_table` reads every `ACL_TABLE` entry (type, stage,
+  ports, description; ACL_TABLE holds no secret). `ACL_RULE` and STATE_DB
+  stay `DUI_` only, and only the driver's tables are checked for `Active`.
+- **Only `ports@` is written**: `sonic-db-cli CONFIG_DB hset
+  'ACL_TABLE|<t>' 'ports@' '<list>'`, never `config acl add table`, which
+  replaces the whole entry (its description, any field the CLI does not
+  know). orchagent diffs the new port set against the old and unbinds
+  what left (`updateAclTablePorts`).
+- **What takes a name's place**: a joining lane's PortChannel (orchagent
+  keeps a port it does not have yet pending, so the write can precede
+  `config portchannel add`), and for a PortChannel about to be deleted the
+  members this batch took out of it. The operator's rule stays on the same
+  traffic.
+- **A table left with no port loses the field** (`hdel ... 'ports@'`): the
+  state SONiC's own `config interface breakout -f` leaves when it removes
+  a table's last port (config_mgmt deletes the leaf-list value).
+- Each rewrite is noted: `ACL table <t> (<type> <stage>) is not the
+  driver's: <names>, which <why>, taken out of its ports (now <list>)`.
+- A lane switch's join (`dissolveLanes`) passes no replacement: the lanes
+  go with the breakout that follows, which takes them out of every table.
+
+**Live on the DX010** (2026-11-15 11:22-11:23 MST, empty cage 32 split
+4x25G, lanes in MAC loopback, the bridge stopped; the plan's commands run
+by hand on a hand-made `OPTEST` L3 table with a description of its own;
+`sonic-igmp-202511.20261115-6c8eb1cf7/foreign-acl-live-20261115.txt`):
+- **Dissolve.** `OPTEST` bound `PortChannel99` (one lane a member;
+  `config acl add table` refuses a PortChannel without members) and
+  another lane. The plan's order: member out, the `ports@` hset with the
+  former member in the PortChannel's place, `config portchannel del`.
+  orchagent: `Deleting port PortChannel99 from ACL list OPTEST`, `port is
+  unbound`, `Adding port Ethernet126`, `Successfully updated existing ACL
+  table OPTEST`, then teamd's stop and `Remove LAG PortChannel99`, with no
+  `ref count` refusal. The description stayed, and the table stayed Active.
+- **No port left.** The `hdel` of `ports@` unbound both lanes, and the
+  table stayed Active.
+- **Join.** `ports@` naming `PortChannel98` before it existed: orchagent
+  unbound the lane, and once the PortChannel was made, logged `Bound port
+  PortChannel98 to ACL table OPTEST`. `config portchannel member add` of
+  the lane was not refused.
+- **Afterwards.** The test table, both PortChannels and the split were
+  gone, and no LAG or ACL table was left in ASIC_DB. The bridge's start-up
+  reconcile restored the cage. CONFIG_DB matched the snapshot taken
+  before, except `PORT|Ethernet124 dhcp_rate_limit 300`, which the
+  breakout drops (§11.25.3); it was written back and saved.
+
+Test: `TestForeignACLTableFollowsTheAggregate` (an operator's table made
+through the FixtureRunner's model of `config acl add table` on the DX010
+capture: the join, the split, only `ports@` changed, the no-port case, no
+held LAG).
 
 ### 11.26 802.1X port authentication: hostapd under disunified-l2d (2026-11-15)
 
@@ -7574,6 +7771,122 @@ the cage back to `hardware`, hostapd, chain and trap gone (§11.26.7's two
 fixes).
 
 Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host.
+
+### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
+
+§11.23.3 left one difference from a UniFi switch: mstpd's BPDU guard shut
+only the port's netdev, so the chip's port stayed up, a cabled peer kept
+its link and the port read up. This section takes the chip's port down for
+the trip and brings it back the way UniFi does.
+
+**What UniFi asks for** (the console's own UI, Network 11.0.99, read
+2026-11-15). BPDU Guard's tooltip: it "shuts down the port and requires
+manual re-enable if a switch is detected (via BPDUs)"; its enable dialog
+says the port "must be manually re-enabled"; the alert's recommended action
+ends "The port must be manually re-enabled." The port panel then reads
+"Blocked by BPDU Guard", and the port's settings carry a **Re-enable**
+button, offered when the port's anomaly list holds `BPDU_GUARD_TRIGGERED`
+or `NETWORK_LOOP_DETECTED_BY_KEEPALIVE` (loop protection) and hidden after
+one click until that list changes. No text mentions a recovery timer, and
+the ECS's `ERROR_DISABLE|bpduguard` row has `auto_recovery_interval 0`
+(§11.20.2). So: no timer; the port stays down until the operator's
+Re-enable.
+
+**What the Re-enable sends** (captured 2026-11-15 by clicking it on the
+DX010's held port 17). The UI posts `cmd/devmgr` with `{"cmd":
+"port-recovery", "mac": ..., "port_idx": 17}` (its bundle's
+`PORT_RECOVERY`); the device receives it at its next inform as
+
+```
+{"_type": "cmd", "cmd": "port-recovery", "port": 17, "_id": ..., "device_id": ..., "datetime": ..., "time": ...}
+```
+
+with the port number as `port`, not `port_idx`
+(`fixtures/controller-11.0.99/reply-port-recovery.ndjson`,
+`TestPortRecoveryCarriesItsPort`). The session turns it into a
+port-recovery effect and the loop calls the driver's
+`devicemodel.PortRecoverer`. A driver without it logs the request and
+ignores it.
+
+#### 11.28.1 The design
+
+- **The trip.** l2d reads mstpd's report every 2 s, and a port with
+  `bpdu-guard-port yes` and `bpdu-guard-error yes` is held: APPL_DB
+  `PORT_TABLE` `admin_status down` through ProducerStateTable, as loop
+  protection's hold already did (§11.5). CONFIG_DB, the saved config and the
+  driver's plan, which reads CONFIG_DB, keep the operator's setting, so the
+  plan never fights the hold, and the controller sees the port enabled and
+  error-disabled. The hold is STATE_DB `DUI_BPDU_GUARD_TABLE|<port>` (`state
+  held`, `since`) and survives an l2d restart. l2d publishes its verdict as
+  `bpdu_guard_held` in `DUI_STP_PORT_TABLE`, and the driver reports the
+  port's `errdisabled: bpduguard` from it (from mstpd's error only for an
+  older l2d without the field).
+- **Re-assert.** portmgrd copies CONFIG_DB's `admin_status` into APPL_DB
+  and runs `ip link set up` whenever anything writes the port's CONFIG_DB
+  row (a description, an MTU), which undid a hold. Every pass, l2d puts a
+  held port's APPL_DB row and netdev down again. That applies to the
+  loop-protection hold too, which had the same gap.
+- **The release.** The driver's `RecoverPort` writes STATE_DB
+  `DUI_PORT_RECOVERY|<interface>` for each interface of the port. l2d reads
+  and deletes those rows each pass, and releases a BPDU-guard hold or a
+  loop-protection hold on that interface or its PortChannel. A release puts
+  CONFIG_DB's `admin_status` back and brings the netdev up (mstpd shut it).
+  A hold is also released when mstpd no longer runs BPDU guard on the port
+  (the guard or STP switched off for it), when the port leaves the bridge,
+  and when spanning tree goes off. `--teardown` releases everything.
+- **Released, not re-tripped, until the link comes back.** mstpd clears
+  its error only when the port's link comes up again, so after a Re-enable
+  on a port with no link (the loop unplugged) mstpd still says error. l2d
+  marks such a port released (the row's `state released` with the port's
+  state-change count). Its error is not a new trip until the port's kernel
+  state has changed since (a link-up), whether the guard stays on or is
+  switched off and on again. If the loop is still there, the link comes up,
+  the next BPDU trips mstpd again and l2d holds the port again within a
+  pass: UniFi's "Fix the loop, then re-enable the port."
+- **Loop protection's hold** keeps its 150 s automatic release (the ECS's
+  `MAC_MOVE_GUARD` action interval, §11.5), and now also ends at the
+  operator's Re-enable, when the port's loop protection is switched off
+  (it used to wait for the whole guard to go off), and is re-asserted as
+  above.
+
+Tests: `l2d_bpdu_guard_test.go` runs l2d's holds against
+`fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-bpduguard.txt`: the
+trip, portmgrd's rewrite, a restart, the Re-enable, a release with no link,
+the link coming back into the loop, the guard off and on again, and the
+loop-protection hold's three releases. `TestWireContractSonicBPDUGuardHeld`
+checks the driver's read side on the held capture
+`fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/collect-bpduguard-held.txt`.
+`TestRecoverPortAsksL2d` checks the STATE_DB write.
+
+#### 11.28.2 Live on the DX010 (2026-11-15 18:25-18:52 UTC, test builds fc73a86 to bd61d4c)
+
+On empty cage 17 (Ethernet64), looped with the chip's MAC loopback, BPDU
+guard on through the controller's port override, and the switch lock held:
+
+| step | result |
+|---|---|
+| loop with the guard on | mstpd "Received BPDU on BPDU Guarded Port - Port Down" and l2d "held down in the chip until re-enabled" in the same second; APPL_DB `admin_status down`, ASIC_DB `SAI_PORT_ATTR_ADMIN_STATE false`, `bcmcmd ps` `!ena` (the port Disabled) |
+| the next inform | port 17 `enable: true`, `error_disabled: true`, reason 2; the UI's Port Manager "Port 17: Blocked by BPDU Guard", STP "Blocked", and the Re-enable button |
+| Re-enable, loop still on | `port-recovery requested for port 17`; l2d "released (re-enabled by the controller)"; the link came up, mstpd tripped again, l2d held the port again 2 s later |
+| an l2d restart while held | still held; the chip port `!ena` |
+| a CONFIG_DB write of the port (`admin_status up` over itself) | portmgrd set APPL_DB up and the chip port up; l2d "admin_status was rewritten under a hold: down again" within a pass. The first build left the netdev up: mstpd then ran the port as Designated and sent BPDUs into the disabled port. The re-assert takes the netdev down too since. |
+| the loop removed, then Re-enable | released: `bcmcmd ps` `down` (enabled, no link), `bpdu_guard_held no`, the next inform without `error_disabled`, the UI's red mark gone |
+| BPDU guard switched off while held, loop on | the first build released on the config alone: the link came up while mstpd still guarded the port, mstpd shut the netdev again, and the port was left down with the guard off. The release now waits for mstpd's own report of the guard off: released cleanly, the port linked into the loop as Backup |
+| guard off and on again over mstpd's old error (no link since) | not held (the released mark) |
+
+**The peer's link could not be seen.** With the MAC loopback the chip's PHY
+reports link even on a disabled port (`*ce16 (Disabled ...`), and APPL_DB
+`oper_status` stays up, so the bridge reported port 17 `up: true` while
+held. A disabled port is what `config interface shutdown` produces; on a
+cabled port the peer loses link and `oper_status` goes down. Seeing that
+needs a cable. The ECS was not re-read for this: §11.20.2 has its
+`ERROR_DISABLE` rows, and no port there has tripped.
+
+Restored after the run: the cage unlooped, port 17's override back to its
+exact pre-test object (the UI's save in §11.23.3's Edge test had added
+fields and switched BPDU guard on), mstpd's error cleared by one link-up,
+the deployed deb (f3d3572) reinstalled from `/host/disunified`, leftover
+`bpdu_guard_held` fields deleted from STATE_DB, and the lock removed.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

@@ -121,6 +121,7 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 		var cage cagePort
 		cageLanes := 0
 		var caps []int
+		var drops uint64 // the lanes' link drops (laneDrops), summed
 		for i, name := range names {
 			// A LAG member has no VLAN config of its own (SONiC refuses
 			// it); it reports the PortChannel's, as the Arista's do.
@@ -137,6 +138,7 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 				}
 			}
 			cageLanes += laneCount(cfg[name]["lanes"])
+			drops += laneDrops(lp.Health.LinkChanges)
 			caps = mergeSpeeds(caps, speedList(state[name]["supported_speeds"]))
 			if n := lldp[name]; len(n) > 0 && lp.Neighbor == nil {
 				lp.Neighbor = neighborOf(n)
@@ -169,7 +171,6 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 			}
 			p.FullDuplex = p.FullDuplex || lp.FullDuplex
 			p.Counters.Add(lp.Counters)
-			p.Health.LinkChanges += lp.Health.LinkChanges
 			p.Health.FECCorrected += lp.Health.FECCorrected
 			p.Health.FECUncorrected += lp.Health.FECUncorrected
 			p.Interfaces = append(p.Interfaces, name)
@@ -182,6 +183,12 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 		}
 		p := &cage.Port
 		p.Lanes = len(names)
+		if len(names) > 1 {
+			// A cage went down as often as its lanes did, all together;
+			// summing their transitions would count each up lane as half
+			// a drop (four up lanes read as two drops).
+			p.Health.LinkChanges = cageLinkChanges(drops, p.Up)
+		}
 		firstCfg := cfg[names[0]]
 		caps = mergeSpeeds(caps, platCaps[idx])
 		if len(caps) == 0 {
@@ -496,6 +503,22 @@ func opticOf(x, d map[string]string) *devicemodel.Optic {
 // the loop's tracker supplies the learn time (docs/mac-table-times.md). An
 // address learned in Vlan<native> is
 // on UniFi's VLAN 1, like the ports' untagged membership.
+// laneDrops is how many times an interface's link went down, from APPL_DB's
+// flap_count: portsorch adds one on every oper-status change
+// (updateDbPortFlapCount), up or down, and a port starts down (boot, a
+// breakout's new lanes), so half of it, rounded down, is the drops.
+func laneDrops(flaps uint64) uint64 { return flaps / 2 }
+
+// cageLinkChanges is PortHealth.LinkChanges for a cage that went down drops
+// times and is up (or not) now: the transitions of a link that started
+// down, as devicemodel counts them.
+func cageLinkChanges(drops uint64, up bool) uint64 {
+	if up {
+		return 2*drops + 1
+	}
+	return 2 * drops
+}
+
 func buildMACTable(fdb table, byIfname map[string]int, native int, linkDown func(port string) bool) []devicemodel.MACEntry {
 	var out []devicemodel.MACEntry
 	for k, f := range fdb {

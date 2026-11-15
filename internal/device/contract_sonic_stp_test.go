@@ -2,7 +2,9 @@ package device
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/TechBlueprints/disunified/internal/drivers/sonic"
@@ -83,4 +85,48 @@ func TestWireContractSonicBPDUGuard(t *testing.T) {
 		}
 	}
 	t.Logf("port 17: up %v enable %v stp_state %v stp_role %v", p["up"], p["enable"], p["stp_state"], p["stp_role"])
+}
+
+// The same trip with l2d holding the port down in the chip
+// (collect-bpduguard-held.txt, 2026-11-15, §11.28): APPL_DB admin_status
+// down under CONFIG_DB's up, and l2d's verdict bpdu_guard_held yes. The port
+// stays enabled (the operator's setting) and error-disabled for BPDU guard.
+// The capture's oper_status still reads up: the MAC loopback keeps the
+// chip's link up inside a disabled port, which a cabled peer would not.
+// With l2d's verdict "no" (a port released by the operator while mstpd's old
+// error stands, as it does until the link comes back) nothing is
+// error-disabled.
+func TestWireContractSonicBPDUGuardHeld(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261115-6c8eb1cf7", "collect-bpduguard-held.txt")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, held string
+		want       bool
+	}{{"held", "yes", true}, {"released", "no", false}} {
+		t.Run(c.name, func(t *testing.T) {
+			text := strings.Replace(string(raw), `"bpdu_guard_held": "yes"`, `"bpdu_guard_held": "`+c.held+`"`, 1)
+			fr, err := sonic.NewFixtureRunner(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fr.Fixture = text
+			c2 := sonic.NewCollector(fr)
+			snap, err := c2.Start(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := sonicRender(t, c2, snap, "USWF07D")
+			p := portEntry(t, m, 17)
+			if p["enable"] != true {
+				t.Errorf("port 17 enable = %v: the hold is not the operator's setting", p["enable"])
+			}
+			got := p["error_disabled"] == true && p["error_disabled_reason"] == float64(errDisabledBPDUGuard)
+			if got != c.want {
+				t.Errorf("port 17 error_disabled %v reason %v, want %v", p["error_disabled"], p["error_disabled_reason"], c.want)
+			}
+		})
+	}
 }

@@ -37,6 +37,10 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
+	// SavedDangling are the L2MC rows that named an interface the switch
+	// did not have (no PORT or PORTCHANNEL row) at a `config save`, which
+	// writes them to config_db.json: a breakout leaves them (fixture_igmp.go).
+	SavedDangling []string
 	// BGPFiles are the files loaded into FRR (bgp.go), as sent. BGPRefuse,
 	// when set, is vtysh's complaint about a line: the load fails with it
 	// and changes nothing.
@@ -108,8 +112,11 @@ type FixtureRunner struct {
 	// path; L2Scripts the disunified-l2 scripts as sent; Builds the mstpd
 	// builds started. BuildFails makes the build fail; STPCutsUplink makes
 	// a fresh connection fail once spanning tree is on (the dead-man path).
-	L2Files       map[string]string
-	L2Scripts     []string
+	L2Files   map[string]string
+	L2Scripts []string
+	// Recoveries: the interfaces each port-recovery asked disunified-l2d to
+	// release (STATE_DB DUI_PORT_RECOVERY rows), in order.
+	Recoveries    []string
 	Builds        int
 	BuildFails    bool
 	STPCutsUplink bool
@@ -265,6 +272,16 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.SNMPYmlScripts = append(f.SNMPYmlScripts, stdin)
 		return "", f.applySNMPYml(stdin)
+	case strings.HasPrefix(command, "sudo sonic-db-cli STATE_DB hset 'DUI_PORT_RECOVERY|"):
+		f.Commands = append(f.Commands, command)
+		for _, c := range strings.Split(command, " && ") {
+			w := strings.Fields(c)
+			if len(w) != 8 || w[3] != "hset" || w[5] != "at" || w[7] != ">/dev/null" {
+				return "", fmt.Errorf("%s: not a recovery row", c)
+			}
+			f.Recoveries = append(f.Recoveries, strings.TrimSuffix(strings.TrimPrefix(w[4], "'DUI_PORT_RECOVERY|"), "'"))
+		}
+		return "", nil
 	case command == batchCommand:
 		out := ""
 		for _, line := range strings.Split(stdin, "\n") {
@@ -456,6 +473,14 @@ func (f *FixtureRunner) apply(line string) error {
 	if ok, err := f.portFeatWrite(w); ok {
 		return err
 	}
+	if len(w) == 5 && w[0] == "python3" && w[1] == "-c" && w[3] == "disunified-l2mc" {
+		// l2mcArgCommand: the IGMP script's ops from inside a port batch.
+		var ops []l2mcOp
+		if err := json.Unmarshal([]byte(w[4]), &ops); err != nil {
+			return err
+		}
+		return f.applyL2MCOps(ops)
+	}
 	if ok, err := f.l3Write(w); ok {
 		return err
 	}
@@ -464,6 +489,7 @@ func (f *FixtureRunner) apply(line string) error {
 	}
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
+		f.SavedDangling = append(f.SavedDangling, f.danglingL2MC()...)
 		return nil
 	case len(w) == 2 && w[0] == "chronyc" && w[1] == "onoffline":
 		if f.ChronyAfterOnoffline != "" {
@@ -493,6 +519,8 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.aclCountWrite(w)
 	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_RULE|"):
 		return f.aclRuleWrite(w)
+	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_TABLE|"):
+		return f.aclTablePorts(w)
 	case cmd == "config acl add" && at(3) == "table":
 		return f.aclAddTable(w[4:])
 	case cmd == "config acl remove" && at(3) == "table":

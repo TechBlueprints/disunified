@@ -148,7 +148,10 @@ func (f *FixtureRunner) breakout(args []string) error {
 		gone[d.name] = true
 	}
 
-	// Dependencies: everything that names a port going away.
+	// Dependencies: everything that names a port going away. Not the L2MC
+	// tables: on the image kit their interface fields are YANG strings
+	// (sonic-buildimage 0010), so their rows stay, naming the old ports
+	// (live on the DX010 2026-11-15, breakout-l2mc-20261115.txt).
 	refs := func(sec string, match func(key string, v map[string]string) bool) []string {
 		var out []string
 		for k, v := range f.table(sec) {

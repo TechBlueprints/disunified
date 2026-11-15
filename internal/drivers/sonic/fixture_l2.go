@@ -22,17 +22,23 @@ func (f *FixtureRunner) l2Inst() l2Inst {
 	return in
 }
 
-// L2Deployed models this build's disunified-l2d (the daemon, the kernel
-// hook, the unit) as the one installed, as after a deploy of this build: a
-// capture keeps the hashes of the build that ran when it was taken, so a
-// replay of reconciles would otherwise see every later change to l2d.py as
-// the install a deploy makes once.
-func (f *FixtureRunner) L2Deployed() {
+// CurrentL2d makes the capture's installed disunified-l2d files the ones
+// this build ships (l2d.py, the bridge-stp hook, the unit), as on a switch
+// that runs this build. A replay of the controller's pushes uses it: a
+// capture taken under an older l2d.py would otherwise ask every reconcile to
+// install the new one, which is no fault of the pushes.
+func (f *FixtureRunner) CurrentL2d() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	in := f.l2Inst()
 	if !in.present {
 		return
 	}
-	in.Files[l2dPath], in.Files[bridgeSTP], in.Files[l2dUnitPath] = sha(l2dScript), sha(bridgeSTPScript), sha(l2dUnit)
+	for path, body := range map[string]string{l2dPath: l2dScript, bridgeSTP: bridgeSTPScript, l2dUnitPath: l2dUnit} {
+		if in.Files[path] != "" {
+			in.Files[path] = sha(body)
+		}
+	}
 	f.setL2Inst(in)
 }
 

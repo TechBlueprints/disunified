@@ -442,7 +442,18 @@ these is marked "not captured".
   the override. On the ECS and in l2d, `disabled` turns auto edge off, so a
   port that was once up as a non-edge port (a looped test cage, a switch
   link) stays non-edge. A `disabled` value lasts through the controller's
-  restarts (`docs/drivers/sonic.md` §11.23.3).
+  restarts (`docs/drivers/sonic.md` §11.23.3). The site setting is
+  `global_switch.auto_stp_edge_detection_enabled` (the UI's "Auto STP
+  Edge"). An operator un-pins a port by choosing Edge in its settings and
+  then "Restore Auto STP Edge": the push goes back to `auto` (port 17,
+  2026-11-15). The UI's save of the Edge choice also switched BPDU guard on.
+- **The UI's Re-enable is `port-recovery`, and the device gets the port as
+  `port` (11.0.99, captured 2026-11-15).** A port whose alert is BPDU guard
+  or loop protection gets a Re-enable button. The UI posts `cmd/devmgr
+  {"cmd":"port-recovery","port_idx":N}`, and the next inform reply carries
+  `{"_type":"cmd","cmd":"port-recovery","port":N}`. The session hands it to
+  `devicemodel.PortRecoverer`. UniFi's text promises no recovery timer for
+  BPDU guard: "requires manual re-enable" (`docs/drivers/sonic.md` §11.28).
 
 ## 6. Driver facts
 

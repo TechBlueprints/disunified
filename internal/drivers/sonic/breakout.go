@@ -226,7 +226,9 @@ func (s *swState) cagePorts(idx int) []string {
 
 // applyBreakout is a breakout's effect on CONFIG_DB with -f: the cage's
 // ports and every dependency on them (VLAN memberships, storm control, STP
-// port settings, LAG memberships, their place in an ACL table) go, the mode's children come, and
+// port settings, LAG memberships, their place in an ACL table) go -- not the
+// L2MC rows, which no YANG leafref ties to a port on the image kit (sonic-
+// buildimage 0010; the plan takes them out first, l2mcUnbind) -- the mode's children come, and
 // BREAKOUT_CFG records the mode. The children carry no admin_status (down)
 // and no MTU (SONiC's 9100): the driver writes the cage's intent on them.
 func (s *swState) applyBreakout(parent string, pp platformPort, idx int, children []childPort, mode string) {
@@ -398,6 +400,8 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		}
 		// The guard's counted rules name the lanes that go (acl_count.go).
 		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
+		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).
+		pl.l2mcUnbind(d.Index, pl.sim.cagePorts(idx), write)
 		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
 		for _, h := range held {
 			if h.lane != "" && pl.sim.port[h.lane] == nil {
