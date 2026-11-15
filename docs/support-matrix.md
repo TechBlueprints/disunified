@@ -509,6 +509,14 @@ logoff. The deployed l2d before the fix dropped the admitted hosts in the
 kernel for 40-100 ms at every start and restarted the idle timer; the chip
 was never disturbed. Replayed from the run (`TestL2dMABRestart`).
 
+**The controller's reading of each method, live on the DX010** (2026-11-15,
+§11.26.11): the controller stores each `dot1x_mode`/`dot1x_status` pair as
+the bridge sends it. A closed port had also gone out with
+`port_security_enabled` (802.1X's learn mode read back as a MAC filter),
+and the port panel showed it Disabled; fixed and verified the same evening
+through a test deb. What a UniFi switch itself sends for each method is
+still not captured.
+
 | Gap | What the PR needs |
 |---|---|
 | An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test; for MAB a host sending ARP requests in Vlan4094 is enough (§11.26.10) |

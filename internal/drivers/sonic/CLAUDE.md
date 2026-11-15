@@ -1190,6 +1190,9 @@ was restarted.
   - **The MAC filter's plan deletes every static FDB entry it does not
     want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
     wanted while their port is controlled.
+  - **802.1X's `drop` is not a MAC filter on the read side**: read as one
+    (`port_security_enabled` with no allowed MACs), the controller's port
+    panel shows the port Disabled, its own rule for an empty list (§11.26.11).
   - **A looped test cage makes hostapd a station of the switch's own
     MAC** (its own frames come back): l2d ignores the switch's MAC.
   - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
