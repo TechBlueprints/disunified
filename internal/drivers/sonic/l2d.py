@@ -63,6 +63,7 @@
 import collections
 import ctypes
 import json
+import math
 import os
 import select
 import signal
@@ -603,7 +604,8 @@ class L2d(object):
         # main() and teardown() through one interface: sync(conf) every pass,
         # fds() and readable(fd) for the main loop's select, teardown().
         self.maclock = MacLockGuard(self)
-        self.detectors = [self.maclock]
+        self.ucast = UcastSampler(self)  # unknown-unicast storms' samples (11.23)
+        self.detectors = [self.maclock, self.ucast]
 
     # --- spanning tree -------------------------------------------------
 
@@ -1075,7 +1077,16 @@ class StormWatch(object):
     added to its count -- a lower bound on what storm control dropped --,
     which STATE_DB DUI_STORM_TABLE|<port> publishes (`broadcast`,
     `multicast`, monotonic; kept across restarts of this daemon) and the
-    bridge reports as the port's storm drops."""
+    bridge reports as the port's storm drops.
+
+    Unknown unicast (11.23) has no counter: UcastSampler feeds it the
+    port's sFlow samples that the switch flooded (add_sample), each
+    standing for `rate` frames of its size. The rate is taken in bytes,
+    over the shortest of U_WINDOWS holding U_MIN samples; a storm starts
+    when the rate less U_SIGMA standard errors is over the limit and ends
+    when the rate plus them is under it, so the sampling's own noise never
+    makes one. While a port is over, the share of each second's flooded
+    frames above the byte limit is added to `unicast`."""
 
     TYPES = (  # PORT_STORM_CONTROL type, counter, STATE_DB field
         ("broadcast", "SAI_PORT_STAT_IF_IN_BROADCAST_PKTS", "broadcast"),
@@ -1085,6 +1096,11 @@ class StormWatch(object):
     TICK = 1.0  # seconds between samples (the counters' poll interval)
     WINDOW = 5  # samples a rate is taken over
     MARGIN = 1.25  # over = above MARGIN x the frame limit; under = below it
+    UCAST = ("unknown-unicast", "unicast")  # PORT_STORM_CONTROL type, STATE_DB field
+    U_WINDOWS = (5, 10, 20, 30)  # seconds a sampled unicast rate is taken over
+    U_MIN = 30  # samples the shorter windows need before they are used
+    U_START = 10  # samples a storm needs at least, whatever the window
+    U_SIGMA = 3.0  # standard errors (1/sqrt(samples)) a start or an end must clear
 
     def __init__(self, db):
         self.cfg = db.cfg
@@ -1096,6 +1112,9 @@ class StormWatch(object):
         self.over = set()  # (port, field) currently storming
         self.published = set()  # ports with a DUI_STORM_TABLE row
         self.nxt = 0.0
+        self.ucast_on = False  # UcastSampler is delivering samples
+        self.usamples = {}  # port -> deque of (time, frames, bytes) of flooded unicast
+        self.ulast = {}  # port -> time of its last unicast evaluation
 
     def adopt(self):
         for k in DB.keys(self.state, "DUI_STORM_TABLE|*"):
@@ -1103,20 +1122,22 @@ class StormWatch(object):
             row = DB.hgetall(self.state, k)
             self.published.add(port)
             self.count[port] = {}
-            for _, _, field in self.TYPES:
+            for field in [f for _, _, f in self.TYPES] + ([self.UCAST[1]] if self.UCAST[1] in row else []):
                 try:
                     self.count[port][field] = float(row.get(field, "0"))
                 except ValueError:
                     self.count[port][field] = 0.0
 
     def limits(self):
-        """port -> {STATE_DB field: kbps} from CONFIG_DB PORT_STORM_CONTROL."""
+        """port -> {STATE_DB field: kbps} from CONFIG_DB PORT_STORM_CONTROL;
+        unknown unicast only while UcastSampler delivers samples."""
+        types = [(typ, field) for typ, _, field in self.TYPES] + ([self.UCAST] if self.ucast_on else [])
         out = {}
         for k in DB.keys(self.cfg, "PORT_STORM_CONTROL|*"):
             parts = k.split("|")
             if len(parts) != 3:
                 continue
-            for typ, _, field in self.TYPES:
+            for typ, field in types:
                 if parts[2] == typ:
                     try:
                         kbps = int(DB.hgetall(self.cfg, k).get("kbps", "0"))
@@ -1126,36 +1147,99 @@ class StormWatch(object):
                         out.setdefault(parts[1], {})[field] = kbps
         return out
 
+    def add_sample(self, port, now, rate, size):
+        """A flooded unicast frame sampled 1:rate on port (UcastSampler)."""
+        self.usamples.setdefault(port, collections.deque()).append((now, float(rate), float(rate) * size))
+
     def tick(self, now=None):
         now = time.time() if now is None else now
         if now < self.nxt:
             return
         self.nxt = now + self.TICK
         lim = self.limits()
-        oids = DB.hgetall(self.counters, "COUNTERS_PORT_NAME_MAP")
+        oids = None
         for port in list(self.count):
             if port not in lim:
                 self.forget(port)
+        for port in list(self.usamples):
+            if self.UCAST[1] not in lim.get(port, {}):
+                self.usamples.pop(port, None)
+                self.ulast.pop(port, None)
+                self.over.discard((port, self.UCAST[1]))
         for port, kinds in lim.items():
-            oid = oids.get(port)
-            if not oid:
-                continue
-            row = DB.hgetall(self.counters, "COUNTERS:" + oid)
-            try:
-                frames = {field: int(row[ctr]) for _, ctr, field in self.TYPES}
-            except (KeyError, ValueError):
-                continue
-            self.sample(port, kinds, now, frames)
+            changed = False
+            ckinds = {f: k for f, k in kinds.items() if f != self.UCAST[1]}
+            if ckinds:
+                if oids is None:
+                    oids = DB.hgetall(self.counters, "COUNTERS_PORT_NAME_MAP")
+                oid = oids.get(port)
+                row = DB.hgetall(self.counters, "COUNTERS:" + oid) if oid else {}
+                try:
+                    frames = {field: int(row[ctr]) for _, ctr, field in self.TYPES}
+                except (KeyError, ValueError):
+                    frames = None
+                if frames is not None:
+                    changed = self.sample(port, ckinds, now, frames)
+            if self.UCAST[1] in kinds:
+                changed = self.usample(port, kinds[self.UCAST[1]], now) or changed
+            if changed:
+                counts = self.count[port]
+                put(self.st, port, [(f, "%d" % counts[f]) for f in sorted(counts)])
+                self.published.add(port)
+
+    def counts_of(self, port, unicast=False):
+        counts = self.count.setdefault(port, {f: 0.0 for _, _, f in self.TYPES})
+        for _, _, f in self.TYPES:
+            counts.setdefault(f, 0.0)
+        if unicast:
+            counts.setdefault(self.UCAST[1], 0.0)
+        return counts
+
+    def usample(self, port, kbps, now):
+        """Unknown unicast: the sampled flooded bytes against the byte limit.
+        Returns whether the port's row must be written."""
+        field = self.UCAST[1]
+        counts = self.counts_of(port, unicast=True)
+        changed = port not in self.published
+        q = self.usamples.setdefault(port, collections.deque())
+        while q and q[0][0] <= now - self.U_WINDOWS[-1]:
+            q.popleft()
+        limit = kbps * 125.0  # bytes/s, as orchagent programs the policer
+        for w in self.U_WINDOWS:
+            sel = [x for x in q if x[0] > now - w]
+            if len(sel) >= self.U_MIN:
+                break
+        n = len(sel)
+        rate = sum(x[2] for x in sel) / w
+        spread = self.U_SIGMA / math.sqrt(n) if n else 1.0
+        key = (port, field)
+        if key not in self.over and n >= self.U_START and rate * (1 - spread) > limit:
+            self.over.add(key)
+            log("storm control: %s unicast storm, %.0f bytes/s of flooded unicast over %d s (%d samples), limit %d kbps (%.0f bytes/s)" %
+                (port, rate, w, n, kbps, limit), syslog.LOG_WARNING)
+        elif key in self.over and rate * (1 + spread) < limit:
+            self.over.discard(key)
+            log("storm control: %s unicast storm over, %d frames above the limit in all" % (port, counts[field]))
+        if key in self.over:
+            last = self.ulast.get(port, now - self.TICK)
+            fresh = sum(x[1] for x in q if last < x[0] <= now)
+            if rate > limit:
+                counts[field] += fresh * (1 - limit / rate)
+            changed = True
+        self.ulast[port] = now
+        return changed
 
     def sample(self, port, kinds, now, frames):
+        """The counter-based types (broadcast, multicast); returns whether
+        the port's row must be written."""
         q = self.samples.setdefault(port, collections.deque(maxlen=self.WINDOW + 1))
         last = q[-1] if q else None
         q.append((now, frames))
         if last is None or any(frames[f] < last[1][f] for f in frames):
             q.clear()  # first sample, or the counters were cleared
             q.append((now, frames))
-            return
-        counts = self.count.setdefault(port, {f: 0.0 for _, _, f in self.TYPES})
+            return False
+        counts = self.counts_of(port)
         changed = port not in self.published
         t0, f0 = q[0]
         for field, kbps in kinds.items():
@@ -1174,20 +1258,249 @@ class StormWatch(object):
                 counts[field] += max(0.0, frames[field] - last[1][field] - allowed * dt)
                 changed = True
         for field in counts:
-            if field not in kinds:
+            if field not in kinds and field != self.UCAST[1]:
                 self.over.discard((port, field))
-        if changed:
-            put(self.st, port, [(f, "%d" % counts[f]) for f in sorted(counts)])
-            self.published.add(port)
+        return changed
 
     def forget(self, port):
         """Storm control is gone from the port: so is its row."""
         self.samples.pop(port, None)
+        self.usamples.pop(port, None)
+        self.ulast.pop(port, None)
         self.count.pop(port, None)
         self.over = {k for k in self.over if k[0] != port}
         if port in self.published:
             self.st._del(port)
             self.published.discard(port)
+
+
+
+PSAMPLE_RATE_PROC = "/proc/bcm/genl/psample/rate"  # linux-bcm-genl (image kit sonic-buildimage 0014)
+GENL_ID_CTRL, CTRL_CMD_GETFAMILY = 0x10, 3
+CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, CTRL_ATTR_MCAST_GROUPS = 1, 2, 7
+PSAMPLE_IIF, PSAMPLE_OIF, PSAMPLE_ORIGSIZE, PSAMPLE_RATE, PSAMPLE_DATA = 0, 1, 2, 5, 6
+PSAMPLE_NOT_FORWARDED = 0xFFFF  # bcm-genl: neither a front-panel port nor the CPU (flooded, or dropped)
+
+
+def nla(buf, off=0, end=None):
+    """Netlink attributes -> {type: payload} (the first of each type)."""
+    end = len(buf) if end is None else end
+    out = {}
+    while off + 4 <= end:
+        ln, ty = struct.unpack_from("HH", buf, off)
+        if ln < 4:
+            break
+        out.setdefault(ty & 0x3FFF, buf[off + 4:off + ln])
+        off += (ln + 3) & ~3
+    return out
+
+
+def psample_messages(buf, family):
+    """(iif, oif, rate, origsize, data) of each psample message in a recv."""
+    off = 0
+    while off + 16 <= len(buf):
+        ln, ty = struct.unpack_from("IH", buf, off)
+        if ln < 16:
+            break
+        if ty == family:
+            a = nla(buf, off + 20, off + ln)
+            u = lambda k, f, d: struct.unpack(f, a[k][:struct.calcsize(f)])[0] if k in a else d
+            yield (u(PSAMPLE_IIF, "H", 0), u(PSAMPLE_OIF, "H", 0), u(PSAMPLE_RATE, "I", 0),
+                   u(PSAMPLE_ORIGSIZE, "I", 0), a.get(PSAMPLE_DATA, b""))
+        off += (ln + 3) & ~3
+
+
+class UcastSampler(object):
+    """Unknown-unicast storm detection's eyes (docs/drivers/sonic.md 11.23).
+
+    Nothing on the DX010 counts the unicast frames it floods: the SAI
+    refuses the ACL field for a missed destination lookup and answers the
+    storm policers' statistics with zeros (11.23.1). The chip's ingress
+    sFlow sampler sees every received frame, before storm control drops
+    it, and the SAI delivers its samples through linux-bcm-genl to the
+    psample generic-netlink family. So for each port with unknown-unicast
+    storm control this asks orchagent for an ingress sFlow session (APPL_DB
+    SFLOW_SESSION_TABLE, as sflowmgrd would, which does not run: the sflow
+    feature stays off), reads the samples, and hands StormWatch each one the
+    switch flooded: a unicast destination, sent to no front-panel port and
+    not the CPU, and not in the FDB for its VLAN. The sample rate gives
+    TARGET samples a second at the limit with 64-byte frames, so the CPU
+    sees samples in proportion to the traffic; CoPP caps them (the sflow
+    trap's own queue, 1000/s)."""
+
+    TARGET = 25  # samples a second at the limit with 64-byte frames
+
+    def __init__(self, l2d):
+        self.l2d = l2d
+        self.db = l2d.db
+        self.storm = l2d.storm
+        self.sessions = sw.ProducerStateTable(self.db.appl, "SFLOW_SESSION_TABLE")
+        self.glob = sw.ProducerStateTable(self.db.appl, "SFLOW_TABLE")
+        self.sock = None
+        self.family = 0
+        self.owned = set()  # ports whose APPL_DB session this daemon wrote
+        self.rates = {}  # watched port -> sample rate asked for
+        self.pvid = {}  # port -> its untagged VLAN id
+        self.own = set()  # the switch's own MACs
+        self.names = {}  # ifindex -> port name
+        self.noted = set()
+        self.adopted = False
+
+    def note(self, key, msg, prio=syslog.LOG_WARNING):
+        if key not in self.noted:
+            self.noted.add(key)
+            log(msg, prio)
+
+    def want(self):
+        """port -> sample rate, for each front-panel port with unknown-unicast storm control."""
+        out = {}
+        for k in DB.keys(self.db.cfg, "PORT_STORM_CONTROL|*|unknown-unicast"):
+            port = k.split("|")[1]
+            try:
+                kbps = int(DB.hgetall(self.db.cfg, k).get("kbps", "0"))
+            except ValueError:
+                kbps = 0
+            if port.startswith("Ethernet") and kbps > 0:
+                out[port] = max(1, int(kbps * 125.0 / StormWatch.MIN_FRAME / self.TARGET))
+        return out
+
+    def sync(self, conf):
+        want = self.want()
+        sflowmgrd = DB.hgetall(self.db.cfg, "FEATURE|sflow").get("state") == "enabled"
+        if not self.adopted and not sflowmgrd:
+            # Nobody else writes these keys while the sflow feature is off.
+            self.owned = {k.split(":", 1)[1] for k in DB.keys(self.db.appl, "SFLOW_SESSION_TABLE:*")}
+            self.adopted = True
+        if not want:
+            self.stop()
+            return
+        if not os.path.exists(PSAMPLE_RATE_PROC):
+            self.note("genl", "unknown-unicast storm control on %d port(s), but this image has no linux-bcm-genl "
+                      "(%s): unknown-unicast storms are not detected (docs/drivers/sonic.md 11.23)" % (len(want), PSAMPLE_RATE_PROC))
+            self.stop()
+            return
+        if sflowmgrd:
+            self.note("sflowmgrd", "the sflow feature is on: its sessions are sflowmgrd's; unknown-unicast storms are "
+                      "detected from whatever it samples on the storm-controlled ports", syslog.LOG_INFO)
+        else:
+            self.write_sessions(want)
+        self.rates = want
+        if self.sock is None:
+            self.open()
+        self.refresh()
+        self.storm.ucast_on = self.sock is not None
+
+    def write_sessions(self, want):
+        if DB.hgetall(self.db.appl, "SFLOW_TABLE:global").get("admin_state") != "up":
+            put(self.glob, "global", [("admin_state", "up")])
+        for port, rate in sorted(want.items()):
+            cur = DB.hgetall(self.db.appl, "SFLOW_SESSION_TABLE:" + port)
+            if cur.get("admin_state") != "up" or cur.get("sample_rate") != str(rate) or cur.get("sample_direction") != "rx":
+                put(self.sessions, port, [("admin_state", "up"), ("sample_rate", str(rate)), ("sample_direction", "rx")])
+                log("storm control: sampling %s at 1:%d for unknown unicast" % (port, rate))
+            self.owned.add(port)
+        for port in sorted(self.owned - set(want)):
+            self.sessions._del(port)
+            self.owned.discard(port)
+            log("storm control: %s no longer sampled" % port)
+
+    def stop(self):
+        self.storm.ucast_on = False
+        self.rates = {}
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+        if self.owned:
+            for port in sorted(self.owned):
+                self.sessions._del(port)
+            self.owned.clear()
+            # Sessions go first: sfloworch leaves ports bound when the global goes.
+            self.glob._del("global")
+            log("storm control: unknown-unicast sampling stopped")
+
+    def open(self):
+        try:
+            sk = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 16)  # NETLINK_GENERIC
+            sk.bind((0, 0))
+            name = b"psample\0"
+            a = struct.pack("HH", 4 + len(name), CTRL_ATTR_FAMILY_NAME) + name
+            a += b"\0" * ((4 - len(a) % 4) % 4)
+            msg = struct.pack("BBH", CTRL_CMD_GETFAMILY, 1, 0) + a
+            sk.send(struct.pack("IHHII", 16 + len(msg), GENL_ID_CTRL, 1, 1, 0) + msg)
+            at = nla(sk.recv(65536), 20)
+            family = struct.unpack("H", at[CTRL_ATTR_FAMILY_ID][:2])[0]
+            groups = {}
+            for g in nla(at[CTRL_ATTR_MCAST_GROUPS]).values():
+                ga = nla(g)
+                groups[ga[1].rstrip(b"\0").decode()] = struct.unpack("I", ga[2][:4])[0]
+            sk.setsockopt(270, 1, groups["packets"])  # SOL_NETLINK, NETLINK_ADD_MEMBERSHIP
+            sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+            sk.setblocking(False)
+        except (OSError, KeyError, struct.error) as e:
+            self.note("psample", "cannot read psample samples (%s): unknown-unicast storms are not detected" % e)
+            return
+        self.sock, self.family = sk, family
+        log("storm control: reading psample samples for unknown unicast")
+
+    def refresh(self):
+        """The ports' untagged VLANs and the switch's MACs, as the classifier needs them."""
+        lag_of = {}
+        for k in DB.keys(self.db.cfg, "PORTCHANNEL_MEMBER|*"):
+            _, lag, member = k.split("|", 2)
+            lag_of[member] = lag
+        untagged = {}
+        for k in DB.keys(self.db.cfg, "VLAN_MEMBER|*"):
+            _, vlan, member = k.split("|", 2)
+            if DB.hgetall(self.db.cfg, k).get("tagging_mode") == "untagged" and vlan.startswith("Vlan"):
+                untagged[member] = int(vlan[4:])
+        self.pvid = {p: untagged.get(lag_of.get(p, p)) for p in self.rates}
+        mac = DB.hgetall(self.db.cfg, "DEVICE_METADATA|localhost").get("mac", "")
+        self.own = {mac.lower()} if mac else set()
+
+    def fds(self):
+        return [self.sock.fileno()] if self.sock is not None else []
+
+    def name(self, ifindex):
+        if ifindex not in self.names:
+            try:
+                self.names[ifindex] = socket.if_indextoname(ifindex)
+            except OSError:
+                return ""
+        return self.names[ifindex]
+
+    def readable(self, fd):
+        now = time.time()
+        while self.sock is not None:
+            try:
+                buf = self.sock.recv(1 << 16)
+            except BlockingIOError:
+                return
+            except OSError:  # ENOBUFS: samples lost, a lower bound still
+                continue
+            for iif, oif, rate, size, data in psample_messages(buf, self.family):
+                self.classify(now, self.name(iif), oif, rate, size, data)
+
+    def classify(self, now, port, oif, rate, size, data):
+        """Hand StormWatch a sample the switch flooded as unknown unicast."""
+        if port not in self.rates or len(data) < 14 or data[0] & 1:
+            return  # not watched, short, or a group destination
+        if oif != PSAMPLE_NOT_FORWARDED:
+            return  # forwarded to a front-panel port (a known destination), or to the CPU
+        dmac = ":".join("%02x" % b for b in data[:6])
+        if dmac in self.own:
+            return  # the switch's own MAC: routed or for the CPU, never flooded
+        vid = self.pvid.get(port)
+        if data[12:14] == b"\x81\x00" and len(data) >= 16:
+            vid = struct.unpack("!H", data[14:16])[0] & 0xFFF
+        if vid and ("Vlan%d" % vid, dmac) in self.l2d.fdb_port:
+            return  # a known destination, dropped for another reason
+        self.storm.add_sample(port, now, rate if rate > 1 else self.rates[port], size)
+
+    def teardown(self):
+        self.adopted = False
+        if not DB.hgetall(self.db.cfg, "FEATURE|sflow").get("state") == "enabled":
+            self.owned = {k.split(":", 1)[1] for k in DB.keys(self.db.appl, "SFLOW_SESSION_TABLE:*")}
+        self.stop()
 
 
 MACLOCK_CHAIN = "DUI_MACLOCK"

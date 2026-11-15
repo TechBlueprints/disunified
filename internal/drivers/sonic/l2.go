@@ -269,7 +269,7 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 		lock = nil
 	}
 	c.l2.portsSet, c.l2.ports, c.l2.guard, c.l2.macLock = true, ports, guard, lock
-	c.l2.storm = stormWatched(desired)
+	c.l2.storm = stormWatched(desired, st.psample)
 }
 
 // allowedMACs is a port's list as l2d compares it: lower case, sorted, no

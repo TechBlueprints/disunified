@@ -78,11 +78,22 @@ func stormWant(spec *devicemodel.StormControlSpec, speedMbps int) map[string]int
 	return out
 }
 
-// stormWatched: a port asks for the storm control disunified-l2d watches
-// (broadcast or multicast; §11.21).
-func stormWatched(desired []devicemodel.PortDesired) bool {
+// stormWatched: a port asks for the storm control disunified-l2d watches:
+// broadcast or multicast from the port's counters (§11.21), unknown unicast
+// from its sFlow samples where the image has linux-bcm-genl (§11.23).
+func stormWatched(desired []devicemodel.PortDesired, psample bool) bool {
 	for _, d := range desired {
-		if s := d.StormCtrl; s != nil && (s.BroadcastPct != nil || s.MulticastPct != nil) {
+		if s := d.StormCtrl; s != nil && (s.BroadcastPct != nil || s.MulticastPct != nil || (psample && s.UnknownUnicastPct != nil)) {
+			return true
+		}
+	}
+	return false
+}
+
+// stormUnicastAsked: a port asks for unknown-unicast storm control.
+func stormUnicastAsked(desired []devicemodel.PortDesired) bool {
+	for _, d := range desired {
+		if d.StormCtrl != nil && d.StormCtrl.UnknownUnicastPct != nil {
 			return true
 		}
 	}
@@ -92,8 +103,9 @@ func stormWatched(desired []devicemodel.PortDesired) bool {
 // stormPorts fills each port's storm drops from disunified-l2d's
 // DUI_STORM_TABLE (§11.21): per interface, the frames received above its
 // storm-control limit while it was over (a lower bound on what storm
-// control dropped), summed over a cage's interfaces. Unknown unicast has no
-// counter of its own, so StormDropsUnicast stays 0.
+// control dropped), summed over a cage's interfaces. `unicast` comes from
+// the port's sFlow samples of flooded unicast (§11.23); an image without
+// linux-bcm-genl writes none, and StormDropsUnicast stays 0.
 func stormPorts(out []cagePort, db map[string]table) {
 	rows := db["l2_storm"].byName("|")
 	if len(rows) == 0 {
@@ -108,6 +120,7 @@ func stormPorts(out []cagePort, db map[string]table) {
 			}
 			p.Health.StormDropsBroadcast += atou(r["broadcast"])
 			p.Health.StormDropsMulticast += atou(r["multicast"])
+			p.Health.StormDropsUnicast += atou(r["unicast"])
 		}
 	}
 }
