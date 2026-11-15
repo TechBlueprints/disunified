@@ -548,3 +548,82 @@ func TestOrphanPortChannelOfOurOwnGoes(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
+
+// A table that is not the driver's (§11.25.4): an operator's own, made with
+// the CLI. The controller's aggregate wins: the lanes leave its ports@
+// before they join, the PortChannel takes their place, and the emptied
+// PortChannel leaves it before `config portchannel del` -- which would
+// otherwise leave the name behind for orchagent to hold the LAG on and for
+// the next breakout's YANG check to refuse. Only ports@ is written; a table
+// left with no port loses the field, as SONiC's own breakout -f leaves it.
+func TestForeignACLTableFollowsTheAggregate(t *testing.T) {
+	ctx := context.Background()
+	r := newACLRig(t, func(fr *FixtureRunner) {
+		for _, cmd := range []string{
+			"sudo config acl add table OPTEST L3 -p Ethernet4,Ethernet8,Ethernet12 -s ingress -d operator",
+			"sudo config acl add table OPLAGS L3 -p Ethernet4 -s ingress",
+		} {
+			if _, err := fr.Run(ctx, cmd, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	row := func(name string) map[string]string { return r.fr.table("cfg_acl_table")["ACL_TABLE|"+name] }
+	base := r.baseline()
+	if got, _ := r.apply(base); len(got) != 0 {
+		t.Fatalf("baseline wrote %q", got)
+	}
+	ds := edit(base, 2, func(d *devicemodel.PortDesired) { d.LAG = 2 })
+	ds = edit(ds, 3, func(d *devicemodel.PortDesired) { d.LAG = 2 })
+	got, _ := r.apply(ds)
+	join := []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE|OPLAGS' 'ports@' 'PortChannel2'",
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE|OPTEST' 'ports@' 'Ethernet12,PortChannel2'",
+	}
+	mi := indexOf(got, "sudo config portchannel member add PortChannel2 Ethernet4")
+	for _, w := range join {
+		if i := indexOf(got, w); i < 0 || mi < 0 || i > mi {
+			t.Errorf("join: %q must come before the member add, got %q", w, got)
+		}
+	}
+	if !strings.Contains(r.log.String(), "ACL table OPTEST (L3 ingress) is not the driver's: Ethernet4,Ethernet8, which is to join an aggregate, taken out of its ports (now Ethernet12,PortChannel2)") {
+		t.Errorf("no note for OPTEST in %q", r.log.String())
+	}
+	if _, err := r.c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if d := row("OPTEST")["policy_desc"]; d != "operator" {
+		t.Errorf("OPTEST's description %q: only ports@ may change", d)
+	}
+	if again, _ := r.apply(ds); len(again) != 0 {
+		t.Errorf("second apply wrote %q", again)
+	}
+
+	got, _ = r.apply(base)
+	di := indexOf(got, "sudo config portchannel del PortChannel2")
+	for _, w := range []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE|OPLAGS' 'ports@' 'Ethernet4,Ethernet8'",
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE|OPTEST' 'ports@' 'Ethernet4,Ethernet8,Ethernet12'",
+	} {
+		if i := indexOf(got, w); i < 0 || di < 0 || i > di {
+			t.Errorf("apart: %q must come before the delete, got %q", w, got)
+		}
+	}
+	if len(r.fr.HeldLAGs) != 0 {
+		t.Errorf("apart: orchagent still holds %v", r.fr.HeldLAGs)
+	}
+	// The operator's tables bind the former members again: OPLAGS had only
+	// Ethernet4 before, and the aggregate's other member comes back with it.
+	if p := row("OPLAGS")["ports@"]; p != "Ethernet4,Ethernet8" || row("OPLAGS")["type"] != "L3" {
+		t.Errorf("OPLAGS after: %v", row("OPLAGS"))
+	}
+	if p := row("OPTEST")["ports@"]; p != "Ethernet4,Ethernet8,Ethernet12" {
+		t.Errorf("OPTEST after: ports@ %q", p)
+	}
+	if _, err := r.c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := r.apply(base); len(again) != 0 {
+		t.Errorf("apart, second apply wrote %q", again)
+	}
+}

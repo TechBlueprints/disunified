@@ -1081,6 +1081,13 @@ was restarted.
   takes the old ports out of the tables as `-f` does. The FixtureRunner
   models both (`HeldLAGs`, the breakout's leafref check). Fixture:
   `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
+  **A table that is not the driver's** (an operator's; collect.py reads
+  every `ACL_TABLE` entry since 2026-11-15, §11.25.4) loses the names the
+  aggregate takes and gets their replacements (a joining lane's
+  PortChannel, a deleted PortChannel's former members) through an `hset`
+  of `ports@` alone, never `config acl add table` (it rewrites the whole
+  entry); no port left is an `hdel` of the field, as breakout `-f` leaves
+  it. Noted each time; only the driver's tables are checked for `Active`.
 - **802.1X (`l2d.py` `Dot1xGuard`, `l2.go` `dot1x`, `build-hostapd.sh`,
   `docs/drivers/sonic.md` §11.26, built 2026-11-15, verified by hand on an
   empty cage).** hostapd 2.11 (wired driver, a RADIUS client) built on the

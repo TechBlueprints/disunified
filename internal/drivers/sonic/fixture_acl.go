@@ -151,6 +151,35 @@ func (f *FixtureRunner) aclRemoveTable(args []string) error {
 	return f.orchACL()
 }
 
+// aclTablePorts: sonic-db-cli CONFIG_DB hset 'ACL_TABLE|<t>' 'ports@' <list>
+// or hdel 'ACL_TABLE|<t>' 'ports@' -- the one field of a table that is not
+// the driver's that the plan writes (§11.25.4). orchagent diffs the port
+// sets of the table's new entry against its old one and unbinds what left
+// (aclorch updateAclTablePorts); a port it does not have yet waits in the
+// table's pending set.
+func (f *FixtureRunner) aclTablePorts(w []string) error {
+	key := w[3]
+	set := w[2] == "hset" && len(w) == 6 && w[4] == "ports@"
+	del := w[2] == "hdel" && len(w) == 5 && w[4] == "ports@"
+	if !set && !del {
+		return fmt.Errorf("unmodelled ACL_TABLE write %q", strings.Join(w, " "))
+	}
+	if err := f.update("cfg_acl_table", func(t table) error {
+		if t[key] == nil {
+			return fmt.Errorf("unmodelled: %s absent", key)
+		}
+		if set {
+			t[key]["ports@"] = w[5]
+		} else {
+			delete(t[key], "ports@")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return f.orchACL()
+}
+
 // aclRuleWrite: sonic-db-cli CONFIG_DB hset 'ACL_RULE|<t>|<r>' f v ... or
 // del 'ACL_RULE|<t>|<r>'. The driver writes only its own rules.
 func (f *FixtureRunner) aclRuleWrite(w []string) error {

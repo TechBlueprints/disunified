@@ -660,14 +660,25 @@ func delRule(table, rule string) string {
 	return "sonic-db-cli CONFIG_DB del " + sshrun.ShellQuote(ruleKey(table, rule))
 }
 
-// aclUnbind rewrites each of the driver's tables that binds one of ifaces
-// without them, inside the port batch: before those lanes join a
-// PortChannel (`config portchannel member add` refuses a bound port; the
-// PortChannel itself is bound after the batch, applyACL), and before a
-// PortChannel is deleted (`config portchannel del` leaves a table naming
-// it, sonic.md §11.25). why says which, for the notes. A table that is not
-// the driver's shape is left alone and noted.
-func (pl *plan) aclUnbind(idx int, ifaces []string, why string) {
+// aclUnbind rewrites each table that binds one of ifaces without them,
+// inside the port batch: before those lanes join a PortChannel (`config
+// portchannel member add` refuses a bound port; the PortChannel itself is
+// bound after the batch, applyACL), and before a PortChannel is deleted
+// (`config portchannel del` leaves a table naming it, sonic.md §11.25).
+// why says which, for the notes; replace names what takes each one's
+// place in a table that is not the driver's (below).
+//
+// A table that is not the driver's (an operator's, or a DUI_ name of
+// another shape) is UniFi's to override only as far as the controller's
+// aggregate reaches (§11.25.4): the aggregate wins, so the interfaces
+// leave the table's ports@ -- the one field written, its type, stage,
+// description and rules stay -- and replace's names take their place, so
+// the operator's rule stays on the same traffic: a joining lane's
+// PortChannel, a deleted PortChannel's former members. A table left
+// with no port loses the field, the state SONiC's own `config interface
+// breakout -f` leaves (config_mgmt deletes the leaf-list value). Each such
+// rewrite is noted.
+func (pl *plan) aclUnbind(idx int, ifaces []string, why string, replace map[string][]string) {
 	gone := map[string]bool{}
 	for _, i := range ifaces {
 		gone[i] = true
@@ -680,19 +691,36 @@ func (pl *plan) aclUnbind(idx int, ifaces []string, why string) {
 	for _, t := range tables {
 		cur := pl.sim.aclTables[t]
 		keep := map[string]bool{}
-		binds := false
+		var left []string
 		for p := range cur.ports {
 			if gone[p] {
-				binds = true
+				left = append(left, p)
 			} else {
 				keep[p] = true
 			}
 		}
-		if !binds {
+		if len(left) == 0 {
 			continue
 		}
-		if cur.typ != tableType(t) || cur.stage != aclStage {
-			pl.note("ACL table %s (%s %s) binds a port that %s; not the driver's table, left alone", t, cur.typ, cur.stage, why)
+		sort.Strings(left)
+		if cur.typ != tableType(t) || cur.stage != aclStage || !strings.HasPrefix(t, "DUI_") {
+			for _, p := range left {
+				for _, r := range replace[p] {
+					keep[r] = true
+				}
+			}
+			name, typ, stage, bound := t, cur.typ, cur.stage, copySet(keep)
+			key := sshrun.ShellQuote("ACL_TABLE|" + name)
+			cmd := "sonic-db-cli CONFIG_DB hdel " + key + " 'ports@'"
+			now := "no port"
+			if len(bound) > 0 {
+				now = strings.Join(sortIfnames(bound), ",")
+				cmd = "sonic-db-cli CONFIG_DB hset " + key + " 'ports@' " + sshrun.ShellQuote(now)
+			}
+			pl.add(idx, cmd, func(s *swState) {
+				s.aclTables[name] = aclTable{typ: typ, stage: stage, ports: copySet(bound)}
+			})
+			pl.note("ACL table %s (%s %s) is not the driver's: %s, which %s, taken out of its ports (now %s); its rules are left as they are", t, cur.typ, cur.stage, strings.Join(left, ","), why, now)
 			continue
 		}
 		if len(keep) == 0 {
@@ -887,7 +915,9 @@ func (c *Collector) verifyACL(st *swState) {
 	c.mu.Unlock()
 	names := make([]string, 0, len(st.aclTables))
 	for t := range st.aclTables {
-		names = append(names, t)
+		if strings.HasPrefix(t, "DUI_") {
+			names = append(names, t) // an operator's table is not ours to judge
+		}
 	}
 	sort.Strings(names)
 	var tally []string
