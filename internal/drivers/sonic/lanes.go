@@ -207,6 +207,12 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 	if err != nil || n == 0 {
 		return n, err
 	}
+	// A lane aggregate made or dissolved is a new kernel bridge port: l2d
+	// takes the cage's STP settings for it now, not at this device's next
+	// push (l2SetPorts).
+	if err := c.l2Refresh(ctx); err != nil {
+		return n, err
+	}
 	if _, err := c.applyACL(ctx); err != nil {
 		return n, err
 	}
@@ -214,6 +220,21 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		return n, err
 	}
 	return n, nil
+}
+
+// l2Refresh derives l2d's per-port intent again from this device's last
+// port push against the state as it is now, and writes it if it changed.
+// Nothing before this device's first push: the intent is its own.
+func (c *Collector) l2Refresh(ctx context.Context) error {
+	c.mu.Lock()
+	st, desired, set := c.state, c.l2.desired, c.l2.portsSet
+	c.mu.Unlock()
+	if st == nil || st.stpFeature || !set {
+		return nil
+	}
+	c.l2SetPorts(desired, st)
+	_, err := c.applyL2(ctx)
+	return err
 }
 
 // PlanLanes implements devicemodel.LaneProvider (the first-push hold).

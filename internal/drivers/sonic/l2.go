@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -170,7 +171,11 @@ type l2Want struct {
 	storm bool
 	// stpOffSeen: the push had STP off since the dead-man last fired,
 	// which re-arms a first enable.
-	stpOffSeen  bool
+	stpOffSeen bool
+	// desired is the last port push l2SetPorts took (this device's own):
+	// a lane switch's batch changes the bridge ports under it, and
+	// ApplyLanes derives the per-port intent again from it.
+	desired     []devicemodel.PortDesired
 	buildTried  time.Time
 	deadmanSeen string
 }
@@ -227,11 +232,18 @@ func (c *Collector) l2SetSTP(d devicemodel.DeviceDesired) {
 	}
 }
 
-// l2SetPorts records the per-port intent (ApplyPorts): every interface of
-// a cage, or the PortChannel a cage is a member of (the kernel bridge port).
+// l2SetPorts records the per-port intent (ApplyPorts): each kernel bridge
+// port a cage's interfaces make -- an interface, or the PortChannel it is a
+// member of. A split cage's lanes can be in several PortChannels and in
+// none (a lane switch's aggregate of lanes 2-4 leaves lane 1 a bridge port
+// of its own), so every interface is looked at, not only the first. The
+// settings are the cage's: the lane switch claims no STP (breakout.md §0),
+// so the parent's push is the only one that carries them, and they cover
+// every lane of the cage, in an aggregate or not (breakout.md §14).
 func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.l2.desired = slices.Clone(desired)
 	ports := map[string]l2Port{}
 	var guard []string
 	lock := map[string][]string{}
@@ -246,9 +258,15 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 			edge = "auto"
 		}
 		pc := l2Port{Enabled: !d.STPEdge, Edge: edge, BPDUGuard: d.BPDUGuard}
-		names := ifs
-		if lag := st.lagOf(ifs[0]); lag != "" {
-			names = []string{lag}
+		var names []string
+		for _, ifc := range ifs {
+			n := ifc
+			if lag := st.lagOf(ifc); lag != "" {
+				n = lag
+			}
+			if !slices.Contains(names, n) {
+				names = append(names, n)
+			}
 		}
 		for _, n := range names {
 			if seen[n] {
