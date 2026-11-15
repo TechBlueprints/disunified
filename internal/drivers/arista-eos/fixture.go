@@ -48,7 +48,7 @@ func (f *FixtureTransport) Run(_ context.Context, cmds []string) ([]json.RawMess
 		if err != nil {
 			return nil, fmt.Errorf("no fixture for %q: %w", c, err)
 		}
-		out = append(out, b)
+		out = append(out, finiteJSON(b)) // as the live transports do
 	}
 	return out, nil
 }

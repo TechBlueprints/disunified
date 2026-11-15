@@ -115,7 +115,7 @@ func (t *SSH) Run(ctx context.Context, cmds []string) ([]json.RawMessage, error)
 	if err != nil {
 		return nil, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(out))
+	dec := json.NewDecoder(bytes.NewReader(finiteJSON(out)))
 	var results []json.RawMessage
 	for _, c := range cmds {
 		if isModeCommand(c) {

@@ -159,6 +159,7 @@ func (t *EAPI) run(ctx context.Context, cmds []string, format string) ([]json.Ra
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("eAPI %s: HTTP %d: %s", t.URL, resp.StatusCode, truncate(string(raw), 200))
 	}
+	raw = finiteJSON(raw) // EOS prints -Infinity for a power of zero
 	var r rpcResponse
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return nil, fmt.Errorf("eAPI: bad JSON-RPC reply: %w: %s", err, truncate(string(raw), 200))

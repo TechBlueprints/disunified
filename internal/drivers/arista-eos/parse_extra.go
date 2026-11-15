@@ -108,11 +108,13 @@ type showSpanningTreeFull struct {
 
 // showTransceiverThresholds is `show interfaces transceiver dom thresholds`:
 // per optic, each DOM parameter's per-channel value and alarm thresholds.
-// Cages without a DOM-capable optic (DACs, empty) have no parameters.
+// Cages without a DOM-capable optic (DACs, empty) have no parameters. A
+// channel is nil where EOS printed a value JSON does not have (finiteJSON):
+// -Infinity dBm, a power of zero.
 type showTransceiverThresholds struct {
 	Interfaces map[string]struct {
 		Parameters map[string]struct {
-			Channels  map[string]float64 `json:"channels"`
+			Channels  map[string]*float64 `json:"channels"`
 			Threshold *struct {
 				HighAlarm float64 `json:"highAlarm"`
 				LowAlarm  float64 `json:"lowAlarm"`
@@ -149,7 +151,16 @@ func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds) {
 				return false
 			}
 			for _, v := range p.Channels {
-				if v < p.Threshold.LowAlarm || v > p.Threshold.HighAlarm {
+				if v == nil {
+					// No finite reading. For a power that is no light at
+					// all, below any low alarm; for anything else there
+					// is nothing to compare.
+					if strings.HasSuffix(param, "Power") {
+						return true
+					}
+					continue
+				}
+				if *v < p.Threshold.LowAlarm || *v > p.Threshold.HighAlarm {
 					return true
 				}
 			}
