@@ -495,6 +495,9 @@ const (
 	// EffectOutletCycle: power-cycle outlets on a power device (Text =
 	// comma-separated outlet indexes in the controller's numbering).
 	EffectOutletCycle
+	// EffectPortRecovery: re-enable a port the switch's own protection
+	// holds down (Text = port_idx).
+	EffectPortRecovery
 )
 
 // Apply advances the session by one controller reply and returns what
@@ -586,6 +589,12 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		// and the device-side name has not been captured; "power-cycle" is the
 		// API's name, the others are kept for older spellings.
 		return []inform.Effect{{Kind: EffectPortCycle, Text: strconv.Itoa(r.PortIdx)}}
+	case "port-recovery":
+		// The UI's Re-enable, offered on a port whose alert is BPDU guard or
+		// loop protection (BPDU_GUARD_TRIGGERED,
+		// NETWORK_LOOP_DETECTED_BY_KEEPALIVE): cmd/devmgr port-recovery with
+		// the port's port_idx (docs/drivers/sonic.md §11.28).
+		return []inform.Effect{{Kind: EffectPortRecovery, Text: strconv.Itoa(r.PortIdx)}}
 	case "relayctl":
 		// The UI's per-outlet Power Cycle. The controller picks the outlets and
 		// sends them as a selection list; the device is expected to open and

@@ -210,6 +210,7 @@ type Loop struct {
 	reconciledOnce  bool
 	layoutSig       string
 	pendingCycles   []int
+	pendingRecover  []int
 	// pendingOutletCycles holds relayctl outlet indexes, in the controller's
 	// numbering, until the driver runs them after the inform.
 	pendingOutletCycles []int
@@ -521,6 +522,11 @@ func (l *Loop) informOnce(ctx context.Context) {
 				pending := l.pendingCycles
 				l.pendingCycles = append(pending, idx)
 			}
+		case device.EffectPortRecovery:
+			lines = append(lines, fmt.Sprintf("port-recovery requested for port %s", e.Text))
+			if idx, err := strconv.Atoi(e.Text); err == nil {
+				l.pendingRecover = append(l.pendingRecover, idx)
+			}
 		case device.EffectOutletCycle:
 			lines = append(lines, fmt.Sprintf("relayctl: power-cycle requested for outlet(s) %s", e.Text))
 			for _, s := range strings.Split(e.Text, ",") {
@@ -565,7 +571,10 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 	l.pendingReboot = false
 	locate := l.pendingLocate
 	l.pendingLocate = ""
+	recover := l.pendingRecover
+	l.pendingRecover = nil
 	l.mu.Unlock()
+	l.recoverPorts(ctx, recover)
 	if locate != "" {
 		if lc, ok := deviceAs[devicemodel.Locator](l); ok {
 			cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
@@ -605,6 +614,28 @@ func (l *Loop) cyclePorts(ctx context.Context) {
 			l.cfg.Logger.Printf("[%s] port-cycle %d: %v", l.desc.MAC, idx, err)
 		} else {
 			l.cfg.Logger.Printf("[%s] port-cycle %d: done", l.desc.MAC, idx)
+		}
+	}
+}
+
+// recoverPorts runs queued port-recovery commands through the driver.
+func (l *Loop) recoverPorts(ctx context.Context, queue []int) {
+	if len(queue) == 0 {
+		return
+	}
+	pr, ok := deviceAs[devicemodel.PortRecoverer](l)
+	if !ok {
+		l.cfg.Logger.Printf("[%s] port-recovery: driver holds no port down; ignored", l.desc.MAC)
+		return
+	}
+	for _, idx := range queue {
+		cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
+		err := pr.RecoverPort(cctx, idx)
+		cancel()
+		if err != nil {
+			l.cfg.Logger.Printf("[%s] port-recovery %d: %v", l.desc.MAC, idx, err)
+		} else {
+			l.cfg.Logger.Printf("[%s] port-recovery %d: done", l.desc.MAC, idx)
 		}
 	}
 }
