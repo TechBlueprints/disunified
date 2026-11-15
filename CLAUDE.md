@@ -237,7 +237,11 @@ captures and live observation first. The other source of protocol
 knowledge is the upstream unifi-emu project (James Braid,
 `github.com/jamesbraid/unifi-emu`: `PROTOCOL.md`, `capability_bits.json`
 and its code), which this project forks and credits. A fact with none of
-these is marked "not captured".
+these is marked "not captured". The devices' and the controller's own
+software is never a source: firmware files, binaries and what can be read
+out of them are not read, quoted or described in this repository. A UniFi
+switch on the site is read as its operator can read it (its CLI, its
+tables, its informs), read-only, and nothing copied off it is committed.
 
 - Inform header 40 bytes, version 1; AES-GCM with a **16-byte nonce** and
   the whole header as AAD; both CBC and GCM required; default key
