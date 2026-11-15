@@ -1135,6 +1135,9 @@ was restarted.
   you are doing, wait while another session holds it, remove it when done.
   It covers anything the deployed bridge or another session's test would
   see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
-  row, an l2d run by hand. Read-only commands need no lock. (The
+  row, an l2d run by hand. Read-only commands need no lock. **Take it
+  with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
+  so that a held lock refuses the write. A plain `>` replaced a held lock
+  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
