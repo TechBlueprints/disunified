@@ -1362,7 +1362,7 @@ site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
 | Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
 | Containers | `swss` (orchagent **with the L2MC orch**), `l2mcd` (the daemon **and `l2mcmgrd`**, the same split as the Micas container; corrected 2026-11-01, the process's cgroup is the l2mcd container's), `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
 | The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
-| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a small Python helper that runs scripts as interfaces come and go; no Python on the box mentions an `igmp_*` key, so the translation from the controller's keys is compiled -- most likely in `mcad`, Ubiquiti's management daemon, not read. §9's attribution of VLAN 1 to it is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a helper that runs as interfaces come and go; which of Ubiquiti's processes translates the controller's keys into CONFIG_DB is not established, and §9's attribution of VLAN 1 to `ubnt-lnxcfgd` is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
 
 **UniFi's per-VLAN IGMP settings land in `CFG_L2MC_TABLE`**, one entry per
 VLAN: on that switch the native VLAN has snooping and the querier on, the
@@ -5237,8 +5237,8 @@ its file), and a deleted router leaves the push. Captured on the DX010
 (`controller-10.6.109/system_cfg-dx010-bgp-{1-enabled,2-disabled,
 3-changed,4-removed}.txt`; the test file uses documentation addresses and
 private ASNs, so its content needed no scrubbing). Ubiquiti's SONiC (the
-ECS's `ubntbox`) writes the decoded file into a CONFIG_DB table of its own
-(`BGP_FULL_CONFIG|global config_b64`) for its FRR manager; community SONiC
+ECS) keeps the decoded file in a CONFIG_DB table of its own
+(`BGP_FULL_CONFIG|global config_b64`); community SONiC
 has no such table and runs FRR 10.4.1 in separated mode (`bgpd`, `zebra`,
 `staticd`, `mgmtd`; bgpd's configuration rendered from templates at
 container start).
@@ -7596,8 +7596,7 @@ Nothing to copy. Read-only on 2026-11-15:
   `pacmgr` or `mabmgr` on the host or in any container, no PAC table in
   CONFIG_DB, APPL_DB or STATE_DB;
 - its `ERROR_DISABLE|dot1x` row is configuration only, as every row of
-  that table is (§11.20); its inform agent `mcad` holds
-  `ubnt_get_interface_dot1x_status` and reports the off values.
+  that table is (§11.20), and its informs report the off values.
 
 So the departure from the ECS's pattern has a plain reason: the ECS has
 no 802.1X.
