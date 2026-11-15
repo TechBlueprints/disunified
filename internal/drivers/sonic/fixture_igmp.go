@@ -3,6 +3,7 @@ package sonic
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -35,6 +36,15 @@ func (f *FixtureRunner) applyL2MCScript(script string) error {
 	var ops []l2mcOp
 	if err := json.Unmarshal([]byte(raw), &ops); err != nil {
 		return fmt.Errorf("disunified-l2mc: %w", err)
+	}
+	return f.applyL2MCOps(ops)
+}
+
+// applyL2MCOps applies the IGMP script's ops to cfg_l2mc, with the
+// refusals the CLI would make.
+func (f *FixtureRunner) applyL2MCOps(ops []l2mcOp) error {
+	if _, ok := sections(f.Fixture)["cfg_l2mc"]; !ok {
+		return fmt.Errorf("disunified-l2mc: the capture has no cfg_l2mc section")
 	}
 	vlans, members := f.table("cfg_vlan"), f.table("cfg_vlan_member")
 	_, feature := f.table("cfg_feature")["FEATURE|l2mcd"]
@@ -69,6 +79,35 @@ func (f *FixtureRunner) applyL2MCScript(script string) error {
 		}
 		return nil
 	})
+}
+
+// danglingL2MC are the L2MC rows naming an interface the switch does not
+// have. The image kit's sonic-buildimage 0010 made every interface in
+// sonic-igmp-snooping.yang a string, so `config interface breakout -f`
+// leaves these rows behind (fixture_breakout.go takes nothing out of
+// cfg_l2mc; live on the DX010 2026-11-15, breakout-l2mc-20261115.txt): the
+// member and router rows keyed by a deleted port, and its name in a static
+// group's member list.
+func (f *FixtureRunner) danglingL2MC() []string {
+	ports, lags := f.table("cfg_port"), f.table("cfg_lag")
+	exists := func(n string) bool { return ports["PORT|"+n] != nil || lags["PORTCHANNEL|"+n] != nil }
+	var out []string
+	for k, v := range f.table("cfg_l2mc") {
+		parts := strings.Split(k, "|")
+		switch {
+		case parts[0] == "L2MC_STATIC_MEMBER" && len(parts) == 4 && !exists(parts[3]),
+			parts[0] == "L2MC_MROUTER" && len(parts) == 3 && !exists(parts[2]):
+			out = append(out, k)
+		case parts[0] == "L2MC_STATIC_GROUP":
+			for _, m := range strings.Split(v["static-members@"], ",") {
+				if m != "" && !exists(m) {
+					out = append(out, k+" "+m)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // staticNames reports whether a static group names port in Vlan<vid>.

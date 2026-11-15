@@ -97,6 +97,7 @@ func TestBreakoutModesOnTheCurrentImage(t *testing.T) {
 	r := rig20261106(t, fixture20261106)
 	base := r.baseline()
 	got, _ := r.apply(speedOn(base, 2, 25000))
+	got = unbound(t, got, 7, "Ethernet4")
 	if len(got) == 0 || got[0] != "sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null" {
 		t.Fatalf("4x25G: %q\n%s", got, r.log.String())
 	}
@@ -108,11 +109,50 @@ func TestBreakoutModesOnTheCurrentImage(t *testing.T) {
 		t.Errorf("10G: %q", got)
 	}
 	got, _ = r.apply(speedOn(base, 2, 50000))
+	// No IGMP intent in this rig: the lanes got no rows after the split.
+	got = unbound(t, got, 0, "Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7")
 	if len(got) == 0 || got[0] != "sudo config interface breakout -f -y Ethernet4 '2x50G' </dev/null" {
 		t.Errorf("2x50G: %q", got)
 	}
 	got, _ = r.apply(speedOn(base, 2, 100000))
+	got = unbound(t, got, 0, "Ethernet4", "Ethernet6")
 	if len(got) == 0 || got[0] != "sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null" {
 		t.Errorf("join: %q", got)
 	}
+}
+
+// unbound takes l2mcUnbind's line out of a breakout batch: before the
+// breakout, taking out only member and router rows naming one of ifaces (the
+// static groups' lists are rewritten), exactly want of them.
+func unbound(t *testing.T, cmds []string, want int, ifaces ...string) []string {
+	t.Helper()
+	cage := setOf(ifaces)
+	var out []string
+	n, brk := 0, false
+	for _, c := range cmds {
+		ops, ok := L2MCArgOps(c)
+		if !ok {
+			brk = brk || strings.HasPrefix(c, "sudo config interface breakout ")
+			out = append(out, c)
+			continue
+		}
+		if brk {
+			t.Errorf("the multicast unbind comes after the breakout: %q", cmds)
+		}
+		for _, o := range ops {
+			verb, key, _ := strings.Cut(o, " ")
+			parts := strings.Split(key, "|")
+			switch {
+			case parts[0] == "L2MC_STATIC_GROUP":
+			case verb == "del" && (parts[0] == "L2MC_STATIC_MEMBER" || parts[0] == "L2MC_MROUTER") && cage[parts[len(parts)-1]]:
+				n++
+			default:
+				t.Errorf("the unbind %s names no interface of %v", o, ifaces)
+			}
+		}
+	}
+	if n != want {
+		t.Errorf("%d multicast rows of %v were taken out before the breakout, want %d: %q", n, ifaces, want, cmds)
+	}
+	return out
 }

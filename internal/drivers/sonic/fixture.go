@@ -37,6 +37,10 @@ type FixtureRunner struct {
 	SNMPYmlScripts []string
 	// L2MCScripts are the IGMP scripts (igmp.go), as sent.
 	L2MCScripts []string
+	// SavedDangling are the L2MC rows that named an interface the switch
+	// did not have (no PORT or PORTCHANNEL row) at a `config save`, which
+	// writes them to config_db.json: a breakout leaves them (fixture_igmp.go).
+	SavedDangling []string
 	// BGPFiles are the files loaded into FRR (bgp.go), as sent. BGPRefuse,
 	// when set, is vtysh's complaint about a line: the load fails with it
 	// and changes nothing.
@@ -456,6 +460,14 @@ func (f *FixtureRunner) apply(line string) error {
 	if ok, err := f.portFeatWrite(w); ok {
 		return err
 	}
+	if len(w) == 5 && w[0] == "python3" && w[1] == "-c" && w[3] == "disunified-l2mc" {
+		// l2mcArgCommand: the IGMP script's ops from inside a port batch.
+		var ops []l2mcOp
+		if err := json.Unmarshal([]byte(w[4]), &ops); err != nil {
+			return err
+		}
+		return f.applyL2MCOps(ops)
+	}
 	if ok, err := f.l3Write(w); ok {
 		return err
 	}
@@ -464,6 +476,7 @@ func (f *FixtureRunner) apply(line string) error {
 	}
 	switch {
 	case len(w) >= 2 && w[0] == "config" && w[1] == "save":
+		f.SavedDangling = append(f.SavedDangling, f.danglingL2MC()...)
 		return nil
 	case len(w) == 2 && w[0] == "chronyc" && w[1] == "onoffline":
 		if f.ChronyAfterOnoffline != "" {

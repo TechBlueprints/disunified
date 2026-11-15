@@ -1217,7 +1217,7 @@ func (c *Collector) runPlan(ctx context.Context, pl *plan, what string) (int, er
 	if what != "" {
 		label = fmt.Sprintf("%s, %d changed", what, n)
 	}
-	c.Log.Printf("sonic apply (%s): %s", label, strings.ReplaceAll(strings.Join(cmds, " ; "), applCommand, applLogged))
+	c.Log.Printf("sonic apply (%s): %s", label, strings.ReplaceAll(strings.Join(loggedCmds(cmds), " ; "), applCommand, applLogged))
 	if err := c.runBatch(ctx, cmds); err != nil {
 		return 0, fmt.Errorf("sonic apply (%s): %w", label, err)
 	}

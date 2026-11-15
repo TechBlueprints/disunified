@@ -133,7 +133,10 @@ func childIntent(names ...string) []string {
 func TestReplaySonicDX010BreakoutSeries(t *testing.T) {
 	r := newBreakoutRig(t)
 
-	got := r.push("system_cfg-dx010-brk-1-4x25g.txt", "81fdb670c3d4164c")
+	got, n := l2mcUnbound(t, r.push("system_cfg-dx010-brk-1-4x25g.txt", "81fdb670c3d4164c"), "Ethernet4")
+	if n != 7 {
+		t.Errorf("4x25G took %d of Ethernet4's 7 reserved-group rows out before the breakout", n)
+	}
 	want := append(append([]string{"sudo config interface breakout -f -y Ethernet4 '4x25G[10G]' </dev/null"}, childIntent("Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7")...), brkSave)
 	if len(got) < len(want) {
 		t.Fatalf("4x25G wrote %q", got)
@@ -142,6 +145,11 @@ func TestReplaySonicDX010BreakoutSeries(t *testing.T) {
 	if l2mc := strings.Join(r.fr.L2MCScripts, "\n"); !strings.Contains(l2mc, "L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet7") {
 		t.Errorf("the reserved groups were not extended to the new lanes:\n%s", l2mc)
 	}
+	// Lane 1 keeps the parent's name: its rows are written again for the new
+	// port, not inherited from the old one.
+	if l2mc := strings.Join(r.fr.L2MCScripts, "\n"); !strings.Contains(l2mc, `L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet4\",\"fields`) {
+		t.Errorf("lane 1's reserved-group rows were not written after the split:\n%s", l2mc)
+	}
 	r.cycle("4x25G")
 
 	wantWrites(t, "lanes at 10G", r.push("system_cfg-dx010-brk-2-lanes-10g.txt", "644f4572a59be3bd"), []string{
@@ -149,20 +157,23 @@ func TestReplaySonicDX010BreakoutSeries(t *testing.T) {
 		"sudo config interface speed Ethernet6 10000", "sudo config interface speed Ethernet7 10000", brkSave})
 	r.cycle("the lane speed")
 
-	n := len(r.fr.L2MCScripts)
-	got = r.push("system_cfg-dx010-brk-3-2x50g.txt", "118b8151afe96f16")
+	ns := len(r.fr.L2MCScripts)
+	got, n = l2mcUnbound(t, r.push("system_cfg-dx010-brk-3-2x50g.txt", "118b8151afe96f16"), "Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7")
+	if n != 28 {
+		t.Errorf("2x50G took %d of the four lanes' 28 rows out before the breakout", n)
+	}
 	want = append(append([]string{"sudo config interface breakout -f -y Ethernet4 '2x50G' </dev/null"}, childIntent("Ethernet4", "Ethernet6")...), brkSave)
 	if len(got) < len(want) {
 		t.Fatalf("2x50G wrote %q", got)
 	}
 	wantWrites(t, "2x50G", got[:len(want)], want)
-	if l2mc := strings.Join(r.fr.L2MCScripts[n:], "\n"); !strings.Contains(l2mc, `L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet5\"}`) {
-		t.Errorf("the gone lanes' reserved-group rows were not removed:\n%s", l2mc)
+	if l2mc := strings.Join(r.fr.L2MCScripts[ns:], "\n"); strings.Contains(l2mc, `|Ethernet5\"`) || !strings.Contains(l2mc, `L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet6\",\"fields`) {
+		t.Errorf("after 2x50G the IGMP apply should write the two ports' rows and have nothing of the gone lanes left to remove:\n%s", l2mc)
 	}
 	// The join is pushed in the cycle whose collect first sees the 2x50G
 	// layout: no reconcile in between.
 	r.l.collect(context.Background())
-	got = r.push("system_cfg-dx010-brk-4-join.txt", "f49b55fc0441cb65")
+	got, _ = l2mcUnbound(t, r.push("system_cfg-dx010-brk-4-join.txt", "f49b55fc0441cb65"), "Ethernet4", "Ethernet6")
 	want = append(append([]string{"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null"}, childIntent("Ethernet4")...), brkSave)
 	if len(got) < len(want) {
 		t.Fatalf("join wrote %q\nlog:\n%s", got, r.log.String())
@@ -171,6 +182,12 @@ func TestReplaySonicDX010BreakoutSeries(t *testing.T) {
 	r.cycle("the join")
 	if s := r.log.String(); strings.Contains(s, "is new since the controller's config") || !strings.Contains(s, "port layout changed as the controller's config asked: [2(Ethernet4/Ethernet4,Ethernet6)]") {
 		t.Errorf("a layout the controller asked for was treated as a new port:\n%s", s)
+	}
+	// The breakout's -f keeps the L2MC rows of the ports it deletes (strings
+	// in the kit's YANG; live 2026-11-15): no save may write a row naming a
+	// port the switch no longer has (sonic.md 11.25.3).
+	if len(r.fr.SavedDangling) != 0 {
+		t.Errorf("saved L2MC rows naming ports that do not exist: %q", r.fr.SavedDangling)
 	}
 }
 
@@ -241,5 +258,6 @@ func TestReplaySonicDX010LanesAt1G(t *testing.T) {
 		"sudo config interface speed Ethernet4 1000", "sudo config interface speed Ethernet5 1000",
 		"sudo config interface speed Ethernet6 1000", "sudo config interface speed Ethernet7 1000", brkSave})
 	r.cycle("1G")
-	wantWrites(t, "join from 1G", r.push("system_cfg-dx010-brk-4-join.txt", "7e75422bf845c58e")[:1], []string{"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null"})
+	got, _ := l2mcUnbound(t, r.push("system_cfg-dx010-brk-4-join.txt", "7e75422bf845c58e"), "Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7")
+	wantWrites(t, "join from 1G", got[:1], []string{"sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null"})
 }

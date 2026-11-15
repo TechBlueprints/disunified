@@ -1,0 +1,338 @@
+# DX010, igmp-202511.20261115-6c8eb1cf7 (sonic-swss 0004), 2026-11-15 17:47-17:50 UTC,
+# by hand, the deployed bridge stopped 90 s, empty cage 29 (Ethernet112), IGMP
+# snooping on in Vlan4094 with UniFi's seven reserved groups static on every
+# member (the driver's rows). docs/drivers/sonic.md 11.25.3. Scrubbed: hostname.
+# The record script (read-only) prints, for the named interfaces, CONFIG_DB's
+# PORT/BREAKOUT_CFG/VLAN_MEMBER/L2MC_STATIC_MEMBER/L2MC_MROUTER rows, the static
+# groups' static-members@ entries, the APPL_DB and STATE_DB keys, and ASIC_DB's
+# bridge ports, VLAN members and L2MC group members on them.
+#
+# == 0. The YANG model as installed: no leafref (series sonic-buildimage 0010),
+# == so sonic-yang knows no dependency of a port in the L2MC tables
+$ grep -c leafref /usr/local/yang-models/sonic-igmp-snooping.yang
+0
+$ sed -n 46,66p /usr/local/yang-models/sonic-igmp-snooping.yang
+		container L2MC_STATIC_MEMBER {
+
+			list L2MC_STATIC_MEMBER_LIST {
+
+				key "vlan-name group-addr out-intf";
+
+				leaf vlan-name {
+					type string;	
+				}
+
+				leaf group-addr {
+					type inet:ipv4-address;
+				}
+
+				leaf out-intf {
+					type string;
+				}
+				leaf port {
+					type string;
+				}			
+			}
+# sonic_yang over `sonic-cfggen -d --print-data` (what config_mgmt's
+# _deletePorts calls) for Ethernet112, with its 7 L2MC_STATIC_MEMBER rows:
+tables without YANG: []
+xpath: /sonic-port:sonic-port/PORT/PORT_LIST[name='Ethernet112']/name
+dep: /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet112']/port
+# (the schema backlinks of PORT name list ACL_TABLE ports, VLAN_MEMBER port and
+# 27 others; nothing of sonic-igmp-snooping)
+#
+# == 1. Before
+## CONFIG_DB
+PORT|Ethernet112 {'admin_status': 'up', 'alias': 'Eth29', 'lanes': '113,114,115,116', 'speed': '100000'}
+BREAKOUT_CFG|Ethernet112 {'brkout_mode': '1x100G[40G]'}
+VLAN_MEMBER|Vlan4094|Ethernet112 {'tagging_mode': 'untagged'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has ['Ethernet112'] of 32
+## APPL_DB
+PORT_TABLE:Ethernet112
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet112
+## STATE_DB
+PORT_TABLE|Ethernet112
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet112
+## ASIC_DB
+bridge port Ethernet112 oid:0x3a000000000902 admin true
+port oid Ethernet112 oid:0x10000000008d8
+port oid Ethernet113 None
+port oid Ethernet114 None
+port oid Ethernet115 None
+asic vlan members on the cage's bridge ports: 1
+asic l2mc group members on the cage's bridge ports: 0 of 5
+#
+# == 2. The split
+### stopped 17:48:23
+### split: sudo config interface breakout -f -y Ethernet112 4x25G[10G]
+Running Breakout Mode : 1x100G[40G] 
+Target Breakout Mode : 4x25G[10G]
+Ports to be deleted : 
+ {
+    "Ethernet112": "100000"
+}
+Ports to be added : 
+ {
+    "Ethernet112": "25000",
+    "Ethernet113": "25000",
+    "Ethernet114": "25000",
+    "Ethernet115": "25000"
+}
+Breakout process got successfully completed.
+Please note loaded setting will be lost after system reboot. To preserve setting, run `config save`.
+exit 0
+### after split 17:48:35
+## CONFIG_DB
+PORT|Ethernet112 {'alias': 'Eth29/1', 'lanes': '113', 'speed': '25000'}
+PORT|Ethernet113 {'alias': 'Eth29/2', 'lanes': '114', 'speed': '25000'}
+PORT|Ethernet114 {'alias': 'Eth29/3', 'lanes': '115', 'speed': '25000'}
+PORT|Ethernet115 {'alias': 'Eth29/4', 'lanes': '116', 'speed': '25000'}
+BREAKOUT_CFG|Ethernet112 {'brkout_mode': '4x25G[10G]'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has ['Ethernet112'] of 32
+## APPL_DB
+PORT_TABLE:Ethernet112
+PORT_TABLE:Ethernet113
+PORT_TABLE:Ethernet114
+PORT_TABLE:Ethernet115
+## STATE_DB
+PORT_TABLE|Ethernet112
+PORT_TABLE|Ethernet113
+PORT_TABLE|Ethernet114
+PORT_TABLE|Ethernet115
+## ASIC_DB
+port oid Ethernet112 oid:0x10000000009a2
+port oid Ethernet113 oid:0x10000000009cc
+port oid Ethernet114 oid:0x10000000009f6
+port oid Ethernet115 oid:0x1000000000a20
+asic vlan members on the cage's bridge ports: 0
+asic l2mc group members on the cage's bridge ports: 0 of 5
+#
+# == 3. Lane 1 into Vlan4094 and out; lanes 2-4 as the driver leaves a split cage
+### lane 1 into Vlan4094: sudo config vlan member add -u 4094 Ethernet112
+exit 0
+### lane 1 out again: sudo config vlan member del 4094 Ethernet112
+Try 'config vlan member del -h' for help.
+
+Error: Batch delete failed: Port Ethernet112 cannot be removed from Vlan4094. Please remove all associated static Layer 2 multicast group entries first.
+exit 2
+### lanes 2-4 as the driver leaves a split cage: untagged in Vlan4094 and the 7 reserved groups each
+### split, lanes in the VLAN 17:48:59
+## CONFIG_DB
+PORT|Ethernet112 {'alias': 'Eth29/1', 'lanes': '113', 'speed': '25000'}
+PORT|Ethernet113 {'alias': 'Eth29/2', 'lanes': '114', 'speed': '25000'}
+PORT|Ethernet114 {'alias': 'Eth29/3', 'lanes': '115', 'speed': '25000'}
+PORT|Ethernet115 {'alias': 'Eth29/4', 'lanes': '116', 'speed': '25000'}
+BREAKOUT_CFG|Ethernet112 {'brkout_mode': '4x25G[10G]'}
+VLAN_MEMBER|Vlan4094|Ethernet112 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet113 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet114 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet115 {'tagging_mode': 'untagged'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has ['Ethernet112'] of 32
+## APPL_DB
+PORT_TABLE:Ethernet112
+PORT_TABLE:Ethernet113
+PORT_TABLE:Ethernet114
+PORT_TABLE:Ethernet115
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet112
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet113
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet114
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet115
+## STATE_DB
+PORT_TABLE|Ethernet112
+PORT_TABLE|Ethernet113
+PORT_TABLE|Ethernet114
+PORT_TABLE|Ethernet115
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet112
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet113
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet114
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet115
+## ASIC_DB
+bridge port Ethernet112 oid:0x3a000000000a4a admin true
+bridge port Ethernet113 oid:0x3a000000000a57 admin true
+bridge port Ethernet114 oid:0x3a000000000a64 admin true
+bridge port Ethernet115 oid:0x3a000000000a71 admin true
+port oid Ethernet112 oid:0x10000000009a2
+port oid Ethernet113 oid:0x10000000009cc
+port oid Ethernet114 oid:0x10000000009f6
+port oid Ethernet115 oid:0x1000000000a20
+asic vlan members on the cage's bridge ports: 4
+asic l2mc group members on the cage's bridge ports: 0 of 5
+#
+# == 4. The join
+### join: sudo config interface breakout -f -y Ethernet112 1x100G[40G]
+Running Breakout Mode : 4x25G[10G] 
+Target Breakout Mode : 1x100G[40G]
+Ports to be deleted : 
+ {
+    "Ethernet112": "25000",
+    "Ethernet113": "25000",
+    "Ethernet114": "25000",
+    "Ethernet115": "25000"
+}
+Ports to be added : 
+ {
+    "Ethernet112": "100000"
+}
+Breakout process got successfully completed.
+Please note loaded setting will be lost after system reboot. To preserve setting, run `config save`.
+exit 0
+### after join 17:49:22
+## CONFIG_DB
+PORT|Ethernet112 {'alias': 'Eth29', 'lanes': '113,114,115,116', 'speed': '100000'}
+BREAKOUT_CFG|Ethernet112 {'brkout_mode': '1x100G[40G]'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.250|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet112 {'port': 'Ethernet112'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet113 {'port': 'Ethernet113'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet114 {'port': 'Ethernet114'}
+L2MC_STATIC_MEMBER|Vlan4094|239.255.255.253|Ethernet115 {'port': 'Ethernet115'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has ['Ethernet112'] of 32
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has ['Ethernet112'] of 32
+## APPL_DB
+PORT_TABLE:Ethernet112
+## STATE_DB
+PORT_TABLE|Ethernet112
+## ASIC_DB
+port oid Ethernet112 oid:0x1000000000a7e
+port oid Ethernet113 None
+port oid Ethernet114 None
+port oid Ethernet115 None
+asic vlan members on the cage's bridge ports: 0
+asic l2mc group members on the cage's bridge ports: 0 of 5
+### the joined port into Vlan4094 and out: refused?
+Error: Batch delete failed: Port Ethernet112 cannot be removed from Vlan4094. Please remove all associated static Layer 2 multicast group entries first.
+#
+# == 5. syslog (local time, MST) during the run: ConfigMgmt's deletions and
+# == orchagent's L2MC and bridge-port lines; l2mcmgrd sent no static entry
+# == (no L2MCD_CFG:STATIC line: every port was down)
+2026 Nov 15 10:48:25.593092 host-1 INFO ConfigMgmt: delPorts ports:['Ethernet112'] force:True
+2026 Nov 15 10:48:25.597227 host-1 INFO ConfigMgmt: Deleting /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet112']/port
+2026 Nov 15 10:48:25.600464 host-1 INFO ConfigMgmt: Deleting Port: Ethernet112
+2026 Nov 15 10:48:26.055326 host-1 WARNING swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: VLAN Vlan4094 not found in IPv6 mrouter ports map
+2026 Nov 15 10:48:26.091808 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet112 from default 1Q bridge
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.187, port Ethernet113
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan4094 op DEL
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.60, port Ethernet113
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan4094 op DEL
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 233.89.188.1, port Ethernet113
+2026 Nov 15 10:48:28.115114 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan4094 op DEL
+2026 Nov 15 10:48:28.115195 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.254.127.63, port Ethernet113
+2026 Nov 15 10:48:28.115195 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan4094 op DEL
+2026 Nov 15 10:48:28.116004 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.250, port Ethernet113
+2026 Nov 15 10:48:28.116004 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan4094 op DEL
+2026 Nov 15 10:48:49.886427 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet112 to default 1Q bridge
+2026 Nov 15 10:48:54.091592 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet113 to default 1Q bridge
+2026 Nov 15 10:48:55.302834 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet114 to default 1Q bridge
+2026 Nov 15 10:48:56.551965 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet115 to default 1Q bridge
+2026 Nov 15 10:49:12.047378 host-1 INFO ConfigMgmt: delPorts ports:['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] force:True
+2026 Nov 15 10:49:12.062706 host-1 INFO ConfigMgmt: Deleting /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet112']/port
+2026 Nov 15 10:49:12.065909 host-1 INFO ConfigMgmt: Deleting /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet113']/port
+2026 Nov 15 10:49:12.069871 host-1 INFO ConfigMgmt: Deleting /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet114']/port
+2026 Nov 15 10:49:12.072500 host-1 INFO ConfigMgmt: Deleting /sonic-vlan:sonic-vlan/VLAN_MEMBER/VLAN_MEMBER_LIST[name='Vlan4094'][port='Ethernet115']/port
+2026 Nov 15 10:49:12.075609 host-1 INFO ConfigMgmt: Deleting Port: Ethernet112
+2026 Nov 15 10:49:12.077714 host-1 INFO ConfigMgmt: Deleting Port: Ethernet113
+2026 Nov 15 10:49:12.078886 host-1 INFO ConfigMgmt: Deleting Port: Ethernet114
+2026 Nov 15 10:49:12.079470 host-1 INFO ConfigMgmt: Deleting Port: Ethernet115
+2026 Nov 15 10:49:12.602572 host-1 WARNING swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: VLAN Vlan4094 not found in IPv6 mrouter ports map
+2026 Nov 15 10:49:12.701444 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet112 from default 1Q bridge
+2026 Nov 15 10:49:13.137765 host-1 WARNING swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: VLAN Vlan4094 not found in IPv6 mrouter ports map
+2026 Nov 15 10:49:13.181038 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet113 from default 1Q bridge
+2026 Nov 15 10:49:13.181160 host-1 WARNING swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: VLAN Vlan4094 not found in IPv6 mrouter ports map
+2026 Nov 15 10:49:13.218411 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet114 from default 1Q bridge
+2026 Nov 15 10:49:13.218411 host-1 WARNING swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: VLAN Vlan4094 not found in IPv6 mrouter ports map
+2026 Nov 15 10:49:13.256763 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet115 from default 1Q bridge
+2026 Nov 15 10:49:24.041778 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet112 to default 1Q bridge
+# (59 lines "doPortTask: Cannot remove port as bridge port OID is present",
+# orchagent's retries until the VLAN member delete went through, left out)
+#
+# == 6. Restored by hand: the 21 lane rows deleted, Ethernet112 startup, mtu
+# == 1500, dhcp_rate_limit 300 (the breakout drops it, sonic.md 11.17); running
+# == CONFIG_DB identical to the snapshot before, saved config_db.json unchanged;
+# == the bridge restarted and reconciled 0 of 32 ports.
