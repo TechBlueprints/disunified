@@ -1,0 +1,948 @@
+{
+  "data": [
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "AP_CLIENT_PACKET_LOSS",
+      "id": "00000000000000000000000000000002",
+      "key": "AP_CLIENT_PACKET_LOSS",
+      "message": "device-2 is dropping packets indicating high levels of channel utilization.",
+      "message_raw": "{DEVICE} is dropping packets indicating high levels of channel utilization.",
+      "parameters": {
+        "ACTION": {
+          "id": "AP_CLIENT_PACKET_LOSS",
+          "name": "Verify a low interference channel is in use and clients have a strong signal with AirView."
+        },
+        "AVG_INTERFERENCE": {
+          "name": "1"
+        },
+        "AVG_UTILIZATION": {
+          "name": "41"
+        },
+        "CHANNEL": {
+          "name": "1"
+        },
+        "CHANNEL_WIDTH": {
+          "name": "20"
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-2",
+          "name": "device-1's device-2"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 2613,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "UAP-AC-M-Pro",
+          "model_name": "U7MP",
+          "name": "device-2",
+          "version": "6.8.2"
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_PACKET_LOSS",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/221029967"
+        },
+        "RADIO_BAND": {
+          "name": "ng"
+        },
+        "WLAN": {
+          "id": "00000000000000000000000000000001",
+          "name": "wlan-1"
+        }
+      },
+      "severity": "MEDIUM",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_WIFI",
+      "target": "DEVICE",
+      "timestamp": 1794748286794,
+      "title_raw": "AP Dropped Traffic Detected",
+      "type": "AP_PACKET_LOSS"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_STP_FLAP",
+      "id": "00000000000000000000000000000003",
+      "key": "LOG_SWITCH_PORT_STP_FLAP",
+      "message": "device-3 Port 3 is experiencing frequent STP role state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent STP role state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "INVESTIGATE_POSSIBLE_LOOP_AND_ENSURE_CORRECT_STP_PRIORITY",
+          "name": "Investigate possible network loops caused by third-party switches, redundant links, meshed APs, or IoT and Sonos devices. Set STP priorities to ensure that the core switch becomes the STP root switch."
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-3",
+          "name": "device-1's device-3"
+        },
+        "COUNT": {
+          "name": "376168",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-3",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-3 Port 3",
+          "version": "7.5.15"
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_LOOP",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/24292724428311"
+        },
+        "PORT": {
+          "id": "3",
+          "name": "3"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794737658230,
+      "title_raw": "STP State Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "AP_CHANGED_CHANNELS",
+      "id": "00000000000000000000000000000004",
+      "key": "AP_CHANGED_CHANNELS",
+      "message": "device-4 moved to channel 6 from 11.",
+      "message_raw": "{DEVICE} moved to channel {CHANNEL} from {PREVIOUS_CHANNEL}.",
+      "parameters": {
+        "CHANNEL": {
+          "id": "6",
+          "name": "6",
+          "radio_band": "ng"
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-4",
+          "name": "device-1's device-4"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 2613,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "UAP-AC-M-Pro",
+          "model_name": "U7MP",
+          "name": "device-4",
+          "version": "6.8.2"
+        },
+        "PREVIOUS_CHANNEL": {
+          "id": "11",
+          "name": "11",
+          "radio_band": "ng"
+        }
+      },
+      "severity": "LOW",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_WIFI",
+      "target": "DEVICE",
+      "timestamp": 1794737611459,
+      "title_raw": "AP Channel Change",
+      "type": "AP_CHANNEL_CHANGE"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "id": "00000000000000000000000000000005",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-5 Port 10.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-5",
+          "name": "device-1's device-5"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:04",
+          "ip": "192.0.2.4",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-5",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:04",
+          "ip": "192.0.2.4",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-5 Port 10",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "10",
+          "name": "10"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794721949802,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_UNREACHABLE",
+      "id": "00000000000000000000000000000006",
+      "key": "DEVICE_UNREACHABLE",
+      "message": "device-6 went offline.",
+      "message_raw": "{DEVICE} went offline.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-6",
+          "name": "device-1's device-6"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_DEVICE_OFFLINE",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/7258465146519"
+        },
+        "UPLINK": {
+          "id": "02:00:00:00:00:06",
+          "name": "device-1",
+          "port": "27"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": true,
+      "status": "STALED",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794713031351,
+      "title_raw": "Device Offline",
+      "type": "DEVICE_CONNECTION"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "NETWORK_LOOP_DETECTED_BY_STP",
+      "id": "00000000000000000000000000000007",
+      "key": "NETWORK_LOOP_DETECTED_BY_STP",
+      "message": "device-7 Port 49 was blocked by STP to prevent a network loop.",
+      "message_raw": "{DEVICE_WITH_PORT} was blocked by STP to prevent a network loop.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:07",
+          "ip": "192.0.2.6",
+          "model": "USW-Pro-XG-48-PoE",
+          "model_name": "USWED42",
+          "name": "device-7",
+          "version": "7.6.11"
+        },
+        "DEVICE_WITH_PORT": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:07",
+          "ip": "192.0.2.6",
+          "model": "USW-Pro-XG-48-PoE",
+          "model_name": "USWED42",
+          "name": "device-7 Port 49",
+          "version": "7.6.11"
+        },
+        "DOWNLINK_MACS": {
+          "id": "02:00:00:00:00:07",
+          "list_values": []
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_LOOP",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/24292724428311"
+        },
+        "PORT": {
+          "id": "49",
+          "name": "49"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": true,
+      "status": "NEW",
+      "subcategory": "SYSTEM_NETWORK",
+      "target": "DEVICE_WITH_PORT",
+      "timestamp": 1794712136028,
+      "title_raw": "STP Port Blocked",
+      "type": "SWITCH_ISSUE"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_RECONNECTED",
+      "id": "00000000000000000000000000000008",
+      "key": "DEVICE_RECONNECTED",
+      "message": "device-6 has reconnected.",
+      "message_raw": "{DEVICE} has reconnected.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-6",
+          "name": "device-1's device-6"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "DURATION": {
+          "id": "9654",
+          "name": "2h 40m",
+          "not_actionable": true
+        },
+        "UPLINK": {
+          "id": "02:00:00:00:00:06",
+          "name": "device-1",
+          "port": "27"
+        }
+      },
+      "severity": "LOW",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794711786246,
+      "title_raw": "Device Reconnected",
+      "type": "DEVICE_CONNECTION"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "BPDU_GUARD_TRIGGERED",
+      "id": "00000000000000000000000000000009",
+      "key": "BPDU_GUARD_TRIGGERED",
+      "message": "UniFi disabled device-6 Port 17 because it detected a network loop. Fix the loop, then re-enable the port.",
+      "message_raw": "UniFi disabled {DEVICE_WITH_PORT} because it detected a network loop. Fix the loop, then re-enable the port.",
+      "parameters": {
+        "ACTION": {
+          "id": "ADDRESS_THE_LOOP",
+          "name": "Address the loop then re-enable the port."
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6 Port 17",
+          "version": "4.0.1"
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_LOOP",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/24292724428311"
+        },
+        "PORT": {
+          "name": "17"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "SYSTEM_NETWORK",
+      "target": "DEVICE_WITH_PORT",
+      "timestamp": 1794705600183,
+      "title_raw": "Loop Protection Disabled a Port",
+      "type": "SWITCH_ISSUE"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "NETWORK_LOOP_DETECTED_BY_KEEPALIVE",
+      "id": "0000000000000000000000000000000a",
+      "key": "NETWORK_LOOP_DETECTED_BY_KEEPALIVE",
+      "message": "device-8 Port 5 was disabled by Loop Protection to prevent a network loop.",
+      "message_raw": "{DEVICE_WITH_PORT} was disabled by Loop Protection to prevent a network loop.",
+      "parameters": {
+        "ACTION": {
+          "id": "ADDRESS_THE_LOOP",
+          "name": "Address the loop then re-enable the port."
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:08",
+          "ip": "192.0.2.7",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-8",
+          "version": "7.4.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:08",
+          "ip": "192.0.2.7",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-8 Port 5",
+          "version": "7.4.1"
+        },
+        "DOWNLINK_MACS": {
+          "id": "02:00:00:00:00:08",
+          "list_values": []
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_LOOP",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/24292724428311"
+        },
+        "PORT": {
+          "id": "5",
+          "name": "5"
+        }
+      },
+      "severity": "VERY_HIGH",
+      "show_on_dashboard": true,
+      "status": "STALED",
+      "subcategory": "SYSTEM_NETWORK",
+      "target": "DEVICE_WITH_PORT",
+      "timestamp": 1794702716998,
+      "title_raw": "Loop Protection Triggered",
+      "type": "SWITCH_ISSUE"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_ADOPTED",
+      "id": "0000000000000000000000000000000b",
+      "key": "DEVICE_ADOPTED",
+      "message": "person-1 adopted device-8.",
+      "message_raw": "{USER} adopted {DEVICE}.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-8",
+          "name": "device-1's device-8"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:08",
+          "ip": "192.0.2.7",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-8",
+          "version": "7.4.1"
+        },
+        "USER": {
+          "id": "person-1",
+          "name": "person-1"
+        }
+      },
+      "severity": "LOW",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794701954663,
+      "title_raw": "Device Adopted",
+      "type": "DEVICE_DISCOVERY"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "LOG_SWITCH_PORT_LINK_FLAP",
+      "id": "0000000000000000000000000000000c",
+      "key": "LOG_SWITCH_PORT_LINK_FLAP",
+      "message": "device-6 Port 17 is experiencing frequent link state changes.",
+      "message_raw": "{DEVICE_WITH_PORT} is experiencing frequent link state changes.",
+      "parameters": {
+        "ACTION": {
+          "id": "VERIFY_LINK_SPEED_AND_CHECK_CABLE_DAMAGE",
+          "name": "Verify that the Link Speed configuration matches on both sides and check for damaged cables or SFP modules."
+        },
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-6",
+          "name": "device-1's device-6"
+        },
+        "COUNT": {
+          "name": "123",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6 Port 17",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "17",
+          "name": "17"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794701954302,
+      "title_raw": "Port Link Flapping",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_DISCOVERED",
+      "id": "0000000000000000000000000000000d",
+      "key": "DEVICE_DISCOVERED",
+      "message": "device-8 is ready for adoption.",
+      "message_raw": "{DEVICE} is ready for adoption.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-8",
+          "name": "device-1's device-8"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 4346,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:08",
+          "ip": "192.0.2.7",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-8",
+          "version": "7.4.1"
+        }
+      },
+      "severity": "LOW",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794701912582,
+      "title_raw": "Device Ready for Adoption",
+      "type": "DEVICE_DISCOVERY"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "ROGUE_DHCP_SERVER_DETECTED",
+      "id": "0000000000000000000000000000000e",
+      "key": "ROGUE_DHCP_SERVER_DETECTED",
+      "message": "Rogue DHCP server detected on device-9 Port 1.",
+      "message_raw": "Rogue DHCP server detected on {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-9",
+          "name": "device-1's device-9"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:09",
+          "ip": "192.0.2.8",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "device-9",
+          "version": "4.26.14"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:09",
+          "ip": "192.0.2.8",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "device-9 Port 1",
+          "version": "4.26.14"
+        },
+        "PORT": {
+          "id": "1",
+          "name": "1"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794701202175,
+      "title_raw": "Rogue DHCP Server Detected",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "PORT_UNICAST_STORM",
+      "id": "0000000000000000000000000000000f",
+      "key": "PORT_UNICAST_STORM",
+      "message": "Incoming unknown unicast packets on device-9 Port 1 exceed the Storm Control threshold.",
+      "message_raw": "Incoming unknown unicast packets on {DEVICE_WITH_PORT} exceed the Storm Control threshold.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-9",
+          "name": "device-1's device-9"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:09",
+          "ip": "192.0.2.8",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "device-9",
+          "version": "4.26.14"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:09",
+          "ip": "192.0.2.8",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "device-9 Port 1",
+          "version": "4.26.14"
+        },
+        "PORT": {
+          "id": "1",
+          "name": "1"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794698759996,
+      "title_raw": "Unicast Storm Detected",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_RECONNECTED_SEVERAL_TIMES",
+      "id": "00000000000000000000000000000010",
+      "key": "DEVICE_RECONNECTED_SEVERAL_TIMES",
+      "message": "device-6 has reconnected multiple times in the past 24 hours.",
+      "message_raw": "{DEVICE} has reconnected multiple times in the past 24 hours.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-6",
+          "name": "device-1's device-6"
+        },
+        "COUNT": {
+          "id": "2",
+          "name": "2",
+          "not_actionable": true
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "DURATION": {
+          "id": "1073",
+          "name": "17m 53s",
+          "not_actionable": true
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_DEVICE_OFFLINE",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/7258465146519"
+        },
+        "UPLINK": {
+          "id": "02:00:00:00:00:06",
+          "name": "device-1",
+          "port": "27"
+        }
+      },
+      "severity": "MEDIUM",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794678964256,
+      "title_raw": "Multiple Device Reconnections",
+      "type": "DEVICE_CONNECTION"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "MULTIPLE_DEVICES_UNREACHABLE",
+      "id": "00000000000000000000000000000011",
+      "key": "DEVICE_UNREACHABLE_WITH_DOWNLINKS_V2",
+      "message": "Multiple devices went offline.",
+      "message_raw": "Multiple devices went offline.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-10",
+          "name": "device-1's device-10"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 3348,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:0a",
+          "ip": "192.0.2.9",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-10",
+          "version": "7.5.15"
+        },
+        "DEVICES": {
+          "devices": [
+            {
+              "ip": "192.0.2.9",
+              "mac": "02:00:00:00:00:0a",
+              "model": "US-16-XG",
+              "name": "device-10",
+              "version": "7.5.15"
+            },
+            {
+              "ip": "192.0.2.10",
+              "mac": "02:00:00:00:00:0b",
+              "model": "UPS-2U-Pro-US",
+              "name": "device-11",
+              "version": "1.6.9"
+            },
+            {
+              "ip": "192.0.2.11",
+              "mac": "02:00:00:00:00:0c",
+              "model": "USP-PDU-Pro",
+              "name": "device-12",
+              "version": "7.2.123"
+            },
+            {
+              "ip": "192.0.2.8",
+              "mac": "02:00:00:00:00:09",
+              "model": "USW-Leaf",
+              "name": "device-9",
+              "version": "4.26.14"
+            }
+          ]
+        },
+        "LEARN_MORE": {
+          "id": "LEARN_MORE_ABOUT_DEVICE_OFFLINE",
+          "name": "Learn more",
+          "url": "https://help.ui.com/hc/en-us/articles/7258465146519"
+        }
+      },
+      "severity": "VERY_HIGH",
+      "show_on_dashboard": true,
+      "status": "NEW",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794671211076,
+      "title_raw": "Multiple Devices Offline",
+      "type": "DEVICE_CONNECTION"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "PORT_DHCP_STORM",
+      "id": "00000000000000000000000000000012",
+      "key": "PORT_DHCP_STORM",
+      "message": "Incoming DHCP packets exceed 300/sec on device-6 Port 1.",
+      "message_raw": "Incoming DHCP packets exceed 300/sec on {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-6",
+          "name": "device-1's device-6"
+        },
+        "DEVICE": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:05",
+          "ip": "192.0.2.5",
+          "model": "ECS-Core",
+          "model_name": "USWF07D",
+          "name": "device-6 Port 1",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "1",
+          "name": "1"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794620031211,
+      "title_raw": "Excessive DHCP Packets Detected",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_DEVICES",
+      "event": "DEVICE_RECONNECTED_WITH_DOWNLINKS",
+      "id": "00000000000000000000000000000013",
+      "key": "DEVICE_RECONNECTED_WITH_DOWNLINKS",
+      "message": "Multiple devices have reconnected.",
+      "message_raw": "Multiple devices have reconnected.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "device-1",
+          "name": "device-1"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "device-1's device-13",
+          "name": "device-1's device-13"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 4452,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:0d",
+          "ip": "192.0.2.12",
+          "model": "USW-Pro-Aggregation",
+          "model_name": "USAGGPRO",
+          "name": "device-13",
+          "version": "7.5.15"
+        },
+        "DEVICES": {
+          "devices": [
+            {
+              "ip": "192.0.2.12",
+              "mac": "02:00:00:00:00:0d",
+              "model": "USW-Pro-Aggregation",
+              "name": "device-13",
+              "version": "7.5.15"
+            },
+            {
+              "ip": "192.0.2.13",
+              "mac": "02:00:00:00:00:0e",
+              "model": "USP-PDU-Pro",
+              "name": "device-14",
+              "version": "7.2.123"
+            },
+            {
+              "ip": "192.0.2.14",
+              "mac": "02:00:00:00:00:0f",
+              "model": "USP-PDU-Pro",
+              "name": "device-15",
+              "version": "7.2.123"
+            }
+          ]
+        }
+      },
+      "severity": "MEDIUM",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "SYSTEM_DEVICES",
+      "target": "DEVICE",
+      "timestamp": 1794615308708,
+      "title_raw": "Multiple Devices Reconnected",
+      "type": "DEVICE_CONNECTION"
+    }
+  ]
+}

@@ -25,6 +25,8 @@ jobs:
         run: ./scripts/check-site-info.sh
       - name: The checker's own rules (e-mail addresses, SSH key comments)
         run: ./scripts/check-site-info_test.sh
+      - name: The controller scrub on real alert captures (names in messages, ids)
+        run: python3 scripts/sanitize-controller_test.py
 
   deb:
     runs-on: ubuntu-latest
