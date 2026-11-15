@@ -378,7 +378,8 @@ these is marked "not captured".
   table: 1/2/4 broadcast/multicast/unicast storm, 32 DHCP packet rate
   exceeded, 64 rogue DHCP server, 128 802.1X failed, 256 MAC locking, 512
   loop protection, 1024 DoS, 2048 PHY failure, 4096 PoE failure (the UI's
-  labels; 64 and 32 exercised). `custom_anomalies` is a different table (1/2/4
+  labels; 64 and 32 exercised; 4 and 64 raised by a real detection on the
+  Arista, 2026-11-14, `docs/drivers/arista-eos.md` §9.8). `custom_anomalies` is a different table (1/2/4
   SFP rx/tx/EEPROM ... 64 link flap ... 32768 port lock) and the controller's
   own: it computes and stores it (the ECS's inform printed on the switch has
   none; the support-bundle copies' values follow `sfp_rxfault`). The bridge

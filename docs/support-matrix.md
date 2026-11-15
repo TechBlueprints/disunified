@@ -175,31 +175,30 @@ partner's system id (`partner_system_id`) is not reported: it needs `show
 lacp neighbor` captured on 4.26.14M first. A PR needs that capture and a
 live aggregate's `lacp_state` in the controller's record.
 
-**Storm-control drops (2026-11-14), read path verified live, a storm
-never:** `show storm-control`'s per-type `drop` fills the port's storm
-counters, and the controller's broadcast/multicast/unicast storm bits follow
-their growth. Captured on 4.26.14M with all three types on a test port, and
-read live by a `-collect-once` with the three levels on cage 54 (counts 0).
-No frame has been dropped by storm control on this switch: the test ports
-have no link and the live links may not be touched. A PR needs a storm on a
-test port (a traffic source above the level), the capture of a growing
-`drop`, and the storm alert read from the controller's device alerts; and
-whether `clear counters` or a flap resets the count (a reset sets nothing).
+**Storm-control drops (2026-11-14), verified live for unknown unicast:**
+`show storm-control`'s per-type `drop` fills the port's storm counters, and
+the controller's broadcast/multicast/unicast storm bits follow their growth.
+On 2026-11-14 an unknown-unicast storm was made on the uplink at 0.01 % (the
+lowest level EOS keeps, about 1 Mb/s at 10G), the drop count grew (captured,
+`storm-control-drops/`), and the deployed bridge's inform raised the
+controller's "Unicast Storm Detected" alert for that port
+([`drivers/arista-eos.md`](drivers/arista-eos.md) §9.8). `clear counters`
+does not reset the count. **Untested live:** bits 1 and 2 (a broadcast or
+multicast storm above 1 Mb/s floods the whole LAN; the same code path, keyed
+by EOS's type name) and a link flap's effect on the count. A PR needs a
+host on a test port sending broadcast or multicast above the level.
 
-**Built, untested live (2026-11-07): Fan Mode** through the device's
-`fan_mode: default | quiet` (the controller keeps Fan Mode only for a
-gateway, so no switch gets it from the UI). Default is EOS's automatic
-control (`no environment fan-speed`). Quiet is `environment fan-speed
-override 30`, a fixed speed. **Checked on the switch 2026-11-14** (the
-return-day steps 1-2, [`drivers/arista-eos.md`](drivers/arista-eos.md) §8):
-the override's range on 4.26.14M is 30-100 %, so 30 % stands; 4.26.14M
-also offers `environment fan-speed minimum <30-100>`, a floor under the
-automatic control, which does not make the switch quieter while the control
-runs above it (43 % under auto that day); the auto baseline is captured.
-Still waiting: Quiet applied through the bridge, its read-back
-(`overrideFanSpeed` 30) and the temperatures under it (steps 3-7, which
-need the deployed config and a restart). A PR for another model needs its
-`show system environment cooling` under an override.
+**Fan Mode, verified live 2026-11-14** through the device's `fan_mode:
+default | quiet` (the controller keeps Fan Mode only for a gateway: on
+Network 11.0.99 the switch's Settings panel has no Fan Mode and its record
+no `sys_fan_mode`). Default is EOS's automatic control (`no environment
+fan-speed`); Quiet is `environment fan-speed override 30`, a fixed speed
+(the trays then report 39 %, against 43 % under auto). Applied through the
+deployed bridge, read back (`overrideFanSpeed` 30, captured), a Default
+round trip and back, seven hours of temperatures under Quiet (the CPU
+sensor 67.7 °C against a 90 °C alert; [`drivers/arista-eos.md`](drivers/arista-eos.md)
+§8). The switch runs Quiet. A PR for another model needs its `show system
+environment cooling` under an override and a temperature watch.
 
 **DHCP guarding (Rogue DHCP Server Detection) and rogue DHCP reporting
 (2026-11-14), claimed.** One ingress IPv4 ACL per interface,
@@ -216,12 +215,14 @@ gateway's port and switch-facing ports
 | The lists on the two test ports, rendered by the driver, committed under a timer: active in the hardware, separate ACL ids and counters per list, the read-back and a `-collect-once` reporting 0 | **live**, 2026-11-14 (§9.1, §9.6) |
 | The VLAN qualifier dropped by EOS (mask 0) and flagged "not fully supported"; one list on two ports sharing its counters; abort of a session pending its timer | **live**, 2026-11-14 (§9.1) |
 | Plan, rewrite, removal, a foreign ACL left alone, modes, attribution (lanes summed, aggregate on its first member) | fixture-tested over the live captures (`acl_test.go`, `acl_counters_test.go`) |
-| A rogue reply dropped and counted, a trusted one and ARP/IPv6 passing, the drop time of a rewrite | **untested**: needs a host cabled to a test port (§9.7) |
-| The controller's push of guard groups to this switch and the alert in the UI | **untested**: the end-to-end run after the merge (§9.7) |
+| A rogue reply dropped and counted on the right port, a trusted one and ARP/IPv6 passing, the count through a collect, the controller's "Rogue DHCP server detected" alert | **live**, 2026-11-14, on the uplink, the lists written by the driver's own code (§9.8) |
+| Binding the lists on every interface | **live**: one or two 50 ms pings lost through the uplink (§9.8); `hardware access-list update default-result permit` not tried |
+| The controller's push of guard groups to this switch | **untested**: Rogue DHCP Server Detection stays off site-wide (Clint's decision); with it off the push is `switch.dhcp_snoop.status=disabled` and nothing is written |
 | **IP ACL rules, claimed (`max_custom_ip_acls` 32) 2026-11-14**: the chip's ACL capacity measured on the test ports (one counter pool of 4095 for every list, two hash entries per counted rule, 20094 entries in five lists without an error, ACL ids 1-5 in bind order); the claim holds for every interface (72 with every cage split) carrying the guard and 32 rules, up to 22 trusted servers per port | **live** for the capacity (§9.1, `docs/fixtures/arista-eos-4.26.14M/acl-capacity/`); the rules themselves fixture- and replay-tested (`TestReplayAristaIPRulePushes`, the ECS's and the DX010's captured pushes) |
-| More lists than five at once (one per interface, up to 72) | **not measured**: subinterfaces take no ACL on the 7160 and only two ports may be changed; the per-list cost measured was linear and every table had room, nothing showed an id limit |
-| A rule matching traffic, and a rewrite's effect on a bound port | **untested**: needs a host on a test port (§9.7) |
-| Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network |
+| More lists than five at once (one per interface, up to 72) | **live**, 2026-11-14: 57 lists, 57 port ACL ids, every one active (§9.8); 72 (every cage split) not tried |
+| The end-to-end IP rule round through the controller (rule scoped to the Arista, pushed, written, deleted, removed) and a rule matching traffic | **live**, 2026-11-14 (§9.8); the round found the session-name defect fixed on branch `claude/arista-finish-60f078` (each change its own session, §9.3) |
+| A rule on a port carrying a client's traffic, a rewrite under that traffic | **untested**: needs a host on a test port |
+| Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network (the deployment keeps `exact`: detection is off, §9.7) |
 
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
