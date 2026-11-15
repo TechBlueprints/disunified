@@ -1168,6 +1168,13 @@ was restarted.
   row, an l2d run by hand. Read-only commands need no lock. **Take it
   with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
   so that a held lock refuses the write. A plain `>` replaced a held lock
-  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
+  on 2026-11-15, while a test's tables were still bound to Ethernet0.
+  **To wait, retry that write itself** every few seconds, in one loop
+  detached on the switch (`setsid nohup … &`, its output in a file you
+  watch): the lock passes from one session to the next within seconds, so
+  a poll that reads the file and writes later misses the gap, and a loop
+  under a background `ssh` outlives a dropped session -- check `pgrep` for
+  a second one before you release, or it takes the lock again after you
+  (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
