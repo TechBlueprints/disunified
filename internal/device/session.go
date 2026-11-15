@@ -472,6 +472,10 @@ type informResponse struct {
 	Cfgversion string `json:"cfgversion"`
 	Version    string `json:"version"`
 	PortIdx    int    `json:"port_idx"`
+	// Port is port-recovery's port number: the UI posts port_idx to
+	// cmd/devmgr, but the device receives {"cmd":"port-recovery","port":17}
+	// (Network 11.0.99, captured 2026-11-15).
+	Port int `json:"port"`
 	// OutletTable is relayctl's selection list: the controller names the
 	// outlets to act on, carrying only their index. Captured from Network
 	// 10.6.106 on 2026-09-21: {"cmd":"relayctl","outlet_table":[{"index":13}]}.
@@ -593,8 +597,13 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		// The UI's Re-enable, offered on a port whose alert is BPDU guard or
 		// loop protection (BPDU_GUARD_TRIGGERED,
 		// NETWORK_LOOP_DETECTED_BY_KEEPALIVE): cmd/devmgr port-recovery with
-		// the port's port_idx (docs/drivers/sonic.md §11.28).
-		return []inform.Effect{{Kind: EffectPortRecovery, Text: strconv.Itoa(r.PortIdx)}}
+		// the port's port_idx; the device's command carries it as "port"
+		// (docs/drivers/sonic.md §11.28).
+		idx := r.Port
+		if idx == 0 {
+			idx = r.PortIdx
+		}
+		return []inform.Effect{{Kind: EffectPortRecovery, Text: strconv.Itoa(idx)}}
 	case "relayctl":
 		// The UI's per-outlet Power Cycle. The controller picks the outlets and
 		// sends them as a selection list; the device is expected to open and
