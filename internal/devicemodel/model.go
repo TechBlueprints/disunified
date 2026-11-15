@@ -943,8 +943,8 @@ type Battery struct {
 type PortHealth struct {
 	LinkChanges    uint64 // link state transitions
 	STPChanges     int    // spanning-tree topology changes seen on this port
-	OpticRxAlarm   bool   // receive power outside the optic's alarm thresholds
-	OpticTxAlarm   bool   // transmit power or laser bias outside the alarm thresholds
+	OpticRxAlarm   bool   // receive fault: the module's loss of signal (sonic), or a receive power outside its alarm thresholds (arista-eos)
+	OpticTxAlarm   bool   // transmit fault: the module's own flag (sonic), or a transmit power or laser bias outside the alarm thresholds (arista-eos)
 	HasFECCounters bool   // FECCorrected/FECUncorrected are populated
 	FECCorrected   uint64 // FEC corrected codewords
 	FECUncorrected uint64 // FEC uncorrected codewords (each one is a lost frame)
