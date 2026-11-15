@@ -336,3 +336,81 @@ Error: Batch delete failed: Port Ethernet112 cannot be removed from Vlan4094. Pl
 # == 1500, dhcp_rate_limit 300 (the breakout drops it, sonic.md 11.17); running
 # == CONFIG_DB identical to the snapshot before, saved config_db.json unchanged;
 # == the bridge restarted and reconciled 0 of 32 ports.
+#
+# == 7. The fix live (18:53-19:00 UTC): bridge 0.0.0+20261115.3d2d07e installed from
+# == /tmp under the lock, port 29's override changed through the controller's
+# == REST as the UI saves it: 25G (manual), native DMZ-FutureUse (VLAN 4000),
+# == native Default, 100G, then the pre-test override (auto). The bridge's
+# == journal (long lines cut at 600 characters):
+Nov 15 11:54:23 host-1 disunified[2072469]: 2026/11/15 11:54:23.468434 sonic apply (1 ports): sudo python3 <ConfigDBConnector> disunified-l2mc (static groups: 7 rows, 0 members set, 7 removed) ; sudo config interface breakout -f -y Ethernet112 '4x25G[10G]' </dev/null ; sudo config interface startup Ethernet112 ; sudo config interface mtu Ethernet112 1500 ; sudo config interface startup Ethernet113 ; sudo config interface mtu Ethernet113 1500 ; sudo config interface startup Ethernet114 ; sudo config interface mtu Ethernet114 1500 ; sudo config interface startup Ethernet115 ; sudo conf
+Nov 15 11:54:45 host-1 disunified[2072469]: 2026/11/15 11:54:45.096255 sonic apply igmp: static groups: 7 rows, 28 members set, 0 removed; sudo config save -y
+Nov 15 11:54:47 host-1 disunified[2072469]: [dx010] 2026/11/15 11:54:47.207458 [02:00:00:00:00:01] applied system_cfg a40d51a8a711b3cf to the switch: 1 of 32 ports changed
+Nov 15 11:55:19 host-1 disunified[2072469]: 2026/11/15 11:55:19.268029 sonic apply (1 ports): sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|224.0.1.129|Ethernet112' ; sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|224.0.1.1|Ethernet112' ; sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|224.0.1.22|Ethernet112' ; sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|224.0.1.35|Ethernet112' ; sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|224.0.1.41|Ethernet112' ; sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|Vlan4094|
+Nov 15 11:55:32 host-1 disunified[2072469]: 2026/11/15 11:55:32.005766 sonic apply igmp: static groups: 7 rows, 0 members set, 0 removed; sudo config save -y
+Nov 15 11:55:34 host-1 disunified[2072469]: [dx010] 2026/11/15 11:55:34.096982 [02:00:00:00:00:01] applied system_cfg 4d7b28c22a143891 to the switch: 1 of 32 ports changed
+Nov 15 11:56:05 host-1 disunified[2072469]: 2026/11/15 11:56:05.767111 sonic apply (1 ports): sudo config vlan member del 4000 Ethernet112 ; sudo config vlan member add -u 4094 Ethernet112 ; sudo config vlan member del 4000 Ethernet113 ; sudo config 
+Nov 15 11:56:17 host-1 disunified[2072469]: 2026/11/15 11:56:17.070087 sonic apply igmp: static groups: 7 rows, 28 members set, 0 removed; sudo config save -y
+Nov 15 11:56:19 host-1 disunified[2072469]: [dx010] 2026/11/15 11:56:19.338394 [02:00:00:00:00:01] applied system_cfg 0816db2c74b30f90 to the switch: 1 of 32 ports changed
+since 2026-11-15 11:57:59
+Nov 15 11:58:36 host-1 disunified[2072469]: 2026/11/15 11:58:36.764986 sonic apply (1 ports): sudo python3 <ConfigDBConnector> disunified-l2mc (static groups: 7 rows, 0 members set, 28 removed) ; sudo config interface breakout -f -y Ethernet112 '1x100G[40G]' </dev/null ; sudo config interface startup Ethernet112 ; sudo config interface mtu Ethernet112 1500 ; sudo config vlan member add -u 4094 Ethernet112 ; sudo config save -y
+Nov 15 11:58:47 host-1 disunified[2072469]: 2026/11/15 11:58:47.594582 sonic apply igmp: static groups: 7 rows, 7 members set, 0 removed; sudo config save -y
+Nov 15 11:58:49 host-1 disunified[2072469]: [dx010] 2026/11/15 11:58:49.757568 [02:00:00:00:00:01] applied system_cfg 9110cf200ff6fb7d to the switch: 1 of 32 ports changed
+# the restoring push: applied system_cfg ...: 0 of 32 ports changed
+# after the split (every lane in Vlan4094):
+VLAN_MEMBER|Vlan4094|Ethernet112 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet113 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet114 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4094|Ethernet115 {'tagging_mode': 'untagged'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has ['Ethernet112', 'Ethernet113', 'Ethernet114', 'Ethernet115'] of 35
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet112
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet113
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet114
+VLAN_MEMBER_TABLE:Vlan4094:Ethernet115
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet112
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet113
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet114
+VLAN_MEMBER_TABLE|Vlan4094|Ethernet115
+bridge port Ethernet112 oid:0x3a000000000d02 admin true
+bridge port Ethernet113 oid:0x3a000000000d0f admin true
+bridge port Ethernet114 oid:0x3a000000000d1c admin true
+bridge port Ethernet115 oid:0x3a000000000d29 admin true
+asic vlan members on the cage's bridge ports: 4
+asic l2mc group members on the cage's bridge ports: 0 of 5
+# L2MC_STATIC_MEMBER rows naming Ethernet112-115: 28
+# after the move to VLAN 4000:
+VLAN_MEMBER|Vlan4000|Ethernet112 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4000|Ethernet113 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4000|Ethernet114 {'tagging_mode': 'untagged'}
+VLAN_MEMBER|Vlan4000|Ethernet115 {'tagging_mode': 'untagged'}
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.1 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.129 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.22 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.35 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|224.0.1.41 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.250 static-members@ has [] of 31
+L2MC_STATIC_GROUP|Vlan4094|239.255.255.253 static-members@ has [] of 31
+VLAN_MEMBER_TABLE:Vlan4000:Ethernet112
+VLAN_MEMBER_TABLE:Vlan4000:Ethernet113
+VLAN_MEMBER_TABLE:Vlan4000:Ethernet114
+VLAN_MEMBER_TABLE:Vlan4000:Ethernet115
+VLAN_MEMBER_TABLE|Vlan4000|Ethernet112
+VLAN_MEMBER_TABLE|Vlan4000|Ethernet113
+VLAN_MEMBER_TABLE|Vlan4000|Ethernet114
+VLAN_MEMBER_TABLE|Vlan4000|Ethernet115
+bridge port Ethernet112 oid:0x3a000000000d36 admin true
+bridge port Ethernet113 oid:0x3a000000000d43 admin true
+bridge port Ethernet114 oid:0x3a000000000d50 admin true
+bridge port Ethernet115 oid:0x3a000000000d5d admin true
+asic vlan members on the cage's bridge ports: 4
+asic l2mc group members on the cage's bridge ports: 0 of 5
+# L2MC_STATIC_MEMBER rows naming Ethernet112-115: 0
+# == 8. After: the deployed build reinstalled from /host/disunified; the breakout's
+# == lost PORT|Ethernet112 dhcp_rate_limit 300 written back and saved; running and
+# == saved CONFIG_DB identical to the snapshot, l2.json identical, the
+# == controller's 32 port overrides identical to the copy before.

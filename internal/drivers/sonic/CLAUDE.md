@@ -647,7 +647,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   CLI's bookkeeping, kept in step. **The CLI refuses `vlan member del` of a
   port a static group names in that VLAN**, so the port plan deletes those
   rows first (`vlanMembers`), and `ApplyPorts` re-runs `applyIGMP` after
-  the batch; the FixtureRunner models the refusal. `config vlan del` is
+  the batch; the FixtureRunner models the refusal. **A breakout keeps the
+  cage's L2MC rows** (§11.25.3, live 2026-11-15): the kit's sonic-buildimage
+  0010 made every interface in the snooping YANG a string, so `-f` sees no
+  dependency; the old port's rows become the new port's of the same name
+  and a vanished lane's name nothing. The batch takes them out before the
+  breakout (`l2mcUnbind`, one `python3 -c ... disunified-l2mc` line) and
+  `applyIGMP` writes the new ports' after; the FixtureRunner's
+  `SavedDangling` catches a save that writes one. `config vlan del` is
   refused while snooping is on (the driver never deletes a VLAN). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
