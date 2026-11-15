@@ -266,9 +266,10 @@ New findings, outside package A's files, not fixed:
   informs carry 32 characters where the real ones had 16: a scrub that
   changes a length, as the serial's did. Not rewritten (§4.4's rule).
 
-Not testable without a live device or controller: that the controller and
-its UI take the string readings as they take the ECS's (the readings on a
-port's SFP tab), and how a bias of 10 mA or more displays; the scrubbers
+Not testable without a live device or controller (since checked, §8: the
+SFP tab shows the string readings as it shows a real optic's, a bias near
+39 mA included): that the controller and its UI take the string readings
+as they take the ECS's, and how a bias of 10 mA or more displays; the scrubbers
 on a new raw capture (each was run on throwaway input; the Podman and SONiC ones also over
 their committed captures, with the same output as before the change).
 
@@ -553,7 +554,16 @@ next day):
   (`4.26.14M` there now, beside `4.26.14`). The device re-provisioned once
   and was connected again within about a minute.
 - The stored device object holds the optic readings as strings
-  (`"3.317"`, `"-2.97"`). The port's SFP tab in the UI was not looked at.
+  (`"3.317"`, `"-2.97"`). **The SFP tab shows them as a real optic's**
+  (Network 11.0.99, 2026-11-15, read-only): the DX010's uplink optic reads
+  29.309℃, 0.61 dBm out, -3.33 dBm in, 3.318V, 39.252 mA, and the Arista's
+  down CWDM4 in port 49 35.852℃, 0.24 dBm, -30 dBm (no light), 3.316V,
+  39.958 mA -- the same form as the site's real switches' optics on the same
+  page (`44.128℃`, `-2.55 dBm`, `3.301V`, `8.99 mA`; the ECS's whole-number
+  `46℃`, `3V`, `6 mA`). A direct-attach cable without monitoring (the
+  Arista's port 53) shows `-` in every reading, as the real switches' DACs
+  do. No bias of 10 mA or more was on hand besides these ~39 mA, which
+  display as sent.
 
 ## 9. Network 11 (2026-11-13)
 
@@ -631,9 +641,16 @@ query, and the bridges' state files).
   through it from an adopted start; each reply writes a reconcile's writes
   plus its own change. No `cmd` (locate or other) reached any bridge after
   the upgrade (the container's reply logs and the DX010's were read), so
-  there is none to replay. The DX010's pushes since the upgrade (its alert
-  tests) are in its on-switch log and not made a fixture: its replay would
-  need a SONiC capture of the same day.
+  there is none to replay. **The DX010 since 2026-11-15:**
+  `replies-dx010.ndjson` is its on-switch reply log over the live runs of
+  that morning (an unknown-unicast storm level set and removed in the UI,
+  a routed aggregate made and removed), with the push current before them
+  and the REST restore after, scrubbed with its addresses seeded from the
+  capture of the switch taken the same morning
+  (`sonic-igmp-202511.20261115-6c8eb1cf7/collect-net11.txt`).
+  `TestReplaySonicDX010Network11` drives the sonic driver through it: each
+  push writes what the deployed bridge wrote live, every other record
+  nothing.
 - **Alerts:** `scripts/sanitize-controller.py` scrubs the v2
   `system-log/device-alert` answer itself now (names inside `message`,
   composite names, ids that are names or MACs), checked over 30 days of

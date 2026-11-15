@@ -5285,11 +5285,36 @@ the six pushes over `collect-l3.txt`):
   The DX010's port overrides equal their pre-test copy, and
   `config_db.json` holds no trace. Ethernet0 stayed up throughout.
 
+**Re-captured on Network 11.0.99 (2026-11-15 17:43-17:47 UTC, main
+f3d3572, under the test lock).** Routing + Aggregating on empty cage 15 from
+the port editor; the UI put port 16 in the aggregate by itself (Aggregate
+Ports: Port 15, Port 16) and offered a free /30 (set to the earlier run's).
+The push is 10.6.109's in shape: `switch.routing_interface.2.type=lag`,
+`lag=15`, port 15 `opmode=aggregate` and `lag=1` with no VLAN keys, and
+**no `switch.port.16.*` key at all** (not even its name). The record shows
+the membership only in the first member's override (`op_mode
+routed_aggregate`, `aggregate_members [15, 16]`, `lag_idx 1`; port 16's own
+override was dropped) and in the port table (port 16 `aggregated_by 15`).
+So a UniFi switch still gets a one-member aggregate from this push. The
+deployed bridge did as on 10.6.109: the transit VLAN and its address, then
+PortChannel1 with Ethernet56 alone (Ethernet60 stayed in Vlan4094), then the
+aggregate's address; back to Switching took the addresses, the member and
+the PortChannel out and returned Ethernet56 to Vlan4094 with its seven L2MC
+rows. **Vlan4040 stays behind** when the controller removes the transit
+with the last routed network: `EnsureVLANs` only creates (the same was
+deleted by hand after the 2026-11-07 and 2026-11-08 runs; this time too,
+`config vlan del 4040`). Leaving Routing + Aggregating, the UI edits both
+former members at once with the first's settings (its Tagged VLAN
+Management back to Allow All, port 16 renamed); both overrides were put
+back on their pre-test copy through REST. The run is replayed in
+`TestReplaySonicDX010Network11` (`controller-11.0.99/replies-dx010.ndjson`
+over `sonic-igmp-202511.20261115-6c8eb1cf7/collect-net11.txt`).
+
 **Not proven live:** traffic over a routed port, since the test cages have
 no link (rack day). The subnet's connected route, which SONiC installs when
 the port comes up. An OSPF adjacency or a static route over a routed port.
 A routed aggregate of more than one member: the controller pushes only the
-first.
+first (10.6.109 and 11.0.99).
 
 ### 11.17 DHCP packet rate (anomaly 32): counted by disunified-l2d (2026-11-14)
 
@@ -5449,11 +5474,31 @@ CoPP cap that lets a count pass it. A flood test on a port other than the
 uplink, and a CPU reading of l2d at the full 600/s, are not planned (no
 other cage is cabled; a loopback cage would loop the VLAN).
 
-**Not exercised:** the alert raised in
-the controller (the deployed bridge does not read the table yet: it needs
-this branch deployed), and l2d running the detector as a service (the
-harness ran the class alone; the service path is `sync` -> `configure`
-every 2 s and the main loop's `select`, fixture-tested only).
+**Through the deployed build (2026-11-15 17:33 UTC, main f3d3572 on
+igmp-202511.20261115-6c8eb1cf7, Network 11.0.99, under the test lock).**
+The same burst as above, 400 BOOTREQUESTs a second for 5 s from a LAN host
+to the switch's own address, with the installed l2d running the detector as
+a service (its `queue3_group1` and `dhcp_relay` CoPP rows in CONFIG_DB
+before the burst): l2d logged `dhcp rate: Ethernet0 received 401 DHCP
+requests in one second (threshold 300)`, STATE_DB
+`DUI_DHCP_RATE_TABLE|Ethernet0` read `over 397`, `peak 401`, and the first
+inform after it carried bit 32 on port 1. The controller raised
+`PORT_DHCP_STORM` at that inform's time, "Incoming DHCP packets exceed
+300/sec on <switch> Port 1." (severity HIGH, title "Excessive DHCP Packets
+Detected"; read from `system-log/device-alert`), and port 1's stats drawer
+showed Broadcasts & Discovery "Degraded -- Excessive DHCP Packets Detected"
+with the alert in its activity log. The next inform, with the count no
+longer growing, carried no bit. Nothing to restore: the CoPP rows are l2d's
+standing ones. One finding on the way: the record dir's `payload-last.json`
+showed `anomalies 0` for the very inform that raised the alert. The loop
+built the payload a second time for that file after `EncodeInform` had
+moved the per-port history forward, so the copy never showed a growth bit
+(or a byte rate); it is written from the encoded payload now
+(`Session.LastPayload`, `TestLastPayloadKeepsTheSentAnomalies`). The wire
+was right throughout.
+
+**Not exercised:** a flood on a port other than the uplink (Clint's limit
+above).
 
 ### 11.18 Switch-detected anomalies: PHY failure, MAC locking, 802.1X, DoS (2026-11-14)
 
@@ -6746,22 +6791,37 @@ Not exercised:
 - a forwarding port with other VLAN members (the flood went nowhere);
 - frame sizes other than 64 bytes;
 - a rate high enough to reach the CoPP cap;
-- storm control pushed from the UI with the detection running;
+- storm control pushed from the UI with the detection running (done
+  through the deployed build 2026-11-15, below; no storm);
 - the operator's own sFlow;
 - a breakout of a sampled cage;
 - split cages and PortChannel members;
 - **the controller's "Incoming unknown unicast packets ... exceed the
-  Storm Control threshold" alert**, which needs this branch's bridge
-  deployed (its l2d and collector).
+  Storm Control threshold" alert**: the build is deployed, the alert
+  needs a storm (below).
 
-With it deployed, a UI unknown-unicast level on an empty test cage
-should show these in the bridge's log and on the switch:
-- `sonic apply ... storm-control add ... unknown-unicast`;
-- l2d's `sampling <port> at 1:<rate>`;
-- `FEATURE|sflow` enabled;
-- with no traffic, no storm.
+**Storm control from the UI through the deployed build (2026-11-15
+17:40-17:42 UTC, main f3d3572, Network 11.0.99, under the test lock).**
+Port 16 (Ethernet60, an empty cage) in the port editor: Advanced Manual,
+Storm Control, Unknown Unicast 1 %. The push carried
+`switch.port.16.stormctrl.{status=enabled,type=level,ucast=1}` and nothing
+else new; the bridge ran `sudo config interface storm-control add
+Ethernet60 unknown-unicast 1000000`, and 3 s later l2d logged `sampling
+Ethernet60 at 1:78125 for unknown unicast`, `sflow feature on for
+unknown-unicast sampling` and `reading psample samples`: `FEATURE|sflow`
+`state enabled`, CONFIG_DB `SFLOW|global`, `SFLOW_SESSION|all` and
+`SFLOW_SESSION|Ethernet60`, and `/etc/sonic/disunified/l2d-sflow` present.
+With no traffic, no storm. Removing the level (Storm Control off, Advanced
+back to Auto) pushed the three keys away; the bridge ran `storm-control del
+Ethernet60 unknown-unicast`, l2d logged `unknown-unicast sampling stopped,
+sflow feature off`, and `FEATURE|sflow` was `disabled` again with no
+`SFLOW*` row, no `PORT_STORM_CONTROL` row and no marker. The UI left the
+port's override expanded with every default; it was put back on its
+pre-test copy through REST. Both pushes are replayed in
+`TestReplaySonicDX010Network11`.
 
-A storm needs a source above the level: UniFi's lowest, 1 % of 100G, is
+Still not exercised: a storm against the level. A storm needs a source
+above the level: UniFi's lowest, 1 % of 100G, is
 far above what the CPU can send. A PR for the alert needs a cabled
 source on a test port in a VLAN of its own and the alert read from the
 controller's device alerts.
