@@ -154,6 +154,9 @@ class FakeDB(object):
     def stp_ports_in_asic(self):
         return len(ports) * len(vids)
 
+    def asic_stp_ports(self):
+        return {}  # no interface outside Bridge holds a chip STP port here
+
     def keys(self, conn, pattern):
         return []
 

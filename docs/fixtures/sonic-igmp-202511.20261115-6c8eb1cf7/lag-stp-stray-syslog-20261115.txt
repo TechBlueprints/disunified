@@ -1,0 +1,171 @@
+# syslog excerpt (/var/log/syslog*, hostname scrubbed, FDB event lines left out) of the DX010 on 2026-11-15, docs/drivers/sonic.md 11.34:
+# 12:01:29-31 a looped empty cage (Ethernet48) leaving its last VLAN; 13:38:43-51 Ethernet0 and Ethernet4 leaving Vlan4094 to join PortChannel1
+# (the controller's LACP push); 15:10:12-15 an l2d restart (a deploy) with Ethernet0's stray STP port still in Vlan4094's instance.
+2026 Nov 15 12:01:30.561137 host-1 INFO disunified-l2d[2066880]: Ethernet48: blocking -> disabled
+2026 Nov 15 12:01:30.563194 host-1 INFO kernel: [52019.997986] Ethernet48: left allmulticast mode
+2026 Nov 15 12:01:30.563550 host-1 INFO kernel: [52019.998003] Ethernet48: left promiscuous mode
+2026 Nov 15 12:01:30.563556 host-1 INFO kernel: [52019.998146] Bridge: port 19(Ethernet48) entered disabled state
+2026 Nov 15 12:01:30.608016 host-1 INFO disunified-l2d[2066880]: topology change on Ethernet48: FDB flushed in 11 VLANs
+2026 Nov 15 12:01:30.615524 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet48 from VLAN Vlan4094 lid:ffe vmid:270000000005f3
+2026 Nov 15 12:01:30.618038 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet48
+2026 Nov 15 12:01:30.663441 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+2026 Nov 15 12:01:30.876627 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+2026 Nov 15 12:01:31.675543 host-1 INFO kernel: [52021.112585] Bridge: port 19(Ethernet48) entered blocking state
+2026 Nov 15 12:01:31.675578 host-1 INFO kernel: [52021.112601] Bridge: port 19(Ethernet48) entered disabled state
+2026 Nov 15 12:01:31.675583 host-1 INFO kernel: [52021.112743] Ethernet48: entered allmulticast mode
+2026 Nov 15 12:01:31.675586 host-1 INFO kernel: [52021.113027] Ethernet48: entered promiscuous mode
+2026 Nov 15 12:01:31.680283 host-1 INFO kernel: [52021.114588] Bridge: port 19(Ethernet48) entered blocking state
+2026 Nov 15 12:01:31.685340 host-1 INFO kernel: [52021.120606] Bridge: port 19(Ethernet48) entered blocking state
+2026 Nov 15 12:01:31.782085 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet48 to VLAN Vlan4000 vid:4000 pid1000000000015
+2026 Nov 15 12:01:31.785526 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4000 to port: Ethernet48
+2026 Nov 15 12:01:31.830511 host-1 INFO disunified-l2d[2066880]: settings: Ethernet48 auto edge off
+2026 Nov 15 12:01:31.902252 host-1 INFO disunified-l2d[2066880]: topology change on Ethernet48: FDB flushed in 11 VLANs
+2026 Nov 15 13:38:43.319597 host-1 INFO disunified-l2d[20176]: topology change on Ethernet0: FDB flushed in 11 VLANs
+2026 Nov 15 13:38:43.321926 host-1 INFO disunified-l2d[20176]: Ethernet0: forwarding -> disabled
+2026 Nov 15 13:38:43.322803 host-1 INFO kernel: [  945.311755] Ethernet0: left allmulticast mode
+2026 Nov 15 13:38:43.322831 host-1 INFO kernel: [  945.311768] Ethernet0: left promiscuous mode
+2026 Nov 15 13:38:43.322836 host-1 INFO kernel: [  945.311903] Bridge: port 7(Ethernet0) entered disabled state
+2026 Nov 15 13:38:43.410209 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet0 from VLAN Vlan4094 lid:ffe vmid:270000000005db
+2026 Nov 15 13:38:43.414443 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet0
+2026 Nov 15 13:38:43.556415 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet0 from default 1Q bridge
+2026 Nov 15 13:38:43.568778 host-1 ERR swss#orchagent: :- update: Failed to get port by bridge port ID 0x3a0000000005da.
+2026 Nov 15 13:38:43.605607 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet0 to default 1Q bridge
+2026 Nov 15 13:38:43.701280 host-1 ERR swss#orchagent: :- update: Failed to get port by bridge port ID 0x3a0000000005da.
+2026 Nov 15 13:38:43.707784 host-1 ERR swss#orchagent: :- update: Failed to get port by bridge port ID 0x3a0000000005da.
+2026 Nov 15 13:38:43.713338 host-1 ERR swss#orchagent: message repeated 6 times: [ :- update: Failed to get port by bridge port ID 0x3a0000000005da.]
+2026 Nov 15 13:38:43.713338 host-1 ERR swss#orchagent: :- update: Failed to get port by bridge port ID 0x3a0000000005da.
+2026 Nov 15 13:38:43.763188 host-1 ERR swss#orchagent: :- update: Failed to get port by bridge port ID 0x3a0000000005da.
+2026 Nov 15 13:38:44.923215 host-1 INFO kernel: [  946.905580] PortChannel1: Port device Ethernet0 added
+2026 Nov 15 13:38:44.938952 host-1 ERR swss#orchagent: message repeated 104 times: [ :- update: Failed to get port by bridge port ID 0x3a0000000005da.]
+2026 Nov 15 13:38:44.938952 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet0
+2026 Nov 15 13:38:44.957999 host-1 NOTICE swss#orchagent: :- addLagMember: Add member Ethernet0 to LAG PortChannel1 lid:20000000007b9 pid:1000000000011
+2026 Nov 15 13:38:44.963050 host-1 NOTICE teamd#teammgrd: :- addLagMember: Add Ethernet0 to port channel PortChannel1
+2026 Nov 15 13:38:44.968466 host-1 NOTICE swss#orchagent: :- setCollectionOnLagMember: Enable collection on LAG member Ethernet0
+2026 Nov 15 13:38:44.972077 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Enable distribution on LAG member Ethernet0
+2026 Nov 15 13:38:44.999972 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Disable distribution on LAG member Ethernet0
+2026 Nov 15 13:38:45.044769 host-1 NOTICE swss#orchagent: :- setCollectionOnLagMember: Disable collection on LAG member Ethernet0
+2026 Nov 15 13:38:46.363905 host-1 INFO kernel: [  948.346140] Ethernet4: left allmulticast mode
+2026 Nov 15 13:38:46.363945 host-1 INFO kernel: [  948.346154] Ethernet4: left promiscuous mode
+2026 Nov 15 13:38:46.363950 host-1 INFO kernel: [  948.346312] Bridge: port 18(Ethernet4) entered disabled state
+2026 Nov 15 13:38:46.387496 host-1 INFO disunified-l2d[20176]: topology change on Ethernet4: FDB flushed in 11 VLANs
+2026 Nov 15 13:38:46.391975 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet4 from VLAN Vlan4094 lid:ffe vmid:270000000005f1
+2026 Nov 15 13:38:46.395281 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet4
+2026 Nov 15 13:38:46.443419 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet4 from default 1Q bridge
+2026 Nov 15 13:38:47.871125 host-1 INFO kernel: [  949.858880] PortChannel1: Port device Ethernet4 added
+2026 Nov 15 13:38:47.894266 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet4
+2026 Nov 15 13:38:47.908696 host-1 NOTICE swss#orchagent: :- addLagMember: Add member Ethernet4 to LAG PortChannel1 lid:20000000007b9 pid:1000000000012
+2026 Nov 15 13:38:47.910783 host-1 NOTICE teamd#teammgrd: :- addLagMember: Add Ethernet4 to port channel PortChannel1
+2026 Nov 15 13:38:47.913968 host-1 NOTICE swss#orchagent: :- setCollectionOnLagMember: Enable collection on LAG member Ethernet4
+2026 Nov 15 13:38:47.920664 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Enable distribution on LAG member Ethernet4
+2026 Nov 15 13:38:47.930482 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Disable distribution on LAG member Ethernet4
+2026 Nov 15 13:38:47.952592 host-1 NOTICE swss#orchagent: :- setCollectionOnLagMember: Disable collection on LAG member Ethernet4
+2026 Nov 15 13:38:48.959165 host-1 INFO kernel: [  950.948623] Bridge: port 7(PortChannel1) entered blocking state
+2026 Nov 15 13:38:48.959192 host-1 INFO kernel: [  950.948638] Bridge: port 7(PortChannel1) entered disabled state
+2026 Nov 15 13:38:48.959196 host-1 INFO kernel: [  950.948701] PortChannel1: entered allmulticast mode
+2026 Nov 15 13:38:48.959198 host-1 INFO kernel: [  950.948708] Ethernet0: entered allmulticast mode
+2026 Nov 15 13:38:48.959202 host-1 INFO kernel: [  950.948712] Ethernet4: entered allmulticast mode
+2026 Nov 15 13:38:48.959205 host-1 INFO kernel: [  950.949290] PortChannel1: entered promiscuous mode
+2026 Nov 15 13:38:48.959206 host-1 INFO kernel: [  950.949329] Ethernet0: entered promiscuous mode
+2026 Nov 15 13:38:48.959208 host-1 INFO kernel: [  950.949421] Ethernet4: entered promiscuous mode
+2026 Nov 15 13:38:49.025564 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port PortChannel1 to default 1Q bridge
+2026 Nov 15 13:38:49.031702 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member PortChannel1 to VLAN Vlan4094 vid:4094 pid0
+2026 Nov 15 13:38:49.040808 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4094 to lag: PortChannel1
+2026 Nov 15 13:38:49.077300 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000004 in STG 4
+2026 Nov 15 13:38:49.077300 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.080005 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.080005 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000633
+2026 Nov 15 13:38:49.080005 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.082625 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 2 status 4294967295
+2026 Nov 15 13:38:49.082625 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 2 state 0 
+2026 Nov 15 13:38:49.087410 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000007 in STG 7
+2026 Nov 15 13:38:49.087410 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.087410 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.087410 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000639
+2026 Nov 15 13:38:49.087410 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.090552 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 4000 status 4294967295
+2026 Nov 15 13:38:49.090552 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 4000 state 0 
+2026 Nov 15 13:38:49.097421 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000002 in STG 2
+2026 Nov 15 13:38:49.097421 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.097853 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.097853 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x1000000000062f
+2026 Nov 15 13:38:49.097853 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.100648 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 10 status 4294967295
+2026 Nov 15 13:38:49.100648 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 10 state 0 
+2026 Nov 15 13:38:49.103880 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000003 in STG 3
+2026 Nov 15 13:38:49.104144 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.107975 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 1000 status 4294967295
+2026 Nov 15 13:38:49.107975 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 1000 state 0 
+2026 Nov 15 13:38:49.109316 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.109316 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000631
+2026 Nov 15 13:38:49.109316 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.113426 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000005 in STG 5
+2026 Nov 15 13:38:49.114893 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.117186 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 2000 status 4294967295
+2026 Nov 15 13:38:49.117186 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.117186 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 2000 state 0 
+2026 Nov 15 13:38:49.118549 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000635
+2026 Nov 15 13:38:49.118549 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.125511 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000006 in STG 6
+2026 Nov 15 13:38:49.125511 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.125511 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.125511 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000637
+2026 Nov 15 13:38:49.125511 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.126811 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 3000 status 4294967295
+2026 Nov 15 13:38:49.126811 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 3000 state 0 
+2026 Nov 15 13:38:49.130504 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000008 in STG 8
+2026 Nov 15 13:38:49.130504 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.131988 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.131988 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x1000000000063b
+2026 Nov 15 13:38:49.131988 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.133550 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 4010 status 4294967295
+2026 Nov 15 13:38:49.133550 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 4010 state 0 
+2026 Nov 15 13:38:49.136520 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000009 in STG 9
+2026 Nov 15 13:38:49.136520 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.136793 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.137440 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x1000000000063d
+2026 Nov 15 13:38:49.137440 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.140548 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 4094 status 4294967295
+2026 Nov 15 13:38:49.140548 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 4094 state 0 
+2026 Nov 15 13:38:49.141855 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e0000000a in STG 10
+2026 Nov 15 13:38:49.142451 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.143540 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.143540 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x1000000000063f
+2026 Nov 15 13:38:49.143540 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.149354 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 69 status 4294967295
+2026 Nov 15 13:38:49.149354 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 69 state 0 
+2026 Nov 15 13:38:49.150408 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e0000000b in STG 11
+2026 Nov 15 13:38:49.150932 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.153778 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.153778 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000641
+2026 Nov 15 13:38:49.153778 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.157269 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 8 status 4294967295
+2026 Nov 15 13:38:49.157269 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 8 state 0 
+2026 Nov 15 13:38:49.193459 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e0000000c in STG 12
+2026 Nov 15 13:38:49.194413 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 13:38:49.194413 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 13:38:49.194413 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x10000000000643
+2026 Nov 15 13:38:49.194413 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING
+2026 Nov 15 13:38:49.194413 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 9 status 4294967295
+2026 Nov 15 13:38:49.194413 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 9 state 0 
+2026 Nov 15 13:38:49.239699 host-1 INFO disunified-l2d[20176]: topology change on PortChannel1: FDB flushed in 11 VLANs
+2026 Nov 15 13:38:51.375340 host-1 INFO disunified-l2d[20176]: settings: PortChannel1 auto edge off
+2026 Nov 15 15:10:12.015029 host-1 INFO disunified-l2d[383499]: started
+2026 Nov 15 15:10:12.029898 host-1 INFO disunified-l2d[383499]: spanning tree on: rstp, priority 32768
+2026 Nov 15 15:10:12.394711 host-1 INFO disunified-l2d[383499]: dhcp rate: counting DHCP requests per port (threshold 300/s)
+2026 Nov 15 15:10:14.435955 host-1 INFO disunified-l2d[383499]: Vlan4000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.444945 host-1 INFO disunified-l2d[383499]: Vlan2 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.453600 host-1 INFO disunified-l2d[383499]: Vlan69 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.461073 host-1 INFO disunified-l2d[383499]: Vlan1000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.468209 host-1 INFO disunified-l2d[383499]: Vlan9 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.474877 host-1 INFO disunified-l2d[383499]: Vlan4010 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.482356 host-1 INFO disunified-l2d[383499]: Vlan10 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.490591 host-1 INFO disunified-l2d[383499]: Vlan8 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.498337 host-1 INFO disunified-l2d[383499]: Vlan2000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.515492 host-1 INFO disunified-l2d[383499]: Vlan3000 is gone: its STP instance keys dropped
+2026 Nov 15 15:10:14.550330 host-1 ERR syncd#syncd: [none] SAI_API_STP:_brcm_sai_stp_lag_member_check:1041 Error - Lag member 68 exists as STP PORT 0x0044012e00000009 in STG 9
+2026 Nov 15 15:10:14.552425 host-1 ERR swss#orchagent: :- addStpPort: Failed to add STP port PortChannel1 instance 4094 status 4294967295
+2026 Nov 15 15:10:14.552425 host-1 ERR swss#orchagent: :- updateStpPortState: Failed to get STP port oid port PortChannel1 instance 4094 state 4 
+2026 Nov 15 15:10:14.554172 host-1 ERR syncd#syncd: [none] SAI_API_STP:brcm_sai_create_stp_port:484 STP lag member check failed with error -1.
+2026 Nov 15 15:10:14.554172 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_BRIDGE_PORT: oid:0x3a0000000007ca
+2026 Nov 15 15:10:14.554172 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STP: oid:0x1000000000063d
+2026 Nov 15 15:10:14.554172 host-1 ERR syncd#syncd: :- processQuadEvent: attr: SAI_STP_PORT_ATTR_STATE: SAI_STP_PORT_STATE_BLOCKING

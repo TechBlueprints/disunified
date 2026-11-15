@@ -894,6 +894,27 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
     about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
     the payloads, not the period.
+- **A PortChannel member must hold no chip STP port (`l2d.py`
+  `in_bridge`, `repair_strays`, `docs/drivers/sonic.md` §11.34,
+  2026-11-15).** StpOrch's `addStpPort` creates a bridge port for a port
+  that has none, so a state for a port leaving Bridge, taken after
+  portsorch removed its bridge port, gave it a new bridge port and an STP
+  port in every instance. When the port then joins a PortChannel the chip
+  refuses the PortChannel's own STP ports ("Lag member N exists as STP
+  PORT ... in STG n"), on the join and on every l2d restart, and the
+  PortChannel's VLANs are not forwarded on that member in the chip:
+  `bcmcmd "stg show"` is the check (`Block`/`Disable` on a member in a
+  VLAN's STG while mstpd forwards). The ECS has the same shape l2d now
+  keeps: a row for the PortChannel, none for its members. Facts that cost
+  time:
+  - **The kernel unlinks `brif/<port>` before it announces the leaving
+    port disabled** (`del_nbp`), so "gone from brif" tells a departure from
+    a link drop at the notification itself.
+  - **The stray's bridge port has no orchagent path out** but a reboot;
+    its STP ports go through a producer DEL (a no-op for an instance it
+    holds none in).
+  - **Only an up port triggers it**: a down port is already disabled, so
+    leaving makes no state change (Ethernet4 was clean, Ethernet0 not).
 - **BPDU guard holds the chip's port down until the UI's Re-enable
   (`l2d.py` "BPDU guard", `recover.go`, `docs/drivers/sonic.md` §11.28,
   verified live on a looped cage 2026-11-15).** l2d holds a port mstpd

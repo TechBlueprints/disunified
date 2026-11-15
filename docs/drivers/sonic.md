@@ -9071,6 +9071,211 @@ looped empty cage, a frame with the test source counted dropped by the
 chip, then removed) is still to do, and the deployed bridge has not yet
 written the site's blocked client. Both are in the register.
 
+### 11.34 A PortChannel member's own chip STP ports, and an l2d restart that logged the chip's refusal (2026-11-15)
+
+On 2026-11-15 the DX010's uplink became a two-member LACP aggregate,
+PortChannel1 = Ethernet0 + Ethernet4 (the controller's push, 13:38-13:41
+local). From then on every start of disunified-l2d made syncd log, once per
+VLAN instance, `_brcm_sai_stp_lag_member_check: Lag member 68 exists as STP
+PORT 0x0044012e000000NN in STG NN` and `brcm_sai_create_stp_port: STP lag
+member check failed`, and orchagent `addStpPort: Failed to add STP port
+PortChannel1 instance <vid>`. The uplink stayed up and mstpd made it the root
+port; orchagent did not abort. Fixtures:
+`sonic-igmp-202511.20261115-6c8eb1cf7/lag-stp-stray-syslog-20261115.txt`
+(the syslog of both occurrences and of a later restart) and
+`stp-stray-20261115.json` (the STP tables, read-only, 15:15 local).
+
+#### 11.34.1 What happened
+
+- **It began at the join, not at a restart.** The first refusals are at
+  13:38:49, as PortChannel1 entered Vlan4094 and l2d wrote its first state
+  (`state 0`, disabled). Each later l2d start wrote PortChannel1's states
+  afresh and was refused the same way: 44 lines per start (11 instances x
+  the four lines), at every restart the other sessions made that afternoon,
+  and again at the 15:10 deploy (by then only Vlan4094's instance was left:
+  below).
+- **Port 68 is Ethernet0** (`port:0x44` in its own FDB events; `ps ce0`
+  `ce0( 68)`). Ethernet4 was never named.
+- **Ethernet0 got a bridge port back 50 ms after losing it.** The join's
+  sequence (syslog, 13:38:43): l2d logs `Ethernet0: forwarding -> disabled`
+  as the kernel takes the port out of `Bridge` (`left promiscuous mode`,
+  `entered disabled state`), orchagent removes Ethernet0 from Vlan4094 and
+  `Remove bridge port Ethernet0` (.556), then **`Add bridge port Ethernet0`**
+  (.605), and only after that `Add member Ethernet0 to LAG PortChannel1`
+  (.957). Ethernet4 left Vlan4094 down (no cable until 13:49): already
+  disabled, so no state change, no write, and no bridge port came back.
+- **The tables at 15:15**: ASIC_DB holds a bridge port for Ethernet0, which
+  is in no VLAN and not in the kernel `Bridge`, and one STP port of it
+  (BLOCKING) in Vlan4094's instance; PortChannel1 has none there. APPL_DB
+  holds `STP_PORT_STATE_TABLE:Ethernet0:<vid>` for all eleven VLANs of
+  13:38, though l2d had deleted them as Ethernet0 left. In the other ten
+  instances PortChannel1 had STP ports: the VLAN-delete test (§11.29.6,
+  21:33-21:49 UTC) deleted those ten VLANs and made them again, deleting a
+  VLAN removes every STP port of its instance (Ethernet0's too), and the
+  re-made instances took PortChannel1's. The 15:10 deploy then pruned them
+  for good (§11.29).
+- **The chip** (`bcmcmd "stg show"`, read-only): STG 9, Vlan4094's,
+  `Disable: ce1` and `Block: ce0,ce2-ce31`, against `Forward: ce0-ce1` in the
+  re-made instances. So in the chip **neither uplink member forwarded the
+  native VLAN**, while mstpd and the kernel had PortChannel1 forwarding as
+  root port. The switch stayed reachable because frames to its own address
+  reach the CPU through the traps' copy whatever the STP state (§11.7.8);
+  a host behind any other DX010 port in the native VLAN would have been cut
+  off from the LAN. None was cabled.
+- **A second occurrence** earlier the same day: Ethernet48, a looped empty
+  cage, leaving its last VLAN at 12:01:30 (`blocking -> disabled`, bridge
+  port re-added 213 ms after its removal). It joined no PortChannel, so the
+  chip never refused anything. A scan of the syslog back to 2026-11-07 finds
+  no other removal followed by an add within a second.
+
+#### 11.34.2 The cause
+
+StpOrch's `addStpPort` (202505 and 202511 `stporch.cpp`) creates a bridge
+port for a port that has none (`gPortsOrch->addBridgePort(port)`) before it
+creates the STP port. orchagent drains its consumers in its own order, so
+the state l2d wrote at .321 was taken after portsorch had processed the VLAN
+member removal and removed the bridge port (.556, `removeStpPorts` with it):
+StpOrch then made a new bridge port and an STP port in every instance for a
+port about to become a LAG member. When PortChannel1 asked for its own STP
+port in an instance, the Broadcom SAI refused it because a member already
+had one (`_brcm_sai_stp_lag_member_check`). l2d's own bookkeeping was right:
+it forgot Ethernet0 on the bridge's `RTM_DELLINK` and dropped its keys from
+APPL_DB, but its write was already in the producer's queue, and orchagent
+put the keys back when it took it.
+
+Neither the driver's plan nor l2.json had anything to do with it:
+`l2SetPorts` names PortChannel1, never its members, and l2d writes states
+only for kernel `Bridge` members. What l2d wrote that it should not have is
+the departing port's "disabled". The kernel's own order makes it
+recognisable: `del_nbp` removes `Bridge/brif/<port>` before
+`br_stp_disable_port` sends the disabled notification, so when l2d reads it
+the port is no longer listed (seen live, §11.34.5).
+
+**The ECS** (read-only, 2026-11-15): one instance, `STP_PORT_STATE_TABLE`
+rows for every plain port and for PortChannel1, 2 and 6, none for their six
+members, and 51 chip STP ports for its 52 rows (`dummy` is no orchagent
+port). The aggregate is the only STP port, which is what l2d meant to do.
+
+No kit patch: StpOrch did what it was asked, for a port it knows, and the
+bridge port it adds is what upstream relies on when a state arrives before
+the VLAN membership. Refusing a port in no VLAN would change that ordering
+for upstream's own stpd. The write was l2d's to avoid.
+
+#### 11.34.3 The fix (`l2d.py`)
+
+- **No state for a port leaving `Bridge`.** `on_link` checks `in_bridge`
+  (`Bridge/brif/<port>`) before it writes; a port gone from it is forgotten
+  instead. `kstate` is None for a port with no `brport` (the 2 s pass read
+  a missing state file as 0, disabled, which would have been the same
+  write), and the pass forgets such a port.
+- **The repair (`repair_strays`).** A state key in APPL_DB for an interface
+  outside `Bridge` (the late write leaves one) sends l2d to ASIC_DB, as
+  does a timer once a minute: STP ports whose bridge port belongs to an
+  interface outside `Bridge` are strays. One seen on two passes is removed
+  through StpOrch (a producer DEL for each of its keys, its chip VLANs and
+  the current VLANs: a no-op for an instance it holds no STP port in), l2d
+  waits up to 2 s for ASIC_DB to lose them, and drops its record of the
+  member's PortChannel's states so the same pass writes them again (the
+  DEL goes first; orchagent's queue is ordered by key, `Ethernet...` before
+  `PortChannel...`). Keys of an outside interface with no chip STP port
+  are only deleted from APPL_DB, as before. The DEL is sent only for an
+  interface orchagent knows (APPL_DB and STATE_DB), as every l2d write is:
+  a key for an unknown port stops StpOrch's queue (§11.5).
+- **What stays**: the bridge port StpOrch made. No orchagent path removes a
+  bridge port of a port in no VLAN; it is harmless to the LAG (the SAI's
+  check is on STP ports) and a reboot clears it. l2d logs it with the
+  repair.
+- **A PortChannel waits for its member's repair.** While one of its
+  members is a stray, `sync_stp` writes nothing for the PortChannel (the
+  chip would refuse it), so a restart over a stray logs no refusal: the
+  PortChannel's states and its VLAN's mapping follow two seconds later.
+- **The narrow race left**: a state written while the port was still a
+  member (an mstpd change in the same millisecond) and taken after the
+  removal. The repair clears it within two passes.
+
+#### 11.34.4 Tests
+
+`TestL2dLagMemberStrayStpPorts` (`testdata/l2d_strays.py`) replays the
+syslog's two departing ports (Ethernet0 and Ethernet48) into `on_link`
+gone from `brif` (no write, forgotten) and still in it (a link drop: one
+write), then runs a fresh l2d (a restart) over the captured tables under a
+model of StpOrch and the SAI's LAG-member check: the first pass writes
+nothing for PortChannel1 and is refused nothing; the second removes
+Ethernet0's STP ports and writes PortChannel1's (FORWARDING); the third
+writes nothing. Run with the l2d.py before this change, the leaving port
+writes, the first pass is refused for PortChannel1 in Vlan4094's instance
+as it was live, and the refusal never clears.
+
+#### 11.34.5 Live on the DX010 (2026-11-15 22:58-23:10 UTC, under the test lock)
+
+Two empty cages, 25 and 26 (Ethernet96, Ethernet100), made PortChannel9 by
+hand in the driver's order (their snooping static rows out, `config vlan
+member del 4094`, `config portchannel add PortChannel9 --fast-rate true
+--min-links 1`, the PortChannel's MTU to the members' 1500, the members in,
+`config vlan member add -u 4094 PortChannel9`), with Ethernet96 in MAC
+loopback (`bcmcmd "port ce24 lb=mac"`: up, blocking, so it leaves with a
+state change, as Ethernet0 did) and the bridge stopped. A netlink listener
+recorded `brif/<port>` at each notification. The uplink was left alone but
+for the one restart of the fixed l2d, which a timed revert covered (below).
+
+- **The kernel's order**, seen: `NEW Ethernet96 state=0 master=5
+  brif=False`, then `DEL Ethernet96`. The leaving port's disabled arrives
+  with the port already gone from `brif`.
+- **The deployed l2d (fef74fe) wrote it every time** (`Ethernet96:
+  blocking -> disabled`, and APPL_DB kept `Ethernet96:4094` afterwards),
+  but in five joins StpOrch took the write before portsorch's removal
+  (about 70 ms apart, one VLAN): no bridge port came back and PortChannel9
+  got its STP port. On the uplink the same write was one of eleven, with
+  the snooping orch busy, and lost the race.
+- **Reproduced** by sending that write through StpOrch's producer just after
+  the removal, where it landed live: `Add bridge port Ethernet96`, then at
+  PortChannel9's first state `Lag member 17 exists as STP PORT
+  0x0011012e00000009 in STG 9` and `Failed to add STP port PortChannel9
+  instance 4094`; STG 9 showed ce24 `Block` and ce25 `Disable`. A restart
+  of the deployed l2d then logged the refusal for both PortChannel1 and
+  PortChannel9.
+- **The fixed l2d, started over both strays**, with the revert armed
+  (`systemd-run` of a script that pinged the gateway every 10 s for 8 min
+  and, after three misses, would have put the deployed l2d back and then
+  run its `--deadman`): the first start still logged both refusals (that
+  build wrote the PortChannels at once), then two seconds later `Ethernet0
+  is no bridge port (a member of PortChannel1) but held 1 STP ports in the
+  chip: removed, PortChannel1's states written again`, and the same for
+  Ethernet96. **STG 9 went to `Forward: ce0-ce1`**: the uplink forwarded the
+  native VLAN in the chip for the first time since 13:38. APPL_DB lost
+  every key of an interface outside `Bridge`; the gateway answered
+  throughout.
+- **The hold-back, live**: l2d stopped (mstpd and the chip stay as they
+  are), a fresh stray made on Ethernet96 the same way, the build with the
+  hold-back started: no syncd or orchagent error at all, the stray removed
+  at 2 s, Vlan4094 mapped at 6 s. A plain restart after that: `started` and
+  the mapping, nothing else.
+- **The other transitions with the fixed l2d**: a join by the CLI alone
+  (no injected write) wrote nothing for the departing Ethernet96 and left
+  no key behind; the reverse (PortChannel9 out of Vlan4094, members out,
+  deleted, members back untagged) gave each member its own STP port in
+  Vlan4094's instance; three link drops of the looped member wrote and
+  refused nothing (PortChannel9 stayed LACP-down: teamd does not select a
+  port that hears its own LACPDUs, so it never forwarded).
+- **Not run live**: BPDU guard and loop protection on an aggregate that is
+  up (the loopback rig cannot bring a LACP aggregate up; both act on a
+  PortChannel through its members as before, §11.28, and this change does
+  not touch them), and the lane switch's `PortChannel<100*cage+lag>` (it
+  needs a breakout). Neither path names its PortChannel differently in
+  l2d: `in_bridge`, the repair and the hold-back go by kernel membership
+  and CONFIG_DB `PORTCHANNEL_MEMBER`, whatever the PortChannel's number.
+- **Left as found**: PortChannel9 deleted, both cages back untagged in
+  Vlan4094 with their 14 snooping rows, loopback off, the deployed l2d
+  (fef74fe) back in place and restarted (quiet: `started`, the mapping, no
+  ERR), the bridge started (`0 of 32 ports changed`), CONFIG_DB identical
+  to the pre-test dump in all 37 tables, `l2.json` unchanged.
+- **What stays until a reboot**: the bridge port StpOrch made for Ethernet0
+  (ASIC_DB: a bridge port for an interface outside `Bridge`). Ethernet96's
+  went when it rejoined Vlan4094 and left again. The check after the next
+  reboot: no bridge port in ASIC_DB for a port that is not in
+  `Bridge/brif`, and `bcmcmd "stg show"` with every PortChannel member
+  forwarding in each STG whose VLAN the PortChannel carries.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH
