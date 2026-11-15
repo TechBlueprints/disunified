@@ -519,6 +519,8 @@ func (f *FixtureRunner) apply(line string) error {
 		return f.aclCountWrite(w)
 	case len(w) >= 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_RULE|"):
 		return f.aclRuleWrite(w)
+	case len(w) >= 5 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && strings.HasPrefix(w[3], "ACL_TABLE|"):
+		return f.aclTablePorts(w)
 	case cmd == "config acl add" && at(3) == "table":
 		return f.aclAddTable(w[4:])
 	case cmd == "config acl remove" && at(3) == "table":

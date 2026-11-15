@@ -470,7 +470,16 @@ Redis sections (key pattern → use):
   CONFIG `speed`, `MTU` = `mtu`, `FEC`/`FECConfig` from STATE/CONFIG `fec`
   (`rs` → `rs-fec`, `fc` → fire-code, `none` → disabled, `N/A` → unknown),
   `SpeedCaps` from STATE `supported_speeds` when non-empty, else the SKU's
-  speed only. `Health.LinkChanges` = `flap_count`. No PCS/FEC counters on
+  speed only. `Health.LinkChanges` = `flap_count` (portsorch adds one on
+  every oper-status change, and a port starts down, so half of it, rounded
+  down, is the drops). **A split cage adds its lanes' drops, not their
+  changes** (2026-11-15, as the Arista's e3d5218): `LinkChanges` = twice
+  the summed drops, plus one while the cage is up. Summing the lanes'
+  `flap_count` counted every up lane as half a drop: on the DX010 (cage 32
+  split 4x25G, lanes 1-3 in MAC loopback, lane 1 dropped and brought back
+  once, lane 4 down; `flap_count` 3, 1, 1, 0) the cage read 5 changes, 2
+  drops, for the one drop there was (`TestSplitCageLinkDrops`,
+  `sonic-igmp-202511.20261115-6c8eb1cf7/collect-split-loop.txt`). No PCS/FEC counters on
   the VS (`PORT_COUNTER_CAPABILITIES|PORT_FEC_COUNTER` is empty); on
   hardware `SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES` /
   `_NOT_CORRECTABLE_FRAMES` fill `FECCorrected`/`FECUncorrected`.
@@ -2603,10 +2612,24 @@ Clint's go; the kit's procedure, step by step as planned
   references" line since the boot. Restored afterwards: Ethernet48
   untagged in Vlan4094 with its seven static rows, and the controller's 32
   port overrides equal to the pre-test copy.
-- **Not run:** a move while the cage is looped (members programmed when the
-  VLAN member goes: the race, which the patched image lets a cable-less cage
-  try; `removeL2mcPortMembers` should log a line per member). The wait failing
-  on a leaked count cannot happen on this image and stays fixture-tested.
+- **A move while the cage is looped** (step C, 2026-11-15, on
+  `igmp-202511.20261115-6c8eb1cf7`, the bridge stopped; the driver's plan
+  run by hand, since nothing in it depends on where the push came from;
+  `sonic-igmp-202511.20261115-6c8eb1cf7/l2mc-0004-stepc-20261115.txt`).
+  Looped in Vlan4094, cage 13 took its seven static members and became a
+  router port in four more groups: **count 11**. The static rows out took
+  it to 5. Then `config vlan member del 4094` set the race going: the
+  router-port members were still programmed when the VLAN member went, and
+  orchagent logged `removeL2mcPortMembers: ... l2mc group member
+  Ethernet48 removed with its port` for each of the four, the count going
+  to **0**. The bridge port was removed 50 ms after, and `add -u 4000`
+  made a new one (oid changed, `ADMIN_STATE true`), with no "still has
+  references" line. With the loop off, the move back gave another new
+  bridge port, admin true. The bridge's start-up reconcile put the seven
+  rows back, and CONFIG_DB equalled the snapshot taken before, saved and
+  running. The race with members but no router port needs a cabled host.
+  The wait failing on a leaked count cannot happen on this image and stays
+  fixture-tested.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
@@ -7170,11 +7193,10 @@ the live message. Tests: `TestLaneJoinUnbindsTheACLTables` (fails with the
 live refusal without the fix), `TestACLTablesFollowThePorts` (the parent's
 own aggregate).
 
-Not covered: a table that is not the driver's shape binding a PortChannel
-the plan deletes (noted and left alone, so its dangling name would refuse a
-later breakout), and a driver table bound to nothing but the PortChannel
-(noted: it cannot be rebound to nothing). Neither occurs while the driver
-binds every port.
+Not covered here: a table that is not the driver's binding a PortChannel
+the plan deletes (§11.25.4 since), and a driver table bound to nothing but
+the PortChannel (noted: it cannot be rebound to nothing; it does not occur
+while the driver binds every port).
 
 **11.25.3 After the test.** The deployed bridge's start-up reconcile restored
 cage 29's MTU, VLAN and snooping static groups. The only CONFIG_DB
@@ -7276,6 +7298,67 @@ Then the deployed build went back from `/host/disunified`; the join's lost
 `dhcp_rate_limit 300` (§11.17) was written back and saved, and running and
 saved CONFIG_DB, `l2.json` and the controller's 32 port overrides matched
 the copies taken before.
+
+**11.25.4 A table that is not the driver's (2026-11-15).** Until then the
+plan noted such a table and left it, so a PortChannel it bound kept its
+name there after `config portchannel del`: orchagent held the LAG and the
+next breakout's YANG check refused (§11.25.2), and a joining lane it bound
+refused `config portchannel member add`. collect.py read only the `DUI_`
+tables, so an operator's own table was not even seen.
+
+**The decision follows Clint's rule** (UniFi is the source of truth for
+what it configures; a hand-made table is not UniFi's): the aggregate is the
+controller's and wins, and the table is the operator's and keeps
+everything but the names the aggregate takes away.
+- collect.py's `cfg_acl_table` reads every `ACL_TABLE` entry (type, stage,
+  ports, description; ACL_TABLE holds no secret). `ACL_RULE` and STATE_DB
+  stay `DUI_` only, and only the driver's tables are checked for `Active`.
+- **Only `ports@` is written**: `sonic-db-cli CONFIG_DB hset
+  'ACL_TABLE|<t>' 'ports@' '<list>'`, never `config acl add table`, which
+  replaces the whole entry (its description, any field the CLI does not
+  know). orchagent diffs the new port set against the old and unbinds
+  what left (`updateAclTablePorts`).
+- **What takes a name's place**: a joining lane's PortChannel (orchagent
+  keeps a port it does not have yet pending, so the write can precede
+  `config portchannel add`), and for a PortChannel about to be deleted the
+  members this batch took out of it. The operator's rule stays on the same
+  traffic.
+- **A table left with no port loses the field** (`hdel ... 'ports@'`): the
+  state SONiC's own `config interface breakout -f` leaves when it removes
+  a table's last port (config_mgmt deletes the leaf-list value).
+- Each rewrite is noted: `ACL table <t> (<type> <stage>) is not the
+  driver's: <names>, which <why>, taken out of its ports (now <list>)`.
+- A lane switch's join (`dissolveLanes`) passes no replacement: the lanes
+  go with the breakout that follows, which takes them out of every table.
+
+**Live on the DX010** (2026-11-15 11:22-11:23 MST, empty cage 32 split
+4x25G, lanes in MAC loopback, the bridge stopped; the plan's commands run
+by hand on a hand-made `OPTEST` L3 table with a description of its own;
+`sonic-igmp-202511.20261115-6c8eb1cf7/foreign-acl-live-20261115.txt`):
+- **Dissolve.** `OPTEST` bound `PortChannel99` (one lane a member;
+  `config acl add table` refuses a PortChannel without members) and
+  another lane. The plan's order: member out, the `ports@` hset with the
+  former member in the PortChannel's place, `config portchannel del`.
+  orchagent: `Deleting port PortChannel99 from ACL list OPTEST`, `port is
+  unbound`, `Adding port Ethernet126`, `Successfully updated existing ACL
+  table OPTEST`, then teamd's stop and `Remove LAG PortChannel99`, with no
+  `ref count` refusal. The description stayed, and the table stayed Active.
+- **No port left.** The `hdel` of `ports@` unbound both lanes, and the
+  table stayed Active.
+- **Join.** `ports@` naming `PortChannel98` before it existed: orchagent
+  unbound the lane, and once the PortChannel was made, logged `Bound port
+  PortChannel98 to ACL table OPTEST`. `config portchannel member add` of
+  the lane was not refused.
+- **Afterwards.** The test table, both PortChannels and the split were
+  gone, and no LAG or ACL table was left in ASIC_DB. The bridge's start-up
+  reconcile restored the cage. CONFIG_DB matched the snapshot taken
+  before, except `PORT|Ethernet124 dhcp_rate_limit 300`, which the
+  breakout drops (§11.25.3); it was written back and saved.
+
+Test: `TestForeignACLTableFollowsTheAggregate` (an operator's table made
+through the FixtureRunner's model of `config acl add table` on the DX010
+capture: the join, the split, only `ports@` changed, the no-port case, no
+held LAG).
 
 ### 11.26 802.1X port authentication: hostapd under disunified-l2d (2026-11-15)
 

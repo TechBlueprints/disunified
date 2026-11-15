@@ -436,17 +436,19 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	// tables bind every port: the joining lanes leave them first, and
 	// applyACL binds the PortChannel once the batch has made it (acl.go).
 	var joining []string
+	joinTo := map[string][]string{}
 	for _, lag := range ids {
 		for _, d := range byLAG[lag] {
 			for _, lane := range lanesOf(pl.ports[d.Index]) {
 				if !pl.sim.lags[pl.pc(lag)][lane] && !pl.foreignLAG(lane, pl.pc(lag)) {
 					joining = append(joining, lane)
+					joinTo[lane] = []string{pl.pc(lag)}
 				}
 			}
 		}
 	}
 	if len(joining) > 0 {
-		pl.aclUnbind(byLAG[ids[0]][0].Index, joining, "is to join an aggregate")
+		pl.aclUnbind(byLAG[ids[0]][0].Index, joining, "is to join an aggregate", joinTo)
 	}
 	for _, lag := range ids {
 		pc := pl.pc(lag)
@@ -507,7 +509,13 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 	}
 	sort.Strings(pcs)
 	if len(pcs) > 0 {
-		pl.aclUnbind(0, pcs, "is to be deleted")
+		// An operator's table that bound the PortChannel binds the
+		// members it had instead (they left it in this batch).
+		back := map[string][]string{}
+		for _, pc := range pcs {
+			back[pc] = pl.leftMembers(pc)
+		}
+		pl.aclUnbind(0, pcs, "is to be deleted", back)
 	}
 	for _, pc := range pcs {
 		name := pc
@@ -572,6 +580,17 @@ func (pl *plan) ownOrphan(pc string) bool {
 }
 
 // emptiedHere: a member del for pc is among the planned writes.
+// leftMembers are the interfaces this plan took out of pc, still ports.
+func (pl *plan) leftMembers(pc string) []string {
+	var out []string
+	for _, o := range pl.ops {
+		if lane, ok := strings.CutPrefix(o.cmd, "sudo config portchannel member del "+pc+" "); ok && pl.sim.port[lane] != nil {
+			out = append(out, lane)
+		}
+	}
+	return out
+}
+
 func (pl *plan) emptiedHere(pc string) bool {
 	for _, o := range pl.ops {
 		if strings.HasPrefix(o.cmd, "sudo config portchannel member del "+pc+" ") {

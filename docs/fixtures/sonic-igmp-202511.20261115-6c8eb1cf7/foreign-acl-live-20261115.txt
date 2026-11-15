@@ -1,0 +1,137 @@
+# An ACL table that is not the driver's, bound to a PortChannel the
+# driver's plan dissolves or a lane it joins (docs/drivers/sonic.md
+# §11.25.4). DX010, igmp-202511.20261115-6c8eb1cf7, 2026-11-15 11:22-11:23
+# MST, cage 32 split 4x25G (empty cage, lanes in MAC loopback, no VLAN),
+# the deployed bridge stopped. OPTEST is a hand-made L3 table with a
+# description of its own. The commands are the plan's, run by hand:
+#  1. dissolve: member del, `hset 'ACL_TABLE|OPTEST' 'ports@'` with the
+#     former member in the PortChannel's place, `config portchannel del`
+#     -- orchagent unbinds and removes the LAG, no "ref count" refusal;
+#  2. no port left: `hdel ... 'ports@'` -- the table stays Active, unbound;
+#  3. join: the lane out and the PortChannel in before the PortChannel
+#     exists -- orchagent binds it once created; member add not refused.
+# First the script's output (CONFIG_DB/STATE_DB reads), then orchagent's
+# and teamd's syslog lines (portsyncd's, which carry the system MAC, left
+# out). The script's first run stopped on a quoting error after step 1;
+# steps 2-3 were run by hand.
+
+## script
+== 11:22:06 add PortChannel99 and OPTEST
+{'policy_desc': 'operator-test', 'ports@': 'PortChannel99,Ethernet125', 'stage': 'ingress', 'type': 'L3'}
+{'status': 'Active'}
+== 11:22:14 the driver order: member out, ports@ with the former member in place of PortChannel99, delete
+0
+{'policy_desc': 'operator-test', 'ports@': 'Ethernet125,Ethernet126', 'stage': 'ingress', 'type': 'L3'}
+{'status': 'Active'}
+1
+== 11:22:44 the no-port case: hdel ports@
+1
+{'policy_desc': 'operator-test', 'stage': 'ingress', 'type': 'L3'}
+{'status': 'Active'}
+2026 Nov 15 11:22:15.729088 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:22:44.442857 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet125 from ACL list OPTEST
+2026 Nov 15 11:22:44.449824 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b25 port is unbound from OPTEST ACL table
+2026 Nov 15 11:22:44.449824 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet126 from ACL list OPTEST
+2026 Nov 15 11:22:44.454351 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b4f port is unbound from OPTEST ACL table
+2026 Nov 15 11:22:44.454782 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+== 11:22:47 remove OPTEST
+
+
+
+
+== 11:23:06 join order: OPTEST on Ethernet126, then ports@ names PortChannel98 before it exists
+0
+{'status': 'Active'}
+2026 Nov 15 11:22:48.433670 host-1 NOTICE swss#orchagent: :- removeAclTable: Successfully deleted ACL table OPTEST
+2026 Nov 15 11:23:07.767494 host-1 NOTICE swss#orchagent: :- bindAclTable: Bind table OPTEST to ports
+2026 Nov 15 11:23:07.778849 host-1 NOTICE swss#orchagent: :- addAclTable: Created ACL table OPTEST oid:7000000000bac
+2026 Nov 15 11:23:10.948813 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet126 from ACL list OPTEST
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b4f port is unbound from OPTEST ACL table
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Adding port PortChannel98 to ACL list OPTEST
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:23:14.026727 host-1 NOTICE swss#orchagent: :- onUpdate: Bound port PortChannel98 to ACL table OPTEST
+== 11:23:20 undo
+0
+
+
+
+
+2
+
+## syslog
+2026 Nov 15 11:22:07.335531 host-1 INFO kernel: [49656.706229] PortChannel99: Port device Ethernet126 added
+2026 Nov 15 11:22:07.368189 host-1 NOTICE swss#orchagent: message repeated 2 times: [ :- updatePortOperStatus: Port PortChannel99 oper state set from down to down]
+2026 Nov 15 11:22:07.385942 host-1 NOTICE swss#orchagent: :- addLagMember: Add member Ethernet126 to LAG PortChannel99 lid:2000000000ba3 pid:1000000000b4f
+2026 Nov 15 11:22:07.391800 host-1 NOTICE teamd#teammgrd: :- addLagMember: Add Ethernet126 to port channel PortChannel99
+2026 Nov 15 11:22:07.405038 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel99 oper state set from down to down
+2026 Nov 15 11:22:11.372549 host-1 NOTICE swss#orchagent: :- bindAclTable: Bind table OPTEST to ports
+2026 Nov 15 11:22:11.386002 host-1 NOTICE swss#orchagent: :- createBindAclTableGroup: Create ingress ACL table group and bind port PortChannel99 to it
+2026 Nov 15 11:22:11.389136 host-1 NOTICE swss#orchagent: :- addAclTable: Created ACL table OPTEST oid:7000000000ba5
+2026 Nov 15 11:22:15.558523 host-1 INFO kernel: [49664.920075] PortChannel99: Port device Ethernet126 removed
+2026 Nov 15 11:22:15.605827 host-1 NOTICE teamd#teammgrd: :- removeLagMember: Remove Ethernet126 from port channel PortChannel99
+2026 Nov 15 11:22:15.612754 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel99 oper state set from down to down
+2026 Nov 15 11:22:15.621585 host-1 NOTICE swss#orchagent: :- removeLagMember: Remove member Ethernet126 from LAG PortChannel99 lid:2000000000ba3 lmid:1b000000000ba4
+2026 Nov 15 11:22:15.705099 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port PortChannel99 from ACL list OPTEST
+2026 Nov 15 11:22:15.705099 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Unbind and Unlink:PortChannel99
+2026 Nov 15 11:22:15.718147 host-1 NOTICE swss#orchagent: :- unbind: 2000000000ba3 port is unbound from OPTEST ACL table
+2026 Nov 15 11:22:15.718147 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Removed:PortChannel99 from portSet
+2026 Nov 15 11:22:15.718147 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Adding port Ethernet126 to ACL list OPTEST
+2026 Nov 15 11:22:15.729088 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:22:19.701471 host-1 NOTICE teamd#teammgrd: :- removeLag: Stop port channel PortChannel99
+2026 Nov 15 11:22:19.734194 host-1 ERR teamd#tlm_teamd: :- get_dump: Can't get dump for LAG 'PortChannel99'. Skipping
+2026 Nov 15 11:22:19.735970 host-1 NOTICE teamd#tlm_teamd: :- remove_lag: The LAG 'PortChannel99' has been removed.
+2026 Nov 15 11:22:19.739135 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel99 oper state set from down to down
+2026 Nov 15 11:22:19.753877 host-1 NOTICE swss#orchagent: :- removeLag: Remove LAG PortChannel99 lid:2000000000ba3
+2026 Nov 15 11:22:44.442857 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet125 from ACL list OPTEST
+2026 Nov 15 11:22:44.449824 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b25 port is unbound from OPTEST ACL table
+2026 Nov 15 11:22:44.449824 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet126 from ACL list OPTEST
+2026 Nov 15 11:22:44.454351 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b4f port is unbound from OPTEST ACL table
+2026 Nov 15 11:22:44.454782 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:22:48.428274 host-1 NOTICE swss#orchagent: :- bindAclTable: Unbind table OPTEST to ports
+2026 Nov 15 11:22:48.429088 host-1 WARNING swss#orchagent: :- bindAclTable: Port list is empty for OPTEST table
+2026 Nov 15 11:22:48.433670 host-1 NOTICE swss#orchagent: :- removeAclTable: Successfully deleted ACL table OPTEST
+2026 Nov 15 11:23:07.767494 host-1 NOTICE swss#orchagent: :- bindAclTable: Bind table OPTEST to ports
+2026 Nov 15 11:23:07.778849 host-1 NOTICE swss#orchagent: :- addAclTable: Created ACL table OPTEST oid:7000000000bac
+2026 Nov 15 11:23:10.948813 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port Ethernet126 from ACL list OPTEST
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b4f port is unbound from OPTEST ACL table
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Adding port PortChannel98 to ACL list OPTEST
+2026 Nov 15 11:23:10.960889 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:23:13.974763 host-1 INFO teamd#supervisord: teammgrd Using team device "PortChannel98".
+2026 Nov 15 11:23:13.974763 host-1 INFO teamd#supervisord: teammgrd Using PID file "/var/run/teamd/PortChannel98.pid"
+2026 Nov 15 11:23:13.999098 host-1 WARNING teamd#teamsyncd: :- TeamPortSync: Failed to initialize team handler. LAG=PortChannel98 error=111:Unable to connect to teamd: Connection refused, attempt=0
+2026 Nov 15 11:23:13.999098 host-1 INFO teamd#supervisord: teamsyncd libteamdctl: cli_usock_init: usock: Failed to connect socket (/var/run/teamd/PortChannel98.sock).
+2026 Nov 15 11:23:14.000294 host-1 NOTICE swss#orchagent: :- addLag: Create an empty LAG PortChannel98 lid:2000000000baf
+2026 Nov 15 11:23:14.007170 host-1 INFO kernel: [49723.379374] PortChannel98: Mode changed to "loadbalance"
+2026 Nov 15 11:23:14.016666 host-1 NOTICE swss#orchagent: :- createBindAclTableGroup: Create ingress ACL table group and bind port PortChannel98 to it
+2026 Nov 15 11:23:14.026727 host-1 NOTICE swss#orchagent: :- onUpdate: Bound port PortChannel98 to ACL table OPTEST
+2026 Nov 15 11:23:14.031776 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel98 oper state set from unknown to down
+2026 Nov 15 11:23:14.057632 host-1 NOTICE teamd#teammgrd: :- addLag: Start port channel PortChannel98 with teamd
+2026 Nov 15 11:23:14.075089 host-1 INFO kernel: [49723.448872] 8021q: adding VLAN 0 to HW filter on device PortChannel98
+2026 Nov 15 11:23:14.135565 host-1 NOTICE teamd#teammgrd: :- setLagAdminStatus: Set port channel PortChannel98 admin status to up
+2026 Nov 15 11:23:14.135565 host-1 NOTICE teamd#teammgrd: :- setLagMtu: Set port channel PortChannel98 MTU to 9100
+2026 Nov 15 11:23:15.009370 host-1 NOTICE teamd#tlm_teamd: :- try_add_lag: The LAG 'PortChannel98' has been added.
+2026 Nov 15 11:23:15.009688 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel98 oper state set from down to down
+2026 Nov 15 11:23:15.463903 host-1 INFO kernel: [49724.836197] PortChannel98: Port device Ethernet126 added
+2026 Nov 15 11:23:15.477219 host-1 NOTICE swss#orchagent: message repeated 2 times: [ :- updatePortOperStatus: Port PortChannel98 oper state set from down to down]
+2026 Nov 15 11:23:15.502445 host-1 NOTICE swss#orchagent: :- addLagMember: Add member Ethernet126 to LAG PortChannel98 lid:2000000000baf pid:1000000000b4f
+2026 Nov 15 11:23:15.512661 host-1 NOTICE teamd#teammgrd: :- addLagMember: Add Ethernet126 to port channel PortChannel98
+2026 Nov 15 11:23:15.518555 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel98 oper state set from down to down
+2026 Nov 15 11:23:21.655106 host-1 INFO kernel: [49731.028062] PortChannel98: Port device Ethernet126 removed
+2026 Nov 15 11:23:21.693583 host-1 NOTICE teamd#teammgrd: :- removeLagMember: Remove Ethernet126 from port channel PortChannel98
+2026 Nov 15 11:23:21.712759 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel98 oper state set from down to down
+2026 Nov 15 11:23:21.724983 host-1 NOTICE swss#orchagent: :- removeLagMember: Remove member Ethernet126 from LAG PortChannel98 lid:2000000000baf lmid:1b000000000bb2
+2026 Nov 15 11:23:21.821692 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port PortChannel98 from ACL list OPTEST
+2026 Nov 15 11:23:21.821692 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Unbind and Unlink:PortChannel98
+2026 Nov 15 11:23:21.833110 host-1 NOTICE swss#orchagent: :- unbind: 2000000000baf port is unbound from OPTEST ACL table
+2026 Nov 15 11:23:21.833110 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Removed:PortChannel98 from portSet
+2026 Nov 15 11:23:21.833110 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Adding port Ethernet126 to ACL list OPTEST
+2026 Nov 15 11:23:21.840810 host-1 NOTICE swss#orchagent: :- doAclTableTask: Successfully updated existing ACL table OPTEST
+2026 Nov 15 11:23:24.739303 host-1 NOTICE teamd#teammgrd: :- removeLag: Stop port channel PortChannel98
+2026 Nov 15 11:23:24.752103 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel98 oper state set from down to down
+2026 Nov 15 11:23:24.753448 host-1 ERR teamd#tlm_teamd: :- get_dump: Can't get dump for LAG 'PortChannel98'. Skipping
+2026 Nov 15 11:23:24.754945 host-1 NOTICE swss#intfmgrd: :- pops: Miss table key LAG_TABLE|PortChannel98, possibly outdated
+2026 Nov 15 11:23:24.758546 host-1 NOTICE teamd#tlm_teamd: :- remove_lag: The LAG 'PortChannel98' has been removed.
+2026 Nov 15 11:23:24.760092 host-1 NOTICE swss#orchagent: :- removeLag: Remove LAG PortChannel98 lid:2000000000baf
+2026 Nov 15 11:23:28.787676 host-1 NOTICE swss#orchagent: :- bindAclTable: Unbind table OPTEST to ports
+2026 Nov 15 11:23:28.795745 host-1 NOTICE swss#orchagent: :- unbind: 1000000000b4f port is unbound from OPTEST ACL table
+2026 Nov 15 11:23:28.798538 host-1 NOTICE swss#orchagent: :- removeAclTable: Successfully deleted ACL table OPTEST
