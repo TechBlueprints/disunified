@@ -1793,7 +1793,7 @@ def eb_restore(lines):
     filter table in one ebtables-restore --noflush, which the switch's
     ebtables (1.8, nf_tables) commits as one transaction: a frame meets the
     chains as they were before or as they are after, never in between, and
-    a refused line refuses the whole batch (docs/drivers/sonic.md 11.26.11).
+    a refused line refuses the whole batch (docs/drivers/sonic.md 11.26.12).
     One ebtables call per rule left a rewritten chain empty, i.e. passing
     every frame, until its last rule was back."""
     return run([EBTABLES_RESTORE, "--noflush"], check=True,
@@ -1911,7 +1911,7 @@ class MacLockGuard(object):
         if exists and count == len(rules) and jumps == {"INPUT", "FORWARD"} and rules == self.written:
             return True
         # One transaction: the chain is never empty, and so never passes
-        # every frame, while it is rewritten (11.26.11).
+        # every frame, while it is rewritten (11.26.12).
         ok = eb_restore(eb_chain(MACLOCK_CHAIN, rules, jumps, False))
         self.written = rules if ok else None
         if ok:
@@ -2843,7 +2843,7 @@ class Dot1xGuard(object):
                     log("802.1X: kernel bridge rules removed")
             self.written = [] if ok else None
             return
-        # One transaction (11.26.11): an admission, a revocation or a start
+        # One transaction (11.26.12): an admission, a revocation or a start
         # never leaves a closed port's DROP out of the chain, as a flush and
         # one append per rule did for ~20 ms; the jumps go first, ahead of
         # MAC locking's chain. A refused batch leaves the chain as it was.

@@ -640,7 +640,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   restart or reboot; the start-up reconcile restores it after a reboot, and
   the next cycle's reconcile after a swss restart -- the loop reconciles
   whether or not the inform was answered (2026-11-02), so a bridge whose own
-  informs the MTU breaks still repairs it.
+  informs the MTU breaks still repairs it. **Which VLANs:** the native
+  stand-in, the push's `switch.vlan.*` list and the routed networks' VLANs
+  (`routedVLANs`), which the list leaves out while no port carries them:
+  until 2026-11-15 such a VLAN stayed at 9100 (`docs/drivers/sonic.md`
+  §11.13). A VLAN the L3 plan makes is made at the ports' MTU, as
+  `EnsureVLANs` makes the pushed ones.
 - **IPv6 on the management interface (`ipv6.go`, `docs/drivers/sonic.md`
   §11.22, 2026-11-14).** SLAAC follows the management network's IPv6 in
   the controller (`rest/networkconf` `ipv6_interface_type` not `none`; the
@@ -823,8 +828,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   the host; frr's, 0600: it holds the keys) and runs `ospfd -d -A 127.0.0.1
   -P 0 -f` on it; collect.py's `frr_ospf` is "running" and the file's sha256
   only. Changed router = restart ospfd; ospfd gone (bgp restart) = start;
-  router deleted = stop + rm. A test peer on the kernel `Bridge` needs MTU
-  9100 like `Vlan<id>` or OSPF stalls in ExStart (MTU check); the peer's
+  router deleted = stop + rm. A test peer on the kernel `Bridge` needs the
+  `Vlan<id>`'s MTU or OSPF stalls in ExStart (MTU check): 9100 on
+  2026-11-07, the ports' MTU since 2026-11-15 (§11.13); the peer's
   ospfd needs zebra and mgmtd beside it. Area ids are dotted:
   `sanitize-controller.py` keeps 0.0.0.0/8.
 - **Routed ports and aggregates, DHCP fixed IPs (`l3.go`, `control.go`,
@@ -1190,6 +1196,9 @@ was restarted.
   - **The MAC filter's plan deletes every static FDB entry it does not
     want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
     wanted while their port is controlled.
+  - **802.1X's `drop` is not a MAC filter on the read side**: read as one
+    (`port_security_enabled` with no allowed MACs), the controller's port
+    panel shows the port Disabled, its own rule for an empty list (§11.26.11).
   - **A looped test cage makes hostapd a station of the switch's own
     MAC** (its own frames come back): l2d ignores the switch's MAC.
   - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
@@ -1230,7 +1239,7 @@ was restarted.
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
   - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**
-    (`eb_restore`, §11.26.11, 2026-11-15). The switch's `ebtables` is 1.8.11
+    (`eb_restore`, §11.26.12, 2026-11-15). The switch's `ebtables` is 1.8.11
     on nf_tables (`ebtables -V`), so each `ebtables` call is a transaction of
     its own: a flush and one append per rule passed every frame until the
     DROP was back. A restore is one transaction: a declared chain is

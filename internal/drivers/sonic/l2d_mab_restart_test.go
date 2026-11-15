@@ -222,7 +222,7 @@ func TestL2dMABRestart(t *testing.T) {
 }
 
 // kernelAtomic holds a fake run's ebtables writes to one ebtables-restore
-// each (docs/drivers/sonic.md §11.26.11): no other ebtables command but the
+// each (docs/drivers/sonic.md §11.26.12): no other ebtables command but the
 // listing, and no window (testdata/l2d_ebtables.py's WINDOW) in which a
 // port that dropped a never-admitted source before and after a chain write
 // passed it in between.

@@ -1362,7 +1362,7 @@ site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
 | Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
 | Containers | `swss` (orchagent **with the L2MC orch**), `l2mcd` (the daemon **and `l2mcmgrd`**, the same split as the Micas container; corrected 2026-11-01, the process's cgroup is the l2mcd container's), `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
 | The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
-| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a small Python helper that runs scripts as interfaces come and go; no Python on the box mentions an `igmp_*` key, so the translation from the controller's keys is compiled -- most likely in `mcad`, Ubiquiti's management daemon, not read. §9's attribution of VLAN 1 to it is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a helper that runs as interfaces come and go; which of Ubiquiti's processes translates the controller's keys into CONFIG_DB is not established, and §9's attribution of VLAN 1 to `ubnt-lnxcfgd` is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
 
 **UniFi's per-VLAN IGMP settings land in `CFG_L2MC_TABLE`**, one entry per
 VLAN: on that switch the native VLAN has snooping and the querier on, the
@@ -5092,6 +5092,29 @@ switch.
   carry a routed network), `config interface ip add Vlan<id> <ip>/<len>`.
   An interface carrying an address the driver did not add -- the switch's
   own management address on `Vlan<native_vlan>` -- is refused with a note.
+- **A routed network's VLAN takes the ports' MTU** (2026-11-15), as every
+  VLAN the driver manages does (§12): made at it (`config vlan add`, then
+  `hset 'VLAN|Vlan<id>' mtu`, as `EnsureVLANs` makes a pushed VLAN) and
+  kept there by the port plan's `vlanMTUs` (the CONFIG_DB field and the
+  netdev). Until then `vlanMTUs` covered the push's `switch.vlan.*` list and
+  the native stand-in only, and a routed network no port carries is in
+  `switch.routing_interface.N.vlan` alone (§11.29.1). So its VLAN stayed at
+  SONiC's 9100 while every port and every other VLAN followed the site's
+  jumbo setting. The deployed driver's own state of the 2026-11-07 OSPF run
+  shows it (`collect-ospf.txt`, jumbo off): `VLAN|Vlan3999` without `mtu`
+  and its netdev at 9100, beside `VLAN|Vlan4040` (the transit, which the
+  list names) at 1500 in both, every port at 1500. That is why the run's
+  OSPF peer had to run at 9100 (§11.14): ospfd sends the interface MTU in
+  its database descriptions and a peer at another MTU stalls in ExStart.
+  While no port carries the VLAN, no frame on a front-panel port is
+  affected (a port that carries it puts it in the list): what saw 9100 was
+  the switch's own stack on the interface and whatever reached it past the
+  list, as the runs' test hosts on the kernel `Bridge` did. The fault was never shown with a fresh routed network; the
+  fixed plan is replayed over that capture (`TestReplaySonicDX010OSPF`'s
+  first push writes both halves for Vlan3999, the cycle after nothing) and
+  over the L3 run's creation (`TestReplaySonicDX010L3`: the hset right after
+  `config vlan add 3999`, once). Its commands are the ones already run live
+  on memberless VLANs (§11.29.6's Vlan4010, §12's Vlan4094).
 - **Routes:** STATIC_ROUTE rows written whole through `sonic-db-cli`
   (`nexthop`, `ifname`, `distance`, `blackhole`, `nexthop-vrf` as aligned
   comma lists: bgpcfgd drops a row whose lists differ), which bgpcfgd
@@ -5214,8 +5237,8 @@ its file), and a deleted router leaves the push. Captured on the DX010
 (`controller-10.6.109/system_cfg-dx010-bgp-{1-enabled,2-disabled,
 3-changed,4-removed}.txt`; the test file uses documentation addresses and
 private ASNs, so its content needed no scrubbing). Ubiquiti's SONiC (the
-ECS's `ubntbox`) writes the decoded file into a CONFIG_DB table of its own
-(`BGP_FULL_CONFIG|global config_b64`) for its FRR manager; community SONiC
+ECS) keeps the decoded file in a CONFIG_DB table of its own
+(`BGP_FULL_CONFIG|global config_b64`); community SONiC
 has no such table and runs FRR 10.4.1 in separated mode (`bgpd`, `zebra`,
 `staticd`, `mgmtd`; bgpd's configuration rendered from templates at
 container start).
@@ -5317,7 +5340,8 @@ router started ospfd on Vlan3999 (cost 10, priority 2, hello 5 s, dead
 20 s, area 0, read back with `show ip ospf interface`). A peer -- zebra,
 mgmtd and ospfd from the switch's own FRR image in a throwaway
 `--network none` container, its veth on the kernel `Bridge` in VLAN 3999
-only, MTU 9100 to match Vlan3999 (OSPF compares MTUs), the same MD5 key --
+only, MTU 9100 to match Vlan3999 (OSPF compares MTUs; Vlan3999 was at
+SONiC's 9100 behind 1500-byte ports, fixed 2026-11-15, §11.13), the same MD5 key --
 reached **Full**. The DX010 learnt the peer's 192.0.2.0/24 as an E2 route
 into the kernel, APPL_DB and the ASIC; the peer learnt the DX010's default
 route (announced) and its connected networks (E2). The cycles after wrote
@@ -5876,7 +5900,7 @@ MACs), `disunified-l2d`'s `MacLockGuard`:
 1. writes the kernel bridge's chain `DUI_MACLOCK` (jumped to from INPUT and
    FORWARD): per secured port, `-i <port> -s <mac> -j RETURN` for each
    allowed MAC, then `-i <port> -j DROP`; every write is one
-   `ebtables-restore --noflush` transaction (§11.26.11);
+   `ebtables-restore --noflush` transaction (§11.26.12);
 2. only then sets the port's learning to `cpu_trap` in APPL_DB
    (`PORT_TABLE`, a PortChannel's `LAG_TABLE`, through ProducerStateTable),
    the ECS's mode: an unknown source is still neither learnt nor forwarded
@@ -7573,8 +7597,7 @@ Nothing to copy. Read-only on 2026-11-15:
   `pacmgr` or `mabmgr` on the host or in any container, no PAC table in
   CONFIG_DB, APPL_DB or STATE_DB;
 - its `ERROR_DISABLE|dot1x` row is configuration only, as every row of
-  that table is (§11.20); its inform agent `mcad` holds
-  `ubnt_get_interface_dot1x_status` and reports the off values.
+  that table is (§11.20), and its informs report the off values.
 
 So the departure from the ECS's pattern has a plain reason: the ECS has
 no 802.1X.
@@ -7660,7 +7683,7 @@ authenticates:
   unauthorised host cannot reach the switch's own CPU through a trapped
   frame (ARP, DHCP, IGMP) either; every write is one `ebtables-restore
   --noflush` transaction, and a chain the kernel lost is written again
-  at the next sync (§11.26.11);
+  at the next sync (§11.26.12);
 - the EAPOL trap `COPP_TRAP|dui_eapol` (`trap_ids eapol`, `queue4_group1`,
   `always_enabled true`) while any port authenticates;
 - a hostapd of its own (`-B -P /run/disunified-dot1x/<port>.pid`, config
@@ -8010,7 +8033,9 @@ that sends nothing that long becomes unauthorised, as §11.26.8 does.
 word: a Multiple Credentials port is taken to report `auto`, as a
 Credentials one does. The device layer reports these since
 (`dot1xReport`, `TestDot1XReport`), a controlled port `authorized` while
-l2d has admitted a host.
+l2d has admitted a host. The controller stores each as the DX010 sends it
+(§11.26.11); that it accepts them says nothing of what a UniFi switch
+sends.
 
 What would settle it: an inform from a real UniFi switch with each method
 on a port, and one port exercised per method. Credentials ran on the
@@ -8087,7 +8112,7 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
 one put back after):** at the restart the chain was rewritten with both
 RETURNs ahead of the DROP (the rewrite flushes and appends in order, so
 for ~20 ms it passes everything, never drops; one transaction since,
-§11.26.11), no FDB entry was written,
+§11.26.12), no FDB entry was written,
 and `mab_seen` was written as it stopped and removed 0.5 s after; the
 silent host went 40.2 s after its last frame ("idle for 40s"); the refused
 host was refused again, its count carried over; after the 25 s stop the
@@ -8116,7 +8141,55 @@ restart forgets the quiet periods, so each restart asks again. l2mcd also
 listed the looped port as a dynamic member of the LAN's groups while it was
 up (gone with the link). A cabled port hears only its host.
 
-#### 11.26.11 The kernel chains are written in one transaction (2026-11-15)
+#### 11.26.11 The controller's reading of each method, live (2026-11-15)
+
+Deployed build fef74fe, under the test lock, 21:52-22:14 UTC, on Clint's
+word to test on disunified rather than a UniFi switch: the DX010's record
+with Global Switch Settings unticked and 802.1X Control on (UniFi
+Integrated, no Unauthorized VLAN), empty cage 31 (Ethernet120, no link)
+set to each method in turn through its override's `dot1x_ctrl`. For each,
+the bridge's `payload-last.json`, then the controller's `stat/device`
+record after the next inform:
+
+| `dot1x_ctrl` | sent and stored (`dot1x_mode`/`dot1x_status`) | port panel |
+|---|---|---|
+| `force_authorized` | `force_auth`/`authorized` | Active |
+| `force_unauthorized` | `force_unauth`/`unauthorized` | **Disabled** |
+| `auto` | `auto`/`unauthorized` | **Disabled** |
+| `multi_host` | `auto`/`unauthorized` | **Disabled** |
+| `mac_based` | `mac_based`/`unauthorized` | **Disabled**; Active with 5700e19 |
+
+The other ports reported `force_auth`/`authorized` while 802.1X was on (the
+push sends `force_authorized` for every port without a method), and cage
+31 `unknown`/`disabled` once it was off.
+
+**A closed port read back as a MAC filter (fixed in 5700e19).** In every
+row the controller showed as Disabled, the bridge also sent
+`port_security_enabled: true`: 802.1X closes a port with the MAC filter's
+learn mode (`drop`, §11.26.3), and the read-back took every `drop` for a
+MAC filter (`readBackPortFeat`). The port panel then showed Port State
+Disabled with its network fields greyed, the Port Manager counted the cage
+under Disabled, and a save of that panel would most likely have pushed the
+port disabled (not tried). The controller's own rule shows when a MAC
+filter is saved with an empty list. A PUT of `port_security_enabled: true`
+with `port_security_mac_address: []` on cage 31's override came back
+rewritten as `forward: disabled`, with `native_networkconf_id` emptied
+(put back straight away). A port 802.1X holds closed now reads back as a
+MAC filter only by static entries that are not l2d's admitted hosts
+(`TestDot1XApply`, `TestDot1XKeepsAdmittedHosts`, `TestDot1XWithAMACFilter`;
+the first two fail on the old read-back). Test build 5700e19 on the DX010,
+cage 31 on `mac_based`: `mac_based`/`unauthorized` with
+`port_security_enabled: false`, Port State Active. So the Disabled came
+from the MAC filter report, not from `unauthorized`.
+
+Put back: cage 31's override as found, 802.1X Control off, then Global
+Switch Settings on (two saves: ticking Global Switch Settings hides the box
+and does not save its untick), the carried fef74fe reinstalled, l2.json's
+`dot1x` section gone, Ethernet120's learning `hardware` again, l2d's
+leftover STATE_DB `DUI_DOT1X_TABLE|Ethernet120` row (counts only) removed.
+No UniFi switch was touched.
+
+#### 11.26.12 The kernel chains are written in one transaction (2026-11-15)
 
 §11.26.10 saw `DUI_DOT1X` pass every frame for about 20 ms each time it
 was rewritten. The cause: `write_chain` flushed the chain (`ebtables -F`)
@@ -8406,7 +8479,8 @@ holds something the driver did not take out of it stays.
   list, so the device's Allow All tagged the lane switch's VLANs and the
   lane switch's the device's);
 - the VLAN of every network the switch routes (`switch.routing_interface`,
-  which `switch.vlan.*` does not list for a network no port carries);
+  which `switch.vlan.*` does not list for a network no port carries; its
+  MTU follows the ports' like a listed VLAN's since the same day, §11.13);
 - a VLAN that still has a member (a port outside `control.ports`, a lane a
   lane switch owns, a PortChannel outside the plan's range), an address
   the driver did not add (the management address on a VLAN other than the

@@ -2,7 +2,7 @@
 # l2d_mab.py, l2d_mab_restart.py, l2d_maclock.py): ebtables' single
 # commands, each its own transaction, and ebtables-restore --noflush as the
 # DX010's ebtables (1.8.11, nf_tables) runs it (docs/drivers/sonic.md
-# 11.26.11, measured there): the whole input is one transaction, a declared
+# 11.26.12, measured there): the whole input is one transaction, a declared
 # chain (":<chain> <policy>") is created or emptied, and a refused line
 # refuses the batch and leaves the table as it was.
 #

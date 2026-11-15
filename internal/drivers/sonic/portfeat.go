@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -558,8 +559,21 @@ func readBackPortFeat(st *swState, p *devicemodel.Port, macsByIface map[string][
 		learn = st.lagLearn[target]
 	}
 	if learn == learnDrop {
-		p.PortSecurity = true
-		p.AllowedMACs = macsByIface[target]
+		macs := macsByIface[target]
+		dot1x := p.Dot1X.Closed() && !strings.HasPrefix(target, "PortChannel")
+		if dot1x {
+			// 802.1X closes the port with the same learn mode, and its
+			// admitted hosts' static entries are l2d's: a MAC filter on
+			// it shows only by entries of its own. Read as a MAC filter
+			// with nothing allowed, the controller's UI showed the port
+			// Disabled (its own rule for an empty list; live 2026-11-15,
+			// docs/drivers/sonic.md §11.26.11).
+			macs = withoutMACs(macs, st.pf.dot1xAuth[target])
+		}
+		if !dot1x || len(macs) > 0 {
+			p.PortSecurity = true
+			p.AllowedMACs = macs
+		}
 	}
 	if n, ok := strings.CutPrefix(st.pf.qos[ifs[0]], egressPrefix); ok {
 		p.EgressKbps = atoi(n)
@@ -570,6 +584,17 @@ func readBackPortFeat(st *swState, p *devicemodel.Port, macsByIface map[string][
 			p.VoiceVLAN = policyVLAN(pol)
 		}
 	}
+}
+
+// withoutMACs is macs less those in drop (both lower case).
+func withoutMACs(macs, drop []string) []string {
+	var out []string
+	for _, m := range macs {
+		if !slices.Contains(drop, m) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // staticMACs groups portFeat's static entries by port, each MAC once.

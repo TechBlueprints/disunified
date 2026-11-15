@@ -1,5 +1,5 @@
 # The kernel chain DUI_DOT1X rewritten in one transaction (docs/drivers/sonic.md
-# 11.26.11), 2026-11-15, image igmp-202511.20261115-6c8eb1cf7 (ebtables and
+# 11.26.12), 2026-11-15, image igmp-202511.20261115-6c8eb1cf7 (ebtables and
 # iptables 1.8.11, nf_tables; kernel 6.12.41).
 #
 # semantics, netns, iptables: in private network namespaces on the switch

@@ -8,7 +8,7 @@ import (
 
 // dot1xAtomicFixture is the DX010's run of l2d's DUI_DOT1X writes through
 // admissions, revocations, restarts and a link loss (docs/drivers/sonic.md
-// §11.26.11): xtables-monitor's events for the deployed l2d (old) and this
+// §11.26.12): xtables-monitor's events for the deployed l2d (old) and this
 // one (new).
 const dot1xAtomicFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-atomic-live.txt"
 
