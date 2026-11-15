@@ -152,17 +152,53 @@ and the satisfaction score, never as `anomalies` bits (`docs/feature-map.md`
 §2: that field is what a switch detected, and the controller raises an alert
 per bit; it derives its own link-flap and SFP alerts from the raw fields).
 
-- `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps).
-  EOS counts one change at boot on every port (read 2026-11-14: every
-  never-up port at 1, a port up once at 2), so `link_down_count`, which
-  `internal/device` sends as the count halved, is one too many on an up
-  port; its growth is exact.
+- `show interfaces` → `interfaceCounters.linkStatusChanges` (link flaps),
+  every transition up or down since `interfaceCounters.lastClear`. The
+  driver turns it into drops (`linkDrops`, since 2026-11-15) and reports
+  `Health.LinkChanges` as the transitions of a link that started down
+  (`2*drops`, `+1` while up), so the halved `link_down_count` is exact:
+  - counted from boot (`lastClear` within 60 s of `show version`'s
+    `bootupTimestamp`; 0.48 s in the 2026-09-19 capture), EOS counts one
+    transition per interface at the start: every never-up port reads 1,
+    a port up once 2 (read 2026-11-14), Ethernet49/1's 18 are 8 drops.
+    Drops = `(n-1)/2`. The halved count was one too many on an up port
+    until then;
+  - counted from a `clear counters` (live 2026-11-15: 0 on every
+    interface, up or down, 14 h after one), the count starts at 0 from the
+    link's state then: drops = `ceil(n/2)` down, `floor(n/2)` up.
+  A cage's drops are its lanes' added (the lanes' transitions summed would
+  count each up lane's rise). `clear counters` lowers the count, as it
+  lowers every counter; a fall raises nothing at the controller. An admin
+  shutdown of a port with no link counts nothing (live 2026-11-15,
+  Ethernet2 in a commit-timer session, aborted:
+  `docs/fixtures/arista-eos-4.26.14M/link-counters/`).
 - `show spanning-tree topology status detail` → `topologies.Cist.interfaces[].numChanges`,
   the interface's STP state changes (3 for one link-up), sent as
   `stp_state_change_count`, the field the controller's STP-flap alert
-  carries (`docs/feature-map.md` §2). A down interface is not in the list
-  (read 2026-11-14), so its count reads 0 while it is down; whether EOS
-  keeps the count when it comes back is not captured.
+  carries (`docs/feature-map.md` §2). **EOS keeps it per link-up**: a down
+  interface is not listed (read 2026-11-14, and 2026-11-15 for Ethernet2
+  and Ethernet54/1), and a link that comes back starts from nothing
+  (Ethernet49/1 in the 2026-09-19 capture: 9 rises since boot, 3 changes;
+  Ethernet1 at 3 after its one rise, live 2026-11-15). Raw, the count fell
+  to 0 with every drop and came back whole with the next link-up, which
+  between two informs reads as every change of a link-up at once: the
+  STP-flap alert is a rate (`CLAUDE.md` §5). So the driver holds it per
+  interface across collects (`holdSTPChanges`, since 2026-11-15): growth
+  within a link-up adds its growth, a new link-up (the count fell, or the
+  interface's drops grew since the last collect) adds its whole count, a
+  down interface keeps its total, and a lane no longer there (a joined
+  cage) still counts towards its cage. The count never falls while the
+  bridge runs; a bridge restart starts again from EOS's counts (one fall).
+  It is held in the driver, not in `internal/device`, because the shape is
+  EOS's: a generic hold there would also hide a real reset on the other
+  drivers (`sonic`'s l2d count and mstpd's on `proxmox` are per bridge
+  port, kept while the link is down). **Not seen live:** the 7160 has no
+  MAC loopback (`traffic-loopback source system device mac|phy`:
+  "Unavailable command (not supported on this hardware platform)",
+  2026-11-15) and the test ports have no link, so no interface went down
+  and came back in STP during the capture; the per-link-up rule rests on
+  the two captures above. `TestSTPChangesHeldAcrossLinkUps` drives the
+  hold through them.
   (`show spanning-tree`'s `interfaces[].inconsistentFeatures` names the
   guards holding a port; no port field carries it, so it is not read.)
 - `show storm-control` → `interfaces[<lane>].trafficTypes.{broadcast,multicast,unknown-unicast}.drop`

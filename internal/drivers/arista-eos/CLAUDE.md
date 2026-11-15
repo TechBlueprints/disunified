@@ -105,6 +105,17 @@ that cost time on Clint's DCS-7160-48TC6-F.
   while another session's config session waits on its commit timer is
   reverted with that session (EOS warns "Any changes done here will be
   reverted"): check `show configuration sessions` before a probe.
+- **Link and STP counts (2026-11-15, `docs/drivers/arista-eos.md` §4):**
+  `linkStatusChanges` counts every transition since `lastClear`, with one
+  extra at boot on every interface (a never-up port reads 1) and none
+  after a `clear counters` (which zeroes it); `linkDrops` turns it into
+  drops by which of the two it is (`lastClear` within 60 s of
+  `bootupTimestamp`) and the state now. An admin shutdown of a linkless
+  port counts nothing. STP `numChanges` is per link-up: a down interface
+  is not listed, a link that comes back starts from 0; `holdSTPChanges`
+  keeps a per-interface total that never falls. The 7160 has **no MAC
+  loopback** (`traffic-loopback ...` is "not supported on this hardware
+  platform"), so a linkless test port cannot be brought up.
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is

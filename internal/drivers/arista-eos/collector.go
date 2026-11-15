@@ -97,6 +97,8 @@ type Collector struct {
 	aclSettle time.Duration
 	dhcpGuard string
 	aclStatus string // the last ACL read-back problem logged (acl_counters.go)
+
+	stpHeld map[string]stpHold // per interface: holdSTPChanges
 }
 
 // SetSSHKeyUser names the EOS user that receives controller SSH keys.
@@ -224,7 +226,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	for k, v := range static {
 		media[k] = v.media
 	}
-	ports, err := portsFromInterfaces(ifs, media)
+	ports, err := portsFromInterfaces(ifs, media, ver.BootupTimestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +290,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	c.readACLs(ctx, rc, ports)
 	applyErrdisabled(ports, ed)
 	applyOpticAlarms(ports, th)
-	applySTPChanges(ports, ts)
+	applySTPChanges(ports, c.holdSTPChanges(stpChangeCounts(ts), interfaceDrops(ifs, ver.BootupTimestamp)))
 	applySTPRoles(ports, stp)
 	if tr, ok := c.t.(TextRunner); ok {
 		c.applyPHYDetail(ctx, tr, ports)
@@ -317,6 +319,17 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	c.last = snap
 	c.mu.Unlock()
 	return snap, nil
+}
+
+// interfaceDrops is linkDrops for every Ethernet interface.
+func interfaceDrops(ifs showInterfaces, bootAt float64) map[string]uint64 {
+	out := map[string]uint64{}
+	for name, ifc := range ifs.Interfaces {
+		if _, _, ok := parseEthName(name); ok {
+			out[name] = linkDrops(ifc.Counters, ifUp(ifc), bootAt)
+		}
+	}
+	return out
 }
 
 // Close releases the transport.

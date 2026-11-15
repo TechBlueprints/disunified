@@ -87,13 +87,13 @@ func TestSecondWaveData(t *testing.T) {
 	// (topology status detail), optic thresholds (dom thresholds), FEC
 	// codewords (phy detail text).
 	h := p49.Health
-	if h.LinkChanges != 18 || h.STPChanges != 3 || h.OpticRxAlarm || h.OpticTxAlarm {
+	if h.LinkChanges != 17 || h.STPChanges != 3 /* 18 transitions from boot: 8 drops, up */ || h.OpticRxAlarm || h.OpticTxAlarm {
 		t.Errorf("port 49 health = %+v", h)
 	}
 	if !h.HasFECCounters || h.FECCorrected != 1 || h.FECUncorrected != 5 {
 		t.Errorf("port 49 fec counters = %+v", h)
 	}
-	if p53 := portByIndex(t, snap, 53); p53.Health.STPChanges != 3 || p53.Health.LinkChanges != 4 {
+	if p53 := portByIndex(t, snap, 53); p53.Health.STPChanges != 3 || p53.Health.LinkChanges != 3 { // 4 from boot: one drop, up
 		t.Errorf("port 53 health = %+v", p53.Health)
 	}
 	if snap.System.MgmtMAC != "02:00:00:00:00:3a" {
