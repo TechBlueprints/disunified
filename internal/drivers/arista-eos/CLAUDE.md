@@ -67,8 +67,13 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - **A session pending its commit timer blocks every other commit** ("Cannot
   commit because another session, X is pending commit timer"), the
   bridge's included: open one (a harmless `alias`) to hold the deployed
-  bridge off a hand-made test, abort it after. Reverting it keeps what was
-  committed before it.
+  bridge's ACL and address changes off a hand-made test, abort it after.
+  Reverting it keeps what was committed before it. It does **not** hold off
+  the bridge's port writes (plain `configure`): those apply, and are reverted
+  with the session, but the bridge's `write memory` saves them, and a hand
+  change made meanwhile, into startup-config (2026-11-15: a test
+  Port-Channel5). After the abort, `write memory` and check `show
+  running-config diffs` is empty.
 - Live (2026-11-14, §9.8): the driver's list on all 57 interfaces at once
   programmed (57 port ACL ids); binding them costs one or two 50 ms pings.
   The controller refuses an IP rule within one subnet ("resort to MAC ACL
