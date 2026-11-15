@@ -156,7 +156,9 @@ func TestLaneSettings(t *testing.T) {
 	if !strings.Contains(r.log.String(), "lane 2 (Ethernet5) of cage 2: 40000 Mb/s is not among the lane's speeds [1000 10000 25000]") {
 		t.Errorf("no note: %s", r.log.String())
 	}
-	// Jumbo on the lane switch: the lanes' MTU, not the VLANs' (the parent's).
+	// Jumbo on the lane switch: the lanes' MTU. No VLAN's: this lane switch
+	// has listed none (EnsureLaneVLANs), and the native stand-in is the
+	// device's (TestLaneOnlyVLANMTU).
 	r.applyLanes("jumbo", edit(edit(edit(edit(base, 1, setMTU), 2, setMTU), 3, setMTU), 4, setMTU), []string{
 		"sudo config interface mtu Ethernet4 9216", "sudo config interface mtu Ethernet5 9216",
 		"sudo config interface mtu Ethernet6 9216", "sudo config interface mtu Ethernet7 9216", save,

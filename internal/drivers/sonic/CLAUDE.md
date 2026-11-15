@@ -653,7 +653,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   (`routedVLANs`), which the list leaves out while no port carries them:
   until 2026-11-15 such a VLAN stayed at 9100 (`docs/drivers/sonic.md`
   §11.13). A VLAN the L3 plan makes is made at the ports' MTU, as
-  `EnsureVLANs` makes the pushed ones.
+  `EnsureVLANs` makes the pushed ones. **An attached lane switch's VLANs
+  too** (2026-11-15, §11.29.4): each VLAN takes the lowest MTU of the pushes
+  listing it (`Collector.mtuWant`, each plan's last applied port MTU); a
+  lane plan writes only VLANs the device's push does not list, so it never
+  touches the native stand-in. The FixtureRunner models a new VLAN's
+  netdev at 9100 only with `VLANNetdevs` (the recorded replays predate it).
 - **IPv6 on the management interface (`ipv6.go`, `docs/drivers/sonic.md`
   §11.22, 2026-11-14).** SLAAC follows the management network's IPv6 in
   the controller (`rest/networkconf` `ipv6_interface_type` not `none`; the

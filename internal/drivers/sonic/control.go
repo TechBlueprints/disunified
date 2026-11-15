@@ -48,9 +48,17 @@ type plan struct {
 	// push's switch.routing_interface), which switch.vlan.* -- site --
 	// does not list while no port carries them (§11.29.1): their MTU
 	// follows the ports' like the site's (vlanMTUs).
-	routed  []int
-	ops     []op
-	changed map[int]bool
+	routed []int
+	// mtuScopes are the other pushes on this switch, for the VLANs' MTU
+	// (vlanMTUs): in the device's plan each attached lane switch's, in a
+	// lane plan the device's and the other lane switches'.
+	mtuScopes []mtuScope
+	// siteGuessed: no push has listed site yet, so it is every VLAN on
+	// the switch (what Allow All may tag); a lane plan then sets no
+	// VLAN's MTU.
+	siteGuessed bool
+	ops         []op
+	changed     map[int]bool
 	// own are the ports written only for the driver's own reading of the
 	// push -- the FEC and the speed a module calls for where UniFi says
 	// auto (§10.3, §10.9).
@@ -183,8 +191,9 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	if cage == 0 {
 		routed = c.routedVLANs()
 	}
+	scopes := c.mtuScopes(cage)
 	c.mu.Unlock()
-	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, mtuScopes: scopes, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
 	pl.bridgeWait = st.l2mcKnown && st.l2mcFeature == "enabled" && !fixed
 	if cage == 0 {
 		for _, p := range snap.Ports {
@@ -226,6 +235,7 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 		pl.laneCage, pl.pcBase, pl.cageDown = cage, lanePCBase(cage), down
 	}
 	if pl.site == nil {
+		pl.siteGuessed = true
 		for id := range st.vlans {
 			if id != pl.native {
 				pl.site = append(pl.site, id)
@@ -290,11 +300,19 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	}
 	pl.lagJoins(ds)
 	pl.mirrorAdds(ds)
+	// The VLANs' MTU follows the ports of every push that lists them
+	// (vlanMTUs): this plan's, with what the others last set.
+	if want := pl.vlanMTUs(ds); !controllerOnly {
+		c.mu.Lock()
+		if c.mtuWant == nil {
+			c.mtuWant = map[int]int{}
+		}
+		c.mtuWant[cage] = want
+		c.mu.Unlock()
+	}
 	if pl.laneCage == 0 {
-		// Both are switch-wide: the VLANs' MTU follows the device's own
-		// ports, and isolation, port security, the egress limit and
+		// Switch-wide: isolation, port security, the egress limit and
 		// LLDP-MED are computed over every port the device has.
-		pl.vlanMTUs(ds)
 		pl.portFeatures(ds, caps)
 	}
 	if len(pl.owned) > 0 && pl.laneCage == 0 {
@@ -309,9 +327,11 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 }
 
 // vlanMTUs brings the VLANs the driver manages -- the site's, the routed
-// networks' and the native stand-in -- to the ports' MTU when the push
-// sets one (jumbo; the
-// lowest pushed MTU should ports ever differ). SONiC creates every VLAN at
+// networks' and the native stand-in, and every attached lane switch's --
+// to the MTU of the ports that carry them when the push sets one (jumbo;
+// the lowest pushed MTU should ports ever differ), and returns this
+// plan's own (0: the push sets none, and this plan leaves the VLANs
+// alone). SONiC creates every VLAN at
 // 9100 and leaves it there: the VLAN table's mtu reaches APPL_DB and the
 // router interface (orchagent), but vlanmgrd never applies it to the
 // kernel netdev (a TODO in 202505 and 202511), so the switch's own TCP
@@ -322,35 +342,84 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 // the Bridge's MTU (a VLAN device cannot exceed its parent), which a swss
 // restart or a reboot resets and the next apply restores. A netdev the
 // last collect did not see (a VLAN made this cycle) waits for the next.
-func (pl *plan) vlanMTUs(ds []devicemodel.PortDesired) {
-	want := 0
+//
+// A lane switch's push reaches its lanes through a plan of its own, with
+// its own jumbo setting (docs/drivers/breakout.md §7), so each VLAN takes
+// the lowest MTU of the pushes that list it: this plan's from ds, the
+// others' as their last applied plan left them (mtuScopes; one that has
+// not applied yet counts for nothing). Both plans compute the same value,
+// so neither undoes the other. A lane plan writes only the VLANs the
+// device's push does not list (the native stand-in, the management VLAN,
+// stays the device plan's), so a lane switch alone never raises it.
+// Until 2026-11-15 a VLAN only a lane switch listed was in no plan's list
+// (§11.29.4).
+func (pl *plan) vlanMTUs(ds []devicemodel.PortDesired) int {
+	own := 0
 	for _, d := range ds {
-		if d.MTU > 0 && (want == 0 || d.MTU < want) {
-			want = d.MTU
+		if d.MTU > 0 && (own == 0 || d.MTU < own) {
+			own = d.MTU
 		}
 	}
-	if want == 0 {
-		return
+	if own == 0 {
+		return 0
 	}
-	kernel := want
-	if b := pl.sim.netMTU["Bridge"]; b > 0 && b < kernel {
-		kernel = b
+	wanted := map[int]int{}
+	lower := func(id, m int) {
+		if m > 0 && (wanted[id] == 0 || m < wanted[id]) {
+			wanted[id] = m
+		}
 	}
 	// A routed network no port carries is in the push's routing list
 	// only, not in switch.vlan.*: left out, its VLAN stayed at SONiC's
 	// 9100 (CONFIG_DB and the netdev) behind 1500-byte ports (§11.13).
-	seen := map[int]bool{}
-	var ids []int
-	for _, id := range append(append([]int{pl.native}, pl.site...), pl.routed...) {
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
+	// A guessed list (no push has named one yet) is no push's: a lane
+	// plan then claims nothing, and the device's plan leaves the VLANs a
+	// lane switch lists to that lane switch's MTU, as the lane plan does.
+	listed := map[int]bool{}
+	for _, s := range pl.mtuScopes {
+		if s.cage > 0 {
+			for _, id := range s.ids[1:] { // [0] is the native stand-in
+				listed[id] = true
+			}
 		}
+	}
+	mine := append(append([]int{pl.native}, pl.site...), pl.routed...)
+	if pl.laneCage > 0 && pl.siteGuessed {
+		mine = nil
+	}
+	for _, id := range mine {
+		if pl.laneCage == 0 && pl.siteGuessed && listed[id] && !slices.Contains(pl.routed, id) {
+			continue
+		}
+		lower(id, own)
+	}
+	device := map[int]bool{}
+	for _, s := range pl.mtuScopes {
+		for _, id := range s.ids {
+			lower(id, s.want)
+			if s.cage == 0 {
+				device[id] = true
+			}
+		}
+	}
+	if pl.laneCage > 0 {
+		for id := range device {
+			delete(wanted, id)
+		}
+	}
+	ids := make([]int, 0, len(wanted))
+	for id := range wanted {
+		ids = append(ids, id)
 	}
 	sort.Ints(ids)
 	for _, id := range ids {
+		want := wanted[id]
 		if !pl.sim.vlans[id] {
 			continue
+		}
+		kernel := want
+		if b := pl.sim.netMTU["Bridge"]; b > 0 && b < kernel {
+			kernel = b
 		}
 		dev := "Vlan" + strconv.Itoa(id)
 		if cur := atoi(pl.sim.vlanMTU[id]); cur != want && (cur != 0 || want != defaultMTU) {
@@ -361,6 +430,37 @@ func (pl *plan) vlanMTUs(ds []devicemodel.PortDesired) {
 			pl.add(0, fmt.Sprintf("ip link set dev %s mtu %d", dev, kernel), func(s *swState) { s.netMTU[dev] = kernel })
 		}
 	}
+	return own
+}
+
+// mtuScope is one push's VLANs and the MTU its last applied plan set on
+// its ports (0: none yet, or the push sets none). The native stand-in is
+// in every scope: every port is in it unless a push says otherwise.
+type mtuScope struct {
+	cage, want int
+	ids        []int
+}
+
+// mtuScopes is every push on this switch but the one of the plan for
+// cage (0 = the device's own), for vlanMTUs. Called with c.mu held.
+func (c *Collector) mtuScopes(cage int) []mtuScope {
+	var out []mtuScope
+	if cage > 0 {
+		ids := append(append([]int{c.NativeVLAN}, c.siteVLANs...), c.routedVLANs()...)
+		out = append(out, mtuScope{cage: 0, want: c.mtuWant[0], ids: ids})
+	}
+	var cages []int
+	for idx := range c.children {
+		if idx != cage {
+			cages = append(cages, idx)
+		}
+	}
+	sort.Ints(cages)
+	for _, idx := range cages {
+		ids := append([]int{c.NativeVLAN}, c.laneVLANs[idx]...)
+		out = append(out, mtuScope{cage: idx, want: c.mtuWant[idx], ids: ids})
+	}
+	return out
 }
 
 // collides: the native-id hazard of §5.2a. A desired port that names
@@ -1425,10 +1525,23 @@ func (c *Collector) ensureVLANs(ctx context.Context, cage int, ids []int) (int, 
 	// A new VLAN is 9100; behind ports at another MTU (jumbo off) it takes
 	// theirs from the start (vlanMTUs; the kernel netdev follows on the
 	// next apply, once a collect has seen it).
+	// A lane switch's VLAN takes its lanes' MTU: the one its last plan
+	// set, else the lanes' as collected (vlanMTUs, §11.29.4).
 	mtu := 0
 	c.mu.Lock()
+	ports := []devicemodel.Port(nil)
 	if c.last != nil {
-		for _, p := range c.last.Ports {
+		ports = c.last.Ports
+	}
+	if cage > 0 {
+		ports = nil
+		for _, l := range c.lanes[cage] {
+			ports = append(ports, l.Port)
+		}
+		mtu = c.mtuWant[cage]
+	}
+	if mtu == 0 {
+		for _, p := range ports {
 			if p.MTU > 0 && (mtu == 0 || p.MTU < mtu) {
 				mtu = p.MTU
 			}

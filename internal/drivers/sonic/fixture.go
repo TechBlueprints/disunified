@@ -106,6 +106,14 @@ type FixtureRunner struct {
 	promote       map[string]bool
 	IgnorePromote bool
 
+	// VLANNetdevs models vlanmgrd's kernel half of `config vlan add|del`:
+	// a new VLAN's Vlan<id> netdev appears in the addr section at the
+	// Bridge's MTU (vlanNetdev), so the next collect sees it at 9100 as the
+	// switch does. Off by default: the recorded replays of runs before
+	// 2026-11-15 hold the commands their bridge wrote, none of which met a
+	// netdev made in the same run (docs/drivers/sonic.md §11.29.4).
+	VLANNetdevs bool
+
 	// Zones answers zonesCommand: the switch's zone list with each zone's
 	// POSIX rule (zones.txt beside the capture, through sanitize-sonic.py).
 	Zones     string
@@ -695,7 +703,7 @@ func (f *FixtureRunner) apply(line string) error {
 		if at(3) == "-m" {
 			ids = strings.Split(at(4), ",")
 		}
-		return f.update("cfg_vlan", func(t table) error {
+		if err := f.update("cfg_vlan", func(t table) error {
 			for _, id := range ids {
 				k := "VLAN|Vlan" + id
 				if _, ok := t[k]; ok {
@@ -704,7 +712,15 @@ func (f *FixtureRunner) apply(line string) error {
 				t[k] = map[string]string{"vlanid": id}
 			}
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := f.vlanNetdev(id, true); err != nil {
+				return err
+			}
+		}
+		return nil
 
 	case cmd == "config vlan del":
 		ids := []string{at(3)}
@@ -1102,6 +1118,9 @@ func (f *FixtureRunner) vlanDel(ids []string) error {
 			}
 		}
 		if err := f.update("cfg_vlan", func(t table) error { delete(t, "VLAN|"+vlan); return nil }); err != nil {
+			return err
+		}
+		if err := f.vlanNetdev(id, false); err != nil {
 			return err
 		}
 	}

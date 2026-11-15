@@ -113,10 +113,15 @@ since the collect).
 | name, VLANs, FEC, MTU, storm control | each lane | not applied (one note per push) |
 | aggregate, mirror | between its lanes | the cage's own not applied; a join removes the child's first |
 | STP port settings (edge, BPDU guard, loop protection), isolation, port security, egress limit, LLDP-MED | -- | **the cage's, on every lane, as before**; for STP on every bridge port the lanes make, a lane aggregate included (§14.4) |
-| VLAN MTU, VLAN creation | -- (`EnsureVLANs` is the parent's) | the parent's |
+| VLAN creation | -- (`EnsureVLANs` is the parent's; `EnsureLaneVLANs` makes the child's list at the lanes' MTU) | the parent's |
+| VLAN MTU | the child's own VLANs (those the parent's push does not list), from the lane plan | every VLAN, from the cage plan; each VLAN at the lowest MTU of the pushes that list it (sonic.md §11.29.4) |
 
-The last two rows depart from the spec (§5.4), for a code reason: those
-settings are computed switch-wide from the parent's own ports -- l2d's
+The VLAN MTU row was "the parent's" until 2026-11-15. A VLAN only the
+child listed then got its MTU in CONFIG_DB at creation, but its netdev
+stayed at 9100 and a jumbo flip never reached it (§7, sonic.md §11.29.4).
+
+The STP-and-port-features row and VLAN creation depart from the spec
+(§5.4), for a code reason: those settings are computed switch-wide from the parent's own ports -- l2d's
 per-port intent is the parent's cages' in `l2.go` (`l2SetPorts`, rebuilt
 from every port at once: each bridge port a cage's interfaces make, a lane
 aggregate included, takes the cage's settings), the isolation group and the static FDB entries from
@@ -571,6 +576,18 @@ Nothing UniFi-specific crosses it: lane indexes, `Port`s and
   interface already (`hardware.go`, `lanePort`); the module (`xcvr` keyed
   by the first interface) goes to port 5.
 - `collect.py` needs no change: every table it prints is per interface.
+- **The VLANs' MTU (2026-11-15).** The lane plan ran no `vlanMTUs`, and
+  the cage plan's list was the device's own. So a VLAN only the child
+  listed kept its `Vlan<id>` netdev at vlanmgrd's 9100 (sonic.md §12), and
+  neither half followed a jumbo flip. Now each VLAN takes the lowest MTU of
+  the pushes that list it: the device's, and each attached child's
+  (`Collector.mtuWant`: each plan's last applied port MTU). Both plans
+  compute the same value. The lane plan writes only the VLANs the device's
+  push does not list, never the native stand-in. A new lane VLAN is made at
+  the child's MTU. Tests: `TestLaneOnlyVLANMTU` and
+  `TestReplayLaneSwitchVLANMTU`, over the 4x25G capture with vlanmgrd's
+  netdev modelled (`FixtureRunner.VLANNetdevs`). The full write-up is
+  sonic.md §11.29.4.
 
 ## 7b. Arista implementation notes (`internal/drivers/arista-eos`)
 
@@ -702,6 +719,12 @@ to 4x25G (`Ethernet50/1..4`), so every lane test runs on real data.
   *(as built: BPDU guard and STP edge kept, above)*.
 - `LocalChassisID()` from `show lldp local-info`; `LaneAlias` `""`;
   `applyMu` across every write, as for SONiC.
+- **No VLAN MTU (checked 2026-11-15).** An EOS VLAN has no MTU of its own,
+  and the driver writes none at all (jumbo is logged, not applied:
+  `arista-eos.md` §6). It makes no SVI either: its one address write is
+  the management address move, on the interface it is reached on. So a VLAN only the child lists
+  needs nothing here. The sonic parent's gap (§7) has no counterpart on
+  EOS.
 
 ## 7c. A detached lane switch's aggregates (both parents, 2026-11-15)
 
@@ -1082,7 +1105,24 @@ package is rebuilt from a commit that has this change.
    description` in the parent's journal (`sonic apply (cage 2 lanes, ...)`),
    then a zero-change cycle. Watch the child's record across the push for
    the disconnect of §14.2.
-5. **The aggregate**: on the child, mark lanes 2-4 Aggregate. Expect
+5. **A VLAN only the child carries, and its MTU** (sonic.md §11.29.4,
+   never run live). On the child, tag lane 1 with a network no DX010 port
+   carries.
+   - Expect in the parent's journal `sonic: creating VLANs [<id>]` with
+     `hset 'VLAN|Vlan<id>' mtu 1500`.
+   - Within one cycle of either loop, expect `ip link set dev Vlan<id> mtu
+     1500`, then a zero-change cycle.
+   - Read both halves on the switch: `sonic-db-cli CONFIG_DB hget
+     'VLAN|Vlan<id>' mtu` and `ip -j link show Vlan<id>`.
+   - Turn Jumbo Frames on for the child alone, if the controller offers it
+     per device. Expect one lane batch with the lanes at 9216, `VLAN|Vlan<id>`
+     at 9216 and its netdev at 9100. `Vlan4094` stays at the DX010's MTU.
+     If jumbo is the site's only, both pushes flip, and `Vlan4094` moves at
+     the DX010's next plan.
+   - Turn jumbo back off. Both halves go to 1500.
+   - Untag the network. The DX010's next plan deletes `Vlan<id>` (§11.29).
+   - Record the journal lines and both reads.
+6. **The aggregate**: on the child, mark lanes 2-4 Aggregate. Expect
    `PortChannel201` created on Ethernet5-7 in one batch (the FEC note for
    `cl-91`), the next cycle writing nothing, the child's ports 2-4 reporting
    it. Without a cabled far side the members stay down; with a breakout DAC
@@ -1090,12 +1130,12 @@ package is rebuilt from a commit that has this change.
    the partner and the child's inform `lacp_state`. Remove the aggregate in
    the UI: the PortChannel goes, the lanes back in their VLANs, zero-change
    cycle.
-6. **The join**: set the DX010's port 2 to 100G (or auto with a 100G
+7. **The join**: set the DX010's port 2 to 100G (or auto with a 100G
    module) with an aggregate present: one batch dissolves `PortChannel201`
    then breaks out to `1x100G[40G]` (check the ACL tables stay `Active`,
    §14.5). The child stops answering (`not split`), the controller shows it
    disconnected.
-7. **Undo**: forget the child (`cmd/sitemgr delete-device`, exact MAC),
+8. **Undo**: forget the child (`cmd/sitemgr delete-device`, exact MAC),
    remove its entry from `/host/disunified/config.yaml`, restart the
    service; set port 2 back to what it was. A forgotten lane switch that is
    split again comes back pending under the same MAC.
