@@ -4,7 +4,8 @@
 # real network: the container has no network (--network none) and transmits
 # are captured by the harness.
 #   run.sh build <src>            build into out/<tag>
-#   run.sh regress <tag> [case]   run the regression cases (each its own process)
+#   run.sh regress <tag> [case]   run the regression cases (each its own process, all in one
+#                                 container: a link a case adds is there for the cases after it)
 #   run.sh fuzz <tag> igmp|mld <seconds> [jobs]
 #   run.sh shell <tag>
 set -euo pipefail
