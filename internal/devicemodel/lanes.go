@@ -39,6 +39,17 @@ type LaneProvider interface {
 	AttachLaneSwitch(cage int, child Attachment) error
 }
 
+// LaneVLANController is an optional LaneProvider capability: the VLANs a
+// lane switch's own push names, kept apart from the device's. A
+// controller's push names only the VLANs that device's ports carry, so a
+// lane switch's list can differ from its parent's, and a parent that
+// deletes the VLANs its push no longer names (sonic, arista-eos) must keep the ones an
+// attached lane switch still carries. Same contract as
+// VLANController.EnsureVLANs otherwise.
+type LaneVLANController interface {
+	EnsureLaneVLANs(ctx context.Context, cage int, ids []int) (created int, err error)
+}
+
 // Attachment is a declared lane switch.
 type Attachment struct {
 	MAC  string // lower-case colon form

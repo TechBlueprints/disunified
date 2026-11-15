@@ -154,6 +154,20 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   (EnsureVLANs runs first); otherwise the explicit `-m` list.
   `EnsureVLANs` refuses a list holding `native_vlan` whole; `ApplyPorts`
   skips a port that names it.
+- **A VLAN no push names is deleted (`vlan_prune.go`, `docs/drivers/sonic.md`
+  §11.29, 2026-11-15)**, at the end of `ApplyPorts`, once the ports, the
+  IGMP rows and a routed network's address have left it. The push lists a
+  VLAN only while a port carries it or the switch routes it (a routed
+  network no port carries is in `switch.routing_interface` only); the ECS
+  removes such a VLAN with its members. Kept: `native_vlan`, the device's
+  and every attached lane switch's list (`EnsureLaneVLANs`: a lane
+  switch's list no longer replaces the device's), routed VLANs, and any
+  VLAN with a member, an address, a VRF/link-local interface row, a relay
+  or a snooping row the driver did not take out. Only from lists this run
+  was given (`siteKnown`, each child's, `c.l3` where FRR runs); not with
+  `control.ports: off`. The DHCP guard is re-derived after a delete. A
+  known-empty list is not "unknown": `planFor` keeps `[]` (the old nil
+  fell back to every VLAN on the switch for Allow All).
 - **`hdel … description` leaves APPL_DB's copy behind**: clearing is `hset
   … description ''` (APPL_DB follows) then `hdel`; the description is read
   from CONFIG_DB only.
@@ -634,7 +648,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   restart or reboot; the start-up reconcile restores it after a reboot, and
   the next cycle's reconcile after a swss restart -- the loop reconciles
   whether or not the inform was answered (2026-11-02), so a bridge whose own
-  informs the MTU breaks still repairs it.
+  informs the MTU breaks still repairs it. **Which VLANs:** the native
+  stand-in, the push's `switch.vlan.*` list and the routed networks' VLANs
+  (`routedVLANs`), which the list leaves out while no port carries them:
+  until 2026-11-15 such a VLAN stayed at 9100 (`docs/drivers/sonic.md`
+  §11.13). A VLAN the L3 plan makes is made at the ports' MTU, as
+  `EnsureVLANs` makes the pushed ones.
 - **IPv6 on the management interface (`ipv6.go`, `docs/drivers/sonic.md`
   §11.22, 2026-11-14).** SLAAC follows the management network's IPv6 in
   the controller (`rest/networkconf` `ipv6_interface_type` not `none`; the
@@ -692,7 +711,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   breakout (`l2mcUnbind`, one `python3 -c ... disunified-l2mc` line) and
   `applyIGMP` writes the new ports' after; the FixtureRunner's
   `SavedDangling` catches a save that writes one. `config vlan del` is
-  refused while snooping is on (the driver never deletes a VLAN). Version
+  refused while snooping is on (the VLAN delete, §11.29, comes after
+  the IGMP apply has taken the VLAN's rows out). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
   from the VLAN's own address, or 0.0.0.0: the patch in §8.11). **Live on
@@ -816,8 +836,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   the host; frr's, 0600: it holds the keys) and runs `ospfd -d -A 127.0.0.1
   -P 0 -f` on it; collect.py's `frr_ospf` is "running" and the file's sha256
   only. Changed router = restart ospfd; ospfd gone (bgp restart) = start;
-  router deleted = stop + rm. A test peer on the kernel `Bridge` needs MTU
-  9100 like `Vlan<id>` or OSPF stalls in ExStart (MTU check); the peer's
+  router deleted = stop + rm. A test peer on the kernel `Bridge` needs the
+  `Vlan<id>`'s MTU or OSPF stalls in ExStart (MTU check): 9100 on
+  2026-11-07, the ports' MTU since 2026-11-15 (§11.13); the peer's
   ospfd needs zebra and mgmtd beside it. Area ids are dotted:
   `sanitize-controller.py` keeps 0.0.0.0/8.
 - **Routed ports and aggregates, DHCP fixed IPs (`l3.go`, `control.go`,
@@ -951,6 +972,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `IFP_STORM_CONTROL_METERS` are token buckets with no counter; the SDK's
   one debug trigger (`bcmDbgCntRxStormControlDrop`) covers all three types
   together. Do not report a total as a type.
+- **A fresh capture** is `ssh <switch> 'python3 -' < internal/drivers/sonic/collect.py
+  > raw` (as the login user, read-only), then `scripts/sanitize-sonic.py raw
+  <image dir>/collect-<name>.txt` beside that image's `config-help.txt`. A
+  reply log replayed over it is scrubbed with `sanitize-controller.py --ip
+  <real>=<test>` for every address the capture's scrub mapped (pair the raw
+  and scrubbed lines: same line count), its `resolv.host.1.name` set to the
+  capture's `host-1` (`replies-dx010-vlan-prune.ndjson`, 2026-11-15).
 - **Scrub**: `scripts/sanitize-sonic.py`. IPv6 link-local addresses are
   rewritten too (their EUI-64 half is a real MAC). A hardware capture also
   carries serials (chassis, PSUs, optics), the LLDP neighbour's system name
@@ -1176,6 +1204,9 @@ was restarted.
   - **The MAC filter's plan deletes every static FDB entry it does not
     want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
     wanted while their port is controlled.
+  - **802.1X's `drop` is not a MAC filter on the read side**: read as one
+    (`port_security_enabled` with no allowed MACs), the controller's port
+    panel shows the port Disabled, its own rule for an empty list (§11.26.11).
   - **A looped test cage makes hostapd a station of the switch's own
     MAC** (its own frames come back): l2d ignores the switch's MAC.
   - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
@@ -1215,6 +1246,24 @@ was restarted.
     and `hdel`ed by the next l2d. Before that fix every start dropped the
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
+  - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**
+    (`eb_restore`, §11.26.12, 2026-11-15). The switch's `ebtables` is 1.8.11
+    on nf_tables (`ebtables -V`), so each `ebtables` call is a transaction of
+    its own: a flush and one append per rule passed every frame until the
+    DROP was back. A restore is one transaction: a declared chain is
+    emptied, a refused line refuses the batch. `ebtables-legacy-restore`
+    keeps a declared chain's rules, hence the explicit `-F`. SONiC's
+    `database.sh` loads `/etc/ebtables.filter.cfg` with a plain
+    `ebtables-restore`, which empties the whole filter table: both guards
+    re-read their chain's count and jumps (`eb_state`) and write it again.
+    The fakes run `testdata/l2d_ebtables.py`, which prints `WINDOW` when a
+    closed port passes a never-admitted source between two writes.
+    **A looped cage cannot exercise the chain's DROP**: it is STP-blocked, so
+    the kernel bridge drops its frames before ebtables, and the only trapped
+    link-local frame (which reaches INPUT in any port state) is EAPOL, which
+    the chain accepts. Prove a write with `xtables-monitor -e` (one `NEWGEN`
+    per transaction) or in an `ip netns` bridge; seeing the DROP itself needs
+    a cabled host on a forwarding port.
   - **A rig sharing one `SonicV2Connector` across threads segfaults in
     `_swsscommon`** (silently, no traceback): lock every call or give each
     thread its own. `docker exec database redis-cli monitor` outlives a
@@ -1225,6 +1274,19 @@ was restarted.
   - **The bridge's reply log (`inform-log/`) keeps every push verbatim**,
     the RADIUS secret included: grep it, not just the journal, when
     checking where a secret went.
+- **UniFi's client Block (`block.go`, `docs/drivers/sonic.md` §11.33,
+  built 2026-11-15, fixture- and replay-tested).** `MB_<mac>` rules in
+  `DUI_MAC_ACL` exactly as the ECS holds them (DROP, PRIORITY 1023, a bare
+  SRC_MAC, no VLAN), outside the MAC rules' limit, each half of the table
+  kept while the other is held or unknown; the kernel's copy is ebtables
+  `DUI_MAC_BLOCK` from INPUT (marker `/run/disunified/mac-block`, collect.py
+  `mac_block`), not the IPv4 raw mirror, so ARP and IPv6 are covered too.
+  **`swState.clone` lists its fields by hand**: a new field left out of it
+  is lost after every chip batch (the chain was written one apply late
+  until it was added). Scrubbed placeholders collide across captures
+  (a reply's first MAC and a collect's switch MAC are both
+  `02:00:00:00:00:01`): seed a reply log's clients with
+  `sanitize-controller.py --mac` or the driver holds them as the switch.
 - **Hand tests on a switch that several sessions share take a lock on the
   switch**: write `/tmp/dui-dx010.lock` with your session's name and what
   you are doing, wait while another session holds it, remove it when done.

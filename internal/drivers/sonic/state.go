@@ -51,6 +51,13 @@ type swState struct {
 	// from VLAN_INTERFACE, INTERFACE, PORTCHANNEL_INTERFACE and
 	// LOOPBACK_INTERFACE (MGMT_INTERFACE, eth0's, is not among them).
 	ifaddrs map[string]bool
+	// vlanIfRows are VLAN_INTERFACE's bare rows (no address in the key) by
+	// VLAN interface, with their fields: the CLI writes one with the first
+	// address and deletes it with the last unless the interface is bound to
+	// a VRF or runs IPv6 link-local (config/main.py `ip remove`), so a row
+	// with fields beyond NULL is a setting UniFi does not make. Read-only,
+	// shared by clones.
+	vlanIfRows map[string]map[string]string
 
 	meta map[string]string // DEVICE_METADATA|localhost (hostname, timezone)
 	// kernelHost is the Linux hostname (collect.py's hostname section),
@@ -113,6 +120,11 @@ type swState struct {
 	// aclCPUKnown says the collector reads the marker (acl_cpu).
 	aclCPU      string
 	aclCPUKnown bool
+	// macBlock is the hash of the kernel chain of blocked clients
+	// (block.go, §11.33) as its marker records it, "" without one;
+	// macBlockKnown says the collector reads the marker (mac_block).
+	macBlock      string
+	macBlockKnown bool
 	// gc: the guard's per-port count (acl_count.go, §11.7.9).
 	gc guardCountState
 
@@ -317,6 +329,12 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		case parts[0] == "VLAN_INTERFACE", parts[0] == "INTERFACE", parts[0] == "PORTCHANNEL_INTERFACE", parts[0] == "LOOPBACK_INTERFACE":
 			s.ifaddrs[parts[1]+"|"+parts[2]] = true
 		}
+		if len(parts) == 2 && parts[0] == "VLAN_INTERFACE" {
+			if s.vlanIfRows == nil {
+				s.vlanIfRows = map[string]map[string]string{}
+			}
+			s.vlanIfRows[parts[1]] = fv
+		}
 	}
 	s.mgmtPortMissing = mgmtAddr && !mgmtPort
 	s.v6 = parseV6(sec["ipv6_ra"], db["appl_intf"], addrs)
@@ -363,6 +381,9 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		parseGuardCount(s, db, sec)
 		if m, ok := sec["acl_cpu"]; ok {
 			s.aclCPUKnown, s.aclCPU = true, strings.TrimSpace(m)
+		}
+		if m, ok := sec["mac_block"]; ok {
+			s.macBlockKnown, s.macBlock = true, strings.TrimSpace(m)
 		}
 	}
 	for iface, f := range db["asic_bridge_port"] {
@@ -442,9 +463,9 @@ func (s *swState) clone() *swState {
 		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
-		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, gc: s.gc.clone(),
+		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, macBlock: s.macBlock, macBlockKnown: s.macBlockKnown, gc: s.gc.clone(),
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{}, bridgeDown: s.bridgeDown,
-		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
+		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn), vlanIfRows: s.vlanIfRows,
 	}
 	for k, v := range s.l2mc {
 		c.l2mc[k] = copyFields(v)

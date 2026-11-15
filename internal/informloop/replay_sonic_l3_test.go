@@ -1,7 +1,6 @@
 package informloop
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -17,11 +16,7 @@ import (
 
 func TestReplaySonicDX010L3(t *testing.T) {
 	r, _ := newDX010Rig(t, "collect-l3.txt")
-	r.l.collect(context.Background())
-	r.l.reconcile(context.Background())
-	if got := r.writes(); len(got) != 0 {
-		t.Errorf("the capture under its own push wrote %q", got)
-	}
+	r.settle("the capture under its own push")
 
 	got := r.push("system_cfg-dx010-l3-1-dhcp-server.txt", "c62e71b7cbac2668")
 	if !containsInOrder(got,
@@ -29,10 +24,16 @@ func TestReplaySonicDX010L3(t *testing.T) {
 		brkSave,
 		"sudo config interface ip add Vlan4040 198.18.253.2/24",
 		"sudo config vlan add 3999", // the L3 plan: no port carries the routed network yet
+		// made at the ports' 1500 (jumbo off), not SONiC's 9100: the push
+		// lists 3999 in switch.routing_interface only (§11.13)
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan3999' mtu 1500",
 		"sudo config interface ip add Vlan3999 198.18.3.1/24",
 		brkSave,
 	) {
 		t.Errorf("the routed network wrote\n  %s", strings.Join(got, "\n  "))
+	}
+	if n := strings.Count(strings.Join(got, "\n"), "'VLAN|Vlan3999' mtu"); n != 1 {
+		t.Errorf("Vlan3999's MTU written %d times, want once at its creation:\n  %s", n, strings.Join(got, "\n  "))
 	}
 	for _, w := range got {
 		if strings.Contains(w, "STATIC_ROUTE") {
@@ -108,10 +109,10 @@ func TestReplaySonicDX010L3(t *testing.T) {
 		"sudo config interface ip remove Vlan3999 198.18.3.1/24 </dev/null",
 		"sudo config interface ip remove Vlan4040 198.18.253.2/24 </dev/null",
 		brkSave,
-		// The VLAN the network left behind (the driver never deletes a
-		// VLAN) takes the ports' MTU, as every VLAN on the switch does
-		// (vlanMTUs; the same write followed live).
-		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan3999' mtu 1500",
+		// The routed network's VLAN and the transit's, which no push
+		// names any more, go once nothing is left in them (vlan_prune.go,
+		// docs/drivers/sonic.md §11.29; live they were deleted by hand).
+		"sudo config vlan del -m 3999,4040",
 		brkSave,
 	})
 	r.cycle("routing off")

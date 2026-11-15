@@ -70,6 +70,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 | Gap | Where it is marked | What the PR needs |
 |---|---|---|
 | **`numbering: node`** — per-node guest ports (48 per node) instead of 48 across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
+| **UniFi's client Block** (2026-11-15): the controller's blocked clients (`blocked_sta`, captured) as an nft bridge table of the driver's own, dropping their frames from every port at prerouting | `drivers/proxmox.md` §4d; fixture-tested only (the nodes are production) | the table loaded on a node, or first in a throwaway network namespace as `dhcpguard-netns-test.sh` does: a frame from a blocked source dropped and counted, another passing, the table gone on Unblock |
 | **LACP from the UniFi UI** converting a bond's mode through the Proxmox API | `drivers/proxmox.md` §3b | the round-trip on a node whose uplink you can afford to lose for a minute: aggregate in the UI → bond mode changes → un-aggregate → restored; the pushed `system_cfg` keys added to the replay fixture |
 
 ### Known limits (by design; a PR would be a design change, open an issue first)
@@ -139,6 +140,12 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 | **CNI backend** (Podman ≤ 3, or 4 upgraded in place) | different `inspect` shape; `InterfaceName` semantics differ | a capture from a CNI host and the parser cases for it |
 
 ### Not done (read-only by design today) — PRs welcome, open an issue first
+
+- **UniFi's client Block** (`blocked_sta`, `docs/feature-map.md` §3) is not
+  applied: no driver capability is built for a Podman host. A PR would drop
+  the blocked sources on the host's container bridges as the `proxmox`
+  driver's nft table does (`drivers/proxmox.md` §4d), with a capture of the
+  table read back.
 
 - **Port control**: port state → `ip link set … down` inside the netns, or
   `podman network disconnect`; VLANs have no meaning on a Podman network.
@@ -227,6 +234,22 @@ gateway's port and switch-facing ports
 | A rule on a port carrying a client's traffic, a rewrite under that traffic | **untested**: needs a host on a test port |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network (the deployment keeps `exact`: detection is off, §9.7) |
 
+| **UniFi's client Block** (2026-11-15): the blocked clients (`blocked_sta`, captured) as `mac address-table static <mac> vlan <v> drop` in every VLAN (§9.9) | the command and its read-back **captured live** (committed under a timer, aborted; `mac-drop/`); the writes fixture- and replay-tested; **untested**: a frame with a blocked source dropped (Arista's manual says drop entries match source or destination), which needs a host behind a test port |
+
+**A VLAN the controller stops pushing is deleted (2026-11-15)**, by
+sonic's rule ([`drivers/arista-eos.md`](drivers/arista-eos.md) §12): after
+the port batch, `no vlan <list>` with the driver's IGMP line for each; kept:
+VLAN 1, the management VLAN, a dynamic VLAN, an attached lane switch's
+VLANs, and a VLAN an SVI, a `vlan` section line other than its name, or an
+unwritten interface still holds.
+
+| What | Status |
+|---|---|
+| Two spare VLANs deleted in one range batch, one with its IGMP line; one kept for its SVI, one for its trunk group, a note each; quiet after; the switch restored | **live**, 2026-11-15 (§12.6), the driver from the branch against the switch, the deployed bridge running |
+| The transit VLAN 4040 the Arista's push named for three minutes, deleted when the push drops it | `TestReplayAristaTransitVLAN` over the post-run capture; the live switch still has 4040, so **the first reconcile after a deploy deletes it** (§12.5) |
+| A VLAN kept because a port outside `control.ports` or a lane switch's lane names it, and nothing deleted before an attached lane switch's first push | fixture-tested (`vlan_prune_test.go`); untested live: needs a port outside `control.ports` in the deployed config, or an adopted lane switch |
+| A site network deleted from the controller | **untested**: none was; it leaves the push as the transit did |
+
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
 rate limit; a QoS policer is in bits per second and counts only conforming
@@ -287,11 +310,13 @@ Write-up and specification: [`drivers/sonic.md`](drivers/sonic.md). Fixtures: [`
 | **Port mirroring on the DX010 on 202511**: on the stock 202511 orchagent the SAI reports none and the session is created without binding the source port, so the driver refuses it with a note (b26fb67); **on this repo's patched image it works** -- verified live 2026-11-02, cage 5 mirrored onto cage 4 from the controller, both directions in the chip's mirror table, removal clean ([`drivers/sonic.md`](drivers/sonic.md) §11.10). Breakout, refused on 202511 until 2026-11-07 by sonic-yang (eth0's gateway-less `MGMT_INTERFACE` row), works since the row was removed (next row). A PR that closes mirroring's gap: mirroring through an ACL mirror rule, or a SAI whose capability query says yes, verified with traffic on a destination port. | [`drivers/sonic.md`](drivers/sonic.md) §11.8 |
 | **Breakout on the DX010 on 202511, every mode live** (2026-11-07, `igmp-202511.20261106-f2e25f54c`, driven by the controller's REST as the UI sends it, cage 2 empty, restored and a zero-change push after): eth0's `MGMT_INTERFACE` row removed (eth0 on DHCP, `metric 202`; hostcfgd needed a manual `interfaces-config` restart); 4x25G, **the lanes at 10G**, **2x50G** and the join, each checked in CONFIG/APPL/STATE_DB, mstpd and the STP tables (new lanes in every VLAN's instance, Ethernet0 untouched), the IGMP reserved groups (extended to new lanes, removed for gone ones), VLAN membership and the controller's port; **the `DUI_IP_ACL` rebind on a split and a join** (one IP rule scoped to the DX010: `-f` drops the parent from `ports@`, the driver rebinds with the children, `Active` throughout). Two fixes from the run, deployed (29e71ae) and verified live: a join pushed in the cycle after a split was withheld for good (the loop took the new layout for a port the controller knew nothing about); **1G on a split cage's lanes** (claimed from STATE_DB, refused by the plan before) | [`drivers/sonic.md`](drivers/sonic.md) §11.11; `replay_sonic_breakout_test.go`, `breakout_lanes_test.go` |
 | The optic's fault flags (`sfp_rxfault` / `sfp_txfault`) from xcvrd's `TRANSCEIVER_STATUS_FLAG` (the module's per-channel loss of signal and transmit fault; [`drivers/sonic.md`](drivers/sonic.md) §10.10): the healthy state | `-collect-once` against the DX010 (2026-11-14, `igmp-202511.20261114-42cccc87a`): the uplink's 100G CWDM4 read present with no fault, no fault on any other cage; `optic_fault_test.go` on that capture (`collect-optic.txt`) |
+| A VLAN the controller stops pushing is deleted ([`drivers/sonic.md`](drivers/sonic.md) §11.29): the ten site VLANs no port carried, in one `config vlan del -m` with their l2d instances; a custom tagged set adding VLAN 4010 on an empty cage and dropping it (member out, then the VLAN); quiet after | **live**, the DX010 on a test deb, 2026-11-15 (§11.29.6); `TestReplaySonicDX010VLANPrune` replays the run, `vlan_prune_test.go` the rules |
 
 ### Built, untested live — PRs welcome
 
 | Gap | What the PR needs |
 |---|---|
+| A VLAN kept because something the driver does not own holds it (a member on a port outside `control.ports`, an address it did not add, a VRF or link-local interface row, a relay, a snooping row with `options.igmp` off), a lane switch's VLANs kept, and the Inter-VLAN transit and a routed network's VLAN deleted after routing off (§11.29; `vlan_prune_test.go`, the L3 and Network 11 replays) | each case on the switch: the note logged, the VLAN still there; a routed network removed in the UI and Vlan<id> gone in the same cycle; a network deleted from the site (only the ECS's removal of Vlan4040 was seen) |
 | Syslog host changed or removed from the UI (adding one is verified live, 2026-10-27) | the host changed and then remote logging switched off from Settings -> System, the `del`/`add` logged, the entry gone from `SYSLOG_SERVER`; an operator's own entry left alone |
 | SNMP community | **needs the site-wide SNMP setting on** (Settings -> CyberSecure): without it the controller pushes no `switch.snmp.*` at all (enabling SNMP on the device only stores location/contact on the device record). A capture of that push, and of any location/contact keys in it, to map `config snmp location/contact` |
 | A move whose new address does not answer (the new address and route removed again) | a move to an address the bridge cannot reach |
@@ -410,6 +435,15 @@ on the right port only).
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, and no second port had a link, §11.7.8. Frames to the switch itself still reach its CPU through the traps' copy, which the UI cannot make a MAC rule reach: it refuses the management network, §11.32) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
 
+### UniFi's client Block (2026-11-15)
+
+| What | Status |
+|---|---|
+| The controller's blocked clients (`blocked_sta` in every setparam, `block-sta`/`unblock-sta` cmds; captured on 11.0.99) as `MB_<mac>` rules in `DUI_MAC_ACL`, the ECS's own form, outside the MAC rules' limit | fixture- and replay-tested (`block_test.go`, `replay_sonic_block_test.go`, from the DX010's own reply log of a Block and an Unblock); needs the kit's sonic-swss 0003, as every MAC rule |
+| The kernel's copy: ebtables `DUI_MAC_BLOCK` from the Bridge's INPUT (ARP, IPv4, IPv6 to the switch's own address) | fixture-tested; **untested live** |
+| A frame with a blocked source on a looped empty cage, dropped by the chip's entry and by the chain; Unblock removes both | **untested**: the frame test under the switch lock ([`drivers/sonic.md`](drivers/sonic.md) §11.33.4) |
+| A routed front-panel port's traffic to the switch | not covered: a routed port is no Bridge member, so the chain does not see it (the chip's rule still drops what it forwards) |
+
 ### IGMP snooping (the custom image only)
 
 The controller's per-VLAN snooping settings as `L2MC` rows for l2mcd, the
@@ -514,6 +548,14 @@ by its first host** (EAP-MD5) stays open over the restart and closes on the
 logoff. The deployed l2d before the fix dropped the admitted hosts in the
 kernel for 40-100 ms at every start and restarted the idle timer; the chip
 was never disturbed. Replayed from the run (`TestL2dMABRestart`).
+
+**The controller's reading of each method, live on the DX010** (2026-11-15,
+§11.26.11): the controller stores each `dot1x_mode`/`dot1x_status` pair as
+the bridge sends it. A closed port had also gone out with
+`port_security_enabled` (802.1X's learn mode read back as a MAC filter),
+and the port panel showed it Disabled; fixed and verified the same evening
+through a test deb. What a UniFi switch itself sends for each method is
+still not captured.
 
 | Gap | What the PR needs |
 |---|---|

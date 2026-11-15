@@ -37,6 +37,10 @@ type FixtureRunner struct {
 	// fixture_acl_cpu.go).
 	CPUScripts []string
 	CPURules   []string
+	// BlockScripts are the blocked clients' kernel scripts, as sent, and
+	// BlockMACs the chain's sources after the last one (fixture_block.go).
+	BlockScripts []string
+	BlockMACs    []string
 	// SNMPYmlScripts are the /etc/sonic/snmp.yml rewrites, as sent; the
 	// capture's snmp_yml section is the file (§10.1).
 	SNMPYmlScripts []string
@@ -260,6 +264,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.CPUScripts = append(f.CPUScripts, stdin)
 		return "", f.applyCPUScript(stdin)
+	case command == macBlockCommand:
+		f.Commands = append(f.Commands, command)
+		f.BlockScripts = append(f.BlockScripts, stdin)
+		return "", f.applyBlockScript(stdin)
 	case command == fanCommand:
 		f.Commands = append(f.Commands, command)
 		f.FanScripts = append(f.FanScripts, stdin)
@@ -698,6 +706,13 @@ func (f *FixtureRunner) apply(line string) error {
 			return nil
 		})
 
+	case cmd == "config vlan del":
+		ids := []string{at(3)}
+		if at(3) == "-m" {
+			ids = strings.Split(at(4), ",")
+		}
+		return f.vlanDel(ids)
+
 	case cmd == "config vlan member":
 		return f.vlanMember(w[3:])
 
@@ -1060,4 +1075,35 @@ func shellWords(s string) []string {
 		out = append(out, cur.String())
 	}
 	return out
+}
+
+// vlanDel is `config vlan del [-m]` with the refusals of the 202511 CLI
+// (config/vlan.py del_vlan), checked and applied one VLAN at a time as the
+// CLI does: snooping on the VLAN (an L2MC row), a VLAN that does not
+// exist, an address or a VLAN_INTERFACE row, a member. The VLAN row goes
+// with its dhcp_servers.
+func (f *FixtureRunner) vlanDel(ids []string) error {
+	for _, id := range ids {
+		vlan := "Vlan" + id
+		if _, ok := f.table("cfg_l2mc")["L2MC|"+vlan]; ok {
+			return fmt.Errorf("Vlan%s cannot be removed: IGMP Snooping is enabled (disable first)", id)
+		}
+		if _, ok := f.table("cfg_vlan")["VLAN|"+vlan]; !ok {
+			return fmt.Errorf("%s does not exist", vlan)
+		}
+		for k := range f.table("cfg_mgmt") {
+			if k == "VLAN_INTERFACE|"+vlan || strings.HasPrefix(k, "VLAN_INTERFACE|"+vlan+"|") {
+				return fmt.Errorf("%s can not be removed. First remove IP addresses assigned to this VLAN", vlan)
+			}
+		}
+		for k := range f.table("cfg_vlan_member") {
+			if strings.HasPrefix(k, "VLAN_MEMBER|"+vlan+"|") {
+				return fmt.Errorf("VLAN ID %s can not be removed. First remove all members assigned to this VLAN.", id)
+			}
+		}
+		if err := f.update("cfg_vlan", func(t table) error { delete(t, "VLAN|"+vlan); return nil }); err != nil {
+			return err
+		}
+	}
+	return nil
 }

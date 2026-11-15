@@ -35,6 +35,7 @@ func TestL2dMacLocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	kernelAtomic(t, string(out))
 	steps := map[string][]string{}
 	var cur string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -55,17 +56,17 @@ func TestL2dMacLocking(t *testing.T) {
 	has := func(step, line string) bool { return index(step, line) >= 0 && steps[step][index(step, line)] == line }
 	show := func(step string) string { return strings.Join(steps[step], "\n") }
 
-	chain := index("watch", "RUN /usr/sbin/ebtables -A DUI_MACLOCK -i Ethernet36 -j DROP")
+	chain := index("watch", "EB -A DUI_MACLOCK -i Ethernet36 -j DROP")
 	trap := index("watch", "PST PORT_TABLE Ethernet36 learn_mode=cpu_trap")
 	if chain < 0 || trap < 0 || chain > trap {
 		t.Errorf("watch: the kernel drop (%d) must be in place before cpu_trap (%d):\n%s", chain, trap, show("watch"))
 	}
-	if !has("watch", "RUN /usr/sbin/ebtables -A DUI_MACLOCK -i Ethernet36 -s 02:00:00:00:00:91 -j RETURN") ||
-		!has("watch", "RUN /usr/sbin/ebtables -A INPUT -j DUI_MACLOCK") || !has("watch", "RUN /usr/sbin/ebtables -A FORWARD -j DUI_MACLOCK") {
+	if !has("watch", "EB -A DUI_MACLOCK -i Ethernet36 -s 02:00:00:00:00:91 -j RETURN") ||
+		!has("watch", "EB -A INPUT -j DUI_MACLOCK") || !has("watch", "EB -A FORWARD -j DUI_MACLOCK") {
 		t.Errorf("watch: the listed source passes, the chain is reached from INPUT and FORWARD:\n%s", show("watch"))
 	}
 	for _, l := range steps["second sync"] {
-		if strings.HasPrefix(l, "PST ") || strings.HasPrefix(l, "SET ") || strings.Contains(l, "ebtables -A") || strings.Contains(l, "ebtables -F") {
+		if strings.HasPrefix(l, "PST ") || strings.HasPrefix(l, "SET ") || strings.HasPrefix(l, "RUN /usr/sbin/ebtables-restore") {
 			t.Errorf("a second sync wrote %q", l)
 		}
 	}
@@ -95,7 +96,7 @@ func TestL2dMacLocking(t *testing.T) {
 	}
 	w := "unwatch"
 	back := index(w, "PST PORT_TABLE Ethernet36 learn_mode=drop")
-	gone := index(w, "RUN /usr/sbin/ebtables -X DUI_MACLOCK")
+	gone := index(w, "EB -X DUI_MACLOCK")
 	if back < 0 || gone < 0 || back > gone {
 		t.Errorf("unwatch: the CONFIG_DB learn mode back before the chain goes:\n%s", show(w))
 	}

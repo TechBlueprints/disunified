@@ -14,6 +14,8 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -499,6 +501,16 @@ type informResponse struct {
 	OutletTable []struct {
 		Index int `json:"index"`
 	} `json:"outlet_table"`
+	// BlockedSTA is the clients the controller blocks (UniFi's client
+	// Block), in every setparam it sends a switch: "" with none, one MAC as
+	// lowercase colon-separated hex with one (Network 11.0.99, captured
+	// 2026-11-12 to 2026-11-15 in the Arista's replies,
+	// docs/feature-map.md §3). nil: the reply has no such field.
+	BlockedSTA *string `json:"blocked_sta"`
+	// MAC is block-sta's / unblock-sta's client: the UI's (or cmd/stamgr's)
+	// Block sends {"_type":"cmd","cmd":"block-sta","mac":...} to every
+	// switch at its next inform (Network 11.0.99, captured 2026-11-15).
+	MAC string `json:"mac"`
 }
 
 // Our own Effect kinds, outside unifi-emu's range.
@@ -517,6 +529,9 @@ const (
 	// EffectPortRecovery: re-enable a port the switch's own protection
 	// holds down (Text = port_idx).
 	EffectPortRecovery
+	// EffectBlockedClients: the controller's blocked clients changed (Text
+	// = the MACs, comma-separated, "" for none).
+	EffectBlockedClients
 )
 
 // Apply advances the session by one controller reply and returns what
@@ -636,6 +651,31 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		}
 		s.bootTime = now
 		return []inform.Effect{{Kind: inform.EffectUpgraded, Text: r.Version}}
+	case "block-sta", "unblock-sta":
+		// The Block's fast path: the list changes at once, ahead of the next
+		// setparam's blocked_sta (which follows within a few informs and
+		// stays the authority). Only onto a known list: before a setparam
+		// has said which clients are blocked, one Block is not the list.
+		hw, err := net.ParseMAC(r.MAC)
+		if err != nil || len(hw) != 6 || !s.st.BlockedSTAKnown {
+			return nil
+		}
+		mac := hw.String()
+		var macs []string
+		for _, m := range s.st.BlockedSTA {
+			if m != mac {
+				macs = append(macs, m)
+			}
+		}
+		if r.Cmd == "block-sta" {
+			macs = append(macs, mac)
+			sort.Strings(macs)
+		}
+		if equalStrings(macs, s.st.BlockedSTA) {
+			return nil
+		}
+		s.st.BlockedSTA = macs
+		return []inform.Effect{{Kind: EffectBlockedClients, Text: strings.Join(macs, ",")}}
 	default:
 		return []inform.Effect{{Kind: inform.EffectUnknownCmd, Text: r.Cmd}}
 	}
@@ -681,7 +721,62 @@ func (s *Session) applySetparam(r informResponse) []inform.Effect {
 			s.st.UseAESGCM = enabled
 		}
 	}
+	if r.BlockedSTA != nil {
+		macs := ParseBlockedSTA(*r.BlockedSTA)
+		if !s.st.BlockedSTAKnown || !equalStrings(macs, s.st.BlockedSTA) {
+			s.st.BlockedSTA, s.st.BlockedSTAKnown = macs, true
+			effects = append(effects, inform.Effect{Kind: EffectBlockedClients, Text: strings.Join(macs, ",")})
+		}
+	}
 	return effects
+}
+
+// ParseBlockedSTA reads a setparam's blocked_sta: the MACs of the clients
+// the controller blocks, lowercase, sorted, without duplicates. Captured on
+// Network 11.0.99 (docs/feature-map.md §3): "" for none, one MAC as
+// lowercase colon-separated hex, two joined by a newline, the newer Block
+// first, which was also their sorted order (as upstream unifi-emu's PROTOCOL.md calls the field: newline-separated
+// text). Commas and other whitespace separate too. A token that is not a
+// MAC is dropped.
+func ParseBlockedSTA(v string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, tok := range strings.FieldsFunc(v, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	}) {
+		hw, err := net.ParseMAC(tok)
+		if err != nil || len(hw) != 6 {
+			continue
+		}
+		m := hw.String()
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// BlockedClients are the clients the controller blocks, as its last
+// setparam said; known false until a setparam has carried blocked_sta
+// (persisted, so a restart keeps the list until the next one).
+func (s *Session) BlockedClients() (macs []string, known bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.st.BlockedSTA...), s.st.BlockedSTAKnown
 }
 
 func (s *Session) applySetstate(body []byte, cfgversion string) []inform.Effect {

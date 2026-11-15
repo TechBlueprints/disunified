@@ -39,6 +39,7 @@ func TestL2dMABRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	kernelAtomic(t, string(out))
 	steps := map[string][]string{}
 	var cur string
 	var all []string
@@ -210,12 +211,29 @@ func TestL2dMABRestart(t *testing.T) {
 	cl := after("credentials link lost during a stop")
 	learn, drop := index(cl, "PST PORT_TABLE "+port+" learn_mode=drop"), -1
 	for i, x := range cl {
-		if x == "RUN /usr/sbin/ebtables -A DUI_DOT1X -i "+port+" -j DROP" {
+		if x == "EB -A DUI_DOT1X -i "+port+" -j DROP" {
 			drop = i
 		}
 	}
 	if learn < 0 || index(cl, "FLUSH FLUSHFDBREQUEST PORT "+port) < learn || drop < learn ||
 		!hasPrefix(cl, "PSTDEL FDB_TABLE Vlan4094:"+h) || !hasPrefix(cl, "CTRL DEAUTHENTICATE "+h) || hasPrefix(cl, "LOG 802.1X: "+h+" authorised") {
 		t.Errorf("credentials link lost: closed at start, the chip before the chain, hostapd told:\n%s", show("credentials link lost during a stop"))
+	}
+}
+
+// kernelAtomic holds a fake run's ebtables writes to one ebtables-restore
+// each (docs/drivers/sonic.md §11.26.12): no other ebtables command but the
+// listing, and no window (testdata/l2d_ebtables.py's WINDOW) in which a
+// port that dropped a never-admitted source before and after a chain write
+// passed it in between.
+func kernelAtomic(t *testing.T, out string) {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "WINDOW ") {
+			t.Errorf("a chain write let a closed port pass a never-admitted source: %s", l)
+		}
+		if strings.HasPrefix(l, "RUN /usr/sbin/ebtables ") && l != "RUN /usr/sbin/ebtables -L" {
+			t.Errorf("an ebtables write outside one ebtables-restore: %s", l)
+		}
 	}
 }

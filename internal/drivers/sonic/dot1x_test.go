@@ -129,6 +129,13 @@ func TestDot1XApply(t *testing.T) {
 	if p := port(snap, 29); p.Dot1X != devicemodel.Dot1XForceAuthorized {
 		t.Errorf("port 29 reads back 802.1X %q", p.Dot1X)
 	}
+	// 802.1X's learn mode is not a MAC filter: read as one with nothing
+	// allowed, the controller's UI showed the port Disabled (§11.26.11).
+	for _, i := range []int{30, 31} {
+		if p := port(snap, i); p.PortSecurity || len(p.AllowedMACs) != 0 {
+			t.Errorf("port %d (802.1X, closed) reads back as a MAC filter %q", i, p.AllowedMACs)
+		}
+	}
 
 	// 802.1X off: the loop sends no port mode, the ports open.
 	cmds, err = r.push(dot1xDevice(false), r.ports(nil))
@@ -142,6 +149,27 @@ func TestDot1XApply(t *testing.T) {
 	}
 	if c := r.conf(); c.Dot1X != nil {
 		t.Errorf("802.1X off leaves l2d's section %+v", c.Dot1X)
+	}
+}
+
+// A MAC filter on an 802.1X port still reads back, by its own entries.
+func TestDot1XWithAMACFilter(t *testing.T) {
+	r := dot1xRig(t, nil)
+	ds := r.ports(func(d *devicemodel.PortDesired) {
+		dot1xPortsOf(d)
+		if d.Index == 31 {
+			d.PortSecurity, d.AllowedMACs = true, []string{"02:00:00:00:00:01"}
+		}
+	})
+	if _, err := r.push(dot1xDevice(true), ds); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := r.c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := port(snap, 31); !p.PortSecurity || len(p.AllowedMACs) != 1 || p.AllowedMACs[0] != "02:00:00:00:00:01" {
+		t.Errorf("port 31: MAC filter %v %q", p.PortSecurity, p.AllowedMACs)
 	}
 }
 
@@ -195,6 +223,9 @@ func TestDot1XKeepsAdmittedHosts(t *testing.T) {
 	p := port(snap, 31)
 	if p.Health.Dot1XFailures != 4 || len(p.Dot1XAuthorized) != 1 || p.Dot1XAuthorized[0] != "02:00:00:00:00:03" {
 		t.Errorf("port 31: failures %d, authorised %q", p.Health.Dot1XFailures, p.Dot1XAuthorized)
+	}
+	if p.PortSecurity || len(p.AllowedMACs) != 0 {
+		t.Errorf("port 31: the admitted host's entry read back as a MAC filter %q", p.AllowedMACs)
 	}
 	// The port no longer controlled: the entry goes with it.
 	cmds, err = r.push(dot1xDevice(true), r.ports(nil))
