@@ -24,10 +24,16 @@ func TestReplaySonicDX010L3(t *testing.T) {
 		brkSave,
 		"sudo config interface ip add Vlan4040 198.18.253.2/24",
 		"sudo config vlan add 3999", // the L3 plan: no port carries the routed network yet
+		// made at the ports' 1500 (jumbo off), not SONiC's 9100: the push
+		// lists 3999 in switch.routing_interface only (§11.13)
+		"sudo sonic-db-cli CONFIG_DB hset 'VLAN|Vlan3999' mtu 1500",
 		"sudo config interface ip add Vlan3999 198.18.3.1/24",
 		brkSave,
 	) {
 		t.Errorf("the routed network wrote\n  %s", strings.Join(got, "\n  "))
+	}
+	if n := strings.Count(strings.Join(got, "\n"), "'VLAN|Vlan3999' mtu"); n != 1 {
+		t.Errorf("Vlan3999's MTU written %d times, want once at its creation:\n  %s", n, strings.Join(got, "\n  "))
 	}
 	for _, w := range got {
 		if strings.Contains(w, "STATIC_ROUTE") {

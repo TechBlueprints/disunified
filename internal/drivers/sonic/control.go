@@ -40,10 +40,15 @@ type op struct {
 }
 
 type plan struct {
-	sim     *swState
-	ports   map[int]devicemodel.Port
-	native  int
-	site    []int // SONiC VLAN ids "Allow All" tags, from EnsureVLANs
+	sim    *swState
+	ports  map[int]devicemodel.Port
+	native int
+	site   []int // SONiC VLAN ids "Allow All" tags, from EnsureVLANs
+	// routed are the VLANs of the networks the switch routes (the last
+	// push's switch.routing_interface), which switch.vlan.* -- site --
+	// does not list while no port carries them (§11.29.1): their MTU
+	// follows the ports' like the site's (vlanMTUs).
+	routed  []int
 	ops     []op
 	changed map[int]bool
 	// own are the ports written only for the driver's own reading of the
@@ -174,8 +179,12 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	}
 	c.mu.Lock()
 	fixed := c.l2mcFixed
+	var routed []int
+	if cage == 0 {
+		routed = c.routedVLANs()
+	}
 	c.mu.Unlock()
-	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
 	pl.bridgeWait = st.l2mcKnown && st.l2mcFeature == "enabled" && !fixed
 	if cage == 0 {
 		for _, p := range snap.Ports {
@@ -299,8 +308,9 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	return pl, nil
 }
 
-// vlanMTUs brings the VLANs the driver manages -- the site's and the
-// native stand-in -- to the ports' MTU when the push sets one (jumbo; the
+// vlanMTUs brings the VLANs the driver manages -- the site's, the routed
+// networks' and the native stand-in -- to the ports' MTU when the push
+// sets one (jumbo; the
 // lowest pushed MTU should ports ever differ). SONiC creates every VLAN at
 // 9100 and leaves it there: the VLAN table's mtu reaches APPL_DB and the
 // router interface (orchagent), but vlanmgrd never applies it to the
@@ -326,7 +336,17 @@ func (pl *plan) vlanMTUs(ds []devicemodel.PortDesired) {
 	if b := pl.sim.netMTU["Bridge"]; b > 0 && b < kernel {
 		kernel = b
 	}
-	ids := append([]int{pl.native}, pl.site...)
+	// A routed network no port carries is in the push's routing list
+	// only, not in switch.vlan.*: left out, its VLAN stayed at SONiC's
+	// 9100 (CONFIG_DB and the netdev) behind 1500-byte ports (§11.13).
+	seen := map[int]bool{}
+	var ids []int
+	for _, id := range append(append([]int{pl.native}, pl.site...), pl.routed...) {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
 	sort.Ints(ids)
 	for _, id := range ids {
 		if !pl.sim.vlans[id] {

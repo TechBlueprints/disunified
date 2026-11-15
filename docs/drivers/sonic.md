@@ -5092,6 +5092,29 @@ switch.
   carry a routed network), `config interface ip add Vlan<id> <ip>/<len>`.
   An interface carrying an address the driver did not add -- the switch's
   own management address on `Vlan<native_vlan>` -- is refused with a note.
+- **A routed network's VLAN takes the ports' MTU** (2026-11-15), as every
+  VLAN the driver manages does (§12): made at it (`config vlan add`, then
+  `hset 'VLAN|Vlan<id>' mtu`, as `EnsureVLANs` makes a pushed VLAN) and
+  kept there by the port plan's `vlanMTUs` (the CONFIG_DB field and the
+  netdev). Until then `vlanMTUs` covered the push's `switch.vlan.*` list and
+  the native stand-in only, and a routed network no port carries is in
+  `switch.routing_interface.N.vlan` alone (§11.29.1). So its VLAN stayed at
+  SONiC's 9100 while every port and every other VLAN followed the site's
+  jumbo setting. The deployed driver's own state of the 2026-11-07 OSPF run
+  shows it (`collect-ospf.txt`, jumbo off): `VLAN|Vlan3999` without `mtu`
+  and its netdev at 9100, beside `VLAN|Vlan4040` (the transit, which the
+  list names) at 1500 in both, every port at 1500. That is why the run's
+  OSPF peer had to run at 9100 (§11.14): ospfd sends the interface MTU in
+  its database descriptions and a peer at another MTU stalls in ExStart.
+  While no port carries the VLAN, no frame on a front-panel port is
+  affected (a port that carries it puts it in the list): what saw 9100 was
+  the switch's own stack on the interface and whatever reached it past the
+  list, as the runs' test hosts on the kernel `Bridge` did. The fault was never shown with a fresh routed network; the
+  fixed plan is replayed over that capture (`TestReplaySonicDX010OSPF`'s
+  first push writes both halves for Vlan3999, the cycle after nothing) and
+  over the L3 run's creation (`TestReplaySonicDX010L3`: the hset right after
+  `config vlan add 3999`, once). Its commands are the ones already run live
+  on memberless VLANs (§11.29.6's Vlan4010, §12's Vlan4094).
 - **Routes:** STATIC_ROUTE rows written whole through `sonic-db-cli`
   (`nexthop`, `ifname`, `distance`, `blackhole`, `nexthop-vrf` as aligned
   comma lists: bgpcfgd drops a row whose lists differ), which bgpcfgd
@@ -5317,7 +5340,8 @@ router started ospfd on Vlan3999 (cost 10, priority 2, hello 5 s, dead
 20 s, area 0, read back with `show ip ospf interface`). A peer -- zebra,
 mgmtd and ospfd from the switch's own FRR image in a throwaway
 `--network none` container, its veth on the kernel `Bridge` in VLAN 3999
-only, MTU 9100 to match Vlan3999 (OSPF compares MTUs), the same MD5 key --
+only, MTU 9100 to match Vlan3999 (OSPF compares MTUs; Vlan3999 was at
+SONiC's 9100 behind 1500-byte ports, fixed 2026-11-15, §11.13), the same MD5 key --
 reached **Full**. The DX010 learnt the peer's 192.0.2.0/24 as an E2 route
 into the kernel, APPL_DB and the ASIC; the peer learnt the DX010's default
 route (announced) and its connected networks (E2). The cycles after wrote
@@ -8307,7 +8331,8 @@ holds something the driver did not take out of it stays.
   list, so the device's Allow All tagged the lane switch's VLANs and the
   lane switch's the device's);
 - the VLAN of every network the switch routes (`switch.routing_interface`,
-  which `switch.vlan.*` does not list for a network no port carries);
+  which `switch.vlan.*` does not list for a network no port carries; its
+  MTU follows the ports' like a listed VLAN's since the same day, §11.13);
 - a VLAN that still has a member (a port outside `control.ports`, a lane a
   lane switch owns, a PortChannel outside the plan's range), an address
   the driver did not add (the management address on a VLAN other than the
