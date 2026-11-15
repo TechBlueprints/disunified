@@ -866,8 +866,9 @@ real loss of the Bridge's carrier.
   and before zebra in the new one.
 - **The driver's address and MTU writes.** The IP Settings apply at
   21:36:20 wrote nothing ("no interface carries the bridge's own target",
-  an early snapshot). The `ip link set … mtu 1500` at 21:36:40 is the
-  second "Link up" zebra counted: zebra calls `if_up` on any RTM_NEWLINK
+  Start's snapshot from before swss, §6.4.2). The `ip link set … mtu
+  1500` at 21:36:40 is the second "Link up" zebra counted: zebra calls
+  `if_up` on any RTM_NEWLINK
   of an operative interface. That came a minute after the route was gone.
 - **An address bounce.** The connected route's uptime matches the flap,
   not a later event, and bgpcfgd saw the address once.
@@ -933,6 +934,101 @@ l2d's spanning-tree start at boot (`ip -4 route show default` with no
 
 Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/collect-route-{nhid,
 missing,fixed}.txt`.
+
+### 6.4.2 The first snapshot after a boot (`starting.go`, 2026-11-15)
+
+**Found on the DX010's boot of 2026-11-14 (21:34:39 MST):** the IP
+Settings apply at 21:36:20 refused with "no interface carries the bridge's
+own target". Start had reported "32 ports (0 up), 0 MACs". Nothing was
+due to change, so nothing was lost. A push moving the address in that
+window would have been refused once and applied a cycle later.
+
+**The journal** (`journalctl -b -u disunified` and `/var/log/syslog`;
+the switch's name, its address and the controller's host replaced):
+
+```
+21:35:13.40 systemd[1]: Started swss.service              <- the container only
+21:35:13.43 systemd[1]: Starting disunified.service
+21:35:21.99 swss#supervisord: spawned: 'portsyncd'
+21:35:22.23 swss#portsyncd: handlePortConfigFromConfigDB: Getting port configuration from ConfigDB...
+21:35:22.70 disunified: disunified ... starting           <- Start's collect, until ~21:35:24.9
+21:35:24.95 disunified: sonic : pmon's /etc/fancontrol could not be read (docker exec pmon)
+21:35:34.64 swss#supervisord: wait_for_link Waiting until interface Vlan4094 is ready...
+21:35:34.75 swss#supervisord: spawned: 'intfmgrd'
+21:35:38.16 swss#supervisord: wait_for_link Interface Vlan4094 is ready!
+21:35:44.63 bgp#bgpcfgd: Received message : '('Vlan4094|192.0.2.1/16', 'SET', (('state', 'ok'),))'
+21:35:46.87 swss#orchagent: :- addIp2MeRoute: Create IP2me route ip:192.0.2.1
+21:35:55.77 disunified: sonic: <switch>, Celestica Seastone-DX010, ..., 32 ports (0 up), 0 MACs, uplink hint 0
+21:36:05.79 disunified: [dx010] ... informing http://<controller>:8080/inform as USWF07D ...
+21:36:20.60 disunified: sonic <switch>: sonic: BGP: bgpd could not be read (vtysh); BGP not written
+21:36:20.61 disunified: [dx010] ... apply IP Settings: sonic: no interface carries the bridge's own target 192.0.2.1; not changing an address blind
+21:36:20.64 disunified: [dx010] ... reconciled system_cfg ...: 0 of 32 ports changed
+21:36:37.92 disunified: sonic apply switch: sudo sonic-db-cli CONFIG_DB hdel 'NTP|global' src_intf ; sudo config save -y
+```
+
+**The cause, in two parts:**
+
+1. **Start collected before swss had made anything.** The address is read
+   from the kernel (`ip -j addr show`), not from a Redis table, and no
+   section failed. At 21:35:23 the kernel had no `Vlan4094` netdev at all:
+   vlanmgrd made it at about 21:35:38, intfmgrd gave it its address by
+   21:35:44. APPL_DB had no port rows (portsyncd had just started), so no
+   port was up, and STATE_DB had no FDB. CONFIG_DB was whole (the database
+   and config-setup ran at 21:35:02-07), so Start's own checks passed: a
+   SONiC version and a non-empty CONFIG_DB `PORT`. The unit's
+   `After=swss.service` is met when the swss container runs (21:35:13),
+   not when the ports exist. The premise that `Vlan4094` "already had its
+   address" holds for 21:36:20, not for 21:35:23.
+2. **That snapshot was acted on 40 s later.** Start's `config --help`
+   checks took 30 s (21:35:25-55), the naming step's TLS timeout 10 s, and
+   `informloop.Run` reconciles once before its first inform, on the
+   session's snapshot: Start's. Every loop collect from 21:36:20 on was
+   whole. The NTP step at 21:36:37, on the first loop collect, already
+   found the address on `Vlan4094` (`ntpSource`).
+
+**What consumed the empty snapshot, and what it wrote: nothing.**
+
+- **IP Settings:** refused (the line above).
+- **Ports:** planned from CONFIG_DB, 0 of 32 changed. The LLDP TLVs at
+  21:37:07 came from a later collect, once the lldp container ran.
+- **Device apply:** no address, so no NTP source; FRR's section was from
+  before the bgp container, so BGP was not written; IGMP only noted.
+- **IPv6:** the controller's API did not answer. Had it answered,
+  `ntpSource` would have been empty and the apply skipped with a one-time
+  warning.
+- **Kernel default route** (§6.4.1): not in that build (da68007). With
+  `frr_route` "error" before the bgp container, it writes nothing.
+- **Naming and seeding:** `provision` got Start's snapshot, but the API did
+  not answer; its retry at 21:37:00 took the session's fresh snapshot.
+- **ACL hold** (`mgmtL2`): no address reads as "every VLAN may carry the
+  management path", the conservative side.
+- **The informs:** the first one followed a fresh collect, so Start's
+  snapshot never reached the controller.
+
+**The fix:** Start collects again, every 5 s for up to 5 min, until
+`startingWhy` has nothing to say:
+
+- APPL_DB has `PORT_TABLE:PortInitDone` (portsyncd has seen every port's
+  netdev; disunified-l2d waits for the same marker);
+- the kernel carries the address the bridge dials, where CONFIG_DB puts it
+  on an in-band interface (`VLAN_INTERFACE`, `INTERFACE`,
+  `PORTCHANNEL_INTERFACE`, `LOOPBACK_INTERFACE`).
+
+An address CONFIG_DB does not hold (eth0's own, a lease, a name that does
+not resolve) says nothing about starting. After 5 min Start fails and
+`main` retries it with its backoff, so no half-started snapshot reaches the
+loop, the naming step or the first reconcile. A collect during the run is
+unchanged. The kernel was already the earliest true source for the address:
+CONFIG_DB holds it from the first second, but it is not yet true there.
+
+**Needs a reboot to prove:** at boot the journal shows "the switch is still
+starting: ..." lines, then "the switch has finished starting", before the
+"32 ports (N up)" line, and no "no interface carries the bridge's own
+target". No collect from a booting switch was ever captured. The tests
+(`starting_test.go`) derive the two boot states, no `PortInitDone` and no
+`Vlan` netdevs, from
+`sonic-igmp-202511.20261115-6c8eb1cf7/collect.txt`, a running switch's
+capture.
 
 ### 6.5 Verification plan (what "done" means for A4)
 
