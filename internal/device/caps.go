@@ -434,3 +434,17 @@ const (
 	portAnomalyLoopProtection = 512  // a port held down by loop protection
 	portAnomalyDoS            = 1024 // a port shut down by the switch's denial-of-service protection
 )
+
+// error_disabled_reason, sent with error_disabled true on a port the
+// switch's own protection shut down: what disabled it. The controller
+// raises "<port> was disabled by Loop Protection" (loop protection) and
+// "UniFi disabled <port> because it detected a network loop" (BPDU guard)
+// when a port turns error-disabled with the bit set, and ends the alert
+// when the port no longer is (Network 11.0.99, seen live with the stub
+// 2026-11-15: docs/drivers/sonic.md §11.23). Neither alert follows
+// anomalies, and no real switch's inform on the site carries the fields
+// (none had a port disabled): the bit values are the live test's.
+const (
+	errDisabledLoopProtection = 1 // keepalive loop protection
+	errDisabledBPDUGuard      = 2 // STP BPDU guard
+)

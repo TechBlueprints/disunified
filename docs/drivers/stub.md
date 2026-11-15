@@ -57,6 +57,11 @@ ports:
   `disabled`; speeds in Mb/s. A port that is not up reports no speed.
   Optional per port: `ifname` (default `Port N`), `mtu` (default 1500),
   `neighbor: {chassis_id, system_name, port_id, bridge, router}`.
+  For alert experiments (2026-11-15, [`sonic.md`](sonic.md) §11.23):
+  `fault` (a `Port.Fault`, e.g. `errdisabled: bpduguard`), `stp_state`,
+  `stp_role`, `link_changes` (cumulative link transitions; the payload's
+  `link_down_count` is half) and `stp_changes` (the payload's
+  `stp_state_change_count`). Grow the counts by rewriting the file.
 - `is_uplink` on at most one port: the device's uplink, reported as a real
   switch reports its own (`port_table[].is_uplink`).
 - `capabilities`: `stp`, `bpdu_guard`, `loop_protection`, `jumbo`, `fec`,

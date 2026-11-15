@@ -1,0 +1,12 @@
+{
+ "about": "The per-port counts the bridge sent in each inform during the 2026-11-15 alert tests on Network 11.0.99 (docs/drivers/sonic.md 11.23), beside the alerts the controller raised (system-log-device-alert-bridged.json, same order). link_flap: DX010 port 17, an empty cage looped and unlooped by the chip's MAC loopback, its link_down_count (the bridge's own payload-last.json, read every 15 s); the alert came at the 00:19:14 inform with COUNT 123. stp_flap: the stub switch's port 3, its stp_state_change_count[0].change_count grown by the test file (the stub's informs); the alert came at the 00:27:02 inform with COUNT 63. Times are UTC, the inform's own.",
+ "link_flap": {
+  "device": "USWF07D", "port": 17, "field": "link_down_count", "alert_at": "00:19:14", "alert_count": 123,
+  "informs": [["00:12:01", 26], ["00:13:10", 36], ["00:14:14", 45], ["00:15:21", 61], ["00:16:47", 81], ["00:17:51", 96],
+              ["00:19:14", 123], ["00:20:43", 158], ["00:22:12", 193], ["00:23:37", 198], ["00:25:03", 198]]
+ },
+ "stp_flap": {
+  "device": "USL8A", "port": 3, "field": "stp_state_change_count", "alert_at": "00:27:02", "alert_count": 63,
+  "informs": [["00:20:53", 10], ["00:21:58", 13], ["00:23:21", 21], ["00:24:30", 28], ["00:25:45", 42], ["00:27:02", 63]]
+ }
+}

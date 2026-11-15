@@ -397,6 +397,18 @@ these is marked "not captured".
   its `COUNT` (11.0.99, 2026-11-14: a USW Aggregation's alerts against its
   inform, `controller-11.0.99/`); no inform carries `stp_state_change_sum`,
   and the bridge already sends the count from `Port.Health.STPChanges`.
+  **The link-flap and STP-flap alerts are rates between two informs**
+  (11.0.99, live 2026-11-15, `docs/drivers/sonic.md` §11.23): link flap
+  when `link_down_count` grows faster than about 0.3 drops/s (seen at 0.32,
+  not at 0.24, on the DX010's looped cage), STP flap when `change_count`
+  grows faster than about 0.2/s (0.27, not 0.19, on a stub); each alert's
+  `COUNT` is that inform's count. **BPDU guard and loop protection alert
+  from `port_table[].error_disabled: true` with `error_disabled_reason`**
+  (2 BPDU guard, 1 loop protection), not from `anomalies`: seen on a stub
+  port; a held DX010 port raised nothing without them, and 512 alone raised
+  nothing. On SONiC the STP count is l2d's own count of kernel state
+  changes since that day: mstpd's counters never move for a looped
+  (Backup) port.
   **Only loop protection and BPDU guard take a port down** in UniFi's model
   (the UI's own text, 2026-11-14): every other bit is a detection the port
   keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's

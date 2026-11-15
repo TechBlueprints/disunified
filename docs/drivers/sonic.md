@@ -6118,6 +6118,136 @@ Fixtures: `sonic-igmp-202511.20261106-f2e25f54c/collect-ipv6-off.txt`,
 `-off-leftover-route.txt`, `-slaac.txt`, `-on.txt` (the four states
 above), tested in `ipv6_test.go`.
 
+### 11.23 The controller's flap, BPDU-guard and loop-protection alerts on a bridged port (2026-11-15)
+
+Clint asked whether the controller's link-flap and STP-flap alerts fire for
+a bridged port and at what rate, and what makes it raise its BPDU-guard
+alert. Until this day none of the three had been seen for a bridged port.
+
+**Sources.** Live tests on Network 11.0.99, all on the DX010's empty cage 17
+(Ethernet64) and on a stub switch run from the Mac for the test
+(`docs/drivers/stub.md`, adopted under a locally administered MAC as a
+separate device and forgotten afterwards): the bridge's own payloads
+(`payload-last.json`, read every 15 s), the switch's logs, and the
+controller's alert log (v2 `system-log/device-alert`). The alerts are
+`fixtures/controller-11.0.99/system-log-device-alert-bridged.json`, the
+counts each inform carried `fixtures/controller-11.0.99/alert-rates-20261115.json`
+(`internal/device/alert_rates_test.go`). Real switches' informs on the site
+were read only (`mca-dump`); no real switch's port was touched.
+
+#### 11.23.1 Link flap: the growth of `link_down_count` between two informs
+
+The cage was brought up and down with the chip's MAC loopback (`bcmcmd
+"port ce16 lb=mac"` / `lb=none`) in a loop on the switch, at three periods.
+RSTP keeps the looped port Backup/discarding (it hears its own BPDUs), so
+the loop never reached the LAN. `link_down_count` (SONiC's `flap_count` /
+2) grew per inform interval (61-89 s here) by:
+
+| period | growth | alert |
+|---|---|---|
+| 5 s | 0.14-0.15 drops/s | none |
+| 2.5 s | 0.23-0.24 drops/s | none |
+| 0.8 s | 0.33-0.39 drops/s | **"<device> Port 17 is experiencing frequent link state changes"** at the first inform above (00:19:14 UTC, `COUNT` 123 = that inform's `link_down_count`) |
+
+So the controller raises the alert from the bridge's raw count alone, and
+the rule is a rate between consecutive informs: a growth above some value
+between 0.24 and 0.32 drops per second (the test holds the capture to 0.3).
+A cumulative level is not it: the real USW Aggregation on the site counts
+185 000 drops on one port and no link-flap alert for it is among the alerts
+the controller has kept (from 2026-11-12), while its STP-flap alert comes
+nightly -- consistent with drops that never arrive faster than the rate. One
+alert per condition: the two faster intervals after it raised nothing new.
+A UniFi switch on 7.6.11 also sends `link_flap_count` on a few ports (1 on
+each, sparse, beside a `link_down_count` of 0 to 7); the alert above came
+without it. What that field counts is not known; the bridge does not send it.
+
+**The bridge's count was right; nothing changed for it.** Every toggle was
+counted: SONiC's `flap_count` grew by two per cycle.
+
+#### 11.23.2 STP flap: the growth of `stp_state_change_count` between two informs
+
+The looped cage produced no STP changes at all: mstpd's
+`num_transition_fwd`/`num_transition_blk` (the driver's count until this
+day) stayed at 0/1 through 368 kernel state changes, because a Backup port
+is discarding whether its link is up or down. disunified-l2d's own journal of
+the run (`fixtures/sonic-igmp-202511.20261114-42cccc87a/l2d-linkflap-20261115.txt`)
+shows the kernel bridge port going disabled -> blocking at every link-up and
+blocking -> disabled at every drop. A UniFi switch counts those: the real USW
+Aggregation's flapping ports count exactly 2 changes per drop
+(`fixtures/controller-11.0.99/`, `stp_changes_test.go`), and a never-up port
+0 (mstpd counts 1 there, its initial entry into blocking).
+
+**Fix (l2d, not yet deployed):** disunified-l2d counts every change of each
+port's kernel state (disabled, blocking, learning, forwarding) from the
+netlink events it already mirrors into StpOrch and from its 2 s poll, and
+publishes it as `state_changes` in `DUI_STP_PORT_TABLE`; the driver reports
+it as `Health.STPChanges`, falling back to mstpd's counters for an l2d
+without the field. The count is since boot (it carries over an l2d restart
+through STATE_DB; STP off or a reboot clears it). Tested with the journal
+(`l2d_state_changes_test.go`): 2 per drop, none for the poll, 0 for a port
+never up. With it deployed the same looped-cage flap counts twice its
+drops, so it would raise the STP-flap alert too (not yet seen on the DX010).
+
+The rate, measured on the stub (its port 3's `stp_changes` grown by the
+test's file every 10 s):
+
+| growth | alert |
+|---|---|
+| 0.05-0.10 changes/s (three intervals) | none |
+| 0.19 changes/s | none |
+| 0.27 changes/s | **"Port 3 is experiencing frequent STP role state changes"** at that inform (00:27:02 UTC, `COUNT` 63 = the inform's `change_count`) |
+
+A rate between 0.19 and 0.27 changes per second between informs (the test
+holds the capture to 0.2). That agrees with the real switches: the USL8A's
+nightly alerts, and the ECS's alert of 2026-11-14 on two uplink ports with
+`COUNT` 29 -- a low total that crossed a rate, not a level.
+
+#### 11.23.3 BPDU guard and loop protection: `error_disabled` and its reason
+
+**The real case on the DX010.** BPDU guard on port 17 through the
+controller (`stp_bpdu_guard_enabled` in its port override, pushed as
+`switch.port.17.stp.bpdu_guard=enabled`; the override restored afterwards),
+then the cage looped: mstpd logged "Received BPDU on BPDU Guarded Port - Port
+Down" within a second and shut the netdev (`bpdu guard error yes`); the
+capture is `fixtures/sonic-igmp-202511.20261114-42cccc87a/collect-bpduguard.txt`.
+The deployed bridge reported the port with its fault and no anomalies bit,
+and **the controller raised nothing** (three informs).
+
+**The signal: `port_table[].error_disabled` true with
+`error_disabled_reason`.** No real switch's inform on the site carries the
+fields (none has a port shut by either protection), so they were tested on
+the stub, one port at a time:
+
+| the stub's port reports | the controller raised |
+|---|---|
+| `error_disabled: true`, `error_disabled_reason: 2` (port down, enabled) | **"UniFi disabled Port 4 because it detected a network loop. Fix the loop, then re-enable the port."** (`BPDU_GUARD_TRIGGERED`, title "Loop Protection Disabled a Port") at the first inform (00:28:16 UTC) |
+| `error_disabled: true`, `error_disabled_reason: 1`, `anomalies: 512` | **"Port 5 was disabled by Loop Protection to prevent a network loop."** (`NETWORK_LOOP_DETECTED_BY_KEEPALIVE`, "Loop Protection Triggered") at the third inform carrying it (00:31:56 UTC) |
+| `anomalies: 512` alone (the same build with the two fields left out, as the bridge sent a hold until this day) | nothing in six informs (6.5 min) |
+
+**Fix (internal/device, not yet deployed):** a port whose `Port.Fault` names
+BPDU guard (`bpduguard`) or loop protection (`loop-protect`) is sent with
+`error_disabled: true` and the reason bit (2 or 1); every driver that
+reports those faults (`sonic`, `arista-eos`, `proxmox`) gets it. The
+loop-protection hold keeps its anomalies bit 512 beside it (`tables.go`,
+`caps.go`; `anomalies_test.go`, `contract_sonic_stp_test.go`).
+
+**What differs from a UniFi switch:** mstpd shuts the port's netdev, and
+StpOrch blocks it in the chip, but the chip's port stays up: SONiC's oper
+status reads up while the cage is looped, so the bridge reports the held
+port `up: true`, and a cabled peer would see link. A UniFi switch's BPDU
+guard is described in the UI as disabling the port; taking the chip's port
+down for it (and up again on the operator's re-enable) is a follow-up.
+
+**A side effect seen:** 90 s after the link-flap alert the controller's
+push changed port 17's `stp.edge` from `auto` to `disabled` with no change
+to its port override (l2d: "Ethernet64 auto edge off"); the cause is not
+established.
+
+**Alerts these tests raised** (each reaches Clint as a notification; all
+on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
+on the stub's port 3 (00:27:02), BPDU guard on the stub's port 4 (00:28:16),
+loop protection on the stub's port 5 (00:31:56).
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH

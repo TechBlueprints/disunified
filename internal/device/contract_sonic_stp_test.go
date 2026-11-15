@@ -1,6 +1,12 @@
 package device
 
-import "testing"
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	"github.com/TechBlueprints/disunified/internal/drivers/sonic"
+)
 
 // The DX010 with disunified-l2d running (collect-l2-running.txt): the
 // spanning-tree fields as the ECS Aggregation's own inform carries them --
@@ -33,4 +39,48 @@ func TestWireContractSonicSpanningTree(t *testing.T) {
 	if a, _ := held["anomalies"].(float64); int(a) != portAnomalyLoopProtection {
 		t.Errorf("port 3 (held by loop protection) anomalies = %v, want exactly the loop-protection bit (512)", held["anomalies"])
 	}
+	// The controller's "disabled by Loop Protection" alert follows
+	// error_disabled with reason bit 1, not anomalies (§11.23).
+	if held["error_disabled"] != true || held["error_disabled_reason"] != float64(errDisabledLoopProtection) {
+		t.Errorf("port 3 error_disabled %v reason %v, want true and %d", held["error_disabled"], held["error_disabled_reason"], errDisabledLoopProtection)
+	}
+	for _, i := range []int{1, 2} {
+		if v, ok := portEntry(t, m, i)["error_disabled"]; ok {
+			t.Errorf("port %d (not held) sends error_disabled %v", i, v)
+		}
+	}
+}
+
+// The DX010 with BPDU guard on port 17 from the controller and the empty
+// cage looped by the chip's MAC loopback (collect-bpduguard.txt,
+// 2026-11-15): the port heard its own BPDU and mstpd shut it (bpdu guard
+// error yes). The controller's BPDU-guard alert ("UniFi disabled <port>
+// because it detected a network loop") follows error_disabled with reason
+// bit 2 (docs/drivers/sonic.md §11.23); the port carries no anomalies bit
+// for it, and no other port is error-disabled.
+func TestWireContractSonicBPDUGuard(t *testing.T) {
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261114-42cccc87a", "collect-bpduguard.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := sonic.NewCollector(fr)
+	snap, err := c.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := sonicRender(t, c, snap, "USWF07D")
+	p := portEntry(t, m, 17)
+	if p["error_disabled"] != true || p["error_disabled_reason"] != float64(errDisabledBPDUGuard) {
+		t.Errorf("port 17 error_disabled %v reason %v, want true and %d", p["error_disabled"], p["error_disabled_reason"], errDisabledBPDUGuard)
+	}
+	if a, _ := p["anomalies"].(float64); a != 0 {
+		t.Errorf("port 17 anomalies = %v, want 0 (no anomalies bit is BPDU guard)", a)
+	}
+	for _, e := range m["port_table"].([]any) {
+		q := e.(map[string]any)
+		if q["port_idx"] != float64(17) && q["error_disabled"] != nil {
+			t.Errorf("port %v error_disabled %v", q["port_idx"], q["error_disabled"])
+		}
+	}
+	t.Logf("port 17: up %v enable %v stp_state %v stp_role %v", p["up"], p["enable"], p["stp_state"], p["stp_role"])
 }

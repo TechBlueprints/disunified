@@ -246,3 +246,23 @@ func TestPortAnomaliesProtectionHold(t *testing.T) {
 		}
 	}
 }
+
+// error_disabled and its reason are set for the two protections UniFi's
+// model shuts a port for (docs/drivers/sonic.md §11.20) and for nothing else:
+// the controller raises its BPDU-guard and loop-protection alerts from them
+// (§11.23).
+func TestErrorDisabled(t *testing.T) {
+	for fault, want := range map[string]int{
+		"errdisabled: bpduguard":                       errDisabledBPDUGuard,
+		"errdisabled: loop-protect (10 MAC moves)":     errDisabledLoopProtection,
+		"errdisabled: loopprotect":                     errDisabledLoopProtection,
+		"errdisabled: storm-broadcast":                 0,
+		"errdisabled: mac-locking (02:00:00:00:00:01)": 0,
+		"errdisabled: speed-misconfigured":             0,
+		"":                                             0,
+	} {
+		if got := errorDisabled(fault); got != want {
+			t.Errorf("fault %q: error_disabled_reason %d, want %d", fault, got, want)
+		}
+	}
+}

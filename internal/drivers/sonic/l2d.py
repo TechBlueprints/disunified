@@ -587,6 +587,13 @@ class L2d(object):
         self.stp_on = False  # mstpd owns Bridge
         self.ifindex = 0
         self.ports = {}  # bridge port known to orchagent -> last kernel state seen
+        # bridge port -> changes of its kernel state (disabled, blocking,
+        # learning, forwarding) seen since boot: published as state_changes,
+        # the controller's stp_state_change_count (§11.23). mstpd's own
+        # transition counters miss a port that stays discarding across a
+        # link drop (Backup, Alternate) and count one at start for a port
+        # that never came up.
+        self.changes = {}
         self.written = {}  # (port, vid) -> stporch state in APPL_DB
         self.mapped = set()  # vids whose VLAN is in its own instance
         self.flush_due = {}  # port -> time a flush is due (coalesced)
@@ -741,6 +748,7 @@ class L2d(object):
             self.ports[p] = None
         for p in self.ports:
             st = kstate(p)
+            self.count_change(p, self.ports[p], st)
             self.ports[p] = st
             self.write_state(p, st, vids)
         if time.time() >= self.settle:
@@ -773,6 +781,7 @@ class L2d(object):
                 del self.written[(p, v)]
                 self.db.port_raw._del("%s:%d" % (p, v))
         self.ports.pop(port, None)
+        self.changes.pop(port, None)
         self.db.st_port._del(port)
         self.asic_floor = min(self.asic_floor, len(self.written))
 
@@ -791,11 +800,26 @@ class L2d(object):
         vids = self.mapped | {v for (_, v) in self.written}
         if state != self.ports[name]:
             log("%s: %s -> %s" % (name, KNAME.get(self.ports[name], "?"), KNAME.get(state, "?")))
+            self.count_change(name, self.ports[name], state)
             self.ports[name] = state
             self.write_state(name, state, vids)
         else:
             # same state: a bridge-port sysfs write, i.e. mstpd's FDB flush
             self.flush_due.setdefault(name, time.time() + 0.02)
+
+    def count_change(self, port, old, new):
+        """One more state change for the port; the first state seen is none.
+        The count carries over an l2d restart from STATE_DB (a reboot or STP
+        off clears it, as a switch's count since boot)."""
+        if old is None or old == new:
+            return
+        self.changes[port] = self.state_changes(port) + 1
+
+    def state_changes(self, port):
+        if port not in self.changes:
+            was = self.db.hgetall(self.db.state, "DUI_STP_PORT_TABLE|%s" % port).get("state_changes", "")
+            self.changes[port] = int(was) if was.isdigit() else 0
+        return self.changes[port]
 
     def run_flushes(self):
         now = time.time()
@@ -839,6 +863,7 @@ class L2d(object):
         self.written.clear()
         self.mapped.clear()
         self.ports.clear()
+        self.changes.clear()
         self.asic_floor = 0
         self.stp_on = False
         log("spanning tree off: %s" % why)
@@ -870,11 +895,13 @@ class L2d(object):
             p = d.get("port", "")
             if p not in self.ports:
                 continue
-            put(self.db.st_port, p, [(f.replace("-", "_"), str(d.get(f, ""))) for f in (
+            fields = [(f.replace("-", "_"), str(d.get(f, ""))) for f in (
                 "role", "state", "external-port-cost", "admin-edge-port", "auto-edge-port",
                 "oper-edge-port", "bpdu-guard-port", "bpdu-guard-error", "bpdu-filter-port",
                 "num-rx-bpdu", "num-tx-bpdu", "num-rx-tcn", "num-transition-fwd",
-                "num-transition-blk", "point-to-point")])
+                "num-transition-blk", "point-to-point")]
+            fields.append(("state_changes", str(self.state_changes(p))))
+            put(self.db.st_port, p, fields)
 
     # --- loop protection ------------------------------------------------
 
