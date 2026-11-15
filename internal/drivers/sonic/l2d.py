@@ -1128,7 +1128,16 @@ class L2d(object):
         self.db.st_bpdu._del(port)
 
     def bpdu_check(self, port, d):
-        """One port of mstpd's report: a new trip holds the port."""
+        """One port of mstpd's report (read after reconcile set mstpd's
+        settings): a new trip holds the port; a held port whose guard
+        mstpd no longer runs is released. Released only then, never on
+        the config alone: a release while mstpd still guards the port
+        lets the link come up into the guard, which shuts the netdev
+        again with the guard about to go off (live, 2026-11-15)."""
+        if port in self.bpdu_held and d.get("bpdu-guard-port") != "yes":
+            self.bpdu_release(port, "BPDU guard off")
+            self.bpdu_forget(port)  # no guard: its error is no trip to wait out
+            return
         if d.get("bpdu-guard-port") != "yes" or d.get("bpdu-guard-error") != "yes":
             if port in self.bpdu_stale and d.get("bpdu-guard-error") != "yes":
                 self.bpdu_forget(port)
@@ -1146,8 +1155,6 @@ class L2d(object):
                 self.bpdu_release(p, "spanning tree off")
             elif p not in self.ports:
                 self.bpdu_release(p, "no longer a bridge port")
-            elif not self.want_port(p)["bpdu-guard-port"]:
-                self.bpdu_release(p, "BPDU guard off")
         for p in list(self.bpdu_stale):
             if p not in self.ports or not self.want_port(p)["bpdu-guard-port"]:
                 self.bpdu_forget(p)
