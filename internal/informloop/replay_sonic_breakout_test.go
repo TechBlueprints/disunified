@@ -70,10 +70,9 @@ func newBreakoutRigFrom(t *testing.T, capture, applied, ver string) *breakoutRig
 		t.Fatal(err)
 	}
 	r := &breakoutRig{t: t, fr: fr, l: l, sess: sess, log: buf}
-	r.l.collect(context.Background())
-	r.l.reconcile(context.Background())
-	if got := r.writes(); len(got) != 0 {
-		t.Fatalf("%s is the switch as captured, but the reconcile wrote %q", applied, got)
+	r.settle(applied + " is the switch as captured")
+	if t.Failed() {
+		t.FailNow()
 	}
 	return r
 }
@@ -99,6 +98,25 @@ func (r *breakoutRig) cycle(after string) {
 	if got := r.writes(); len(got) != 0 {
 		r.t.Errorf("reconcile after %s wrote %q", after, got)
 	}
+}
+
+// pruneTen is what the first reconcile over a DX010 capture of 2026-11-02
+// to 2026-11-15 writes: the ten site VLANs the 2026-11-02 Allow All run
+// created (docs/drivers/sonic.md §11.8) are on the switch, no port carries
+// them since, and no push of these captures names them, so the driver
+// deletes them (§11.29).
+var pruneTen = []string{"sudo config vlan del -m 2,8,9,10,69,1000,2000,3000,4000,4010", brkSave}
+
+// settle is the first cycle over such a capture: it deletes the ten VLANs
+// and nothing else, and the cycle after it writes nothing.
+func (r *breakoutRig) settle(after string) {
+	r.t.Helper()
+	r.l.collect(context.Background())
+	r.l.reconcile(context.Background())
+	if got := r.writes(); strings.Join(got, "\n") != strings.Join(pruneTen, "\n") {
+		r.t.Errorf("first reconcile after %s wrote %q, want only the ten VLANs no push names deleted %q", after, got, pruneTen)
+	}
+	r.cycle(after + ", the ten VLANs deleted")
 }
 
 func (r *breakoutRig) writes() []string {

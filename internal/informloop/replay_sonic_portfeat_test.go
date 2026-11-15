@@ -76,7 +76,7 @@ func TestReplaySonicDX010PortFeatures(t *testing.T) {
 	for _, ln := range ifaces {
 		want = append(want, medOn(ln))
 	}
-	want = append(want, brkSave)
+	want = append(append(want, brkSave), pruneTen...)
 	wantWrites(t, "first reconcile", got, want)
 
 	got = r.push("system_cfg-dx010-portfeat-1-set.txt", "84b57a6092b23683")
