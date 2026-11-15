@@ -506,6 +506,10 @@ func (r *rejecting) Configure(ctx context.Context, cmds []string) error {
 	return nil
 }
 
+func (r *rejecting) ConfigureWarn(ctx context.Context, cmds []string) ([]string, error) {
+	return nil, r.Configure(ctx, cmds)
+}
+
 // A batch EOS rejects is aborted, so the next attempt does not resume its
 // leftovers, and it is not held.
 func TestApplyACLAbortsARejectedSession(t *testing.T) {

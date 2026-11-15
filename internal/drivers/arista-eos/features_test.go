@@ -57,9 +57,9 @@ func TestApplyFeatureCommands(t *testing.T) {
 		{Index: 51, Enabled: true, FEC: &off},
 	})
 	if err != nil || n != 2 {
-		t.Fatalf("n=%d err=%v cmds=%v", n, err, ft.configured)
+		t.Fatalf("n=%d err=%v cmds=%v", n, err, ft.Configured)
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	for _, want := range []string{
 		"interface Ethernet52/1\nerror-correction encoding reed-solomon\nstorm-control broadcast level 5\nstorm-control multicast level 1\nspanning-tree bpduguard enable",
 		"interface Ethernet51/1\nno error-correction encoding",
@@ -72,12 +72,12 @@ func TestApplyFeatureCommands(t *testing.T) {
 		t.Errorf("unexpected writes:\n%s", got)
 	}
 	// Removing storm control and bpduguard from 54.
-	ft.configured = nil
+	ft.Configured = nil
 	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 54, Enabled: true, FEC: &rs}})
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got = strings.Join(ft.configured[0], "\n")
+	got = strings.Join(ft.Configured[0], "\n")
 	if !strings.Contains(got, "interface Ethernet54/1\nno storm-control broadcast\nno storm-control multicast\nno spanning-tree bpduguard") {
 		t.Errorf("cmds:\n%s", got)
 	}
@@ -88,7 +88,7 @@ func TestApplySwitchSettings(t *testing.T) {
 	// Same as the switch: no-op.
 	n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 32768})
 	if err != nil || n != 0 {
-		t.Fatalf("no-op: n=%d err=%v cmds=%v", n, err, ft.configured)
+		t.Fatalf("no-op: n=%d err=%v cmds=%v", n, err, ft.Configured)
 	}
 	n, err = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{
 		STPSet: true, STPEnabled: true, STPMode: "rstp", STPPriority: 4096,
@@ -97,13 +97,13 @@ func TestApplySwitchSettings(t *testing.T) {
 	if err != nil || n != 3 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	if got != "enable\nconfigure\nspanning-tree priority 4096\nno ip igmp snooping vlan 10\nip igmp snooping vlan 69\nend\nwrite memory" {
 		t.Errorf("cmds:\n%s", got)
 	}
 	n, _ = c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{STPSet: true, STPEnabled: false})
-	if n != 1 || !strings.Contains(strings.Join(ft.configured[1], "\n"), "spanning-tree mode none") {
-		t.Errorf("disable stp: n=%d cmds=%v", n, ft.configured)
+	if n != 1 || !strings.Contains(strings.Join(ft.Configured[1], "\n"), "spanning-tree mode none") {
+		t.Errorf("disable stp: n=%d cmds=%v", n, ft.Configured)
 	}
 }
 
@@ -120,7 +120,7 @@ func TestApplyAggregationAndMirror(t *testing.T) {
 	if err != nil || n == 0 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	for _, want := range []string{
 		"interface Ethernet2\nchannel-group 7 mode active",
 		"interface Ethernet3\nchannel-group 7 mode active",
@@ -134,7 +134,7 @@ func TestApplyAggregationAndMirror(t *testing.T) {
 		}
 	}
 	// Leaving the LAG and dropping the mirror.
-	ft.configured = nil
+	ft.Configured = nil
 	n, err = c.ApplyPorts(context.Background(), []devicemodel.PortDesired{
 		{Index: 2, Enabled: true, VLANSet: true, NativeVLAN: 1, TaggedAll: true},
 		{Index: 4, Enabled: true},
@@ -142,7 +142,7 @@ func TestApplyAggregationAndMirror(t *testing.T) {
 	if err != nil || n == 0 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got = strings.Join(ft.configured[0], "\n")
+	got = strings.Join(ft.Configured[0], "\n")
 	if !strings.Contains(got, "no monitor session 4") || !strings.Contains(got, "interface Ethernet2\nno channel-group") {
 		t.Errorf("cmds:\n%s", got)
 	}
@@ -150,7 +150,7 @@ func TestApplyAggregationAndMirror(t *testing.T) {
 
 func TestLAGMembershipFromSummary(t *testing.T) {
 	c, ft := newFixtureCollector(t)
-	ft.overrides = map[string]string{"show port-channel summary": "show-port-channel-summary-lag.json"}
+	ft.Overrides = map[string]string{"show port-channel summary": "show-port-channel-summary-lag.json"}
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -177,8 +177,8 @@ func TestApplyDHCPSnoopingIsIgnored(t *testing.T) {
 	off, on := false, true
 	for _, v := range []*bool{&on, &off, &on} {
 		n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{DHCPSnooping: v})
-		if err != nil || n != 0 || len(ft.configured) != 0 {
-			t.Fatalf("dhcp snooping %v: n=%d err=%v cmds=%v", *v, n, err, ft.configured)
+		if err != nil || n != 0 || len(ft.Configured) != 0 {
+			t.Fatalf("dhcp snooping %v: n=%d err=%v cmds=%v", *v, n, err, ft.Configured)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func TestApplyDHCPSnoopingIsIgnored(t *testing.T) {
 func TestApplySNMPCommunityIsTheSwitchsOnly(t *testing.T) {
 	c, ft := startedCollector(t)
 	if n, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{SNMPSet: true}); err != nil || n != 0 {
-		t.Fatalf("SNMP off on a switch with none: n=%d err=%v cmds=%v", n, err, ft.configured)
+		t.Fatalf("SNMP off on a switch with none: n=%d err=%v cmds=%v", n, err, ft.Configured)
 	}
 	for _, step := range []struct {
 		community, want string
@@ -199,14 +199,14 @@ func TestApplySNMPCommunityIsTheSwitchsOnly(t *testing.T) {
 		{"lab-ro2", "no snmp-server community lab-ro\nsnmp-server community lab-ro2 ro"},
 		{"", "no snmp-server community lab-ro2"},
 	} {
-		before := len(ft.configured)
+		before := len(ft.Configured)
 		if _, err := c.ApplyDevice(context.Background(), devicemodel.DeviceDesired{SNMPSet: true, SNMPCommunity: step.community}); err != nil {
 			t.Fatal(err)
 		}
-		if len(ft.configured) != before+1 {
-			t.Fatalf("community %q: %d batches, want one", step.community, len(ft.configured)-before)
+		if len(ft.Configured) != before+1 {
+			t.Fatalf("community %q: %d batches, want one", step.community, len(ft.Configured)-before)
 		}
-		if got := strings.Join(ft.configured[before], "\n"); got != "enable\nconfigure\n"+step.want+"\nend\nwrite memory" {
+		if got := strings.Join(ft.Configured[before], "\n"); got != "enable\nconfigure\n"+step.want+"\nend\nwrite memory" {
 			t.Errorf("community %q: cmds:\n%s", step.community, got)
 		}
 	}

@@ -232,6 +232,19 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **A dummy port's `carrier off` under a bridge reaches the bridge only
     after linkwatch's 1 s rate limit**: under 1 s it is coalesced and
     nothing happens.
+- **At boot the bridge starts before the switch is one (`starting.go`,
+  `docs/drivers/sonic.md` §6.4.2, 2026-11-15).** `After=swss.service` is
+  met once the swss container runs. On the DX010's boot Start collected
+  15 s before vlanmgrd made `Vlan4094`, with CONFIG_DB whole, APPL_DB
+  portless and no in-band address. `informloop.Run`'s first reconcile ran
+  on that snapshot 40 s later: Start's 20 `config --help` reads take
+  ~30 s. Start now collects again (5 s, up to 5 min, then fails for
+  `main` to retry) until APPL_DB has `PORT_TABLE:PortInitDone` and the
+  kernel carries the dialled address CONFIG_DB names. Runtime collects
+  are unchanged. **A boot's timeline is in `/var/log/syslog`, not the
+  journal**: `journalctl -b` holds the kernel, systemd and the bridge,
+  but the containers' daemons (`swss#portsyncd`, `swss#intfmgrd`,
+  `swss#orchagent`, `bgp#bgpcfgd`) log only to syslog.
 - **`promote_secondaries` is 0 on SONiC** (`/proc/sys/net/ipv4/conf/<iface>/promote_secondaries`):
   deleting a subnet's primary address deletes its secondaries, and a new
   address in the same subnet is a secondary. A live move removed the old

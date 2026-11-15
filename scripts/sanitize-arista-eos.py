@@ -51,7 +51,27 @@ def placeholder_serial(s):
     failed (docs/wire-shapes.md §1)."""
     return ('SSJ' + '0' * len(s))[:len(s)]
 
+# Running-config lines (`show running-config`'s section keys) that name the
+# switch or carry a credential: the earlier captures had these cleaned by
+# hand (2026-11-15, the empty-po captures were the first to need the script).
+SECRET_RE = re.compile(r'^(username \S+ .*secret \S+ )\S+$')
+SSHKEY_RE = re.compile(r'^(username \S+ ssh-key (?:secondary )?\S+ )\S+(?: .*)?$')
+HOSTLINE_RE = re.compile(r'^(hostname|dns domain|ip domain-name) \S+$')
+
+def scrub_config_line(s):
+    m = SECRET_RE.match(s)
+    if m:
+        return m.group(1) + '<hash>'
+    m = SSHKEY_RE.match(s)
+    if m:
+        return m.group(1) + '<pubkey>'
+    m = HOSTLINE_RE.match(s)
+    if m:
+        return m.group(1) + (' switch' if m.group(1) == 'hostname' else ' example.net')
+    return s
+
 def scrub_str(s, key=None):
+    s = scrub_config_line(s)
     if key in ('neighborDevice', 'systemName', 'hostname', 'fqdn') and s and s != 'localhost':
         return map_host(s)
     if key == 'vendorSn':

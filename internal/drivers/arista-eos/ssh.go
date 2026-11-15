@@ -109,6 +109,12 @@ func (t *SSH) Configure(ctx context.Context, cmds []string) error {
 	return err
 }
 
+// ConfigureWarn implements ConfigWarner from the CLI's `! ` lines.
+func (t *SSH) ConfigureWarn(ctx context.Context, cmds []string) ([]string, error) {
+	out, err := t.exec(ctx, cmds, false)
+	return cliWarnings(string(out)), err
+}
+
 // Run executes cmds (each suffixed with `| json`) in one session.
 func (t *SSH) Run(ctx context.Context, cmds []string) ([]json.RawMessage, error) {
 	out, err := t.exec(ctx, cmds, true)

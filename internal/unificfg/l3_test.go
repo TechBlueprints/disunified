@@ -127,3 +127,39 @@ func TestParseRoutedPortsAndFixedIPs(t *testing.T) {
 		}
 	}
 }
+
+// Routing + Aggregating on Network 11.0.99 (2026-11-15, cages 15 and 16):
+// parsed as 10.6.109's, the first member alone pushed and the second in no
+// key; the removal routes nothing.
+func TestParseRoutedAggregateNetwork11(t *testing.T) {
+	read := func(name string) *Config {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Parse(string(b))
+	}
+	c := read("system_cfg-dx010-routed-agg-1-aggregate.txt")
+	if c.Routing == nil || !c.Routing.Enabled || len(c.Routing.Interfaces) != 2 {
+		t.Fatalf("routing = %+v", c.Routing)
+	}
+	ri := c.Routing.Interfaces[1]
+	want := RoutingInterface{ID: 2, Name: "Eth15", Type: "lag", LAG: 15, OpMode: "manual", IP: "198.18.4.5", Mask: "255.255.255.252", DefaultRoute: "198.18.253.1", Purpose: "corporate"}
+	if !reflect.DeepEqual(ri, want) {
+		t.Errorf("routed aggregate = %+v\nwant               %+v", ri, want)
+	}
+	if p := c.Ports[15]; p.OpMode != "aggregate" || p.LAG != 1 || p.VLANExplicit {
+		t.Errorf("port 15 = %+v", p)
+	}
+	if _, ok := c.Ports[16]; ok {
+		t.Errorf("port 16 is in the routed aggregate's push: %+v", c.Ports[16])
+	}
+	for _, ri := range c.Routing.Interfaces {
+		if len(ri.Unmodelled) > 0 {
+			t.Errorf("%s left %v", ri.Name, ri.Unmodelled)
+		}
+	}
+	if c := read("system_cfg-dx010-routed-agg-2-removed.txt"); c.Routing == nil || c.Routing.Enabled || len(c.Routing.Interfaces) != 0 {
+		t.Errorf("the routed aggregate removed = %+v", c.Routing)
+	}
+}

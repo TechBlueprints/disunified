@@ -43,7 +43,11 @@ type showIPACLs struct {
 // showIPACLSummary is `show ip access-lists summary` (4.26.14M JSON): where
 // each list is configured and where the hardware has it.
 type showIPACLSummary struct {
-	ACLList []struct {
+	// Warnings is switch-wide: "Not all ACLs are programmed in the
+	// hardware!" while a list failed to program, which no list's own
+	// fields show (acl-commit-warning/, 2026-11-15).
+	Warnings []string `json:"warnings"`
+	ACLList  []struct {
 		Name                        string `json:"name"`
 		NotFullySupportedByHardware bool   `json:"notFullySupportedByHardware"`
 		// CountersIncomplete: some of the list's entries got no counter,
@@ -142,6 +146,11 @@ func aclStatus(sum showIPACLSummary, st aclState) string {
 		}
 	}
 	sort.Strings(problems)
+	if len(st.lists) > 0 {
+		for _, w := range sum.Warnings {
+			problems = append(problems, "EOS: "+w)
+		}
+	}
 	return strings.Join(problems, "; ")
 }
 

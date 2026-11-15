@@ -24,7 +24,8 @@ import (
 // per interface (57 on the captured switch) with the rules in the
 // controller's order and no `counters per-entry` (no guard is pushed, and
 // nothing reads a rule's count), bound inbound, then the confirm. A
-// reconcile from the same push writes no ACL again.
+// reconcile from the same push, reading the switch the push left, writes
+// nothing at all.
 func TestReplayAristaIPRulePushes(t *testing.T) {
 	var p map[string]any
 	if err := json.Unmarshal(loadReplies(t, "replies.ndjson")[11].Payload, &p); err != nil {
@@ -115,12 +116,13 @@ func TestReplayAristaIPRulePushes(t *testing.T) {
 			if strings.Contains(buf.String(), "HELD") || strings.Contains(buf.String(), "left as the switch has them") {
 				t.Errorf("nothing is held:\n%s", buf.String())
 			}
+			if _, err := coll.Collect(ctx); err != nil { // the switch as the push left it
+				t.Fatal(err)
+			}
 			n := len(ft.Configured)
 			l.reconcile(ctx)
-			for _, b := range ft.Configured[n:] {
-				if strings.Contains(strings.Join(b, "\n"), "access-") {
-					t.Errorf("reconcile wrote an ACL again: %q", b)
-				}
+			if len(ft.Configured) != n {
+				t.Errorf("the reconcile wrote %q", ft.Configured[n:])
 			}
 		})
 	}
@@ -152,7 +154,9 @@ func listBody(session, name string) []string {
 // second change failed: the deployed driver named every session `dui-acl`,
 // and EOS will not enter the name of its last completed session ("Cannot
 // enter session dui-acl, it is already complete"). Each change must open a
-// session of its own and confirm that one.
+// session of its own and confirm that one. Each push is applied to the
+// switch as the one before left it, and a reconcile after the removal
+// finds nothing left to remove.
 func TestReplayAristaIPRuleLiveRound(t *testing.T) {
 	read := func(name string) string {
 		b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", name))
@@ -206,6 +210,19 @@ func TestReplayAristaIPRuleLiveRound(t *testing.T) {
 				t.Errorf("the push without the rule removes all 57 lists:\n%s\nlog:\n%s", body, buf.String())
 			}
 		}
+	}
+	l, err := New(desc, device.NewSession(desc, "http://192.0.2.1:8080/inform", device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", CfgVersion: "v2", SystemCfg: read("system_cfg-arista-noacl.txt")}, nil, time.Now()),
+		Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, ApplyTimeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coll.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	n := len(ft.Configured)
+	l.reconcile(context.Background())
+	if len(ft.Configured) != n {
+		t.Errorf("a reconcile after the removal wrote %q", ft.Configured[n:])
 	}
 	if len(opened) != 2 || opened[0] == opened[1] || strings.Join(confirmed, ",") != strings.Join(opened, ",") {
 		t.Errorf("sessions opened %q, confirmed %q: want two, each its own name, each confirmed", opened, confirmed)
