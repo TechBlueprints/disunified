@@ -657,7 +657,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   NOT_IMPLEMENTED) and orchagent retries it twice a second while a row says
   enable, so every `L2MC_SUPPRESS` row is deleted and
   `forward_unknown_multicast=false` only logged. **l2mcd programs a member
-  only on an oper-up port**; `bcmcmd "port ceN lb=mac"` brings a cage up
+  only on an oper-up port**. **l2mcd and l2mcmgrd log to `/var/log/l2mcd.log`,
+  not syslog**: an L2MC line in orchagent's syslog is explained there (a
+  breakout's "deletes for a new lane" were another port's, found only in that
+  file, §11.25.3). `bcmcmd "port ceN lb=mac"` brings a cage up
   with no cable (keep that port in a test VLAN only). Writes are whole rows
   through one `sudo python3 - disunified-l2mc` script (`ConfigDBConnector`,
   the ops as a JSON string on its last line), never a CLI call per field: a
