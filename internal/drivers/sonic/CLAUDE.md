@@ -772,11 +772,41 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   kbps x 125 / 64 frames/s (x 1.25 to start, for the 1 s poll), and counts
   the frames above it into STATE_DB `DUI_STORM_TABLE` -> collect.py
   `l2_storm` -> `StormDropsBroadcast` / `StormDropsMulticast`; no fault.
-  l2d runs for storm control alone. No unknown-unicast counter: bit 4
-  never. **A port named by snooping's static groups cannot leave its VLAN
+  l2d runs for storm control alone. Unknown unicast: next item. **A port named by snooping's static groups cannot leave its VLAN
   by hand** (`config vlan member del` refuses), so a MAC-looped test cage
   stays in Vlan4094 and only RSTP's block keeps its frames off the LAN.
   Fixtures: `collect-storm.txt`, `storm-counters.ndjson`.
+- **Unknown-unicast storms come from sFlow samples (2026-11-14,
+  `docs/drivers/sonic.md` §11.23).** Probed on the DX010 first: the SAI
+  refuses every `SAI_ACL_*_FIELD_*_NPU_META_DST_HIT` at table create
+  (status -0x10000 + the field's index) and answers `get_policer_stats` for
+  a storm policer with zeros while the chip's meter is red. The chip's
+  ingress sampler sees frames before storm control drops them, but **the
+  legacy-TH SAI samples only with `linux-bcm-genl` loaded** (its
+  `/proc/bcm/genl/psample/rate`; else `cannot open knet link sample proc`),
+  which the legacy-TH module package builds and never shipped: the image
+  kit's sonic-buildimage 0014. It must load before syncd makes its netifs
+  (loaded later it knows no ifindex). l2d's `UcastSampler` configures
+  sFlow in CONFIG_DB as `config sflow` does for each port with
+  `unknown-unicast` storm control: `SFLOW_SESSION|all` down first, the
+  port's session (rate kbps x 125 / 64 / 25, at least 256), `SFLOW|global`
+  up, `FEATURE|sflow` on, marked in `/etc/sonic/disunified/l2d-sflow` and
+  turned off after sflowmgrd emptied APPL_DB. **APPL_DB sessions alone
+  sample nothing**: coppmgrd installs the `sample_packet` trap only
+  through the feature (its `always_enabled` path writes a trap-only group
+  row, copporch fails it MANDATORY_ATTRIBUTE_MISSING and orchagent's
+  `gOrchUnhealthy` then logs ERR every loop until it restarts). An
+  operator's feature is left alone. l2d reads psample's `packets` group,
+  and counts a sample as flooded
+  when its DMAC is unicast, `OIFINDEX` 0xffff (bcm-genl: not a front port,
+  not the CPU), not the switch MAC and not in the FDB for its VLAN.
+  `StormWatch.usample` compares the sampled bytes/s with kbps x 125 (3
+  standard errors to start or end) and adds the frames above it to
+  `DUI_STORM_TABLE` `unicast` -> `StormDropsUnicast`. collect.py
+  `genl_psample` says whether the image can; without it the driver logs
+  once and nothing changes. **Hand-pushed ASIC_DB probes: SIGSTOP orchagent
+  for the push** -- sairedis' `RedisChannel::wait` takes any `getresponse`
+  as its own. Proven live 2026-11-15 on `igmp-202511.20261115-6c8eb1cf7` (cage 15, 15 745 frames above a 1000 kbps limit, `StormDropsUnicast` in `-collect-once`). Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/` (`ucast-samples.ndjson`, `collect.txt`, `collect-ucast-storm.txt`).
 - **No storm-control drop count exists (2026-11-14, `docs/drivers/sonic.md`
   §11.19)** -- hence the detection above. orchagent never registers the storm
   policers for statistics (no COUNTERS_DB key, no `POLICER` flex group), SAI
