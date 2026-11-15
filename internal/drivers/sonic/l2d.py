@@ -23,7 +23,12 @@
 # - a port-state key naming a port orchagent does not know stops that
 #   table's queue for good (`return`, not `continue`), so only ports present
 #   in APPL_DB and STATE_DB are written, and keys of ports or VLANs that are
-#   gone are dropped from APPL_DB directly, never through the producer.
+#   gone are dropped from APPL_DB directly, never through the producer;
+# - a state for a port with no bridge port makes addStpPort create one (and
+#   the STP port), so nothing is written for a port leaving Bridge: taken
+#   after portsorch removed the bridge port, it left a PortChannel member
+#   with STP ports of its own, and the chip then refuses the PortChannel's
+#   (repair_strays, docs/drivers/sonic.md 11.34).
 #
 # A topology change: mstpd flushes the kernel FDB of a port through sysfs,
 # and the kernel announces every bridge-port sysfs write with an
