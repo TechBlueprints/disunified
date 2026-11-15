@@ -75,7 +75,11 @@ type Collector struct {
 	props     showInterfacesTransceiverProperties
 	hardware  map[string]portHardware
 	polls     int
-	last      *devicemodel.Snapshot
+	// refresh makes the next collect re-read the startup commands: a
+	// written speed is read back from `show interfaces transceiver
+	// properties`, one of them.
+	refresh bool
+	last    *devicemodel.Snapshot
 	// nameServers and mgmtDHCP are the running config's view of the
 	// switch's own addressing, kept for ApplyAddress's diff.
 	nameServers []string
@@ -200,7 +204,8 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	defer unlock()
 	c.mu.Lock()
 	c.polls++
-	needRefresh := c.static == nil || c.polls%mediaRefreshEvery == 0
+	needRefresh := c.static == nil || c.refresh || c.polls%mediaRefreshEvery == 0
+	c.refresh = false
 	c.mu.Unlock()
 	if needRefresh {
 		if err := c.refreshStatic(ctx); err != nil {

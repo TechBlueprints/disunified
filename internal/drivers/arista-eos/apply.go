@@ -50,6 +50,16 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	// refreshes it. Mark it so a second ApplyPorts before that does not
 	// re-issue the same commands.
 	c.mu.Lock()
+	// The admin speed is read with the startup commands (refreshStatic):
+	// without a refresh the next collect would read the old speed back, and
+	// every reconcile until the media refresh, 30 polls on, would write the
+	// speed again.
+	for _, cmd := range pr.cmds {
+		if strings.HasPrefix(cmd, "speed ") {
+			c.refresh = true
+			break
+		}
+	}
 	if c.last == snap {
 		updated := *snap
 		updated.Ports = append([]devicemodel.Port(nil), snap.Ports...)

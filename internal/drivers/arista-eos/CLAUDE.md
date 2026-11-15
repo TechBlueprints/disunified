@@ -133,3 +133,11 @@ that cost time on Clint's DCS-7160-48TC6-F.
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is
   0 (`docs/mac-table-times.md`); never fill `age` from `lastMove`.
+- **The fixture transport remembers what it wrote** (2026-11-15,
+  `fixture_state.go`, `docs/drivers/arista-eos.md` §11): a new write the
+  driver makes needs its read-back form captured on the test ports
+  (`write-forms/` is the pattern) or it lands in `Unmodelled`. Only the
+  whole `show running-config` has JSON on 4.26.14M (`... interfaces X |
+  json` is "unconverted"). The admin speed is a startup read
+  (`show interfaces transceiver properties`): a batch that writes a speed
+  sets `c.refresh` so the next collect re-reads it.
