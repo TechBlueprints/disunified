@@ -144,6 +144,10 @@ type l2Dot1X struct {
 	Servers []l2RADIUS        `json:"servers"`
 	NASIP   string            `json:"nas_ip,omitempty"`
 	Ports   map[string]string `json:"ports"`
+	// IdleTimeout is each mac_based interface's idle timeout in seconds
+	// (the push's dot1x.idle_timeout): a host admitted by its MAC address
+	// and silent that long must authenticate again (§11.26.7).
+	IdleTimeout map[string]int `json:"idle_timeout,omitempty"`
 }
 
 // authenticates: a port runs an authenticator (a force-authorised or
@@ -174,6 +178,9 @@ type l2Inst struct {
 	// capture from before 802.1X (§11.26), which claims nothing for it.
 	Hostapd      *string `json:"hostapd"`
 	HostapdBuild string  `json:"hostapd_build"` // as Build, for hostapd
+	// Dot1XSecret: the RADIUS secrets file exists (dot1xSecretPath; never
+	// read); nil in a capture from before 2026-11-15.
+	Dot1XSecret *bool `json:"dot1x_secret"`
 	Service      string  `json:"service"`
 	Deadman      string  `json:"deadman"`
 	Build        string  `json:"build"` // "running", "ok", "failed: …", ""
@@ -227,6 +234,7 @@ type l2Want struct {
 	// dot1x: controlled interface -> mode, from the
 	// ports; dot1xSet/dot1xOn/dot1xServers from the device.
 	dot1x        map[string]string
+	dot1xIdle    map[string]int
 	dot1xSet     bool
 	dot1xOn      bool
 	dot1xServers []devicemodel.RADIUSServer
@@ -274,6 +282,14 @@ func (w *l2Want) conf() l2Conf {
 	}
 	if ports := w.dot1xPorts(); len(ports) > 0 {
 		d := &l2Dot1X{Ports: ports, NASIP: w.nasIP, Servers: []l2RADIUS{}}
+		for n, t := range w.dot1xIdle {
+			if ports[n] == string(devicemodel.Dot1XMACBased) && t > 0 {
+				if d.IdleTimeout == nil {
+					d.IdleTimeout = map[string]int{}
+				}
+				d.IdleTimeout[n] = t
+			}
+		}
 		for _, s := range w.dot1xServers {
 			d.Servers = append(d.Servers, l2RADIUS{IP: s.Addr, Port: s.Port})
 		}
@@ -355,8 +371,8 @@ func nasAddr(dial string) string {
 // aggregate is not controlled (hostapd authenticates one netdev; UniFi
 // offers 802.1X on an aggregate nowhere captured): it is left out here and
 // in the plan, which keeps it open.
-func dot1xPorts(desired []devicemodel.PortDesired, ifnames map[int][]string, st *swState) map[string]string {
-	out := map[string]string{}
+func dot1xPorts(desired []devicemodel.PortDesired, ifnames map[int][]string, st *swState) (map[string]string, map[string]int) {
+	out, idle := map[string]string{}, map[string]int{}
 	for _, d := range desired {
 		ifs := ifnames[d.Index]
 		if d.Dot1X == "" || len(ifs) == 0 || d.LAG > 0 || st.lagOf(ifs[0]) != "" {
@@ -364,12 +380,18 @@ func dot1xPorts(desired []devicemodel.PortDesired, ifnames map[int][]string, st 
 		}
 		for _, n := range ifs {
 			out[n] = string(d.Dot1X)
+			if d.Dot1X == devicemodel.Dot1XMACBased && d.Dot1XIdleTimeout > 0 {
+				idle[n] = d.Dot1XIdleTimeout
+			}
 		}
 	}
 	if len(out) == 0 {
-		return nil
+		return nil, nil
 	}
-	return out
+	if len(idle) == 0 {
+		idle = nil
+	}
+	return out, idle
 }
 
 // l2SetPorts records the per-port intent (ApplyPorts): each kernel bridge
@@ -427,7 +449,7 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 		lock = nil
 	}
 	c.l2.portsSet, c.l2.ports, c.l2.guard, c.l2.macLock = true, ports, guard, lock
-	c.l2.dot1x = dot1xPorts(desired, c.ifnames, st)
+	c.l2.dot1x, c.l2.dot1xIdle = dot1xPorts(desired, c.ifnames, st)
 	c.l2.storm = stormWatched(desired, st.psample)
 }
 
@@ -570,6 +592,12 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 	if secretChanged {
 		steps = append(steps, installFile(dot1xSecretPath, "0600", w.dot1xSecrets()))
 	}
+	// No port controlled: the secrets go from the switch too (seen live
+	// 2026-11-15: the file outlived 802.1X going off, §11.26.6).
+	secretGone := secretSHA == "" && (w.secretWritten != "" || (in.Dot1XSecret != nil && *in.Dot1XSecret))
+	if secretGone {
+		steps = append(steps, "sudo rm -f "+dot1xSecretPath)
+	}
 	confChanged := in.Conf == nil || !reflect.DeepEqual(*in.Conf, want)
 	if confChanged {
 		b, _ := json.MarshalIndent(want, "", "  ")
@@ -598,13 +626,17 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("sonic apply l2: %w", err)
 	}
 	c.mu.Lock()
-	if secretChanged {
+	if secretChanged || secretGone {
 		c.l2.secretWritten = secretSHA
 	}
 	if c.state == st {
 		next := st.clone()
 		next.l2.Conf = &want
 		next.l2.Service = "active"
+		if secretChanged || secretGone {
+			has := secretSHA != ""
+			next.l2.Dot1XSecret = &has
+		}
 		for _, f := range files {
 			next.l2.Files[f.path] = sha(f.body)
 		}

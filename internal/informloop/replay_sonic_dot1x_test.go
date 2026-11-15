@@ -123,6 +123,11 @@ func TestReplaySonicDX010Dot1X(t *testing.T) {
 		if m := conf()["ports"].(map[string]any)[tc.iface]; m != tc.mode {
 			t.Errorf("%s: l2d has %s as %v", tc.file, tc.iface, m)
 		}
+		// The MAC method's idle timeout reaches l2d for that port only.
+		idle, _ := conf()["idle_timeout"].(map[string]any)
+		if tc.mode == "mac_based" && (len(idle) != 1 || idle[tc.iface] != float64(300)) {
+			t.Errorf("%s: l2d's idle timeouts = %v, want %s 300", tc.file, idle, tc.iface)
+		}
 		r.cycle(tc.file)
 	}
 	if r.fr.Builds != 1 {
@@ -145,6 +150,10 @@ func TestReplaySonicDX010Dot1X(t *testing.T) {
 	}
 	if d := conf(); d != nil {
 		t.Errorf("off: l2d keeps %v", d)
+	}
+	// The RADIUS secret leaves the switch with it (live 2026-11-15 it stayed).
+	if _, ok := r.fr.L2Files["/etc/sonic/disunified/dot1x-radius"]; ok {
+		t.Errorf("off: the secrets file was not removed")
 	}
 	r.cycle("off")
 

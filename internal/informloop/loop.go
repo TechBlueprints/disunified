@@ -828,6 +828,7 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 		d.VoiceVLAN = p.VoiceVLAN
 		if cfg.Dot1X != nil && cfg.Dot1X.Enabled {
 			d.Dot1X = dot1xMode(p.Dot1XMode)
+			d.Dot1XIdleTimeout = p.Dot1XIdleTimeout
 		}
 		if p.PortSecurity {
 			d.PortSecurity = true
