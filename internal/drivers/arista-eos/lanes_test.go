@@ -36,6 +36,7 @@ func splitCollector(t *testing.T, dir string, attach bool) (*Collector, *Fixture
 			t.Fatal(err)
 		}
 	}
+	removeLeftovers(t, c)
 	return c, ft, buf
 }
 
@@ -246,7 +247,8 @@ func TestLanePlanAggregateAndItsUndo(t *testing.T) {
 	if _, err := c.ApplyLanes(ctx, 54, desired); err != nil {
 		t.Fatal(err)
 	}
-	want := "enable | configure | no monitor session 1542 | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | end | write memory"
+	// The emptied Port-Channel goes with its members (portchannel.go).
+	want := "enable | configure | no monitor session 1542 | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | no interface Port-Channel1541 | end | write memory"
 	if got := lastBatch(t, ft); got != want {
 		t.Errorf("undo batch\n%s\nwant\n%s", got, want)
 	}
@@ -328,7 +330,7 @@ func TestJoinDissolvesTheLaneSwitchsGroups(t *testing.T) {
 	if _, err := c.ApplyPorts(context.Background(), desired); err != nil {
 		t.Fatal(err)
 	}
-	want := "enable | configure | no monitor session 1542 | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | interface Ethernet54/1 | speed forced 100gfull | end | write memory"
+	want := "enable | configure | no monitor session 1542 | interface Ethernet54/3 | no channel-group | interface Ethernet54/4 | no channel-group | no interface Port-Channel1541 | interface Ethernet54/1 | speed forced 100gfull | end | write memory"
 	if got := lastBatch(t, ft); got != want {
 		t.Errorf("join\n%s\nwant\n%s", got, want)
 	}

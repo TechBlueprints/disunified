@@ -126,7 +126,8 @@ while every other QSFP slot is a single `EthernetNN/1`. `Ethernet52/1` reports
 QSFP28 port per slot, so the collector must **fold lanes into their parent slot**: port 50 is
 "up" if any lane is up, counters summed. Also present: `Management1`, the OOB port, reported
 as `System.OOBInterfaces` (link state, address) for the loop's in-band warning; and
-`Port-Channel1..4` (defined, no members), `Vlan*`.
+`Vlan*` (and, until 2026-11-15, `Port-Channel1..4`, defined with no members: leftovers
+of emptied aggregates, removed; §4, Aggregates).
 
 ### `lldp_table` from `show lldp neighbors` → `lldpNeighbors[]`
 
@@ -301,6 +302,69 @@ per bit; it derives its own link-flap and SFP alerts from the raw fields).
   `packetCount` of the guard's drop entry in the port's own ACL, `show ip access-lists
   DUI_IP_ACL_<interface>` (§9.6). Read only while the driver has lists; 0 on the live
   read of 2026-11-14 (no traffic on the test ports).
+
+### Aggregates (Port-Channels; removal fixed 2026-11-15)
+
+The controller's `switch.port.N.lag=<id>` is `channel-group <id> mode
+active` on every lane of each member, and the Port-Channel carries the
+VLAN config (`interface Port-Channel<id>`, the members inherit it). The
+device's own groups are numbered by the controller's id (1 up to the
+switch's last port); a lane switch's are `1000+10*cage+lag` (§10).
+
+**EOS keeps an emptied Port-Channel.** Measured on 4.26.14M on 2026-11-15
+on the two test ports, the switch held off with a pending `commit timer`
+session and every change reverted with it afterwards:
+
+- With Ethernet2 and Ethernet54/1 in `Port-Channel5` (the driver's build
+  batch), the deployed bridge's reconcile, as before the fix, took both
+  out with `no channel-group` and left `interface Port-Channel5` with
+  `switchport mode trunk`. `show port-channel` kept listing it ("No Active
+  Ports"). The switch's `Port-Channel1..4`, empty since the first capture
+  of 2026-09-19, have that shape: three with `switchport mode trunk` (an
+  Allow All aggregate's VLANs) and one with nothing (access, VLAN 1, which
+  is also what the ACL unbind below leaves). Which batch left each is not
+  recorded.
+- `no interface Port-Channel<n>` removes the interface and the ACL bound
+  to it (the list itself stays, unbound). With members still in it, it
+  also takes them out of the group: their `channel-group` lines go. For a
+  Port-Channel that does not exist it is silent, no error.
+- Any `interface Port-Channel<n>` line re-creates one, empty. An ACL plan
+  that unbinds its list from a Port-Channel already removed would do
+  exactly that (`interface Port-Channel5` / `no ip access-group X in` left
+  a fresh `Port-Channel5`, access, VLAN 1).
+
+What a leftover could do: a later aggregate with the same id joins it as
+it is. The driver diffs the Port-Channel's VLANs (read from `show
+interfaces switchport`), so those are put right; anything else on it (an
+MTU, a description, a list bound by hand) would be inherited unseen. The
+driver's own ACL list for it is unbound by the removal and dropped by the
+next ACL plan, as for any interface that is no longer a target.
+
+So the plan (`portchannel.go`) removes, at the end of the same batch, every
+Port-Channel of its range that has no member once the batch has run --
+one the batch just emptied, or one the switch already had empty at the
+collect -- with `no interface Port-Channel<n>` after the members' `no
+channel-group`. The range is 1 to the switch's last port for the device's
+own plan and the cage's nine for a lane switch's (a join's dissolve of the
+lane groups removes theirs too); a lane switch's groups are never the
+device's to remove, and anything above the ports is left. A Port-Channel
+that carries a line the driver never writes there (anything but the
+`switchport` VLAN lines and the binding of a `DUI_IP_ACL_` list: a
+description, an MTU, an address, another list) was made by hand: it stays,
+with a note in the log. A removal changes no port, so the first-push hold
+does not wait on it; it counts in the apply's change total, as a
+Port-Channel's VLAN write does. After the batch the collector forgets the
+removed Port-Channels' VLANs and ACL bindings, so nothing re-creates one
+before the next collect.
+
+The captures (`docs/fixtures/arista-eos-4.26.14M/empty-po-*`, one sanitizer
+run): `leftovers` (Port-Channel1..4 empty), `lag5` (the aggregate built),
+`lag5-removed` (the old removal's result), `lag5-acl` (a list of its own
+bound to Port-Channel5), `lag5-removed-fixed` (members out, then `no
+interface`), `none` (after the four leftovers were removed by hand on
+2026-11-15; the switch has no Port-Channel since). `portchannel_test.go`
+holds the build, the removal, the leftovers, the hand-made case and
+idempotence to them.
 
 ## 5. Identity for the UniFi descriptor
 
