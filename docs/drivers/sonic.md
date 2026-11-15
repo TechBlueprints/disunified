@@ -7483,7 +7483,10 @@ authenticates:
 - hostapd outlives an l2d restart (the unit's `KillMode=process`), and the
   next l2d adopts it by its pid file, attaches, and reads its station list
   (`STA-FIRST`/`STA-NEXT`, `flags=[AUTHORIZED]`); an earlier l2d's
-  admissions keep their FDB entries until that list says otherwise;
+  admissions keep their FDB entries, their RETURN and an open Credentials
+  port until that list (or, for a MAC-authenticated host, its idle timer)
+  says otherwise; nothing an earlier l2d wrote is written again
+  (§11.26.10);
 - `--teardown` stops every authenticator and removes every admission, the
   chain and the trap; the ports stay closed (CONFIG_DB keeps the drop).
 
@@ -7602,9 +7605,6 @@ collector (`collect-dot1x.txt`).
   call); a cabled supplicant needs a host on a linked port.
 - **The controller's alert for 128**: the count has grown only in the hand
   runs, with the bridge stopped, so no inform has carried it yet.
-- **MAB's adoption over an l2d restart** (the STATE_DB row's `mab` list,
-  re-admitted when the restarted l2d attaches to the port's hostapd): built,
-  not replayed.
 
 The driver's own path, which this list held until the evening of
 2026-11-15, ran live (§11.26.7), and MAB is built (§11.26.8).
@@ -7732,7 +7732,9 @@ ingress before the learn decision**, so `cpu_trap` never sees them; EAPOL
 802.1X itself worked in that loop. VLAN 3997 is in no instance. So MAB
 sees a host's first frame once the port forwards in that VLAN: at once on
 an edge port, after RSTP's sync otherwise, as on a UniFi switch. A loop
-test of MAB needs a VLAN no instance maps.
+test of MAB with frames no trap takes needs a VLAN no instance maps; a
+host that sends ARP requests is seen through ARP's trap on the looped
+(blocked) port in Vlan4094 itself, which §11.26.10's runs use.
 
 **By hand, 2026-11-15 18:11-18:15Z** (image
 `igmp-202511.20261115-6c8eb1cf7`, under the test lock; the deployed bridge
@@ -7815,9 +7817,107 @@ Credentials one does. The device layer reports these since
 l2d has admitted a host.
 
 What would settle it: an inform from a real UniFi switch with each method
-on a port, and one port exercised per method. Credentials on the DX010 is
-fixture-tested (`TestL2dDot1X`, the captured hostapd events) and not run
-on the switch.
+on a port, and one port exercised per method. Credentials ran on the
+DX010's looped cage on 2026-11-15 (§11.26.10): the first host's EAP-MD5
+opened the port (learning `hardware`, the chain's RETURN), it stayed open
+over an l2d restart, and the logoff closed it; no second host was tried
+there (`TestL2dDot1X` replays one).
+
+#### 11.26.10 Over an l2d restart: MAB and Credentials, live (2026-11-15)
+
+Image `igmp-202511.20261115-6c8eb1cf7`, under the test lock, 21:02-21:31
+UTC: empty cage 30 (Ethernet116) in MAC loopback, Backup/blocked in
+Vlan4094; the deployed bridge stopped and l2.json's `dot1x` section written
+by hand (Ethernet116 `mac_based`, later `auto`; idle timeout 40 s); the
+RADIUS server hostapd's integrated one on 127.0.0.1 with two MAC users and
+an EAP-MD5 user. A host was a raw socket sending an untagged ARP request
+from a test MAC every 2 s: the loop brings it back and ARP's trap takes it
+to the CPU on the blocked port, so no hand-made VLAN was needed (§11.26.8's
+probe used frames no trap takes). The sequence, each step through
+`systemctl` on the real unit: two hosts admitted by MAC and a third refused;
+one host silent, then `restart`; the refused host again; the silent host
+admitted again and silent 20 s, then `stop`, 25 s, `start`; `stop`, the
+loop off, `start` (the link lost while no l2d ran), the loop back on; the
+port to Credentials, an 802.1X host by EAP-MD5, `restart`, its logoff
+(`mab-restart-live.txt`: run1 the deployed l2d, run4 this one).
+
+**The deployed l2d (fef74fe, run1).** The chip was never disturbed: the
+admitted hosts' FDB entries stayed in ASIC_DB and no learn mode was
+written. But:
+
+- **the kernel chain dropped the admitted hosts at every start.** The new
+  l2d wrote the chain before it re-admitted anyone, so for 40-100 ms the
+  port had its DROP and no RETURN (24.13-24.22 s for the two MAB hosts;
+  the Credentials port closed for every host 196.80-196.87 s): their
+  frames to the switch itself were dropped in that window;
+- every re-admission wrote the host's FDB entry again (an identical APPL_DB
+  set; orchagent changed nothing in ASIC_DB);
+- **the idle timer started again at the restart**: the silent host went
+  about 41 s after the restart, about 51 s after its last frame;
+- after the 25 s stop the silent host (45 s idle) was admitted again with a
+  fresh timer and went 40 s later;
+- with the link lost during the stop the host was admitted again on a port
+  without link and removed on the next pass, 2 s later.
+
+**The Credentials port opened by the first host** (the 2026-11-15 change,
+until then fixture-tested only) did what §11.26.9 says on the switch: the
+EAP-MD5 host opened it (APPL_DB learning `hardware`, the chain's RETURN for
+the port), it stayed open over the restart in the chip (no learn-mode
+write, no flush, the host's FDB entry untouched in ASIC_DB) with the
+kernel gap above, and the logoff closed it (learning `drop`, fdborch's
+flush, the chain's DROP). The open port learnt nothing on the looped cage
+(blocked by STP; the rig watched STATE_DB's FDB for it).
+
+**The fix (`Dot1xGuard`):**
+
+- an earlier l2d's admissions (the STATE_DB row) are held, in the chain and
+  for a Credentials port's learning, until settled, and settled before the
+  new l2d first writes the chain: a port without link loses them (the chip
+  closed first, then the chain, as a running l2d does), a MAC-authenticated
+  host is kept with its idle time or goes if it has been idle longer than
+  the timeout, an 802.1X host waits for hostapd's station list (attach),
+  which admits no station on a port without link and deauthenticates it;
+- **the row's `mab_seen`** (`<mac>=<epoch>,...`): each MAC-authenticated
+  host's last frame, written as l2d stops (SIGTERM ends the main loop with
+  `SystemExit`; `stopping()` runs in its `finally`, so an exception does it
+  too), read and removed (`hdel`) by the next l2d. A SIGKILL leaves none
+  and the timer starts at the restart, as before;
+- an FDB entry already in APPL_DB as wanted is not written again;
+- the learn modes an earlier l2d set (APPL_DB `cpu_trap` or `hardware` over
+  CONFIG_DB's `drop`) are the new l2d's from its first sync, so a port it
+  must close is closed, and one that stays as it was gets no write.
+
+**This l2d (run4, a copy of `l2d.py` installed for the run, the deployed
+one put back after):** at the restart the chain was rewritten with both
+RETURNs ahead of the DROP (the rewrite flushes and appends in order, so
+for ~20 ms it passes everything, never drops), no FDB entry was written,
+and `mab_seen` was written as it stopped and removed 0.5 s after; the
+silent host went 40.2 s after its last frame ("idle for 40s"); the refused
+host was refused again, its count carried over; after the 25 s stop the
+silent host's FDB entry went at start ("idle for 40s, over a restart"),
+before the first chain write, and the other host was kept with no write;
+with the link lost during the stop the host's entry went at start and it
+was not admitted, then authenticated again by MAC once the link was back;
+the Credentials restart wrote nothing at all (chain, learning, FDB, no
+flush) and the logoff closed the port. Two runs in between (not kept)
+found the last two orderings: a host dropped over a restart kept its
+RETURN until the next chain write (7 s in the first, 80 ms in the
+second).
+
+`TestL2dMABRestart` replays run4 (`testdata/l2d_mab_restart.py`): the
+captured frames at their times, the RADIUS answers with their requests'
+authenticators and identifiers, hostapd's station replies and events, the
+restarts, stops, starts and link changes; it fails on any chain write
+during a start that drops a held host, and on the idle timer restarting
+(both mutations tried).
+
+Seen on the loop, not a fault of the driver: **the LAN's multicast comes
+back round the loop** (snooping's static groups flood every port, a blocked
+one too), and MAB asks about each source; the server refused them all (65
+failures counted in run1, each anomaly 128 on a deployed bridge), and a
+restart forgets the quiet periods, so each restart asks again. l2mcd also
+listed the looped port as a dynamic member of the LAN's groups while it was
+up (gone with the link). A cabled port hears only its host.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 

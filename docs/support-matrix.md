@@ -485,9 +485,22 @@ teardown) and replayed on those answers (`TestL2dMAB`); through the driver
 (a test deb) the push's idle timeout reaches l2d and the cage is trapped
 behind its drop.
 
+**Over an l2d restart, verified live on the DX010** (2026-11-15, §11.26.10;
+a looped empty cage, the real unit restarted, stopped and started): a host
+admitted by its MAC stays admitted with nothing removed or written again
+and no moment in which the kernel drops it, its idle timer carries on from
+its last frame (the row's `mab_seen`, written as l2d stops), one idle past
+its timeout or whose link went during a stop goes at start, a refused host
+is refused again with its count carried over; **a Credentials port opened
+by its first host** (EAP-MD5) stays open over the restart and closes on the
+logoff. The deployed l2d before the fix dropped the admitted hosts in the
+kernel for 40-100 ms at every start and restarted the idle timer; the chip
+was never disturbed. Replayed from the run (`TestL2dMABRestart`).
+
 | Gap | What the PR needs |
 |---|---|
-| An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test as §11.26.8's in a VLAN no STP instance maps |
+| An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test; for MAB a host sending ARP requests in Vlan4094 is enough (§11.26.10) |
+| A restart after a crash or SIGKILL (no `mab_seen` written) | a MAC-authenticated host's idle timer then starts at the restart, as before the fix; a kill test on a looped cage |
 | What a UniFi switch sends in a MAB request beside the user name and password | a UniFi switch with a MAC Address port (a production change) |
 | Unauthorized VLAN, RADIUS-assigned VLAN | the first reaches no push on 11.0.99; the second (`dynvlan`) is disabled in every capture; neither built |
 | Forwarding: an admitted host's frames through the chip, an unadmitted one's dropped | two linked ports (rack day) |

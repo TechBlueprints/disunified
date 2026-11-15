@@ -1181,8 +1181,23 @@ was restarted.
   - **A looped cage's frames never reach `cpu_trap` in a VLAN whose STP
     instance does not forward the port**: the chip drops them at ingress
     first (`RPORTD`); only trapped protocols (EAPOL, ARP) get through.
-    Test MAB in a hand-made VLAN no instance maps, with the bridge stopped
-    (its VLAN plan strips a hand-made membership on the next reconcile).
+    So a MAB test host sends ARP requests: they reach l2d on the blocked
+    cage in Vlan4094 itself, and an admitted host's ARP keeps its idle
+    timer going (§11.26.10). The loop also brings back the LAN's
+    multicast (static groups flood a blocked port too): MAB asks about each
+    source and counts the refusal.
+  - **Over a restart l2d keeps what the previous one admitted**
+    (§11.26.10, live 2026-11-15): the STATE_DB row's hosts are held in the
+    chain and in an open Credentials port's learning until settled, and
+    settled before the first chain write; a MAC-authenticated host's last
+    frame is the row's `mab_seen`, written in `main`'s `finally` on SIGTERM
+    and `hdel`ed by the next l2d. Before that fix every start dropped the
+    admitted hosts in the kernel for 40-100 ms. Check a restart with a
+    5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
+  - **A rig sharing one `SonicV2Connector` across threads segfaults in
+    `_swsscommon`** (silently, no traceback): lock every call or give each
+    thread its own. `docker exec database redis-cli monitor` outlives a
+    `killpg` of its pipeline: kill the in-container process by pid too.
   - **ARP proves nothing in such a probe** (its own trap): use an
     ethertype no trap matches (0x88B5). In a VLAN without the switch's
     address no copy of a known host's frames reaches the CPU at all.
