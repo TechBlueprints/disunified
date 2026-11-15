@@ -1,0 +1,114 @@
+{
+  "interfaces": {
+    "Ethernet49/1": {
+      "displayName": "Ethernet49/1",
+      "mediaType": "100GBASE-CWDM4",
+      "parameters": {
+        "aggrRxPwr": {
+          "channels": {
+            "-": 5.3041743140705755
+          },
+          "unit": "dBm"
+        },
+        "aggrTxPwr": {
+          "channels": {
+            "-": 6.475785542124552
+          },
+          "unit": "dBm"
+        },
+        "rxPower": {
+          "channels": {
+            "1": -1.1758931562603223,
+            "2": -3.717132689104858,
+            "3": 0.5180829431709135,
+            "4": 0.3233665984573584
+          },
+          "threshold": {
+            "highAlarm": 5.499958515306513,
+            "highWarn": 2.5000502848689585,
+            "lowAlarm": -10.0,
+            "lowWarn": -8.099485822407942
+          },
+          "unit": "dBm"
+        },
+        "temperature": {
+          "channels": {
+            "-": 35.96875
+          },
+          "threshold": {
+            "highAlarm": 65.0,
+            "highWarn": 60.0,
+            "lowAlarm": 10.0,
+            "lowWarn": 15.0
+          },
+          "unit": "C"
+        },
+        "txBias": {
+          "channels": {
+            "1": 40.054,
+            "2": 42.922000000000004,
+            "3": 41.938,
+            "4": 39.584
+          },
+          "threshold": {
+            "highAlarm": 90.0,
+            "highWarn": 85.0,
+            "lowAlarm": 6.0,
+            "lowWarn": 6.5
+          },
+          "unit": "mA"
+        },
+        "txPower": {
+          "channels": {
+            "1": 0.2501897228275922,
+            "2": -0.2942069428514884,
+            "3": 1.3452771779733794,
+            "4": 0.35469763481282257
+          },
+          "threshold": {
+            "highAlarm": 4.500026301731861,
+            "highWarn": 3.4999589926285637,
+            "lowAlarm": -8.498578381514413,
+            "lowWarn": -7.500682433658049
+          },
+          "unit": "dBm"
+        },
+        "voltage": {
+          "channels": {
+            "-": 3.3152000000000004
+          },
+          "threshold": {
+            "highAlarm": 3.6,
+            "highWarn": 3.5,
+            "lowAlarm": 3.0,
+            "lowWarn": 3.1
+          },
+          "unit": "V"
+        }
+      },
+      "updateTime": 1794781541.7543983,
+      "vendorSn": "SSJ00000000"
+    },
+    "Ethernet50/1": {
+      "displayName": "Ethernet50/1"
+    },
+    "Ethernet50/2": {
+      "displayName": "Ethernet50/2"
+    },
+    "Ethernet50/3": {
+      "displayName": "Ethernet50/3"
+    },
+    "Ethernet50/4": {
+      "displayName": "Ethernet50/4"
+    },
+    "Ethernet51/1": {
+      "displayName": "Ethernet51/1"
+    },
+    "Ethernet52/1": {
+      "displayName": "Ethernet52/1"
+    },
+    "Ethernet53/1": {
+      "displayName": "Ethernet53/1"
+    }
+  }
+}

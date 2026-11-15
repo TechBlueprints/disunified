@@ -37,6 +37,10 @@ type FixtureRunner struct {
 	// fixture_acl_cpu.go).
 	CPUScripts []string
 	CPURules   []string
+	// BlockScripts are the blocked clients' kernel scripts, as sent, and
+	// BlockMACs the chain's sources after the last one (fixture_block.go).
+	BlockScripts []string
+	BlockMACs    []string
 	// SNMPYmlScripts are the /etc/sonic/snmp.yml rewrites, as sent; the
 	// capture's snmp_yml section is the file (§10.1).
 	SNMPYmlScripts []string
@@ -260,6 +264,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.CPUScripts = append(f.CPUScripts, stdin)
 		return "", f.applyCPUScript(stdin)
+	case command == macBlockCommand:
+		f.Commands = append(f.Commands, command)
+		f.BlockScripts = append(f.BlockScripts, stdin)
+		return "", f.applyBlockScript(stdin)
 	case command == fanCommand:
 		f.Commands = append(f.Commands, command)
 		f.FanScripts = append(f.FanScripts, stdin)

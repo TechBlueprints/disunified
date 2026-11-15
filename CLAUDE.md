@@ -458,6 +458,17 @@ tables, its informs), read-only, and nothing copied off it is committed.
   `{"_type":"cmd","cmd":"port-recovery","port":N}`. The session hands it to
   `devicemodel.PortRecoverer`. UniFi's text promises no recovery timer for
   BPDU guard: "requires manual re-enable" (`docs/drivers/sonic.md` §11.28).
+- **UniFi's client Block reaches a switch as `blocked_sta`, not
+  `system_cfg` (11.0.99, captured 2026-11-15).** Every `setparam` carries
+  the field: the blocked clients' MACs, `""` for none, two joined by a
+  newline. A Block or Unblock also sends `{"_type":"cmd","cmd":"block-sta"
+  | "unblock-sta","mac":...}` at the device's next inform; where no push is
+  due that cmd is the only timely signal (the Arista's `setparam` came 85 s
+  after its cmd). No `system_cfg` key changes. The ECS holds the client as
+  `MB_<mac>` in its MAC ACL table (DROP, priority 1023, no VLAN). The
+  bridge hands the list to `DeviceDesired.BlockedClients`
+  (`docs/feature-map.md` §3); the capture came from a made-up MAC blocked
+  through `cmd/stamgr` and forgotten after (Clint's OK).
 
 ## 6. Driver facts
 

@@ -89,6 +89,9 @@ sys.modules["swsscommon"], sys.modules["swsscommon.swsscommon"] = pkg, sw
 spec = importlib.util.spec_from_file_location("l2d", sys.argv[1])
 l2d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(l2d)
+ebspec = importlib.util.spec_from_file_location("l2d_ebtables", os.path.join(os.path.dirname(os.path.abspath(__file__)), "l2d_ebtables.py"))
+ebmod = importlib.util.module_from_spec(ebspec)
+ebspec.loader.exec_module(ebmod)
 
 sections, name = {}, None
 for line in open(sys.argv[2]):
@@ -109,31 +112,25 @@ class Done(object):
         self.stdout, self.stderr, self.returncode = out, "", rc
 
 
+EB = ebmod.Filter(CHAINS)
+
+
 def ebtables(args):
-    if args == ["-L"]:
-        out = ["Bridge table: filter", ""]
-        for c, rules in CHAINS.items():
-            pol = "RETURN" if c == l2d.MACLOCK_CHAIN else "ACCEPT"
-            out.append("Bridge chain: %s, entries: %d, policy: %s" % (c, len(rules), pol))
-            out += [" ".join(r) for r in rules]
-            out.append("")
-        return Done("\n".join(out) + "\n")
-    op, chain, rule = args[0], args[1], args[2:]
-    if op == "-N":
-        CHAINS[chain] = []
-    elif op == "-X":
-        del CHAINS[chain]
-    elif op == "-F":
-        CHAINS[chain] = []
-    elif op == "-A":
-        CHAINS[chain].append(rule)
-    elif op == "-D":
-        CHAINS[chain].remove(rule)
-    return Done()
+    out, rc = EB.ebtables(args)
+    return Done(out, rc)
 
 
-def run(args, check=False):
+def ebtables_restore(text):
+    lines, rc = EB.restore(text)
+    for l in lines:
+        print("EB " + l)
+    return Done("", rc)
+
+
+def run(args, check=False, stdin=None):
     print("RUN " + " ".join(args))
+    if args[0] == l2d.EBTABLES_RESTORE:
+        return ebtables_restore(stdin)
     if args[0] == l2d.EBTABLES:
         return ebtables(args[1:])
     if args[:4] == ["ip", "-4", "route", "get"]:
@@ -178,6 +175,8 @@ def deliver(dev, data, pkttype=0):
     Sock.queues.setdefault(dev, []).append((data, pkttype))
 
 
+EB.watch(l2d.Dot1xGuard, "dot1x")
+EB.watch(l2d.MacLockGuard, "maclock")
 l2d.run = run
 l2d.log = lambda msg, prio=None: print("LOG " + msg)
 l2d.socket.socket = Sock

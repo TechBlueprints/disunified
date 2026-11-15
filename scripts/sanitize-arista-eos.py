@@ -30,6 +30,12 @@ def map_mac(m):
     if key not in macs:
         n = len(macs) + 1
         macs[key] = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'
+    if re.fullmatch(r'[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}', m, re.I):
+        # EOS's own notation (the CLI's and the running config's, e.g.
+        # `mac address-table static 0200.0000.0001 vlan 1 drop`) stays in
+        # it: a parser of that form must meet it in the fixture.
+        h = macs[key].replace(':', '')
+        return f'{h[0:4]}.{h[4:8]}.{h[8:12]}'
     return macs[key]
 
 def map_ip(s):

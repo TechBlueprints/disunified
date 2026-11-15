@@ -263,6 +263,82 @@ Server Detection) only on a node with `nft` and a VLAN-aware bridge (§4c). The 
 control, FEC, mirroring and isolation for these switches, and STP options
 unless mstpd is present; speed pickers offer the one speed each port has.
 
+### 3c. Two faults found on the SONiC driver, checked here (2026-11-15)
+
+On 2026-11-15 the `sonic` driver learned to delete a VLAN the controller
+stops pushing ([`sonic.md`](sonic.md) §11.29), and its STP daemon was
+found making STP ports for an aggregate's members after a restart. Neither
+fault exists in this driver, for the reasons below.
+
+**A VLAN the push stops naming: nothing is left behind.** The driver
+writes VLANs only as a guest NIC's `tag` and `trunks` (§3). A VLAN-aware
+Linux bridge has no switch-wide VLAN table to fill or prune. It has VLAN
+rows per port, plus the bridge's own (`self`) rows for the node's stack.
+The uplink's rows come from `bridge-vids` in `/etc/network/interfaces`,
+which is the node's own config. `EnsureVLANs` only checks that range
+(a site VLAN outside it is logged) and never writes it. When the push
+stops naming a VLAN for a port (a tagged set that drops it, Block All, or
+the network deleted from the site), the next apply removes it from that
+NIC's options, and Proxmox rebuilds the interface's rows from them. On a
+running guest, `qm set` with a changed `tag`/`trunks` unplugs the tap and
+plugs it again (qemu-server's `vmconfig_update_net`, PVE 9.1.6). Plugging
+first deletes every VLAN row on the interface (`bridge vlan del ... vid
+1-4094`), then adds the PVID and the trunks (`PVE::Network`
+`bridge_add_interface`). `pct set` does the same for a container's veth.
+So §11.29's prune has nothing to act on here. What stays on the bridge
+besides the guests' rows is the operator's: `bridge-vids`, the node's own
+VLAN interfaces, SDN. On a host those are left alone, under the rule that
+a hand-made thing UniFi cannot express stays. **Read on all three nodes
+on 2026-11-15:**
+
+- every running tap's and `fwpr` port's rows equal its NIC's options (no
+  tag gives 1 untagged + 2-4094; `tag=8` gives 8 alone);
+- the bridge's own rows are VLAN 1 alone, and the bond's are 1 + 2-4094
+  from `bridge-vids`;
+- the deployed bridge logged no VLAN write for these nodes in 72 hours.
+
+One difference from a UniFi switch is by design. Allow All on native 1 is
+a NIC with no `tag` and no `trunks`, and Proxmox plugs that as 2-4094
+(neither `bridge-vids` nor the site's list). So a VLAN id the site has
+deleted, or never had, still passes between two Allow All guests on one
+node. The upstream UniFi switch carries no such VLAN, so nothing reaches
+the LAN. Writing the site's list as `trunks` instead was considered and
+not done, for two reasons. It would re-plug every Allow All tap on every
+site network change. And it would break the adoption seeding: a guest with
+no options is seeded as Allow All, and a plan that always wants a write
+holds the first push for good. A bond the driver made from plain NICs
+(§3b) also stays a bond, in active-backup, when its aggregate goes: two
+NICs to one switch, both in a bridge with STP off, would loop. That path
+is modelled, never run.
+
+**STP and an aggregate: one STP port per bond, and nothing written to a
+leg.** On a node a bond is one bridge port. Its legs are enslaved to the
+bond and are not bridge ports (`bridge link` on every node lists `bond0`,
+never its legs), so mstpd, which runs on the bridge's ports, has one STP
+port for the bond in any bond mode, LACP included. The driver writes
+mstpd four things:
+
+- `settreeprio` and `setforcevers` for the bridge;
+- `setportadminedge` and `setportbpduguard` for guest members only (taps,
+  veths, `fwpr`), each looked up in that poll's `mstpctl showportdetail`.
+
+A BPDU guard or edge pushed for an uplink port (a bond leg's port, 54 or
+53) maps to no guest and writes nothing, and both legs report the bond's
+STP port. mstpd keeps its settings in memory only. After an mstpd or node
+restart, the next poll reads mstpd's defaults and writes the edge and
+priority again, and the loop's reconcile writes the BPDU guard again from
+the same report. The driver keeps no per-port STP state of its own across
+polls, so there is nothing stale to replay. **No node runs mstpd today**
+(`stp_state` 0 and no `mstpctl` on all three, 2026-11-15), so this path is
+fixture-tested only. `vlan_stp_test.go` holds both answers:
+
+- `TestDroppedVLANLeavesThePort`: a tagged VLAN dropped, then Block All,
+  then nothing;
+- `TestSTPNeverWritesTheUplink`: the captured mstpd port copied as the
+  bond, active-backup and 802.3ad, BPDU guard pushed for every port plus
+  an aggregate over the legs, two cycles; no command names the bond, a
+  leg or `eno1`.
+
 ## 4. Topology: lldpd on the node, configured by the driver
 
 The controller places a switch by the LLDP frames the *upstream* switch
@@ -420,6 +496,28 @@ none: no storm control or DHCP rate limit is built, on purpose, on
 production hosts. Loop protection (512) and the rest of the table
 (802.1X, MAC locking, DoS, PHY, PoE) have nothing on a node that detects
 them.
+
+## 4d. UniFi's client Block (2026-11-15)
+
+The controller's blocked clients (`blocked_sta` and the `block-sta` cmd,
+`docs/feature-map.md` §3) are dropped as they enter the node's bridge from
+any port, guest NIC or uplink, as UniFi's own SONiC switch drops them on
+every front-panel port (`docs/drivers/sonic.md` §11.33). Bridge prerouting
+runs before the bridge's local delivery, so a blocked client reaches
+neither another port nor the node's own address.
+
+- **Built (`block.go`).** An nftables table of the driver's own, `table
+  bridge disunified_block`, apart from the DHCP guard's table and from
+  Proxmox's firewall: one chain hooked at prerouting, one rule `meta ibrname
+  "<bridge>" ether saddr { <macs> } counter drop`, the table comment
+  `dui:<fingerprint>`. Replaced whole in one `nft -f -` transaction when the
+  list changes, deleted when none is blocked; `collect.sh` lists it
+  (`macblock`). Needs `nft` only (not a VLAN-aware bridge). The node's own
+  bridge MAC is never written.
+- **Tests.** `block_test.go`, from the bridged switches' captured setparam
+  with two clients, against node 2's capture.
+- **Not verified on a node.** The nodes are production; no rule set has been
+  loaded, not even in a throwaway namespace as the guard's was (§4c).
 
 ## 5. Setup
 

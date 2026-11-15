@@ -29,6 +29,8 @@ import (
 //
 // The aggregates are in fixture_lag.go and the ACL read-back (`show ip
 // access-lists`, per list and summary) in fixture_acl.go.
+// `vlan <list>` and `no vlan <list>` with the IGMP lines are held to
+// vlan-prune/ (vlan_prune_test.go).
 //
 // Configuration sessions are modelled as EOS runs them: the commands of a
 // `configure session NAME` are applied at its `commit timer` (EOS commits
@@ -267,6 +269,10 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		}
 	case strings.HasPrefix(c, "no interface Port-Channel"):
 		return f.removePortChannel(strings.TrimPrefix(c, "no interface "))
+	case strings.HasPrefix(c, "mac address-table static "), strings.HasPrefix(c, "no mac address-table static "):
+		// As written, a one-liner (`mac address-table static 0200.0000.0001
+		// vlan 1 drop`, mac-drop/show-running-config-mac-drop.json).
+		return f.rcLine(c, "mac address-table static ", func(v string) string { return v })
 	case strings.HasPrefix(c, "ntp server "), strings.HasPrefix(c, "no ntp server "):
 		// One line per server, as written (`ntp server 192.0.2.2`, the
 		// capture's running config).
@@ -312,18 +318,38 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		}
 	case igmpVLANRe.MatchString(c):
 		// `igmpSnoopingState` per VLAN, enabled or disabled (both in the
-		// split-cage54 capture, after the driver's own writes).
+		// split-cage54 capture, after the driver's own writes), and the
+		// running config's `no ip igmp snooping vlan N` line, there while
+		// it is disabled, for a VLAN that exists or not (vlan-prune/:
+		// 1-created adds it, 2-deleted keeps it after `no vlan`,
+		// 3-igmp-cleared drops it at `ip igmp snooping vlan N`).
 		m := igmpVLANRe.FindStringSubmatch(c)
 		d := f.doc("show ip igmp snooping")
-		if d == nil {
+		top := f.rcTop()
+		if d == nil && top == nil {
 			return false
 		}
-		v := child(child(d.v, "vlans", false), m[2], false)
-		if v == nil {
+		if v := child(child(d.vOrNil(), "vlans", false), m[2], false); v != nil {
+			// Three fields follow the state on every VLAN of the vlan-prune
+			// captures: off floods (floodingTraffic, no pruning, report
+			// flooding "default"), on prunes.
+			off := m[1] != ""
+			v["igmpSnoopingState"] = map[bool]string{true: "disabled", false: "enabled"}[off]
+			v["floodingTraffic"], v["pruningActive"] = off, !off
+			v["reportFlooding"] = map[bool]string{true: "default", false: "disabled"}[off]
+		} else if top == nil {
 			return false
 		}
-		v["igmpSnoopingState"] = map[bool]string{true: "disabled", false: "enabled"}[m[1] != ""]
+		if top != nil {
+			if m[1] != "" {
+				top["no ip igmp snooping vlan "+m[2]] = nil
+			} else {
+				delete(top, "no ip igmp snooping vlan "+m[2])
+			}
+		}
 		return true
+	case strings.HasPrefix(c, "no vlan "):
+		return f.deleteVLANs(strings.TrimPrefix(c, "no vlan "))
 	case c == "environment fan-speed override 30", c == "no environment fan-speed":
 		// The two fields the driver reads, as captured after each:
 		// show-system-environment-cooling-override30.json (manual, 30) and
@@ -405,9 +431,10 @@ func (f *FixtureTransport) rcLine(c, prefix string, shown func(string) string) b
 // createVLANs adds the VLANs of `vlan <list>` to `show vlan` and `show ip
 // igmp snooping` as EOS lists a VLAN it creates without a name: VLAN0069,
 // VLAN4000 and VLAN4010 in the split-cage54 capture (taken after the driver
-// created them), active, snooping on as the switch is. Only the ids and the
-// snooping state are read; `interfaces` (the forwarding members) is left
-// empty.
+// created them), active, snooping on as the switch is, and in the running
+// config's list of unnamed VLANs (rcVLANSections). Only the ids and the
+// snooping state are read from `show vlan`; `interfaces` (the forwarding
+// members) is left empty.
 func (f *FixtureTransport) createVLANs(list string) {
 	ids, all := parseVLANList(list)
 	if all || len(ids) == 0 {
@@ -421,6 +448,7 @@ func (f *FixtureTransport) createVLANs(list string) {
 	}
 	vlans := child(vd.v, "vlans", true)
 	igmp := f.doc("show ip igmp snooping")
+	f.rcVLANSections(ids, nil)
 	for _, id := range ids {
 		k := strconv.Itoa(id)
 		if _, ok := vlans[k]; ok {
@@ -450,6 +478,94 @@ func (f *FixtureTransport) createVLANs(list string) {
 		}
 		e["igmpSnoopingState"] = igmp.v["igmpSnoopingState"]
 		iv[k] = e
+	}
+}
+
+// deleteVLANs is `no vlan <list>` (vlan-prune/2-deleted, after `no vlan
+// 3977,3978`): the VLANs leave `show vlan`, `show ip igmp snooping` and
+// their `vlan` sections of the running config, and nothing else does: an
+// `interface VlanN` stays, as do the `no ip igmp snooping vlan N` and `no
+// spanning-tree vlan-id` lines and any port's switchport lines naming them.
+// EOS deletes silently, an SVI or not.
+func (f *FixtureTransport) deleteVLANs(list string) bool {
+	ids, all := parseVLANList(list)
+	vd := f.doc("show vlan")
+	if all || len(ids) == 0 || vd == nil {
+		return false
+	}
+	gone := map[int]bool{}
+	for _, id := range ids {
+		gone[id] = true
+		k := strconv.Itoa(id)
+		delete(child(vd.v, "vlans", false), k)
+		delete(child(f.doc("show ip igmp snooping").vOrNil(), "vlans", false), k)
+	}
+	f.rcVLANSections(nil, gone)
+	return true
+}
+
+// rcVLANSections keeps the running config's `vlan` sections as EOS shows
+// them: a named VLAN in a section of its own (`vlan 2` / `name kids`), the
+// unnamed ones folded into one list in the compact form (`vlan
+// 69,3000,3977-3978,4000,4010,4040`, vlan-prune/1-created after `vlan
+// 3977,3978`; 2-deleted after `no vlan 3977,3978`). add joins the unnamed
+// list unless a section has the VLAN already; gone leaves every section.
+func (f *FixtureTransport) rcVLANSections(add []int, gone map[int]bool) {
+	top := f.rcTop()
+	if top == nil {
+		return
+	}
+	have := map[int]bool{}
+	var group []int
+	groupKey := ""
+	for k, v := range top {
+		list, ok := strings.CutPrefix(k, "vlan ")
+		if !ok {
+			continue
+		}
+		ids, all := parseVLANList(list)
+		if all {
+			continue
+		}
+		sec := obj(v)
+		if len(child(sec, "cmds", false)) == 0 && groupKey == "" {
+			groupKey, group = k, ids
+			for _, id := range ids {
+				have[id] = true
+			}
+			continue
+		}
+		var kept []int
+		for _, id := range ids {
+			have[id] = true
+			if !gone[id] {
+				kept = append(kept, id)
+			}
+		}
+		if len(kept) != len(ids) {
+			delete(top, k)
+			if len(kept) > 0 {
+				top["vlan "+formatVLANList(kept)] = sec
+			}
+		}
+	}
+	var next []int
+	for _, id := range group {
+		if !gone[id] {
+			next = append(next, id)
+		}
+	}
+	for _, id := range add {
+		if !have[id] {
+			next = append(next, id)
+			have[id] = true
+		}
+	}
+	if groupKey != "" {
+		delete(top, groupKey)
+	}
+	if len(next) > 0 {
+		top["vlan "+formatVLANList(uniqueSorted(next))] = map[string]any{"cmds": map[string]any{}, "comments": []any{}}
 	}
 }
 

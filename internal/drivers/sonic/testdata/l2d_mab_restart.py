@@ -114,6 +114,9 @@ sys.modules["swsscommon"], sys.modules["swsscommon.swsscommon"] = pkg, sw
 spec = importlib.util.spec_from_file_location("l2d", sys.argv[1])
 l2d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(l2d)
+ebspec = importlib.util.spec_from_file_location("l2d_ebtables", os.path.join(os.path.dirname(os.path.abspath(__file__)), "l2d_ebtables.py"))
+ebmod = importlib.util.module_from_spec(ebspec)
+ebspec.loader.exec_module(ebmod)
 
 # --- the capture ---------------------------------------------------------------
 
@@ -214,29 +217,20 @@ def gap():
         print("GAP %s" % json.dumps(port))
 
 
+EB = ebmod.Filter(CHAINS)
+EB.after.append(lambda: gap())
+
+
 def ebtables(args):
-    if args == ["-L"]:
-        out = ["Bridge table: filter", ""]
-        for c, rules in CHAINS.items():
-            out.append("Bridge chain: %s, entries: %d, policy: %s" % (c, len(rules), "RETURN" if c.startswith("DUI") else "ACCEPT"))
-            out += [" ".join(r) for r in rules]
-            out.append("")
-        return Done("\n".join(out) + "\n")
-    op, chain, rule = args[0], args[1], args[2:]
-    if op == "-N":
-        CHAINS[chain] = []
-    elif op == "-X":
-        del CHAINS[chain]
-    elif op == "-F":
-        CHAINS[chain] = []
-    elif op == "-A":
-        CHAINS[chain].append(rule)
-    elif op == "-I":
-        CHAINS[chain].insert(int(rule[0]) - 1, rule[1:])
-    elif op == "-D":
-        CHAINS[chain].remove(rule)
-    gap()
-    return Done()
+    out, rc = EB.ebtables(args)
+    return Done(out, rc)
+
+
+def ebtables_restore(text):
+    lines, rc = EB.restore(text)
+    for l in lines:
+        print("EB " + l)
+    return Done("", rc)
 
 
 class Hostapd(object):
@@ -280,8 +274,10 @@ class Hostapd(object):
 HOSTAPD = []
 
 
-def run(args, check=False):
+def run(args, check=False, stdin=None):
     print("RUN " + " ".join(args))
+    if args[0] == l2d.EBTABLES_RESTORE:
+        return ebtables_restore(stdin)
     if args[0] == l2d.EBTABLES:
         return ebtables(args[1:])
     if args[0] == l2d.HOSTAPD:
@@ -354,6 +350,8 @@ class Clock(object):
 
 AUTHS = []
 real_urandom = os.urandom
+EB.watch(l2d.Dot1xGuard, "dot1x")
+EB.watch(l2d.MacLockGuard, "maclock")
 l2d.run = run
 
 

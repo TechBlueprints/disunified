@@ -235,6 +235,19 @@ and UniFi owns the host's address from then on.
 - **LLDP.** No `lldpd` on the host; placement works by MAC, and the
   upstream device sees the host as a client on its port, which is what a
   switch behind a switch looks like.
+- **The two faults found on the SONiC driver on 2026-11-15** (a VLAN the
+  controller stops pushing, [`sonic.md`](sonic.md) §11.29; STP ports made
+  for an aggregate's members after a restart): neither can happen here.
+  The driver writes no VLAN and no port setting (`Capabilities{}`; its
+  only write is the address, §7), and it runs no spanning tree: every
+  port is reported native 1, Allow All, STP disabled. Read on the host
+  that day: one virtio NIC, no bond (no bonding driver loaded), no VLAN
+  device, no `mstpctl`; every Podman bridge has `stp_state` 0 and
+  `vlan_filtering` 0; the macvlan network sits on the NIC itself. A bond
+  uplink would be one NIC port (the default route's device) and has not
+  been tried. If port control is ever built, it writes container
+  endpoints only, never the host's NIC or the VLANs the host carries:
+  those are the operator's.
 - **Bridge-network clients.** A way to show the NAT'd containers as
   something (they have addresses on the host's private subnets) without
   inventing LAN clients has not been found; the port with its counters is

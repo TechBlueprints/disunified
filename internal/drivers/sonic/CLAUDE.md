@@ -555,12 +555,20 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
   was on 202505's `13.2.1.36`.
   **The kernel drops that copy instead (`acl_cpu.go`, §11.32, live by
-  hand 2026-11-15)**, as the ECS's tables keep blocked traffic off its own
+  hand and then through the driver from a UI rule, 2026-11-15, §11.32.5)**,
+  as the ECS's tables keep blocked traffic off its own
   address (a switched host behind internal port `Ethernet56`, not a trap).
   The L3 tables are mirrored into iptables' **`raw`** table: caclmgrd
   flushes and deletes every filter-table chain on any `ACL_TABLE` event,
-  the driver's own included. The marker is `/run/disunified/acl-cpu`
-  (collect.py `acl_cpu`), so a reboot rewrites it.
+  the driver's own included (seen live: IPv4 `raw` untouched). The marker
+  is `/run/disunified/acl-cpu` (collect.py `acl_cpu`), so a reboot
+  rewrites it. It is the reconcile's only view of the kernel: a hand
+  `iptables -t raw -F` that leaves the marker is not repaired. Testing it:
+  a LAN host's raw socket can send from a documentation source address
+  (Vlan4094's `rp_filter` is loose), so a rule needs no real host's
+  address; dhclient holds `0.0.0.0:68` for eth0, so a 68 listener binds
+  the switch's own address with `SO_REUSEADDR`; `ACL_RULE|DUI_…` rows with
+  no `ACL_TABLE` reach no chip (orchagent waits) but are mirrored.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
@@ -640,7 +648,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   restart or reboot; the start-up reconcile restores it after a reboot, and
   the next cycle's reconcile after a swss restart -- the loop reconciles
   whether or not the inform was answered (2026-11-02), so a bridge whose own
-  informs the MTU breaks still repairs it.
+  informs the MTU breaks still repairs it. **Which VLANs:** the native
+  stand-in, the push's `switch.vlan.*` list and the routed networks' VLANs
+  (`routedVLANs`), which the list leaves out while no port carries them:
+  until 2026-11-15 such a VLAN stayed at 9100 (`docs/drivers/sonic.md`
+  §11.13). A VLAN the L3 plan makes is made at the ports' MTU, as
+  `EnsureVLANs` makes the pushed ones.
 - **IPv6 on the management interface (`ipv6.go`, `docs/drivers/sonic.md`
   §11.22, 2026-11-14).** SLAAC follows the management network's IPv6 in
   the controller (`rest/networkconf` `ipv6_interface_type` not `none`; the
@@ -823,8 +836,9 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   the host; frr's, 0600: it holds the keys) and runs `ospfd -d -A 127.0.0.1
   -P 0 -f` on it; collect.py's `frr_ospf` is "running" and the file's sha256
   only. Changed router = restart ospfd; ospfd gone (bgp restart) = start;
-  router deleted = stop + rm. A test peer on the kernel `Bridge` needs MTU
-  9100 like `Vlan<id>` or OSPF stalls in ExStart (MTU check); the peer's
+  router deleted = stop + rm. A test peer on the kernel `Bridge` needs the
+  `Vlan<id>`'s MTU or OSPF stalls in ExStart (MTU check): 9100 on
+  2026-11-07, the ports' MTU since 2026-11-15 (§11.13); the peer's
   ospfd needs zebra and mgmtd beside it. Area ids are dotted:
   `sanitize-controller.py` keeps 0.0.0.0/8.
 - **Routed ports and aggregates, DHCP fixed IPs (`l3.go`, `control.go`,
@@ -1190,6 +1204,9 @@ was restarted.
   - **The MAC filter's plan deletes every static FDB entry it does not
     want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
     wanted while their port is controlled.
+  - **802.1X's `drop` is not a MAC filter on the read side**: read as one
+    (`port_security_enabled` with no allowed MACs), the controller's port
+    panel shows the port Disabled, its own rule for an empty list (§11.26.11).
   - **A looped test cage makes hostapd a station of the switch's own
     MAC** (its own frames come back): l2d ignores the switch's MAC.
   - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
@@ -1229,6 +1246,24 @@ was restarted.
     and `hdel`ed by the next l2d. Before that fix every start dropped the
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
+  - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**
+    (`eb_restore`, §11.26.12, 2026-11-15). The switch's `ebtables` is 1.8.11
+    on nf_tables (`ebtables -V`), so each `ebtables` call is a transaction of
+    its own: a flush and one append per rule passed every frame until the
+    DROP was back. A restore is one transaction: a declared chain is
+    emptied, a refused line refuses the batch. `ebtables-legacy-restore`
+    keeps a declared chain's rules, hence the explicit `-F`. SONiC's
+    `database.sh` loads `/etc/ebtables.filter.cfg` with a plain
+    `ebtables-restore`, which empties the whole filter table: both guards
+    re-read their chain's count and jumps (`eb_state`) and write it again.
+    The fakes run `testdata/l2d_ebtables.py`, which prints `WINDOW` when a
+    closed port passes a never-admitted source between two writes.
+    **A looped cage cannot exercise the chain's DROP**: it is STP-blocked, so
+    the kernel bridge drops its frames before ebtables, and the only trapped
+    link-local frame (which reaches INPUT in any port state) is EAPOL, which
+    the chain accepts. Prove a write with `xtables-monitor -e` (one `NEWGEN`
+    per transaction) or in an `ip netns` bridge; seeing the DROP itself needs
+    a cabled host on a forwarding port.
   - **A rig sharing one `SonicV2Connector` across threads segfaults in
     `_swsscommon`** (silently, no traceback): lock every call or give each
     thread its own. `docker exec database redis-cli monitor` outlives a
@@ -1239,6 +1274,19 @@ was restarted.
   - **The bridge's reply log (`inform-log/`) keeps every push verbatim**,
     the RADIUS secret included: grep it, not just the journal, when
     checking where a secret went.
+- **UniFi's client Block (`block.go`, `docs/drivers/sonic.md` §11.33,
+  built 2026-11-15, fixture- and replay-tested).** `MB_<mac>` rules in
+  `DUI_MAC_ACL` exactly as the ECS holds them (DROP, PRIORITY 1023, a bare
+  SRC_MAC, no VLAN), outside the MAC rules' limit, each half of the table
+  kept while the other is held or unknown; the kernel's copy is ebtables
+  `DUI_MAC_BLOCK` from INPUT (marker `/run/disunified/mac-block`, collect.py
+  `mac_block`), not the IPv4 raw mirror, so ARP and IPv6 are covered too.
+  **`swState.clone` lists its fields by hand**: a new field left out of it
+  is lost after every chip batch (the chain was written one apply late
+  until it was added). Scrubbed placeholders collide across captures
+  (a reply's first MAC and a collect's switch MAC are both
+  `02:00:00:00:00:01`): seed a reply log's clients with
+  `sanitize-controller.py --mac` or the driver holds them as the switch.
 - **Hand tests on a switch that several sessions share take a lock on the
   switch**: write `/tmp/dui-dx010.lock` with your session's name and what
   you are doing, wait while another session holds it, remove it when done.

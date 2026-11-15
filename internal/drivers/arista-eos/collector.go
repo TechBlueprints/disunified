@@ -88,6 +88,8 @@ type Collector struct {
 	portChannels map[string]devicemodel.PortVLAN // Port-ChannelN -> its switchport state
 	channelCfg   map[int][]string                // every Port-Channel in the running config: number -> its lines (portchannel.go)
 	managedSNMP  string                          // the SNMP community this bridge last configured
+	macDrops     map[string]bool                 // the running config's static MAC drop entries, by line (block.go)
+	blockNoted   map[string]bool                 // the client Block's notes already logged
 
 	sshKeyUser    string   // user that receives the controller's SSH keys
 	installedKeys []string // what InstallSSHKeys last wrote (per process)
@@ -116,6 +118,15 @@ type Collector struct {
 	cageDown  map[int]bool
 	chassisID string
 	noted     map[string]bool
+
+	// The VLAN prune (vlan_prune.go): the device's own push's VLANs, set
+	// by an EnsureVLANs of this run (siteKnown), each attached lane
+	// switch's own list by cage, and the running config's view of the
+	// VLANs from the last collect.
+	siteVLANs []int
+	siteKnown bool
+	laneVLANs map[int][]int
+	vlanCfg   vlanConfig
 	// applySem serialises collects and writes (lockApply): a lane switch
 	// applies from its own loop, beside this device's.
 	applyOnce sync.Once
@@ -305,6 +316,8 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	c.mu.Lock()
 	c.portChannels = portChannelVLANs(sp)
 	c.channelCfg = portChannelSections(rc)
+	c.macDrops = macDropsFrom(rc)
+	c.vlanCfg = vlanConfigFrom(rc, vl)
 	c.mu.Unlock()
 	stpMode, stpPrio := stpSystem(stp)
 
