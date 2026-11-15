@@ -51,6 +51,7 @@ def put(table, key, pairs):
 
 l2d.put = put
 l2d.log = lambda msg, prio=None: None
+l2d.in_bridge = lambda p: True  # every replayed event is a port still in Bridge
 
 
 class FakeMstp(object):

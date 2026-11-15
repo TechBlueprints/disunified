@@ -213,6 +213,7 @@ class DB(object):
         self.cfg = sw.DBConnector("CONFIG_DB", 0)
         self.state = sw.DBConnector("STATE_DB", 0)
         self.asic = sw.DBConnector("ASIC_DB", 0)
+        self.counters = sw.DBConnector("COUNTERS_DB", 0)
         self.port_pst = sw.ProducerStateTable(self.appl, "STP_PORT_STATE_TABLE")
         self.vlan_pst = sw.ProducerStateTable(self.appl, "STP_VLAN_INSTANCE_TABLE")
         self.flush_pst = sw.ProducerStateTable(self.appl, "STP_FASTAGEING_FLUSH_TABLE")
@@ -269,6 +270,36 @@ class DB(object):
             out.append(k.split("|", 2)[2])
         return out
 
+    def lag_of(self, port):
+        for k in self.keys(self.cfg, "PORTCHANNEL_MEMBER|*|%s" % port):
+            return k.split("|", 2)[1]
+        return ""
+
+    def asic_stp_ports(self):
+        """Interface name -> the vids (None: an instance no VLAN is in) of
+        the chip STP ports ASIC_DB holds for its bridge port."""
+        names = {}
+        for m in ("COUNTERS_PORT_NAME_MAP", "COUNTERS_LAG_NAME_MAP"):
+            for name, oid in self.hgetall(self.counters, m).items():
+                names[oid] = name
+        owner = {}
+        for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*"):
+            h = self.hgetall(self.asic, k)
+            if h.get("SAI_BRIDGE_PORT_ATTR_TYPE") == "SAI_BRIDGE_PORT_TYPE_PORT":
+                owner[k.split(":", 2)[2]] = names.get(h.get("SAI_BRIDGE_PORT_ATTR_PORT_ID"), "")
+        vid_of = {}
+        for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_VLAN:*"):
+            h = self.hgetall(self.asic, k)
+            if h.get("SAI_VLAN_ATTR_STP_INSTANCE") and h.get("SAI_VLAN_ATTR_VLAN_ID"):
+                vid_of[h["SAI_VLAN_ATTR_STP_INSTANCE"]] = int(h["SAI_VLAN_ATTR_VLAN_ID"])
+        out = collections.defaultdict(list)
+        for k in self.keys(self.asic, "ASIC_STATE:SAI_OBJECT_TYPE_STP_PORT:*"):
+            h = self.hgetall(self.asic, k)
+            name = owner.get(h.get("SAI_STP_PORT_ATTR_BRIDGE_PORT"), "")
+            if name:
+                out[name].append(vid_of.get(h.get("SAI_STP_PORT_ATTR_STP")))
+        return out
+
 
 def bridge_ports():
     try:
@@ -277,11 +308,21 @@ def bridge_ports():
         return []
 
 
+def in_bridge(port):
+    """True while the port is a member of Bridge. Leaving it, the kernel
+    unlinks brif/<port> before it announces the port disabled (del_nbp:
+    sysfs_remove_link, then br_stp_disable_port's RTM_NEWLINK), so a state
+    notification for a port no longer listed is its departure, not a link
+    drop (docs/drivers/sonic.md 11.34)."""
+    return os.path.exists("%s/%s/brif/%s" % (SYS, BRIDGE, port))
+
+
 def kstate(port):
+    """The port's kernel STP state; None once it is no bridge port."""
     try:
-        return int(rd("%s/%s/brport/state" % (SYS, port), "0"))
+        return int(rd("%s/%s/brport/state" % (SYS, port), ""))
     except ValueError:
-        return 0
+        return None
 
 
 def nl_open():
@@ -615,6 +656,8 @@ class L2d(object):
         # that never came up.
         self.changes = {}
         self.written = {}  # (port, vid) -> stporch state in APPL_DB
+        self.strays = {}  # interface outside Bridge with chip STP ports -> first seen
+        self.stray_scan = 0.0  # the next look at ASIC_DB for them without a cue
         self.mapped = set()  # vids whose VLAN is in its own instance
         self.flush_due = {}  # port -> time a flush is due (coalesced)
         self.root_port = ""
@@ -770,8 +813,12 @@ class L2d(object):
             if p in self.ports or not self.db.known(p):
                 continue
             self.ports[p] = None
-        for p in self.ports:
+        self.repair_strays(members, vids)
+        for p in list(self.ports):
             st = kstate(p)
+            if st is None:  # left Bridge since bridge_ports() was read
+                self.forget_port(p)
+                continue
             self.count_change(p, self.ports[p], st)
             self.ports[p] = st
             self.write_state(p, st, vids)
@@ -784,6 +831,72 @@ class L2d(object):
 
     def pending_vlan_delete(self, vids):
         return any(v not in vids for v in self.mapped)
+
+    def repair_strays(self, members, vids):
+        """Chip STP ports of an interface that is no bridge port (11.34).
+        StpOrch makes them when a state for a port reaches it after portsorch
+        removed the port's bridge port: addStpPort adds a bridge port and an
+        STP port in the instance. A PortChannel member that has them keeps
+        its PortChannel from getting STP ports of its own ("Lag member N
+        exists as STP PORT ... in STG n"), so the PortChannel's VLANs are
+        not forwarded on that member in the chip, whatever mstpd says.
+
+        Found from ASIC_DB (looked at whenever APPL_DB holds a state key for
+        an interface outside Bridge -- the late write leaves one -- and once
+        a minute), removed through StpOrch once seen on two passes (a DEL is
+        a no-op for an instance it holds no STP port in), and the
+        PortChannel's states written again. The bridge port StpOrch made
+        stays: no orchagent path removes it but a reboot. State keys of an
+        interface outside Bridge without chip STP ports are only dropped
+        from APPL_DB."""
+        now = time.time()
+        rows = collections.defaultdict(set)
+        for k in self.db.keys(self.db.appl, "STP_PORT_STATE_TABLE:*"):
+            parts = k.split(":")
+            if len(parts) == 3 and parts[1] not in members:
+                try:
+                    rows[parts[1]].add(int(parts[2]))
+                except ValueError:
+                    pass
+        if not rows and not self.strays and now < self.stray_scan:
+            return
+        self.stray_scan = now + 60
+        chip = self.db.asic_stp_ports()
+        strays = {p for p in chip if p not in members and p.startswith(("Ethernet", "PortChannel"))}
+        for p in list(self.strays):
+            if p not in strays:
+                del self.strays[p]
+        for p in sorted(set(rows) - strays):
+            if p not in self.ports:  # one leaving this pass is forget_port's
+                for v in sorted(rows[p]):
+                    self.db.port_raw._del("%s:%d" % (p, v))
+        for p in sorted(strays):
+            first = self.strays.setdefault(p, now)
+            if now - first < SYNC * 0.75 or not self.db.known(p):
+                continue
+            held = len(chip[p])
+            before = self.db.stp_ports_in_asic()
+            for v in sorted(rows.get(p, set()) | set(vids) | {v for v in chip[p] if v is not None}):
+                self.db.port_pst._del("%s:%d" % (p, v))
+            deadline = time.time() + 2
+            while self.db.stp_ports_in_asic() > before - held and time.time() < deadline:
+                time.sleep(0.05)
+            left = len(self.db.asic_stp_ports().get(p, []))
+            self.asic_floor = max(0, self.asic_floor - (held - left))
+            lag = self.db.lag_of(p) if p.startswith("Ethernet") else ""
+            if lag:
+                for key in [k for k in self.written if k[0] == lag]:
+                    del self.written[key]
+            if left:
+                self.strays[p] = time.time()  # try again in two passes
+                log("%s is no bridge port and still holds %d of its %d STP ports in the chip" % (p, left, held),
+                    syslog.LOG_WARNING)
+            else:
+                del self.strays[p]
+                log("%s is no bridge port%s but held %d STP ports in the chip: removed%s; the bridge port "
+                    "orchagent made for it stays until a reboot" %
+                    (p, " (a member of %s)" % lag if lag else "", held,
+                     ", %s's states written again" % lag if lag else ""), syslog.LOG_WARNING)
 
     def forget_vlan(self, vid):
         # orchagent removed the instance with the VLAN; drop our keys without
@@ -822,6 +935,16 @@ class L2d(object):
             self.resync = True  # a port joined Bridge: give it states now, not in 2 s
             return
         if state is None:
+            return
+        if not in_bridge(name):
+            # The port is leaving Bridge (it left its last VLAN: it joins a
+            # PortChannel or becomes a routed port). Its "disabled" must not
+            # reach StpOrch: processed after portsorch removed the bridge
+            # port, StpOrch's addStpPort makes a new one for it, with an STP
+            # port in every instance, and a PortChannel it joins then gets
+            # none (the chip refuses a LAG's STP port while a member has
+            # one: 11.34).
+            self.forget_port(name)
             return
         vids = self.mapped | {v for (_, v) in self.written}
         if state != self.ports[name]:
