@@ -82,9 +82,12 @@ if [ ! -s "$deny" ]; then
   main=$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)
   [ -n "$main" ] && [ -s "$main/local-information/denylist.txt" ] && deny="$main/local-information/denylist.txt"
 fi
+# LC_ALL=C: macOS grep takes minutes over the whole tree with a list of
+# fixed strings in a UTF-8 locale; the words are ASCII, so the C locale
+# matches the same lines in a second.
 if [ -s "$deny" ]; then
   check "site words from local-information/denylist.txt" \
-    "$(grep -i -F -f "$deny" "$tmp" | cut -c1-120)"
+    "$(LC_ALL=C grep -i -F -f "$deny" "$tmp" | cut -c1-120)"
 fi
 [ "$fail" -eq 0 ] && echo "ok: no secrets or site identifiers found"
 exit $fail
