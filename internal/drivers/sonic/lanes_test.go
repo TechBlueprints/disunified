@@ -389,3 +389,56 @@ func TestLaneAggregateTakesTheCageSTP(t *testing.T) {
 	r.apply(speedOn(base, 2, 100000))
 	check("joined", []string{"Ethernet4"}, []string{"PortChannel201", "Ethernet5"})
 }
+
+// The join with the driver's ACL tables bound to a lane aggregate (the
+// DX010, 2026-11-15, portchannel-del-acl-20261115.txt): `config portchannel
+// del` leaves a table naming the PortChannel, orchagent then holds the LAG
+// and the breakout's YANG check refuses the dangling name. The plan rebinds
+// each table without the PortChannel before it goes.
+func TestLaneJoinUnbindsTheACLTables(t *testing.T) {
+	r := laneRig(t)
+	r.deviceCmds(devicemodel.DeviceDesired{IPACLSet: true, IPACLs: ipACLsOf(ecsPush(t, "system_cfg-ecs-acl.txt"))})
+	ds := r.laneBase()
+	for i := 1; i < 4; i++ {
+		ds[i].LAG = 1
+	}
+	if _, err := r.c.ApplyLanes(context.Background(), 2, ds); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.c.mu.Lock()
+	bound := r.c.state.aclTables[ipACLTable].ports
+	r.c.mu.Unlock()
+	if !bound["PortChannel201"] || bound["Ethernet5"] {
+		t.Fatalf("the lane aggregate is not bound in place of its lanes: %v", sortIfnames(bound))
+	}
+	got, _ := r.apply(speedOn(r.baseline(), 2, 100000))
+	var keep []string
+	for p := range bound {
+		if p != "PortChannel201" {
+			keep = append(keep, p)
+		}
+	}
+	unbind := "sudo config acl add table DUI_IP_ACL L3 -p " + strings.Join(sortIfnames(setOf(keep)), ",") + " -s ingress"
+	ui, di := indexOf(got, unbind), indexOf(got, "sudo config portchannel del PortChannel201")
+	if ui < 0 || di < 0 || ui > di {
+		t.Errorf("the table must let go of PortChannel201 before it is deleted: unbind at %d, del at %d in %q", ui, di, got)
+	}
+	if !containsString(got, "sudo config interface breakout -f -y Ethernet4 '1x100G[40G]' </dev/null") {
+		t.Errorf("no join in %q", got)
+	}
+	if len(r.fr.HeldLAGs) != 0 {
+		t.Errorf("orchagent still holds %v", r.fr.HeldLAGs)
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.c.mu.Lock()
+	bound = r.c.state.aclTables[ipACLTable].ports
+	r.c.mu.Unlock()
+	if bound["PortChannel201"] || !bound["Ethernet4"] {
+		t.Errorf("after the join: %v", sortIfnames(bound))
+	}
+}

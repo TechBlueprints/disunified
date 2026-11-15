@@ -446,7 +446,7 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 		}
 	}
 	if len(joining) > 0 {
-		pl.aclUnbind(byLAG[ids[0]][0].Index, joining)
+		pl.aclUnbind(byLAG[ids[0]][0].Index, joining, "is to join an aggregate")
 	}
 	for _, lag := range ids {
 		pc := pl.pc(lag)
@@ -488,7 +488,10 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 			pl.syncVLANs(members[0].Index, pc, members[0])
 		}
 	}
-	// A PortChannel this apply emptied goes, its VLANs first. So does a
+	// A PortChannel this apply emptied goes, its VLANs and the ACL tables
+	// binding it first (sonic.md §11.25: `config portchannel del` leaves a
+	// table naming it, orchagent then keeps the LAG, and a breakout's YANG
+	// check refuses the dangling name). So does a
 	// memberless one the driver made and nobody wants: a batch that made
 	// it and then failed at the member add (the ACL refusal above, before
 	// the unbind) left exactly that on the DX010 (2026-11-02).
@@ -503,6 +506,9 @@ func (pl *plan) lagJoins(ds []devicemodel.PortDesired) {
 		}
 	}
 	sort.Strings(pcs)
+	if len(pcs) > 0 {
+		pl.aclUnbind(0, pcs, "is to be deleted")
+	}
 	for _, pc := range pcs {
 		name := pc
 		pl.stripVLANs(0, name)

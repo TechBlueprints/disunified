@@ -108,20 +108,22 @@ since the collect).
 | speed | a lane speed on its lane | **the mode only** (split, re-split, join; the module rule of sonic §10.9 too, kept while the module runs that many ports): a cage speed the current mode runs writes nothing, so it never undoes a lane speed |
 | name, VLANs, FEC, MTU, storm control | each lane | not applied (one note per push) |
 | aggregate, mirror | between its lanes | the cage's own not applied; a join removes the child's first |
-| STP port settings (edge, BPDU guard, loop protection), isolation, port security, egress limit, LLDP-MED | -- | **the cage's, on every lane, as before** |
+| STP port settings (edge, BPDU guard, loop protection), isolation, port security, egress limit, LLDP-MED | -- | **the cage's, on every lane, as before**; for STP on every bridge port the lanes make, a lane aggregate included (§14.4) |
 | VLAN MTU, VLAN creation | -- (`EnsureVLANs` is the parent's) | the parent's |
 
 The last two rows depart from the spec (§5.4), for a code reason: those
 settings are computed switch-wide from the parent's own ports -- l2d's
-per-port intent is keyed by cage in `l2.go` (`l2SetPorts`, rebuilt from
-every port at once), the isolation group and the static FDB entries from
+per-port intent is the parent's cages' in `l2.go` (`l2SetPorts`, rebuilt
+from every port at once: each bridge port a cage's interfaces make, a lane
+aggregate included, takes the cage's settings), the isolation group and the static FDB entries from
 every isolated or secured port -- so a lane scope would have to rebuild the
 whole set from two loops' pushes. The child claims none of them, so the UI
 offers none on the lane switch. Moving them to the child is open (§14).
 
 **A join, a re-split, a split.** A cage speed that changes the mode of an
 owned cage first removes the child's aggregates (`member del` on each lane,
-the PortChannel's VLANs, `portchannel del`) and lane mirror sessions in the
+the PortChannel's VLANs, the ACL tables rebound without it, `portchannel
+del`: sonic.md §11.25) and lane mirror sessions in the
 same batch (`dissolveLanes`), then breaks out; the new lanes (or the joined
 cage) take the cage's whole intent from that plan, as on any breakout, and
 the next cycle hands them to the child again if they are still split. The
@@ -447,8 +449,9 @@ first-push hold would wait on the child's lanes.
 
 A join (100G on the cage, or the module rule) while lane aggregates or
 lane mirror sessions exist: the plan removes them first in the same batch
-(members out, PortChannel deleted, mirror session removed, the ACL tables
-rebound), then the breakout. Today a breakout is refused for a cage in an
+(members out, mirror session removed, the ACL tables rebound without the
+PortChannel, PortChannel deleted -- as built, the rebind before the delete:
+sonic.md §11.25), then the breakout. Today a breakout is refused for a cage in an
 aggregate or a mirror session (§7.5); for a child cage the child's own
 aggregates are the parent's to dissolve, since the join is the operator's
 decision on the parent. The child then stops answering (§3) and the
@@ -851,20 +854,32 @@ parent instead; `show port-channel summary` and `show lacp neighbor` for
    child's LLDP entry replaces the hosts' (they are the lanes', on the
    child), by design; `children:` keeps its old rule (a port's own
    neighbour wins) for the experiment knob.
-4. **STP on a lane aggregate.** l2d's per-port intent comes from the
-   parent's push, keyed by cage (`l2.go` `l2SetPorts`, owned by the l2d
-   work): a cage's interfaces, or the PortChannel its *first* interface is
-   in. A lane aggregate that leaves lane 1 out (the captured 2-4) is a
-   kernel bridge port l2d is not told about, so mstpd runs it at its
-   defaults (no edge, no BPDU guard, no loop protection), and the lanes in
-   it are named instead. Needs `l2SetPorts` to name every PortChannel a
-   cage's interfaces are in; until then a lane aggregate's STP settings are
-   mstpd's defaults (the topology itself is still protected: mstpd runs
-   RSTP on it).
-5. **`config portchannel del` of a PortChannel an ACL table binds** (the
-   join's `dissolveLanes`, as the existing emptied-PortChannel path does):
-   not modelled by the FixtureRunner, never run live with the DUI tables
-   bound. The live run's step 8 checks it.
+4. **STP on a lane aggregate -- closed 2026-11-15** (sonic.md §11.25.1).
+   `l2SetPorts` named the PortChannel of a cage's *first* interface only,
+   so a lane aggregate that leaves lane 1 out (the captured 2-4) ran at
+   mstpd's defaults. It now names every bridge port a cage's interfaces
+   make -- each interface, or its PortChannel -- with the cage's settings,
+   and `ApplyLanes` re-derives them after a lane batch. **Whose intent:
+   the parent's cage**, because the lane switch claims no STP (§0), so its
+   push carries none and the UI offers none on it; the cage's BPDU guard or
+   loop protection covers every lane, aggregated or not. Verified live on
+   the DX010's cage 29 (a probe built from the branch; mstpd and l2d's
+   STATE_DB showed `PortChannel2901` with admin edge and BPDU guard, l2d's
+   loop guard listed it) and by `TestLaneAggregateTakesTheCageSTP`. Moving
+   the settings to the child is still item 6.
+5. **`config portchannel del` of a PortChannel an ACL table binds -- closed
+   2026-11-15** (sonic.md §11.25.2). Live: the delete succeeds but leaves
+   the table naming the PortChannel, orchagent keeps the LAG (`Failed to
+   remove ref count 1 LAG`), and **the join's breakout is refused** by
+   sonic-yang (`Invalid value "PortChannel2901" in "ports" element`): the
+   join as built would have failed every cycle. Fixed: the plan rebinds the
+   driver's tables without the PortChannel before deleting it (in
+   `dissolveLanes` and in `lagJoins`' emptied-PortChannel path), verified
+   live in that order on the same cage. The FixtureRunner models the
+   delete and the refusal from the capture
+   (`portchannel-del-acl-20261115.txt`); `TestLaneJoinUnbindsTheACLTables`.
+   Still unrun: the join through a deployed bridge with a lane switch
+   attached (the hand run replayed its command sequence), part of §15.
 6. The lane switch claims no STP, isolation, port security, egress limit
    or LLDP-MED (§0's table); moving them to the child needs the switch-wide
    computations to take both loops' intent.

@@ -661,12 +661,13 @@ func delRule(table, rule string) string {
 }
 
 // aclUnbind rewrites each of the driver's tables that binds one of ifaces
-// without them, inside the port batch, before those lanes join a
-// PortChannel: `config portchannel member add` refuses a bound port. The
-// PortChannel itself is bound after the batch (applyACL). A table that is
-// not the driver's shape is left alone and noted: the member add will say
-// why it fails.
-func (pl *plan) aclUnbind(idx int, ifaces []string) {
+// without them, inside the port batch: before those lanes join a
+// PortChannel (`config portchannel member add` refuses a bound port; the
+// PortChannel itself is bound after the batch, applyACL), and before a
+// PortChannel is deleted (`config portchannel del` leaves a table naming
+// it, sonic.md §11.25). why says which, for the notes. A table that is not
+// the driver's shape is left alone and noted.
+func (pl *plan) aclUnbind(idx int, ifaces []string, why string) {
 	gone := map[string]bool{}
 	for _, i := range ifaces {
 		gone[i] = true
@@ -691,11 +692,11 @@ func (pl *plan) aclUnbind(idx int, ifaces []string) {
 			continue
 		}
 		if cur.typ != tableType(t) || cur.stage != aclStage {
-			pl.note("ACL table %s (%s %s) binds a port that is to join an aggregate; not the driver's table, left alone", t, cur.typ, cur.stage)
+			pl.note("ACL table %s (%s %s) binds a port that %s; not the driver's table, left alone", t, cur.typ, cur.stage, why)
 			continue
 		}
 		if len(keep) == 0 {
-			pl.note("ACL table %s binds only ports that are to join an aggregate; cannot be rebound to nothing, left alone", t)
+			pl.note("ACL table %s binds only ports that %s; cannot be rebound to nothing, left alone", t, why)
 			continue
 		}
 		name, bound, typ := t, keep, tableType(t)

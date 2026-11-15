@@ -114,6 +114,13 @@ type FixtureRunner struct {
 	BuildFails    bool
 	STPCutsUplink bool
 
+	// HeldLAGs are the PortChannels orchagent still holds: deleted from
+	// CONFIG_DB while an ACL table bound them, which `config portchannel
+	// del` does not check and orchagent's removeLag refuses ("Failed to
+	// remove ref count 1 LAG"), retried until no table binds it (the DX010,
+	// 2026-11-15, sonic.md §11.25; orchACL releases them).
+	HeldLAGs map[string]bool
+
 	mu sync.Mutex // Run may be called from the locate blink's goroutine
 }
 
@@ -696,6 +703,15 @@ func (f *FixtureRunner) apply(line string) error {
 			// dangle (PORTCHANNEL_INTERFACE names the PortChannel): the
 			// driver removes the address first, and this holds it to that.
 			return fmt.Errorf("%s still has an address", pc)
+		}
+		// Not refused either while an ACL table binds it (the CLI does not
+		// look at ACL_TABLE, the DX010 2026-11-15): the table keeps the
+		// name and orchagent keeps the LAG.
+		if len(f.aclTablesBinding(pc)) > 0 {
+			if f.HeldLAGs == nil {
+				f.HeldLAGs = map[string]bool{}
+			}
+			f.HeldLAGs[pc] = true
 		}
 		return f.update("cfg_lag", func(t table) error { delete(t, "PORTCHANNEL|"+pc); return nil })
 	case cmd == "config portchannel member":

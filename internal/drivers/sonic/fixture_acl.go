@@ -186,6 +186,11 @@ func (f *FixtureRunner) aclRuleWrite(w []string) error {
 // every field is one the L3 table takes with a value aclorch parses, it
 // has an action, and a priority -- else Inactive.
 func (f *FixtureRunner) orchACL() error {
+	for pc := range f.HeldLAGs {
+		if len(f.aclTablesBinding(pc)) == 0 {
+			delete(f.HeldLAGs, pc) // removeLag's retry succeeds once unbound
+		}
+	}
 	if _, ok := sections(f.Fixture)["state_acl"]; !ok {
 		return nil
 	}

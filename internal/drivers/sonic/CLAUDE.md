@@ -1024,5 +1024,18 @@ was restarted.
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
   (so the Flex XG aggregate push's `cl-91` is refused); the controller's
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
-  STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
-  by cage; a lane aggregate without lane 1 is not named to l2d (open).
+  STP port settings stay the cage's (the lane switch claims no STP):
+  `l2SetPorts` (l2.go) names every bridge port a cage's interfaces make --
+  a lane aggregate without lane 1 included -- with the cage's settings, and
+  `ApplyLanes` re-derives them after a lane batch (§11.25.1, live
+  2026-11-15).
+- **`config portchannel del` does not look at ACL_TABLE** (§11.25.2, live
+  on the DX010 2026-11-15): a deleted PortChannel a table still binds stays
+  in the table, orchagent keeps the LAG (`removeLag: Failed to remove ref
+  count 1`, retried ~7/s until no table binds it), and the next `config
+  interface breakout` is refused by sonic-yang (`Invalid value
+  "PortChannel<n>" in "ports" element`). Every delete the plan makes is
+  preceded by `aclUnbind` of that PortChannel; the plan's breakout effect
+  takes the old ports out of the tables as `-f` does. The FixtureRunner
+  models both (`HeldLAGs`, the breakout's leafref check). Fixture:
+  `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
