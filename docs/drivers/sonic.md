@@ -6305,7 +6305,8 @@ nightly -- consistent with drops that never arrive faster than the rate. One
 alert per condition: the two faster intervals after it raised nothing new.
 A UniFi switch on 7.6.11 also sends `link_flap_count` on a few ports (1 on
 each, sparse, beside a `link_down_count` of 0 to 7); the alert above came
-without it. What that field counts is not known; the bridge does not send it.
+without it. It does not count drops, and the bridge does not send it
+(`docs/feature-map.md` §2, below the table).
 
 **The bridge's count was right; nothing changed for it.** Every toggle was
 counted: SONiC's `flap_count` grew by two per cycle.
@@ -6384,10 +6385,60 @@ port `up: true`, and a cabled peer would see link. A UniFi switch's BPDU
 guard is described in the UI as disabling the port; taking the chip's port
 down for it (and up again on the operator's re-enable) is a follow-up.
 
-**A side effect seen:** 90 s after the link-flap alert the controller's
-push changed port 17's `stp.edge` from `auto` to `disabled` with no change
-to its port override (l2d: "Ethernet64 auto edge off"); the cause is not
-established.
+**A side effect seen, and its cause: the controller's auto edge.** 90 s
+after the link-flap alert the controller's push changed port 17's
+`stp.edge` from `auto` to `disabled` with no change to its port override
+(l2d: "Ethernet64 auto edge off"). The flap did not cause it. The
+controller (Network 11.0.99) runs its own edge evaluation per switch, which
+logs to `server.log` (read 2026-11-15, placeholders for the identifiers):
+
+```
+<stp-edge-eval:aa:bb:cc:dd:ee:ff> INFO ... - stp-edge-auto written site=... mac=aa:bb:cc:dd:ee:ff port_idx=17 unit_id=null value=disabled
+<stp-edge-eval:aa:bb:cc:dd:ee:ff> INFO ... - stp-edge-auto skipped reason=already_matches ... port_idx=1 unit_id=null value=disabled
+```
+
+- **What it does.** About every 5-6 minutes for each switch, it takes each
+  port that is up and whose edge is left to the controller (no Edge choice
+  in the override), and records the switch's own `stp_edge_port`: `true`
+  is recorded as `enabled`, `false` as `disabled`. From then on the push
+  carries that value as `switch.port.N.stp.edge`. The match holds without
+  exception: 109 ports on the site's switches were evaluated in a
+  ten-minute window, and on each one the recorded value equals the
+  `stp_edge_port` the controller stores for it (`stat/device`). It writes
+  both ways on real switches (`enabled` on access ports, `disabled` on a
+  USXG's switch-to-switch port). The recorded value is not in the
+  override: `port_overrides` and `port_table` in the API show none.
+- **Why port 17.** The write came at 00:19:14.308 UTC, the same inform as
+  the link-flap alert. The 5-minute sample happened to land on that inform,
+  and port 17 was up in it (the looped cage) and reported
+  `stp_edge_port: false`. That value is correct: mstpd's `oper_edge_port`
+  is `no` on a port that hears BPDUs, and a looped port hears its own. The
+  push 89 s later was the next reply that carried a config. Every DX010
+  test port that was up in one of these samples was pinned the same way,
+  flapping or not: ports 9, 10 and 13 on 2026-11-14 (other tests), 18 at
+  01:21:21 UTC (the STP-flap run, below the link-flap rate), and 31 on
+  2026-11-15 15:53 UTC. Only port 1, the uplink, is evaluated at every
+  sample (`disabled`, matching).
+- **A UniFi switch does the same.** The ECS's push already carried
+  `stp.edge=disabled` on 2026-10-31 (Network 10.6) on 8 of its up
+  ports, and each of them reported `stp_edge_port: false` in its own inform
+  that evening. Its firmware applies `disabled` exactly as l2d does: each
+  pinned port has `UBNT_STP|interface|EthernetN` `intf_autoedge disabled`
+  and mstpd's `auto edge port no`, while the others keep `auto edge port
+  yes` (read only, 2026-11-15). So the bridge reports this as a UniFi
+  switch would, and the driver does not change.
+- **It does not go back by itself.** Down ports are not evaluated, so
+  port 17 is still pushed `disabled` 17 hours later. Once a port is
+  pinned, auto edge is off on both switches, so `oper_edge_port` cannot
+  become `yes` again and the evaluator keeps finding `disabled`. A host
+  cabled to such a port later is a non-edge RSTP port: it reaches
+  forwarding through the forward delay (about 30 s), not the 3 s of auto
+  edge, and every link-up is a topology change. A `disabled` value lasts
+  through the controller's nightly restart (02:29 local; a USXG port pinned
+  2026-11-12 was found `already_matches` after two restarts). An `enabled`
+  value does not: two access ports on a US8 and a USL16LPB were written
+  `enabled` again a few minutes after each restart. Whether choosing Edge
+  explicitly in the port's settings clears a pinned value was not tested.
 
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap
