@@ -222,6 +222,18 @@ conf["stp"]["ports"][P]["bpdu_guard"] = False
 d.conf = load(conf)()
 report[P]["bpdu-guard-port"] = "no"
 tick(d)
+step("guardon-stale")  # back on over mstpd's old error, no link since: no hold
+conf["stp"]["ports"][P]["bpdu_guard"] = True
+d.conf = load(conf)()
+report[P]["bpdu-guard-port"] = "yes"
+tick(d)
+step("errorclears")  # the link comes up with no BPDU: mstpd's error clears
+report[P]["bpdu-guard-error"] = "no"
+tick(d)
+conf["stp"]["ports"][P]["bpdu_guard"] = False
+d.conf = load(conf)()
+report[P]["bpdu-guard-port"] = "no"
+report[P]["bpdu-guard-error"] = "yes"
 step("nothing")
 dbs["STATE_DB"]["DUI_PORT_RECOVERY|" + P] = {"at": "2"}
 tick(d)

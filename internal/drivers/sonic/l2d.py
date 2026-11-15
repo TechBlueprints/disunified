@@ -1136,7 +1136,6 @@ class L2d(object):
         again with the guard about to go off (live, 2026-11-15)."""
         if port in self.bpdu_held and d.get("bpdu-guard-port") != "yes":
             self.bpdu_release(port, "BPDU guard off")
-            self.bpdu_forget(port)  # no guard: its error is no trip to wait out
             return
         if d.get("bpdu-guard-port") != "yes" or d.get("bpdu-guard-error") != "yes":
             if port in self.bpdu_stale and d.get("bpdu-guard-error") != "yes":
@@ -1155,8 +1154,11 @@ class L2d(object):
                 self.bpdu_release(p, "spanning tree off")
             elif p not in self.ports:
                 self.bpdu_release(p, "no longer a bridge port")
+        # A released port keeps its mark until mstpd's error clears or the
+        # port leaves the bridge, guard on or off: a guard switched on again
+        # over the old error must not hold an unlinked port.
         for p in list(self.bpdu_stale):
-            if p not in self.ports or not self.want_port(p)["bpdu-guard-port"]:
+            if p not in self.ports:
                 self.bpdu_forget(p)
 
     def recoveries(self):

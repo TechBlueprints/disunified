@@ -64,7 +64,9 @@ func TestL2dHoldsATrippedBPDUGuard(t *testing.T) {
 		{"nolink", "no", nil, []string{"PUT APPL_DB"}},
 		{"restart-released", "no", nil, []string{"PUT APPL_DB"}},
 		{"linkup", "yes", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=down"}, nil},
-		{"guardoff", "no", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=up", "LOG bpdu guard: Ethernet64 released (BPDU guard off)", "DEL STATE_DB DUI_BPDU_GUARD_TABLE Ethernet64"}, nil},
+		{"guardoff", "no", []string{"PUT APPL_DB PORT_TABLE Ethernet64 admin_status=up", "RUN ip link set dev Ethernet64 up", "LOG bpdu guard: Ethernet64 released (BPDU guard off)"}, []string{"DEL STATE_DB DUI_BPDU_GUARD_TABLE"}},
+		{"guardon-stale", "no", nil, []string{"PUT APPL_DB"}},
+		{"errorclears", "no", []string{"DEL STATE_DB DUI_BPDU_GUARD_TABLE Ethernet64"}, nil},
 		{"nothing", "no", []string{"LOG port recovery for Ethernet64: nothing holds it"}, []string{"PUT APPL_DB"}},
 	} {
 		lines := s[c.step]
