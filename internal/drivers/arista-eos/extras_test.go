@@ -39,6 +39,11 @@ func TestSecondWaveData(t *testing.T) {
 	if p49.Optic == nil || !p49.Optic.HasDOM || p49.Optic.MediaType != "100GBASE-CWDM4" || p49.Optic.Part == "" {
 		t.Errorf("port 49 optic = %+v", p49.Optic)
 	}
+	// The module's revision is the inventory's hardwareRev, as a real
+	// switch's sfp_rev carries its module's ("A0", "A", "00").
+	if p49.Optic != nil && p49.Optic.Revision != "1" {
+		t.Errorf("port 49 optic revision = %q, want the inventory's \"1\"", p49.Optic.Revision)
+	}
 	if len(p49.MACs) < 100 {
 		t.Errorf("port 49 (uplink) has %d MACs, want the whole house", len(p49.MACs))
 	}

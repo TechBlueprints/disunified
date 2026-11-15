@@ -553,7 +553,29 @@ next day):
   (`4.26.14M` there now, beside `4.26.14`). The device re-provisioned once
   and was connected again within about a minute.
 - The stored device object holds the optic readings as strings
-  (`"3.317"`, `"-2.97"`). The port's SFP tab in the UI was not looked at.
+  (`"3.317"`, `"-2.97"`).
+- **The SFP tab shows them as a real switch's (checked 2026-11-15, Network
+  11.0.99).** Ports -> SFP lists every port with a module, site-wide:
+  Vendor, Serial, Part Number, Compliance, Temperature, Output Power, Input
+  Power, Voltage, Current. The UI reads each string as a number and prints
+  it with trailing zeros dropped, ours and the real switches' alike: the
+  DX010's CWDM4 module as `29.43℃`, `0.6 dBm`, `-3.06 dBm`, `3.318V`,
+  `39.466 mA` (the switch's own `show interfaces transceiver eeprom --dom`
+  within an inform's drift), a USW Aggregation's 10G-SR as `44.445℃`,
+  `-2.56 dBm`. A missing or no-light reading is treated the same way for
+  both: the Arista's CWDM4 module with no fibre shows `-30 dBm` input power
+  (EOS's own floor, `show interfaces transceiver` says `-30.00`) beside a
+  USW Aggregation's unlit port at `-40 dBm`, and its "Receive SFP Signal
+  Loss" anomaly; an input power of exactly `0.00` (the ECS's unlit ports)
+  and a reading not sent at all both show `-`, so the Arista's breakout
+  cable and its DAC without DOM read like the real switches' DACs:
+  identity, then `-` across. No blank, `NaN` or unit off by a factor; the
+  ECS's own whole-number readings (`3V`, `6 mA`, `46℃`) are the truncation
+  decided above not to copy. Nothing to change in `internal/device`. One
+  identity field was wrong on the wire, though no column shows it: the
+  Arista sent `sfp_rev` empty for every module. It is now `show inventory`'s
+  `hardwareRev` (`1`, `A`; empty for Arista's own cable, as EOS has none),
+  held by the 4.26.14M fixture in `extras_test.go`.
 
 ## 9. Network 11 (2026-11-13)
 
