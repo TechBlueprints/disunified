@@ -709,7 +709,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
     2026-11-14: RSTP Backup/discarding does not stop the trapped queries),
     so on an unpatched image every loop-and-drop leaks its count: never
     move such a cage out of its last VLAN before a swss restart or reboot.
-    The race with members but no router port needs a cabled host.
+    The race with members but no router port needs a cabled host. The
+    looped one ran on the patched image 2026-11-15 (§8.15): each router
+    member is `removed with its port`, the count goes to 0, a new bridge
+    port admin true (`l2mc-0004-stepc-20261115.txt`).
   - The orch tests run in the build host's bookworm slave
     (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
     (`docker run -u root`), with the tree's `target/debs/bookworm` installed.

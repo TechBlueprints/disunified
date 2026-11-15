@@ -2607,10 +2607,24 @@ Clint's go; the kit's procedure, step by step as planned
   references" line since the boot. Restored afterwards: Ethernet48
   untagged in Vlan4094 with its seven static rows, and the controller's 32
   port overrides equal to the pre-test copy.
-- **Not run:** a move while the cage is looped (members programmed when the
-  VLAN member goes: the race, which the patched image lets a cable-less cage
-  try; `removeL2mcPortMembers` should log a line per member). The wait failing
-  on a leaked count cannot happen on this image and stays fixture-tested.
+- **A move while the cage is looped** (step C, 2026-11-15, on
+  `igmp-202511.20261115-6c8eb1cf7`, the bridge stopped; the driver's plan
+  run by hand, since nothing in it depends on where the push came from;
+  `sonic-igmp-202511.20261115-6c8eb1cf7/l2mc-0004-stepc-20261115.txt`).
+  Looped in Vlan4094, cage 13 took its seven static members and became a
+  router port in four more groups: **count 11**. The static rows out took
+  it to 5. Then `config vlan member del 4094` set the race going: the
+  router-port members were still programmed when the VLAN member went, and
+  orchagent logged `removeL2mcPortMembers: ... l2mc group member
+  Ethernet48 removed with its port` for each of the four, the count going
+  to **0**. The bridge port was removed 50 ms after, and `add -u 4000`
+  made a new one (oid changed, `ADMIN_STATE true`), with no "still has
+  references" line. With the loop off, the move back gave another new
+  bridge port, admin true. The bridge's start-up reconcile put the seven
+  rows back, and CONFIG_DB equalled the snapshot taken before, saved and
+  running. The race with members but no router port needs a cabled host.
+  The wait failing on a leaked count cannot happen on this image and stays
+  fixture-tested.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 

@@ -1,0 +1,153 @@
+# sonic-swss 0004 proof step C (docs/drivers/sonic.md 8.15, local steps C): a
+# port moved out of its last VLAN while it is a router port and a group
+# member at once. The DX010 on igmp-202511.20261115-6c8eb1cf7 (0004 in it),
+# 2026-11-15, times UTC-7, the deployed bridge stopped. Test cage 13 =
+# Ethernet48 (bcm ce12), empty, untagged in Vlan4094 with the seven
+# reserved static groups; looped with `bcmcmd "port ce12 lb=mac"`. The move
+# is the driver's plan run by hand (no UI): its static rows out
+# (L2MC_STATIC_MEMBER rows deleted, L2MC_STATIC_GROUP static-members@
+# without the port, through ConfigDBConnector), then `config vlan member
+# del 4094 Ethernet48` and `config vlan member add -u 4000 Ethernet48`
+# (Vlan4000 has no other member), then the loop off and the move back. The
+# bridge's start-up reconcile wrote the seven rows back; CONFIG_DB then
+# equalled the snapshot taken before, saved and running. Hostname scrubbed.
+
+## the script's output
+== 12:01:07 before
+bridge port 0x3a0000000005f2 admin true
+== 12:01:08 loop ce12
+oper up
+2026 Nov 15 12:01:19.274725 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,224.0.1.187,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:31000000000961
+2026 Nov 15 12:01:19.277219 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:31000000000961 rv:0
+2026 Nov 15 12:01:19.277219 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 11 vlan Vlan4094 l2mc_count 22
+== 12:01:29 the move, as the plan: the static rows, then the native VLAN
+rows left: 0
+2026 Nov 15 12:01:29.649922 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 5 vlan Vlan4094 l2mc_count 10
+2026 Nov 15 12:01:30.599144 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 4 vlan Vlan4094 l2mc_count 9
+2026 Nov 15 12:01:30.603299 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,233.89.188.1,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.604171 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 3 vlan Vlan4094 l2mc_count 8
+2026 Nov 15 12:01:30.606239 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,224.0.1.60,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.607434 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 2 vlan Vlan4094 l2mc_count 7
+2026 Nov 15 12:01:30.609306 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,239.254.127.63,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.609306 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 1 vlan Vlan4094 l2mc_count 6
+2026 Nov 15 12:01:30.612080 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,239.255.255.250,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.612757 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 0 vlan Vlan4094 l2mc_count 5
+2026 Nov 15 12:01:30.663441 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+2026 Nov 15 12:01:30.876627 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+bridge port 0x3a000000000dec admin true
+VLAN_MEMBER|Vlan4000|Ethernet48
+== 12:01:38 loop off
+2026 Nov 15 12:01:30.612757 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 0 vlan Vlan4094 l2mc_count 5
+== 12:01:49 back to 4094
+bridge port 0x3a000000000df9 admin true
+2026 Nov 15 12:01:30.876627 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+2026 Nov 15 12:01:50.869382 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+2026 Nov 15 12:01:51.915957 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+== 12:01:58 bridge started
+
+## orchagent, every line naming Ethernet48 from 12:01 to 12:02
+2026 Nov 15 12:01:09.385739 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet48 oper state set from down to up
+2026 Nov 15 12:01:09.393427 host-1 NOTICE swss#orchagent: :- setHostIntfsOperStatus: Set operation status UP to host interface Ethernet48
+2026 Nov 15 12:01:09.393427 host-1 NOTICE swss#orchagent: :- publish: EVENT_PUBLISHED: {"sonic-events-swss:if-state":{"ifname":"Ethernet48","status":"up","timestamp":"2026-11-15T12:01:09.392037Z"}}
+2026 Nov 15 12:01:09.403137 host-1 NOTICE swss#orchagent: :- handleNotification: Ethernet48 oper speed is 100000
+2026 Nov 15 12:01:09.414425 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.1, port Ethernet48
+2026 Nov 15 12:01:09.422924 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.1,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000dd5
+2026 Nov 15 12:01:09.426998 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 1 vlan Vlan4094 l2mc_count 6
+2026 Nov 15 12:01:09.455623 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.129, port Ethernet48
+2026 Nov 15 12:01:09.458933 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.129,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000dd8
+2026 Nov 15 12:01:09.461138 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 2 vlan Vlan4094 l2mc_count 8
+2026 Nov 15 12:01:09.463509 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.22, port Ethernet48
+2026 Nov 15 12:01:09.466822 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.22,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000ddb
+2026 Nov 15 12:01:09.468945 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 3 vlan Vlan4094 l2mc_count 10
+2026 Nov 15 12:01:09.471220 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.35, port Ethernet48
+2026 Nov 15 12:01:09.474687 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.35,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000dde
+2026 Nov 15 12:01:09.476846 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 4 vlan Vlan4094 l2mc_count 12
+2026 Nov 15 12:01:09.478843 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.41, port Ethernet48
+2026 Nov 15 12:01:09.482409 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.41,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000de1
+2026 Nov 15 12:01:09.484486 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 5 vlan Vlan4094 l2mc_count 14
+2026 Nov 15 12:01:09.486436 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.250, port Ethernet48
+2026 Nov 15 12:01:09.486537 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.255.255.250,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:310000000007aa
+2026 Nov 15 12:01:09.488791 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 6 vlan Vlan4094 l2mc_count 16
+2026 Nov 15 12:01:09.488791 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.253, port Ethernet48
+2026 Nov 15 12:01:09.492417 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.255.255.253,Vlan4094) Add l2mc group member Ethernet48 to l2mc_gid:31000000000de5
+2026 Nov 15 12:01:09.494800 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 7 vlan Vlan4094 l2mc_count 17
+2026 Nov 15 12:01:19.259279 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,233.89.188.1,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:3100000000095f
+2026 Nov 15 12:01:19.263697 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:3100000000095f rv:0
+2026 Nov 15 12:01:19.264164 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 8 vlan Vlan4094 l2mc_count 19
+2026 Nov 15 12:01:19.264164 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,224.0.1.60,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:3100000000095b
+2026 Nov 15 12:01:19.268618 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:3100000000095b rv:0
+2026 Nov 15 12:01:19.269698 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 9 vlan Vlan4094 l2mc_count 20
+2026 Nov 15 12:01:19.269698 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,239.254.127.63,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:31000000000992
+2026 Nov 15 12:01:19.274725 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:31000000000992 rv:0
+2026 Nov 15 12:01:19.274725 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 10 vlan Vlan4094 l2mc_count 21
+2026 Nov 15 12:01:19.274725 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: (0.0.0.0,224.0.1.187,Vlan4094) Add mrouter port Ethernet48 as l2mc group member to l2mc_gid:31000000000961
+2026 Nov 15 12:01:19.277219 host-1 NOTICE swss#orchagent: :- AddL2mcMrouterPort: AddL2mcMrouterPort: Success to add mrouter port Ethernet48 as l2mc group member to l2mc-grp:31000000000961 rv:0
+2026 Nov 15 12:01:19.277219 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 11 vlan Vlan4094 l2mc_count 22
+2026 Nov 15 12:01:19.277219 host-1 NOTICE swss#orchagent: :- doL2mcMrouterTask: doL2mcMrouterTask: Mrouter port Ethernet48 added to vlan Vlan4094
+2026 Nov 15 12:01:19.430738 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 233.89.188.1, port Ethernet48
+2026 Nov 15 12:01:19.430738 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,233.89.188.1,Vlan4094) router port Ethernet48 is a group member too
+2026 Nov 15 12:01:20.604344 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.254.127.63, port Ethernet48
+2026 Nov 15 12:01:20.604344 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.254.127.63,Vlan4094) router port Ethernet48 is a group member too
+2026 Nov 15 12:01:24.846816 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.60, port Ethernet48
+2026 Nov 15 12:01:24.846964 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.60,Vlan4094) router port Ethernet48 is a group member too
+2026 Nov 15 12:01:29.580566 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.1, port Ethernet48
+2026 Nov 15 12:01:29.589664 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 10 vlan Vlan4094 l2mc_count 20
+2026 Nov 15 12:01:29.594257 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.129, port Ethernet48
+2026 Nov 15 12:01:29.603123 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 9 vlan Vlan4094 l2mc_count 18
+2026 Nov 15 12:01:29.606038 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.22, port Ethernet48
+2026 Nov 15 12:01:29.618614 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 8 vlan Vlan4094 l2mc_count 16
+2026 Nov 15 12:01:29.624177 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.41, port Ethernet48
+2026 Nov 15 12:01:29.630243 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 7 vlan Vlan4094 l2mc_count 14
+2026 Nov 15 12:01:29.632100 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.250, port Ethernet48
+2026 Nov 15 12:01:29.632632 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.253, port Ethernet48
+2026 Nov 15 12:01:29.637554 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 6 vlan Vlan4094 l2mc_count 12
+2026 Nov 15 12:01:29.641354 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.35, port Ethernet48
+2026 Nov 15 12:01:29.649922 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 5 vlan Vlan4094 l2mc_count 10
+2026 Nov 15 12:01:29.652088 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.250, port Ethernet48
+2026 Nov 15 12:01:29.652598 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.255.255.250,Vlan4094) router port Ethernet48 is a group member too
+2026 Nov 15 12:01:30.590338 host-1 NOTICE swss#orchagent: :- removeMrouterPortFromL2mcEntries: removeMrouterPortFromL2mcEntries: Mrouter port Ethernet48 deleted from vlan Vlan4094
+2026 Nov 15 12:01:30.591447 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,233.89.188.1,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:3100000000095f
+2026 Nov 15 12:01:30.593516 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.60,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:3100000000095b
+2026 Nov 15 12:01:30.593516 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,239.254.127.63,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:31000000000992
+2026 Nov 15 12:01:30.593516 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,224.0.1.187,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:31000000000961
+2026 Nov 15 12:01:30.599144 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 4 vlan Vlan4094 l2mc_count 9
+2026 Nov 15 12:01:30.599144 host-1 NOTICE swss#orchagent: :- RemoveL2mcMrouterPort: RemoveL2mcMrouterPort: (0.0.0.0,239.255.255.250,Vlan4094) Delete l2mc mrouter group member Ethernet48 from l2mc_gid:310000000007aa
+2026 Nov 15 12:01:30.603299 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,233.89.188.1,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.604171 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 3 vlan Vlan4094 l2mc_count 8
+2026 Nov 15 12:01:30.606239 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,224.0.1.60,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.607434 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 2 vlan Vlan4094 l2mc_count 7
+2026 Nov 15 12:01:30.609306 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,239.254.127.63,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.609306 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 1 vlan Vlan4094 l2mc_count 6
+2026 Nov 15 12:01:30.612080 host-1 NOTICE swss#orchagent: :- removeL2mcPortMembers: removeL2mcPortMembers: (0.0.0.0,239.255.255.250,Vlan4094) l2mc group member Ethernet48 removed with its port
+2026 Nov 15 12:01:30.612757 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet48 l2mc_count 0 vlan Vlan4094 l2mc_count 5
+2026 Nov 15 12:01:30.615524 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet48 from VLAN Vlan4094 lid:ffe vmid:270000000005f3
+2026 Nov 15 12:01:30.618038 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet48
+2026 Nov 15 12:01:30.628599 host-1 NOTICE swss#orchagent: :- setHostIntfsStripTag: Set SAI_HOSTIF_VLAN_TAG_STRIP to host interface: Ethernet48
+2026 Nov 15 12:01:30.663441 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+2026 Nov 15 12:01:30.847596 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.129, port Ethernet48
+2026 Nov 15 12:01:30.847596 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.1, port Ethernet48
+2026 Nov 15 12:01:30.847596 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.22, port Ethernet48
+2026 Nov 15 12:01:30.847596 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.35, port Ethernet48
+2026 Nov 15 12:01:30.850433 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.41, port Ethernet48
+2026 Nov 15 12:01:30.850557 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.60, port Ethernet48
+2026 Nov 15 12:01:30.850680 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 233.89.188.1, port Ethernet48
+2026 Nov 15 12:01:30.850800 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.254.127.63, port Ethernet48
+2026 Nov 15 12:01:30.850958 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.250, port Ethernet48
+2026 Nov 15 12:01:30.851417 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 239.255.255.253, port Ethernet48
+2026 Nov 15 12:01:30.875452 host-1 NOTICE swss#orchagent: :- setHostIntfsStripTag: Set SAI_HOSTIF_VLAN_TAG_KEEP to host interface: Ethernet48
+2026 Nov 15 12:01:30.876627 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+2026 Nov 15 12:01:31.782085 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet48 to VLAN Vlan4000 vid:4000 pid1000000000015
+2026 Nov 15 12:01:31.785526 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4000 to port: Ethernet48
+2026 Nov 15 12:01:39.803801 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port Ethernet48 oper state set from up to down
+2026 Nov 15 12:01:39.822619 host-1 NOTICE swss#orchagent: :- setHostIntfsOperStatus: Set operation status DOWN to host interface Ethernet48
+2026 Nov 15 12:01:39.822619 host-1 NOTICE swss#orchagent: :- publish: EVENT_PUBLISHED: {"sonic-events-swss:if-state":{"ifname":"Ethernet48","status":"down","timestamp":"2026-11-15T12:01:39.814799Z"}}
+2026 Nov 15 12:01:39.840444 host-1 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet48 error state set from 0x0-> 0x1
+2026 Nov 15 12:01:39.840650 host-1 NOTICE swss#orchagent: :- updatePortErrorStatus: Port Ethernet48 oper error event: mac_local_fault occurred
+2026 Nov 15 12:01:50.829468 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member Ethernet48 from VLAN Vlan4000 lid:fa0 vmid:27000000000df6
+2026 Nov 15 12:01:50.832433 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to port: Ethernet48
+2026 Nov 15 12:01:50.841687 host-1 NOTICE swss#orchagent: :- setHostIntfsStripTag: Set SAI_HOSTIF_VLAN_TAG_STRIP to host interface: Ethernet48
+2026 Nov 15 12:01:50.869382 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port Ethernet48 from default 1Q bridge
+2026 Nov 15 12:01:51.915476 host-1 NOTICE swss#orchagent: :- setHostIntfsStripTag: Set SAI_HOSTIF_VLAN_TAG_KEEP to host interface: Ethernet48
+2026 Nov 15 12:01:51.915957 host-1 NOTICE swss#orchagent: :- addBridgePort: Add bridge port Ethernet48 to default 1Q bridge
+2026 Nov 15 12:01:51.922265 host-1 NOTICE swss#orchagent: :- addVlanMember: Add member Ethernet48 to VLAN Vlan4094 vid:4094 pid1000000000015
+2026 Nov 15 12:01:51.925770 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 4094 to port: Ethernet48
