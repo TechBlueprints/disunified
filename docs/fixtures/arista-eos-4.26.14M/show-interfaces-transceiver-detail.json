@@ -41,7 +41,7 @@
       "txBias": 39.028,
       "txPower": 0.4300840987995187,
       "updateTime": 1789847185.1241505,
-      "vendorSn": "scrubbed",
+      "vendorSn": "SSJ00000",
       "voltage": 3.3136
     },
     "Ethernet49/2": {
@@ -85,7 +85,7 @@
       "txBias": 42.89,
       "txPower": -0.146184397680031,
       "updateTime": 1789847185.1241515,
-      "vendorSn": "scrubbed",
+      "vendorSn": "SSJ00000",
       "voltage": 3.3136
     },
     "Ethernet49/3": {
@@ -129,7 +129,7 @@
       "txBias": 41.134,
       "txPower": 1.4360803483759597,
       "updateTime": 1789847185.1241517,
-      "vendorSn": "scrubbed",
+      "vendorSn": "SSJ00000",
       "voltage": 3.3136
     },
     "Ethernet49/4": {
@@ -173,7 +173,7 @@
       "txBias": 38.994,
       "txPower": 0.42536136722143425,
       "updateTime": 1789847185.124152,
-      "vendorSn": "scrubbed",
+      "vendorSn": "SSJ00000",
       "voltage": 3.3136
     },
     "Ethernet50/1": {},
