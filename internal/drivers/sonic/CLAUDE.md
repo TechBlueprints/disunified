@@ -760,6 +760,25 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   out of step reads as no mode and is rewritten. At Default the stock curve
   runs the fans at ~41 % (PWM 102) even with the intake under MINTEMP, as it
   did before 0012.
+- **STP changes are l2d's count of kernel state changes (`state_changes` in
+  `DUI_STP_PORT_TABLE`, 2026-11-15, `docs/drivers/sonic.md` §11.23).**
+  mstpd's `num_transition_fwd`/`blk` stayed 0/1 through a looped cage's 368
+  link changes (a Backup port is discarding up or down) and read 1 on a
+  never-up port; the controller's STP-flap alert is a rate of
+  `stp_state_change_count`, so the driver reads l2d's count (2 per drop)
+  and falls back to mstpd's for an older l2d. Facts that cost time:
+  - **A looped cage with BPDU guard is shut by mstpd within a second**
+    ("Received BPDU on BPDU Guarded Port"), but only the netdev: APPL_DB
+    `oper_status` stays up while the loopback is on, so the port reports
+    up. After the guard is turned off, `ip link set dev <port> up` and the
+    next link-up clear `bpdu guard error`.
+  - **`pkill -f <pattern>` over SSH matches the remote shell's own command
+    line** when the pattern is in it, and kills the session (exit 255): use
+    a script file, or `pgrep -f "[x]yz"` with a pattern the command line
+    does not contain.
+  - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
+    about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
+    the payloads, not the period.
 - **Storms are detected, never held (2026-11-14, `docs/drivers/sonic.md`
   §11.20, §11.21).** UniFi's UI text: a storm anomaly is incoming traffic
   of the type over the Storm Control threshold, and Storm Control
