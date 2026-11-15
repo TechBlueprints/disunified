@@ -414,7 +414,10 @@ these is marked "not captured".
   when `link_down_count` grows faster than about 0.3 drops/s (seen at 0.32,
   not at 0.24, on the DX010's looped cage), STP flap when `change_count`
   grows faster than about 0.2/s (0.27, not 0.19, on a stub); each alert's
-  `COUNT` is that inform's count. **BPDU guard and loop protection alert
+  `COUNT` is that inform's count. `link_flap_count`, which UniFi switches on
+  7.5.15 and 7.6.11 send on a few ports, is not its basis and is not a count
+  of drops (a USL8A port with 190 000 drops has none); the bridge does not
+  send it (`docs/feature-map.md` §2). **BPDU guard and loop protection alert
   from `port_table[].error_disabled: true` with `error_disabled_reason`**
   (2 BPDU guard, 1 loop protection), not from `anomalies`: seen on a stub
   port, then from the DX010's own driver after the deploy (812503a); a held
@@ -425,6 +428,15 @@ these is marked "not captured".
   (the UI's own text, 2026-11-14): every other bit is a detection the port
   keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's
   `ERROR_DISABLE` table does and does not show).
+- **The controller pins `stp.edge` from the reported `stp_edge_port`
+  (11.0.99, read from `server.log` 2026-11-15).** About every 5-6 minutes
+  per switch, `stp-edge-auto` takes each up port whose edge is left to the
+  controller and records `enabled` or `disabled` from that port's
+  `stp_edge_port`. The push then carries it as `stp.edge`, with no change to
+  the override. On the ECS and in l2d, `disabled` turns auto edge off, so a
+  port that was once up as a non-edge port (a looped test cage, a switch
+  link) stays non-edge. A `disabled` value lasts through the controller's
+  restarts (`docs/drivers/sonic.md` §11.23.3).
 
 ## 6. Driver facts
 
