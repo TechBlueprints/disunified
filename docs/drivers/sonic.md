@@ -6724,8 +6724,35 @@ here; §11.28's run on port 17 tested it (below).
   `stp.edge=auto` again. The next evaluation logged `skipped
   reason=effective_state_not_auto` while the override still said
   `enabled`. Port 17's override was then put back to its exact pre-test
-  object through the REST API, and its push stayed `auto`. Ports 9, 10, 13,
-  18 and 31 are still pinned to `disabled`.
+  object through the REST API, and its push stayed `auto`.
+- **The one-step un-pin: `reset-auto-edge` (captured 2026-11-15, ports 9,
+  10, 13, 18 and 31, all back to `auto`).** "Restore Auto STP Edge" is a
+  call of its own, not part of the override save:
+  `POST /proxy/network/v2/api/site/<site>/ports/<device mac>/reset-auto-edge`
+  with a list of ports as the body, `[{"port_idx":10}]` (captured from the
+  UI), answered `204`. It clears the controller's recorded value and leaves
+  the port override alone. The UI offers the link as soon as Edge is
+  chosen, before Apply. Clicking it then sends only this call: no override
+  is saved, so there is no BPDU-guard side effect. That is how port 10 was
+  done, and port 9 at the first try. The API key takes the call with no
+  CSRF token (unlike the routing API's writes), and one call with
+  `[{"port_idx":13},{"port_idx":18},{"port_idx":31}]` un-pinned three ports.
+  The next push carried `stp.edge=auto` for exactly those ports and nothing
+  else. The bridge applied it with "0 of 32 ports changed", l2d logged
+  "EthernetN auto edge on", and `port_overrides` in `stat/device` stayed
+  byte-identical. A reset that clears a value logs nothing in `server.log`.
+  Only one with nothing to clear is logged: `stp-edge-auto reset no-op
+  reason=nothing_to_clear ... ports=[...]`. The override save logs one too,
+  because saving an explicit Edge choice already drops the recorded value.
+  So port 17's `nothing_to_clear` came from its Restore after the save, and
+  it does not show that the call does nothing. The two-save path above
+  (Edge applied, then Restore) also works, but it rewrites the whole
+  override with the editor's defaults: on port 9 those were BPDU guard on,
+  `autoneg`, `dot1x_ctrl`, `stp_port_mode` and a dozen more. The override
+  then has to be put back by REST.
+  **After a test that left a cage up as a non-edge port for more than five
+  minutes**, make that one call for the cage. Check the next push for
+  `switch.port.N.stp.edge=auto`.
 
 **Alerts these tests raised** (each reaches Clint as a notification; all
 on test ports or the stub): link flap on the DX010's port 17 (00:19:14 UTC 2026-11-15), STP flap

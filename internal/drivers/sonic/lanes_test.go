@@ -285,6 +285,95 @@ func TestUnownedCageLeavesALaneAggregate(t *testing.T) {
 	}
 }
 
+// detachedLaneAggregate is the split capture after a lane switch made
+// PortChannel201 of lanes 2-3 and was detached (its config entry removed,
+// the bridge restarted): a rig with no lane switch over that switch.
+func detachedLaneAggregate(t *testing.T) *controlRig {
+	t.Helper()
+	r := laneRig(t)
+	ds := r.laneBase()
+	ds[1].LAG, ds[2].LAG = 1, 1
+	if _, err := r.c.ApplyLanes(context.Background(), 2, ds); err != nil {
+		t.Fatal(err)
+	}
+	r2 := rig20261106(t, fixture20261106Split)
+	r2.fr.Fixture = r.fr.Fixture
+	if _, err := r2.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return r2
+}
+
+// The members taken out by hand (or lost to a forced breakout, which drops
+// a member silently) leave the detached lane switch's PortChannel empty:
+// nobody's plan reached it, so it stayed for good (breakout.md §7c). The
+// device's plan now removes it, as an orphan of its own range, once.
+func TestDetachedLaneSwitchsEmptyPortChannelGoes(t *testing.T) {
+	r := detachedLaneAggregate(t)
+	for _, ln := range []string{"Ethernet5", "Ethernet6"} {
+		if _, err := r.fr.Run(context.Background(), "sudo config portchannel member del PortChannel201 "+ln, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The lanes the hand removal left in no VLAN take the cage's again (the
+	// split cage is the device's), then the PortChannel goes: its VLAN, its
+	// bridge port, itself.
+	got, _ := r.apply(r.baseline())
+	want := []string{
+		"sudo config vlan member add -u 4094 Ethernet5",
+		"sudo config vlan member add -u 4094 Ethernet6",
+		"sudo config vlan member del 4094 PortChannel201",
+		bridgePortWait("PortChannel201"),
+		"sudo config portchannel del PortChannel201",
+		save,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("commands\n  got  %q\n  want %q", got, want)
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := r.apply(r.baseline()); len(again) != 0 {
+		t.Errorf("a second apply wrote %q", again)
+	}
+}
+
+// With the lane switch attached the range is its own: the device's plan
+// leaves the empty PortChannel to it.
+func TestAttachedLaneSwitchKeepsItsEmptyPortChannel(t *testing.T) {
+	r := laneRig(t)
+	ds := r.laneBase()
+	ds[1].LAG, ds[2].LAG = 1, 1
+	if _, err := r.c.ApplyLanes(context.Background(), 2, ds); err != nil {
+		t.Fatal(err)
+	}
+	for _, ln := range []string{"Ethernet5", "Ethernet6"} {
+		if _, err := r.fr.Run(context.Background(), "sudo config portchannel member del PortChannel201 "+ln, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := r.apply(r.baseline()); len(got) != 0 {
+		t.Errorf("the device's plan wrote %q", got)
+	}
+}
+
+// One with members stays, with a note naming them.
+func TestDetachedLaneAggregateWithMembersIsNoted(t *testing.T) {
+	r := detachedLaneAggregate(t)
+	if got, _ := r.apply(r.baseline()); len(got) != 0 {
+		t.Errorf("wrote %q", got)
+	}
+	if want := "PortChannel201 is port 2's lane switch's aggregate and no lane switch is attached to port 2: left as it is while it has members (Ethernet5, Ethernet6)"; !strings.Contains(r.log.String(), want) {
+		t.Errorf("no note: %s", r.log.String())
+	}
+}
+
 // One write (or collect) at a time: a lane switch's apply comes from its
 // own loop.
 func TestApplyLockWaits(t *testing.T) {

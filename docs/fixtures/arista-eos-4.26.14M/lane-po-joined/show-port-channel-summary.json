@@ -1,0 +1,56 @@
+{
+  "numberOfAggregators": 1,
+  "numberOfChannelsInUse": 1,
+  "portChannels": {
+    "Port-Channel1": {
+      "inactive": false,
+      "lacpMode": "active",
+      "linkState": "up",
+      "ports": {
+        "Ethernet51/1": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet51/1",
+          "lacpMisconfig": {
+            "status": "bundled"
+          },
+          "lacpState": {
+            "activity": true,
+            "aggregation": true,
+            "collecting": true,
+            "defaulted": false,
+            "distributing": true,
+            "expired": false,
+            "synchronization": true,
+            "timeout": false
+          },
+          "lagMember": true,
+          "linkDown": false,
+          "staticLag": false,
+          "suspended": false
+        },
+        "Ethernet52/1": {
+          "exceedsMaxWeight": false,
+          "intf": "Ethernet52/1",
+          "lacpMisconfig": {
+            "status": "bundled"
+          },
+          "lacpState": {
+            "activity": true,
+            "aggregation": true,
+            "collecting": true,
+            "defaulted": false,
+            "distributing": true,
+            "expired": false,
+            "synchronization": true,
+            "timeout": false
+          },
+          "lagMember": true,
+          "linkDown": false,
+          "staticLag": false,
+          "suspended": false
+        }
+      },
+      "protocol": "lacp"
+    }
+  }
+}

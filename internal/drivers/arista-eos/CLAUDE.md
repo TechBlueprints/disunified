@@ -8,6 +8,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   against that version (fixtures in `docs/fixtures/arista-eos-4.26.14M/`); eAPI
   batches start with `enable`; eAPI does not expand abbreviations; TLS 1.2
   RSA-kex only.
+- **A capture by hand over SSH**: a command string runs at privilege 1
+  (`show running-config` answers "privileged mode required"), so pipe
+  `enable` and the command on stdin: `printf 'enable\nshow vlan | json\n'
+  | ssh admin@<switch>` prints the JSON eAPI returns. Then
+  `scripts/sanitize-arista-eos.py` over every file of the related states
+  in one run (it scrubs the `phy detail` .txt files too).
 - 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
   RS-FEC on 100G; a 25G lane offers RS and fire-code (cage 50's hardware
   table; RS accepted and operational on the empty cage's lanes,
@@ -155,7 +161,11 @@ that cost time on Clint's DCS-7160-48TC6-F.
   that does not exist; any `interface Port-Channel<n>` line (an ACL unbind)
   re-creates it empty. The plan removes an empty one in its own range
   (1..last port; a cage's nine for a lane switch) that carries only the
-  driver's lines (`portchannel.go`); a hand-made one stays. The test
+  driver's lines (`portchannel.go`); a hand-made one stays. The device's
+  plan also takes the nine of every cage with no lane switch attached, for
+  that removal only (a detached lane switch's leftovers; one with members
+  stays, noted; `detachedLaneChannels`, `docs/drivers/breakout.md` §7c,
+  captures `lane-po-*/`). The test
   fixtures' switch had four (Po1-4): `removeLeftovers` in the test helpers
   takes them out first.
 - **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
