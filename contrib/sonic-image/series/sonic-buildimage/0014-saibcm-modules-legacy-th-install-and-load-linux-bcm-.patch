@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sat, 14 Nov 2026 17:08:16 -0700
+Subject: [PATCH] saibcm-modules-legacy-th: install and load linux-bcm-genl
+ (sFlow)
+
+The legacy-TH SAI (libsaibcm 13.2.1.100) sets a port's sFlow sampling
+rate through /proc/bcm/genl/psample/rate, which only linux-bcm-genl
+creates. The legacy-TH SDK builds that module (systems/linux/user/
+common/Makefile: BUILD_BCM_GENL=1, $(BCM_GENL) stripped beside
+linux-knet-cb.ko), but opennsl-modules.install never ships it and
+opennsl-modules.init never loads it. So every sFlow session on a
+legacy-TH switch fails in the SAI:
+
+  SAI_API_PORT:_brcm_sai_port_proc_samplerate_set:18439 cannot open
+  knet link sample proc
+  sflowAddPort: Failed to set session ... on port ...
+
+This is the classic-XGS (non-ltsw) half of what sonic-net/
+sonic-buildimage#26360 did for the XGS package's sdklt bcmgenl: ship the
+module, load it after linux-knet-cb (so linux-bcm-knet already has its
+parameters), and unload it before psample, which it uses.
+
+Measured on a Celestica DX010 (202511, legacy-TH SAI 13.2.1.100) by
+loading the build's own linux-bcm-genl.ko by hand: /proc/bcm/genl/
+psample/{rate,size,stats,debug} appear, SAI_PORT_ATTR_INGRESS_
+SAMPLEPACKET_ENABLE then answers SAI_STATUS_SUCCESS, and a port sampled
+at 1:256 delivered 168 psample packets for 40,000 received frames. A
+module loaded after the SAI has made its netifs does not know them
+("Failed setting psample rate on unknown network interface"), so the
+samples carried no ingress ifindex and a rate of 1: it has to be loaded
+here, before syncd starts.
+---
+ .../saibcm-modules-legacy-th/debian/opennsl-modules.init        | 2 ++
+ .../saibcm-modules-legacy-th/debian/opennsl-modules.install     | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.init b/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.init
+index d9fe27ae2..23c34b3bc 100755
+--- a/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.init
++++ b/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.init
+@@ -56,6 +56,7 @@ function load_kernel_modules()
+ 
+         modprobe linux-bcm-knet use_rx_skb=1 rx_buffer_size=9238 debug=0x5020 default_mtu=9100
+         modprobe linux-knet-cb
++        modprobe linux-bcm-genl
+         modprobe linux_ngbde
+     fi
+ }
+@@ -68,6 +69,7 @@ function remove_kernel_modules()
+         rmmod linux_ngbde
+         rmmod psample
+     else
++        rmmod linux-bcm-genl
+         rmmod psample
+         rmmod linux-knet-cb
+         rmmod linux-bcm-knet
+diff --git a/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.install b/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.install
+index 36e15a854..9f98f2e38 100644
+--- a/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.install
++++ b/platform/broadcom/saibcm-modules-legacy-th/debian/opennsl-modules.install
+@@ -2,6 +2,7 @@ systems/linux/user/x86-smp_generic_64-2_6/linux-bcm-knet.ko lib/modules/6.12.41+
+ systems/linux/user/x86-smp_generic_64-2_6/linux-kernel-bde.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
+ systems/linux/user/x86-smp_generic_64-2_6/linux-user-bde.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
+ systems/linux/user/x86-smp_generic_64-2_6/linux-knet-cb.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
++systems/linux/user/x86-smp_generic_64-2_6/linux-bcm-genl.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
+ systemd/opennsl-modules.service lib/systemd/system
+ sdklt/build/bde/linux_ngbde.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
+ sdklt/build/knet/linux_ngknet.ko lib/modules/6.12.41+deb13-sonic-amd64/extra
+-- 
+2.50.1 (Apple Git-155)
+
