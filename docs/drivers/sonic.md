@@ -4194,24 +4194,27 @@ older SAI, with no baseline.
   - its address is static, so it runs no DHCP client;
   - the relay and udhcpd listen on 67, and the guard matches only 67 -> 68.
 - **What follows for the driver.**
-  - **No ACL rule protects the switch's own address on this SAI**, a
+  - **No chip ACL rule protects the switch's own address on this SAI**, a
     UniFi IP Block included. A Block to the switch's address or MAC drops
     the routed or switched copy, but the ip2me copy still reaches the CPU.
-  - The management guards (`cutsManagementMAC` and its IP twin) still
-    stay. They matter on a SAI that drops to-CPU frames, and they cost
-    nothing here.
-  - **A MAC rule that kept frames from the CPU** would need SAI's `DENY`
-    (drop plus copy cancel). `DENY` is not in orchagent's ACL action
-    lookup, which has only FORWARD, DROP and COPY
-    (`aclPacketActionLookup`). STATE_DB's
-    `ACL_ACTION|PACKET_ACTION COPY,DROP,FORWARD` lists only those, so
-    whether `13.2.1.100` would take `DENY` on an ACL entry is not known.
-    The other route is a kernel `ebtables` INPUT drop by source MAC on
-    the rule's VLAN.
-  - **Not built.** UniFi's MAC rules are for traffic between devices on
-    one VLAN, which the chip drops. The UI refuses the management network
-    for a MAC rule. What a real UniFi switch does with a blocked MAC's
-    frames to itself is not captured.
+  - **The ECS's rules do protect its own address**, because that address
+    is a switched host behind an internal port, not a trap (§11.32.1). So
+    since 2026-11-15 the driver drops the CPU's copy in the kernel: its L3
+    tables (`DUI_DHCP_GUARD`, `DUI_IP_ACL`) are mirrored into iptables'
+    `raw` table for packets arriving on a front-panel interface (§11.32.3).
+  - The management guards (`cutsManagementMAC` and its IP twin) are what
+    keeps a Block from cutting the bridge off, now that the mirror makes
+    such a Block bite.
+  - **SAI `DENY`** (drop plus copy cancel) is the chip-side alternative.
+    `DENY` is not in orchagent's ACL action lookup, which has only FORWARD,
+    DROP and COPY (`aclPacketActionLookup`), and STATE_DB's
+    `ACL_ACTION|PACKET_ACTION COPY,DROP,FORWARD` lists only those. Whether
+    `13.2.1.100` would take `DENY` on an ACL entry is not known: an image
+    change was not needed (§11.32.2), so it was not probed.
+  - **MAC rules are not mirrored.** UniFi's MAC rules are for traffic
+    between devices on one VLAN, which the chip drops, and the UI refuses
+    the management network for a MAC rule, the only network the ECS and
+    the DX010 have an address on (§11.32.1).
 
 **Not verified live:**
 - **A switched frame dropped**, which needs two linked ports (above).
@@ -7934,6 +7937,156 @@ exact pre-test object (the UI's save in §11.23.3's Edge test had added
 fields and switched BPDU guard on), mstpd's error cleared by one link-up,
 the deployed deb (f3d3572) reinstalled from `/host/disunified`, leftover
 `bpdu_guard_held` fields deleted from STATE_DB, and the lock removed.
+
+### 11.32 ACL rules and the switch's own address: the ECS, and the DX010's kernel mirror (2026-11-15)
+
+§11.7.8 found that on the DX010's SAI no ACL drop keeps a frame addressed
+to the switch from its CPU. Whether that matters depends on what UniFi's
+own switch does, so the ECS Aggregation was read first (read-only, no
+test traffic at it), then the DX010 was made to match.
+
+#### 11.32.1 What the ECS does
+
+- **The UI** (Network 11.0.99, the ACL rule editor, read without saving)
+  describes both kinds as filters of traffic between devices: "IP ACLs
+  filter traffic between devices on different VLANs, not within VLANs",
+  and "MAC ACLs filter traffic between devices on the same VLAN, not
+  across VLANs". It says nothing either way about traffic to the switch
+  itself. Neither does DHCP guarding's text (§11.7.1). The site had no
+  ACL rule, so none could be read for its effect on a switch's own address.
+- **The tables and the traps are arranged as on the DX010.** Its two
+  tables (`global_ip_acl`, type L3, and `global_mac_acl`, type ANY) are
+  bound ingress to every front-panel port and PortChannel. A rule is a
+  plain `SAI_PACKET_ACTION_DROP` entry in ASIC_DB, not a deny that also
+  cancels a CPU copy, and the ECS has its CPU traps (`HOSTIF_TRAP`) as
+  every SONiC switch does. Nothing in its kernel mirrors the rules:
+  iptables INPUT is caclmgrd's stock set and ebtables INPUT is empty.
+- **But its own address is not behind a trap.** The ECS's management
+  address sits on `br0`, a kernel bridge whose one member is `eth1`, the
+  CPU's own 10G NIC (`ixgbe`). That NIC is cabled inside the box to a
+  switch port, `Ethernet56` (10G, one lane), an untagged member of the
+  management VLAN, and the management MAC is learned on it like any
+  host's (`FDB_TABLE|Vlan1:<mgmt mac>` -> `Ethernet56`, dynamic). The
+  ACL tables do not bind `Ethernet56`. SONiC's own `Vlan` interfaces carry
+  no address there (`routing_enabled=false`).
+- **So a frame to the ECS's address is switched, not trapped.** It enters
+  a front-panel port, which the tables bind, and is forwarded to
+  `Ethernet56`. An ingress DROP takes it like any switched frame, and no
+  copy goes to the CPU by another path. On the ECS a Block whose match
+  covers the switch's address keeps that traffic off the switch.
+  - A MAC rule cannot name the management network in the UI (§11.7.8),
+    and that is the only network the ECS has an address on, so for MAC
+    rules the question does not arise.
+  - The guard on the ECS is software (§11.7.3): replies are trapped to its
+    snooping daemon, which drops an untrusted one before anything reaches
+    the switch's own DHCP client on `br0`.
+  - With routing on, the ECS's `Vlan` interfaces would be router
+    interfaces behind the traps, as on the DX010. Whether its drop then
+    beats the trap is not known (routing is off on the site's ECS).
+- **One MAC rule the controller did not push as an ACL.** The ECS's
+  `global_mac_acl` held one rule, `MB_<mac>`: `DROP`, `PRIORITY 1023`, a
+  source MAC and no VLAN, so it covers the management VLAN too and keeps
+  that MAC off the ECS's own address. The site has no ACL rule, so it is
+  not from the Policy Table. The setparam reply carries a `blocked_sta`
+  field (empty in every reply the bridge has logged), which the bridge
+  ignores. That the rule is a client Block delivered through
+  `blocked_sta` is not captured; a follow-up in the register.
+
+#### 11.32.2 The decision
+
+The DX010 should match: a Block that covers the switch's own address keeps
+that traffic off the switch. On the DX010 the address is on `Vlan4094`, a
+router interface, so the traffic reaches the CPU through the ip2me and DHCP
+traps whatever the tables say (§11.7.8). Two ways to close it:
+
+| Way | What it takes | Verdict |
+|---|---|---|
+| SAI `DENY` (drop and cancel the CPU copy) on the driver's entries | an orchagent patch in the image kit (`aclPacketActionLookup` has FORWARD, DROP and COPY only), an image build and an install Clint must OK; whether libsaibcm `13.2.1.100` honours `DENY` against another group's `GpCopyToCpu` would need a probe through ASIC_DB | not built: an image change for what the installed image can do in the kernel; not probed |
+| A kernel drop of the CPU's copy, mirroring the tables | the driver alone, on the installed image | **built** |
+
+#### 11.32.3 As built: the kernel mirror (`acl_cpu.go`)
+
+- **What is mirrored.** The driver's two L3 tables, `DUI_DHCP_GUARD` and
+  `DUI_IP_ACL` (the controller's IP rules and Isolate Network's `ISO_k`),
+  rule for rule from their CONFIG_DB hashes, so the kernel drops exactly
+  what the chip's entries match. MAC rules are not mirrored (§11.32.1:
+  the UI cannot put one on the management network).
+- **Where.** iptables' `raw` table, `PREROUTING`, for packets arriving on a
+  front-panel interface: `-i Vlan+`, `-i Ethernet+`, `-i PortChannel+`.
+  eth0, lo and docker0 are left alone, as the chip's tables do not bind
+  them.
+  - **Not the filter table.** caclmgrd rewrites it on any `ACL_TABLE`
+    event, the driver's own `config acl add table` included: it flushes
+    every chain and deletes every chain it did not make. It never touches
+    IPv4's `raw` table (it flushes ip6tables' `raw` only), read in
+    202511's `caclmgrd`.
+  - `raw` runs before conntrack, so a drop leaves no state behind, as the
+    chip keeps none.
+- **Shape.** A dispatcher chain `DUI_ACL_CPU`, hooked once per interface
+  prefix, jumps to one chain per table, named after it. A table's chain
+  holds its rules in priority order: `FORWARD` becomes `RETURN` and `DROP`
+  becomes `DROP`. The tables are separate lookups in the chip, where a drop
+  in either wins (§11.7.7), and a RETURN goes on to the next table's chain,
+  so the kernel resolves them the same way.
+  - `VLAN_ID <v>` becomes `-i Vlan<v>`; `SRC_IP`/`DST_IP`, `IP_PROTOCOL`,
+    `L4_*_PORT` and `L4_*_PORT_RANGE` map to iptables' own matches.
+  - The guard's counted rules (`IN_PORTS`, §11.7.9) are left out: each is
+    its VLAN's DROP limited to one port, and the DROP below covers it.
+  - A rule with any other field or action leaves its table out of the
+    mirror, with a note: a FORWARD left out would let a lower DROP catch
+    what the chip forwards.
+- **Writing it.** One `sudo bash -s -- disunified-acl-cpu` script: the
+  chains through `iptables-restore -n` (each declared chain emptied and
+  filled in one transaction), the hooks added where missing
+  (`iptables -C || -A`), and the mirror's hash written to
+  `/run/disunified/acl-cpu`. Removal unhooks, flushes and deletes the
+  chains and the marker.
+- **Reconcile.** `collect.py` reads the marker (`acl_cpu`, no sudo
+  needed); every apply compares it with the hash of the tables as they
+  now are and writes the mirror again when they differ. A reboot clears
+  the rules and `/run` together, so the next reconcile restores them. The
+  apply runs after the chip writes, in `applyACL`, and is not counted as a
+  setting.
+- **The management guards matter now.** `cutsManagement` and its MAC twin
+  (§11.7.6, §11.7.8) were a second line on this SAI. With the mirror, a
+  Block covering the controller's replies to the switch would cut the
+  on-switch bridge off, and the hold is what prevents it.
+- **Tests** (`acl_cpu_test.go`, from the ECS's two captured pushes on the
+  DX010's ACL capture): the mirror's exact rules, counted rules left out,
+  idempotence through the marker, a lost marker (reboot) rewritten, a
+  deleted rule followed, removal, a capture without the section (nothing
+  written), the rule shapes and refusals. The FixtureRunner checks each
+  script's shape and that the marker is the restore input's hash.
+
+#### 11.32.4 Live on the DX010
+
+Run by hand on 2026-11-15 (21:32-21:33 UTC) under the switch lock, on
+`igmp-202511.20261115-6c8eb1cf7` with the deployed bridge running. No cage
+and no ACL table was touched: the mirror is kernel-only, so a LAN host's
+datagrams to the switch's own address are the test.
+- **The setup.** A 300 s timed removal was armed before the first rule. The
+  script was the one `cpuScript` generates, for a guard on VLAN 1 trusting
+  `192.0.2.1` (`V1_S1` FORWARD, `V1_DROP`) and one IP rule dropping UDP from
+  the test host to the switch's address, port 9999. A listener on the
+  switch held UDP 68, 9998 and 9999. The test host sent three datagrams
+  each from source port 67 and 66 to 68, and to 9999 and 9998.
+- **Before:** 12 of 12 reached the listener. `iptables -t raw -S` held
+  only the two default policies.
+- **Mirrored:** the restore and the three hooks went in as generated, and
+  the marker held the hash. 6 of 12 arrived: 66 -> 68 and the 9998s.
+  The guard's DROP counted 3 (67 -> 68, an untrusted source) and the IP
+  rule's DROP 3 (9999); neither reached a socket.
+- **Removed:** the script unhooked and deleted the chains and the marker.
+  12 of 12 arrived again, and `iptables -t raw -S` matched the baseline.
+- **Throughout**, the bridge on the switch kept informing (an inform reply
+  at 21:32:35, mid-test), and the SSH session the test ran over was
+  untouched.
+- **Not run live:** the mirror written by the deployed bridge from a
+  controller push (it runs from the same function, fixture-tested), and
+  caclmgrd's rewrite of the filter table leaving `raw` alone. The latter
+  is read from 202511's `caclmgrd`, whose rewrite lists and flushes only
+  filter chains and ip6tables' `raw`. Seeing it live needs an `ACL_TABLE`
+  event, which the test kept clear of.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
