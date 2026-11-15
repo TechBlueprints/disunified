@@ -62,7 +62,7 @@ type showIPACLSummary struct {
 // when there are any, reads their state and guard counters into ports. A
 // failed read is logged and leaves the counters unreported; it never fails
 // the collect.
-func (c *Collector) readACLs(ctx context.Context, rc showRunningConfig, ports []devicemodel.Port) {
+func (c *Collector) readACLs(ctx context.Context, rc showRunningConfig, sets ...[]devicemodel.Port) {
 	st := aclFromRunningConfig(rc)
 	c.mu.Lock()
 	c.acl = st
@@ -111,7 +111,9 @@ func (c *Collector) readACLs(ctx context.Context, rc showRunningConfig, ports []
 			drops[n] = d
 		}
 	}
-	applyGuardDrops(ports, st, drops)
+	for _, ports := range sets {
+		applyGuardDrops(ports, st, drops)
+	}
 }
 
 // aclStatus is every way the hardware disagrees with the configuration for

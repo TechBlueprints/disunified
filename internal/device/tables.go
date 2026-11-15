@@ -342,7 +342,7 @@ func portTable(desc inform.Descriptor, snap *devicemodel.Snapshot, provisioned j
 		e["mac_table"] = macEntries(p.MACs, false, snap.TakenAt) // [] when empty, as real switches send
 		// Counters and flags UniFi switches report per port.
 		e["mac_table_count"] = len(p.MACs)
-		e["link_down_count"] = p.Health.LinkChanges / 2 // EOS counts transitions; UniFi counts drops
+		e["link_down_count"] = p.Health.LinkChanges / 2 // transitions from a link that started down; UniFi counts drops
 		e["stp_state_change_count"] = []map[string]any{{"change_count": p.Health.STPChanges, "mst": 0}}
 		if p.STPRole != "" {
 			e["stp_role"] = p.STPRole

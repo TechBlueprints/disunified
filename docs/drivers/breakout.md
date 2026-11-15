@@ -2,7 +2,9 @@
 
 Status: **built 2026-11-14 with `sonic` as the parent; fixture- and
 replay-tested only, never adopted.** The first live adoption is the next
-step (§15). The Arista as a second parent is specified (§7b) and not built.
+step (§15). The Arista is the second parent since 2026-11-15 (§7b as
+built): fixture- and replay-tested on captures of its empty test cage
+split, its lane batches run on that cage by hand, never adopted.
 The design discussion and the capture that decided it are
 [`docs/breakout-lag.md`](../breakout-lag.md) (§6, the lane switch; §6.6-6.7,
 the controller placing a stub lane switch from our own bridged switch's
@@ -16,7 +18,9 @@ back to the note, the captures and the code.
 **Code.** `internal/devicemodel/lanes.go` (the contract, neutral),
 `internal/drivers/breakout` (the child), `internal/drivers/sonic/lanes.go`
 plus the lane scope in `control.go`, `model.go`, `collector.go` and
-`breakout.go` (the parent), `internal/config` (the entry's rules),
+`breakout.go` (the parent), `internal/drivers/arista-eos/lanes.go` plus
+the scoped `plan()` in `apply.go` (the second parent, §7b),
+`internal/config` (the entry's rules),
 `cmd/disunified/main.go` (the attachment and the registry).
 
 **Declared in the parent's file, attached by main.** A lane switch is a
@@ -567,9 +571,97 @@ Nothing UniFi-specific crosses it: lane indexes, `Port`s and
 
 ## 7b. Arista implementation notes (`internal/drivers/arista-eos`)
 
-*(Not built 2026-11-14: the 7160 is unplugged, and the sessions working on
-its ACL files the same day share `plan()` with this change. The notes stand
-as the spec for it; the contract and the child need nothing new.)*
+**As built (2026-11-15).** `lanes.go` and the scoped `plan()` in
+`apply.go`; tests on captures of the 7160's empty QSFP test cage split on
+4.26.14M (`docs/fixtures/arista-eos-4.26.14M/split-cage54*/`, below) and
+on the cage 50 split of the 2026-09-19 capture. Where it departs from the
+spec of 2026-11-02 (kept below, marked):
+
+- **Channel groups and sessions: `1000 + 10*cage + lag`**, not
+  `100*cage+lag`. EOS 4.26.14M takes `channel-group <1-2000>` (live
+  2026-11-15 in an aborted session: 2000 accepted, 2001 and 5402 "Invalid
+  input"), so the spec's numbers for the Arista's QSFP cages 49-54
+  (4901..5499) cannot be written. Cage C's lane groups are 1001+10C..
+  1009+10C (cage 54: 1541..1549), cage 1..99 (`AttachLaneSwitch` refuses
+  the rest), a lane switch's aggregate ids 1..9 (more is refused with a
+  note). A lane mirror is `monitor session <1000+10*cage+lane>` (the
+  destination lane; EOS names sessions, "1542" was accepted). The
+  device's own groups and sessions are numbered by a port index, under
+  1000, so either side tells the other's by the number: the fold never
+  reports a group of 1000 or more as its own aggregate (`LAGID` 0, the name
+  kept) and reads only sessions under 1000 as its own mirrors; the lanes
+  only sessions of 1000..1999.
+- **Lanes beside the fold, by running the same readings twice.** Every
+  per-interface parser takes an interface key (`ifKey`): the fold's is
+  `parseEthName` (a port per slot), the lanes' gives each lane of a split
+  cage a port of its own (`buildLanes`), renumbered 1..N in EOS lane order.
+  So a lane has everything the fold reads per interface -- state, speed,
+  counters, link drops and held STP changes, LLDP neighbour, LACP and its
+  channel group, VLANs, storm control and its drops, errdisable, FEC and
+  its codeword counters (the same `phy detail` replies, no extra command),
+  STP state and role, MACs, the guard's rogue-DHCP drops -- and nothing
+  is parsed twice in two ways. `Optic` nil (the module is the cage's).
+  `SpeedCaps` is the one speed the cage's lanes run (`AdminSpeed`, 25000
+  on the captures); media SFP28 below 50G, QSFP28 at 50G.
+- **The owned cage keeps its STP port settings**, as on sonic: BPDU guard
+  and the edge (`portfast` + `bpdufilter`) stay the cage's on every lane.
+  The spec had the cage plan skip them; but the lane switch claims none of
+  them (breakout §0), so the controller pushes it none, and skipping them on
+  the cage would leave nobody setting them. The lane plan writes neither.
+  The cage plan keeps the admin state (every lane) and the speed (split,
+  lane speed, join); description, VLANs, FEC, storm control, the device's
+  own LAG and mirror are skipped with a note (logged once), and
+  `PlanPorts` counts none of them. A disabled cage holds every lane down
+  (`LaneView.CageDisabled`; the lane plan never brings one up).
+- **The join** (a cage speed of 40G or more on an owned split cage) puts
+  `no monitor session` for each lane session the lanes report and `no
+  channel-group` on each lane in a lane group ahead of the speed, in the
+  same batch, and the cage's lanes are dropped from the view until the next
+  collect. The empty Port-Channel interface is left behind (the device's
+  own aggregate path does not delete one either).
+- **The lane plan** is `plan()` with `planScope{cage}` over the cage's
+  lanes: state, name, VLANs (a lane in an aggregate takes them from the
+  Port-Channel's, `Port-Channel<laneBase+lag>`, as the device's own),
+  `channel-group <laneBase+lag> mode active` / `no channel-group`, FEC,
+  storm control, a lane-to-lane mirror; no speed: a lane speed other than
+  the one the lanes run is refused with a note naming the device's port.
+  A lane in a channel group the scope does not own (another cage's range,
+  the device's own, one by hand) is left in it, aggregate and VLANs, with
+  a note; so is a cage in a lane group with no child attached (a lane
+  switch's group outlives its config entry). After a batch the lanes and
+  the Port-Channels written are marked, so a second apply before the next
+  collect writes nothing.
+- **One write at a time**: `lockApply` (a one-slot semaphore that gives up
+  with the caller's context) around `Collect`, `ApplyPorts`, `ApplyLanes`,
+  `EnsureVLANs`, `ApplyDevice`, `ApplyAddress`, `InstallSSHKeys`,
+  `CyclePort` and `ApplyFanMode`.
+- `LocalChassisID()` is `show lldp local-info`'s `chassisId`, now a start-up
+  command; `LaneAlias` is `""` (EOS has no faceplate alias). The `Mode` is
+  "<lanes>x<lane speed>G" ("4x25G").
+- The child's cable port (`breakout/snapshot.go`) now adds the lanes'
+  drops rather than their link transitions (each up lane's rise counted
+  once more for every lane, the same error as the Arista's own fold had,
+  `docs/drivers/arista-eos.md` §4).
+
+**Captures** (2026-11-15, the empty test cage of `local-information/site.md`,
+each split in a `commit timer` session that held the deployed bridge off
+and was aborted after; the switch left as found): `split-cage54/` (every
+start-up and poll command with the cage at 4x25G), `split-cage54-lag/`
+(lanes 3-4 in `Port-Channel1541`, session 1542 mirroring lane 1 onto lane
+2), `split-cage54-flexxg/` (the batch the Flex XG aggregate push produces,
+run on the switch: lanes 2-4 in 1541 with RS, the Port-Channel Allow All),
+`split-cage54-diverged/` (the first try, whose `interface Ethernet54/1-4`
+range stopped after lane 1 at the "transceiver not present" warning:
+lanes 2-4 at 10G, errdisabled). The join's commands were checked in a
+session on top of a split with a lane aggregate and a lane mirror (`no
+monitor session 1543`, `no channel-group`, `speed forced 100gfull`:
+accepted, aborted). **What the test cage could not show:** it has no
+module and no link, so no lane came up, no LACP partner, LLDP neighbour or
+MAC was seen on a lane, no FEC was negotiated, and no traffic crossed a
+lane mirror; whether the 7160 runs a lane mirror session beside the
+device's own (it claims one) is not known.
+
+*The spec of 2026-11-02, as written:*
 
 The 7160's capture (`docs/fixtures/arista-eos-4.26.14M/`) has cage 50 split
 to 4x25G (`Ethernet50/1..4`), so every lane test runs on real data.
@@ -580,59 +672,31 @@ to 4x25G (`Ethernet50/1..4`), so every lane test runs on real data.
   `Interfaces` = the one name) on the folded port's side and in the
   `Collector` with `last`. Everything the second wave attaches is per
   interface already and must land on the lanes as well as on the fold:
-  LLDP neighbours (`applyLLDP` maps a lane's neighbour onto the slot today;
-  the lane keeps its own), LACP (`parse_extra.go` marks the cage bundled
-  when a lane is; the lane keeps its own `LACP`), FEC and PCS counters
-  (`applyPHYDetail`, one text command per lane), counters, the MAC table
-  (`show mac-address-table` names lanes), errdisable, STP state. For a
-  child cage the fold carries no neighbour and no LAG/LACP of its own
-  (§5.4).
+  LLDP neighbours, LACP, FEC and PCS counters, counters, the MAC table,
+  errdisable, STP state. For a child cage the fold carries no neighbour
+  and no LAG/LACP of its own (§5.4).
 - **Lane speeds are a cage property on EOS**: a lane-speed change must
-  reach every lane or the others errdisable "speed-misconfigured"
-  (`CLAUDE.md` in the driver directory). So `Lanes()` reports each lane's
-  `SpeedCaps` as the one speed the lanes run, `ApplyLanes` refuses any
-  other speed with a note ("on EOS every lane of cage 50 runs one speed;
-  set it on the parent's port 50"), and the parent's cage speed stays the
-  only speed control (`speedCommands`: lane 1 for a join, every lane for a
-  lane speed, as today).
-- **The lane plan**: `plan(snap, desired)` keys `live` by port index and
-  walks `p.Interfaces`; the lane scope builds `live` from the cage's lanes
-  keyed by lane index, each with `Interfaces` = its one name, and runs the
-  same per-port routines (`shutdown`, `description`, `vlanCommands`,
-  `fecCommands`, `stormCommands`, `bpduGuardCommands`, `stpEdgeCommands`)
-  on the lane; no `speedCommands`. LAG: `channel-group <100*slot+lag> mode
-  active` on the lane and `no channel-group` to leave; the
-  `Port-Channel<100*slot+lag>` interface gets the members' VLAN intent
-  exactly as `lagVLAN`/`portChannelVLAN` do it for `Port-Channel<lag>`
-  (the map is keyed by name, so nothing changes but the number); whatever
-  LACP rate the Arista's existing LAG path sets, the lane path sets the
-  same. Mirror: `monitor session <100*slot+lane>` with the source lane(s)
-  and the destination lane, the existing command shapes. `write memory`
-  ends the batch as always; `EnsureVLANs` first. The in-memory mark that
-  `ApplyPorts` leaves on `c.last` after a batch (so a second apply before
-  the next collect re-issues nothing) applies to the lanes too.
-- **Reading a lane's LAG**: `parse_extra.go` turns `Port-Channel<n>` into
-  `LAGID`; the §5.2 rule applies (`100*slot < n < 100*slot+100` → the
-  child's id; any other channel group on a lane is reported by name with
-  `LAGID` 0 and left alone with a note). The parent's cage plan never
-  touches a channel group ≥ 100, refuses `lagCommands` on a child cage,
-  refuses a mirror whose source or destination is a child cage, and before
-  a join of a child cage (100G/40G on lane 1) issues `no channel-group` on
-  its lanes and removes its lane mirror sessions in the same batch.
-- **Child cages in the cage plan**: for a child cage `plan` keeps
-  `shutdown`/`no shutdown` (every lane) and `speedCommands`; `vlanCommands`,
-  description, FEC, storm, BPDU guard, STP edge, LAG and mirror are
-  skipped with the §5.4 note, in `PlanPorts` too.
-- **`LocalChassisID()`**: `show lldp local-info`'s `chassisId` (the
-  fixture `show-lldp-local-info.json`), read in `refreshStatic`.
-- **`LaneAlias`**: EOS has no faceplate alias apart from the name; return
-  `""` (the child names lanes `Ethernet50/1` and the cage `Ethernet50`).
-- **One apply at a time**: `applyMu` across `ApplyPorts`, `ApplyLanes`,
-  `EnsureVLANs`, the device-level applies, the address session and the
-  SSH-keys write, as for SONiC (§7).
-- Live: the 7160 has been unplugged since 2026-10-31 (noted by the
-  capture session of 2026-11-02), so the Arista half is fixture-tested
-  only until it is back; its live order is §11b.
+  reach every lane or the others errdisable "speed-misconfigured". So
+  `Lanes()` reports each lane's `SpeedCaps` as the one speed the lanes
+  run, `ApplyLanes` refuses any other speed with a note, and the parent's
+  cage speed stays the only speed control.
+- **The lane plan**: the same per-port routines on the lane; no
+  `speedCommands`. LAG: `channel-group <100*slot+lag> mode active` *(as
+  built: `1000+10*slot+lag`, above)*; the Port-Channel gets the members'
+  VLAN intent; mirror `monitor session <100*slot+lane>` *(as built:
+  `1000+10*slot+lane`)*. `write memory` ends the batch; `EnsureVLANs`
+  first.
+- **Reading a lane's LAG**: the §5.2 rule on the lane's channel group; any
+  other group is reported by name with `LAGID` 0 and left alone with a
+  note. The cage plan never touches a lane switch's group, refuses
+  `lagCommands` on a child cage, refuses a mirror whose source or
+  destination is a child cage, and before a join removes the lane groups
+  and sessions in the same batch.
+- **Child cages in the cage plan**: shutdown and speed only; VLANs,
+  description, FEC, storm, BPDU guard, STP edge, LAG and mirror skipped
+  *(as built: BPDU guard and STP edge kept, above)*.
+- `LocalChassisID()` from `show lldp local-info`; `LaneAlias` `""`;
+  `applyMu` across every write, as for SONiC.
 
 ## 8. Loop, main, config, presentation
 
@@ -709,7 +773,8 @@ Tests:
   scope on the fixture transport -- state, name, VLANs, FEC, storm, BPDU
   guard, STP edge, the refused lane speed, a lane-to-lane mirror, the
   aggregate of lanes 2-4 (`channel-group 5002 mode active` on each, the
-  `Port-Channel5002` VLAN intent, `write memory`), its dissolution,
+  `Port-Channel5002` VLAN intent, `write memory`; *as built 1541 on cage
+  54, §7b*), its dissolution,
   idempotence; the cage plan with a child attached (shutdown and speed
   only, the note, channel groups ≥ 100 untouched, the join issuing `no
   channel-group` first, `PlanPorts` counting none of the skipped
@@ -792,7 +857,20 @@ child declared in the container's `config.yaml` and the container
 redeployed (ships `HEAD`; bounces every bridged device for about a minute).
 Differences to record: the lane speed refused on the child and set on the
 parent instead; `show port-channel summary` and `show lacp neighbor` for
-`Port-Channel<100*slot+lag>`; the join issuing `no channel-group` first.
+`Port-Channel<1000+10*slot+lag>` (§7b as built; cage 54's first is 1541);
+the join issuing `no monitor session` and `no channel-group` first. The
+7160 has been plugged in again since 2026-11-12, and the lane batches have
+been run on its empty test cage by hand (§7b); what waits is the child
+entry, its adoption (Clint's) and a far end. The entry, in the container's
+`config.yaml`:
+
+```yaml
+  - name: leaf-1-cage54
+    driver: breakout
+    options:
+      parent: leaf-1       # the switch's own entry
+      cage: "54"
+```
 
 ## 12. Later
 
@@ -849,11 +927,14 @@ parent instead; `show port-channel summary` and `show lacp neighbor` for
    state after the push, not the bridge's cadence. Not chased further; the
    live run's step 4 watches for it (§15).
 3. **A parent that is a real driver**: built and tested for `sonic` against
-   the DX010's capture, never run live; the Arista not built (§7b). A
-   parent on an up cage with its own neighbour: on an owned cage the
+   the DX010's capture and for `arista-eos` against the 7160's (§7b, the
+   lane batches also run on its empty test cage by hand), neither adopted
+   live. A parent on an up cage with its own neighbour: on an owned cage the
    child's LLDP entry replaces the hosts' (they are the lanes', on the
    child), by design; `children:` keeps its old rule (a port's own
-   neighbour wins) for the experiment knob.
+   neighbour wins) for the experiment knob. On the Arista: no lane has had
+   a link (the test cage is empty), and whether the 7160 runs a lane mirror
+   beside the device's own session is not known.
 4. **STP on a lane aggregate -- closed 2026-11-15** (sonic.md §11.25.1).
    `l2SetPorts` named the PortChannel of a cage's *first* interface only,
    so a lane aggregate that leaves lane 1 out (the captured 2-4) ran at

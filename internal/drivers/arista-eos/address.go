@@ -65,6 +65,11 @@ const commitTimer = "00:02:00"
 // It is a diff against the running configuration, so re-sending what the
 // switch already has does nothing.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return false, fmt.Errorf("eos address: %w", err)
+	}
+	defer unlock()
 	if d.DHCP {
 		// A move to DHCP cannot be confirmed: the driver confirms an address
 		// change by dialling the new address, and a lease is not knowable in

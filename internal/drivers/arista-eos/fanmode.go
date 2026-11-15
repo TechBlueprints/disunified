@@ -68,6 +68,11 @@ func fanModeCommands(have, want devicemodel.FanMode) ([]string, error) {
 // when the switch is not in the mode (read from the last poll), nothing
 // when it is. The next poll reads the mode back.
 func (c *Collector) ApplyFanMode(ctx context.Context, mode devicemodel.FanMode) error {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return fmt.Errorf("eos fan mode: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()

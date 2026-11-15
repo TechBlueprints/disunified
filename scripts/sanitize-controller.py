@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Scrub controller-side captures for use as fixtures, in place.
 
-Handles two formats:
+Handles three formats:
   * a device inform (JSON object) — e.g. a real switch's `last.inform` from a
     UniFi OS support bundle (unifi/devices/<type>/<mac>/last.inform);
   * the bridge's reply log (NDJSON, one record per inform: status, payload,
-    effects) — inform-log/<mac>.ndjson.
+    effects) — inform-log/<mac>.ndjson;
+  * the controller's alert log (JSON, the v2 system-log/device-alert answer):
+    an alert's message is rebuilt from its message_raw and its scrubbed
+    parameters, so no device, person or WLAN name stays in the text (a
+    reduced capture without the parameter a message names has the names
+    mapped so far replaced in it); a parameter id that is a name is scrubbed
+    as that name, one that is a MAC as that MAC. Tested by
+    scripts/sanitize-controller_test.py.
 
 Keeps structure and types intact; rewrites everything that identifies a site,
 a device or a person: MAC addresses (consistent mapping into 02:00:00:xx:xx:xx;
@@ -28,6 +35,11 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            keeps a routing capture's subnets: every address in <real> becomes
            the same host of <test> (a reserved test range: 198.18.0.0/15),
            and addresses already in a test range stay
+       scripts/sanitize-controller.py [--ip <real>=<test>]... <file>...
+           maps one address as another capture's scrub did (a reply log
+           replayed against a driver capture: the switch's own address and
+           its gateway must be the capture's); addresses already in a test
+           range stay, and every other one is numbered past the seeded ones
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -83,6 +95,7 @@ def map_mac(m):
 # they are (a route to 198.51.100.0/24 stays one). Every other address is
 # numbered by first appearance, as without the option.
 subnets = []
+seeded = False   # --ip given: test ranges are kept, as with --subnet
 KEEP_NETS = [ipaddress.ip_network(n) for n in ('198.51.100.0/24', '203.0.113.0/24', '198.18.0.0/15')]
 
 def map_ip(s):
@@ -99,11 +112,16 @@ def map_ip(s):
     for real, test in subnets:
         if ip.version == 4 and ip in real:
             return str(test.network_address + (int(ip) - int(real.network_address)))
-    if subnets and any(ip in n for n in KEEP_NETS):
+    if (subnets or seeded) and any(ip in n for n in KEEP_NETS):
         return s
     if s not in ips:
-        n = len(ips) + 1
-        ips[s] = str(ipaddress.ip_address('192.0.2.0') + n) if n < 250 else str(ipaddress.ip_address('198.51.100.0') + n - 249)
+        used, n = set(ips.values()), len(ips)
+        while True:   # past any address --ip seeded
+            n += 1
+            cand = str(ipaddress.ip_address('192.0.2.0') + n) if n < 250 else str(ipaddress.ip_address('198.51.100.0') + n - 249)
+            if cand not in used:
+                break
+        ips[s] = cand
     return ips[s]
 
 def map_ip6(s):
@@ -172,6 +190,8 @@ def scrub_cfg_text(text):
             v = '<community>'
         elif re.match(r'users\.\d+\.name$', k) and v not in ('admin', 'nobody', 'root', 'ubnt'):
             v = map_host(v)
+        elif re.match(r'resolv\.host\.\d+\.name$', k) and v not in ('localhost',):
+            v = map_host(v)   # the device's UniFi name, spaces removed (CLAUDE.md §7)
         elif re.match(r'sshd\.auth\.key\.\d+\.name$', k):
             v = map_host(v)   # key comments carry the owner's machine name
         elif k in ('system.timezone', 'locale.timezone', 'unifi.version'):
@@ -194,8 +214,109 @@ def scrub_plain(s):
     s = HEX24_RE.sub(lambda m: map_id(m.group(0)), s)
     return s
 
+# An id that is a MAC (an alert's DEVICE.id, UPLINK.id) is mapped as a MAC,
+# so it stays one and matches the device's scrubbed mac elsewhere; a count or
+# an index (PORT.id "17", CHANNEL.id "6") and an enum (ACTION.id
+# VERIFY_LINK_SPEED_AND_CHECK_CABLE_DAMAGE) identify nothing and are kept.
+ID_KEEP_RE = re.compile(r'[0-9]+|[A-Z][A-Z0-9_]*')
+
+def scrub_id(o):
+    if not o:
+        return o
+    if MAC_RE.fullmatch(o):
+        return map_mac(o)
+    if ID_KEEP_RE.fullmatch(o):
+        return o
+    return map_id(o)
+
+# The controller's alert log (v2 system-log/device-alert): an alert's
+# `message` is its `message_raw` with each {PARAM} replaced by
+# parameters.PARAM.name, so the names a message carries are the parameters'.
+# A parameter's `id` is sometimes its name too (CONSOLE_NAME, USER), and
+# composite names repeat a device's: DEVICE_WITH_PORT is "<device> Port N",
+# CONSOLE_WITH_DEVICE_NAME "<console>'s <device>". Parameters whose names
+# identify nothing are listed here; every other one is a name and is mapped.
+ALERT_KEEP_PARAMS = {'ACTION', 'COUNT', 'DURATION', 'PORT', 'CHANNEL', 'PREVIOUS_CHANNEL', 'RADIO_BAND',
+                     'CHANNEL_WIDTH', 'AVG_INTERFERENCE', 'AVG_UTILIZATION', 'LEARN_MORE'}
+PLACEHOLDER_RE = re.compile(r'\{([A-Z0-9_]+)\}')
+persons, wlans = {}, {}
+
+def map_person(s):
+    if s and s not in persons:
+        persons[s] = f'person-{len(persons)+1}'
+    return persons.get(s, s)
+
+def map_wlan(s):
+    if s and s not in wlans:
+        wlans[s] = f'wlan-{len(wlans)+1}'
+    return wlans.get(s, s)
+
+def map_alert_name(param, s):
+    """A parameter's name, scrubbed as what it names."""
+    if not isinstance(s, str) or not s:
+        return s
+    if param == 'USER':
+        return map_person(s)
+    if param == 'WLAN':
+        return map_wlan(s)
+    m = re.fullmatch(r'(.+?)( Port \d+)', s)
+    if param == 'DEVICE_WITH_PORT' and m:
+        return map_host(m.group(1)) + m.group(2)
+    if param == 'CONSOLE_WITH_DEVICE_NAME' and "'s " in s:
+        console, _, dev = s.partition("'s ")
+        return map_host(console) + "'s " + map_host(dev)
+    return map_host(s)
+
+def render(raw, names):
+    return PLACEHOLDER_RE.sub(lambda m: names.get(m.group(1), m.group(0)), raw)
+
+def scrub_alert(o):
+    params = o['parameters']
+    real = {p: v.get('name') for p, v in params.items() if isinstance(v, dict) and isinstance(v.get('name'), str)}
+    out_params = {}
+    for p, v in params.items():
+        if not isinstance(v, dict):
+            out_params[p] = scrub(v, p)
+            continue
+        q = {}
+        for k, x in v.items():
+            if p in ALERT_KEEP_PARAMS and k in ('id', 'name'):
+                q[k] = scrub_plain(x) if isinstance(x, str) and not ID_KEEP_RE.fullmatch(x) else x
+            elif k == 'name':
+                q[k] = map_alert_name(p, x)
+            elif k == 'id' and isinstance(x, str) and x and x == v.get('name'):
+                q[k] = map_alert_name(p, x)   # the id is the name (CONSOLE_NAME, USER)
+            elif k == 'id' and isinstance(x, str):
+                q[k] = scrub_id(x) if (MAC_RE.fullmatch(x) or ID_KEEP_RE.fullmatch(x) or UUID_RE.fullmatch(x)
+                                       or HEX24_RE.fullmatch(x) or HEX32_RE.fullmatch(x)) else map_alert_name(p, x)
+            else:
+                q[k] = scrub(x, k)
+        out_params[p] = q
+    r = {}
+    for k, v in o.items():
+        if k == 'parameters':
+            r[k] = out_params
+        elif k == 'message' and isinstance(v, str):
+            raw = o.get('message_raw')
+            scrubbed = {p: q.get('name') for p, q in out_params.items() if isinstance(q, dict) and isinstance(q.get('name'), str)}
+            if isinstance(raw, str) and render(raw, real) == v and not PLACEHOLDER_RE.search(render(raw, scrubbed)):
+                r[k] = render(raw, scrubbed)
+            else:
+                # Not built from its parameters as expected: every name this
+                # file has mapped so far is replaced, longest first.
+                for name, ph in sorted(list(hosts.items()) + list(persons.items()) + list(wlans.items()), key=lambda kv: -len(kv[0])):
+                    v = v.replace(name, ph)
+                r[k] = scrub_plain(v)
+        elif k == 'id' and isinstance(v, str):
+            r[k] = scrub_id(v)
+        else:
+            r[k] = scrub(v, k)
+    return r
+
 def scrub(o, key=None):
     if isinstance(o, dict):
+        if isinstance(o.get('parameters'), dict) and 'message_raw' in o:
+            return scrub_alert(o)
         r = {k: scrub(v, k) for k, v in o.items()}
         # A device's serial is its MAC's 12 hex digits, upper case, on every
         # real UniFi device (and every bridged one: device.SerialFor), so a
@@ -216,7 +337,7 @@ def scrub(o, key=None):
             # length, as a serial's does (docs/wire-shapes.md §1)
             return map_id(o)[-len(o):]
         if key in ID_KEYS:
-            return map_id(o) if o else o
+            return scrub_id(o)
         if key in SERIAL_KEYS:
             return placeholder_serial(o)
         if key == 'chassis_id' and not MAC_RE.fullmatch(o):
@@ -233,8 +354,14 @@ def scrub(o, key=None):
     return o
 
 args = sys.argv[1:]
-while args and args[0] == '--subnet':
+while args and args[0] in ('--subnet', '--ip'):
     real, _, test = args[1].partition('=')
+    if args[0] == '--ip':
+        ipaddress.ip_address(real), ipaddress.ip_address(test)
+        ips[real] = test
+        seeded = True
+        args = args[2:]
+        continue
     real, test = ipaddress.ip_network(real), ipaddress.ip_network(test)
     if real.prefixlen != test.prefixlen:
         sys.exit(f'--subnet {args[1]}: the two prefix lengths differ')

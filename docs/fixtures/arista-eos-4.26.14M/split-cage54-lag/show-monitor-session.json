@@ -1,0 +1,40 @@
+{
+  "multiDestSessions": [],
+  "sessions": {
+    "1542": {
+      "greMetadata": [],
+      "greTimestampingSupported": false,
+      "greTunnels": {},
+      "headerRemovalSize": 0,
+      "hwProgrammingStatusSupported": false,
+      "mirrorDeviceName": "mirror0",
+      "mirrorRateLimit": 0,
+      "mirrorRateLimitChip": "per-ingress-chip",
+      "programmedInHw": false,
+      "sessionAcl": "",
+      "sourceAcls": {},
+      "sourceBothInterfaces": [
+        "Ethernet54/1"
+      ],
+      "sourceInactiveInterfaces": [],
+      "sourceInactiveVlans": [],
+      "sourceInterfaces": [
+        "Ethernet54/1"
+      ],
+      "sourceRxInterfaces": [],
+      "sourceRxVlans": [],
+      "sourceTxInterfaces": [],
+      "sourceUnknownInterfaces": [],
+      "sourceVlans": [],
+      "targetInterfaces": [
+        {
+          "name": "Ethernet54/2",
+          "operState": "active",
+          "operStateReason": ""
+        }
+      ],
+      "truncate": false,
+      "truncateStatus": ""
+    }
+  }
+}

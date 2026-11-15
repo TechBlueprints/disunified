@@ -1,0 +1,259 @@
+{
+  "lldpNeighbors": {
+    "Ethernet1": {
+      "lldpNeighborInfo": [
+        {
+          "chassisId": "02:00:00:00:00:47",
+          "chassisIdType": "macAddress",
+          "lastChangeTime": 1794496352.5775735,
+          "lastContactTime": 1794756985.7061214,
+          "managementAddresses": [
+            {
+              "address": "192.0.2.9",
+              "addressType": "ipv4",
+              "interfaceNum": 25,
+              "interfaceNumType": "ifIndex",
+              "oidString": ""
+            }
+          ],
+          "neighborDiscoveryTime": 1794496352.5775735,
+          "neighborInterfaceInfo": {
+            "autoNegAdvertisedCapabilities": [],
+            "interfaceDescription": "Port 16",
+            "interfaceId": "\"Port 16\"",
+            "interfaceIdType": "local",
+            "interfaceId_v2": "Port 16",
+            "portAndProtocolVlanEnabled": {},
+            "portAndProtocolVlanSupported": {},
+            "protocolIdentityInfo": [],
+            "unknownOrgDefinedTlvs": [],
+            "unknownTlvs": [],
+            "vlanNames": {}
+          },
+          "systemCapabilities": {
+            "bridge": true
+          },
+          "systemDescription": "scrubbed",
+          "systemName": "neighbor-3",
+          "ttl": 120
+        }
+      ]
+    },
+    "Ethernet10": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet11": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet12": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet13": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet14": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet15": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet16": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet17": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet18": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet19": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet20": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet21": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet22": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet23": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet24": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet25": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet26": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet27": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet28": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet29": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet30": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet31": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet32": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet33": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet34": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet35": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet36": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet37": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet38": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet39": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet40": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet41": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet42": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet43": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet44": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet45": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet46": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet47": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet48": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet49/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet5": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet50/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet51/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet52/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet53/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/1": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/2": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/3": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet54/4": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet6": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet7": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet8": {
+      "lldpNeighborInfo": []
+    },
+    "Ethernet9": {
+      "lldpNeighborInfo": []
+    },
+    "Management1": {
+      "lldpNeighborInfo": []
+    }
+  }
+}

@@ -18,7 +18,7 @@ import (
 // — `show poe`, `show environment temperature` and friends are not there.
 var (
 	// startupCmds run once: identity, and the media map.
-	startupCmds = []string{"show version", "show hostname", "show interfaces status", "show inventory", "show interfaces transceiver properties", "show interfaces hardware"}
+	startupCmds = []string{"show version", "show hostname", "show interfaces status", "show inventory", "show interfaces transceiver properties", "show interfaces hardware", "show lldp local-info"}
 	// pollCmds run every Collect.
 	pollCmds = []string{
 		"show version",
@@ -97,6 +97,22 @@ type Collector struct {
 	aclSettle time.Duration
 	dhcpGuard string
 	aclStatus string // the last ACL read-back problem logged (acl_counters.go)
+
+	stpHeld map[string]stpHold // per interface: holdSTPChanges
+
+	// Lane switches (lanes.go): the split cages' lanes as of the last
+	// collect (by cage, Index 1..N), the attached lane switches, the cages
+	// the controller has disabled, this switch's LLDP chassis id, and the
+	// plan notes already logged.
+	lanes     map[int][]devicemodel.Port
+	children  map[int]devicemodel.Attachment
+	cageDown  map[int]bool
+	chassisID string
+	noted     map[string]bool
+	// applySem serialises collects and writes (lockApply): a lane switch
+	// applies from its own loop, beside this device's.
+	applyOnce sync.Once
+	applySem  chan struct{}
 }
 
 // SetSSHKeyUser names the EOS user that receives controller SSH keys.
@@ -158,7 +174,14 @@ func (c *Collector) refreshStatic(ctx context.Context) error {
 	if err := decodeInto(out[5], startupCmds[5], &hw); err != nil {
 		return err
 	}
+	var li struct {
+		ChassisID string `json:"chassisId"`
+	}
+	if err := decodeInto(out[6], startupCmds[6], &li); err != nil {
+		return err
+	}
 	c.mu.Lock()
+	c.chassisID = strings.ToLower(li.ChassisID)
 	c.hostname = hn.Hostname
 	c.static = staticFromStatus(ss)
 	c.inventory = inv
@@ -170,6 +193,11 @@ func (c *Collector) refreshStatic(ctx context.Context) error {
 
 // Collect runs the poll commands and assembles a Snapshot.
 func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("eos collect: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	c.polls++
 	needRefresh := c.static == nil || c.polls%mediaRefreshEvery == 0
@@ -224,27 +252,49 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	for k, v := range static {
 		media[k] = v.media
 	}
-	ports, err := portsFromInterfaces(ifs, media)
+	stpTotals := c.holdSTPChanges(stpChangeCounts(ts), interfaceDrops(ifs, ver.BootupTimestamp))
+	// build runs every per-interface reading for one way of keying the
+	// interfaces: the fold (a port per front-panel slot, lanes folded) or
+	// the lanes of the split cages, each a port of its own (lanes.go). sys
+	// is filled by the fold only.
+	build := func(key ifKey, sessions func(int) bool, sys *devicemodel.System) ([]devicemodel.Port, []devicemodel.MACEntry, error) {
+		ports, err := portsFromInterfaces(ifs, media, ver.BootupTimestamp, key)
+		if err != nil {
+			return nil, nil, err
+		}
+		applyLLDP(ports, lldp, key)
+		applySTPStates(ports, stp, key)
+		applyExtras(ports, static, xcvr, inv, fec, fc, pc, stp, key)
+		applyVLANState(ports, sp, props, key)
+		applyHardwareCaps(ports, hw)
+		applyStormControl(ports, sc, key)
+		macs := macTable(mt, key)
+		for i := range ports {
+			for _, m := range macs {
+				if m.PortIndex == ports[i].Index {
+					ports[i].MACs = append(ports[i].MACs, m)
+				}
+			}
+		}
+		applyRunningConfig(ports, sys, rc, key, sessions)
+		applyErrdisabled(ports, ed, key)
+		applyOpticAlarms(ports, th, key)
+		applySTPChanges(ports, stpTotals, key)
+		applySTPRoles(ports, stp, key)
+		return ports, macs, nil
+	}
+	var sys devicemodel.System
+	ports, macs, err := build(parseEthName, ownSession, &sys)
 	if err != nil {
 		return nil, err
 	}
-	applyLLDP(ports, lldp)
-	applySTPStates(ports, stp)
-	applyExtras(ports, static, xcvr, inv, fec, fc, pc, stp)
-	applyVLANState(ports, sp, props)
+	lanes, err := c.buildLanes(ports, build)
+	if err != nil {
+		return nil, err
+	}
 	c.mu.Lock()
 	c.portChannels = portChannelVLANs(sp)
 	c.mu.Unlock()
-	applyHardwareCaps(ports, hw)
-	applyStormControl(ports, sc)
-	macs := macTable(mt)
-	for i := range ports {
-		for _, m := range macs {
-			if m.PortIndex == ports[i].Index {
-				ports[i].MACs = append(ports[i].MACs, m)
-			}
-		}
-	}
 	stpMode, stpPrio := stpSystem(stp)
 
 	snap := &devicemodel.Snapshot{
@@ -267,6 +317,15 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 		VLANs:    vlanIDs(vl),
 	}
 	snap.System.STPMode, snap.System.STPPriority = stpMode, stpPrio
+	// What the running config said about the switch (NTP, syslog, SNMP,
+	// DHCP snooping, STP priority and mode).
+	snap.System.DHCPSnooping, snap.System.SNMPCommunities, snap.System.NTPServers, snap.System.SyslogHosts = sys.DHCPSnooping, sys.SNMPCommunities, sys.NTPServers, sys.SyslogHosts
+	if sys.STPPriority != 0 {
+		snap.System.STPPriority = sys.STPPriority
+	}
+	if sys.STPMode != "" {
+		snap.System.STPMode = sys.STPMode
+	}
 	if m, ok := ifs.Interfaces["Management1"]; ok && m.PhysicalAddress != "" {
 		snap.System.MgmtMAC = strings.ToLower(m.PhysicalAddress) // the OOB port has its own MAC (system MAC - 1 on the 7160)
 	}
@@ -284,15 +343,13 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	snap.System.MACTableCapacity, snap.System.MACTableUsed = fdbCapacity(hwc)
 	snap.System.STPRoot = stpRoot(root)
 	snap.System.IGMPSnooping = igmpSnooping(igmp)
-	applyRunningConfig(ports, &snap.System, rc)
-	c.readACLs(ctx, rc, ports)
-	applyErrdisabled(ports, ed)
-	applyOpticAlarms(ports, th)
-	applySTPChanges(ports, ts)
-	applySTPRoles(ports, stp)
+	flat := flatLanes(lanes)
+	c.readACLs(ctx, rc, ports, flat)
 	if tr, ok := c.t.(TextRunner); ok {
-		c.applyPHYDetail(ctx, tr, ports)
+		c.applyPHYDetail(ctx, tr, ports, flat)
 	}
+	unflatLanes(lanes, flat)
+	c.finishLanes(snap)
 	if c.sshKeyUser != "" && c.installedKeys == nil {
 		c.mu.Lock()
 		c.installedKeys = sshKeysFromRunningConfig(rc, c.sshKeyUser)
@@ -314,9 +371,20 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 		}
 	}
 	c.mu.Lock()
-	c.last = snap
+	c.last, c.lanes = snap, lanes
 	c.mu.Unlock()
 	return snap, nil
+}
+
+// interfaceDrops is linkDrops for every Ethernet interface.
+func interfaceDrops(ifs showInterfaces, bootAt float64) map[string]uint64 {
+	out := map[string]uint64{}
+	for name, ifc := range ifs.Interfaces {
+		if _, _, ok := parseEthName(name); ok {
+			out[name] = linkDrops(ifc.Counters, ifUp(ifc), bootAt)
+		}
+	}
+	return out
 }
 
 // Close releases the transport.
@@ -327,20 +395,18 @@ func (c *Collector) Close() error { return c.t.Close() }
 // 4.26 only prints them (`show interfaces X phy detail`, text), so this is
 // one text command per up lane; a
 // failure is logged, not fatal, and a transport without text support skips it.
-func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []devicemodel.Port) {
+func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports, lanes []devicemodel.Port) {
 	var cmds []string
 	var owners []int // ports index per command
+	var names []string
 	for i, p := range ports {
 		if !p.Up {
 			continue
 		}
-		names := p.Interfaces
-		if len(names) == 0 {
-			names = []string{p.IfName}
-		}
-		for _, n := range names {
+		for _, n := range laneNames(p) {
 			cmds = append(cmds, "show interfaces "+n+" phy detail")
 			owners = append(owners, i)
+			names = append(names, n)
 		}
 	}
 	if len(cmds) == 0 {
@@ -351,10 +417,20 @@ func (c *Collector) applyPHYDetail(ctx context.Context, tr TextRunner, ports []d
 		c.Log.Printf("eos phy detail: %v", err)
 		return
 	}
+	laneOf := map[string]int{}
+	for i, l := range lanes {
+		laneOf[laneNames(l)[0]] = i
+	}
 	for j, text := range out[1:] {
 		d := parsePHYDetail(text)
-		h := &ports[owners[j]].Health
-		if d.HasFEC {
+		if !d.HasFEC {
+			continue
+		}
+		hs := []*devicemodel.PortHealth{&ports[owners[j]].Health}
+		if i, ok := laneOf[names[j]]; ok {
+			hs = append(hs, &lanes[i].Health)
+		}
+		for _, h := range hs {
 			h.HasFECCounters = true
 			h.FECCorrected += d.FECCorrected
 			h.FECUncorrected += d.FECUncorr

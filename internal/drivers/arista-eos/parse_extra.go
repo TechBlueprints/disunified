@@ -135,13 +135,13 @@ type showSTPTopologyStatus struct {
 
 // applyOpticAlarms flags ports whose optic reports a receive or transmit
 // parameter outside its own alarm thresholds (any lane, any channel).
-func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds) {
+func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, e := range th.Interfaces {
-		slot, _, ok := parseEthName(name)
+		slot, _, ok := key(name)
 		if !ok || byIndex[slot] == nil {
 			continue
 		}
@@ -172,13 +172,15 @@ func applyOpticAlarms(ports []devicemodel.Port, th showTransceiverThresholds) {
 	}
 }
 
-// applySTPChanges sums each port's topology-change count over its lanes,
-// from the Cist topology (falling back to whatever topology lists the port).
-func applySTPChanges(ports []devicemodel.Port, ts showSTPTopologyStatus) {
-	byIndex := map[int]*devicemodel.Port{}
-	for i := range ports {
-		byIndex[ports[i].Index] = &ports[i]
-	}
+// stpChangeCounts is each Ethernet interface's state-change count in the
+// Cist topology (falling back to whatever topology there is). EOS keeps the
+// count per link-up: an interface whose link is down is not listed at all
+// (live 2026-11-15: Ethernet2 and Ethernet54/1 absent), and a link that
+// comes up again starts from nothing (the 2026-09-19 capture: Ethernet49/1
+// at 18 link transitions, 9 rises, and 3 state changes; Ethernet1 at 3
+// after its one rise, live 2026-11-15). So the raw count falls to 0 with
+// every drop and must be held (Collector.holdSTPChanges).
+func stpChangeCounts(ts showSTPTopologyStatus) map[string]int {
 	topo, ok := ts.Topologies["Cist"]
 	if !ok {
 		for _, t := range ts.Topologies {
@@ -186,22 +188,90 @@ func applySTPChanges(ports []devicemodel.Port, ts showSTPTopologyStatus) {
 			break
 		}
 	}
+	out := map[string]int{}
 	for name, e := range topo.Interfaces {
-		if slot, _, ok := parseEthName(name); ok && byIndex[slot] != nil {
-			byIndex[slot].Health.STPChanges += e.NumChanges
+		if _, _, ok := parseEthName(name); ok {
+			out[name] = e.NumChanges
+		}
+	}
+	return out
+}
+
+// stpHold is one interface's STP change count as the bridge reports it:
+// raw is EOS's count at the last collect, drops the interface's link drops
+// then, total what has been reported (never less than before).
+type stpHold struct {
+	raw, total int
+	drops      uint64
+}
+
+// holdSTPChanges turns EOS's per-link-up counts into a count that never
+// falls while the bridge runs: each collect adds the growth of the current
+// link-up's count, or, when that link-up is a new one (the count fell, or
+// the interface's link dropped since), its whole count. An interface that
+// is down (not listed) keeps its total. drops is linkDrops per interface.
+// The controller's STP-flap alert is a rate between two informs (CLAUDE.md
+// §5): a count that fell to 0 while a port was down and came back whole
+// would look like every change of that link-up happening at once. A
+// bridge restart starts from EOS's counts again (one fall, which raises
+// nothing). Returns the totals by interface, every interface ever seen.
+func (c *Collector) holdSTPChanges(raw map[string]int, drops map[string]uint64) map[string]int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stpHeld == nil {
+		c.stpHeld = map[string]stpHold{}
+	}
+	names := map[string]bool{}
+	for n := range raw {
+		names[n] = true
+	}
+	for n := range c.stpHeld {
+		names[n] = true
+	}
+	out := make(map[string]int, len(names))
+	for n := range names {
+		r, d := raw[n], drops[n]
+		h, seen := c.stpHeld[n]
+		switch {
+		case !seen:
+			h.total = r
+		case r < h.raw || d > h.drops:
+			h.total += r // a new link-up: its count started from 0
+		default:
+			h.total += r - h.raw
+		}
+		h.raw, h.drops = r, d
+		c.stpHeld[n] = h
+		out[n] = h.total
+	}
+	return out
+}
+
+// applySTPChanges sums each port's held STP change count over its lanes
+// (holdSTPChanges); an interface the switch no longer has (a lane of a
+// cage since joined) still counts towards its cage, so a join does not
+// lower the cage's count either.
+func applySTPChanges(ports []devicemodel.Port, totals map[string]int, key ifKey) {
+	byIndex := map[int]*devicemodel.Port{}
+	for i := range ports {
+		byIndex[ports[i].Index] = &ports[i]
+	}
+	for name, n := range totals {
+		if slot, _, ok := key(name); ok && byIndex[slot] != nil {
+			byIndex[slot].Health.STPChanges += n
 		}
 	}
 }
 
 // applySTPRoles sets each port's STP role.
-func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull) {
+func applySTPRoles(ports []devicemodel.Port, st showSpanningTreeFull, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for _, inst := range st.Instances {
 		for name, e := range inst.Interfaces {
-			slot, _, ok := parseEthName(name)
+			slot, _, ok := key(name)
 			if !ok || byIndex[slot] == nil {
 				continue
 			}
@@ -301,20 +371,20 @@ func fecFor(status string) devicemodel.FEC {
 // taken from lane 1 or, for FEC/flow control, from any lane that reports it).
 func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	xcvr showInterfacesTransceiver, inv showInventory, fec showInterfacesErrorCorrection,
-	fc showInterfaceFlowControl, pc showPortChannelSummary, stp showSpanningTreeFull) {
+	fc showInterfaceFlowControl, pc showPortChannelSummary, stp showSpanningTreeFull, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, st := range static {
-		if slot, lane, ok := parseEthName(name); ok && lane <= 1 {
+		if slot, lane, ok := key(name); ok && lane <= 1 {
 			if p := byIndex[slot]; p != nil {
 				p.AutoNeg = st.autoNeg
 			}
 		}
 	}
 	for name, x := range xcvr.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok || lane > 1 {
 			continue
 		}
@@ -336,14 +406,14 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 		p.Optic = o
 	}
 	for name, st := range fec.Statuses {
-		if slot, _, ok := parseEthName(name); ok {
+		if slot, _, ok := key(name); ok {
 			if p := byIndex[slot]; p != nil && (p.FEC == devicemodel.FECUnknown || p.FEC == devicemodel.FECDisabled) {
 				p.FEC = fecFor(st.Status)
 			}
 		}
 	}
 	for name, st := range fc.Interfaces {
-		if slot, _, ok := parseEthName(name); ok {
+		if slot, _, ok := key(name); ok {
 			if p := byIndex[slot]; p != nil {
 				p.FlowCtrlRx = p.FlowCtrlRx || st.RxOper == "on"
 				p.FlowCtrlTx = p.FlowCtrlTx || st.TxOper == "on"
@@ -354,7 +424,7 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 		id, _ := strconv.Atoi(strings.TrimPrefix(lag, "Port-Channel"))
 		for _, members := range []map[string]any{ch.Ports, ch.ActivePorts, ch.InactivePorts} {
 			for name, v := range members {
-				if slot, _, ok := parseEthName(name); ok {
+				if slot, _, ok := key(name); ok {
 					if p := byIndex[slot]; p != nil {
 						p.LAG = lag
 						p.LAGID = id
@@ -376,7 +446,7 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 	}
 	for _, inst := range stp.Instances {
 		for name, e := range inst.Interfaces {
-			if slot, _, ok := parseEthName(name); ok {
+			if slot, _, ok := key(name); ok {
 				if p := byIndex[slot]; p != nil && p.STPPathCost == 0 {
 					p.STPPathCost = e.Cost
 				}
@@ -395,14 +465,14 @@ func isCopperMedia(m devicemodel.Media) bool {
 
 // macTable converts the unicast table. Entries on non-front-panel ports
 // (Cpu, Port-Channel, Vlan) keep PortIndex 0.
-func macTable(mt showMACAddressTable) []devicemodel.MACEntry {
+func macTable(mt showMACAddressTable, key ifKey) []devicemodel.MACEntry {
 	out := make([]devicemodel.MACEntry, 0, len(mt.UnicastTable.Entries))
 	for _, e := range mt.UnicastTable.Entries {
 		if e.EntryType == "static" && e.Interface == "Cpu" {
 			continue // the switch's own address
 		}
 		m := devicemodel.MACEntry{MAC: strings.ToLower(e.MACAddress), VLAN: e.VLANID}
-		if slot, _, ok := parseEthName(e.Interface); ok {
+		if slot, _, ok := key(e.Interface); ok {
 			m.PortIndex = slot
 		}
 		// lastMove is when EOS learned the address on this interface (or

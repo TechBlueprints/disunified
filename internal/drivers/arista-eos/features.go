@@ -67,7 +67,10 @@ var (
 	mirrorDstRe = regexp.MustCompile(`^monitor session (\d+) destination (Ethernet[\d/]+)`)
 )
 
-func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc showRunningConfig) {
+// sessions picks the monitor sessions that belong to this set of ports:
+// the device's own (named by a port index) for the fold, a lane switch's
+// (laneSession) for the lanes.
+func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc showRunningConfig, key ifKey, sessions func(int) bool) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
@@ -82,7 +85,7 @@ func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc sh
 	}()
 	for section, body := range rc.Cmds {
 		if strings.HasPrefix(section, "interface Ethernet") {
-			slot, lane, ok := parseEthName(strings.TrimPrefix(section, "interface "))
+			slot, lane, ok := key(strings.TrimPrefix(section, "interface "))
 			if !ok || lane > 1 || body == nil {
 				continue
 			}
@@ -133,12 +136,18 @@ func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc sh
 		// monitor session <n> source EthernetX [both] / destination EthernetY
 		if m := mirrorSrcRe.FindStringSubmatch(section); m != nil {
 			n, _ := strconv.Atoi(m[1])
-			slot, _, _ := parseEthName(m[2])
+			if !sessions(n) {
+				continue
+			}
+			slot, _, _ := key(m[2])
 			mirrorSessions[n] = mirrorSession{src: slot, dst: mirrorSessions[n].dst}
 		}
 		if m := mirrorDstRe.FindStringSubmatch(section); m != nil {
 			n, _ := strconv.Atoi(m[1])
-			slot, _, _ := parseEthName(m[2])
+			if !sessions(n) {
+				continue
+			}
+			slot, _, _ := key(m[2])
 			mirrorSessions[n] = mirrorSession{src: mirrorSessions[n].src, dst: slot}
 		}
 		if m := modeRe.FindStringSubmatch(section); m != nil && m[1] == "none" {
@@ -147,13 +156,13 @@ func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc sh
 	}
 }
 
-func applyStormControl(ports []devicemodel.Port, sc showStormControl) {
+func applyStormControl(ports []devicemodel.Port, sc showStormControl, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, e := range sc.Interfaces {
-		slot, _, ok := parseEthName(name)
+		slot, _, ok := key(name)
 		if !ok {
 			continue
 		}
@@ -284,6 +293,11 @@ func bpduGuardCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
 // ApplyDevice implements devicemodel.DeviceController: STP mode/priority and
 // per-VLAN IGMP snooping, diffed against the last snapshot.
 func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("eos apply switch: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
@@ -451,6 +465,11 @@ func listDiff(prefix string, have, want []string) []string {
 // CyclePort implements devicemodel.PortCycler: shutdown every lane, wait,
 // no shutdown. The controller's "port-cycle" command.
 func (c *Collector) CyclePort(ctx context.Context, idx int) error {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return fmt.Errorf("eos port-cycle: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	snap := c.last
 	c.mu.Unlock()
@@ -500,6 +519,11 @@ func (c *Collector) Reboot(ctx context.Context) error {
 // keeps one primary and one secondary key per user, so the first two
 // enabled controller keys are installed and the rest reported as skipped.
 func (c *Collector) InstallSSHKeys(ctx context.Context, keys []devicemodel.SSHKey) (int, error) {
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("eos ssh keys: %w", err)
+	}
+	defer unlock()
 	user := c.sshKeyUser
 	if user == "" {
 		return 0, fmt.Errorf("eos ssh keys: no target user configured")
@@ -604,13 +628,13 @@ type showErrdisabled struct {
 	} `json:"interfaceStatuses"`
 }
 
-func applyErrdisabled(ports []devicemodel.Port, ed showErrdisabled) {
+func applyErrdisabled(ports []devicemodel.Port, ed showErrdisabled, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for name, e := range ed.InterfaceStatuses {
-		slot, _, ok := parseEthName(name)
+		slot, _, ok := key(name)
 		if !ok {
 			continue
 		}
@@ -633,19 +657,23 @@ func applyErrdisabled(ports []devicemodel.Port, ed showErrdisabled) {
 
 // lagCommands: join or leave a channel group. Every lane of a cage joins
 // the same group (LACP active). The Port-Channel interface gets the VLAN
-// config in vlanTarget.
-func lagCommands(p devicemodel.Port, d devicemodel.PortDesired) []string {
+// config in vlanTarget. lag is the scope's aggregate id (0 = none), base
+// the scope's first channel group (0 for the device's own ports, a lane
+// switch's laneBase), so the group is Port-Channel<base+lag>.
+func lagCommands(p devicemodel.Port, lag, base int) []string {
 	switch {
-	case d.LAG > 0 && p.LAGID != d.LAG:
-		return []string{"channel-group " + strconv.Itoa(d.LAG) + " mode active"}
-	case d.LAG == 0 && p.LAGID > 0:
+	case lag > 0 && p.LAGID != lag:
+		return []string{"channel-group " + strconv.Itoa(base+lag) + " mode active"}
+	case lag == 0 && p.LAGID > 0:
 		return []string{"no channel-group"}
 	}
 	return nil
 }
 
-// mirrorCommands are switch-level: session number = destination port index.
-func mirrorCommands(ports []devicemodel.Port, desired []devicemodel.PortDesired) []string {
+// mirrorCommands are switch-level: session number = base + destination
+// port index (the lane in a lane scope). A cage with a lane switch (child)
+// is neither source nor destination of the device's own sessions.
+func mirrorCommands(ports []devicemodel.Port, desired []devicemodel.PortDesired, base int, child map[int]bool, note func(string, ...any)) []string {
 	byIndex := map[int]devicemodel.Port{}
 	for _, p := range ports {
 		byIndex[p.Index] = p
@@ -656,13 +684,19 @@ func mirrorCommands(ports []devicemodel.Port, desired []devicemodel.PortDesired)
 		if !ok {
 			continue
 		}
+		if d.MirrorSource > 0 && (child[d.Index] || child[d.MirrorSource]) {
+			if p.MirrorFrom != d.MirrorSource {
+				note("port %d: a mirror from port %d involves a lane switch's cage; its lanes mirror on the lane switch; not written", d.Index, d.MirrorSource)
+			}
+			continue
+		}
+		n := strconv.Itoa(base + d.Index)
 		switch {
 		case d.MirrorSource > 0 && p.MirrorFrom != d.MirrorSource:
 			src, ok := byIndex[d.MirrorSource]
 			if !ok {
 				continue
 			}
-			n := strconv.Itoa(d.Index)
 			if p.MirrorFrom > 0 {
 				cmds = append(cmds, "no monitor session "+n) // EOS refuses to remove a session that does not exist
 			}
@@ -671,7 +705,7 @@ func mirrorCommands(ports []devicemodel.Port, desired []devicemodel.PortDesired)
 			}
 			cmds = append(cmds, "monitor session "+n+" destination "+laneNames(p)[0])
 		case d.MirrorSource == 0 && p.MirrorFrom > 0:
-			cmds = append(cmds, "no monitor session "+strconv.Itoa(d.Index))
+			cmds = append(cmds, "no monitor session "+n)
 		}
 	}
 	return cmds
