@@ -300,9 +300,11 @@ the CPLD watchdog, the trace that found it) is §8.14.
   `1387c2e9…`): Ethernet0 the router port, the gateway the
   querier, the switch's group queries from the VLAN's address, no l2mcd
   lines to the log host at the default level.
-- Upstream: #27355 and #26983 are carried unchanged and have now run on a
-  DX010; confirmations there are due. The mirror finding is on #28139,
-  where the egress result (both directions bind) still needs adding.
+- Upstream: #27355 and #26983 are carried unchanged and have run on a
+  DX010; the confirmations were posted on both (2026-11-05). The mirror
+  finding is on #28139 (comments of 2026-11-02 and 2026-11-03). Nothing is
+  due there: all three are watched for a merge or a fix
+  ([`prior-art.md`](../prior-art.md) §6).
 
 ## 4. What is not a patch
 
