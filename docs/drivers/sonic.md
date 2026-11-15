@@ -8031,7 +8031,9 @@ that sends nothing that long becomes unauthorised, as §11.26.8 does.
 word: a Multiple Credentials port is taken to report `auto`, as a
 Credentials one does. The device layer reports these since
 (`dot1xReport`, `TestDot1XReport`), a controlled port `authorized` while
-l2d has admitted a host.
+l2d has admitted a host. The controller stores each as the DX010 sends it
+(§11.26.11); that it accepts them says nothing of what a UniFi switch
+sends.
 
 What would settle it: an inform from a real UniFi switch with each method
 on a port, and one port exercised per method. Credentials ran on the
@@ -8135,6 +8137,54 @@ failures counted in run1, each anomaly 128 on a deployed bridge), and a
 restart forgets the quiet periods, so each restart asks again. l2mcd also
 listed the looped port as a dynamic member of the LAN's groups while it was
 up (gone with the link). A cabled port hears only its host.
+
+#### 11.26.11 The controller's reading of each method, live (2026-11-15)
+
+Deployed build fef74fe, under the test lock, 21:52-22:14 UTC, on Clint's
+word to test on disunified rather than a UniFi switch: the DX010's record
+with Global Switch Settings unticked and 802.1X Control on (UniFi
+Integrated, no Unauthorized VLAN), empty cage 31 (Ethernet120, no link)
+set to each method in turn through its override's `dot1x_ctrl`. For each,
+the bridge's `payload-last.json`, then the controller's `stat/device`
+record after the next inform:
+
+| `dot1x_ctrl` | sent and stored (`dot1x_mode`/`dot1x_status`) | port panel |
+|---|---|---|
+| `force_authorized` | `force_auth`/`authorized` | Active |
+| `force_unauthorized` | `force_unauth`/`unauthorized` | **Disabled** |
+| `auto` | `auto`/`unauthorized` | **Disabled** |
+| `multi_host` | `auto`/`unauthorized` | **Disabled** |
+| `mac_based` | `mac_based`/`unauthorized` | **Disabled**; Active with 5700e19 |
+
+The other ports reported `force_auth`/`authorized` while 802.1X was on (the
+push sends `force_authorized` for every port without a method), and cage
+31 `unknown`/`disabled` once it was off.
+
+**A closed port read back as a MAC filter (fixed in 5700e19).** In every
+row the controller showed as Disabled, the bridge also sent
+`port_security_enabled: true`: 802.1X closes a port with the MAC filter's
+learn mode (`drop`, §11.26.3), and the read-back took every `drop` for a
+MAC filter (`readBackPortFeat`). The port panel then showed Port State
+Disabled with its network fields greyed, the Port Manager counted the cage
+under Disabled, and a save of that panel would most likely have pushed the
+port disabled (not tried). The controller's own rule shows when a MAC
+filter is saved with an empty list. A PUT of `port_security_enabled: true`
+with `port_security_mac_address: []` on cage 31's override came back
+rewritten as `forward: disabled`, with `native_networkconf_id` emptied
+(put back straight away). A port 802.1X holds closed now reads back as a
+MAC filter only by static entries that are not l2d's admitted hosts
+(`TestDot1XApply`, `TestDot1XKeepsAdmittedHosts`, `TestDot1XWithAMACFilter`;
+the first two fail on the old read-back). Test build 5700e19 on the DX010,
+cage 31 on `mac_based`: `mac_based`/`unauthorized` with
+`port_security_enabled: false`, Port State Active. So the Disabled came
+from the MAC filter report, not from `unauthorized`.
+
+Put back: cage 31's override as found, 802.1X Control off, then Global
+Switch Settings on (two saves: ticking Global Switch Settings hides the box
+and does not save its untick), the carried fef74fe reinstalled, l2.json's
+`dot1x` section gone, Ethernet120's learning `hardware` again, l2d's
+leftover STATE_DB `DUI_DOT1X_TABLE|Ethernet120` row (counts only) removed.
+No UniFi switch was touched.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
