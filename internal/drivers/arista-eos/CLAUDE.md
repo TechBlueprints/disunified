@@ -129,6 +129,16 @@ that cost time on Clint's DCS-7160-48TC6-F.
   switch applies from its own loop). An `interface A-B` range stops at the
   first warning (an empty cage's "transceiver not present"): write one
   `interface` per lane.
+- **EOS keeps an emptied Port-Channel** (2026-11-15, `docs/drivers/arista-eos.md`
+  §4, Aggregates): `no channel-group` on the last member leaves `interface
+  Port-Channel<n>` with its settings. `no interface Port-Channel<n>` removes
+  it and its ACL binding, takes any members out too, and is silent for one
+  that does not exist; any `interface Port-Channel<n>` line (an ACL unbind)
+  re-creates it empty. The plan removes an empty one in its own range
+  (1..last port; a cage's nine for a lane switch) that carries only the
+  driver's lines (`portchannel.go`); a hand-made one stays. The test
+  fixtures' switch had four (Po1-4): `removeLeftovers` in the test helpers
+  takes them out first.
 - **An optic's own RX_LOS / TX_FAULT are only in `show interfaces X phy
   detail`** (text; its `| json` wraps the text): the `... since system
   boot` rows' Current State. Per interface, not per channel; no

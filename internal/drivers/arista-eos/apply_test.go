@@ -14,7 +14,28 @@ func startedCollector(t *testing.T) (*Collector, *fixtureTransport) {
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	removeLeftovers(t, c)
 	return c, ft
+}
+
+// fixtureLeftovers is what the captures' switch carries from before the
+// fix: Port-Channel1..4, every one without a member (portchannel.go).
+const fixtureLeftovers = "enable | configure | no interface Port-Channel1 | no interface Port-Channel2 | no interface Port-Channel3 | no interface Port-Channel4 | end | write memory"
+
+// removeLeftovers is the first apply against a capture of the switch with
+// its leftover empty Port-Channels: an empty push removes exactly those,
+// and the tests that follow start from the switch without them. It returns
+// The fixture transports serve the same capture again at the next
+// collect, so a test that collects again calls it again.
+func removeLeftovers(t *testing.T, c *Collector) {
+	t.Helper()
+	pr := c.plan(c.last, nil, planScope{})
+	if got := "enable | configure | " + strings.Join(pr.cmds, " | ") + " | end | write memory"; got != fixtureLeftovers {
+		t.Fatalf("leftover removal\n%s\nwant\n%s", got, fixtureLeftovers)
+	}
+	c.mu.Lock()
+	c.forgetPortChannels(pr.removed)
+	c.mu.Unlock()
 }
 
 func TestApplyDisablesOnePort(t *testing.T) {
