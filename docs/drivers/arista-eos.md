@@ -177,11 +177,15 @@ per bit; it derives its own link-flap and SFP alerts from the raw fields).
   as a Counter64 per interface and traffic class ("packets dropped ... as a
   result of this entry's storm control threshold level"), i.e. cumulative.
   4.26.14M has no `clear storm-control` (the CLI answers `% Unrecognized
-  command`); whether `clear counters` or a link flap resets the count is
-  not known -- a count that goes down sets nothing. **Never seen above 0:**
-  the two test ports have no link, so no storm has been dropped on this
-  switch; the read path ran live from a `-collect-once` with the three
-  levels on cage 54 (2026-11-14).
+  command`), and neither `clear counters Ethernet1` nor `clear counters`
+  resets the count (it read 2748 after both, 2026-11-14); removing the
+  interface's storm control removes its entry. Whether a link flap resets
+  it is not known -- a count that goes down sets nothing. The count shows
+  up a few seconds after the frames: a read right after a 3-second burst
+  said 0. **Seen above 0 on 2026-11-14** (§9.8): an unknown-unicast storm
+  caught on the uplink (`storm-control-drops/`, `drop` 2230), and the
+  deployed bridge's next inform raised the controller's "Unicast Storm
+  Detected" alert for that port.
 - `show interfaces transceiver dom thresholds` → per-parameter `channels` +
   `threshold{lowAlarm,highAlarm}` for optics with DOM (none for DACs/empty cages).
 - FEC codeword counters exist **only in text**: `show interfaces EthernetX phy detail`
@@ -265,12 +269,13 @@ nothing.
 After a successful move the bridge keeps working at the new address until it
 restarts; the operator then updates `url:` in the config file.
 
-## 8. Fan Mode (built 2026-11-07; syntax and baseline checked live 2026-11-14)
+## 8. Fan Mode (built 2026-11-07; verified live 2026-11-14)
 
 UniFi's Fan Mode (Default / Quiet) mapped onto EOS 4.26. The switch was
-off the network when it was built. On 2026-11-14 the first return-day
-steps ran on it (the syntax and the auto baseline, below); Quiet itself
-has not been applied yet.
+off the network when it was built. On 2026-11-14 every return-day step
+below ran on it: Quiet applied through the deployed bridge, seven hours
+of temperatures under it, a Default round trip and back, and the UI
+checked. The switch runs Quiet.
 
 **Where the mode comes from.** Not from the controller: Network 10.6.109
 keeps `sys_fan_mode` only for a gateway (UDM, UXG), never for a switch, so
@@ -343,7 +348,7 @@ documents no stepping on top of an override):
 | UniFi | EOS | Read back from `show system environment cooling` |
 |---|---|---|
 | Default | `no environment fan-speed` (auto) | `overrideFanSpeed` 0 (captured) |
-| Quiet | `environment fan-speed override 30` | `overrideFanSpeed` 30 (not captured) |
+| Quiet | `environment fan-speed override 30` | `overrideFanSpeed` 30, `coolingMode` `manual` (captured 2026-11-14) |
 
 Both modes are offered (`System.FanModes`). The write is a diff against
 the poll: nothing when the switch is already in the configured mode, and an
@@ -351,13 +356,17 @@ override set by hand at any other speed reads as neither mode and is put
 back to the configured one on the next collect. One batch: `enable`,
 `configure`, the command, `end`, `write memory` (`fanmode.go`; tests in
 `fanmode_test.go` and `internal/informloop/fanmode_arista_test.go`).
-`coolingMode` is not read: its value under an override is not captured.
+`coolingMode` is not read (`manual` under the override, `automatic`
+without, both captured). **The trays do not run at 30 % under `override
+30`**: `show system environment cooling` reports them at a Config Speed of
+39 % and an actual 38-39 % (against 43-44 % under auto), the PSU fans at 30
+% configured, 33 % actual; the line above the table says "Fan speed override
+mode enabled at 30%". How EOS maps the override's percentage onto the
+trays is not documented; the reading did not move over seven hours.
 
-**When the switch is back** (in this order; record each output, scrub it
-with `scripts/sanitize-arista-eos.py`, commit it under
-`docs/fixtures/arista-eos-4.26.14M/`). Steps 0-2 ran on 2026-11-14; 3-7
-need the deployed bridge's config and a restart, which belong to the
-session that runs the deployment:
+**The return-day steps** (in this order; each output recorded, scrubbed
+with `scripts/sanitize-arista-eos.py` and committed under
+`docs/fixtures/arista-eos-4.26.14M/`). All ran on 2026-11-14:
 
 0. **Done 2026-11-14.** The deployed bridge carries this code: its last
    payload for the Arista (`payload-last.json` on the state volume) reports
@@ -376,7 +385,12 @@ session that runs the deployment:
    `show configuration sessions` was empty and no `fan-speed` line was in
    the running config afterwards (`environment-fan-speed-help.txt`). The
    range starts at 30, so `quietFanPct` stays 30.
-3. Quiet: `fan_mode: quiet` on the Arista in `config.yaml`, bridge
+3. **Done 2026-11-14 10:55 MST** (the deployment's `fan_mode: quiet`,
+   bridge restarted): EOS has `environment fan-speed override 30` in the
+   running and startup configuration, `show system environment cooling`
+   reads `coolingMode` `manual`, `overrideFanSpeed` 30
+   (`show-system-environment-cooling-override30.json`). As planned:
+   Quiet: `fan_mode: quiet` on the Arista in `config.yaml`, bridge
    restarted. The bridge log shows `fan mode default -> quiet` and one batch
    with `environment fan-speed override 30`, and
    it must not fail on the CLI's override warning (the SSH transport fails
@@ -384,7 +398,15 @@ session that runs the deployment:
    system environment cooling` (as `show-system-environment-cooling-
    override30.json`) and `show running-config`; the next cycle writes
    nothing.
-4. Watch `show system environment temperature` for 15 minutes under Quiet:
+4. **Done 2026-11-14.** A 16-minute watch right after: the CPU sensor went
+   from 62.7 °C to between 65.1 and 67.0 °C, every other sensor within 2 °C
+   of its start. Seven hours later (17:07 MST, 30 °C ambient): the CPU
+   sensor 67.7 °C (setpoint 60, alert 90, critical 95), the CPU board 47.0
+   (alert 75), the switch chip 52.2 (alert 95), every other sensor 33 °C or
+   more below its alert limit
+   (`show-system-environment-temperature-override30-20261114.json`). The
+   CPU sensor holds about 22 °C of margin; Quiet stays. As planned:
+   watch `show system environment temperature` for 15 minutes under Quiet:
    every sensor must stay below its overheat threshold. If the hottest
    sensor climbs toward overheat, set Default and record the numbers here;
    do not provoke the alert threshold to see whether it overrides the
@@ -392,18 +414,31 @@ session that runs the deployment:
    at its 60 °C setpoint (2026-11-14), so at 30 % it will settle above
    that; its alert limit is 90 °C. The switch chip (50 °C against 95) has
    more room.
-5. Default: `fan_mode: default`, bridge restarted: `no environment
-   fan-speed`, the cooling output back
-   to `overrideFanSpeed` 0 and `coolingMode` `automatic`, the fans back to
-   the baseline from 1.
-6. In the UI, open the Arista's device Settings and check for a Fan Mode
-   panel; also check `sys_fan_mode` on its stored record (CLAUDE.md §5).
-   On 10.6.109 neither is expected: no switch's record keeps the field
-   (CLAUDE.md §5). Record what a newer Network release does.
-7. Add the override capture to `fanmode_test.go` (Quiet read back, Quiet
-   idempotent) and mark the feature verified in this section, the support
-   matrix and the feature map. Then the standing setting: `fan_mode: quiet`
-   on the Arista's entry, unless step 4 argued against it.
+5. **Done 2026-11-14 17:08 MST.** `fan_mode: default` in the deployed
+   `config.yaml`, the container restarted: the bridge logged `fan mode quiet
+   -> default` 33 s after the restart; the running configuration has no
+   `fan-speed` line, the cooling output reads `coolingMode` `automatic`,
+   `overrideFanSpeed` 0, the trays at 43-44 % configured, 42 % actual
+   (`show-system-environment-cooling-default-20261114-after-quiet.json`).
+   Then `fan_mode: quiet` again and a second restart (17:10): `fan mode
+   default -> quiet`, the override back, the trays at 39 %. Each restart
+   took every bridged device in the container offline for about 20 s; all
+   eight informed again within a minute. As planned: Default:
+   `fan_mode: default`, bridge restarted: `no environment fan-speed`, the
+   cooling output back to `overrideFanSpeed` 0 and `coolingMode`
+   `automatic`, the fans back to the baseline from 1.
+6. **Done 2026-11-14, Network 11.0.99.** The UI's device panel → Settings
+   for the Arista lists Name, Device Tags, IP Settings, Power & Resiliency
+   and Advanced (Global Switch Settings, Spanning Tree Protocol Priority,
+   SNMP, LED, Set Replacement Device, Load Configuration, Manual Firmware
+   Update, Locate, Restart, Remove): no Fan Mode. The stored record
+   (`stat/device`) has `has_fan`, `fan_level` and `fan_table` and no
+   `sys_fan_mode`, although the inform sends it. Network 11.0.99 keeps
+   10.6.109's behaviour: a switch's mode is the device's `fan_mode:`.
+7. **Done 2026-11-14.** `TestFanModeQuietFromOverrideCapture`
+   (`live_captures_test.go`): the override capture reads as Quiet, Quiet
+   again writes nothing, Default writes the batch the round trip ran. The
+   standing setting is `fan_mode: quiet` on the Arista's entry.
 
 
 ## 9. DHCP guarding, rogue DHCP reporting and switch ACLs (2026-11-14)
@@ -638,14 +673,28 @@ being able to match a VLAN.
 The bridge reaches the switch in-band, through the uplink. Every ACL change
 is made like an address move (§7):
 
-1. Open `configure session dui-acl`, make the changes, then `commit timer
-   00:02:00`. The switch applies the change at once and reverts it by itself
+1. Open `configure session dui-acl-<suffix>` (a name of its own for every
+   change, below), make the changes, then `commit timer 00:02:00`. The switch applies the change at once and reverts it by itself
    unless it is confirmed.
 2. Wait five seconds, because the hardware is programmed after the commit
    returns.
 3. Dial the switch on a **new** connection and ask for `show version`.
-4. Only if that answers, confirm the session (`configure session dui-acl
-   commit`) and `write memory`.
+4. Only if that answers, confirm the session (`configure session
+   dui-acl-<suffix> commit`) and `write memory`.
+
+**Every change opens a session of its own** (`dui-acl-<suffix>`,
+`dui-address-<suffix>`, the suffix from the time). EOS 4.26.14M keeps its
+last completed session by name ("Maximum number of completed sessions: 1")
+and will not enter it again. The driver used the fixed name `dui-acl` until
+2026-11-14, when the first end-to-end IP rule round (§9.8) showed it: the
+rule went in, and its removal three minutes later failed with "Cannot enter
+session dui-acl, it is already complete" (and the abort with "Too late to
+abort; session already committed"), and would have failed on every cycle
+after. `no configure session NAME` deletes a completed session, but fails
+for a name that does not exist, so the driver does not rely on it. The
+deployed bridge carried the fixed name until this fix is deployed: each of
+its ACL changes worked only after the completed `dui-acl` record was
+deleted by hand.
 
 The driver asks the loop for a 60-second write budget (`devicemodel.ApplyBudget`).
 If the budget runs out first, the change is not confirmed and reverts; that
@@ -690,10 +739,10 @@ does.
   at S = 22, well inside the 20094 five lists held without an error (§9.1).
   Beyond 22 servers per port the guard still filters but no list is counted
   (§9.2), so the claim never depends on the counters. One list took 4097
-  rules without an error (§9.1), far beyond 32. What is **not measured** is
-  more than five lists at once, because only two ports may be changed and
-  subinterfaces take no ACL (§9.1). The guard, claimed since the morning,
-  has the same dependency in `edge` mode. **A list the hardware cannot
+  rules without an error (§9.1), far beyond 32. More than five lists at
+  once was measured live on 2026-11-14 (§9.8): the driver's list on all 57
+  interfaces, 57 port ACL ids in the chip's PortCfg table (1-57), every
+  list active, no commit warning, both for one IP rule and for the guard. **A list the hardware cannot
   program does not fail the commit**: EOS prints `! Error in ACL commit
   ... Insufficient HW resources` and commits anyway (§9.1). The driver does
   not read that warning, and the summary's "Active" does not show it.
@@ -768,31 +817,122 @@ into bit 64, which the controller shows as "Rogue DHCP server detected on
 **Verified live:** a `-collect-once` from this branch's build, run while
 the two test lists were on the switch, read them and reported
 `RogueDHCPDrops` 0 on Ethernet2 and Ethernet54/1 (no traffic was sent).
-**Not verified:** a count above zero, that is, a forged or real rogue reply
-entering a guarded port. No host is cabled to either test port.
+**A count above zero, 2026-11-14 (§9.8):** with the driver's guard on the
+uplink, seven forged replies were dropped and counted, a `-collect-once`
+reported `RogueDHCPDrops` 7 on port 1 (0 on port 53), and the deployed
+bridge's inform raised the controller's "Rogue DHCP server detected" alert
+for port 1. The deployed bridge reads the counters of the lists it knew at
+its previous collect, so a list written outside it is counted one cycle
+later (the alert came one inform after the frames).
 
 ### 9.7 What waits
 
-1. **Traffic on a test port** (Clint: a host cabled to port 2, which is
-   guarded in `exact` mode only as an access port of a guarded VLAN, or in
-   `edge` mode as a trunk): from that host, UDP 67 -> 68 from an untrusted
-   address and from a trusted one; check that the untrusted reply is dropped
-   and counted (`show ip access-lists DUI_IP_ACL_Ethernet2`), that the trusted
-   one and ARP/IPv6 pass, and how long a rewrite of the bound list drops
-   traffic, with and without `hardware access-list update default-result
-   permit`.
-2. **The end-to-end push** (the main session, after the merge): deploy,
-   turn Rogue DHCP Server Detection on, read the guard groups this switch
-   gets from the reply log and what the driver logs about each port, and
-   restore the setting. In `exact` mode on today's all-VLAN trunks this
-   writes nothing.
-3. **Choose the mode** for the deployment (`exact` or `edge`, §9.2).
-4. ~~**IP rules**: measure the ACL id limit and the counter pool, then size
-   `max_custom_ip_acls`~~ -- done 2026-11-14 (§9.1, §9.4): claimed at 32.
-   Left: a rule seen matching traffic on a test port (with item 1), and
-   more than five lists at once if Clint ever frees more ports for it.
-5. **The end-to-end IP rule push** (the main session, after the merge): one
-   documentation-range Block rule scoped to the Arista in the UI, read the
-   push in the reply log and the session the driver logs, check the lists
-   in `show ip access-lists summary`, then remove the rule and check the
-   lists are gone.
+1. ~~**Traffic through the guard**~~ -- done 2026-11-14 on the uplink, not
+   a test port (§9.8): an untrusted reply dropped and counted on the right
+   port, a trusted one passed, ARP and IPv6 unaffected, the count through a
+   collect and the alert. Left: whether `hardware access-list update
+   default-result permit` shortens a rewrite's drop (binding the lists cost
+   one or two 50 ms pings, §9.8; the knob was not tried).
+2. **The end-to-end guard push** (Rogue DHCP Server Detection on, the guard
+   groups this switch gets): not run. Detection stays off site-wide by
+   Clint's decision (2026-11-14), so the controller pushes
+   `switch.dhcp_snoop.status=disabled` and the driver writes nothing. The
+   §9.8 test drove the driver's own `applyACL` with a guard on every VLAN
+   instead.
+3. **The mode for this switch: `exact`** (the default, unchanged). With
+   detection off neither mode writes anything. Today the switch carries two
+   links: the uplink, which `edge` exempts, and one 100G server, which
+   `edge` would guard, dropping any DHCP server behind it on an unguarded
+   VLAN; `exact` guards nothing on these all-VLAN trunks. `edge` becomes
+   the right choice when detection is on and the switch has client ports.
+4. ~~**IP rules**~~ -- claimed at 32 (§9.4); a rule seen matching traffic
+   and more than five lists at once, both done 2026-11-14 (§9.8).
+5. ~~**The end-to-end IP rule push**~~ -- done 2026-11-14 (§9.8), which
+   found the session-name defect (§9.3).
+6. Hardware only: a host on a test port (a rewrite on a port carrying a
+   client's traffic, a DHCP client behind a guarded port), an aggregate's
+   list on its first member.
+
+### 9.8 The live runs of 2026-11-14 (evening)
+
+Clint, 2026-11-14: nothing on the Arista is production. The tests used the
+uplink (Ethernet1, 10GBASE-T) and the switch's own address, every change in
+a timed session or made by the deployed bridge, with a ping train from a
+LAN host to the switch and to the 100G host behind it. Afterwards the
+running and startup configurations held nothing the tests added.
+
+**Storm control, bit 4.** `storm-control <type> level` takes a percent;
+0.01 is the lowest it keeps (0.001 is stored as 0, which drops every frame
+of the type), about 1 Mb/s on the 10G uplink. 4.26.14M has no packets per
+second unit (`storm-control multicast ?` offers only `level`). The LAN's
+traffic into the uplink is far below that (86 multicast and 80 broadcast
+frames per second, 0.19 Mb/s in all, measured over 30 s): multicast at
+0.01 % dropped nothing in 90 s, STP kept the uplink the root port
+forwarding, and the deployed bridge removed the hand-made setting on its
+next reconcile ("1 of 54 ports changed"), since the controller's port
+config has none. Unknown unicast made a storm that reaches this switch
+alone: the switch's CPU sent one frame from an unused locally administered
+MAC out of the uplink to a LAN host, so the switches upstream learned that
+MAC toward the Arista, and the host then sent 1000-byte frames to it at
+1000 per second. The Arista had not learned the MAC, so the frames entered
+the uplink as unknown unicast: 18669 of 19660 dropped in 20 s. The
+deployed bridge's next inform carried bit 4 for port 1 and the controller
+raised **"Incoming unknown unicast packets on <switch> Port 1 exceed the
+Storm Control threshold."** (`PORT_UNICAST_STORM`, type `PORT_ANOMALIES`,
+severity HIGH, 2026-11-14 23:25:59 UTC, the inform's own second; the
+setting was committed at 23:24:27 and removed by the bridge at 23:26:01;
+`controller-11.0.99/system-log-device-alert-storm-rogue-dhcp.json`); its
+reconcile then removed the setting. A second run captured the JSON
+(`storm-control-drops/`). Bits 1 and 2 were not made to fire: a broadcast
+or multicast storm above 1 Mb/s floods the whole LAN, and the hand-made
+setting lasts one cycle. Not shown either: whether storm control on the
+uplink would drop BPDUs.
+
+**The guard, bit 64.** The driver's own `applyACL`, from this tree, with a
+guard on every VLAN the switch carries trusting one LAN host: in `exact`
+mode that guards all 57 interfaces, the uplink included. The lists
+programmed (57 port ACL ids, all active, counted), confirmed over a fresh
+connection; binding them lost two consecutive 50 ms pings on both streams.
+The deployed bridge's next reconcile would remove them, so a second
+configuration session pending its timer held it off (a pending session
+blocks every other commit: "Cannot commit because another session, ... is
+pending commit timer"). From the LAN host, to the switch's own address,
+UDP 67 -> 68: five replies from the trusted address and seven forged from a
+documentation address. `show ip access-lists DUI_IP_ACL_Ethernet1`: the
+permit counted 5, the guard's deny 7
+(`show-ip-access-lists-DUI_IP_ACL_Ethernet1-guard-drops.json`); a capture
+on the switch's VLAN interface saw the five trusted replies and none of the
+seven. With the guard on, the host's ARP entry for the switch was deleted
+and re-resolved, and an IPv6 ping to the switch's link-local address
+(`ipv6 enable` on Vlan1 for the test, removed after) answered 3 of 3. A
+`-collect-once` reported `RogueDHCPDrops` 7 on port 1. Once the holding
+session was aborted, the deployed bridge removed all 57 lists. In an
+earlier run without the hold, its inform raised **"Rogue DHCP server
+detected on <switch> Port 1."** (`ROGUE_DHCP_SERVER_DETECTED`, type
+`PORT_ANOMALIES`, 2026-11-15 00:00:07 UTC) and its reconcile removed the
+lists; the held run raised it again at 00:06:42 UTC, one inform after its
+frames. These three are every alert the tests raised on the Arista. Rogue DHCP Server
+Detection stayed off site-wide throughout: the alert follows the inform's
+`anomalies` bit alone.
+
+Forged and kernel-built replies both reach the CPU without a guard (line 90
+of `default-control-plane-acl` permits `bootpc`); UDP to a port that list
+does not name (9) never does. A capture through the CLI's `bash` reaches
+the SSH session only when the command ends: read it after that.
+
+**IP rules.** A Block rule (TCP 203.0.113.0/24 -> 198.51.100.0/24 port 9)
+scoped to the Arista alone through the v2 `acl-rules` API reached it as
+`switch.acl.ip.1.*` 39 s after the save
+(`controller-11.0.99/system_cfg-arista-acl.txt`); the deployed bridge
+wrote it into all 57 lists in 11 s, and binding them cost one 50 ms ping.
+The chip's PortCfg table showed 57 port ACL ids
+(`show-platform-xp-acl-portcfg-57-lists.txt`). Deleting the rule pushed the
+same config without the group (`system_cfg-arista-noacl.txt`) and the
+removal failed on the session name (§9.3); with the completed record
+deleted by hand, the next reconcile removed every list. To see a rule
+match traffic: the controller refuses a rule within one subnet ("Blocking
+traffic in the same subnet ... with IP ACL is not supported, please resort
+to MAC ACL instead"), so the rule was Block UDP 198.51.100.0/24 -> the
+switch's address port 68, and the frames were forged from 198.51.100.67:
+five of five reached the CPU before the rule, none with it, all again after
+its removal.

@@ -1,0 +1,1355 @@
+{
+  "aclList": [
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet10"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet10"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet10",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet11"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet11"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet11",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet12"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet12"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet12",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet13"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet13"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet13",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet14"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet14"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet14",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet15"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet15"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet15",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet16"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet16"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet16",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet17"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet17"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet17",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet18"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet18"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet18",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet19"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet19"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet19",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet2"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet2"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet2",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet20"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet20"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet20",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet21"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet21"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet21",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet22"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet22"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet22",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet23"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet23"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet23",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet24"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet24"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet24",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet25"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet25"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet25",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet26"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet26"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet26",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet27"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet27"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet27",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet28"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet28"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet28",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet29"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet29"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet29",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet3"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet3"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet3",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet30"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet30"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet30",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet31"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet31"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet31",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet32"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet32"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet32",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet33"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet33"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet33",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet34"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet34"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet34",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet35"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet35"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet35",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet36"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet36"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet36",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet37"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet37"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet37",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet38"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet38"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet38",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet39"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet39"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet39",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet4"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet4"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet4",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet40"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet40"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet40",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet41"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet41"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet41",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet42"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet42"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet42",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet43"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet43"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet43",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet44"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet44"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet44",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet45"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet45"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet45",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet46"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet46"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet46",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet47"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet47"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet47",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet48"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet48"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet48",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet49/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet49/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet49-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet5"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet5"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet5",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet50/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet50/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet50-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet50/2"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet50/2"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet50-2",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet50/3"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet50/3"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet50-3",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet50/4"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet50/4"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet50-4",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet51/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet51/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet51-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet52/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet52/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet52-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet53/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet53/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet53-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet54/1"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet54/1"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet54-1",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet6"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet6"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet6",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet7"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet7"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet7",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet8"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet8"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet8",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "Ethernet9"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "Ethernet9"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "DUI_IP_ACL_Ethernet9",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 5,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [
+        {
+          "name": "control-plane",
+          "vrf": "default"
+        }
+      ],
+      "countersEnabled": true,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "default-control-plane-acl",
+      "notFullySupportedByHardware": false,
+      "readonly": true,
+      "sequenceLength": 25,
+      "standard": false,
+      "type": "Ip4Acl"
+    },
+    {
+      "activeEgressIntfs": [],
+      "activeIngressIntfs": [],
+      "configuredEgressIntfs": [],
+      "configuredIngressIntfs": [],
+      "countersEnabled": false,
+      "countersIncomplete": false,
+      "dynamic": false,
+      "name": "mDNS-block",
+      "notFullySupportedByHardware": false,
+      "readonly": false,
+      "sequenceLength": 2,
+      "standard": false,
+      "type": "Ip4Acl"
+    }
+  ]
+}

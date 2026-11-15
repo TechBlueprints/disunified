@@ -56,6 +56,23 @@ that cost time on Clint's DCS-7160-48TC6-F.
   driver, and its effect is unmeasured). ACL changes go through a `commit
   timer` session like an address move, confirmed over a fresh connection;
   `configure session NAME abort` reverts a session pending its timer at once.
+- **Every configuration session needs a name of its own** (`sessionName`:
+  `dui-acl-<suffix>`, `dui-address-<suffix>`). EOS keeps its last completed
+  session by name and refuses to enter it again ("Cannot enter session
+  dui-acl, it is already complete"): with a fixed name the second ACL change
+  failed, live 2026-11-14. `no configure session NAME` deletes a completed
+  one by hand, and fails for a name that does not exist.
+- **A session pending its commit timer blocks every other commit** ("Cannot
+  commit because another session, X is pending commit timer"), the
+  bridge's included: open one (a harmless `alias`) to hold the deployed
+  bridge off a hand-made test, abort it after. Reverting it keeps what was
+  committed before it.
+- Live (2026-11-14, §9.8): the driver's list on all 57 interfaces at once
+  programmed (57 port ACL ids); binding them costs one or two 50 ms pings.
+  The controller refuses an IP rule within one subnet ("resort to MAC ACL
+  instead"). The CPU sees UDP only on ports `default-control-plane-acl`
+  names (`bootpc` yes, 9 no): test rules against port 68 of the switch's
+  own address.
 - No per-port DHCP rate limit (anomaly 32) on 4.26.14M; a QoS policer is in
   bps and counts only conforming packets here (§9.5). `DHCPRateDrops` stays 0.
 - Interactive CLI help (`?`) works only on a pty: `ssh -tt`, the command
@@ -70,14 +87,21 @@ that cost time on Clint's DCS-7160-48TC6-F.
   control. The floor cannot make the switch quieter: auto already runs
   above 30 % (43 %, with the CPU sensor at its 60 °C setpoint). So
   `fan_mode: quiet` is `override 30`, read back from `show system
-  environment cooling`'s `overrideFanSpeed`. The controller never offers
-  Fan Mode for a switch (`docs/drivers/arista-eos.md` §8, return-day steps
-  0-2 done, 3-7 need the deployed config).
+  environment cooling`'s `overrideFanSpeed` (`coolingMode` `manual`). Under
+  it the trays report 39 %, not 30 %. Verified live 2026-11-14, every
+  return-day step; the switch runs Quiet, CPU sensor about 68 °C against a
+  90 °C alert. The controller never offers Fan Mode for a switch, on 11.0.99
+  either (`docs/drivers/arista-eos.md` §8).
 - Storm-control drops are in `show storm-control` (JSON `trafficTypes.<type>.drop`,
   the text table's `Drops`), per interface and per type, types keyed
   `broadcast`, `multicast`, `unknown-unicast` (captured 2026-11-14,
   `docs/fixtures/arista-eos-4.26.14M/storm-control-all-types/`). There is no
-  `clear storm-control` on 4.26.14M. A hand-made config change on the Arista
+  `clear storm-control` on 4.26.14M, and `clear counters` does not reset
+  the drop count. The lowest level kept is 0.01 % (0.001 is stored as 0,
+  which drops everything); there is no pps unit. A storm was caught live on
+  the uplink with targeted unknown unicast (`storm-control-drops/`, §9.8).
+  The deployed bridge removes a hand-made storm setting on its next
+  reconcile. A hand-made config change on the Arista
   while another session's config session waits on its commit timer is
   reverted with that session (EOS warns "Any changes done here will be
   reverted"): check `show configuration sessions` before a probe.

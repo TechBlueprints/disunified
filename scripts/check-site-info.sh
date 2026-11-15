@@ -14,7 +14,8 @@
 # the commit trailer's noreply@anthropic.com), SSH key comments only as
 # key-N (or <comment>/empty). Site-specific words to deny (your domain,
 # device names, hostnames) go one per line in local-information/denylist.txt
-# (gitignored); the script reads it when present.
+# (gitignored); the script reads it when present, in a worktree the main
+# checkout's.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 2
 tmp=$(mktemp) || exit 2
@@ -73,9 +74,17 @@ check "SSH key comments that are not key-N (scripts/sanitize-controller.py --com
         s = substr(s, RSTART + RLENGTH)
       }
     }' "$tmp" | sort -u)"
-if [ -s local-information/denylist.txt ]; then
+# A worktree has no local-information of its own (it is gitignored), so a
+# run there reads the main checkout's, found through the shared git
+# directory; without this the denylist was skipped silently in a worktree.
+deny=local-information/denylist.txt
+if [ ! -s "$deny" ]; then
+  main=$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)
+  [ -n "$main" ] && [ -s "$main/local-information/denylist.txt" ] && deny="$main/local-information/denylist.txt"
+fi
+if [ -s "$deny" ]; then
   check "site words from local-information/denylist.txt" \
-    "$(grep -i -F -f local-information/denylist.txt "$tmp" | cut -c1-120)"
+    "$(grep -i -F -f "$deny" "$tmp" | cut -c1-120)"
 fi
 [ "$fail" -eq 0 ] && echo "ok: no secrets or site identifiers found"
 exit $fail

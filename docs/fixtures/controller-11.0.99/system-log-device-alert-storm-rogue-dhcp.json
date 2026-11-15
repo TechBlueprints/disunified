@@ -1,0 +1,104 @@
+{
+  "data": [
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "ROGUE_DHCP_SERVER_DETECTED",
+      "id": "00000000000000000000000000000001",
+      "key": "ROGUE_DHCP_SERVER_DETECTED",
+      "message": "Rogue DHCP server detected on switch-1 Port 1.",
+      "message_raw": "Rogue DHCP server detected on {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "00000000000000000000000000000002",
+          "name": "console"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "00000000000000000000000000000003",
+          "name": "console's switch-1"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "switch-1",
+          "version": "4.26.14"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "switch-1 Port 1",
+          "version": "4.26.14"
+        },
+        "PORT": {
+          "id": "00000000000000000000000000000005",
+          "name": "device-5"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794700807414,
+      "title_raw": "Rogue DHCP Server Detected",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "PORT_UNICAST_STORM",
+      "id": "00000000000000000000000000000006",
+      "key": "PORT_UNICAST_STORM",
+      "message": "Incoming unknown unicast packets on switch-1 Port 1 exceed the Storm Control threshold.",
+      "message_raw": "Incoming unknown unicast packets on {DEVICE_WITH_PORT} exceed the Storm Control threshold.",
+      "parameters": {
+        "CONSOLE_NAME": {
+          "id": "00000000000000000000000000000002",
+          "name": "console"
+        },
+        "CONSOLE_WITH_DEVICE_NAME": {
+          "id": "00000000000000000000000000000003",
+          "name": "console's switch-1"
+        },
+        "DEVICE": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "switch-1",
+          "version": "4.26.14"
+        },
+        "DEVICE_WITH_PORT": {
+          "device_fingerprint_id": 3659,
+          "fingerprint_source": 0,
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Leaf",
+          "model_name": "UDC48X6",
+          "name": "switch-1 Port 1",
+          "version": "4.26.14"
+        },
+        "PORT": {
+          "id": "00000000000000000000000000000005",
+          "name": "device-5"
+        }
+      },
+      "severity": "HIGH",
+      "show_on_dashboard": false,
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794698759996,
+      "title_raw": "Unicast Storm Detected",
+      "type": "PORT_ANOMALIES"
+    }
+  ]
+}

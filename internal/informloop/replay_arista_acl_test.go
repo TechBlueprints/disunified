@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -84,10 +85,10 @@ func TestReplayAristaIPRulePushes(t *testing.T) {
 			confirmed := false
 			for _, b := range ft.Configured {
 				s := strings.Join(b, "\n")
-				if strings.Contains(s, "configure session dui-acl\n") {
+				if strings.Contains(s, "configure session dui-acl-") && strings.Contains(s, "commit timer") {
 					session = b
 				}
-				if strings.Contains(s, "configure session dui-acl commit") {
+				if strings.HasPrefix(strings.TrimPrefix(s, "enable\n"), "configure session dui-acl-") && strings.Contains(s, " commit\nwrite memory") {
 					confirmed = true
 				}
 			}
@@ -140,4 +141,73 @@ func listBody(session, name string) []string {
 		}
 	}
 	return out
+}
+
+// The live end-to-end run of 2026-11-14 on Network 11.0.99
+// (docs/drivers/arista-eos.md §9.7): one Block rule scoped to the Arista
+// alone, its push (controller-11.0.99/system_cfg-arista-acl.txt), then the
+// push after the rule was deleted (system_cfg-arista-noacl.txt, the same
+// lines without the switch.acl.ip group). The first writes the rule into a
+// list on each of the 57 interfaces; the second removes every list. Live, the
+// second change failed: the deployed driver named every session `dui-acl`,
+// and EOS will not enter the name of its last completed session ("Cannot
+// enter session dui-acl, it is already complete"). Each change must open a
+// session of its own and confirm that one.
+func TestReplayAristaIPRuleLiveRound(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
+	coll := aristaeos.NewCollector(ft)
+	var buf strings.Builder
+	logger := log.New(&buf, "", 0)
+	coll.Log = logger
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := inform.Descriptor{MAC: snap.System.MAC}
+	var opened, confirmed []string
+	for i, push := range []string{"system_cfg-arista-acl.txt", "system_cfg-arista-noacl.txt"} {
+		st := device.State{Adopted: true, Key: "0123456789abcdef0123456789abcdef", PendingCfgVersion: "v" + itoa(i+1), PendingSystemCfg: read(push)}
+		sess := device.NewSession(desc, "http://192.0.2.1:8080/inform", st, nil, time.Now())
+		l, err := New(desc, sess, Config{Logger: logger, Collector: coll, Controller: coll, AllowInitialChanges: true, ApplyTimeout: time.Minute})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := len(ft.Configured)
+		if !l.applyPending(context.Background()) {
+			t.Fatalf("%s was not consumed", push)
+		}
+		var body string
+		for _, b := range ft.Configured[n:] {
+			if len(b) < 2 || !strings.HasPrefix(b[1], "configure session dui-acl-") {
+				continue
+			}
+			name := strings.TrimPrefix(b[1], "configure session ")
+			switch {
+			case b[len(b)-1] == "commit timer 00:02:00":
+				opened, body = append(opened, name), strings.Join(b, "\n")
+			case strings.HasSuffix(name, " commit"):
+				confirmed = append(confirmed, strings.TrimSuffix(name, " commit"))
+			}
+		}
+		switch i {
+		case 0:
+			if strings.Count(body, "\nip access-group DUI_IP_ACL_") != 57 || strings.Count(body, "\n20 deny tcp 203.0.113.0/24 198.51.100.0/24 eq 9\n") != 57 {
+				t.Errorf("the rule push wants the rule in 57 bound lists:\n%s", body)
+			}
+		case 1:
+			if strings.Count(body, "\nno ip access-list DUI_IP_ACL_") != 57 {
+				t.Errorf("the push without the rule removes all 57 lists:\n%s\nlog:\n%s", body, buf.String())
+			}
+		}
+	}
+	if len(opened) != 2 || opened[0] == opened[1] || strings.Join(confirmed, ",") != strings.Join(opened, ",") {
+		t.Errorf("sessions opened %q, confirmed %q: want two, each its own name, each confirmed", opened, confirmed)
+	}
 }
