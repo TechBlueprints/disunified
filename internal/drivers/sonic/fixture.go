@@ -208,6 +208,10 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 		f.Commands = append(f.Commands, command)
 		f.Builds++
 		return "", f.buildMstpd(stdin)
+	case command == hostapdBuildCommand:
+		f.Commands = append(f.Commands, command)
+		f.Builds++
+		return "", f.buildHostapd(stdin)
 	case command == l2mcFixCheckCommand:
 		if f.OrchL2MCFix == "" {
 			return "0\n", nil

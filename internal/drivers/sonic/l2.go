@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"reflect"
 	"sort"
 	"strconv"
@@ -33,6 +34,8 @@ var (
 	l2dUnit string
 	//go:embed build-mstpd.sh
 	buildMstpdScript string
+	//go:embed build-hostapd.sh
+	buildHostapdScript string
 )
 
 // Where the pieces live on the switch. /etc/sonic survives an image
@@ -44,9 +47,15 @@ const (
 	l2dUnitPath  = "/etc/systemd/system/disunified-l2d.service"
 	l2ConfPath   = "/etc/sonic/disunified/l2.json"
 	mstpdBuildIn = "/var/lib/disunified/mstpd-build"
+	// The 802.1X authenticator (§11.25): hostapd built on the switch as
+	// mstpd is, and the RADIUS secrets l2d hands it -- root's alone, never
+	// in l2.json (which collect.py reads as the login user).
+	hostapdBuildIn  = "/var/lib/disunified/hostapd-build"
+	dot1xSecretPath = "/etc/sonic/disunified/dot1x-radius"
 
-	l2Command         = "bash -s -- disunified-l2"
-	mstpdBuildCommand = "bash -s -- disunified-mstpd-build"
+	l2Command           = "bash -s -- disunified-l2"
+	mstpdBuildCommand   = "bash -s -- disunified-mstpd-build"
+	hostapdBuildCommand = "bash -s -- disunified-hostapd-build"
 	// l2DeadmanCancel runs over a fresh connection once STP is up and the
 	// switch still answers.
 	l2DeadmanCancel = "sudo systemctl stop disunified-l2d-deadman.timer"
@@ -87,6 +96,12 @@ type l2Conf struct {
 	// UniFi switch). nil when no port is secured, so a config written before
 	// it existed reads the same.
 	MacLock *l2MacLock `json:"mac_lock,omitempty"`
+	// Dot1X is 802.1X port authentication: each controlled interface with
+	// its mode (a force_authorized one is listed and left open), the
+	// RADIUS servers (their secrets are in dot1xSecretPath, one per line,
+	// in this order) and the switch's own address as the NAS. nil when no
+	// port is controlled.
+	Dot1X *l2Dot1X `json:"dot1x,omitempty"`
 	// Deadman is set by the switch when the dead-man timer undid a first
 	// enable: the time it fired. The driver does not enable STP again until
 	// the controller has turned it off and on.
@@ -124,17 +139,32 @@ type l2MacLock struct {
 	Ports map[string][]string `json:"ports"`
 }
 
+type l2Dot1X struct {
+	Servers []l2RADIUS        `json:"servers"`
+	NASIP   string            `json:"nas_ip,omitempty"`
+	Ports   map[string]string `json:"ports"`
+}
+
+type l2RADIUS struct {
+	IP   string `json:"ip"`
+	Port int    `json:"port"`
+}
+
 // l2Inst is collect.py's l2d section: what is installed and running.
 type l2Inst struct {
-	Files    map[string]string `json:"files"` // path -> sha256, "" = absent
-	Mstpd    string            `json:"mstpd"` // `mstpd -V`, "" = not installed
-	Service  string            `json:"service"`
-	Deadman  string            `json:"deadman"`
-	Build    string            `json:"build"` // "running", "ok", "failed: …", ""
-	Docker   bool              `json:"docker"`
-	STPState string            `json:"stp_state"`
-	Conf     *l2Conf           `json:"conf"`
-	present  bool              // the section was in the capture
+	Files map[string]string `json:"files"` // path -> sha256, "" = absent
+	Mstpd string            `json:"mstpd"` // `mstpd -V`, "" = not installed
+	// Hostapd is `hostapd -v`'s first line ("" = not installed); nil in a
+	// capture from before 802.1X (§11.25), which claims nothing for it.
+	Hostapd      *string `json:"hostapd"`
+	HostapdBuild string  `json:"hostapd_build"` // as Build, for hostapd
+	Service      string  `json:"service"`
+	Deadman      string  `json:"deadman"`
+	Build        string  `json:"build"` // "running", "ok", "failed: …", ""
+	Docker       bool    `json:"docker"`
+	STPState     string  `json:"stp_state"`
+	Conf         *l2Conf `json:"conf"`
+	present      bool    // the section was in the capture
 }
 
 func parseL2Inst(body string) l2Inst {
@@ -154,6 +184,19 @@ func parseL2Inst(body string) l2Inst {
 // be built there.
 func (in l2Inst) canRun() bool { return in.present && (in.Mstpd != "" || in.Docker) }
 
+// canDot1X: the switch can run the 802.1X authenticator -- hostapd is
+// there, or it can be built there -- and the collector reports it.
+func (in l2Inst) canDot1X() bool {
+	return in.canRun() && in.Hostapd != nil && (*in.Hostapd != "" || in.Docker)
+}
+
+func (in l2Inst) hostapd() string {
+	if in.Hostapd == nil {
+		return ""
+	}
+	return *in.Hostapd
+}
+
 // l2Want is the controller's intent, assembled from ApplyDevice (the bridge)
 // and ApplyPorts (the ports); written only once both have been seen.
 type l2Want struct {
@@ -165,6 +208,18 @@ type l2Want struct {
 	ports    map[string]l2Port
 	guard    []string
 	macLock  map[string][]string // secured bridge port -> allowed MACs
+	// dot1x: controlled interface -> mode, from the
+	// ports; dot1xSet/dot1xOn/dot1xServers from the device.
+	dot1x        map[string]string
+	dot1xSet     bool
+	dot1xOn      bool
+	dot1xServers []devicemodel.RADIUSServer
+	nasIP        string
+	// secretWritten is the sha256 of the secrets file this bridge last
+	// wrote (kept in memory only: nothing readable on the switch derives
+	// from a secret); "" = not written since the bridge started.
+	secretWritten     string
+	hostapdBuildTried time.Time
 	// storm: a port asks for broadcast or multicast storm control, which
 	// l2d watches (§11.21) -- it runs for that alone.
 	storm bool
@@ -177,7 +232,7 @@ type l2Want struct {
 
 // anyPortSetting: a port asks for BPDU guard, STP off, or loop protection.
 func (w *l2Want) anyPortSetting() bool {
-	if len(w.guard) > 0 || len(w.macLock) > 0 {
+	if len(w.guard) > 0 || len(w.macLock) > 0 || len(w.dot1xPorts()) > 0 {
 		return true
 	}
 	for _, p := range w.ports {
@@ -197,6 +252,13 @@ func (w *l2Want) conf() l2Conf {
 	if len(w.macLock) > 0 {
 		c.MacLock = &l2MacLock{Ports: w.macLock}
 	}
+	if ports := w.dot1xPorts(); len(ports) > 0 {
+		d := &l2Dot1X{Ports: ports, NASIP: w.nasIP, Servers: []l2RADIUS{}}
+		for _, s := range w.dot1xServers {
+			d.Servers = append(d.Servers, l2RADIUS{IP: s.Addr, Port: s.Port})
+		}
+		c.Dot1X = d
+	}
 	if c.STP.Version == "" {
 		c.STP.Version = "rstp"
 	}
@@ -204,6 +266,23 @@ func (w *l2Want) conf() l2Conf {
 		c.STP.Priority = 32768
 	}
 	return c
+}
+
+// dot1xPorts is the controlled interfaces while the device's 802.1X is on.
+func (w *l2Want) dot1xPorts() map[string]string {
+	if !w.dot1xOn || len(w.dot1x) == 0 {
+		return nil
+	}
+	return w.dot1x
+}
+
+// dot1xSecrets is the secrets file's body: one per server, in order.
+func (w *l2Want) dot1xSecrets() string {
+	var b strings.Builder
+	for _, s := range w.dot1xServers {
+		b.WriteString(s.Secret + "\n")
+	}
+	return b.String()
 }
 
 func sha(s string) string {
@@ -225,6 +304,52 @@ func (c *Collector) l2SetSTP(d devicemodel.DeviceDesired) {
 	if !d.STPEnabled {
 		c.l2.stpOffSeen = true
 	}
+}
+
+// l2SetDot1X records the device's 802.1X (ApplyDevice) and the address the
+// switch is managed at, its NAS address toward the RADIUS servers.
+func (c *Collector) l2SetDot1X(d devicemodel.DeviceDesired, nasIP string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if d.Dot1X == nil {
+		return
+	}
+	c.l2.dot1xSet = true
+	c.l2.dot1xOn = d.Dot1X.Enabled && len(d.Dot1X.Servers) > 0
+	c.l2.dot1xServers = append([]devicemodel.RADIUSServer(nil), d.Dot1X.Servers...)
+	c.l2.nasIP = nasIP
+}
+
+// nasAddr is the switch's own address as the RADIUS servers' NAS, when the
+// bridge reaches it at an IP literal; "" leaves hostapd's default.
+func nasAddr(dial string) string {
+	if ip := net.ParseIP(dial); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
+// dot1xPorts is each controlled port's 802.1X mode per interface (a
+// force-authorised one too: l2d leaves it open, and the read side reports
+// the mode from it). A port in an
+// aggregate is not controlled (hostapd authenticates one netdev; UniFi
+// offers 802.1X on an aggregate nowhere captured): it is left out here and
+// in the plan, which keeps it open.
+func dot1xPorts(desired []devicemodel.PortDesired, ifnames map[int][]string, st *swState) map[string]string {
+	out := map[string]string{}
+	for _, d := range desired {
+		ifs := ifnames[d.Index]
+		if d.Dot1X == "" || len(ifs) == 0 || d.LAG > 0 || st.lagOf(ifs[0]) != "" {
+			continue
+		}
+		for _, n := range ifs {
+			out[n] = string(d.Dot1X)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // l2SetPorts records the per-port intent (ApplyPorts): every interface of
@@ -269,6 +394,7 @@ func (c *Collector) l2SetPorts(desired []devicemodel.PortDesired, st *swState) {
 		lock = nil
 	}
 	c.l2.portsSet, c.l2.ports, c.l2.guard, c.l2.macLock = true, ports, guard, lock
+	c.l2.dot1x = dot1xPorts(desired, c.ifnames, st)
 	c.l2.storm = stormWatched(desired, st.psample)
 }
 
@@ -316,7 +442,7 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	want := w.conf()
-	need := want.STP.Enabled || want.LoopGuard.Enabled || w.storm || want.MacLock != nil
+	need := want.STP.Enabled || want.LoopGuard.Enabled || w.storm || want.MacLock != nil || want.Dot1X != nil
 	if !need && in.Conf == nil {
 		return 0, nil // nothing wanted, nothing installed
 	}
@@ -355,8 +481,31 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 			}
 			started = 1
 		}
-		if !want.LoopGuard.Enabled && !w.storm && want.MacLock == nil && in.Conf == nil {
+		if !want.LoopGuard.Enabled && !w.storm && want.MacLock == nil && want.Dot1X == nil && in.Conf == nil {
 			return started, nil // installed once mstpd is there
+		}
+	}
+	if want.Dot1X != nil && in.hostapd() == "" {
+		// The ports stay closed (CONFIG_DB learn_mode drop, the plan's);
+		// nobody is admitted until hostapd is there.
+		switch {
+		case in.HostapdBuild == "running":
+			c.warnOnce("dot1x building", "sonic: hostapd is being built on the switch; 802.1X authenticates once it is installed (the controlled ports stay closed until then)")
+		case !in.Docker:
+			c.warnOnce("dot1x nodocker", "sonic: 802.1X requested, but the switch has no hostapd and no docker to build it; the controlled ports stay closed")
+		case time.Since(w.hostapdBuildTried) < 10*time.Minute:
+			if strings.HasPrefix(in.HostapdBuild, "failed") {
+				c.warnOnce("dot1x build "+in.HostapdBuild, "sonic: building hostapd on the switch %s; retried every 10 minutes", in.HostapdBuild)
+			}
+		default:
+			c.mu.Lock()
+			c.l2.hostapdBuildTried = time.Now()
+			c.mu.Unlock()
+			c.Log.Printf("sonic apply l2: building hostapd %s on the switch (static, from the upstream source, in a throwaway alpine container; about a minute)", hostapdVersion)
+			if _, err := c.run(ctx, hostapdBuildCommand, hostapdBuildHostScript()); err != nil {
+				return started, fmt.Errorf("sonic apply l2: start the hostapd build: %w", err)
+			}
+			started++
 		}
 	}
 
@@ -377,6 +526,17 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 	if unitChanged {
 		steps = append(steps, "sudo systemctl daemon-reload", "sudo systemctl enable disunified-l2d >/dev/null 2>&1")
 	}
+	// The RADIUS secrets: written whenever this bridge has not written
+	// these since it started (nothing on the switch that the bridge can
+	// read derives from them, so there is nothing to compare against).
+	secretSHA := ""
+	if want.Dot1X != nil {
+		secretSHA = sha(w.dot1xSecrets())
+	}
+	secretChanged := secretSHA != "" && secretSHA != w.secretWritten
+	if secretChanged {
+		steps = append(steps, installFile(dot1xSecretPath, "0600", w.dot1xSecrets()))
+	}
 	confChanged := in.Conf == nil || !reflect.DeepEqual(*in.Conf, want)
 	if confChanged {
 		b, _ := json.MarshalIndent(want, "", "  ")
@@ -394,17 +554,20 @@ func (c *Collector) applyL2(ctx context.Context) (int, error) {
 	switch {
 	case !running || unitChanged || in.Files[l2dPath] != sha(l2dScript):
 		steps = append(steps, "sudo systemctl restart disunified-l2d")
-	case confChanged:
+	case confChanged || secretChanged:
 		steps = append(steps, "sudo systemctl reload disunified-l2d")
 	}
 	if len(steps) == 0 {
 		return started, nil
 	}
-	c.Log.Printf("sonic apply l2: %s", l2Summary(in, want, confChanged, arm))
+	c.Log.Printf("sonic apply l2: %s", l2Summary(in, want, confChanged || secretChanged, arm))
 	if _, err := c.run(ctx, l2Command, "set -e\n"+strings.Join(steps, "\n")+"\n"); err != nil {
 		return 0, fmt.Errorf("sonic apply l2: %w", err)
 	}
 	c.mu.Lock()
+	if secretChanged {
+		c.l2.secretWritten = secretSHA
+	}
 	if c.state == st {
 		next := st.clone()
 		next.l2.Conf = &want
@@ -499,7 +662,11 @@ func l2Summary(in l2Inst, want l2Conf, confChanged, arm bool) string {
 		if want.MacLock != nil {
 			lock = fmt.Sprintf("%d ports", len(want.MacLock.Ports))
 		}
-		parts = append(parts, fmt.Sprintf("config: spanning tree %s, loop protection %s, MAC locking %s", stp, guard, lock))
+		dot1x := "off"
+		if want.Dot1X != nil {
+			dot1x = fmt.Sprintf("%d ports, %d RADIUS servers", len(want.Dot1X.Ports), len(want.Dot1X.Servers))
+		}
+		parts = append(parts, fmt.Sprintf("config: spanning tree %s, loop protection %s, MAC locking %s, 802.1X %s", stp, guard, lock, dot1x))
 	}
 	if arm {
 		parts = append(parts, fmt.Sprintf("first enable under a %s dead-man timer", l2DeadmanAfter))
@@ -545,6 +712,35 @@ func mstpdBuildHostScript() string {
 	}, "\n")
 	b.WriteString(installFile(mstpdBuildIn+"/host.sh", "0755", host) + "\n")
 	b.WriteString("sudo systemd-run --quiet --collect --unit=disunified-mstpd-build /bin/sh " + mstpdBuildIn + "/host.sh\n")
+	return b.String()
+}
+
+// hostapdVersion is the upstream release build-hostapd.sh fetches.
+const hostapdVersion = "2.11"
+
+// hostapdBuildHostScript starts hostapd's build as mstpdBuildHostScript
+// starts mstpd's (collect.py: l2d.hostapd, l2d.hostapd_build).
+func hostapdBuildHostScript() string {
+	var b strings.Builder
+	b.WriteString("set -e\n")
+	fmt.Fprintf(&b, "sudo mkdir -p %s\n", hostapdBuildIn)
+	b.WriteString(installFile(hostapdBuildIn+"/build.sh", "0755", buildHostapdScript) + "\n")
+	host := strings.Join([]string{
+		"#!/bin/sh",
+		"# disunified: builds hostapd for this switch (docs/drivers/sonic.md 11.25)",
+		"d=" + hostapdBuildIn,
+		"echo running > $d/status",
+		"if docker run --rm --network host -v $d:/out " + alpineImage + " sh /out/build.sh > $d/build.log 2>&1 &&",
+		"   install -m 0755 $d/hostapd $d/hostapd_cli /usr/local/sbin/; then",
+		"  echo ok > $d/status",
+		"else",
+		"  echo \"failed: $(tail -n 1 $d/build.log)\" > $d/status",
+		"fi",
+		"docker rmi " + alpineDigestRef + " >/dev/null 2>&1 || true",
+		"",
+	}, "\n")
+	b.WriteString(installFile(hostapdBuildIn+"/host.sh", "0755", host) + "\n")
+	b.WriteString("sudo systemd-run --quiet --collect --unit=disunified-hostapd-build /bin/sh " + hostapdBuildIn + "/host.sh\n")
 	return b.String()
 }
 
@@ -613,6 +809,33 @@ func dhcpRateCounts(out []cagePort, db map[string]table) {
 			}
 		}
 		p.Health.DHCPRateDrops = sum
+	}
+}
+
+// dot1xRead fills each port's 802.1X mode from l2d's config (what was
+// applied), the hosts l2d admitted and the failed attempts it counted
+// (STATE_DB DUI_DOT1X_TABLE, per interface: a split cage sums its lanes).
+func dot1xRead(out []cagePort, db map[string]table, conf *l2Conf) {
+	st := db["l2_dot1x"].byName("|")
+	for i := range out {
+		p := &out[i].Port
+		var fails uint64
+		var auth []string
+		for _, n := range p.Interfaces {
+			if conf != nil && conf.Dot1X != nil && p.Dot1X == "" {
+				p.Dot1X = devicemodel.Dot1XMode(conf.Dot1X.Ports[n])
+			}
+			if v, err := strconv.ParseUint(st[n]["failures"], 10, 64); err == nil {
+				fails += v
+			}
+			for _, m := range strings.Split(st[n]["authorized"], ",") {
+				if m != "" {
+					auth = append(auth, m)
+				}
+			}
+		}
+		sort.Strings(auth)
+		p.Health.Dot1XFailures, p.Dot1XAuthorized = fails, auth
 	}
 }
 

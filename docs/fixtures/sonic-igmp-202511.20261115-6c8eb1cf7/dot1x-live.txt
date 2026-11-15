@@ -1,0 +1,411 @@
+# 802.1X by hand on the DX010 (docs/drivers/sonic.md 11.25), 2026-11-15,
+# image igmp-202511.20261115-6c8eb1cf7, empty cage 31 (Ethernet120, ce30)
+# in MAC loopback, the installed disunified-l2d paused for the window, the
+# deployed bridge running. hostapd 2.11 built on the switch by
+# build-hostapd.sh; a second hostapd (driver=none, its integrated RADIUS
+# server, EAP-MD5, one test user and a test secret) on 127.0.0.1:18120 as
+# the RADIUS server; the supplicant a raw socket on the port's netdev
+# sending from a test MAC and reading the looped replies. Scrubbed with
+# scripts/sanitize-sonic.py (every MAC remapped).
+#
+# run_hostapd: the EAPOL trap, the authenticator alone (the port at
+#   cpu_trap, hand-made ebtables rules), a good and a wrong password,
+#   hostapd's station list and its events.
+# run_guard: the candidate l2d.py's Dot1xGuard driving it (the port at
+#   drop; guard.py: sync, show, a second guard as an l2d restart, logoff,
+#   teardown).
+# run_logoff: the authenticator alone again: a good password, hostapd's raw
+#   STA-FIRST / STA-NEXT replies, an EAPOL-Logoff, the events.
+#
+# After the scrub, 02:00:00:00:00:03 is the host that authenticates and
+# 02:00:00:00:00:01 the one with the wrong password; 02:00:00:00:00:02 is
+# the switch itself (hostapd hears its own frames come back round the loop
+# and makes a station of them; on a cabled port it would not).
+@@@ run_hostapd
+== trap
+SAI_HOSTIF_TRAP_TYPE_EAPOL
+{'SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE': 'SAI_HOSTIF_TRAP_TYPE_EAPOL', 'SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP': 'oid:0x11000000000620', 'SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION': 'SAI_PACKET_ACTION_TRAP', 'SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY': '4'}
+== port closed: kernel drop, cpu_trap, l2d paused, loopback
+      ce30(126)  up     4  100G  FD   SW  No   Forward          None    C    KR4  1522    No   MAC
+== good password
+tx EAPOL-Start
+rx EAP-Request/Identity id 1
+tx EAP-Response/Identity dui-user
+rx EAP-Request/Identity id 22
+tx EAP-Response/Identity dui-user
+rx EAP-Request/MD5-Challenge id 2
+tx EAP-Response/MD5
+rx EAP-Success id 2
+rc=0
+== wrong password
+tx EAPOL-Start
+rx EAP-Request/Identity id 103
+tx EAP-Response/Identity dui-user
+rx EAP-Request/MD5-Challenge id 104
+tx EAP-Response/MD5
+rx EAP-Failure id 104
+rc=1
+== stations
+02:00:00:00:00:01
+flags=
+dot1xAuthPaeState=1
+dot1xAuthBackendAuthState=6
+dot1xAuthBackendAuthSuccesses=0
+dot1xAuthBackendAuthFails=1
+dot1xAuthSessionUserName=dui-user
+02:00:00:00:00:02
+flags=
+dot1xAuthPaeState=4
+dot1xAuthBackendAuthState=1
+dot1xAuthBackendAuthSuccesses=0
+dot1xAuthBackendAuthFails=0
+dot1xAuthSessionUserName=N/A
+02:00:00:00:00:03
+flags=[AUTHORIZED]
+dot1xAuthPaeState=5
+dot1xAuthBackendAuthState=6
+dot1xAuthBackendAuthSuccesses=1
+dot1xAuthBackendAuthFails=0
+dot1xAuthSessionUserName=dui-user
+== events
+attach: OK
+08:36:10 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+08:36:10 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:36:10 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+08:36:10 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:36:10 <3>CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:00:03
+08:36:10 <3>AP-STA-CONNECTED 02:00:00:00:00:03
+08:36:12 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:01
+08:36:12 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:36:12 <3>CTRL-EVENT-EAP-FAILURE2 02:00:00:00:00:01
+08:36:12 <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+== radius log (tail)
+lo: interface state UNINITIALIZED->ENABLED
+lo: AP-ENABLED 
+lo: CTRL-EVENT-EAP-STARTED 00:00:00:00:00:00
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD method=1
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4
+lo: CTRL-EVENT-EAP-SUCCESS 00:00:00:00:00:00
+lo: CTRL-EVENT-EAP-STARTED 00:00:00:00:00:00
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD method=1
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4
+lo: CTRL-EVENT-EAP-FAILURE 00:00:00:00:00:00
+== auth log (tail)
+Ethernet120: RADIUS Authentication server 127.0.0.1:18120
+Ethernet120: interface state UNINITIALIZED->ENABLED
+Ethernet120: AP-ENABLED 
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:00:03
+Ethernet120: AP-STA-CONNECTED 02:00:00:00:00:03
+Ethernet120: STA 02:00:00:00:00:03 IEEE 802.1X: authenticated - EAP type: 4 (MD5)
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:01
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-FAILURE2 02:00:00:00:00:01
+Ethernet120: STA 02:00:00:00:00:01 IEEE 802.1X: authentication failed - EAP type: 4 (MD5)
+Ethernet120: CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+== cleanup
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 0, policy: ACCEPT
+      ce30(126)  down   4  100G  FD   SW  No   Forward          None   FA    KR4  1522    No      
+hardware
+eapol traps left: 0
+@@@ run_guard
+      ce30(126)  up     4  100G  FD   SW  No   Forward          None    D    KR4  1522    No   MAC
+== step sync
+LOG 802.1X: EAPOL trapped to the CPU
+LOG 802.1X: authenticator started on Ethernet120 (auto, 1 RADIUS servers)
+== step show
+STATE {'authorized': '', 'failures': '0', 'last_failed_mac': '', 'mode': 'auto'}
+APPL FDB []
+COPP {'always_enabled': 'true', 'trap_group': 'queue4_group1', 'trap_ids': 'eapol'}
+ASIC FDB entries for the admitted host: 0
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 3, policy: RETURN
+-p EAPOL -i Ethernet120 -j ACCEPT
+-p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT
+-i Ethernet120 -j DROP
+hostapd pid 1581305
+== step supp
+tx EAPOL-Start
+rx EAP-Request/Identity id 1
+tx EAP-Response/Identity dui-user
+rx EAP-Request/Identity id 22
+tx EAP-Response/Identity dui-user
+rx EAP-Request/MD5-Challenge id 2
+tx EAP-Response/MD5
+rx EAP-Success id 2
+LOG 802.1X: 02:00:00:00:00:03 authorised on Ethernet120
+supp rc 0
+== step sync
+== step show
+STATE {'authorized': '02:00:00:00:00:03', 'failures': '0', 'last_failed_mac': '', 'mode': 'auto'}
+APPL FDB ['FDB_TABLE:Vlan4094:02:00:00:00:00:03']
+COPP {'always_enabled': 'true', 'trap_group': 'queue4_group1', 'trap_ids': 'eapol'}
+ASIC FDB "bvid":"oid:0x260000000005d6","mac":"02:00:00:00:00:03","swi SAI_FDB_ENTRY_TYPE_STATIC
+ASIC FDB entries for the admitted host: 1
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 4, policy: RETURN
+-p EAPOL -i Ethernet120 -j ACCEPT
+-p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT
+-s 02:00:00:00:00:03 -i Ethernet120 -j RETURN
+-i Ethernet120 -j DROP
+hostapd pid 1581305
+== step supp
+LOG 802.1X: 02:00:00:00:00:01 failed to authenticate on Ethernet120 (1 on this port since boot)
+tx EAPOL-Start
+rx EAP-Request/Identity id 103
+tx EAP-Response/Identity dui-user
+rx EAP-Request/MD5-Challenge id 104
+tx EAP-Response/MD5
+rx EAP-Failure id 104
+supp rc 1
+== step sync
+== step show
+STATE {'authorized': '02:00:00:00:00:03', 'failures': '1', 'last_failed_mac': '02:00:00:00:00:01', 'mode': 'auto'}
+APPL FDB ['FDB_TABLE:Vlan4094:02:00:00:00:00:03']
+COPP {'always_enabled': 'true', 'trap_group': 'queue4_group1', 'trap_ids': 'eapol'}
+ASIC FDB "bvid":"oid:0x260000000005d6","mac":"02:00:00:00:00:03","swi SAI_FDB_ENTRY_TYPE_STATIC
+ASIC FDB entries for the admitted host: 1
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 4, policy: RETURN
+-p EAPOL -i Ethernet120 -j ACCEPT
+-p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT
+-s 02:00:00:00:00:03 -i Ethernet120 -j RETURN
+-i Ethernet120 -j DROP
+hostapd pid 1581305
+== step newguard
+new guard (l2d restart)
+== step sync
+LOG 802.1X: 02:00:00:00:00:03 authorised on Ethernet120
+== step show
+STATE {'authorized': '02:00:00:00:00:03', 'failures': '1', 'last_failed_mac': '02:00:00:00:00:01', 'mode': 'auto'}
+APPL FDB ['FDB_TABLE:Vlan4094:02:00:00:00:00:03']
+COPP {'always_enabled': 'true', 'trap_group': 'queue4_group1', 'trap_ids': 'eapol'}
+ASIC FDB "bvid":"oid:0x260000000005d6","mac":"02:00:00:00:00:03","swi SAI_FDB_ENTRY_TYPE_STATIC
+ASIC FDB entries for the admitted host: 1
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 4, policy: RETURN
+-p EAPOL -i Ethernet120 -j ACCEPT
+-p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT
+-s 02:00:00:00:00:03 -i Ethernet120 -j RETURN
+-i Ethernet120 -j DROP
+hostapd pid 1581305
+== step supp
+tx EAPOL-Logoff
+LOG 802.1X: 02:00:00:00:00:03 no longer authorised on Ethernet120 (logged off or timed out)
+supp rc 0
+== step sync
+== step show
+STATE {'authorized': '', 'failures': '1', 'last_failed_mac': '02:00:00:00:00:01', 'mode': 'auto'}
+APPL FDB []
+COPP {'always_enabled': 'true', 'trap_group': 'queue4_group1', 'trap_ids': 'eapol'}
+ASIC FDB entries for the admitted host: 0
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 3, policy: RETURN
+-p EAPOL -i Ethernet120 -j ACCEPT
+-p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT
+-i Ethernet120 -j DROP
+hostapd pid 1581305
+== step teardown
+LOG 802.1X: authenticator on Ethernet120 stopped
+LOG 802.1X: kernel bridge rules removed
+LOG 802.1X: EAPOL trap removed
+ebtables: No chain/target/match by that name
+STATE {'authorized': '', 'failures': '1', 'last_failed_mac': '02:00:00:00:00:01', 'mode': ''}
+APPL FDB []
+COPP {}
+ASIC FDB entries for the admitted host: 0
+
+hostapd pid 0
+== cleanup
+      ce30(126)  down   4  100G  FD   SW  No   Forward          None   FA    KR4  1522    No      
+learn hardware copp 0 chain 0 hostapd 0
+@@@ run_logoff
+== trap
+SAI_HOSTIF_TRAP_TYPE_EAPOL
+{'SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE': 'SAI_HOSTIF_TRAP_TYPE_EAPOL', 'SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP': 'oid:0x11000000000620', 'SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION': 'SAI_PACKET_ACTION_TRAP', 'SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY': '4'}
+== port closed: kernel drop, cpu_trap, l2d paused, loopback
+      ce30(126)  up     4  100G  FD   SW  No   Forward          None    C    KR4  1522    No   MAC
+== good password
+tx EAPOL-Start
+rx EAP-Request/Identity id 1
+tx EAP-Response/Identity dui-user
+rx EAP-Request/Identity id 22
+tx EAP-Response/Identity dui-user
+rx EAP-Request/MD5-Challenge id 2
+tx EAP-Response/MD5
+rx EAP-Success id 2
+rc=0
+== STA-FIRST (raw reply)
+02:00:00:00:00:02
+flags=
+aid=0
+capability=0x0
+listen_interval=0
+supported_rates=
+timeout_next=NULLFUNC POLL
+dot1xPaePortNumber=0
+dot1xPaePortProtocolVersion=2
+dot1xPaePortCapabilities=1
+dot1xPaePortInitialize=0
+dot1xPaePortReauthenticate=FALSE
+dot1xAuthPaeState=4
+dot1xAuthBackendAuthState=1
+dot1xAuthAdminControlledDirections=0
+dot1xAuthOperControlledDirections=0
+dot1xAuthAuthControlledPortStatus=2
+dot1xAuthAuthControlledPortControl=2
+dot1xAuthQuietPeriod=60
+dot1xAuthServerTimeout=30
+dot1xAuthReAuthPeriod=0
+dot1xAuthReAuthEnabled=FALSE
+dot1xAuthKeyTxEnabled=FALSE
+dot1xAuthEapolFramesRx=4
+dot1xAuthEapolFramesTx=1
+dot1xAuthEapolStartFramesRx=0
+dot1xAuthEapolLogoffFramesRx=0
+dot1xAuthEapolRespIdFramesRx=0
+dot1xAuthEapolRespFramesRx=0
+dot1xAuthEapolReqIdFramesTx=1
+dot1xAuthEapolReqFramesTx=0
+dot1xAuthInvalidEapolFramesRx=0
+dot1xAuthEapLengthErrorFramesRx=0
+dot1xAuthLastEapolFrameVersion=2
+dot1xAuthLastEapolFrameSource=02:00:00:00:00:02
+dot1xAuthEntersConnecting=1
+dot1xAuthEapLogoffsWhileConnecting=0
+dot1xAuthEntersAuthenticating=0
+dot1xAuthAuthSuccessesWhileAuthenticating=0
+dot1xAuthAuthTimeoutsWhileAuthenticating=0
+dot1xAuthAuthFailWhileAuthenticating=0
+dot1xAuthAuthEapStartsWhileAuthenticating=0
+dot1xAuthAuthEapLogoffWhileAuthenticating=0
+dot1xAuthAuthReauthsWhileAuthenticated=0
+dot1xAuthAuthEapStartsWhileAuthenticated=0
+dot1xAuthAuthEapLogoffWhileAuthenticated=0
+dot1xAuthBackendResponses=0
+dot1xAuthBackendAccessChallenges=0
+dot1xAuthBackendOtherRequestsToSupplicant=1
+dot1xAuthBackendAuthSuccesses=0
+dot1xAuthBackendAuthFails=0
+dot1xAuthSessionId=0000000000000000
+dot1xAuthSessionAuthenticMethod=1
+dot1xAuthSessionTime=40647
+dot1xAuthSessionTerminateCause=999
+dot1xAuthSessionUserName=N/A
+authMultiSessionId=DCC34F63465CDEEC
+last_eap_type_as=0 (unknown)
+last_eap_type_sta=0 (unknown)
+-- STA-NEXT 02:00:00:00:00:02
+02:00:00:00:00:03
+flags=[AUTHORIZED]
+aid=0
+capability=0x0
+listen_interval=0
+supported_rates=
+timeout_next=NULLFUNC POLL
+dot1xPaePortNumber=0
+dot1xPaePortProtocolVersion=2
+dot1xPaePortCapabilities=1
+dot1xPaePortInitialize=0
+dot1xPaePortReauthenticate=FALSE
+dot1xAuthPaeState=5
+dot1xAuthBackendAuthState=6
+dot1xAuthAdminControlledDirections=0
+dot1xAuthOperControlledDirections=0
+dot1xAuthAuthControlledPortStatus=1
+dot1xAuthAuthControlledPortControl=2
+dot1xAuthQuietPeriod=60
+dot1xAuthServerTimeout=30
+dot1xAuthReAuthPeriod=0
+dot1xAuthReAuthEnabled=FALSE
+dot1xAuthKeyTxEnabled=FALSE
+dot1xAuthEapolFramesRx=4
+dot1xAuthEapolFramesTx=3
+dot1xAuthEapolStartFramesRx=1
+dot1xAuthEapolLogoffFramesRx=0
+dot1xAuthEapolRespIdFramesRx=1
+dot1xAuthEapolRespFramesRx=3
+dot1xAuthEapolReqIdFramesTx=1
+dot1xAuthEapolReqFramesTx=2
+dot1xAuthInvalidEapolFramesRx=0
+dot1xAuthEapLengthErrorFramesRx=0
+dot1xAuthLastEapolFrameVersion=2
+dot1xAuthLastEapolFrameSource=02:00:00:00:00:03
+dot1xAuthEntersConnecting=1
+dot1xAuthEapLogoffsWhileConnecting=0
+dot1xAuthEntersAuthenticating=0
+dot1xAuthAuthSuccessesWhileAuthenticating=1
+dot1xAuthAuthTimeoutsWhileAuthenticating=0
+dot1xAuthAuthFailWhileAuthenticating=0
+dot1xAuthAuthEapStartsWhileAuthenticating=0
+dot1xAuthAuthEapLogoffWhileAuthenticating=0
+dot1xAuthAuthReauthsWhileAuthenticated=0
+dot1xAuthAuthEapStartsWhileAuthenticated=0
+dot1xAuthAuthEapLogoffWhileAuthenticated=0
+dot1xAuthBackendResponses=2
+dot1xAuthBackendAccessChallenges=1
+dot1xAuthBackendOtherRequestsToSupplicant=2
+dot1xAuthBackendAuthSuccesses=1
+dot1xAuthBackendAuthFails=0
+dot1xAuthSessionId=0000000000000000
+dot1xAuthSessionAuthenticMethod=1
+dot1xAuthSessionTime=40647
+dot1xAuthSessionTerminateCause=999
+dot1xAuthSessionUserName=dui-user
+authMultiSessionId=D523C6F39A9AE5FB
+last_eap_type_as=4 (MD5)
+last_eap_type_sta=4 (MD5)
+-- STA-NEXT 02:00:00:00:00:03
+== logoff
+tx EAPOL-Logoff
+== events
+attach: OK
+08:52:04 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+08:52:04 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:52:04 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+08:52:04 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:52:04 <3>CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:00:03
+08:52:04 <3>AP-STA-CONNECTED 02:00:00:00:00:03
+08:52:05 <3>AP-STA-DISCONNECTED 02:00:00:00:00:03
+08:52:06 <3>CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+08:52:06 <3>CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+08:52:07 <3>CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+== radius log (tail)
+lo: interface state UNINITIALIZED->ENABLED
+lo: AP-ENABLED 
+lo: CTRL-EVENT-EAP-STARTED 00:00:00:00:00:00
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD method=1
+lo: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=4
+lo: CTRL-EVENT-EAP-SUCCESS 00:00:00:00:00:00
+== auth log (tail)
+Ethernet120: RADIUS Authentication server 127.0.0.1:18120
+Ethernet120: interface state UNINITIALIZED->ENABLED
+Ethernet120: AP-ENABLED 
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:02
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-SUCCESS2 02:00:00:00:00:03
+Ethernet120: AP-STA-CONNECTED 02:00:00:00:00:03
+Ethernet120: STA 02:00:00:00:00:03 IEEE 802.1X: authenticated - EAP type: 4 (MD5)
+Ethernet120: AP-STA-DISCONNECTED 02:00:00:00:00:03
+Ethernet120: CTRL-EVENT-EAP-STARTED 02:00:00:00:00:03
+Ethernet120: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=1
+Ethernet120: CTRL-EVENT-EAP-RETRANSMIT 02:00:00:00:00:02
+== cleanup
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 0, policy: ACCEPT
+      ce30(126)  down   4  100G  FD   SW  No   Forward          None   FA    KR4  1522    No      
+hardware
+eapol traps left: 0

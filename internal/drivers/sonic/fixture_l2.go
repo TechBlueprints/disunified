@@ -99,6 +99,21 @@ func (f *FixtureRunner) buildMstpd(script string) error {
 	return nil
 }
 
+// buildHostapd models hostapd's transient build unit having run to its end.
+func (f *FixtureRunner) buildHostapd(script string) error {
+	in := f.l2Inst()
+	if !in.Docker {
+		return fmt.Errorf("docker: command not found")
+	}
+	if !strings.Contains(script, "sudo systemd-run --quiet --collect --unit=disunified-hostapd-build /bin/sh "+hostapdBuildIn+"/host.sh") {
+		return fmt.Errorf("disunified-hostapd-build: the build is not started in its own unit")
+	}
+	v := "hostapd v" + hostapdVersion
+	in.HostapdBuild, in.Hostapd = "ok", &v
+	f.setL2Inst(in)
+	return nil
+}
+
 // l2Check answers l2CheckCommand: mstpd runs while the daemon is up with
 // spanning tree on (and the fresh connection reaches the switch at all).
 func (f *FixtureRunner) l2Check() string {

@@ -50,9 +50,15 @@
 # unseen, the kernel bridge drops them there, and each frame from a source
 # not on the port's list is counted for the port, which stays up.
 #
+# 802.1X (UniFi's 802.1X Control; Dot1xGuard below, 11.25): a hostapd per
+# controlled port relays its hosts' EAP to the RADIUS servers; each host it
+# authorises is admitted with a static FDB entry, and each failed attempt is
+# counted for the port.
+#
 # Everything the bridge reads back is published in STATE_DB:
 # DUI_STP_TABLE|Bridge, DUI_STP_PORT_TABLE|<port>, DUI_LOOP_GUARD_TABLE|<port>,
-# DUI_STORM_TABLE|<port>, DUI_DHCP_RATE_TABLE|<port>, DUI_MACLOCK_TABLE|<interface>.
+# DUI_STORM_TABLE|<port>, DUI_DHCP_RATE_TABLE|<port>, DUI_MACLOCK_TABLE|<interface>,
+# DUI_DOT1X_TABLE|<interface>.
 #
 # `disunified-l2d --teardown` undoes it: every VLAN back to the default STP
 # instance, every port forwarding in the kernel, stp_state 0, mstpd stopped,
@@ -187,6 +193,7 @@ def load_conf():
         "mac_lock": {
             "ports": {p: frozenset(m.lower() for m in (macs or [])) for p, macs in (lock.get("ports") or {}).items()},
         },
+        "dot1x": c.get("dot1x") or {},
     }
 
 
@@ -612,7 +619,8 @@ class L2d(object):
         # fds() and readable(fd) for the main loop's select, teardown().
         self.maclock = MacLockGuard(self)
         self.ucast = UcastSampler(self)  # unknown-unicast storms' samples (11.24)
-        self.detectors = [self.maclock, self.ucast]
+        self.dot1x = Dot1xGuard(self)  # 802.1X port authentication (11.25)
+        self.detectors = [self.maclock, self.ucast, self.dot1x]
 
     # --- spanning tree -------------------------------------------------
 
@@ -1784,6 +1792,489 @@ class MacLockGuard(object):
         for s, _ in self.socks.values():
             s.close()
         self.socks = {}
+
+
+DOT1X_CHAIN = "DUI_DOT1X"
+DOT1X_TABLE = "DUI_DOT1X_TABLE"
+DOT1X_SECRET = "/etc/sonic/disunified/dot1x-radius"  # one RADIUS secret per line, the servers' order; root 0600
+DOT1X_RUN = "/run/disunified-dot1x"
+HOSTAPD = "/usr/local/sbin/hostapd"
+# EAPOL to the CPU while a port authenticates: copporch maps trap id "eapol"
+# to SAI_HOSTIF_TRAP_TYPE_EAPOL. The image's copp_cfg.json lists it under the
+# macsec feature only, which is off, so the trap is installed with
+# always_enabled, as STP's is (verified live on the DX010: ASIC_DB gains the
+# trap, a looped port's EAPOL-Start reaches its netdev tagged with the VLAN).
+COPP_EAPOL_KEY = "dui_eapol"
+COPP_EAPOL = [("trap_ids", "eapol"), ("trap_group", COPP_GROUP_NAME), ("always_enabled", "true")]
+# A port's control modes that run an authenticator. force_unauthorized is
+# held closed with no authenticator; force_authorized is not in the config.
+DOT1X_AUTH_MODES = ("auto", "multi_host", "mac_based")
+DOT1X_RESTART_EVERY = 10.0  # seconds between starts of one port's hostapd
+
+
+def eapol_rules(port):
+    """EAPOL is accepted before anything else: the bridge hands a link-local
+    frame to the port's packet sockets (hostapd's) only once ebtables INPUT
+    has passed it (seen live: a DROP for the port starved hostapd)."""
+    return [["-i", port, "-p", "0x888e", "-j", "ACCEPT"],
+            ["-i", port, "-p", "802_1Q", "--vlan-encap", "0x888e", "-j", "ACCEPT"]]
+
+
+class Dot1xGuard(object):
+    """IEEE 802.1X port authentication (UniFi's 802.1X Control) -- docs/
+    drivers/sonic.md 11.25.
+
+    The driver holds a controlled port closed in CONFIG_DB (learn_mode drop:
+    no source is learnt or forwarded by the chip, from boot) and lists it in
+    this daemon's config (dot1x.ports: interface -> control mode). For each
+    port in auto, multi_host or mac_based this daemon runs a hostapd of its
+    own (wired driver, a RADIUS client and nothing else; built on the switch
+    by the driver, as mstpd is) and installs the EAPOL trap. hostapd relays
+    the host's EAP to the RADIUS servers and reports the outcome on its
+    control socket:
+
+    - AP-STA-CONNECTED <mac>: the host is admitted -- a static FDB entry in
+      every VLAN the port carries (APPL_DB FDB_TABLE, as the MAC filter
+      writes its allowed MACs) and a RETURN for the source in the kernel
+      chain DUI_DOT1X; with multi_host the first admission opens the port
+      (learning back to hardware in APPL_DB, the whole port RETURNed);
+    - AP-STA-DISCONNECTED <mac>: the admission goes;
+    - CTRL-EVENT-EAP-FAILURE2 <mac>: a failed attempt, counted for the port
+      (STATE_DB DUI_DOT1X_TABLE|<port> failures, since boot; the anomaly 128
+      the driver reports).
+
+    The chain DUI_DOT1X (from INPUT and FORWARD, ahead of MAC locking's)
+    accepts the port's EAPOL, passes the admitted sources and drops the rest
+    of the port's frames, so an unauthorised host cannot reach the switch's
+    own CPU through a trapped frame (ARP, DHCP, IGMP) either. A port leaving
+    the config, or losing its link, loses its admissions."""
+
+    def __init__(self, l2d):
+        self.l2d = l2d
+        self.db = l2d.db
+        self.fdb_pst = sw.ProducerStateTable(self.db.appl, "FDB_TABLE")
+        self.lag_pst = sw.ProducerStateTable(self.db.appl, "LAG_TABLE")
+        self.st = sw.Table(self.db.state, DOT1X_TABLE)
+        self.want = {}  # interface -> control mode
+        self.servers = []  # [(ip, port, secret)]
+        self.nas_ip = ""
+        self.own = ""
+        self.started = {}  # interface -> the hostapd config text it was started with
+        self.last_start = {}  # interface -> time of the last start
+        self.socks = {}  # interface -> event socket (attached)
+        self.admitted = {}  # interface -> set of MACs
+        self.fdb = {}  # interface -> set of FDB_TABLE keys written
+        self.opened = set()  # multi_host ports whose learning is back to hardware
+        self.failures = {}  # interface -> count, carried over a restart
+        self.last_fail = {}
+        self.dirty = set()
+        self.written = None  # chain rules as last written
+        # interface -> MACs an l2d before this one admitted: their FDB
+        # entries stay until the port's running hostapd says whether it
+        # still authorises them (attach), or the port is gone.
+        self.stale = {}
+        for k in self.db.keys(self.db.state, DOT1X_TABLE + "|*"):
+            row = self.db.hgetall(self.db.state, k)
+            port = k.split("|", 1)[1]
+            try:
+                self.failures[port] = int(row.get("failures", "0"))
+            except ValueError:
+                pass
+            self.last_fail[port] = row.get("last_failed_mac", "")
+            macs = set(splitlist(row.get("authorized", "")))
+            if macs:
+                self.stale[port] = macs
+
+    # --- configuration -----------------------------------------------------
+
+    def fdb_keys(self, port, mac):
+        return ["%s:%s" % (v, mac) for v in self.vlans_of(port)]
+
+    def vlans_of(self, port):
+        out = []
+        for k in self.db.keys(self.db.cfg, "VLAN_MEMBER|Vlan*|" + port):
+            out.append(k.split("|")[1])
+        return sorted(out)
+
+    def secrets(self):
+        try:
+            with open(DOT1X_SECRET) as f:
+                return [line.rstrip("\n") for line in f]
+        except OSError:
+            return []
+
+    def hostapd_conf(self, port):
+        lines = [
+            "# disunified-l2d: 802.1X authenticator for %s (docs/drivers/sonic.md 11.25)" % port,
+            "interface=%s" % port,
+            "driver=wired",
+            "ctrl_interface=%s/ctrl" % DOT1X_RUN,
+            "logger_syslog=-1",
+            "logger_syslog_level=2",
+            "ieee8021x=1",
+            "eapol_version=2",
+            "eap_server=0",
+            "use_pae_group_addr=1",
+            "eap_reauth_period=3600",
+            "nas_identifier=disunified",
+        ]
+        if self.nas_ip:
+            lines.append("own_ip_addr=%s" % self.nas_ip)
+        for ip, port_no, secret in self.servers:
+            lines += ["auth_server_addr=%s" % ip, "auth_server_port=%d" % port_no,
+                      "auth_server_shared_secret=%s" % secret]
+        return "\n".join(lines) + "\n"
+
+    def sync(self, conf):
+        c = conf.get("dot1x") or {}
+        want = {p: m for p, m in (c.get("ports") or {}).items()
+                if m != "force_authorized" and self.db.known(p) and not p.startswith("PortChannel")}
+        if not self.own:
+            self.own = (self.db.hgetall(self.db.cfg, "DEVICE_METADATA|localhost").get("mac") or "").lower()
+        secrets = self.secrets()
+        servers = []
+        for i, s in enumerate(c.get("servers") or []):
+            if i < len(secrets) and s.get("ip"):
+                servers.append((s["ip"], int(s.get("port") or 1812), secrets[i]))
+        if c.get("servers") and not servers:
+            log("802.1X: no RADIUS secret on the switch (%s); no authenticator started" % DOT1X_SECRET,
+                syslog.LOG_WARNING)
+        self.servers, self.nas_ip = servers, c.get("nas_ip") or ""
+        # A port leaving the config: its authenticator stops, its admissions go.
+        for port in sorted(set(self.started) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
+            self.stop(port)
+        for port in sorted(set(self.admitted) - set(want)):
+            self.revoke_all(port, "no longer controlled")
+        self.want = want
+        for port in sorted(set(self.stale) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
+            self.drop_stale(port, set())
+        # The chain before any authenticator runs: nothing is admitted
+        # through the kernel that the chip would not admit either.
+        self.write_chain(self.rules())
+        auth = sorted(p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers)
+        self.copp(bool(auth))
+        for port in auth:
+            if not self.carrier(port) and self.admitted.get(port):
+                self.revoke_all(port, "link down")
+            self.ensure(port)
+        self.publish()
+
+    def carrier(self, port):
+        return rd("%s/%s/carrier" % (SYS, port), "0") == "1"
+
+    def copp(self, on):
+        have = self.db.hgetall(self.db.cfg, "COPP_TRAP|" + COPP_EAPOL_KEY)
+        if on and have != dict(COPP_EAPOL):
+            put(self.db.copp_group, COPP_GROUP_NAME, copp_group())  # its leafref first
+            put(self.db.copp, COPP_EAPOL_KEY, COPP_EAPOL)
+            log("802.1X: EAPOL trapped to the CPU")
+        elif not on and have:
+            self.db.copp._del(COPP_EAPOL_KEY)
+            log("802.1X: EAPOL trap removed")
+
+    # --- the authenticators --------------------------------------------------
+
+    def pidfile(self, port):
+        return "%s/%s.pid" % (DOT1X_RUN, port)
+
+    def pid(self, port):
+        try:
+            pid = int(rd(self.pidfile(port)))
+        except ValueError:
+            return 0
+        cmd = rd("%s/%d/cmdline" % (PROC, pid))
+        return pid if HOSTAPD in cmd and ("%s.conf" % port) in cmd else 0
+
+    def ensure(self, port):
+        text = self.hostapd_conf(port)
+        pid = self.pid(port)
+        path = "%s/%s.conf" % (DOT1X_RUN, port)
+        if pid and self.started.get(port) is None and rd(path) + "\n" == text:
+            self.started[port] = text  # adopted from an l2d before this one
+        if pid and self.started.get(port) == text:
+            if port not in self.socks:
+                self.attach(port)
+            return
+        if pid:
+            self.stop(port)  # its settings changed
+        now = time.time()
+        if now - self.last_start.get(port, 0) < DOT1X_RESTART_EVERY:
+            return
+        self.last_start[port] = now
+        if not os.access(HOSTAPD, os.X_OK):
+            return
+        os.makedirs(DOT1X_RUN + "/ctrl", mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        p = run([HOSTAPD, "-B", "-P", self.pidfile(port), path], check=True)
+        if p.returncode == 0:
+            self.started[port] = text
+            log("802.1X: authenticator started on %s (%s, %d RADIUS servers)" %
+                (port, self.want.get(port), len(self.servers)))
+            self.attach(port)
+
+    def stop(self, port):
+        self.detach(port)
+        pid = self.pid(port)
+        if pid:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+            log("802.1X: authenticator on %s stopped" % port)
+        self.started.pop(port, None)
+        for path in (self.pidfile(port), "%s/%s.conf" % (DOT1X_RUN, port)):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def ctrl(self, port, cmd):
+        """One request on hostapd's control socket, its reply ("" on failure)."""
+        me = "%s/req-%s" % (DOT1X_RUN, port)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            try:
+                os.unlink(me)
+            except OSError:
+                pass
+            s.bind(me)
+            s.settimeout(2.0)
+            s.connect("%s/ctrl/%s" % (DOT1X_RUN, port))
+            s.send(cmd.encode())
+            return s.recv(8192).decode(errors="replace")
+        except OSError:
+            return ""
+        finally:
+            s.close()
+            try:
+                os.unlink(me)
+            except OSError:
+                pass
+
+    def attach(self, port):
+        me = "%s/ev-%s" % (DOT1X_RUN, port)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            try:
+                os.unlink(me)
+            except OSError:
+                pass
+            s.bind(me)
+            s.connect("%s/ctrl/%s" % (DOT1X_RUN, port))
+            s.settimeout(2.0)
+            s.send(b"ATTACH")
+            if not s.recv(64).startswith(b"OK"):
+                raise OSError("ATTACH refused")
+            s.setblocking(False)
+        except OSError as e:
+            s.close()
+            log("802.1X: no events from %s's authenticator yet: %s" % (port, e), syslog.LOG_WARNING)
+            return
+        self.socks[port] = s
+        # Who hostapd already authorised (an authenticator adopted after a
+        # restart of this daemon): admitted again.
+        have = set()
+        reply = self.ctrl(port, "STA-FIRST")
+        while reply and reply != "FAIL\n" and len(have) < 4096:
+            mac = reply.split("\n", 1)[0].strip().lower()
+            if not mac or mac in have:
+                break
+            have.add(mac)
+            if "[AUTHORIZED]" in reply:
+                self.admit(port, mac)
+            reply = self.ctrl(port, "STA-NEXT " + mac)
+        self.drop_stale(port, self.admitted.get(port, set()))
+
+    def drop_stale(self, port, keep):
+        """An earlier l2d's admissions on the port that hostapd no longer
+        authorises: their FDB entries go."""
+        for mac in sorted(self.stale.pop(port, set()) - keep):
+            for key in self.fdb_keys(port, mac):
+                self.fdb_pst._del(key)
+            log("802.1X: %s no longer authorised on %s (not authorised after a restart)" % (mac, port))
+            self.dirty.add(port)
+
+    def detach(self, port):
+        s = self.socks.pop(port, None)
+        if s is not None:
+            s.close()
+            try:
+                os.unlink("%s/ev-%s" % (DOT1X_RUN, port))
+            except OSError:
+                pass
+
+    # --- admissions ------------------------------------------------------------
+
+    def admit(self, port, mac):
+        if mac == self.own:
+            return  # the switch's own frames, looped back to it
+        macs = self.admitted.setdefault(port, set())
+        new = mac not in macs
+        macs.add(mac)
+        keys = self.fdb.setdefault(port, set())
+        for key in self.fdb_keys(port, mac):
+            if key not in keys:
+                put(self.fdb_pst, key, [("port", port), ("type", "static")])
+                keys.add(key)
+        if self.want.get(port) == "multi_host" and port not in self.opened:
+            put(self.db.ifport_pst, port, [("learn_mode", "hardware")])
+            self.opened.add(port)
+        self.write_chain(self.rules())
+        self.dirty.add(port)
+        if new:
+            log("802.1X: %s authorised on %s" % (mac, port))
+
+    def revoke(self, port, mac, why):
+        macs = self.admitted.get(port, set())
+        if mac not in macs:
+            return
+        macs.discard(mac)
+        keys = self.fdb.get(port, set())
+        for key in self.fdb_keys(port, mac):
+            if key in keys:
+                self.fdb_pst._del(key)
+                keys.discard(key)
+        if not macs and port in self.opened:
+            mode = self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
+            put(self.db.ifport_pst, port, [("learn_mode", mode)])
+            self.opened.discard(port)
+        self.write_chain(self.rules())
+        self.dirty.add(port)
+        log("802.1X: %s no longer authorised on %s (%s)" % (mac, port, why))
+
+    def revoke_all(self, port, why):
+        for mac in sorted(self.admitted.get(port, set())):
+            self.revoke(port, mac, why)
+            if self.started.get(port):
+                self.ctrl(port, "DEAUTHENTICATE " + mac)
+        self.admitted.pop(port, None)
+        self.dirty.add(port)
+
+    def rules(self):
+        out = []
+        for port in sorted(self.want):
+            out += eapol_rules(port)
+            if port in self.opened:
+                out.append(["-i", port, "-j", "RETURN"])
+            for mac in sorted(self.admitted.get(port, ())):
+                out.append(["-i", port, "-s", mac, "-j", "RETURN"])
+            out.append(["-i", port, "-j", "DROP"])
+        return out
+
+    def write_chain(self, rules):
+        if rules == self.written:
+            return
+        txt = run([EBTABLES, "-L"]).stdout
+        exists = ("Bridge chain: %s," % DOT1X_CHAIN) in txt
+        jumps = set()
+        chain = ""
+        for line in txt.splitlines():
+            if line.startswith("Bridge chain: "):
+                chain = line[len("Bridge chain: "):].split(",")[0]
+            elif line.strip() == "-j " + DOT1X_CHAIN and chain in ("INPUT", "FORWARD"):
+                jumps.add(chain)
+        if not rules:
+            for c in sorted(jumps):
+                run([EBTABLES, "-D", c, "-j", DOT1X_CHAIN], check=True)
+            if exists:
+                run([EBTABLES, "-F", DOT1X_CHAIN], check=True)
+                run([EBTABLES, "-X", DOT1X_CHAIN], check=True)
+                log("802.1X: kernel bridge rules removed")
+            self.written = []
+            return
+        if exists:
+            run([EBTABLES, "-F", DOT1X_CHAIN], check=True)
+        else:
+            run([EBTABLES, "-N", DOT1X_CHAIN, "-P", "RETURN"], check=True)
+        ok = True
+        for r in rules:
+            ok = run([EBTABLES, "-A", DOT1X_CHAIN] + r, check=True).returncode == 0 and ok
+        for c in ("INPUT", "FORWARD"):
+            if c not in jumps:  # first, ahead of MAC locking's chain
+                ok = run([EBTABLES, "-I", c, "1", "-j", DOT1X_CHAIN], check=True).returncode == 0 and ok
+        self.written = rules if ok else None
+
+    def publish(self):
+        for port in sorted(self.dirty | set(self.want)):
+            row = [("mode", self.want.get(port, "")),
+                   ("authorized", ",".join(sorted(self.admitted.get(port, ())))),
+                   ("failures", str(self.failures.get(port, 0))),
+                   ("last_failed_mac", self.last_fail.get(port, ""))]
+            if self.db.hgetall(self.db.state, DOT1X_TABLE + "|" + port) != dict(row):
+                put(self.st, port, row)
+        self.dirty.clear()
+
+    # --- events ----------------------------------------------------------------
+
+    def fds(self):
+        return [s.fileno() for s in self.socks.values()]
+
+    def readable(self, fd):
+        for port, s in list(self.socks.items()):
+            if s.fileno() == fd:
+                self.drain(port, s)
+                return
+
+    def drain(self, port, s):
+        for _ in range(64):
+            try:
+                msg = s.recv(4096).decode(errors="replace").strip()
+            except (BlockingIOError, InterruptedError):
+                break
+            except OSError:
+                self.detach(port)  # hostapd went away; ensure() restarts it
+                break
+            self.event(port, msg)
+        self.publish()
+
+    def event(self, port, msg):
+        if msg.startswith("<") and ">" in msg:
+            msg = msg.split(">", 1)[1]
+        fields = msg.split()
+        if len(fields) < 2:
+            return
+        ev, mac = fields[0], fields[1].lower()
+        if ev == "AP-STA-CONNECTED":
+            self.admit(port, mac)
+        elif ev == "AP-STA-DISCONNECTED":
+            self.revoke(port, mac, "logged off or timed out")
+        elif ev == "CTRL-EVENT-EAP-FAILURE2" and mac != self.own:
+            self.failures[port] = self.failures.get(port, 0) + 1
+            self.last_fail[port] = mac
+            self.dirty.add(port)
+            log("802.1X: %s failed to authenticate on %s (%d on this port since boot)" %
+                (mac, port, self.failures[port]), syslog.LOG_WARNING)
+
+    def teardown(self):
+        """Every authenticator stopped, every admission removed, the chain and
+        the trap gone; the ports stay closed (CONFIG_DB keeps learn_mode drop).
+        The counts stay: they are since boot."""
+        for port in sorted(set(self.admitted)):
+            for mac in sorted(self.admitted.get(port, ())):
+                for key in self.fdb_keys(port, mac):
+                    self.fdb_pst._del(key)
+        for port in sorted(self.opened):
+            mode = self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
+            put(self.db.ifport_pst, port, [("learn_mode", mode)])
+        try:
+            names = [n[:-4] for n in os.listdir(DOT1X_RUN) if n.endswith(".pid")]
+        except OSError:
+            names = []
+        for port in sorted(set(names) | set(self.started)):
+            self.stop(port)
+        self.admitted, self.opened, self.want = {}, set(), {}
+        self.written = None
+        self.write_chain([])
+        self.copp(False)
+        for port in sorted(set(self.failures)):
+            put(self.st, port, [("mode", ""), ("authorized", ""), ("failures", str(self.failures[port])),
+                                ("last_failed_mac", self.last_fail.get(port, ""))])
+
+
+def splitlist(s):
+    return [x for x in (s or "").split(",") if x]
 
 
 def teardown():

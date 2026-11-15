@@ -233,6 +233,7 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	c.mu.Unlock()
 	if st != nil && !st.stpFeature {
 		c.l2SetSTP(d)
+		c.l2SetDot1X(d, nasAddr(c.CurrentAddress()))
 		m, err := c.applyL2(ctx)
 		n += m
 		if err != nil {
