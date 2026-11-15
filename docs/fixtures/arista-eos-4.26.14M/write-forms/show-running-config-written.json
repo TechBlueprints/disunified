@@ -1,0 +1,43 @@
+{
+    "cmds": {
+        "interface Ethernet2": {
+            "cmds": {
+                "description dui-fixture-test": null,
+                "spanning-tree bpdufilter enable": null,
+                "spanning-tree portfast": null,
+                "speed forced 1000full": null,
+                "switchport access vlan 2": null,
+                "switchport trunk allowed vlan 1-2,8-10,1000": null,
+                "switchport trunk native vlan 2": null
+            },
+            "comments": []
+        },
+        "interface Ethernet54/1": {
+            "cmds": {
+                "mtu 1500": null,
+                "no error-correction encoding": null,
+                "speed forced 100gfull": null,
+                "switchport mode trunk": null
+            },
+            "comments": []
+        },
+        "ip access-list DUI_FIXTURE_PROBE": {
+            "cmds": {
+                "10 deny tcp 203.0.113.0/24 198.51.100.0/24 eq discard": null,
+                "20 deny udp 203.0.113.0/24 198.51.100.0/24 eq discard": null,
+                "30 deny tcp 203.0.113.0/24 198.51.100.0/24 eq 1001": null,
+                "40 permit tcp any host 192.0.2.1 eq https": null,
+                "50 permit tcp any host 192.0.2.1 eq ssh": null,
+                "60 deny tcp 203.0.113.0/24 eq discard 192.0.2.0/24": null,
+                "70 deny udp 198.51.100.0/24 host 192.0.2.1 eq bootpc": null,
+                "80 permit ip 192.0.2.0/24 198.51.100.0/24": null,
+                "90 deny ip any 198.51.100.0/24": null
+            },
+            "comments": []
+        },
+        "logging host 192.0.2.5 514": null,
+        "ntp server 0.ubnt.pool.ntp.org": null,
+        "ntp server 192.0.2.6": null,
+        "ntp server 192.0.2.7": null
+    }
+}

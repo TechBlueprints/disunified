@@ -34,7 +34,10 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   command API; `proxmox`/`podman.FixtureRunner` for a script over SSH;
   `apcups.FixtureRunner` for a register map) over real captures — never
   hand-written samples — and cover parsing, every apply sequence, and
-  idempotence. `go test ./...` must pass
+  idempotence. The transport remembers its writes (a later read shows
+  them, in forms captured from the device after such a command; the rest
+  is recorded as unmodelled), so a replay holds a reconcile after an
+  applied push to writing nothing (`docs/drivers/arista-eos.md` §11). `go test ./...` must pass
   before a live run, including the wire-contract and replay tests, which
   drive your driver end to end against real controller data.
 - The management address the bridge uses must be in-band (behind the

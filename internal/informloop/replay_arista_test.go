@@ -53,29 +53,35 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 			c.ControlIGMP, c.ControlNTP, c.ControlSyslog, c.ControlSNMP = true, true, true, true
 			c.OnConnected = func(*devicemodel.Snapshot) { connected++ }
 			// The recording's first push applied live (the driver could not
-			// plan a push then); the fixture transport is stateless, so a
-			// held push could never converge here. The hold has its own
-			// test below.
+			// plan a push then). The hold has its own test below.
 			c.AllowInitialChanges = true
 		},
-		// What each recorded push must do to the switch, as a diff against
-		// the captured switch state (the fixture transport is stateless, so
-		// a push that matches the captured state produces no port-2 lines —
-		// which is itself the assertion for the "back to normal" pushes).
+		// The fixture transport remembers what was written, so each reply
+		// writes only what its push changes against the switch as the
+		// replies before it left it, and every other reply -- a reconcile,
+		// a cmd -- writes nothing, as the deployed bridge does ("0 of 54
+		// ports changed").
+		Quiet: true,
 		Expect: map[int]replayExpect{
 			// 0-1: HTTP 400 (the controller's cooldown after a forget), 2: 404 pending,
-			// 3: adopt via mgmt_cfg, 4: first system_cfg after adoption
-			5:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // first full push of the day: port 2 disabled
-			8:  {must: []string{"interface Ethernet2 | shutdown"}},                                                                       // Port State: Disabled
-			9:  {mustNot: []string{"interface Ethernet2 | shutdown"}},                                                                    // Port State: Active
-			10: {must: []string{"interface Ethernet2 | description Ethernet2 | switchport mode trunk | switchport trunk native vlan 2"}}, // native VLAN kids
-			11: {mustNot: []string{"switchport trunk native vlan 2"}},                                                                    // native VLAN back to Default
+			// 3: adopt via mgmt_cfg, 4: first system_cfg after adoption: the
+			// site's VLANs the capture lacks, IGMP snooping per VLAN, the NTP
+			// pool server, every port's name.
+			4: {must: []string{"| vlan 69,4000 |", "| ntp server 0.ubnt.pool.ntp.org |", "interface Ethernet1 | description SFP28 1 |"}},
+			5: {exactly: "enable | configure | interface Ethernet2 | shutdown | end | write memory"}, // first full push of the day: port 2 disabled
+			// 6: an empty setparam, 7: build-ssh-session.
+			// 8: Port State: Disabled again, with the ports renamed: port 2 is
+			// already shut, so only the names are written.
+			8:  {must: []string{"interface Ethernet2 | description Ethernet2 |"}, mustNot: []string{"shutdown"}},
+			9:  {exactly: "enable | configure | interface Ethernet2 | no shutdown | end | write memory"},                                                                                                            // Port State: Active
+			10: {exactly: "enable | configure | interface Ethernet2 | switchport mode trunk | switchport trunk native vlan 2 | switchport trunk allowed vlan 1-2,8-10,69,1000,2000,3000,4000 | end | write memory"}, // native VLAN kids
+			11: {exactly: "enable | configure | interface Ethernet2 | switchport mode trunk | no switchport trunk native vlan | switchport trunk allowed vlan all | end | write memory"},                            // native VLAN back to Default
 			// 12: set-locate, 13: unset-locate
 			// 14-15: Global Switch Settings -> Rogue DHCP Server Detection on, then off
 			// (site-wide; pushed only because the device claimed DHCP snooping at the
-			// time). EOS 4.26 cannot honour it, so neither push writes snooping.
-			14: {mustNot: []string{"ip dhcp snooping"}},
-			15: {mustNot: []string{"ip dhcp snooping"}},
+			// time). EOS 4.26 cannot honour it, so neither push writes snooping;
+			// 14 also carries the site's new first NTP server.
+			14: {exactly: "enable | configure | ntp server 192.0.2.5 | no ntp server 192.0.2.2 | end | write memory"},
 		},
 		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
 			var p map[string]any
@@ -118,6 +124,18 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 					if strings.Contains(strings.Join(b, "\n"), "access-list") {
 						t.Errorf("reply %d: snooping without guards wrote an ACL: %v", i, b)
 					}
+				}
+			}
+			if i == 15 {
+				// A reconcile of the last push, from the switch as the replay
+				// left it, finds nothing to write.
+				n := len(ft.Configured)
+				l.reconcile(context.Background())
+				if len(ft.Configured) != n {
+					t.Errorf("a reconcile after the last push wrote %q", ft.Configured[n:])
+				}
+				if len(ft.Unmodelled) != 0 {
+					t.Errorf("writes the fixture transport could not show: %q", ft.Unmodelled)
 				}
 			}
 			if typ == "cmd" && cmd == "build-ssh-session" && !strings.Contains(logText, `UNHANDLED cmd "build-ssh-session"`) {

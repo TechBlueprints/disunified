@@ -1,0 +1,13 @@
+enable
+configure
+ip access-list DUI_RW_TEST
+no 10
+no 20
+no 30
+no 40
+10 remark disunified test-a
+20 deny ip host 192.0.2.1 any
+30 deny ip host 192.0.2.2 any
+40 permit ip any any
+exit
+end
