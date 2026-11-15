@@ -472,7 +472,8 @@ file, the admitted hosts' FDB entries kept, the read-back.
 External RADIUS, off; the cage closed and opened, hostapd built by the
 driver's own unit, l2d's config, the trap and the chain, the secrets file
 root-only, the read-back. Two fixes followed (the secrets file now goes
-with 802.1X, a released port's STATE_DB mode is cleared).
+with 802.1X, a released port's STATE_DB mode is cleared), verified the same
+evening through a test deb of the branch.
 
 **MAC-based authentication (MAB)** built the same evening (§11.26.8):
 l2d's own RADIUS request for a host that sends no EAPOL (hostapd's wired
@@ -480,7 +481,9 @@ driver has none), the MAC upper case without separators as user name and
 password (the controller's own help text), the push's idle timeout
 honoured. Proven by hand on the DX010 against hostapd's integrated RADIUS
 server (an accept admitted, a reject counted, the idle timeout, the
-teardown) and replayed on those answers (`TestL2dMAB`).
+teardown) and replayed on those answers (`TestL2dMAB`); through the driver
+(a test deb) the push's idle timeout reaches l2d and the cage is trapped
+behind its drop.
 
 | Gap | What the PR needs |
 |---|---|

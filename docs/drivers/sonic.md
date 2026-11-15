@@ -7561,8 +7561,19 @@ captured answers admit and refuse, a forged accept is ignored, and the
 idle timeout and the teardown behave as above. It caught one bug the hand
 run hid: an answer was published to STATE_DB only on the next 2 s pass.
 
-Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host, the
-driver's MAB path live (the deb check of §11.26.7 if it ran).
+**Through the driver, 2026-11-15 19:04-19:12Z** (a deb of this branch,
+`0.0.0+20261115.mab66eb2c0`, installed from `/tmp` under the test lock, the
+carried deb in `/host/disunified` untouched and reinstalled after; no
+loopback, so no request left the switch): with 802.1X on and cage 31 set
+to MAC Address in the UI, the push's `idle_timeout=300` reached l2.json
+(`idle_timeout: {Ethernet120: 300}`), the cage was `drop` in CONFIG_DB and
+`cpu_trap` in APPL_DB, l2d logged it authenticating by MAC address beside
+its hostapd, and two later reconciles left both learn modes alone. With
+802.1X off: `rm -f` of the secrets file, the STATE_DB row's mode emptied,
+the cage back to `hardware`, hostapd, chain and trap gone (§11.26.7's two
+fixes).
+
+Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
