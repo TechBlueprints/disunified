@@ -1319,32 +1319,43 @@ class UcastSampler(object):
     sFlow sampler sees every received frame, before storm control drops
     it, and the SAI delivers its samples through linux-bcm-genl to the
     psample generic-netlink family. So for each port with unknown-unicast
-    storm control this asks orchagent for an ingress sFlow session (APPL_DB
-    SFLOW_SESSION_TABLE, as sflowmgrd would, which does not run: the sflow
-    feature stays off), reads the samples, and hands StormWatch each one the
+    storm control this samples the port through SONiC's own sFlow
+    configuration, reads the samples, and hands StormWatch each one the
     switch flooded: a unicast destination, sent to no front-panel port and
-    not the CPU, and not in the FDB for its VLAN. The sample rate gives
-    TARGET samples a second at the limit with 64-byte frames, so the CPU
-    sees samples in proportion to the traffic; CoPP caps them (the sflow
-    trap's own queue, 1000/s)."""
+    not the CPU, and not in the FDB for its VLAN.
+
+    The configuration is CONFIG_DB's, as `config sflow` writes it:
+    SFLOW_SESSION|all down first (no other port is sampled), SFLOW|global
+    up, SFLOW_SESSION|<port> up at the port's rate, and FEATURE|sflow on
+    (sflowmgrd turns the rows into sfloworch's; coppmgrd installs the
+    sample trap with its group only through the feature, never for an
+    always_enabled trap whose group has no other trap, 11.23.3). A
+    feature this daemon turned on is marked in OWNED and turned off again
+    with the last session; one the operator turned on is left alone, and
+    so are sessions it already has. The sample rate gives TARGET samples
+    a second at the limit with 64-byte frames (at least 256, sonic-sflow's
+    floor), so the CPU sees samples in proportion to the traffic; CoPP
+    caps them (the sflow trap's own queue, 1000/s)."""
 
     TARGET = 25  # samples a second at the limit with 64-byte frames
+    RATE_MIN, RATE_MAX = 256, 8388608  # sonic-sflow.yang's sample_rate range
+    OWNED = "/etc/sonic/disunified/l2d-sflow"  # this daemon turned the sflow feature on
 
     def __init__(self, l2d):
         self.l2d = l2d
         self.db = l2d.db
         self.storm = l2d.storm
-        self.sessions = sw.ProducerStateTable(self.db.appl, "SFLOW_SESSION_TABLE")
-        self.glob = sw.ProducerStateTable(self.db.appl, "SFLOW_TABLE")
+        self.t_session = sw.Table(self.db.cfg, "SFLOW_SESSION")
+        self.t_global = sw.Table(self.db.cfg, "SFLOW")
+        self.t_feature = sw.Table(self.db.cfg, "FEATURE")
         self.sock = None
         self.family = 0
-        self.owned = set()  # ports whose APPL_DB session this daemon wrote
-        self.rates = {}  # watched port -> sample rate asked for
+        self.rates = {}  # watched port -> sample rate
         self.pvid = {}  # port -> its untagged VLAN id
         self.own = set()  # the switch's own MACs
         self.names = {}  # ifindex -> port name
         self.noted = set()
-        self.adopted = False
+        self.stopping = 0.0  # when the sflow rows were deleted
 
     def note(self, key, msg, prio=syslog.LOG_WARNING):
         if key not in self.noted:
@@ -1361,16 +1372,15 @@ class UcastSampler(object):
             except ValueError:
                 kbps = 0
             if port.startswith("Ethernet") and kbps > 0:
-                out[port] = max(1, int(kbps * 125.0 / StormWatch.MIN_FRAME / self.TARGET))
+                rate = int(kbps * 125.0 / StormWatch.MIN_FRAME / self.TARGET)
+                out[port] = min(self.RATE_MAX, max(self.RATE_MIN, rate))
         return out
+
+    def owned(self):
+        return os.path.exists(self.OWNED)
 
     def sync(self, conf):
         want = self.want()
-        sflowmgrd = DB.hgetall(self.db.cfg, "FEATURE|sflow").get("state") == "enabled"
-        if not self.adopted and not sflowmgrd:
-            # Nobody else writes these keys while the sflow feature is off.
-            self.owned = {k.split(":", 1)[1] for k in DB.keys(self.db.appl, "SFLOW_SESSION_TABLE:*")}
-            self.adopted = True
         if not want:
             self.stop()
             return
@@ -1379,30 +1389,38 @@ class UcastSampler(object):
                       "(%s): unknown-unicast storms are not detected (docs/drivers/sonic.md 11.23)" % (len(want), PSAMPLE_RATE_PROC))
             self.stop()
             return
-        if sflowmgrd:
-            self.note("sflowmgrd", "the sflow feature is on: its sessions are sflowmgrd's; unknown-unicast storms are "
-                      "detected from whatever it samples on the storm-controlled ports", syslog.LOG_INFO)
+        feature = DB.hgetall(self.db.cfg, "FEATURE|sflow").get("state") == "enabled"
+        if feature and not self.owned():
+            self.note("operator", "the sflow feature is the operator's: unknown-unicast storms are detected from what "
+                      "it samples on the storm-controlled ports, no session is written", syslog.LOG_INFO)
         else:
-            self.write_sessions(want)
+            self.write_sessions(want, feature)
         self.rates = want
         if self.sock is None:
             self.open()
         self.refresh()
         self.storm.ucast_on = self.sock is not None
 
-    def write_sessions(self, want):
-        if DB.hgetall(self.db.appl, "SFLOW_TABLE:global").get("admin_state") != "up":
-            put(self.glob, "global", [("admin_state", "up")])
+    def write_sessions(self, want, feature):
+        if DB.hgetall(self.db.cfg, "SFLOW_SESSION|all").get("admin_state") != "down":
+            put(self.t_session, "all", [("admin_state", "down")])  # first: no other port is sampled
         for port, rate in sorted(want.items()):
-            cur = DB.hgetall(self.db.appl, "SFLOW_SESSION_TABLE:" + port)
-            if cur.get("admin_state") != "up" or cur.get("sample_rate") != str(rate) or cur.get("sample_direction") != "rx":
-                put(self.sessions, port, [("admin_state", "up"), ("sample_rate", str(rate)), ("sample_direction", "rx")])
+            row = [("admin_state", "up"), ("sample_rate", str(rate))]
+            if DB.hgetall(self.db.cfg, "SFLOW_SESSION|" + port) != dict(row):
+                put(self.t_session, port, row)
                 log("storm control: sampling %s at 1:%d for unknown unicast" % (port, rate))
-            self.owned.add(port)
-        for port in sorted(self.owned - set(want)):
-            self.sessions._del(port)
-            self.owned.discard(port)
-            log("storm control: %s no longer sampled" % port)
+        for k in DB.keys(self.db.cfg, "SFLOW_SESSION|Ethernet*"):
+            port = k.split("|", 1)[1]
+            if port not in want:
+                self.t_session._del(port)
+                log("storm control: %s no longer sampled" % port)
+        if DB.hgetall(self.db.cfg, "SFLOW|global").get("admin_state") != "up":
+            put(self.t_global, "global", [("admin_state", "up")])
+        if not feature:
+            with open(self.OWNED, "w") as f:
+                f.write(time.strftime("%Y-%m-%dT%H:%M:%S%z") + "\n")
+            self.t_feature.hset("sflow", "state", "enabled")
+            log("storm control: sflow feature on for unknown-unicast sampling")
 
     def stop(self):
         self.storm.ucast_on = False
@@ -1410,13 +1428,23 @@ class UcastSampler(object):
         if self.sock is not None:
             self.sock.close()
             self.sock = None
-        if self.owned:
-            for port in sorted(self.owned):
-                self.sessions._del(port)
-            self.owned.clear()
-            # Sessions go first: sfloworch leaves ports bound when the global goes.
-            self.glob._del("global")
-            log("storm control: unknown-unicast sampling stopped")
+        if not self.owned():
+            return
+        rows = DB.keys(self.db.cfg, "SFLOW_SESSION|*") + DB.keys(self.db.cfg, "SFLOW|*")
+        if rows:
+            for k in rows:
+                table, key = k.split("|", 1)
+                (self.t_session if table == "SFLOW_SESSION" else self.t_global)._del(key)
+            self.stopping = time.time()
+            return  # sflowmgrd takes its rows out of APPL_DB before the feature goes
+        if DB.keys(self.db.appl, "SFLOW_*") and time.time() - self.stopping < 10:
+            return
+        self.t_feature.hset("sflow", "state", "disabled")
+        try:
+            os.unlink(self.OWNED)
+        except OSError:
+            pass
+        log("storm control: unknown-unicast sampling stopped, sflow feature off")
 
     def open(self):
         try:
@@ -1497,10 +1525,10 @@ class UcastSampler(object):
         self.storm.add_sample(port, now, rate if rate > 1 else self.rates[port], size)
 
     def teardown(self):
-        self.adopted = False
-        if not DB.hgetall(self.db.cfg, "FEATURE|sflow").get("state") == "enabled":
-            self.owned = {k.split(":", 1)[1] for k in DB.keys(self.db.appl, "SFLOW_SESSION_TABLE:*")}
-        self.stop()
+        deadline = time.time() + 12
+        while self.owned() and time.time() < deadline:
+            self.stop()
+            time.sleep(1)
 
 
 MACLOCK_CHAIN = "DUI_MACLOCK"

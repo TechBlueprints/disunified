@@ -1,7 +1,7 @@
 # Replays a live capture of a port's psample (sFlow) samples through
 # disunified-l2d's UcastSampler and StormWatch (l2d.py) as if CONFIG_DB held
 # the given unknown-unicast storm-control limit, and prints each log line,
-# each APPL_DB session write, each STATE_DB write and the final row.
+# each CONFIG_DB sFlow write, each STATE_DB write and the final row.
 #
 # The capture is one JSON object per line: {"t": seconds} marks a second of
 # the run (StormWatch ticks then), {"t", "iif", "oif", "rate", "size",
@@ -39,6 +39,10 @@ class Table(object):
         print("SET %s%s%s %s" % (self.name, self.sep, key, " ".join("%s=%s" % kv for kv in fvs)))
         self.conn.h["%s%s%s" % (self.name, self.sep, key)] = dict(fvs)
 
+    def hset(self, key, field, value):
+        print("HSET %s%s%s %s=%s" % (self.name, self.sep, key, field, value))
+        self.conn.h.setdefault("%s%s%s" % (self.name, self.sep, key), {})[field] = value
+
     def _del(self, key):
         print("DEL %s%s%s" % (self.name, self.sep, key))
         self.conn.h.pop("%s%s%s" % (self.name, self.sep, key), None)
@@ -62,6 +66,8 @@ spec.loader.exec_module(l2d)
 l2d.log = lambda msg, prio=None: print("LOG " + msg)
 proc = tempfile.NamedTemporaryFile(delete=False)
 l2d.PSAMPLE_RATE_PROC = proc.name  # the image has linux-bcm-genl
+owned = proc.name + ".owned"
+l2d.UcastSampler.OWNED = owned
 
 port, kbps = sys.argv[3], int(sys.argv[4])
 db = types.SimpleNamespace(cfg=Conn(), state=Conn(), appl=appl)
@@ -87,7 +93,8 @@ for line in open(sys.argv[2]):
         d.storm.tick(rec["t"])
 print("ROW " + json.dumps(db.state.hgetall("DUI_STORM_TABLE|" + port), sort_keys=True))
 db.cfg.h.pop("PORT_STORM_CONTROL|%s|unknown-unicast" % port)
-s.sync({})
+s.sync({})  # the rows go
+s.sync({})  # then the feature (APPL_DB holds no sflow row here)
 d.storm.tick(1e12)
-print("AFTER " + json.dumps(sorted(appl.h)))
+print("AFTER " + json.dumps(sorted(k for k in db.cfg.h if k.startswith("SFLOW"))) + " " + db.cfg.h.get("FEATURE|sflow", {}).get("state", ""))
 os.unlink(proc.name)
