@@ -183,14 +183,14 @@ func speedKeyword(mbps int) string {
 	return ""
 }
 
-func applyVLANState(ports []devicemodel.Port, sp showInterfacesSwitchport, props showInterfacesTransceiverProperties) {
+func applyVLANState(ports []devicemodel.Port, sp showInterfacesSwitchport, props showInterfacesTransceiverProperties, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	laneState := map[int]map[int]devicemodel.PortVLAN{} // slot -> lane -> state
 	for name, e := range sp.Switchports {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok {
 			continue
 		}
@@ -231,7 +231,7 @@ func applyVLANState(ports []devicemodel.Port, sp showInterfacesSwitchport, props
 		}
 	}
 	for name, e := range props.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok {
 			continue
 		}
@@ -248,7 +248,7 @@ func applyVLANState(ports []devicemodel.Port, sp showInterfacesSwitchport, props
 	// (EOS errdisables the odd lanes); mark it so the next apply rewrites
 	// the speed on every lane.
 	for name, e := range props.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok || lane <= 1 {
 			continue
 		}
