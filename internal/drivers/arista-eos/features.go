@@ -367,9 +367,17 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if d.ManageSyslog {
 		cmds = append(cmds, listDiff("logging host ", snap.System.SyslogHosts, d.SyslogHosts)...)
 	}
+	// The client Block: static MAC drop entries in every VLAN (block.go).
+	blockCmds, blockWant := c.blockCommandsFor(d, snap)
+	cmds = append(cmds, blockCmds...)
 	if len(cmds) > 0 {
 		if err := c.applySwitchSettings(ctx, snap, d, cmds); err != nil {
 			return 0, err
+		}
+		if len(blockCmds) > 0 {
+			c.mu.Lock()
+			c.macDrops = blockWant
+			c.mu.Unlock()
 		}
 	}
 	// The DHCP guard and the ACL rules go last, in a session of their own

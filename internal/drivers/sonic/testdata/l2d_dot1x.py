@@ -111,6 +111,9 @@ sys.modules["swsscommon"], sys.modules["swsscommon.swsscommon"] = pkg, sw
 spec = importlib.util.spec_from_file_location("l2d", sys.argv[1])
 l2d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(l2d)
+ebspec = importlib.util.spec_from_file_location("l2d_ebtables", os.path.join(os.path.dirname(os.path.abspath(__file__)), "l2d_ebtables.py"))
+ebmod = importlib.util.module_from_spec(ebspec)
+ebspec.loader.exec_module(ebmod)
 
 # --- the capture ---------------------------------------------------------------
 
@@ -149,28 +152,19 @@ class Done(object):
         self.stdout, self.stderr, self.returncode = out, "", rc
 
 
+EB = ebmod.Filter(CHAINS)
+
+
 def ebtables(args):
-    if args == ["-L"]:
-        out = ["Bridge table: filter", ""]
-        for c, rules in CHAINS.items():
-            out.append("Bridge chain: %s, entries: %d, policy: %s" % (c, len(rules), "RETURN" if c.startswith("DUI") else "ACCEPT"))
-            out += [" ".join(r) for r in rules]
-            out.append("")
-        return Done("\n".join(out) + "\n")
-    op, chain, rule = args[0], args[1], args[2:]
-    if op == "-N":
-        CHAINS[chain] = []
-    elif op == "-X":
-        del CHAINS[chain]
-    elif op == "-F":
-        CHAINS[chain] = []
-    elif op == "-A":
-        CHAINS[chain].append(rule)
-    elif op == "-I":
-        CHAINS[chain].insert(int(rule[0]) - 1, rule[1:])
-    elif op == "-D":
-        CHAINS[chain].remove(rule)
-    return Done()
+    out, rc = EB.ebtables(args)
+    return Done(out, rc)
+
+
+def ebtables_restore(text):
+    lines, rc = EB.restore(text)
+    for l in lines:
+        print("EB " + l)
+    return Done("", rc)
 
 
 class Hostapd(object):
@@ -214,8 +208,10 @@ class Hostapd(object):
 HOSTAPDS = {}
 
 
-def run(args, check=False):
+def run(args, check=False, stdin=None):
     print("RUN " + " ".join(args))
+    if args[0] == l2d.EBTABLES_RESTORE:
+        return ebtables_restore(stdin)
     if args[0] == l2d.EBTABLES:
         return ebtables(args[1:])
     if args[0] == l2d.HOSTAPD:
@@ -246,6 +242,8 @@ def kill(pid, sig):
     real_kill(pid, sig)
 
 
+EB.watch(l2d.Dot1xGuard, "dot1x")
+EB.watch(l2d.MacLockGuard, "maclock")
 l2d.run = run
 l2d.log = lambda msg, prio=None: print("LOG " + msg)
 l2d.os.kill = kill
@@ -313,6 +311,20 @@ state("conf mode", oct(os.stat(l2d.DOT1X_RUN + "/Ethernet120.conf").st_mode & 0o
 
 step("second sync")
 g.sync(CONF)
+
+# SONiC's database.sh loads /etc/ebtables.filter.cfg with a plain
+# ebtables-restore, which empties the whole filter table: the next sync
+# finds its chain gone and writes it again, jumps included, in one restore.
+step("filter table reloaded")
+for c in list(CHAINS):
+    if c in ("INPUT", "FORWARD", "OUTPUT"):
+        CHAINS[c] = []
+    else:
+        del CHAINS[c]
+CHAINS["FORWARD"] = [["-d", "BGA", "-j", "DROP"]]
+g.sync(CONF)
+print("STATE input %s" % json.dumps(CHAINS["INPUT"]))
+print("STATE forward %s" % json.dumps(CHAINS["FORWARD"]))
 
 step("captured events")
 h = HOSTAPDS["Ethernet120"][1]

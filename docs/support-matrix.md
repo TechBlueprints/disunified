@@ -70,6 +70,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 | Gap | Where it is marked | What the PR needs |
 |---|---|---|
 | **`numbering: node`** — per-node guest ports (48 per node) instead of 48 across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
+| **UniFi's client Block** (2026-11-15): the controller's blocked clients (`blocked_sta`, captured) as an nft bridge table of the driver's own, dropping their frames from every port at prerouting | `drivers/proxmox.md` §4d; fixture-tested only (the nodes are production) | the table loaded on a node, or first in a throwaway network namespace as `dhcpguard-netns-test.sh` does: a frame from a blocked source dropped and counted, another passing, the table gone on Unblock |
 | **LACP from the UniFi UI** converting a bond's mode through the Proxmox API | `drivers/proxmox.md` §3b | the round-trip on a node whose uplink you can afford to lose for a minute: aggregate in the UI → bond mode changes → un-aggregate → restored; the pushed `system_cfg` keys added to the replay fixture |
 
 ### Known limits (by design; a PR would be a design change, open an issue first)
@@ -139,6 +140,12 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 | **CNI backend** (Podman ≤ 3, or 4 upgraded in place) | different `inspect` shape; `InterfaceName` semantics differ | a capture from a CNI host and the parser cases for it |
 
 ### Not done (read-only by design today) — PRs welcome, open an issue first
+
+- **UniFi's client Block** (`blocked_sta`, `docs/feature-map.md` §3) is not
+  applied: no driver capability is built for a Podman host. A PR would drop
+  the blocked sources on the host's container bridges as the `proxmox`
+  driver's nft table does (`drivers/proxmox.md` §4d), with a capture of the
+  table read back.
 
 - **Port control**: port state → `ip link set … down` inside the netns, or
   `podman network disconnect`; VLANs have no meaning on a Podman network.
@@ -226,6 +233,22 @@ gateway's port and switch-facing ports
 | The end-to-end IP rule round through the controller (rule scoped to the Arista, pushed, written, deleted, removed) and a rule matching traffic | **live**, 2026-11-14 (§9.8); the round found the session-name defect fixed on branch `claude/arista-finish-60f078` (each change its own session, §9.3) |
 | A rule on a port carrying a client's traffic, a rewrite under that traffic | **untested**: needs a host on a test port |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network (the deployment keeps `exact`: detection is off, §9.7) |
+
+| **UniFi's client Block** (2026-11-15): the blocked clients (`blocked_sta`, captured) as `mac address-table static <mac> vlan <v> drop` in every VLAN (§9.9) | the command and its read-back **captured live** (committed under a timer, aborted; `mac-drop/`); the writes fixture- and replay-tested; **untested**: a frame with a blocked source dropped (Arista's manual says drop entries match source or destination), which needs a host behind a test port |
+
+**A VLAN the controller stops pushing is deleted (2026-11-15)**, by
+sonic's rule ([`drivers/arista-eos.md`](drivers/arista-eos.md) §12): after
+the port batch, `no vlan <list>` with the driver's IGMP line for each; kept:
+VLAN 1, the management VLAN, a dynamic VLAN, an attached lane switch's
+VLANs, and a VLAN an SVI, a `vlan` section line other than its name, or an
+unwritten interface still holds.
+
+| What | Status |
+|---|---|
+| Two spare VLANs deleted in one range batch, one with its IGMP line; one kept for its SVI, one for its trunk group, a note each; quiet after; the switch restored | **live**, 2026-11-15 (§12.6), the driver from the branch against the switch, the deployed bridge running |
+| The transit VLAN 4040 the Arista's push named for three minutes, deleted when the push drops it | `TestReplayAristaTransitVLAN` over the post-run capture; the live switch still has 4040, so **the first reconcile after a deploy deletes it** (§12.5) |
+| A VLAN kept because a port outside `control.ports` or a lane switch's lane names it, and nothing deleted before an attached lane switch's first push | fixture-tested (`vlan_prune_test.go`); untested live: needs a port outside `control.ports` in the deployed config, or an adopted lane switch |
+| A site network deleted from the controller | **untested**: none was; it leaves the push as the transit did |
 
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
@@ -376,7 +399,14 @@ switched host behind an internal port. Both L3 tables are mirrored into
 iptables' `raw` table for packets arriving on front-panel interfaces.
 **Verified live by hand on the DX010 2026-11-15**: an untrusted 67 -> 68
 reply and a blocked UDP port were dropped before the switch's sockets while
-the controls arrived; removal restored delivery and the raw table. MAC rules
+the controls arrived; removal restored delivery and the raw table.
+**Verified through the driver the same evening** (§11.32.5): a UI Block
+rule scoped to the DX010 and covering its own address was mirrored by the
+bridge, the matched datagrams dropped and counted, the edit and the removal
+followed (the dispatcher gone with the last table), a bridge restart and a
+caclmgrd filter-table rewrite left it alone, and a lost marker was written
+again. The guard's mirror was written by the driver's reconcile from
+hand-made rows (no push: detection stays off site-wide). MAC rules
 are not mirrored: the UI refuses the management network for them, the only
 network the ECS or the DX010 has an address on.
 
@@ -400,9 +430,19 @@ on the right port only).
 | A breakout or a join with counted rules in place (fixture-tested: the lanes' rules go before the breakout, the new lanes' come once STATE_DB has them) | the split and join of an empty cage with detection on: no stalled breakout, the new lanes' rules `Active` |
 | Replacing a deployed `L3` guard with the counted one (fixture-tested) | a bridge update while detection is on: the old table, then the type, table and rules, all `Active` |
 | More than 256 guard entries (counted rules dropped per VLAN with a note; fixture-tested) | many guarded VLANs on a split switch, CRM's entry counts on the guard table |
-| The kernel mirror written by the deployed bridge from a controller push, and kept through caclmgrd's filter-table rewrite (fixture-tested; caclmgrd's behaviour read from its source, §11.32.4) | an IP rule scoped to the DX010 whose match covers the switch's address: the raw chains written by the bridge, the blocked traffic gone from the switch's sockets, an `ACL_TABLE` event (a breakout's rebind) leaving them in place, and the rule's removal clearing them |
+| The guard's kernel mirror from a real push (written by the driver's reconcile from hand-made rows, §11.32.5; detection stays off site-wide) | Rogue DHCP Server Detection on with a guarded network: the guard's chain written by the bridge, an untrusted reply to the switch dropped before its sockets, a trusted one delivered |
+| A breakout's rebind as the `ACL_TABLE` event under the mirror (a hand-made table event left it in place, §11.32.5) | the split and join of an empty cage with an IP rule in place: `iptables -t raw -S` unchanged after caclmgrd's rewrite |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, and no second port had a link, §11.7.8. Frames to the switch itself still reach its CPU through the traps' copy, which the UI cannot make a MAC rule reach: it refuses the management network, §11.32) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
+
+### UniFi's client Block (2026-11-15)
+
+| What | Status |
+|---|---|
+| The controller's blocked clients (`blocked_sta` in every setparam, `block-sta`/`unblock-sta` cmds; captured on 11.0.99) as `MB_<mac>` rules in `DUI_MAC_ACL`, the ECS's own form, outside the MAC rules' limit | fixture- and replay-tested (`block_test.go`, `replay_sonic_block_test.go`, from the DX010's own reply log of a Block and an Unblock); needs the kit's sonic-swss 0003, as every MAC rule |
+| The kernel's copy: ebtables `DUI_MAC_BLOCK` from the Bridge's INPUT (ARP, IPv4, IPv6 to the switch's own address) | fixture-tested; **untested live** |
+| A frame with a blocked source on a looped empty cage, dropped by the chip's entry and by the chain; Unblock removes both | **untested**: the frame test under the switch lock ([`drivers/sonic.md`](drivers/sonic.md) §11.33.4) |
+| A routed front-panel port's traffic to the switch | not covered: a routed port is no Bridge member, so the chain does not see it (the chip's rule still drops what it forwards) |
 
 ### IGMP snooping (the custom image only)
 
@@ -508,6 +548,14 @@ by its first host** (EAP-MD5) stays open over the restart and closes on the
 logoff. The deployed l2d before the fix dropped the admitted hosts in the
 kernel for 40-100 ms at every start and restarted the idle timer; the chip
 was never disturbed. Replayed from the run (`TestL2dMABRestart`).
+
+**The controller's reading of each method, live on the DX010** (2026-11-15,
+§11.26.11): the controller stores each `dot1x_mode`/`dot1x_status` pair as
+the bridge sends it. A closed port had also gone out with
+`port_security_enabled` (802.1X's learn mode read back as a MAC filter),
+and the port panel showed it Disabled; fixed and verified the same evening
+through a test deb. What a UniFi switch itself sends for each method is
+still not captured.
 
 | Gap | What the PR needs |
 |---|---|

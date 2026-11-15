@@ -37,7 +37,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	pr := c.plan(snap, desired, planScope{})
 	c.logNotes(pr.notes)
 	if pr.changed == 0 {
-		return 0, nil
+		return 0, c.pruneAfter(ctx, desired)
 	}
 	cmds := append(append([]string{"enable", "configure"}, pr.cmds...), "end", "write memory")
 	if c.Log != nil {
@@ -90,7 +90,18 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		}
 	}
 	c.mu.Unlock()
-	return pr.changed, nil
+	return pr.changed, c.pruneAfter(ctx, desired)
+}
+
+// pruneAfter deletes, after the port batch, the VLANs no push names any
+// more (vlan_prune.go). Only with ports to write: control.ports off writes
+// no VLAN either.
+func (c *Collector) pruneAfter(ctx context.Context, desired []devicemodel.PortDesired) error {
+	if len(desired) == 0 {
+		return nil
+	}
+	_, err := c.pruneVLANs(ctx)
+	return err
 }
 
 // markApplied records desired on ports after a batch (Index = the port's,
@@ -555,10 +566,17 @@ func uniqueSorted(ids []int) []int {
 	return out
 }
 
-// EnsureVLANs creates any of ids missing on the switch. UniFi's site VLAN
-// list is the source of truth for existence; VLANs the switch has and UniFi
-// does not are left alone.
+// EnsureVLANs creates any of ids missing on the switch and keeps ids as
+// the device's own list: UniFi's VLAN list is the switch's, and a VLAN it
+// stops naming is deleted after the next port batch (vlan_prune.go).
 func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	return c.ensureVLANs(ctx, 0, ids)
+}
+
+// ensureVLANs is EnsureVLANs for the device (cage 0) or for the lane switch
+// on a cage (EnsureLaneVLANs): the list is recorded for the prune, then the
+// missing VLANs are created.
+func (c *Collector) ensureVLANs(ctx context.Context, cage int, ids []int) (int, error) {
 	unlock, err := c.lockApply(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("eos ensure vlans: %w", err)
@@ -574,12 +592,27 @@ func (c *Collector) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
 	for _, v := range snap.VLANs {
 		have[v] = true
 	}
-	var missing []int
+	var listed, missing []int
 	for _, id := range ids {
-		if id > 0 && id < 4095 && !have[id] {
-			missing = append(missing, id)
+		if id > 0 && id < 4095 {
+			listed = append(listed, id)
+			if !have[id] {
+				missing = append(missing, id)
+			}
 		}
 	}
+	listed = uniqueSorted(listed)
+	missing = uniqueSorted(missing)
+	c.mu.Lock()
+	if cage == 0 {
+		c.siteVLANs, c.siteKnown = listed, true
+	} else {
+		if c.laneVLANs == nil {
+			c.laneVLANs = map[int][]int{}
+		}
+		c.laneVLANs[cage] = listed
+	}
+	c.mu.Unlock()
 	if len(missing) == 0 {
 		return 0, nil
 	}

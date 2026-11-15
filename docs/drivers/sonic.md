@@ -1362,7 +1362,7 @@ site's UniFi **ECS Aggregation** (`USWF066`) with the site's own SSH key:
 | Platform | ONIE `x86_64-ubiquiti_pcom_p701gt-r0`, Intel Atom C3558R; `docker-syncd-mrvl` -- a **Marvell** ASIC, so the ECS Core (same firmware line) is almost certainly Marvell too, not the DX010's Broadcom Tomahawk |
 | Containers | `swss` (orchagent **with the L2MC orch**), `l2mcd` (the daemon **and `l2mcmgrd`**, the same split as the Micas container; corrected 2026-11-01, the process's cgroup is the l2mcd container's), `stp` (**mstpd 0.0.9** plus Ubiquiti's `ubnt-stpmgrd` and `UBNT_STP` tables, not the community `stpd`), `teamd`, `fpm-frr`, `mgmt-framework`, `dhcp_relay`, `radv`, `nat`, `sflow`, `macsec`, `snmp`, `pmon` |
 | The snooping daemon | `/usr/bin/l2mcd`, 3.6 MB, **dated 2019-04-26**: the original Broadcom-era L2MCD -- the same code the 2020 HLD describes and the Micas `dev` branch (§8.1) carries forward. Package `l2mcd 1.0.0`, "L2MCD for SONiC project" |
-| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a small Python helper that runs scripts as interfaces come and go; no Python on the box mentions an `igmp_*` key, so the translation from the controller's keys is compiled -- most likely in `mcad`, Ubiquiti's management daemon, not read. §9's attribution of VLAN 1 to it is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
+| UniFi glue | `ubnt-lnxcfgd` writes the controller's config straight into CONFIG_DB (corrected 2026-11-01: `ubnt-lnxcfgd` is a helper that runs as interfaces come and go; which of Ubiquiti's processes translates the controller's keys into CONFIG_DB is not established, and §9's attribution of VLAN 1 to `ubnt-lnxcfgd` is the same mistake); there is **no `show ip igmp snooping` CLI** on the box (`show ip` has no `igmp`). A feature file of Ubiquiti's switches those daemons on and off (MAC and DHCP snooping, the STP manager, LLDP, fan control). |
 
 **UniFi's per-VLAN IGMP settings land in `CFG_L2MC_TABLE`**, one entry per
 VLAN: on that switch the native VLAN has snooping and the querier on, the
@@ -5092,6 +5092,29 @@ switch.
   carry a routed network), `config interface ip add Vlan<id> <ip>/<len>`.
   An interface carrying an address the driver did not add -- the switch's
   own management address on `Vlan<native_vlan>` -- is refused with a note.
+- **A routed network's VLAN takes the ports' MTU** (2026-11-15), as every
+  VLAN the driver manages does (§12): made at it (`config vlan add`, then
+  `hset 'VLAN|Vlan<id>' mtu`, as `EnsureVLANs` makes a pushed VLAN) and
+  kept there by the port plan's `vlanMTUs` (the CONFIG_DB field and the
+  netdev). Until then `vlanMTUs` covered the push's `switch.vlan.*` list and
+  the native stand-in only, and a routed network no port carries is in
+  `switch.routing_interface.N.vlan` alone (§11.29.1). So its VLAN stayed at
+  SONiC's 9100 while every port and every other VLAN followed the site's
+  jumbo setting. The deployed driver's own state of the 2026-11-07 OSPF run
+  shows it (`collect-ospf.txt`, jumbo off): `VLAN|Vlan3999` without `mtu`
+  and its netdev at 9100, beside `VLAN|Vlan4040` (the transit, which the
+  list names) at 1500 in both, every port at 1500. That is why the run's
+  OSPF peer had to run at 9100 (§11.14): ospfd sends the interface MTU in
+  its database descriptions and a peer at another MTU stalls in ExStart.
+  While no port carries the VLAN, no frame on a front-panel port is
+  affected (a port that carries it puts it in the list): what saw 9100 was
+  the switch's own stack on the interface and whatever reached it past the
+  list, as the runs' test hosts on the kernel `Bridge` did. The fault was never shown with a fresh routed network; the
+  fixed plan is replayed over that capture (`TestReplaySonicDX010OSPF`'s
+  first push writes both halves for Vlan3999, the cycle after nothing) and
+  over the L3 run's creation (`TestReplaySonicDX010L3`: the hset right after
+  `config vlan add 3999`, once). Its commands are the ones already run live
+  on memberless VLANs (§11.29.6's Vlan4010, §12's Vlan4094).
 - **Routes:** STATIC_ROUTE rows written whole through `sonic-db-cli`
   (`nexthop`, `ifname`, `distance`, `blackhole`, `nexthop-vrf` as aligned
   comma lists: bgpcfgd drops a row whose lists differ), which bgpcfgd
@@ -5214,8 +5237,8 @@ its file), and a deleted router leaves the push. Captured on the DX010
 (`controller-10.6.109/system_cfg-dx010-bgp-{1-enabled,2-disabled,
 3-changed,4-removed}.txt`; the test file uses documentation addresses and
 private ASNs, so its content needed no scrubbing). Ubiquiti's SONiC (the
-ECS's `ubntbox`) writes the decoded file into a CONFIG_DB table of its own
-(`BGP_FULL_CONFIG|global config_b64`) for its FRR manager; community SONiC
+ECS) keeps the decoded file in a CONFIG_DB table of its own
+(`BGP_FULL_CONFIG|global config_b64`); community SONiC
 has no such table and runs FRR 10.4.1 in separated mode (`bgpd`, `zebra`,
 `staticd`, `mgmtd`; bgpd's configuration rendered from templates at
 container start).
@@ -5317,7 +5340,8 @@ router started ospfd on Vlan3999 (cost 10, priority 2, hello 5 s, dead
 20 s, area 0, read back with `show ip ospf interface`). A peer -- zebra,
 mgmtd and ospfd from the switch's own FRR image in a throwaway
 `--network none` container, its veth on the kernel `Bridge` in VLAN 3999
-only, MTU 9100 to match Vlan3999 (OSPF compares MTUs), the same MD5 key --
+only, MTU 9100 to match Vlan3999 (OSPF compares MTUs; Vlan3999 was at
+SONiC's 9100 behind 1500-byte ports, fixed 2026-11-15, §11.13), the same MD5 key --
 reached **Full**. The DX010 learnt the peer's 192.0.2.0/24 as an E2 route
 into the kernel, APPL_DB and the ASIC; the peer learnt the DX010's default
 route (announced) and its connected networks (E2). The cycles after wrote
@@ -5875,7 +5899,8 @@ MACs), `disunified-l2d`'s `MacLockGuard`:
 
 1. writes the kernel bridge's chain `DUI_MACLOCK` (jumped to from INPUT and
    FORWARD): per secured port, `-i <port> -s <mac> -j RETURN` for each
-   allowed MAC, then `-i <port> -j DROP`;
+   allowed MAC, then `-i <port> -j DROP`; every write is one
+   `ebtables-restore --noflush` transaction (§11.26.12);
 2. only then sets the port's learning to `cpu_trap` in APPL_DB
    (`PORT_TABLE`, a PortChannel's `LAG_TABLE`, through ProducerStateTable),
    the ECS's mode: an unknown source is still neither learnt nor forwarded
@@ -7398,7 +7423,15 @@ number (in the run above, its link event came first: 4157, which no port had
 then; had l2mcmgrd's report come first, 4096). Every later split or join
 re-creates names that the previous one deleted. Under AddressSanitizer the
 harness case below also hits a heap use-after-free on this path; the switch
-logged nothing of the kind.
+logged nothing of the kind. That use-after-free is not the breakout's: it is in
+`mcgrp_stop_phy_port()` (`src/igmp.c` 667-678 at upstream `651a13b`), which
+frees a port's membership with `mcgrp_destroy_mbrshp_entry()` and then reads
+and clears its `pims_mbr_flags`. Every link-down of a port that is a group
+member runs it, breakout or not: a scratch harness case (a member port's
+link-down, nothing else) hits it on upstream, on 0001-0012 and on upstream
+with both fixes (2026-11-15). Nothing allocates between the free and the
+write, so glibc's heap survives it, which is why the switch is quiet. Not
+fixed: a follow-up (`local-information/follow-ups.md`).
 
 **Not the driver's.** The driver runs `config interface breakout` and nothing
 of l2mcd; the numbering happens inside l2mcd on any port re-creation, by the
@@ -7442,7 +7475,19 @@ tree. On the build host's bookworm slave:
 | + 0011 | every check passes; LeakSanitizer: 4 libevent events (512 bytes) |
 | + 0012 | clean |
 
-With 0012, all 30 regression cases are clean. The IGMP and MLD fuzzers ran
+A second case, `port-delete` (added the same evening), shows 0012 on its own: a
+port created and then deleted from the port list leaves its two events
+allocated (LeakSanitizer: 2 libevent events, 256 bytes) without 0012 and is
+clean with it, on upstream `651a13b` as on the series. With 0012, all 30
+regression cases are clean.
+
+The same cases on upstream alone (`651a13b`, the two upstream branches of
+`docs/prior-art.md` §6.1 built by the same harness): `port-list-breakout` is
+the use-after-free above on `651a13b` and with 0012 alone, the 4-event leak
+with 0011 alone, and clean with both; `port-delete` leaks on `651a13b` and
+with 0011 alone and is clean with 0012 alone. No other case changes result
+between `651a13b` and either branch (the cases the six earlier PRs fix still
+fail there, as they should). The IGMP and MLD fuzzers ran
 240 s with 4 workers each on the patched tree (876 k and 718 k runs, no
 crash). gcc `-Wall` with the daemon's flags gives no new warning in the two
 changed files. The kit's `dry-run.sh` passed every check, run with private
@@ -7552,8 +7597,7 @@ Nothing to copy. Read-only on 2026-11-15:
   `pacmgr` or `mabmgr` on the host or in any container, no PAC table in
   CONFIG_DB, APPL_DB or STATE_DB;
 - its `ERROR_DISABLE|dot1x` row is configuration only, as every row of
-  that table is (§11.20); its inform agent `mcad` holds
-  `ubnt_get_interface_dot1x_status` and reports the off values.
+  that table is (§11.20), and its informs report the off values.
 
 So the departure from the ECS's pattern has a plain reason: the ECS has
 no 802.1X.
@@ -7637,7 +7681,9 @@ authenticates:
   (ahead of MAC locking's): the port's EAPOL accepted, each admitted
   source RETURNed, the rest of the port's frames dropped, so an
   unauthorised host cannot reach the switch's own CPU through a trapped
-  frame (ARP, DHCP, IGMP) either;
+  frame (ARP, DHCP, IGMP) either; every write is one `ebtables-restore
+  --noflush` transaction, and a chain the kernel lost is written again
+  at the next sync (§11.26.12);
 - the EAPOL trap `COPP_TRAP|dui_eapol` (`trap_ids eapol`, `queue4_group1`,
   `always_enabled true`) while any port authenticates;
 - a hostapd of its own (`-B -P /run/disunified-dot1x/<port>.pid`, config
@@ -7987,7 +8033,9 @@ that sends nothing that long becomes unauthorised, as §11.26.8 does.
 word: a Multiple Credentials port is taken to report `auto`, as a
 Credentials one does. The device layer reports these since
 (`dot1xReport`, `TestDot1XReport`), a controlled port `authorized` while
-l2d has admitted a host.
+l2d has admitted a host. The controller stores each as the DX010 sends it
+(§11.26.11); that it accepts them says nothing of what a UniFi switch
+sends.
 
 What would settle it: an inform from a real UniFi switch with each method
 on a port, and one port exercised per method. Credentials ran on the
@@ -8021,8 +8069,10 @@ written. But:
 - **the kernel chain dropped the admitted hosts at every start.** The new
   l2d wrote the chain before it re-admitted anyone, so for 40-100 ms the
   port had its DROP and no RETURN (24.13-24.22 s for the two MAB hosts;
-  the Credentials port closed for every host 196.80-196.87 s): their
-  frames to the switch itself were dropped in that window;
+  the Credentials port closed for every host 196.80-196.87 s): on a
+  forwarding port their frames to the switch itself would have been
+  dropped in that window (the looped cage is STP-blocked, so none reached
+  ebtables at all: §11.26.12);
 - every re-admission wrote the host's FDB entry again (an identical APPL_DB
   set; orchagent changed nothing in ASIC_DB);
 - **the idle timer started again at the restart**: the silent host went
@@ -8054,7 +8104,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
   host's last frame, written as l2d stops (SIGTERM ends the main loop with
   `SystemExit`; `stopping()` runs in its `finally`, so an exception does it
   too), read and removed (`hdel`) by the next l2d. A SIGKILL leaves none
-  and the timer starts at the restart, as before;
+  (the timer then started at the restart; since §11.26.13 the row's
+  `mab_heard`, written as l2d runs, stands in);
 - an FDB entry already in APPL_DB as wanted is not written again;
 - the learn modes an earlier l2d set (APPL_DB `cpu_trap` or `hardware` over
   CONFIG_DB's `drop`) are the new l2d's from its first sync, so a port it
@@ -8063,7 +8114,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
 **This l2d (run4, a copy of `l2d.py` installed for the run, the deployed
 one put back after):** at the restart the chain was rewritten with both
 RETURNs ahead of the DROP (the rewrite flushes and appends in order, so
-for ~20 ms it passes everything, never drops), no FDB entry was written,
+for ~20 ms it passes everything, never drops; one transaction since,
+§11.26.12), no FDB entry was written,
 and `mab_seen` was written as it stopped and removed 0.5 s after; the
 silent host went 40.2 s after its last frame ("idle for 40s"); the refused
 host was refused again, its count carried over; after the 25 s stop the
@@ -8091,6 +8143,244 @@ failures counted in run1, each anomaly 128 on a deployed bridge), and a
 restart forgets the quiet periods, so each restart asks again. l2mcd also
 listed the looped port as a dynamic member of the LAN's groups while it was
 up (gone with the link). A cabled port hears only its host.
+
+#### 11.26.11 The controller's reading of each method, live (2026-11-15)
+
+Deployed build fef74fe, under the test lock, 21:52-22:14 UTC, on Clint's
+word to test on disunified rather than a UniFi switch: the DX010's record
+with Global Switch Settings unticked and 802.1X Control on (UniFi
+Integrated, no Unauthorized VLAN), empty cage 31 (Ethernet120, no link)
+set to each method in turn through its override's `dot1x_ctrl`. For each,
+the bridge's `payload-last.json`, then the controller's `stat/device`
+record after the next inform:
+
+| `dot1x_ctrl` | sent and stored (`dot1x_mode`/`dot1x_status`) | port panel |
+|---|---|---|
+| `force_authorized` | `force_auth`/`authorized` | Active |
+| `force_unauthorized` | `force_unauth`/`unauthorized` | **Disabled** |
+| `auto` | `auto`/`unauthorized` | **Disabled** |
+| `multi_host` | `auto`/`unauthorized` | **Disabled** |
+| `mac_based` | `mac_based`/`unauthorized` | **Disabled**; Active with 5700e19 |
+
+The other ports reported `force_auth`/`authorized` while 802.1X was on (the
+push sends `force_authorized` for every port without a method), and cage
+31 `unknown`/`disabled` once it was off.
+
+**A closed port read back as a MAC filter (fixed in 5700e19).** In every
+row the controller showed as Disabled, the bridge also sent
+`port_security_enabled: true`: 802.1X closes a port with the MAC filter's
+learn mode (`drop`, §11.26.3), and the read-back took every `drop` for a
+MAC filter (`readBackPortFeat`). The port panel then showed Port State
+Disabled with its network fields greyed, the Port Manager counted the cage
+under Disabled, and a save of that panel would most likely have pushed the
+port disabled (not tried). The controller's own rule shows when a MAC
+filter is saved with an empty list. A PUT of `port_security_enabled: true`
+with `port_security_mac_address: []` on cage 31's override came back
+rewritten as `forward: disabled`, with `native_networkconf_id` emptied
+(put back straight away). A port 802.1X holds closed now reads back as a
+MAC filter only by static entries that are not l2d's admitted hosts
+(`TestDot1XApply`, `TestDot1XKeepsAdmittedHosts`, `TestDot1XWithAMACFilter`;
+the first two fail on the old read-back). Test build 5700e19 on the DX010,
+cage 31 on `mac_based`: `mac_based`/`unauthorized` with
+`port_security_enabled: false`, Port State Active. So the Disabled came
+from the MAC filter report, not from `unauthorized`.
+
+Put back: cage 31's override as found, 802.1X Control off, then Global
+Switch Settings on (two saves: ticking Global Switch Settings hides the box
+and does not save its untick), the carried fef74fe reinstalled, l2.json's
+`dot1x` section gone, Ethernet120's learning `hardware` again, l2d's
+leftover STATE_DB `DUI_DOT1X_TABLE|Ethernet120` row (counts only) removed.
+No UniFi switch was touched.
+
+#### 11.26.12 The kernel chains are written in one transaction (2026-11-15)
+
+§11.26.10 saw `DUI_DOT1X` pass every frame for about 20 ms each time it
+was rewritten. The cause: `write_chain` flushed the chain (`ebtables -F`)
+and appended its rules one `ebtables` call at a time, and the DX010's
+`ebtables` is 1.8.11 on **nf_tables** (`ebtables -V`; `/usr/sbin/ebtables`
+is the alternatives link to `xtables-nft-multi`, beside an installed
+`ebtables-legacy` that nothing uses). Each call is a transaction of its own,
+so between the flush and the last append the chain held the EAPOL ACCEPTs
+and some RETURNs but not the port's DROP, and its policy RETURN let
+everything through. That happened at every admission, revocation, port
+change and l2d start. `MacLockGuard` wrote `DUI_MACLOCK` the same way.
+
+**As built.** Both guards hand the whole change to one `ebtables-restore
+--noflush` (`eb_restore`, `l2d.py`): the chain's declaration (`:<chain>
+RETURN`, which creates it or keeps it), `-F <chain>`, its rules, and the
+INPUT and FORWARD jumps that are missing (`-I <hook> 1` for 802.1X, ahead
+of MAC locking's `-A`). Removal is one restore too (`-D` the jumps, `-F`,
+`-X`). What that guarantees, measured on the switch (`ip netns`, nothing
+the switch's own tables see):
+
+- the whole input is one nf_tables transaction: `xtables-monitor -e`
+  prints one `NEWGEN` for it, the flush as a `-D` per rule inside it;
+- with `--noflush`, a declared chain that exists is emptied (nft); the
+  legacy `ebtables-legacy-restore` keeps its rules and appends, hence the
+  explicit `-F` (correct on both);
+- a refused line (a jump to a chain that does not exist) refuses the
+  batch: exit 2, the table as it was.
+
+**A chain the kernel lost is written again.** SONiC's `database.sh`
+(`ebtables_config`) loads `/etc/ebtables.filter.cfg` with a plain
+`ebtables-restore`, which empties the whole filter table, at every start of
+the database container. `MacLockGuard` already compared the kernel's rule
+count and jumps with what it wrote at each sync; `Dot1xGuard` returned as
+soon as its rules were unchanged, so after such a reload an 802.1X port
+passed every frame to the CPU until the next admission. Both now read the
+chain's state (`eb_state`) at each sync and write it again when the count
+or the jumps differ, with a warning for 802.1X.
+
+**The iptables mirror (`DUI_ACL_CPU`, §11.32) did not share the fault.**
+`acl_cpu.go`'s `cpuScript` already wrote every chain in one `iptables-restore
+-n` with the chains declared, and adds a PREROUTING hook only after the
+chains exist. Measured in a private netns with the driver's input (two
+table chains under `DUI_ACL_CPU`, a blocked source sending UDP every
+0.2 ms): 200 rewrites in 7 s, 36 139 packets into the hook, 0 past it, and
+6 rules after the last write (a declared chain is emptied by `-n`, so
+nothing piles up). No change.
+
+l2d writes no other ebtables chain (the DHCP-rate, storm and BPDU-guard
+paths use CoPP, counters and APPL_DB).
+
+**Measured on the switch** (`dot1x-atomic-live.txt` in the image's fixture
+directory):
+
+| | old: flush + one call per rule | new: one restore |
+|---|---|---|
+| netns bridge, a never-admitted source every 0.2 ms, 200 rewrites | 46 890 frames past the chain | 0 (27 561 dropped by the last chain alone) |
+| DX010, l2d driving cage 30 (MAB hosts admitted, idle-revoked and admitted again, two restarts, a 4 s link loss), `xtables-monitor -e` | 88 transactions; after 71 of them the port had no DROP; the 5 ms poll saw 17 such windows of 25-100 ms (mean 40) | 14 transactions, one per write, each `ebtables-restore`; the DROP after every one |
+
+The DX010's two runs are the same scenario through the deployed l2d
+(fef74fe) and this one. This l2d also wrote nothing at either restart (the
+kept admissions of §11.26.10); the deployed one rewrote the chain three
+times at each, at start and once per host it admitted again.
+
+**What a looped cage cannot show.** No frame from the loop exercised the
+DROP on the switch itself: a looped cage is STP-blocked (Backup), and the
+kernel bridge drops a blocked port's frames before ebtables PREROUTING,
+except link-local ones, which go to NF_BR_LOCAL_IN (ebtables INPUT) in any
+port state (BPDUs and LLDP are handed up without the hook). The link-local
+frame the chip traps here is EAPOL, which the chain ACCEPTs by design.
+Probed with 20 frames each from an unadmitted source:
+an untagged 0x88B5 frame to `01:80:c2:00:00:03` and an ARP request to that
+address never reached the netdev; a broadcast ARP request reached it (ARP's
+trap, tagged 4094) and was dropped by the bridge's blocking state, so none
+reached INPUT. The chain's DROP matters on a forwarding port with a host
+behind it; the frame counts above come from the netns bridge, the DX010's
+from the kernel's own record of every transaction.
+
+**Tests.** The l2d fakes share `testdata/l2d_ebtables.py`: single commands
+and `ebtables-restore --noflush` as the switch's nf_tables ebtables runs
+them (a restore applied whole or refused whole), and the kernel's walk of a
+never-admitted source through INPUT after every transaction. Each guard's
+`write_chain` is wrapped: a port that dropped that source before and after
+the call but passed it at a transaction in between prints `WINDOW`.
+`kernelAtomic` fails `TestL2dDot1X`, `TestL2dMAB`, `TestL2dMABRestart` (the
+replay of §11.26.10's run4) and `TestL2dMacLocking` on a `WINDOW` and on any
+`ebtables` write outside a restore; with the old `write_chain` the four
+print 1, 6, 9 and 2 windows. `TestL2dDot1X` also empties the filter table
+between two syncs, as `database.sh` does, and expects the chain and both
+jumps back (FORWARD's ahead of the image's own rules) in one restore.
+
+`TestDot1xChainAtomicLive` holds the capture to the table: 14 transactions
+by `ebtables-restore` with the DROP after each for the new run, 88 and 71
+for the old.
+
+#### 11.26.13 A MAC-authenticated host's idle timer after a SIGKILL (2026-11-15)
+
+§11.26.10's `mab_seen` is written only as l2d stops. A SIGKILL, an
+out-of-memory kill or an interpreter crash writes nothing, and systemd starts
+l2d again 3 s later (`Restart=always`, `RestartSec=3`; `KillMode=process`,
+so hostapd, the chain and the FDB entries stay).
+
+**What happened (the l2d on main before this change, run `base` of
+`mab-kill-live.txt`).** The new l2d found the hosts in the row but no last
+frame, so each host's idle timer started again at the restart. A silent
+host went 40 s after the restart, not 40 s after its last frame. In the
+run:
+
+| host C before the kill | base: C went after its last frame | this l2d |
+|---|---|---|
+| silent 8.4 s, one kill | 52.6 s (restart + 41 s) | 46.3 s |
+| silent 13.3 s, two kills 15 s apart | 73.0 s (second restart + 41 s) | 45.3 s |
+| one frame after 25 s of silence, killed 0.6 s after it | 45.1 s (restart + 41 s) | 47.2 s |
+
+With the idle timeout at 40 s, each restart gave a silent host up to a
+whole timeout more. If l2d crashed in a loop faster than the timeout, the
+host was never removed. An operator saw the host still listed in the row's
+`authorized` and in the MAC table (its static FDB entry), as a client of
+the port, until the timeout after the last restart. The talking host (A,
+an ARP every 2 s) was kept through every kill in both runs: its FDB entry
+was written once, at its admission, and never again. Nothing in the chip
+moved. No host was thrown out early.
+
+**The options.**
+
+- **Re-authenticate every MAC-authenticated host at start.** A RADIUS
+  accept says the MAC is still a user, not that the host is talking, so the
+  timer would still start at the restart. Revoking every host at start
+  instead ("let the next frame re-admit it") would throw out the talking
+  hosts, which lose a frame and a RADIUS round trip.
+- **Derive the last frame from the kernel or the chip.** The admitted
+  host's FDB entry is static, so neither the chip nor the kernel ages it,
+  and the chip forwards the host's frames without the CPU. The kernel bridge
+  and `DUI_DOT1X`'s RETURN see only what the CPU sees, which is what l2d
+  counts already. The RETURN rule's counter is a count, not a time, and
+  every chain rewrite resets it. So neither holds a time to start from.
+- **Persist the last frame as l2d runs (chosen).** It costs a few small
+  writes and the bound follows from the write rule alone.
+
+**As built (`Dot1xGuard`).** The row gains `mab_heard`
+(`<mac>=<epoch>,...`, `mab_seen`'s form): each MAC-authenticated host's
+last frame, rewritten for the whole port when a frame finds the stored
+value `MAB_HEARD_STEP` (5 s) or more behind (a new admission counts too),
+and on the 2 s pass when the port's hosts change. Its last host's
+revocation removes the field. So the stored value is never later than a
+host's last frame and never 5 s or more before it, whenever l2d dies. A
+clean stop still writes the exact `mab_seen`, which the next l2d prefers.
+After a death without it, the next l2d takes `mab_heard` as each host's
+last frame and adds 5 s to its idle timeout until its next frame (in
+memory only, so a crash loop does not add it twice). `publish()` now
+compares only the fields it writes, so the extra field does not make it
+rewrite the row every pass.
+
+**The bound.** After any number of kills, a silent host goes between
+`idle_timeout` and `idle_timeout` + 5 s + one pass (2 s plus the sync's own
+time; 2.09 s seen) after its last frame. If l2d is down past that, it goes
+at the first sync after the restart. A host that talks is never removed by
+a kill. A host whose frame came while no l2d ran is not credited with it.
+Its next frame starts the timer, as it does over a clean stop. The write
+cost: one `HSET` of one field per port every 5-6 s while a host on it
+talks (35 in the 180 s `fix` run, one port, a host every 2 s), and none for
+a port whose hosts are silent.
+
+**Live, 2026-11-15 22:44-22:52 UTC** (image `igmp-202511.20261115-6c8eb1cf7`,
+under the test lock): §11.26.10's rig on empty cage 30 in MAC loopback, the
+deployed bridge stopped, l2.json's `dot1x` by hand (`mac_based`, idle
+timeout 40 s), hostapd's integrated RADIUS server on lo. Each l2d was
+installed as a copy: `base` main's (aa21c73); `fix` this change's, the file
+the test deb `0.0.0+20261115.mabkcaeb045` embeds, checked byte for byte on
+the switch. No test bridge ran: a build carrying main's VLAN delete
+(§11.29) or the kernel ACL mirror would have changed the switch beyond l2d.
+In each run, A talks throughout and C goes silent before each `kill -9` of
+the unit's main pid. Every row of the table above is a journal line `idle
+for 40s` at the first sync after C's bound. The switch was put back after:
+the deployed l2d (fef74fe) reinstalled and the bridge started, cage 30
+without loop or link, APPL_DB learning `hardware`, l2.json as before, the
+lock released. The candidate in that run predates §11.26.12's transaction.
+The replay runs the merged code.
+
+`TestL2dMABKill` replays run `fix` (`testdata/l2d_mab_kill.py`, built on
+`l2d_mab_restart.py`'s fakes). It uses the captured frames, RADIUS answers
+and kills, each restart at the new l2d's first logged sync, and a sync
+every 0.5 s. The switch's l2d also syncs on netlink and FDB events, so the
+moment of its sync is not in the capture. The test asserts that C goes
+within the bound in each of the three cases and within 0.5 s of the
+switch's revocation (up to 2.5 s before it, for the switch's 2 s pass), and
+that A is never removed or written again. It fails with main's l2d (C is
+not removed by the switch's time) and without the grace or the write on a
+frame.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
@@ -8216,6 +8506,8 @@ the 2026-11-07, 11-08 and 11-15 runs (§11.13, §11.16), and ten site VLANs
 the 2026-11-02 Allow All test created (§11.8) were still on the DX010 with
 no member. The driver now deletes a VLAN no push names, at the end of the
 port apply (`vlan_prune.go`).
+The `arista-eos` driver follows the same rule since the same day
+(`docs/drivers/arista-eos.md` §12).
 
 #### 11.29.1 When the controller stops naming a VLAN
 
@@ -8287,7 +8579,8 @@ holds something the driver did not take out of it stays.
   list, so the device's Allow All tagged the lane switch's VLANs and the
   lane switch's the device's);
 - the VLAN of every network the switch routes (`switch.routing_interface`,
-  which `switch.vlan.*` does not list for a network no port carries);
+  which `switch.vlan.*` does not list for a network no port carries; its
+  MTU follows the ports' like a listed VLAN's since the same day, §11.13);
 - a VLAN that still has a member (a port outside `control.ports`, a lane a
   lane switch owns, a PortChannel outside the plan's range), an address
   the driver did not add (the management address on a VLAN other than the
@@ -8507,12 +8800,167 @@ datagrams to the switch's own address are the test.
 - **Throughout**, the bridge on the switch kept informing (an inform reply
   at 21:32:35, mid-test), and the SSH session the test ran over was
   untouched.
-- **Not run live:** the mirror written by the deployed bridge from a
-  controller push (it runs from the same function, fixture-tested), and
-  caclmgrd's rewrite of the filter table leaving `raw` alone. The latter
-  is read from 202511's `caclmgrd`, whose rewrite lists and flushes only
-  filter chains and ip6tables' `raw`. Seeing it live needs an `ACL_TABLE`
-  event, which the test kept clear of.
+- **Not run in this hand test:** the mirror written by the bridge from a
+  controller push, and caclmgrd's rewrite of the filter table leaving `raw`
+  alone. Both ran the same evening through the driver (§11.32.5).
+
+#### 11.32.5 Through the driver (2026-11-15)
+
+Run 22:28-22:44 UTC under the switch lock, on `igmp-202511.20261115-6c8eb1cf7`
+with Network 11.0.99. A build of main (70a5a6d) replaced the deployed bridge
+for the run, and the deployed one was put back after. The site's ACL rule
+list was empty before and after.
+- **The rule.** An IPv4 Block saved in the UI, scoped to the DX010 alone:
+  UDP from a documentation address (198.51.100.7) to the switch's own
+  address, destination port 9999. The next inform's push carried it as
+  `switch.acl.ip.1.*` (both addresses as /32, the source side
+  `port_range=1-65535`).
+- **What the driver wrote.** The chip half as before: `config acl add
+  table DUI_IP_ACL L3` over the free ports and PortChannel1 (not its
+  members), `RULE_1` (`Active`), the save. Three seconds later, the mirror:
+  `DUI_ACL_CPU` hooked from `PREROUTING` on `Vlan+`, `Ethernet+` and
+  `PortChannel+`, jumping to `DUI_IP_ACL`, which held the one DROP. The
+  marker held the hash the journal logged. The next two cycles wrote
+  nothing.
+- **Traffic.** The Podman host sent single datagrams from a raw socket,
+  with the rule's documentation address as the source. The switch's
+  reverse-path filter is loose (2) on Vlan4094, so they arrive. It sent
+  three each to 9999 (matched), 9998 and 9997, and three to 9999 from
+  another documentation address. None of the three matched ones reached the
+  listener, and the DROP counted 3. The other nine arrived.
+- **Edited** to ports 9998 and 9999. The push carried two groups
+  (`-1`, `-2`). The driver deleted and rewrote `RULE_1` (9998, priority
+  9998) and added `RULE_2` (9999, 9997). The mirror held two DROPs in that
+  order under a new marker. Both ports were dropped (2 each counted), and
+  9997 arrived.
+- **caclmgrd.** The driver's own `config acl add table` set caclmgrd off at
+  once, but that rewrite came a second before the first mirror write, so it
+  proves nothing. A second `ACL_TABLE` event was made by hand (the table's
+  description written again with its own value). caclmgrd then flushed and
+  rewrote INPUT, FORWARD and OUTPUT and ip6tables' `raw` within half a
+  second. IPv4's `raw` table was byte for byte the same (`iptables -t raw
+  -S` unchanged).
+- **A bridge restart** wrote nothing: the start-up reconcile found the
+  marker equal to the tables' hash.
+- **A lost marker** (deleted by hand, as a reboot clears `/run` with the
+  rules) was written again on the next cycle, with the same hash and rules
+  and no second set of hooks.
+- **Removed.** The driver deleted the rules lowest first, removed the table
+  and saved. Then it removed the mirror: the hooks, the chains (the
+  dispatcher too) and the marker. `iptables -t raw -S` was back to its two
+  policies. ASIC_DB held no ACL table afterwards. CRM still counted one
+  table until its 300 s poll; that was stale, not a leak.
+- **The guard half, without a push.** Rogue DHCP Server Detection stays off
+  site-wide (Clint's decision), so the controller sends no guard.
+  - **The setup.** The bridge was stopped and the guard's rows written by
+    hand: `V1_S1` FORWARD from 192.0.2.1, a counted `V1_IN_Ethernet120` and
+    `V1_DROP`, all on VLAN_ID 4094. They were `ACL_RULE` rows with no
+    `ACL_TABLE`, so nothing was bound and the chip had no entry (orchagent
+    waits for the table).
+  - **The reconcile's own step.** A test build ran the driver's own
+    `Collect` and then `applyACL` on the switch. With no push the chip half
+    writes nothing and the mirror follows CONFIG_DB. The mirror was the
+    trusted server's RETURN and the VLAN's DROP, on `-i Vlan4094`, with the
+    counted rule left out. A second cycle wrote nothing.
+  - **Traffic.** Three replies (67 -> 68) from the trusted address arrived
+    (RETURN counted 3). Three from an untrusted one were dropped (DROP 3),
+    and three from source port 66 arrived. dhclient holds `0.0.0.0:68` for
+    eth0, so the listener bound the switch's own address with
+    `SO_REUSEADDR` to take the unicast.
+  - **The bridge started again.** Its reconcile, under the site's
+    snooping-off push, deleted the three rows (orchagent: "Skip removing
+    rule ... Table does not exist") and removed the mirror.
+- **What the run showed about the design:**
+  - Every restore declares both table chains, so a table with no rules has
+    an empty, unreferenced chain. The cost is cosmetic. The gain is that a
+    table that loses its last rule is emptied in the same transaction.
+  - The marker is the reconcile's only view of the kernel, because
+    `collect.py` runs without root. A hand `iptables -t raw -F` that leaves
+    the marker is not repaired until the tables change or the marker goes.
+    A reboot clears both.
+- **Not run:** the guard from a real push (detection stays off), and a
+  breakout's rebind as the `ACL_TABLE` event. A description rewrite stood
+  in for it: caclmgrd handles both as the same table event.
+- **Fixtures:** the collect before the run
+  (`sonic-igmp-202511.20261115-6c8eb1cf7/collect-acl-mirror.txt`) and the
+  three pushes (`controller-11.0.99/system_cfg-dx010-acl-mirror-{1-add,
+  2-edit,3-removed}.txt`), replayed in
+  `TestReplaySonicDX010ACLMirror`: each push's chip writes and restore
+  input as the journal had them, a lost marker rewritten, and a cycle
+  after each that writes nothing.
+
+### 11.33 UniFi's client Block (2026-11-15)
+
+UniFi lets an operator Block a client (the client list's Block, or
+`cmd/stamgr block-sta`). The controller delivers it to every switch through
+the `setparam` envelope's `blocked_sta` and a `block-sta` cmd, not through
+`system_cfg` (captured 2026-11-15 by blocking a made-up MAC beside the site's
+one blocked client: `docs/feature-map.md` §3, `CLAUDE.md` §5).
+
+#### 11.33.1 What the ECS does
+
+Read-only, 2026-11-15. The ECS's `global_mac_acl` (type ANY, bound ingress
+to every front-panel port and PortChannel) held one rule the Policy Table
+did not make: `ACL_RULE|global_mac_acl|MB_<mac>` with `PACKET_ACTION DROP`,
+`PRIORITY 1023`, `SRC_MAC <mac>` (no mask) and no `VLAN_ID`. Its MAC is the
+one client the controller lists as `blocked: true` (`rest/user`), and the
+MAC every bridged switch's `setparam` carried as `blocked_sta`. The rule
+sits below the controller's MAC rules (9999 down) and, having no VLAN,
+covers the management VLAN too; with the ECS's own address a switched host
+(§11.32.1) the drop also keeps the client off the switch itself. The
+test client's Block was not read on the ECS (its rule's arrival there was
+not watched).
+
+#### 11.33.2 As built (`block.go`)
+
+- **The chip.** One rule per blocked client in the driver's own MAC table,
+  `DUI_MAC_ACL|MB_<mac>`, exactly the ECS's fields. The table is shared
+  with the controller's MAC rules (`RULE_N`, §11.7.8) but not their limit:
+  `max_custom_mac_acls` counts only the controller's rules. Each half is
+  kept as the switch has it while the other changes or is held. Like every
+  MAC rule it needs the image kit's sonic-swss 0003 (the L2 table type);
+  without it the Block is noted, not written.
+- **The switch's own address.** On this SAI an ACL drop leaves the traps'
+  copy to the CPU alone (§11.7.8), so the chip's rule alone would let a
+  blocked client reach the switch. The kernel drops that copy: an ebtables
+  chain `DUI_MAC_BLOCK`, jumped to first from the kernel Bridge's INPUT,
+  `-s <mac> -j DROP` per `MB_` rule the chip holds. That covers ARP, IPv4
+  and IPv6 alike, where the raw-table mirror of the L3 tables (§11.32.3) is
+  IPv4 only. A routed front-panel port is no Bridge member, so its frames
+  do not pass the chain. l2d's own chains (`DUI_MACLOCK`, `DUI_DOT1X`) are
+  separate and l2d touches only its own jumps; l2d inserting `DUI_DOT1X`
+  at INPUT's head later would put an EAPOL ACCEPT ahead of the block.
+  One `sudo bash -s -- disunified-mac-block` script writes the chain and
+  `/run/disunified/mac-block`, the chain's hash, which `collect.py` reads
+  (`mac_block`); a reboot clears both and the next apply rewrites them.
+  The kernel half follows the chip's rules in `applyACL`, after the chip
+  writes, and is not counted as a setting.
+- **Never the management path.** A client that is the switch itself, its
+  gateway or the host the bridge is reached from (`mgmtL2`) is held with a
+  note: the drop would cut the switch off from the controller.
+- **Timing.** The session takes `blocked_sta` from every `setparam` and the
+  `block-sta` / `unblock-sta` cmds onto a known list; the loop hands the list
+  to `ApplyDevice` on every apply and reconcile, so a Block reaches the
+  switch within a cycle of whichever arrives first.
+
+#### 11.33.3 Tests
+
+`block_test.go` (from the DX010's own captured replies, two clients):
+both rules and the chain, idempotence, a lost marker rewriting the chain
+only, one client unblocked, then none (table and chain removed); the
+controller's MAC rules from the ECS's push beside the block, each half kept
+while the other is not set; the gateway held; an image without the L2 type.
+`informloop/replay_sonic_block_test.go` replays the whole capture through
+the loop: the rules and the chain on the first `setparam` with both
+clients, the test client's rule removed on the Unblock's, the cmds writing
+nothing more.
+
+#### 11.33.4 Not run live
+
+The frame test on the DX010 (the rule and the chain written by hand on a
+looped empty cage, a frame with the test source counted dropped by the
+chip, then removed) is still to do, and the deployed bridge has not yet
+written the site's blocked client. Both are in the register.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

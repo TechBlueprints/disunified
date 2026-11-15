@@ -52,6 +52,9 @@ type Collector struct {
 	guardable   bool                // nft is on the node and the bridge is VLAN-aware: DHCP guarding is claimed
 	guard       guardState          // the driver's nft table as the last collect read it
 	guardPorts  []guardPort         // this node's guest NICs, for the guard's rules
+	nft         bool                // nft is on the node (the client Block's table, block.go)
+	block       blockState          // the client Block's nft table as the last collect read it
+	bridgeMAC   string              // the bridge's own MAC (the device MAC)
 	stpOn       bool
 	// STP through mstpd, when the node has it and the bridge runs under it
 	// (docs/drivers/proxmox.md §4b). Without it STP is neither claimed nor touched.
@@ -191,6 +194,11 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	guard, err := parseGuard(sec["dhcpguard"])
 	if err != nil {
 		c.warnOnce("guard-parse", "nft table bridge %s not understood: %v", guardTable, err)
+	}
+	blockBody, blockListed := sec["macblock"]
+	block, err := parseBlock(blockBody, blockListed)
+	if err != nil {
+		c.warnOnce("block-parse", "nft table bridge %s not understood: %v", blockTable, err)
 	}
 
 	linkBy := map[string]ipLink{}
@@ -502,6 +510,11 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	c.snooping = snoop
 	c.guardable = strings.TrimSpace(sec["nft"]) == "present" && bridge["vlan_filtering"] == "1"
 	c.guard = guard
+	c.nft = strings.TrimSpace(sec["nft"]) == "present"
+	if block.Known {
+		c.block = block
+	}
+	c.bridgeMAC = hostMAC
 	c.guardPorts = guardPorts
 	c.stpOn = stpOn
 	c.mstpd = strings.TrimSpace(sec["mstpctl"]) == "present"

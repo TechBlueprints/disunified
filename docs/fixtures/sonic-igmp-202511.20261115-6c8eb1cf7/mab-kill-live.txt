@@ -1,5 +1,5 @@
 # MAC authentication (MAB) over SIGKILLs of disunified-l2d
-# (docs/drivers/sonic.md 11.26.12), 2026-11-15 22:44-22:52 UTC, image
+# (docs/drivers/sonic.md 11.26.13), 2026-11-15 22:44-22:52 UTC, image
 # igmp-202511.20261115-6c8eb1cf7, under the test lock: empty cage 30
 # (Ethernet116, ce29) in MAC loopback, STP-blocked (Backup) in Vlan4094; the
 # deployed bridge stopped; l2.json's dot1x section written by hand

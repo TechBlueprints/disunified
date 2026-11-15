@@ -1,0 +1,15 @@
+{
+  "multicastTable": {
+    "tableEntries": []
+  },
+  "unicastTable": {
+    "tableEntries": [
+      {
+        "entryType": "static",
+        "interface": "",
+        "macAddress": "02:00:00:00:00:01",
+        "vlanId": 1
+      }
+    ]
+  }
+}

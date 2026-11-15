@@ -174,6 +174,13 @@ that cost time on Clint's DCS-7160-48TC6-F.
   `transceiver` form, `eeprom` or `idprom` prints them (2026-11-15,
   `docs/drivers/arista-eos.md` §4). They are `sfp_rxfault` / `sfp_txfault`;
   the DOM thresholds are not (only the SSH transport's fallback).
+- **UniFi's client Block is static MAC drop entries** (`block.go`,
+  `docs/drivers/arista-eos.md` §9.9, 2026-11-15): `mac address-table static
+  <mac> vlan <v> drop` per VLAN, read back from `show running-config` as
+  that line with the MAC dotted; the MAC table lists the entry `static`
+  with an empty interface (not a client). Arista's manual: a drop entry
+  matches source or destination. `sanitize-arista-eos.py` keeps a dotted
+  MAC dotted since that capture.
 - `show mac address-table`'s `lastMove` is when EOS learned the address on
   that interface (or moved it there): the entry's `LearnedAt`, so `uptime`.
   4.26 has no per-entry last-seen time in any captured command, so `age` is
@@ -189,3 +196,13 @@ that cost time on Clint's DCS-7160-48TC6-F.
   json` is "unconverted"). The admin speed is a startup read
   (`show interfaces transceiver properties`): a batch that writes a speed
   sets `c.refresh` so the next collect re-reads it.
+- **`no vlan N` deletes silently whatever still names the VLAN**
+  (2026-11-15, `docs/drivers/arista-eos.md` §12, `vlan-prune/`): an
+  `interface VlanN` stays (`lowerlayerdown`), as do `no ip igmp snooping
+  vlan N`, `no spanning-tree vlan-id` and any port's lines naming it. So the
+  driver's VLAN delete (`vlan_prune.go`) checks first: an SVI, a `vlan`
+  section line other than `name` (a trunk group) or an unwritten interface
+  naming it keeps the VLAN; VLAN 1 and the management VLAN never go. The
+  running config folds unnamed VLANs into one `vlan 69,3000,4000` section.
+  The prune needs this run's `EnsureVLANs` and every attached lane
+  switch's `EnsureLaneVLANs`.

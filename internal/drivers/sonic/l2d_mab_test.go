@@ -33,6 +33,7 @@ func TestL2dMAB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	kernelAtomic(t, string(out))
 	steps := map[string][]string{}
 	var cur string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -62,7 +63,7 @@ func TestL2dMAB(t *testing.T) {
 	}
 	show := func(step string) string { return strings.Join(steps[step], "\n") }
 
-	drop := index("start", "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP")
+	drop := index("start", "EB -A DUI_DOT1X -i Ethernet120 -j DROP")
 	trap := index("start", "PST PORT_TABLE Ethernet120 learn_mode=cpu_trap")
 	if drop < 0 || trap < drop || !has("start", `STATE learn 112 "drop"`) {
 		t.Errorf("start: the mac_based port trapped to the CPU only after its kernel drop, the force-unauthorised one left closed:\n%s", show("start"))
@@ -77,7 +78,7 @@ func TestL2dMAB(t *testing.T) {
 	}
 	if !has(a, "PST FDB_TABLE Vlan3997:02:00:00:00:0a:01 port=Ethernet120 type=static") ||
 		!has(a, "PST FDB_TABLE Vlan4094:02:00:00:00:0a:01 port=Ethernet120 type=static") ||
-		!has(a, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -s 02:00:00:00:0a:01 -j RETURN") ||
+		!has(a, "EB -A DUI_DOT1X -i Ethernet120 -s 02:00:00:00:0a:01 -j RETURN") ||
 		!has(a, `STATE row {"authorized": "02:00:00:00:0a:01", "failures": "0", "last_failed_mac": "", "mab": "02:00:00:00:0a:01", "mab_heard": "02:00:00:00:0a:01=1000.0", "mode": "mac_based"}`) {
 		t.Errorf("accept: the captured Access-Accept admits the host, published at once:\n%s", show(a))
 	}

@@ -37,10 +37,18 @@ type State struct {
 	// and the truth is reported again.
 	Firmware     string `json:"firmware,omitempty"`
 	FirmwareBase string `json:"firmware_base,omitempty"`
+
+	// BlockedSTA is the clients the controller blocks, from the last
+	// setparam's blocked_sta (ParseBlockedSTA); BlockedSTAKnown says a
+	// setparam has carried the field. Kept so that a restart does not let a
+	// blocked client through until the controller's next setparam.
+	BlockedSTA      []string `json:"blocked_sta,omitempty"`
+	BlockedSTAKnown bool     `json:"blocked_sta_known,omitempty"`
 }
 
 func (st State) clone() State {
 	c := st
+	c.BlockedSTA = append([]string(nil), st.BlockedSTA...)
 	if st.Provisioned != nil {
 		c.Provisioned = make(map[string]json.RawMessage, len(st.Provisioned))
 		for k, v := range st.Provisioned {
@@ -54,7 +62,8 @@ func (st State) equal(o State) bool {
 	if st.Key != o.Key || st.CfgVersion != o.CfgVersion || st.Adopted != o.Adopted ||
 		st.UseAESGCM != o.UseAESGCM || st.InformURL != o.InformURL || len(st.Provisioned) != len(o.Provisioned) ||
 		st.SystemCfg != o.SystemCfg || st.PendingCfgVersion != o.PendingCfgVersion || st.PendingSystemCfg != o.PendingSystemCfg ||
-		st.Firmware != o.Firmware || st.FirmwareBase != o.FirmwareBase {
+		st.Firmware != o.Firmware || st.FirmwareBase != o.FirmwareBase ||
+		st.BlockedSTAKnown != o.BlockedSTAKnown || !equalStrings(st.BlockedSTA, o.BlockedSTA) {
 		return false
 	}
 	for k, v := range st.Provisioned {

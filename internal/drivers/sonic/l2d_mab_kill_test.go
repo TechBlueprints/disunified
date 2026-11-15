@@ -9,7 +9,7 @@ import (
 )
 
 // mabKillFixture is the DX010's run of MAC authentication over SIGKILLs of
-// disunified-l2d (docs/drivers/sonic.md §11.26.12): base the l2d before
+// disunified-l2d (docs/drivers/sonic.md §11.26.13): base the l2d before
 // mab_heard (main at the time), fix this one.
 const mabKillFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/mab-kill-live.txt"
 
@@ -95,7 +95,7 @@ func TestL2dMABKill(t *testing.T) {
 			t.Errorf("%s: C (last frame %.2f, killed %v) went at %.2f; want %.0f-%.1f s after its last frame",
 				name, last, kills, revoked[0], idle, idle+step+pass)
 		}
-		if d := revoked[0] - gone[0]; d < -pass-0.3 || d > 0.5 {  // the replay syncs every 0.5 s
+		if d := revoked[0] - gone[0]; d < -pass-0.3 || d > 0.5 { // the replay syncs every 0.5 s
 			t.Errorf("%s: C went at %.2f here, %.2f on the switch", name, revoked[0], gone[0])
 		}
 		if !strings.Contains(show(name), "LOG 802.1X: "+c+" authorised on "+port+" by its MAC address, kept over a restart") {
