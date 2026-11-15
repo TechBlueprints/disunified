@@ -986,9 +986,11 @@ the two test lists were on the switch, read them and reported
 uplink, seven forged replies were dropped and counted, a `-collect-once`
 reported `RogueDHCPDrops` 7 on port 1 (0 on port 53), and the deployed
 bridge's inform raised the controller's "Rogue DHCP server detected" alert
-for port 1. The deployed bridge reads the counters of the lists it knew at
-its previous collect, so a list written outside it is counted one cycle
-later (the alert came one inform after the frames).
+for port 1. A list written outside the bridge is counted in the first
+collect that sees it: the read-back takes its lists from the same collect's
+running config (`TestACLWrittenOutsideIsCountedAtOnce`, 2026-11-15; an
+earlier note here said one cycle later). The alert came in the inform after
+the frames because that is the first collect after them.
 
 ### 9.7 What waits
 
