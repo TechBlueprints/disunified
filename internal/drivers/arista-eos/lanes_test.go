@@ -252,6 +252,25 @@ func TestLanePlanAggregateAndItsUndo(t *testing.T) {
 	if got := lastBatch(t, ft); got != want {
 		t.Errorf("undo batch\n%s\nwant\n%s", got, want)
 	}
+	// Read back on the next collect: no lane in a group, no Port-Channel,
+	// nothing left to plan (fixture_lag.go).
+	if _, err := c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lanePorts(t, c, 54).Lanes {
+		if l.LAGID != 0 {
+			t.Errorf("lane %d still in %s", l.Index, l.LAG)
+		}
+	}
+	if _, ok := c.channelCfg[1541]; ok {
+		t.Error("Port-Channel1541 still in the running config")
+	}
+	if got := c.PlanLanes(54, desired); len(got) != 0 {
+		t.Errorf("after the undo, collected, the lanes plan %v", got)
+	}
+	if len(ft.Unmodelled) != 0 {
+		t.Errorf("unmodelled: %q", ft.Unmodelled)
+	}
 	// An aggregate id past the nine a cage has is refused.
 	desired[1].LAG = 12
 	if got := c.PlanLanes(54, desired); len(got) != 0 {

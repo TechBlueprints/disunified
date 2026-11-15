@@ -17,10 +17,10 @@ import (
 // Unmodelled and leaves the replies as they are:
 //
 //   - a speed that splits or joins a cage (the lanes appear or go: the
-//     tests switch Dir to a capture of the cage after it), channel-group
-//     (an aggregate changes `show port-channel summary` and the
-//     Port-Channel's switchport, never captured as a pair), shutdown of a
-//     port with a link (its LLDP, MAC and counters would change too);
+//     tests switch Dir to a capture of the cage after it), a port with a
+//     link joining an aggregate (LACP would bundle it; fixture_lag.go has
+//     what is modelled), shutdown of a port with a link (its LLDP, MAC and
+//     counters would change too);
 //   - the switch's addressing (ApplyAddress: an interface address, a
 //     route, a name server), STP mode and priority, SNMP communities, the
 //     hostname and SSH keys, MTU and any command not listed here.
@@ -167,6 +167,11 @@ func (f *FixtureTransport) apply(cmds []string) {
 		switch {
 		case strings.HasPrefix(c, "interface "):
 			mode, arg = "interface", strings.TrimPrefix(c, "interface ")
+			if poNameRe.MatchString(arg) && f.rcTop() != nil && !f.portChannelExists(arg) {
+				// Any `interface Port-Channel<n>` line creates one, bare
+				// (docs/drivers/arista-eos.md §4; Po4 of empty-po-leftovers).
+				f.createPortChannel(arg, "")
+			}
 		case strings.HasPrefix(c, "ip access-list "):
 			mode, arg = "acl", strings.TrimPrefix(c, "ip access-list ")
 			f.rcSection("ip access-list "+arg, true)
@@ -322,27 +327,33 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 	return false
 }
 
-// removePortChannel is `no interface Port-Channel<n>` on a Port-Channel no
-// port is in: it leaves `show interfaces`, `show interfaces switchport`,
-// `show interfaces status` and the running config (empty-po-leftovers/,
-// then empty-po-none/ after the driver removed Port-Channel1-4). One with
-// members (EOS takes them out of the group too) is not modelled; one that
-// does not exist is silent, as on the switch.
+// removePortChannel is `no interface Port-Channel<n>`: it leaves `show
+// interfaces`, `show interfaces switchport`, `show interfaces status` and
+// the running config (empty-po-leftovers/, then empty-po-none/ after the
+// driver removed Port-Channel1-4), and takes any member out of the group
+// as `no channel-group` does (channel-group-po9/3-no-interface-with-member;
+// empty-po-lag5 -> empty-po-lag5-removed-fixed). One that does not exist
+// is silent, as on the switch.
 func (f *FixtureTransport) removePortChannel(name string) bool {
 	top := f.rcTop()
 	if top == nil {
 		return false
 	}
-	for section, body := range top {
-		if !strings.HasPrefix(section, "interface Ethernet") {
-			continue
-		}
-		for l := range child(obj(body), "cmds", false) {
-			if strings.HasPrefix(l, "channel-group "+strings.TrimPrefix(name, "Port-Channel")+" ") {
-				return false
-			}
+	m := poNameRe.FindStringSubmatch(name)
+	if m == nil {
+		return false
+	}
+	n, _ := strconv.Atoi(m[1])
+	members := f.members(n)
+	for _, iface := range members {
+		if !f.canLeave(iface) {
+			return false
 		}
 	}
+	for _, iface := range members {
+		f.leaveChannel(iface)
+	}
+	delete(child(f.doc("show port-channel summary").vOrNil(), "portChannels", false), name)
 	delete(top, "interface "+name)
 	for _, cmd := range []string{"show interfaces", "show interfaces status"} {
 		delete(child(f.doc(cmd).vOrNil(), "interfaceStatuses", false), name)
@@ -467,8 +478,15 @@ func (f *FixtureTransport) interfaceCmd(iface, c string) bool {
 		if !f.speed(iface, c) {
 			f.unmodelled("interface "+iface, c)
 		}
-	case strings.HasPrefix(c, "channel-group "), c == "no channel-group",
-		strings.HasPrefix(c, "mtu "), strings.HasPrefix(c, "ip address "), strings.HasPrefix(c, "no ip address"),
+	case strings.HasPrefix(c, "channel-group "):
+		if !f.joinChannel(iface, c) {
+			f.unmodelled("interface "+iface, c)
+		}
+	case c == "no channel-group":
+		if !f.leaveChannel(iface) {
+			f.unmodelled("interface "+iface, c)
+		}
+	case strings.HasPrefix(c, "mtu "), strings.HasPrefix(c, "ip address "), strings.HasPrefix(c, "no ip address"),
 		c == "ip address dhcp":
 		f.unmodelled("interface "+iface, c)
 	default:

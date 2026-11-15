@@ -22,6 +22,8 @@ macs, ips, hosts = {}, {}, {}
 
 def map_mac(m):
     key = re.sub(r'[^0-9a-f]', '', m.lower())
+    if key == '000000000000':
+        return m  # no address at all (an empty Port-Channel's): nothing to hide
     if key not in macs:
         n = len(macs) + 1
         macs[key] = f'02:00:00:{(n>>16)&255:02x}:{(n>>8)&255:02x}:{n&255:02x}'
