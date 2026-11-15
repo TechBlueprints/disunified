@@ -1,0 +1,580 @@
+{
+  "data": [
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-1 Port 5.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1 Port 5",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "5",
+          "name": "5"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794475911913,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-1 Port 7.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1 Port 7",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "7",
+          "name": "7"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794475911915,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-2 Port 5.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2 Port 5",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "5",
+          "name": "5"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794475913605,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 11.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 11",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "11",
+          "name": "11"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476011690,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 12.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 12",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "12",
+          "name": "12"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476011691,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 15.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 15",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "15",
+          "name": "15"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476011692,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 27.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.1"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 27",
+          "version": "4.0.1"
+        },
+        "PORT": {
+          "id": "27",
+          "name": "27"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794476011692,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-2 Port 1.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2 Port 1",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "1",
+          "name": "1"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794496011386,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-1 Port 5.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1 Port 5",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "5",
+          "name": "5"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794528811222,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-2 Port 2.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2 Port 2",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "2",
+          "name": "2"
+        }
+      },
+      "severity": "HIGH",
+      "status": "STALED",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794556905810,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-2 Port 5.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:02",
+          "ip": "192.0.2.2",
+          "model": "US-16-XG",
+          "model_name": "USXG",
+          "name": "device-2 Port 5",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "5",
+          "name": "5"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794562347391,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-1 Port 7.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1",
+          "version": "7.5.15"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:01",
+          "ip": "192.0.2.1",
+          "model": "USW-Aggregation",
+          "model_name": "USL8A",
+          "name": "device-1 Port 7",
+          "version": "7.5.15"
+        },
+        "PORT": {
+          "id": "7",
+          "name": "7"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794562356799,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 11.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.3"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 11",
+          "version": "4.0.3"
+        },
+        "PORT": {
+          "id": "11",
+          "name": "11"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794648648011,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 12.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.3"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 12",
+          "version": "4.0.3"
+        },
+        "PORT": {
+          "id": "12",
+          "name": "12"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794648648012,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 15.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.3"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 15",
+          "version": "4.0.3"
+        },
+        "PORT": {
+          "id": "15",
+          "name": "15"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794648648013,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    },
+    {
+      "category": "UNIFI_ETHERNET_PORTS",
+      "event": "SFP_RECEIVED_FAULT",
+      "key": "SFP_RECEIVED_FAULT",
+      "message": "Loss of receive signal detected on SFP inserted into device-3 Port 27.",
+      "message_raw": "Loss of receive signal detected on SFP inserted into {DEVICE_WITH_PORT}.",
+      "parameters": {
+        "DEVICE": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3",
+          "version": "4.0.3"
+        },
+        "DEVICE_WITH_PORT": {
+          "id": "02:00:00:00:00:03",
+          "ip": "192.0.2.3",
+          "model": "ECS-Aggregation",
+          "model_name": "USWF066",
+          "name": "device-3 Port 27",
+          "version": "4.0.3"
+        },
+        "PORT": {
+          "id": "27",
+          "name": "27"
+        }
+      },
+      "severity": "HIGH",
+      "status": "NEW",
+      "subcategory": "MONITORING_WIRED",
+      "target": "DEVICE",
+      "timestamp": 1794648648014,
+      "title_raw": "Receive SFP Signal Loss",
+      "type": "PORT_ANOMALIES"
+    }
+  ]
+}
