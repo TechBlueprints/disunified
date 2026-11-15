@@ -235,6 +235,8 @@ func TestLaneAggregateAndJoin(t *testing.T) {
 		t.Errorf("the parent's plan touched the lane aggregate: %q", got)
 	}
 	got, _ := r.apply(speedOn(base, 2, 100000))
+	// Lane 1 is the only lane in a VLAN of its own (2-4 are PortChannel201).
+	got = unbound(t, got, 7, "Ethernet4", "Ethernet5", "Ethernet6", "Ethernet7")
 	head := []string{
 		"sudo config portchannel member del PortChannel201 Ethernet5",
 		"sudo config portchannel member del PortChannel201 Ethernet6",

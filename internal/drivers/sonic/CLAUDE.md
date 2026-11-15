@@ -666,7 +666,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   CLI's bookkeeping, kept in step. **The CLI refuses `vlan member del` of a
   port a static group names in that VLAN**, so the port plan deletes those
   rows first (`vlanMembers`), and `ApplyPorts` re-runs `applyIGMP` after
-  the batch; the FixtureRunner models the refusal. `config vlan del` is
+  the batch; the FixtureRunner models the refusal. **A breakout keeps the
+  cage's L2MC rows** (§11.25.3, live 2026-11-15): the kit's sonic-buildimage
+  0010 made every interface in the snooping YANG a string, so `-f` sees no
+  dependency; the old port's rows become the new port's of the same name
+  and a vanished lane's name nothing. The batch takes them out before the
+  breakout (`l2mcUnbind`, one `python3 -c ... disunified-l2mc` line) and
+  `applyIGMP` writes the new ports' after; the FixtureRunner's
+  `SavedDangling` catches a save that writes one. `config vlan del` is
   refused while snooping is on (the driver never deletes a VLAN). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
@@ -1171,6 +1178,13 @@ was restarted.
   row, an l2d run by hand. Read-only commands need no lock. **Take it
   with noclobber** (`set -C; echo '<who, what>' > /tmp/dui-dx010.lock`),
   so that a held lock refuses the write. A plain `>` replaced a held lock
-  on 2026-11-15, while a test's tables were still bound to Ethernet0. (The
+  on 2026-11-15, while a test's tables were still bound to Ethernet0.
+  **To wait, retry that write itself** every few seconds, in one loop
+  detached on the switch (`setsid nohup … &`, its output in a file you
+  watch): the lock passes from one session to the next within seconds, so
+  a poll that reads the file and writes later misses the gap, and a loop
+  under a background `ssh` outlives a dropped session -- check `pgrep` for
+  a second one before you release, or it takes the lock again after you
+  (2026-11-15). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)

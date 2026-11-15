@@ -260,7 +260,51 @@ func waitsNamed(cmds []string) []string {
 }
 
 func withoutL2MC(cmds []string) []string {
-	return dropPrefix(cmds, "sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|")
+	var out []string
+	for _, c := range dropPrefix(cmds, "sudo sonic-db-cli CONFIG_DB del 'L2MC_STATIC_MEMBER|") {
+		if _, ok := sonic.L2MCArgOps(c); !ok {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// l2mcUnbound takes the breakout's multicast unbind lines (sonic's
+// l2mcUnbind, docs/drivers/sonic.md 11.25.3) out of cmds and checks them:
+// they come before the first breakout, take out only member and router
+// rows naming one of ifaces, and touch the static groups' lists. It
+// returns the rest, and the number of rows taken out.
+func l2mcUnbound(t *testing.T, cmds []string, ifaces ...string) ([]string, int) {
+	t.Helper()
+	cage := map[string]bool{}
+	for _, i := range ifaces {
+		cage[i] = true
+	}
+	var out []string
+	n, brk := 0, false
+	for _, c := range cmds {
+		ops, ok := sonic.L2MCArgOps(c)
+		if !ok {
+			brk = brk || strings.HasPrefix(c, "sudo config interface breakout ")
+			out = append(out, c)
+			continue
+		}
+		if brk {
+			t.Errorf("the multicast rows were unbound after the breakout: %q", cmds)
+		}
+		for _, o := range ops {
+			verb, key, _ := strings.Cut(o, " ")
+			parts := strings.Split(key, "|")
+			switch {
+			case parts[0] == "L2MC_STATIC_GROUP":
+			case verb == "del" && (parts[0] == "L2MC_STATIC_MEMBER" || parts[0] == "L2MC_MROUTER") && cage[parts[len(parts)-1]]:
+				n++
+			default:
+				t.Errorf("the breakout's unbind %s, which names no interface of the cage %v", o, ifaces)
+			}
+		}
+	}
+	return out, n
 }
 
 func dropPrefix(cmds []string, prefix string) []string {

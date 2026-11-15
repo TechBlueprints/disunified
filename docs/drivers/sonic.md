@@ -1492,7 +1492,9 @@ patches came out of the build itself, none of them snooping logic:
   interface and VLAN-name fields plain strings without those imports: all 214 tests
   of the two files pass. Lost: the schema's check that a named VLAN or port exists,
   which nothing here uses (the snooping CLI writes unvalidated, the driver writes
-  rows directly).
+  rows directly) -- and, found 2026-11-15, the breakout's knowledge that these rows
+  depend on a port: `config interface breakout -f` keeps them, so the driver takes
+  them out itself (§11.25.3).
 
 **The build host and the time.** Debian 12 x86_64, 16 cores, 64 GB, 400 GB, Docker
 (20.10.10 or newer), `j2`, a non-root user in the docker and kvm groups, `/dev/kvm`
@@ -1712,7 +1714,8 @@ Global keys:
 
 Order rules the driver inherits from the CLI: enable snooping before writing
 suppression or static entries; disable snooping (or delete the statics) before
-removing a VLAN or a member; UniFi's VLAN 1 settings land on `Vlan<native_vlan>`
+removing a VLAN or a member; take a cage's rows out before breaking it out (the
+breakout does not, §11.25.3); UniFi's VLAN 1 settings land on `Vlan<native_vlan>`
 (§5.2a). As everywhere else, UniFi's list replaces the switch's: a snooping VLAN the
 push does not name is disabled.
 
@@ -2425,7 +2428,9 @@ strand the uplink: install an image with the fix (below) before that
 every change that takes a port out of its **last** VLAN goes through
 `removeBridgePort` -- a native-VLAN move on an access port, a port that
 becomes routed, a port joining an aggregate or becoming a mirror destination
-(the driver strips its VLANs first), and a breakout's deleted lanes. A tagged
+(the driver strips its VLANs first), and a breakout's deleted lanes (whose
+static rows the breakout itself leaves; the driver deletes them before it
+since 2026-11-15, §11.25.3). A tagged
 VLAN taken off a port that keeps another never removes the bridge port: not
 affected (its group members in that VLAN only linger until l2mcd deletes
 them). On an empty cage none of it shows: l2mcd programs members only on an
@@ -7201,10 +7206,98 @@ by hand and saved. Running and saved config then matched the snapshot,
 and `l2.json` was byte-identical. Side observation: after the split, lane 1
 could not leave Vlan4094 by hand ("remove all associated static Layer 2
 multicast group entries first") though nothing had written its static groups
-since the breakout. The driver's IGMP apply after the join logged `7 rows ...
-7 removed`, then `7 members set`, so the breakout appears to leave the old
-port's `L2MC_STATIC_MEMBER` rows, which carry no YANG dependency, behind. Not
-chased.
+since the breakout, and the start-up reconcile's IGMP apply logged `7 rows,
+0 members set, 7 removed`, then (after the port apply) `7 members set`.
+Chased the same day, below.
+
+**A breakout keeps the cage's multicast rows (live 2026-11-15).** On empty
+cage 29 again, by hand with the bridge stopped for 90 s, recorded in
+`docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/breakout-l2mc-20261115.txt`
+(CONFIG_DB, APPL_DB, STATE_DB and ASIC_DB for the cage at each step,
+syslog):
+
+- **The split** (`config interface breakout -f -y Ethernet112 '4x25G[10G]'`):
+  ConfigMgmt deleted `VLAN_MEMBER|Vlan4094|Ethernet112` and the port, and
+  nothing else. All seven `L2MC_STATIC_MEMBER|Vlan4094|<group>|Ethernet112`
+  rows stayed, and every `L2MC_STATIC_GROUP` row still listed `Ethernet112`
+  in `static-members@`. Lane 1 has the parent's name, so the rows now named
+  the new 25G port. With lane 1 put back in Vlan4094 (as the driver's plan
+  does), `config vlan member del 4094 Ethernet112` was refused: the
+  observation above.
+- **The join** with lanes 2-4 in Vlan4094 and their 21 rows (as the
+  driver's IGMP apply leaves a split cage): ConfigMgmt deleted the four
+  VLAN memberships and the four ports; the 21 rows of `Ethernet113`-`115`
+  stayed, naming ports that no longer exist, and the joined `Ethernet112`
+  inherited lane 1's seven, so it too was refused leaving the VLAN.
+
+**The cause is the image kit, not upstream's model.** #24327's
+`sonic-igmp-snooping.yang` makes `out-intf`, `port`, `mrouter-intf` and
+`static-members` leafrefs to PORT or PORTCHANNEL, and with them
+`config_mgmt`'s `_deletePorts` (`find_data_dependencies`, the schema
+backlinks of `PORT_LIST/name`) would delete these rows with the port, as it
+does an ACL table's `ports`. The kit's sonic-buildimage 0010 made every one
+of them a plain string (§8.6: the leafrefs broke the generic config updater's
+tests), and the installed model has none (`grep -c leafref` 0): `sonic_yang`
+over the running config finds only the VLAN membership as Ethernet112's
+dependency. Putting the leafrefs back would bring back what 0010 fixed, so
+the image stays as it is.
+
+**What the rows do.** orchagent never reads them. l2mcmgrd reads
+`L2MC_STATIC_MEMBER` (and `L2MC_MROUTER`) on a change, and again from
+CONFIG_DB whenever a port's VLAN membership becomes ready while the port is
+up (`VLAN_MEMBER_READY`, `LINK_STATUS up`): so a kept row is live
+configuration for the new port of the same name the moment it is in the VLAN
+and up, written for a port that no longer exists, and a vanished lane's rows
+match nothing until a lane of that name comes back. `L2MC_STATIC_GROUP` is
+the CLI's bookkeeping only. On the empty cage no L2MC member reached the
+chip at any step (members are programmed on oper-up ports only), and with
+sonic-swss 0004 a breakout of a live cage drops the old port's members with
+its VLAN membership (§8.15) in any case. The driver itself was never
+refused: its plan deletes a port's static rows before any VLAN removal
+(§8.14), and its IGMP apply after the batch removed the rows of vanished
+lanes, because its own model of the breakout kept them too. But the
+batch's `config save` wrote them to `config_db.json` first, they stayed for
+good if the IGMP apply did not run (`options.igmp` off, an error earlier in
+`ApplyPorts`), and the rows of the parent's name were never rewritten for
+the new port.
+
+**The fix (the driver; no image change).** `l2mcUnbind` (`igmp.go`), run in
+the breakout's batch beside the ACL rules' `dropInPortRules` and before
+`config interface breakout`: every `L2MC_STATIC_MEMBER` and `L2MC_MROUTER`
+row naming one of the cage's interfaces is deleted and each static group's
+list is rewritten without them (a group left empty is deleted), in one
+`ConfigDBConnector` call (`python3 -c ... disunified-l2mc '<ops>'`, logged as
+`static groups: N rows, ..., M removed`). That is what `-f` would do with
+the leafrefs in place, and it is §8.15's order: the statics go before the
+breakout takes the port's last VLAN. `applyIGMP` after the batch then writes
+the new ports' rows, lane 1's included. The FixtureRunner's breakout keeps
+`cfg_l2mc` as the switch does and records every L2MC row a `config save`
+writes for an interface without a PORT or PORTCHANNEL row
+(`SavedDangling`). `TestReplaySonicDX010BreakoutSeries` (split, lane speeds,
+2x50G, join) checks the unbind, that lane 1's rows are written again after
+the split, and that no save writes a dangling row; without the fix it fails
+on all three. Not covered: hand-made `MLD_L2MC_*` rows (the driver writes
+none, and the collector does not read them), and a PortChannel the plan
+deletes: its member rows go with its VLAN membership as before, its
+`L2MC_MROUTER` row and its place in the groups' lists until the IGMP apply
+after the batch.
+
+**Live through the fixed build (2026-11-15, 18:53-19:00 UTC).** A test deb of
+the branch (3d2d07e) on the DX010 under the lock, cage 29 changed through
+the controller's REST as the UI saves it (same record, section 7):
+
+| # | Push | The batch | Result |
+|---|---|---|---|
+| 1 | 25G | `disunified-l2mc (static groups: 7 rows, 0 members set, 7 removed)`, then the breakout to `4x25G[10G]`, the lanes' intent; the IGMP apply after it `28 members set, 0 removed` | lane 1's rows written anew (21 before the fix); 28 rows, every lane in each group's list |
+| 2 | native DMZ-FutureUse (4000) | per lane: its 7 static rows, `vlan member del 4094`, `add -u 4000` | all four lanes in Vlan4000, new bridge ports admin true, no L2MC row names the cage |
+| 3 | native Default | per lane: `del 4000`, `add -u 4094`; IGMP `28 members set` | back as after step 1 |
+| 4 | 100G | `disunified-l2mc (... 28 removed)`, then the join; IGMP `7 members set, 0 removed` | nothing left for the IGMP apply to remove: no save wrote a dangling row |
+| 5 | the pre-test override (auto) | none | 0 of 32 ports changed |
+
+Then the deployed build went back from `/host/disunified`; the join's lost
+`dhcp_rate_limit 300` (§11.17) was written back and saved, and running and
+saved CONFIG_DB, `l2.json` and the controller's 32 port overrides matched
+the copies taken before.
 
 **11.25.4 A table that is not the driver's (2026-11-15).** Until then the
 plan noted such a table and left it, so a PortChannel it bound kept its
