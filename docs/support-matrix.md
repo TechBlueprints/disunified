@@ -461,10 +461,25 @@ logoff removing the admission; the teardown. Fixture- and replay-tested:
 the driver's claim, closed ports, l2d's config and the root-only secrets
 file, the admitted hosts' FDB entries kept, the read-back.
 
+**The driver's path verified live through the deployed build** (2026-11-15,
+§11.26.8): from the UI, 802.1X Control on, each method on an empty cage,
+External RADIUS, off; the cage closed and opened, hostapd built by the
+driver's own unit, l2d's config, the trap and the chain, the secrets file
+root-only, the read-back. Two fixes followed (the secrets file now goes
+with 802.1X, a released port's STATE_DB mode is cleared).
+
+**MAC-based authentication (MAB)** built the same evening (§11.26.7):
+l2d's own RADIUS request for a host that sends no EAPOL (hostapd's wired
+driver has none), the MAC upper case without separators as user name and
+password (the controller's own help text), the push's idle timeout
+honoured. Proven by hand on the DX010 against hostapd's integrated RADIUS
+server (an accept admitted, a reject counted, the idle timeout, the
+teardown) and replayed on those answers (`TestL2dMAB`).
+
 | Gap | What the PR needs |
 |---|---|
-| The driver's own 802.1X path live (the push applied, l2d configured, hostapd built by the driver) | this branch deployed, a method set on an empty cage |
-| MAC-based authentication (MAB) | the user name and password UniFi's RADIUS server expects for a MAC; a RADIUS request from l2d on an unknown source (the port at `cpu_trap`); the loopback dropped such frames, to be probed |
+| An 802.1X accept and reject through the driver-run hostapd, and MAB, against the gateway's RADIUS server | a RADIUS user on the gateway's server (a site-wide change), then a loop test as §11.26.7's in a VLAN no STP instance maps |
+| What a UniFi switch sends in a MAB request beside the user name and password | a UniFi switch with a MAC Address port (a production change) |
 | Unauthorized VLAN, RADIUS-assigned VLAN | the first reaches no push on 11.0.99; the second (`dynvlan`) is disabled in every capture; neither built |
 | Forwarding: an admitted host's frames through the chip, an unadmitted one's dropped | two linked ports (rack day) |
 | A cabled supplicant against the gateway's RADIUS server; the controller's 128 alert | a host on a linked port, the bridge deployed |

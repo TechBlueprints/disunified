@@ -1111,6 +1111,23 @@ was restarted.
   - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt` (the
     hand runs: hostapd's events and station replies, the guard's writes),
     `collect-dot1x.txt`.
+  - **MAB (`mac_based`, §11.26.7) is l2d's own RADIUS client**: hostapd
+    2.11's `macaddr_acl` is read only for 802.11 frames, and the wired
+    driver never asks about a host that sends no EAPOL. User name and
+    password are the MAC upper case without separators (the controller's
+    RADIUS-user help text). hostapd's integrated server takes `"<MAC>"
+    MACACL "<MAC>"` users for a test.
+  - **A looped cage's frames never reach `cpu_trap` in a VLAN whose STP
+    instance does not forward the port**: the chip drops them at ingress
+    first (`RPORTD`); only trapped protocols (EAPOL, ARP) get through.
+    Test MAB in a hand-made VLAN no instance maps, with the bridge stopped
+    (its VLAN plan strips a hand-made membership on the next reconcile).
+  - **ARP proves nothing in such a probe** (its own trap): use an
+    ethertype no trap matches (0x88B5). In a VLAN without the switch's
+    address no copy of a known host's frames reaches the CPU at all.
+  - **The bridge's reply log (`inform-log/`) keeps every push verbatim**,
+    the RADIUS secret included: grep it, not just the journal, when
+    checking where a secret went.
 - **Hand tests on a switch that several sessions share take a lock on the
   switch**: write `/tmp/dui-dx010.lock` with your session's name and what
   you are doing, wait while another session holds it, remove it when done.
