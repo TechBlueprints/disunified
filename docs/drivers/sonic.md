@@ -3473,13 +3473,18 @@ orchagent always builds `StpOrch` on `STP_VLAN_INSTANCE_TABLE`,
   instance**. With one instance for all VLANs, the driver deleting any UniFi
   network would strip the states the management VLAN depends on. So **each
   VLAN gets its own instance, id = the VLAN id**, all holding the same
-  (RSTP) port states; a port-state change is one write per VLAN.
+  (RSTP) port states; a port-state change is one write per VLAN. But a
+  state StpOrch takes after the VLAN went makes the instance again, with no
+  VLAN, and only a VLAN leaving an instance removes one: a gone VLAN's port
+  keys go out through the producer and l2d removes an instance no VLAN uses
+  (§11.35).
 - A port-state key naming a port orchagent does not know makes
   `doStpPortStateTask` `return` without erasing it: that table's queue stops
   for good. l2d writes only ports present in APPL_DB `PORT_TABLE`/`LAG_TABLE`
   and ready in STATE_DB, never `dummy`, and drops the keys of a vanished port
-  or VLAN from APPL_DB directly (a plain `Table` delete, which orchagent never
-  sees: it already removed the objects with the bridge port or the VLAN).
+  from APPL_DB directly (a plain `Table` delete, which orchagent never sees:
+  it already removed the objects with the bridge port). A vanished VLAN's
+  keys go through the producer since §11.35.
   `portsorch` removes a port's STP ports with its bridge port.
 - `STP_FASTAGEING_FLUSH_TABLE:Vlan<id> {state true}` flushes the VLAN's dynamic
   FDB in the ASIC (`flushFdbByVlan`); every write of `true` is a new flush.
@@ -9351,6 +9356,235 @@ for the one restart of the fixed l2d, which a timed revert covered (below).
   reboot: no bridge port in ASIC_DB for a port that is not in
   `Bridge/brif`, and `bcmcmd "stg show"` with every PortChannel member
   forwarding in each STG whose VLAN the PortChannel carries.
+
+### 11.35 STP instances of deleted VLANs left in the chip (2026-11-15)
+
+After the deploy that brought the VLAN prune (§11.29) the DX010's chip held
+STP groups that no VLAN used, with STP ports in them. l2d's header said
+that deleting a VLAN removes its instance's port states. That is true, but
+StpOrch can then make the instance again.
+
+#### 11.35.1 What the switch held
+
+Read-only, 2026-11-15 16:28 local (`stp-orphans-20261115.json` is the same
+state after the repro below added one more):
+
+| | Vlan4094 | the others |
+|---|---|---|
+| `bcmcmd "stg show"` | STG 9, `contains 1 VLAN (4094)`, Forward ce0-ce1 (PortChannel1's members), Block ce2-ce31 | STG 2-7 and 10-12, each `contains 0 VLANs`; Forward ce0-ce1, Block ce23 (Ethernet92), and in STG 2-4 also ce22 (Ethernet88) |
+| ASIC_DB `SAI_OBJECT_TYPE_STP` | `0x…63d`, the STP attribute of Vlan4094's VLAN object | nine objects no VLAN object names, plus the switch's default (`0x…22`, no STP port) |
+| ASIC_DB `SAI_OBJECT_TYPE_STP_PORT` | 31: every bridge port | 21: PortChannel1 in all nine, Ethernet92 in all nine, Ethernet88 in three |
+| APPL_DB `STP_VLAN_INSTANCE_TABLE` / `STP_PORT_STATE_TABLE` | `Vlan4094` / 31 keys `<port>:4094` | none |
+| STATE_DB `STP_TABLE\|GLOBAL` | `max_stp_inst 510` | |
+
+So there were nine orphans, not ten. The tenth VLAN's (Vlan4010's)
+removal came last and was clean.
+
+#### 11.35.2 When it happened
+
+At the deploy, 15:10 local (`stp-orphan-syslog-20261115.txt`). The deb
+install restarted l2d (its sha had changed) at 15:10:11.66. Fifteen
+milliseconds later the bridge's first reconcile ran `config vlan del -m
+2,8,9,10,69,1000,2000,3000,4000,4010`. The new l2d started at 15:10:12.0,
+and its first pass wrote every bridge port's state into every VLAN's
+instance (31 ports x 11 VLANs). From 15:10:13.54 to 15:10:14.32 orchagent
+removed the VLANs, each as `brcm_sai_remove_stp: STG instance N deleted`
+then `removeVlan: Remove VLAN VlanN`. From 15:10:14.33 to 15:10:14.43,
+before l2d's next pass had noticed (`VlanN is gone`, from 15:10:14.44),
+syncd logged `STG instance N created` nine times. Only Vlan4010's removal
+came after that burst, at 15:10:14.69.
+
+Two quiet deletes before then were clean: Vlan3999 on 2026-11-14, twice
+(`STG instance 13 deleted`, nothing created). So were the 21:34 UTC deletes
+of the §11.29 live run, which had no l2d restart.
+
+#### 11.35.3 The cause, from the 202511 source
+
+Who removes what when a VLAN goes:
+
+1. The CLI deletes the CONFIG_DB row. vlanmgrd sends APPL_DB `VLAN_TABLE`
+   DEL.
+2. portsorch's `removeVlan` (`portsorch.cpp:7433`): with `m_stp_id` set,
+   it calls `removeVlanFromStpInstance(vlan, 0)`. That sets the VLAN back
+   to the default STP object and calls `removeStpInstance(vlan.m_stp_id)`,
+   which removes every PHY and LAG port's STP port in the instance, then
+   the object.
+3. l2d sees the VLAN gone from CONFIG_DB and ASIC_DB at its next pass, up
+   to 2 s later. It dropped its `<port>:<vid>` keys from APPL_DB directly,
+   with no DEL to StpOrch.
+
+Every step works on its own. The leak is a port-state SET that StpOrch
+takes after step 2:
+
+- `doStpPortStateTask` → `updateStpPortState` → `addStpPort` creates the
+  instance when StpOrch has none of that id
+  (`getStpInstanceOid` → `addStpInstance`). Then it creates the port's STP
+  port in it. l2d relies on this: states go first, the VLAN mapping after
+  (§11.5).
+- Nothing removes such an instance again. `removeStpInstance` is reached
+  only from `removeVlanFromStpInstance`, which needs a VLAN orchagent has.
+  A port-state DEL removes the STP port and leaves the instance.
+- **orchagent runs portsorch before StpOrch in each pass**
+  (`orchdaemon.cpp` `m_orchList`). So when orchagent is busy, the VLAN's
+  DEL overtakes states that l2d queued before it. The restart's burst of
+  341 states was exactly that: the states still queued were those of
+  Ethernet88, Ethernet92 and PortChannel1. Which of the 341 states are left
+  over is not in l2d's control.
+
+The `0` that portsorch passes is a second fault, a smaller one:
+`removeVlanFromStpInstance` looks up `m_vlanAliasToStpInstanceMap` by that
+argument, so the VLAN's alias never leaves the instance's list. Only
+`STP_INST_PORT_FLUSH_TABLE` reads that list, and l2d does not use it.
+
+**The ECS cannot strand an instance this way.** Read-only, the same
+evening, its ASIC_DB holds 2 STP objects (the default and instance 0) and
+51 STP ports, and its 12 VLAN objects carry no STP attribute of their own.
+Every APPL_DB port state is `<port>:0`. Ubiquiti's orchagent keeps every
+VLAN in one instance (§11.5), so a network that leaves it takes no instance
+with it.
+
+#### 11.35.4 Reproduced on a test VLAN (16:37-16:38 local, under the lock, the bridge stopped)
+
+These steps ran on the empty cage Ethernet112, cage 29, which has no
+module and no link:
+
+1. `config vlan add 3001` and `config vlan member add 3001 Ethernet112`
+   (tagged). l2d mapped it: `Vlan3001 in STP instance 3001 (31 ports)`,
+   STG 8. That state is `stp-vlan3001-20261115.json`.
+2. A delete as the prune does it: `config vlan member del`, then `config
+   vlan del`. It was clean: `STG instance 8 deleted`, and the counts went
+   back to 11 STP objects and 52 STP ports.
+3. The same VLAN made again and deleted again. This time one state for
+   `Ethernet112:3001` went through StpOrch's producer 35 ms after
+   `removeVlan`, which is where the 15:10 writes landed: `STG instance 8
+   created`. STG 8 then contained 0 VLANs, with ce28 (Ethernet112) blocked
+   in it. l2d logged `Vlan3001 is gone` and left it there. That state is
+   `stp-orphans-20261115.json`, with ten orphans.
+
+CONFIG_DB was identical before and after, in every key and in `sonic-cfggen
+-d --print-data`.
+
+#### 11.35.5 The fix (`l2d.py`)
+
+The driver's VLAN delete is not the cause, and its order (members, then the
+VLAN) is the CLI's. Any VLAN delete can lose this race, a hand delete
+included, so the fix is in l2d:
+
+- **A gone VLAN's port keys go out through the producer** (`forget_vlan`).
+  The DEL is sent only for a port orchagent knows: a DEL for an unknown port
+  stops the table's queue for good. A DEL replaces a SET still queued for
+  the same key, both in the producer's key set and in orchagent's
+  `m_toSync`. If StpOrch has already made the instance again, the DEL
+  removes that port's STP port from it. The VLAN key still goes from APPL_DB
+  directly: a producer DEL for a missing VLAN never completes.
+- **A port-state change writes only into VLANs CONFIG_DB still has**
+  (`on_link`). Until now it wrote into l2d's own list, which was up to a
+  pass stale.
+- **The id is retired**: `/run/disunified-l2d/stp-retired` records the
+  VLAN id and the time. It is in `/run` because a reboot or a swss restart
+  empties the chip's instances as well, and an l2d restart must keep the
+  list.
+- **`repair_orphans`** counts the instances no VLAN uses: ASIC_DB's STP
+  objects, less the default one, less one per VLAN that l2d has written
+  states for. It runs only once every VLAN has its states. While the count
+  is above zero, it removes one retired id per pass, oldest first,
+  `RETIRE_SETTLE` (4 s) after its VLAN went. It never takes an id that
+  CONFIG_DB, ASIC_DB or APPL_DB `VLAN_TABLE` still has a VLAN for, so it
+  never touches an instance in use, Vlan4094's included.
+- **`unmap_instance` removes an instance by the one path StpOrch has**:
+  1. It makes a VLAN of that id in orchagent alone: APPL_DB `VLAN_TABLE`
+     through the producer, with no CONFIG_DB row, no member, no kernel
+     netdev and no host interface.
+  2. It maps that VLAN into the instance, which `addVlanToStpInstance`
+     reuses.
+  3. It unmaps it, so `removeStpInstance` removes the instance and every
+     STP port in it.
+  4. It removes the VLAN.
+
+  A marker file (`stp-repair`) lets the next l2d finish an unmap that a
+  crash cut short.
+- An id leaves the list once it has been tried, when its VLAN comes back
+  (StpOrch then reuses the instance), or 60 s after its VLAN went if the
+  chip shows no orphan. Orphans for which l2d has no id are logged once,
+  with the count, and left alone. StpOrch keeps the ids in memory only, so
+  nothing else can name them.
+
+There is no kit patch. A patch to StpOrch could remove a VLAN-less
+instance when its last STP port goes, which would make the transient VLAN
+unnecessary. But image builds are on hold, and the l2d fix works on the
+stock orchagent through its own paths.
+
+#### 11.35.6 What a switch accumulates without it
+
+At most one instance per VLAN id. A VLAN made again with the same id
+reuses its orphan, because StpOrch's id-to-object map still holds it. Each
+leak needs orchagent busy as a VLAN goes. Before 2026-11-15 the driver
+never deleted a VLAN. Since then, every deploy that changes `l2d.py` and
+also prunes a VLAN is the 15:10 case, and so is a hand delete during a
+burst of state changes.
+
+The SAI's limit is `SAI_SWITCH_ATTR_MAX_STP_INSTANCE` 511 (StpOrch
+publishes 510 in STATE_DB). Once orphans and live VLANs reach it,
+`addStpInstance` fails for every new VLAN. Its states are then dropped
+(`addStpPort` returns no oid, and `updateStpPortState` erases the task),
+`map_vlan` never sees its STP ports, and the VLAN stays in the default
+STG. There it forwards on every member whatever mstpd says, so it has no
+loop protection in the chip.
+
+The orphans themselves forward nothing, because no VLAN uses them. But
+they hold STP ports: PortChannel1's in all nine here.
+
+#### 11.35.7 Tests
+
+`TestL2dRemovesOrphanedStpInstances` and `TestL2dVlanDeleteRace`
+(`testdata/l2d_orphans.py`) run a model of portsorch and StpOrch, with
+StpOrch's instance ids, over the two captures. The capture cannot say
+which id each orphan had: the model gives them the nine ids the 15:10
+prune deleted, in oid order, and 3001 to the newest.
+
+- **Cleanup**: l2d's list holds the ten ids. There is one unmap per pass,
+  each making and removing one VLAN. At the end the chip has two STP
+  objects and 31 STP ports, Vlan4094's states are unchanged and get no write
+  but the ones they already had, and no `VLAN_TABLE` key is left behind.
+- **Race**: a restart's first pass is queued, then Vlan3001 is deleted as
+  the CLI does it. orchagent takes the VLAN's DEL first and then the queued
+  states, which make instance 3001 again with 31 STP ports. The next pass
+  DELs its ports through the producer, and the unmap removes the instance
+  after `RETIRE_SETTLE`. The nine orphans with no id stay, and the count is
+  logged.
+
+Run with the l2d.py before this change, instance 3001 keeps its 31 STP
+ports, and the ten ids remove nothing.
+
+#### 11.35.8 Live on the DX010 (2026-11-15 16:46-16:48 local, under the lock)
+
+Setup: the bridge was stopped, so that it would not reinstall its own l2d.
+A timed revert was armed: a `systemd-run` script that pinged the gateway
+every 10 s for 15 minutes and, after three misses in a row, would have put
+the deployed l2d back and started the bridge. The fixed l2d was installed
+by hand.
+
+1. **The test orphan first.** With the list holding only 3001, l2d was
+   restarted: `Create an empty VLAN Vlan3001`, `STG instance 8 deleted`,
+   `Remove VLAN Vlan3001`, `STP instance 3001 (its VLAN gone) was still in
+   the chip: removed, 9 left`, all within 0.3 s of the start. `stg show`
+   differed from before in STG 8's three lines only, and STG 9 was
+   unchanged.
+2. **The nine, with the ids from the 15:10 log.** l2d was restarted with
+   them in the list. It removed one every 2.3 s: instance 2 was STG 7, 8
+   STG 4, 9 STG 12, 10 STG 5, 69 STG 11, 1000 STG 6, 2000 STG 2, 3000
+   STG 3 and 4000 STG 10. Every id had an orphan, and the log ended at `0
+   left`.
+3. **After**: `stg show` lists STG 0, STG 1 (VLANs 1 and 4095) and STG 9
+   (`contains 1 VLAN (4094)`, Forward ce0-ce1, Block ce2-ce31). ASIC_DB
+   holds 2 STP objects and 31 STP ports. APPL_DB holds only Vlan4094's
+   `VLAN_TABLE` and `STP_VLAN_INSTANCE_TABLE` keys. The gateway answered
+   throughout.
+4. **Left as found**: the deployed l2d (`77c8773e…`) was put back and
+   restarted, and was quiet (`started`, the mapping). `/run/disunified-l2d`
+   was removed, the revert unit stopped and the bridge started (`0 of 32
+   ports changed`). CONFIG_DB was identical to the dump before the test.
+   The fix reaches the switch with the next deploy.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
