@@ -110,6 +110,10 @@ func TestReplaySonicDX010Network11(t *testing.T) {
 		return out
 	}
 	want := map[int][]string{
+		// The ten site VLANs the 2026-11-02 Allow All run left (no port
+		// carries them, so no push names them): deleted on the first push
+		// (docs/drivers/sonic.md §11.29).
+		0: pruneTen,
 		3: {"sudo config interface storm-control add Ethernet60 unknown-unicast 1000000", save},
 		5: {"sudo config interface storm-control del Ethernet60 unknown-unicast", save},
 		// The transit VLAN and its address first (the device-wide apply),
@@ -126,8 +130,8 @@ func TestReplaySonicDX010Network11(t *testing.T) {
 			"bash -s -- disunified-l2", "sudo python3 - disunified-l2mc", save),
 			"sudo config interface ip add PortChannel1 198.18.4.5/30", save),
 		// The addresses out first, then the member, the port back in its
-		// VLAN and the PortChannel gone. Vlan4040 itself stays: EnsureVLANs
-		// never deletes (it was deleted by hand live, as after §11.16's run).
+		// VLAN and the PortChannel gone, and last Vlan4040, which the push
+		// no longer names (live, before §11.29, it was deleted by hand).
 		// Port 16's interim name "QSFP28 16" is a default: not written.
 		12: {
 			`sh -c 'for i in $(seq 1 60); do vtysh -c "show ip route vrf all static" </dev/null | grep -qw PortChannel1 || exit 0; sleep 0.5; done; exit 0' disunified-rif-wait`,
@@ -136,7 +140,8 @@ func TestReplaySonicDX010Network11(t *testing.T) {
 			"sudo config interface ip remove Vlan4040 198.18.253.2/24 </dev/null", save,
 			"sudo config portchannel member del PortChannel1 Ethernet56", "sudo config vlan member add -u 4094 Ethernet56",
 			"sudo config portchannel del PortChannel1", save,
-			"bash -s -- disunified-l2", "sudo python3 - disunified-l2mc", save},
+			"bash -s -- disunified-l2", "sudo python3 - disunified-l2mc", save,
+			"sudo config vlan del 4040", save},
 	}
 	recs := loadReplies(t, "controller-11.0.99/replies-dx010.ndjson")
 	if len(recs) != 16 {

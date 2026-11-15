@@ -15,7 +15,7 @@ import (
 // must write nothing.
 func TestReplaySonicDX010RoutedPortsAndFixedIPs(t *testing.T) {
 	r, _ := newDX010Rig(t, "collect-l3.txt")
-	r.cycle("the capture under its own push")
+	r.settle("the capture under its own push")
 
 	got := r.push("system_cfg-dx010-routed-1-port.txt", "acdbe0037c34b77b")
 	if !containsInOrder(got,

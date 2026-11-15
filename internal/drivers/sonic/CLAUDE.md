@@ -154,6 +154,20 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   (EnsureVLANs runs first); otherwise the explicit `-m` list.
   `EnsureVLANs` refuses a list holding `native_vlan` whole; `ApplyPorts`
   skips a port that names it.
+- **A VLAN no push names is deleted (`vlan_prune.go`, `docs/drivers/sonic.md`
+  §11.29, 2026-11-15)**, at the end of `ApplyPorts`, once the ports, the
+  IGMP rows and a routed network's address have left it. The push lists a
+  VLAN only while a port carries it or the switch routes it (a routed
+  network no port carries is in `switch.routing_interface` only); the ECS
+  removes such a VLAN with its members. Kept: `native_vlan`, the device's
+  and every attached lane switch's list (`EnsureLaneVLANs`: a lane
+  switch's list no longer replaces the device's), routed VLANs, and any
+  VLAN with a member, an address, a VRF/link-local interface row, a relay
+  or a snooping row the driver did not take out. Only from lists this run
+  was given (`siteKnown`, each child's, `c.l3` where FRR runs); not with
+  `control.ports: off`. The DHCP guard is re-derived after a delete. A
+  known-empty list is not "unknown": `planFor` keeps `[]` (the old nil
+  fell back to every VLAN on the switch for Allow All).
 - **`hdel … description` leaves APPL_DB's copy behind**: clearing is `hset
   … description ''` (APPL_DB follows) then `hdel`; the description is read
   from CONFIG_DB only.
@@ -684,7 +698,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   breakout (`l2mcUnbind`, one `python3 -c ... disunified-l2mc` line) and
   `applyIGMP` writes the new ports' after; the FixtureRunner's
   `SavedDangling` catches a save that writes one. `config vlan del` is
-  refused while snooping is on (the driver never deletes a VLAN). Version
+  refused while snooping is on (the VLAN delete, §11.29, comes after
+  the IGMP apply has taken the VLAN's rows out). Version
   3 always (at 2 l2mcd ignores v3 reports); query interval = (membership -
   max response) / 2. The querier address has no l2mcd field (queries leave
   from the VLAN's own address, or 0.0.0.0: the patch in §8.11). **Live on
