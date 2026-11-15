@@ -8309,6 +8309,8 @@ the 2026-11-07, 11-08 and 11-15 runs (§11.13, §11.16), and ten site VLANs
 the 2026-11-02 Allow All test created (§11.8) were still on the DX010 with
 no member. The driver now deletes a VLAN no push names, at the end of the
 port apply (`vlan_prune.go`).
+The `arista-eos` driver follows the same rule since the same day
+(`docs/drivers/arista-eos.md` §12).
 
 #### 11.29.1 When the controller stops naming a VLAN
 

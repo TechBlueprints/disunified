@@ -83,11 +83,12 @@ func TestReplayAristaNetwork11(t *testing.T) {
 		}
 	}
 
-	// Record 0: one VLAN batch and one port batch, port 54 named as EOS
-	// names it.
+	// Record 0: one VLAN batch, one port batch, port 54 named as EOS
+	// names it, and the delete of VLAN 3, which the 2026-09 capture's
+	// switch had and no push names (docs/drivers/arista-eos.md §12).
 	first := strings.Split(writes[0], "\n")
-	if len(first) != 2 || first[0] != "enable | configure | vlan 69,4000,4010 | end | write memory" || !strings.Contains(first[1], "interface Ethernet54/1 | description Ethernet54/1 |") {
-		t.Fatalf("record 0 is not one VLAN and one port batch:\n%s", writes[0])
+	if len(first) != 3 || first[0] != "enable | configure | vlan 69,4000,4010 | end | write memory" || !strings.Contains(first[1], "interface Ethernet54/1 | description Ethernet54/1 |") || first[2] != "enable | configure | no vlan 3 | end | write memory" {
+		t.Fatalf("record 0 is not one VLAN batch, one port batch and the delete of VLAN 3:\n%s", writes[0])
 	}
 	port54 := func(desc string) string {
 		return "enable | configure | interface Ethernet54/1 | description " + desc + " | end | write memory"

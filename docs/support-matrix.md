@@ -227,6 +227,20 @@ gateway's port and switch-facing ports
 | A rule on a port carrying a client's traffic, a rewrite under that traffic | **untested**: needs a host on a test port |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network (the deployment keeps `exact`: detection is off, §9.7) |
 
+**A VLAN the controller stops pushing is deleted (2026-11-15)**, by
+sonic's rule ([`drivers/arista-eos.md`](drivers/arista-eos.md) §12): after
+the port batch, `no vlan <list>` with the driver's IGMP line for each; kept:
+VLAN 1, the management VLAN, a dynamic VLAN, an attached lane switch's
+VLANs, and a VLAN an SVI, a `vlan` section line other than its name, or an
+unwritten interface still holds.
+
+| What | Status |
+|---|---|
+| Two spare VLANs deleted in one range batch, one with its IGMP line; one kept for its SVI, one for its trunk group, a note each; quiet after; the switch restored | **live**, 2026-11-15 (§12.6), the driver from the branch against the switch, the deployed bridge running |
+| The transit VLAN 4040 the Arista's push named for three minutes, deleted when the push drops it | `TestReplayAristaTransitVLAN` over the post-run capture; the live switch still has 4040, so **the first reconcile after a deploy deletes it** (§12.5) |
+| A VLAN kept because a port outside `control.ports` or a lane switch's lane names it, and nothing deleted before an attached lane switch's first push | fixture-tested (`vlan_prune_test.go`); untested live: needs a port outside `control.ports` in the deployed config, or an adopted lane switch |
+| A site network deleted from the controller | **untested**: none was; it leaves the push as the transit did |
+
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
 rate limit; a QoS policer is in bits per second and counts only conforming

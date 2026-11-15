@@ -1213,7 +1213,8 @@ a reply only in forms the switch printed after such a command:
 
 | Written | Read back from | Captured in |
 |---|---|---|
-| `vlan <list>` | `show vlan` (`VLAN0069`, active), `show ip igmp snooping` (the VLAN, snooping as the switch) | `split-cage54/` (taken after the driver created 69, 4000, 4010) |
+| `vlan <list>` | `show vlan` (`VLAN0069`, active), `show ip igmp snooping` (the VLAN, snooping as the switch), the running config's one section of unnamed VLANs (`vlan 69,3000,3977-3978,4000`) | `split-cage54/` (taken after the driver created 69, 4000, 4010), `vlan-prune/forms-0-before` -> `forms-1-created` |
+| `no vlan <list>` | gone from `show vlan`, `show ip igmp snooping` and its `vlan` section (a named one's whole, an unnamed one out of the list); an `interface VlanN`, its `no ip igmp snooping vlan N` and `no spanning-tree vlan-id` lines and any port naming it stay | `vlan-prune/forms-1-created` -> `forms-2-deleted`, `vlan-prune/hand` -> `driver` (§12) |
 | `shutdown` / `no shutdown` (a port without a link) | `show interfaces` `interfaceStatus` `disabled`, `autoNegotiate` `off`; back as before | `link-counters/show-interfaces-Ethernet2-shutdown.json` |
 | `description` | `show interfaces` `description`, as written | `write-forms/` |
 | `switchport mode`, `access vlan`, `trunk native vlan`, `trunk allowed vlan` | `show interfaces switchport` (`1-2,8-10,1000`; access keeps the trunk's settings) | `write-forms/` |
@@ -1228,7 +1229,7 @@ a reply only in forms the switch printed after such a command:
 | `no interface Port-Channel<n>` | gone from `show interfaces`, its switchport and status, and the running config; its members out of the group, its binding gone | `empty-po-leftovers/` -> `empty-po-none/`, `channel-group-po9/`, `empty-po-lag5/` -> `empty-po-lag5-removed-fixed/` |
 | a list written (`ip access-list`, bound or unbound) | `show ip access-lists <name>`: entries by number with the running config's text, a rule's action and an empty `counterData` (its `ruleFilter` left out: the driver never reads it); `countersEnabled`; `show ip access-lists summary`: the list's inbound interfaces, configured and active, and its length | `session-dui-acl-test-ports.txt` -> `show-ip-access-lists-DUI_IP_ACL_*.json`, `show-ip-access-lists-summary-dui-acl.json`; `mDNS-block` uncounted |
 | `ip address A/N` on an interface, `ip route 0.0.0.0/0 G`, `ip name-server vrf default S` (the address move's session) | the interface's `ip address` line and `show interfaces` `primaryIp`; the route and name server lines as written | the poll capture (on Management1) and `empty-po-*` (on Vlan1, after the address was moved there) |
-| `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState` | `split-cage54/` |
+| `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState`, with `floodingTraffic`, `pruningActive` and `reportFlooding` as every VLAN of that state shows them; the running config's `no ip igmp snooping vlan N` line, for a VLAN that exists or not | `split-cage54/`, `vlan-prune/forms-*` |
 | `environment fan-speed override 30` / `no environment fan-speed` | `show system environment cooling` `coolingMode`, `overrideFanSpeed` | `show-system-environment-cooling-override30.json`, `-default-20261114-after-quiet.json` |
 
 A `configure session` is applied at its `commit timer`, kept by `configure
@@ -1280,3 +1281,141 @@ interfaces transceiver properties`, one of the startup commands the
 collector re-reads every 30 polls, so after a forced speed every reconcile
 for half an hour wrote it again. A batch with a `speed` line now makes the
 next collect re-read them (`TestForcedSpeedIsReadBackOnTheNextCollect`).
+
+## 12. A VLAN the controller stops pushing (2026-11-15)
+
+Until 2026-11-15 `EnsureVLANs` only created ("VLANs the switch has and
+UniFi does not are left alone"). The `sonic` driver had just started
+deleting a VLAN no push names (`docs/drivers/sonic.md` §11.29: the rule,
+its reason, the ECS doing the same); this driver now follows the same rule
+(`vlan_prune.go`).
+
+### 12.1 What the Arista's push does
+
+Every Arista port is Allow All, so its push names every site network:
+`1, 2, 8, 9, 10, 69, 1000, 2000, 3000, 4000, 4010` since 2026-10-04 (the
+deployed bridge's reply log since 2026-09-20; 4010 arrived that day when the
+network was created). Once, a VLAN left it: the DX010's routed run of
+2026-11-15 brought the Inter-VLAN transit, and **the Arista's push named
+VLAN 4040 from 17:43:34 to 17:46:34 UTC** (`switch.vlan.13.id=4040`, mode
+tagged, and gone from the next push;
+`docs/fixtures/controller-11.0.99/replies-arista-transit.ndjson`). The
+driver created VLAN 4040 at the first and, only creating, kept it: it was
+still on the switch, with the driver's own `no ip igmp snooping vlan 4040`,
+on every Allow All trunk (the uplink, cage 53, Port-Channel1). A network
+deleted from the site, or a port moved off Allow All while others stay on
+it, reaches the push the same way (sonic.md §11.29.1 has the DX010's
+captures of each); neither has happened on the Arista.
+
+### 12.2 What EOS does (4.26.14M, captured by hand 2026-11-15, `vlan-prune/forms-*`)
+
+With two spare VLANs (3977, 3978: no port, no site network), an SVI on one,
+IGMP snooping off on both and `no spanning-tree vlan-id` on one:
+
+- `no vlan 3977,3978` deletes **silently, whatever still names the VLAN**:
+  `interface Vlan3977` stays (`unassigned`, `down`, `lowerlayerdown`), the
+  `no ip igmp snooping vlan N` lines stay, `no spanning-tree vlan-id
+  1000,2000,3978` stays. The range form (`no vlan 3978-3979`) works too
+  (the live run below).
+- `ip igmp snooping vlan N` and `default ip igmp snooping vlan N` both
+  clear the line for a VLAN that no longer exists.
+- The running config keeps a named VLAN in a section of its own (`vlan 2`
+  / `name kids`) and folds the unnamed ones into one list (`vlan
+  69,3000,3977-3978,4000,4010,4040`). `vlan N` / `trunk group X` is taken.
+- On an Allow All trunk (`switchport trunk allowed vlan all`) a new VLAN is
+  carried at once and a deleted one is gone: Allow All names no VLAN, it
+  carries what the switch has.
+
+### 12.3 Which VLANs the driver made
+
+There is no record, and none is kept: as on sonic, a record would keep for
+ever every VLAN made before it (sonic.md §11.29.4). EOS shows no difference
+between a VLAN the driver made and one made by hand (the driver writes
+`vlan <list>` with no name; a hand-made one may have a name or not). So the
+rule is the push's list, and what keeps a VLAN is what UniFi cannot
+express, not who made it.
+
+### 12.4 The rule
+
+**After the port batch, a VLAN no push names is deleted**, in one batch:
+the driver's `ip igmp snooping vlan N` for each that has `no ip igmp
+snooping vlan N`, then `no vlan <list>`, then `write memory`. **Kept**,
+whatever the push says:
+
+- VLAN 1, and the VLAN of the management interface (the one carrying the
+  address the bridge dials);
+- a dynamic VLAN (`show vlan`'s `dynamic`: EOS's own);
+- every VLAN the device's push names, and every VLAN an attached lane
+  switch's push names (`EnsureLaneVLANs`, `devicemodel.LaneVLANController`:
+  the lane switch's list is kept apart and no longer replaces the
+  device's);
+- a VLAN that still holds what the driver did not take out of it, noted
+  once each: an `interface VlanN` (an SVI, with or without an address); a
+  line in its `vlan` section other than `name` (a trunk group, a state);
+  an interface that names it explicitly once the port batch has run (an
+  access or native VLAN, or an allowed list, on a port outside
+  `control.ports`, a lane a lane switch owns, a Port-Channel made by hand).
+  A name alone does not keep a VLAN.
+
+The hand-made `no spanning-tree vlan-id 1000,2000` (two DMZ networks, from
+before the bridge) is left as written: UniFi cannot express it, and it is
+inert while the VLAN is gone.
+
+**Never from a list the run has not been given:** the prune needs this run's
+`EnsureVLANs` (the device's push) and the push of every attached lane
+switch; a held first push never reaches `EnsureVLANs`. It runs only with
+ports to write (`control.ports: off` writes no VLAN either). The first-push
+hold counts ports: a VLAN with no member is no port change, and on EOS
+deleting a VLAN changes no Allow All trunk's configuration, only what it
+carries, so the hold never waits on it.
+
+The DHCP guard's per-port decision follows the VLANs a port carries (§9.2),
+and an Allow All trunk carries the switch's VLANs: it is derived again at
+the next cycle's switch-wide apply, after the delete.
+
+### 12.5 What a deploy deletes on the live switch
+
+**VLAN 4040** (and the driver's `no ip igmp snooping vlan 4040`), by the
+rule's main case: a VLAN no push names and nothing holds. It is the
+Inter-VLAN transit of the DX010's 2026-11-15 routed run, which the deployed
+build created and could not remove. Read from the live switch with the
+driver's own plan (a dry run on the 17:46 push in force, 2026-11-15 22:13
+UTC): `[4040]`, no note, the port plan empty. Every other VLAN on the switch
+is a site network the push names. 4040 leaves every Allow All trunk (the
+uplink, cage 53 and Port-Channel1 to the DX010), where it has carried
+nothing since the transit went.
+
+### 12.6 Live (2026-11-15 22:22-22:27 UTC, under the Arista lock)
+
+The driver from this branch over SSH (a test harness, not committed), the
+deployed bridge running. By hand first: VLANs 3977 (with `interface
+Vlan3977`), 3978 (`name dui-prune-test`, IGMP snooping off), 3979 (bare) and
+3980 (`trunk group dui-prune-test`), captured as `vlan-prune/hand`. The
+driver, given the push's list plus 4040 (so the switch could be left as
+found), with the ports as they were: one batch, `ip igmp snooping vlan 3978
+| no vlan 3978-3979 | write memory`, and a note each for 3977 (its SVI) and
+3980 (its trunk group); captured as `vlan-prune/driver`. A fresh collect and
+the same again wrote nothing. Restored by hand (`no interface Vlan3977`, `no
+vlan 3977,3980`, `write memory`): `show vlan`, `show ip igmp snooping`,
+`show ip interface brief`, `show interfaces switchport` and the running
+config identical to before the test, `show running-config diffs` empty.
+
+### 12.7 Tests
+
+`vlan_prune_test.go`: the live run on `vlan-prune/hand`, read back as
+`vlan-prune/driver` (`show vlan`, `show ip igmp snooping`, the running
+config) and quiet after; the push in force alone deleting 4040 too; nothing
+before a push, with no ports, or without VLAN 1 in the list; a port outside
+the written set keeping a VLAN it names until it is written again (the
+member goes in the port batch, the VLAN in the next); nothing until an
+attached lane switch has given its list, then its VLANs kept and its list
+apart from the device's; the transport's `no vlan` and IGMP forms held to
+`forms-*`. `TestReplayAristaTransitVLAN` replays the 17:43-17:50 reply log
+over `vlan-prune/driver`: the second push deletes 4040 and its IGMP line,
+nothing else. The Network 11 replay's first record now also deletes VLAN 3,
+which the 2026-09 poll capture's switch had and no push names.
+
+Not run live: a VLAN kept because a port outside `control.ports` or a lane
+switch's lane names it (both fixture-tested), and a site network deleted
+from the controller (none was; the transit's push is the captured case).
+
