@@ -1,0 +1,691 @@
+# The kernel chain DUI_DOT1X rewritten in one transaction (docs/drivers/sonic.md
+# 11.26.11), 2026-11-15, image igmp-202511.20261115-6c8eb1cf7 (ebtables and
+# iptables 1.8.11, nf_tables; kernel 6.12.41).
+#
+# semantics, netns, iptables: in private network namespaces on the switch
+#   (ip netns; nothing the switch's own tables see), before the lock.
+#   semantics: what ebtables-restore --noflush (nf_tables), iptables-restore -n
+#   and ebtables-legacy-restore --noflush do with a declared chain, a jump
+#   insert, a refused line and a removal. netns: a bridge with one veth port;
+#   02:00:00:00:0c:01 (never admitted) sends untagged 0x88B5 broadcast frames
+#   every 0.2 ms; a hand chain DUI_T (as l2d writes DUI_DOT1X: two EAPOL
+#   ACCEPTs, admitted RETURNs, the port's DROP) is rewritten 200 times with
+#   the admissions alternating, "old" by a flush and one ebtables call per
+#   rule (the deployed l2d's way, each call run through ip netns exec),
+#   "new" by one ebtables-restore --noflush; a CONTINUE rule after the jump
+#   counts what passed. iptables: acl_cpu.go's mirror (DUI_ACL_CPU and two
+#   table chains) rewritten 200 times by iptables-restore -n while a blocked
+#   source sends UDP every 0.2 ms; an ACCEPT after the hook counts what passed.
+# The rest under the test lock (22:14:46-22:28:32 UTC): empty cage 30
+#   (Ethernet116, ce29) in MAC loopback, STP-blocked (Backup) in Vlan4094;
+#   the test deb (a2306c0) installed, its bridge left to install l2d, then
+#   stopped; l2.json's dot1x section by hand (Ethernet116 mac_based, idle
+#   timeout 10 s, RADIUS 127.0.0.1:18120, hostapd's integrated server with
+#   MACACL users 020000000A01 and 020000000A03); CONFIG_DB PORT|Ethernet116
+#   learn_mode drop by hand. Afterwards the deployed deb (fef74fe)
+#   reinstalled from /host/disunified and every hand change undone.
+#   probe: which frames from an unadmitted source sent into the loop reach
+#   ebtables INPUT (a CONTINUE rule ahead of the jump) and the netdev
+#   (tcpdump -Q in): pae = untagged 0x88B5 to 01:80:c2:00:00:03, arppae = an
+#   ARP request to that address, arp = a broadcast ARP request.
+#   new_run / old_run: the same scenario through l2d, "new" the test deb's
+#   (90dd8715...), "old" the deployed fef74fe l2d copied in (da9a6e83...):
+#   02:00:00:00:0a:01 sends an ARP request every second, 02:00:00:00:0a:03
+#   for 15 s of every 35 (revoked after 10 s idle, admitted again), l2d
+#   restarted at 60 s and 136 s, the loop off for 4 s at 100 s;
+#   02:00:00:00:0c:01 (no user) every second. Each run's sections:
+#     <run>_start   ebtables -L as the run started
+#     <run>_events  xtables-monitor -e for the run: each rule event of the
+#                   bridge filter table, and NEWGEN after each nf_tables
+#                   transaction (its generation, pid and program); only
+#                   ebtables events were printed
+#     <run>_chain   ebtables -L DUI_DOT1X polled every ~5 ms: a line on each
+#                   change (epoch seconds, rule count, the rules)
+#   run: the rig's own log (setup, probe, the two runs' counters, restore).
+# Nothing scrubbed: test addresses only (02:00:00:00:xx:xx, 192.0.2.0/24,
+# 127.0.0.1); the LAN's multicast sources that the loop brings back are in
+# l2d's journal only, which is not kept.
+@@@ semantics
+== create via restore, declared chain with policy RETURN, -I INPUT 1
+rc=0
+*filter
+:INPUT ACCEPT
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+:DUI_T RETURN
+-A INPUT -j DUI_T
+-A FORWARD -j DUI_T
+-A DUI_T -s 02:00:00:00:0a:01 -i a1 -j RETURN
+-A DUI_T -i a1 -j DROP
+== rewrite: declared again (flushed?) with other rules, no COMMIT
+rc=0
+*filter
+:INPUT ACCEPT
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+:DUI_T RETURN
+-A INPUT -j DUI_T
+-A FORWARD -j DUI_T
+-A DUI_T -s 02:00:00:00:0a:02 -i a1 -j RETURN
+-A DUI_T -i a1 -j DROP
+== rewrite with COMMIT line
+rc=0
+*filter
+:INPUT ACCEPT
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+:DUI_T RETURN
+-A INPUT -j DUI_T
+-A FORWARD -j DUI_T
+-A DUI_T -i a1 -j DROP
+== a bad line: is the whole batch refused?
+ebtables-restore v1.8.11 (nf_tables): Chain 'NOSUCH' does not exist
+Error occurred at line: 4
+Try `ebtables-restore -h' or 'ebtables-restore --help' for more information.
+rc=2
+*filter
+:INPUT ACCEPT
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+:DUI_T RETURN
+-A INPUT -j DUI_T
+-A FORWARD -j DUI_T
+-A DUI_T -i a1 -j DROP
+== -D jumps, -F, -X in one restore
+rc=0
+*filter
+:INPUT ACCEPT
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+== -L format of a chain made by restore
+rc=0
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 1, policy: ACCEPT
+-j DUI_T
+
+Bridge chain: FORWARD, entries: 0, policy: ACCEPT
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: DUI_T, entries: 2, policy: RETURN
+-p 802_1Q -i a1 --vlan-encap 888E -j ACCEPT
+-p EAPOL -i a1 -j ACCEPT
+== iptables raw: declared chain flushed on noflush restore?
+-P PREROUTING ACCEPT
+-P OUTPUT ACCEPT
+-N DUI_C
+-A DUI_C -s 192.0.2.2/32 -j DROP
+== legacy ebtables-restore, same input
+rc=0
+rc=0
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 1, policy: ACCEPT
+-j DUI_T
+
+Bridge chain: FORWARD, entries: 0, policy: ACCEPT
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: DUI_T, entries: 3, policy: RETURN
+-i a1 -j DROP 
+-s 2:0:0:0:a:2 -i a1 -j RETURN 
+-i a1 -j DROP
+@@@ netns
+sent 58359
+old: 200 rewrites in 23.7707 s; frames from 02:00:00:00:0c:01 past DUI_T: before 0, after 46890, settled 46890
+-i a1 -j DROP , pcnt = 0 -- bcnt = 0
+sent 64361
+new: 200 rewrites in 7.09486 s; frames from 02:00:00:00:0c:01 past DUI_T: before 0, after 0, settled 0
+-i a1 -j DROP , pcnt = 27561 -- bcnt = 1267806
+@@@ iptables
+sent 36139
+200 mirror writes in 6.97704 s
+   36139  1048031 DUI_ACL_CPU  all  --  v1     *       0.0.0.0/0            0.0.0.0/0           
+       0        0 ACCEPT     udp  --  v1     *       192.0.2.9            0.0.0.0/0            udp dpt:9
+6
+@@@ probe
+1794781075.571 PROBE pae: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+1794781077.721 PROBE arppae: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+1794781079.867 PROBE arp: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+pae: 0 in on the netdev
+arppae: 0 in on the netdev
+arp: 20 in on the netdev
+  first, its time removed, cut at 150 characters as the rig printed it: 02:00:00:00:0c:01 > ff:ff:ff:ff:ff:ff, ethertype 802.1Q (0x8100), length 64: vlan 4094, p 0, ethertype ARP (0x0806), Request who-has 1
+@@@ new_start
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 3, policy: ACCEPT
+-s 02:00:00:00:0c:01 -i Ethernet116 -j CONTINUE
+-j DUI_DOT1X
+-s 02:00:00:00:0c:01 -i Ethernet116 -j CONTINUE
+
+Bridge chain: FORWARD, entries: 5, policy: ACCEPT
+-j DUI_DOT1X
+-d BGA -j DROP
+-p ARP -j DROP
+-p 802_1Q --vlan-encap 0806 -j DROP
+-d Multicast -j DROP
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: DUI_DOT1X, entries: 3, policy: RETURN
+-p EAPOL -i Ethernet116 -j ACCEPT
+-p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+-i Ethernet116 -j DROP
+@@@ new_events
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=450 PID=413098 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=451 PID=413105 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=452 PID=415779 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=453 PID=416809 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=454 PID=420408 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=455 PID=421383 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=456 PID=424043 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=457 PID=425242 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=458 PID=425792 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=459 PID=425835 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=460 PID=428508 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=461 PID=429614 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=462 PID=429837 NAME=ebtables-restor
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=463 PID=432942 NAME=ebtables-restor
+@@@ new_chain
+1794781196.507 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781196.553 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781196.596 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781221.512 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781231.676 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781257.136 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781266.776 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781292.604 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781299.013 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781302.565 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781302.888 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781326.372 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781336.988 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781362.440 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+@@@ old_start
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 3, policy: ACCEPT
+-s 02:00:00:00:0c:01 -i Ethernet116 -j CONTINUE
+-j DUI_DOT1X
+-s 02:00:00:00:0c:01 -i Ethernet116 -j CONTINUE
+
+Bridge chain: FORWARD, entries: 5, policy: ACCEPT
+-j DUI_DOT1X
+-d BGA -j DROP
+-p ARP -j DROP
+-p 802_1Q --vlan-encap 0806 -j DROP
+-d Multicast -j DROP
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: DUI_DOT1X, entries: 3, policy: RETURN
+-p EAPOL -i Ethernet116 -j ACCEPT
+-p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+-i Ethernet116 -j DROP
+@@@ old_events
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=473 PID=436516 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=474 PID=436518 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=475 PID=436520 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=476 PID=436522 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=477 PID=436524 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=478 PID=436527 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=479 PID=436529 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=480 PID=436531 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=481 PID=436532 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=482 PID=436534 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=483 PID=436535 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=484 PID=440108 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=485 PID=440114 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=486 PID=440118 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=487 PID=440120 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=488 PID=440123 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=489 PID=441105 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=490 PID=441107 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=491 PID=441109 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=492 PID=441110 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=493 PID=441112 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=494 PID=441113 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=495 PID=443711 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=496 PID=443715 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=497 PID=443719 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=498 PID=443720 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=499 PID=443724 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=500 PID=443729 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=501 PID=443731 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=502 PID=443732 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=503 PID=443737 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=504 PID=443740 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=505 PID=443745 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=506 PID=443747 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=507 PID=443748 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=508 PID=443750 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=509 PID=443754 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=510 PID=448362 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=511 PID=448364 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=512 PID=448366 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=513 PID=448367 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=514 PID=448369 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=515 PID=449159 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=516 PID=449161 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=517 PID=449163 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=518 PID=449164 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=519 PID=449556 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=520 PID=449558 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=521 PID=449560 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=522 PID=449561 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=523 PID=449563 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=524 PID=449587 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=525 PID=449589 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=526 PID=449591 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=527 PID=449592 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=528 PID=449594 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=529 PID=449595 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=530 PID=452517 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=531 PID=452519 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=532 PID=452521 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=533 PID=452522 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=534 PID=452524 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=535 PID=453985 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=536 PID=453990 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=537 PID=453992 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=538 PID=453994 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=539 PID=453996 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=540 PID=454000 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=541 PID=454274 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=542 PID=454276 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=543 PID=454278 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=544 PID=454279 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=545 PID=454283 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=546 PID=454285 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=547 PID=454287 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=548 PID=454288 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=549 PID=454290 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=550 PID=454293 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=551 PID=454295 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=552 PID=454297 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=553 PID=454298 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+NEWGEN: GENID=554 PID=454300 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=555 PID=454301 NAME=ebtables
+ EVENT: ebtables -t filter -D DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+ EVENT: ebtables -t filter -D DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=556 PID=456682 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p EAPOL -i Ethernet116 -j ACCEPT
+NEWGEN: GENID=557 PID=456684 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+NEWGEN: GENID=558 PID=456686 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+NEWGEN: GENID=559 PID=456687 NAME=ebtables
+ EVENT: ebtables -t filter -A DUI_DOT1X -i Ethernet116 -j DROP
+NEWGEN: GENID=560 PID=456689 NAME=ebtables
+@@@ old_chain
+1794781408.656 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781408.712 CHAIN 0 
+1794781408.724 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781408.737 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+1794781408.750 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781408.784 CHAIN 0 
+1794781408.796 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781408.809 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781408.821 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781433.808 CHAIN 0 
+1794781433.821 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781433.834 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781433.846 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781443.768 CHAIN 0 
+1794781443.780 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781443.792 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781443.805 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781469.169 CHAIN 0 
+1794781469.181 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781469.194 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781469.232 CHAIN 0 
+1794781469.244 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781469.258 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781469.270 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781469.297 CHAIN 0 
+1794781469.309 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781469.322 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781469.335 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781504.908 CHAIN 0 
+1794781504.920 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781504.933 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781504.947 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781511.208 CHAIN 0 
+1794781511.224 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781511.238 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781514.672 CHAIN 0 
+1794781514.684 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781514.698 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781514.710 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781515.000 CHAIN 0 
+1794781515.012 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781515.024 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781515.037 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781538.140 CHAIN 0 
+1794781538.153 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781538.167 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781538.180 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781549.145 CHAIN 0 
+1794781549.179 CHAIN 2 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+1794781549.216 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN
+1794781549.245 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781551.160 CHAIN 0 
+1794781551.173 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781551.186 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -i Ethernet116 -j DROP
+1794781551.224 CHAIN 0 
+1794781551.239 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781551.253 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781551.267 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781551.304 CHAIN 0 
+1794781551.317 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781551.330 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781551.344 CHAIN 5 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -s 02:00:00:00:0a:03 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+1794781574.220 CHAIN 0 
+1794781574.232 CHAIN 1 -p EAPOL -i Ethernet116 -j ACCEPT
+1794781574.245 CHAIN 3 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN
+1794781574.258 CHAIN 4 -p EAPOL -i Ethernet116 -j ACCEPT | -p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet116 -j RETURN | -i Ethernet116 -j DROP
+@@@ run
+1794781048.012 SETUP start
+UNCONN 0      0            0.0.0.0:18120      0.0.0.0:*    users:(("hostapd",pid=406048,fd=4)) 
+1794781055.547 APPL learn cpu_trap
+Bridge table: filter
+
+Bridge chain: DUI_DOT1X, entries: 3, policy: RETURN
+-p EAPOL -i Ethernet116 -j ACCEPT
+-p 802_1Q -i Ethernet116 --vlan-encap 888E -j ACCEPT
+-i Ethernet116 -j DROP
+{'trap_ids': 'eapol', 'trap_group': 'queue4_group1', 'always_enabled': 'true'}
+1794781056.420 LOOP on
+48: Ethernet116: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master Bridge state blocking priority 32 cost 1 
+Ethernet116  117,118,119,120     100G   1500    N/A    Eth30   trunk      up       up     N/A         N/A
+1794781066.903 SETUP done
+1794781075.571 PROBE pae: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+1794781077.721 PROBE arppae: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+1794781079.867 PROBE arp: 20 sent from 02:00:00:00:0c:01, 0 reached ebtables INPUT
+1794781195.834 DRIVER new start, l2d 90dd87153e01
+1794781256.481 DRIVER new restart l2d
+1794781297.489 DRIVER new LOOP off
+1794781302.461 DRIVER new LOOP on
+1794781338.478 DRIVER new restart l2d
+1794781388.645 DRIVER new: arp frames from 02:00:00:00:0c:01 at INPUT 0, past INPUT 0; chain states seen 14; sent 190 arp from 02:00:00:00:0c:01
+1794781407.993 DRIVER old start, l2d da9a6e83f750
+1794781468.601 DRIVER old restart l2d
+1794781509.580 DRIVER old LOOP off
+1794781514.501 DRIVER old LOOP on
+1794781550.520 DRIVER old restart l2d
+1794781600.755 DRIVER old: arp frames from 02:00:00:00:0c:01 at INPUT 0, past INPUT 0; chain states seen 66; sent 190 arp from 02:00:00:00:0c:01
+1794781623.879 RESTORE start
+1794781624.916 LOOP off
+1794781633.094 STATE_DB row removed (none before)
+Bridge table: filter
+
+Bridge chain: INPUT, entries: 0, policy: ACCEPT
+
+Bridge chain: FORWARD, entries: 4, policy: ACCEPT
+-d BGA -j DROP
+-p ARP -j DROP
+-p 802_1Q --vlan-encap 0806 -j DROP
+-d Multicast -j DROP
+
+Bridge chain: OUTPUT, entries: 0, policy: ACCEPT
+1794781633.160 APPL learn hardware CONFIG learn []
+1794781633.171 RESTORE done
