@@ -1,0 +1,13 @@
+{
+  "cmds": {
+    "interface Ethernet54/1": {
+      "cmds": {
+        "error-correction encoding fire-code": null,
+        "mtu 1500": null,
+        "speed forced 100gfull": null,
+        "switchport mode trunk": null
+      },
+      "comments": []
+    }
+  }
+}

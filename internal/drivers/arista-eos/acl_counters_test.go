@@ -50,7 +50,7 @@ func TestCollectReadsTheDriversLists(t *testing.T) {
 // The captured switch without lists runs no read-back at all.
 func TestCollectReadsNoListsWhenThereAreNone(t *testing.T) {
 	_, ft := startedCollector(t)
-	for _, r := range ft.runs {
+	for _, r := range ft.Runs {
 		for _, cmd := range r {
 			if strings.HasPrefix(cmd, "show ip access-lists") {
 				t.Errorf("ran %q with no list of the driver's", cmd)

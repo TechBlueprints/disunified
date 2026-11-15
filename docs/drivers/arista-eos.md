@@ -1158,3 +1158,52 @@ MACs, an LACP partner on a lane aggregate, negotiated FEC, traffic on a
 lane mirror, and whether the 7160 runs a lane mirror beside a session of
 the switch's own. No lane switch has been adopted (Clint's step,
 `breakout.md` §11b).
+
+## 11. Tests: the fixture transport remembers what it wrote (2026-11-15)
+
+`aristaeos.FixtureTransport` (`fixture.go`, `fixture_state.go`) serves the
+captures and, since 2026-11-15, applies every config batch to the replies
+the driver reads it back from, as the SONiC `FixtureRunner` does. Until then
+it only recorded the batches, so in a replay every reconcile wrote the
+capture's missing VLANs and the whole port batch again, and a rule removal
+could not be replayed after its addition. Now the replays hold every
+reconcile after an applied push to writing nothing (`replayDriver.Quiet`;
+the deployed bridge logs "0 of 54 ports changed"), and the Network 11 replay
+adds and removes both recorded rules in order (records 27/29, 35/37).
+
+A reply nothing has written to is the capture byte for byte. A write changes
+a reply only in forms the switch printed after such a command:
+
+| Written | Read back from | Captured in |
+|---|---|---|
+| `vlan <list>` | `show vlan` (`VLAN0069`, active), `show ip igmp snooping` (the VLAN, snooping as the switch) | `split-cage54/` (taken after the driver created 69, 4000, 4010) |
+| `shutdown` / `no shutdown` (a port without a link) | `show interfaces` `interfaceStatus` `disabled`, `autoNegotiate` `off`; back as before | `link-counters/show-interfaces-Ethernet2-shutdown.json` |
+| `description` | `show interfaces` `description`, as written | `write-forms/` |
+| `switchport mode`, `access vlan`, `trunk native vlan`, `trunk allowed vlan` | `show interfaces switchport` (`1-2,8-10,1000`; access keeps the trunk's settings) | `write-forms/` |
+| `storm-control <type> level` / `no` | `show storm-control` (hundredths; an interface with no type left is not listed) | `storm-control-all-types/`, `split-cage54/` |
+| `speed forced`, `speed auto` | `show interfaces transceiver properties` `adminSpeed` (`1Gbps`/`full` ... `auto`) | `write-forms/`, the poll capture |
+| `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `error-correction encoding ...`, `no error-correction encoding`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
+| `ip access-list` (`counters per-entry`, `<seq> <rule>`, `no <seq>`), `no ip access-list` | the running config; a port EOS names is shown by name (9 `discard`, 22 `ssh`, 67 `bootps`, 68 `bootpc`, 443 `https`; 1001 kept) | `session-dui-acl-test-ports.txt` -> `show-running-config-dui-acl.json`, `write-forms/` |
+| `ntp server`, `logging host` (shown with port 514), `monitor session ... both` (shown without `both`) | the running config | the poll capture, `write-forms/`, `split-cage54-lag/` |
+| `no interface Port-Channel<n>` (no member left) | gone from `show interfaces`, its switchport and status, and the running config | `empty-po-leftovers/` -> `empty-po-none/` |
+| `ip igmp snooping vlan N` / `no` | `show ip igmp snooping` `igmpSnoopingState` | `split-cage54/` |
+| `environment fan-speed override 30` / `no environment fan-speed` | `show system environment cooling` `coolingMode`, `overrideFanSpeed` | `show-system-environment-cooling-override30.json`, `-default-20261114-after-quiet.json` |
+
+A `configure session` is applied at its `commit timer`, kept by `configure
+session NAME commit` and reverted by `... abort`. Everything else is recorded
+in `FixtureTransport.Unmodelled` and changes no reply: a speed that splits or
+joins a cage (the tests switch `Dir` to a capture of the cage after it),
+`channel-group` (and removing a Port-Channel that still has members), a shutdown of a port with a link, the switch's own
+addressing, STP mode and priority, SNMP communities, the hostname, SSH keys
+and MTU. A replay can require `Unmodelled` empty. Changing `Dir` or an
+`Overrides` entry makes the new capture the switch's state for the commands
+it serves. `Stateless` gives the old behaviour.
+
+`show running-config interfaces X | json` answers "This is an unconverted
+command" on 4.26.14M; only the whole running config has JSON.
+
+The first test on it found a driver bug: the admin speed is read from `show
+interfaces transceiver properties`, one of the startup commands the
+collector re-reads every 30 polls, so after a forced speed every reconcile
+for half an hour wrote it again. A batch with a `speed` line now makes the
+next collect re-read them (`TestForcedSpeedIsReadBackOnTheNextCollect`).

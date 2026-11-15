@@ -50,7 +50,7 @@ func TestLinkDropsCountedFromBoot(t *testing.T) {
 // and every down one read 0 drops.
 func TestLinkDropsAfterClear(t *testing.T) {
 	c, ft := newFixtureCollector(t)
-	ft.overrides = afterClear
+	ft.Overrides = afterClear
 	snap, err := c.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestLinkDropsCases(t *testing.T) {
 // disabled, and still 0 transitions.
 func TestAdminShutdownCountsNoLinkChange(t *testing.T) {
 	c, ft := newFixtureCollector(t)
-	ft.overrides = map[string]string{
+	ft.Overrides = map[string]string{
 		"show interfaces": "link-counters/show-interfaces-Ethernet2-shutdown.json",
 		"show version":    "link-counters/show-version-after-clear.json",
 	}
@@ -132,7 +132,7 @@ func TestSTPChangesHeldAcrossLinkUps(t *testing.T) {
 	ctx := context.Background()
 	step := func(overrides map[string]string) (p49, p53 int) {
 		t.Helper()
-		ft.overrides = overrides
+		ft.Overrides = overrides
 		snap, err := c.Collect(ctx)
 		if err != nil {
 			t.Fatal(err)

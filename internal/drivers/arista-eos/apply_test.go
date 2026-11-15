@@ -54,10 +54,10 @@ func TestApplyDisablesOnePort(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("changed %d ports, want 1", n)
 	}
-	if len(ft.configured) != 1 {
-		t.Fatalf("Configure called %d times", len(ft.configured))
+	if len(ft.Configured) != 1 {
+		t.Fatalf("Configure called %d times", len(ft.Configured))
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	want := "enable\nconfigure\ninterface Ethernet2\nshutdown\nend\nwrite memory"
 	if got != want {
 		t.Errorf("commands:\n%s\nwant:\n%s", got, want)
@@ -66,8 +66,8 @@ func TestApplyDisablesOnePort(t *testing.T) {
 	// Same request again: the collector remembers what it wrote, so nothing
 	// is sent until the next poll proves otherwise.
 	n, err = c.ApplyPorts(context.Background(), desired)
-	if err != nil || n != 0 || len(ft.configured) != 1 {
-		t.Errorf("second apply: n=%d err=%v configure calls=%d (want idempotent)", n, err, len(ft.configured))
+	if err != nil || n != 0 || len(ft.Configured) != 1 {
+		t.Errorf("second apply: n=%d err=%v configure calls=%d (want idempotent)", n, err, len(ft.Configured))
 	}
 }
 
@@ -77,7 +77,7 @@ func TestApplyBreakoutWritesEveryLane(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	for _, lane := range []string{"Ethernet50/1", "Ethernet50/2", "Ethernet50/3", "Ethernet50/4"} {
 		if !strings.Contains(got, "interface "+lane+"\nshutdown") {
 			t.Errorf("lane %s not shut down in:\n%s", lane, got)
@@ -94,7 +94,7 @@ func TestApplyDescription(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	got := strings.Join(ft.configured[0], "\n")
+	got := strings.Join(ft.Configured[0], "\n")
 	if !strings.Contains(got, "interface Ethernet2\ndescription Julie deskno shutdown\nend") {
 		t.Errorf("commands:\n%s", got)
 	}
@@ -103,8 +103,8 @@ func TestApplyDescription(t *testing.T) {
 func TestApplyNothingToDo(t *testing.T) {
 	c, ft := startedCollector(t)
 	n, err := c.ApplyPorts(context.Background(), []devicemodel.PortDesired{{Index: 1, Enabled: true}, {Index: 99, Enabled: false}})
-	if err != nil || n != 0 || len(ft.configured) != 0 {
-		t.Errorf("n=%d err=%v configure calls=%d", n, err, len(ft.configured))
+	if err != nil || n != 0 || len(ft.Configured) != 0 {
+		t.Errorf("n=%d err=%v configure calls=%d", n, err, len(ft.Configured))
 	}
 }
 

@@ -92,12 +92,21 @@ type replayDriver struct {
 	Loop func(*Config)
 	// Expect: what each reply must (not) have written to the switch.
 	Expect map[int]replayExpect
+	// Quiet: a reply Expect does not name must write nothing (a driver
+	// whose fixture transport remembers its writes, so a reconcile after
+	// an applied push finds nothing to change).
+	Quiet bool
 	// Check runs after each reply with the loop state, for the driver's
 	// own assertions (adoption sequence, locate, log lines).
 	Check func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string)
 }
 
-type replayExpect struct{ must, mustNot []string }
+type replayExpect struct {
+	must, mustNot []string
+	// exactly, when set, is everything the reply writes; with Quiet, a
+	// reply listed only for its must/mustNot is not held to writing nothing.
+	exactly string
+}
 
 // runReplay drives the driver through every recorded reply and checks
 // the common contract: the reported cfgversion follows each applied
@@ -222,6 +231,13 @@ func runReplay(t *testing.T, d replayDriver) {
 		}
 		if d.Check != nil {
 			d.Check(t, i, rec, sess, l, logBuf.String())
+		}
+		e, listed := d.Expect[i]
+		switch {
+		case e.exactly != "" && got != e.exactly:
+			t.Errorf("%s reply %d: want exactly:\n%s\ngot:\n%s", d.Name, i, e.exactly, got)
+		case d.Quiet && !listed && got != "":
+			t.Errorf("%s reply %d: wrote to the switch, want nothing:\n%s", d.Name, i, got)
 		}
 		for _, m := range d.Expect[i].must {
 			if !strings.Contains(got, m) {
