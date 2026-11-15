@@ -8104,7 +8104,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
   host's last frame, written as l2d stops (SIGTERM ends the main loop with
   `SystemExit`; `stopping()` runs in its `finally`, so an exception does it
   too), read and removed (`hdel`) by the next l2d. A SIGKILL leaves none
-  and the timer starts at the restart, as before;
+  (the timer then started at the restart; since §11.26.13 the row's
+  `mab_heard`, written as l2d runs, stands in);
 - an FDB entry already in APPL_DB as wanted is not written again;
 - the learn modes an earlier l2d set (APPL_DB `cpu_trap` or `hardware` over
   CONFIG_DB's `drop`) are the new l2d's from its first sync, so a port it
@@ -8285,6 +8286,101 @@ jumps back (FORWARD's ahead of the image's own rules) in one restore.
 `TestDot1xChainAtomicLive` holds the capture to the table: 14 transactions
 by `ebtables-restore` with the DROP after each for the new run, 88 and 71
 for the old.
+
+#### 11.26.13 A MAC-authenticated host's idle timer after a SIGKILL (2026-11-15)
+
+§11.26.10's `mab_seen` is written only as l2d stops. A SIGKILL, an
+out-of-memory kill or an interpreter crash writes nothing, and systemd starts
+l2d again 3 s later (`Restart=always`, `RestartSec=3`; `KillMode=process`,
+so hostapd, the chain and the FDB entries stay).
+
+**What happened (the l2d on main before this change, run `base` of
+`mab-kill-live.txt`).** The new l2d found the hosts in the row but no last
+frame, so each host's idle timer started again at the restart. A silent
+host went 40 s after the restart, not 40 s after its last frame. In the
+run:
+
+| host C before the kill | base: C went after its last frame | this l2d |
+|---|---|---|
+| silent 8.4 s, one kill | 52.6 s (restart + 41 s) | 46.3 s |
+| silent 13.3 s, two kills 15 s apart | 73.0 s (second restart + 41 s) | 45.3 s |
+| one frame after 25 s of silence, killed 0.6 s after it | 45.1 s (restart + 41 s) | 47.2 s |
+
+With the idle timeout at 40 s, each restart gave a silent host up to a
+whole timeout more. If l2d crashed in a loop faster than the timeout, the
+host was never removed. An operator saw the host still listed in the row's
+`authorized` and in the MAC table (its static FDB entry), as a client of
+the port, until the timeout after the last restart. The talking host (A,
+an ARP every 2 s) was kept through every kill in both runs: its FDB entry
+was written once, at its admission, and never again. Nothing in the chip
+moved. No host was thrown out early.
+
+**The options.**
+
+- **Re-authenticate every MAC-authenticated host at start.** A RADIUS
+  accept says the MAC is still a user, not that the host is talking, so the
+  timer would still start at the restart. Revoking every host at start
+  instead ("let the next frame re-admit it") would throw out the talking
+  hosts, which lose a frame and a RADIUS round trip.
+- **Derive the last frame from the kernel or the chip.** The admitted
+  host's FDB entry is static, so neither the chip nor the kernel ages it,
+  and the chip forwards the host's frames without the CPU. The kernel bridge
+  and `DUI_DOT1X`'s RETURN see only what the CPU sees, which is what l2d
+  counts already. The RETURN rule's counter is a count, not a time, and
+  every chain rewrite resets it. So neither holds a time to start from.
+- **Persist the last frame as l2d runs (chosen).** It costs a few small
+  writes and the bound follows from the write rule alone.
+
+**As built (`Dot1xGuard`).** The row gains `mab_heard`
+(`<mac>=<epoch>,...`, `mab_seen`'s form): each MAC-authenticated host's
+last frame, rewritten for the whole port when a frame finds the stored
+value `MAB_HEARD_STEP` (5 s) or more behind (a new admission counts too),
+and on the 2 s pass when the port's hosts change. Its last host's
+revocation removes the field. So the stored value is never later than a
+host's last frame and never 5 s or more before it, whenever l2d dies. A
+clean stop still writes the exact `mab_seen`, which the next l2d prefers.
+After a death without it, the next l2d takes `mab_heard` as each host's
+last frame and adds 5 s to its idle timeout until its next frame (in
+memory only, so a crash loop does not add it twice). `publish()` now
+compares only the fields it writes, so the extra field does not make it
+rewrite the row every pass.
+
+**The bound.** After any number of kills, a silent host goes between
+`idle_timeout` and `idle_timeout` + 5 s + one pass (2 s plus the sync's own
+time; 2.09 s seen) after its last frame. If l2d is down past that, it goes
+at the first sync after the restart. A host that talks is never removed by
+a kill. A host whose frame came while no l2d ran is not credited with it.
+Its next frame starts the timer, as it does over a clean stop. The write
+cost: one `HSET` of one field per port every 5-6 s while a host on it
+talks (35 in the 180 s `fix` run, one port, a host every 2 s), and none for
+a port whose hosts are silent.
+
+**Live, 2026-11-15 22:44-22:52 UTC** (image `igmp-202511.20261115-6c8eb1cf7`,
+under the test lock): §11.26.10's rig on empty cage 30 in MAC loopback, the
+deployed bridge stopped, l2.json's `dot1x` by hand (`mac_based`, idle
+timeout 40 s), hostapd's integrated RADIUS server on lo. Each l2d was
+installed as a copy: `base` main's (aa21c73); `fix` this change's, the file
+the test deb `0.0.0+20261115.mabkcaeb045` embeds, checked byte for byte on
+the switch. No test bridge ran: a build carrying main's VLAN delete
+(§11.29) or the kernel ACL mirror would have changed the switch beyond l2d.
+In each run, A talks throughout and C goes silent before each `kill -9` of
+the unit's main pid. Every row of the table above is a journal line `idle
+for 40s` at the first sync after C's bound. The switch was put back after:
+the deployed l2d (fef74fe) reinstalled and the bridge started, cage 30
+without loop or link, APPL_DB learning `hardware`, l2.json as before, the
+lock released. The candidate in that run predates §11.26.12's transaction.
+The replay runs the merged code.
+
+`TestL2dMABKill` replays run `fix` (`testdata/l2d_mab_kill.py`, built on
+`l2d_mab_restart.py`'s fakes). It uses the captured frames, RADIUS answers
+and kills, each restart at the new l2d's first logged sync, and a sync
+every 0.5 s. The switch's l2d also syncs on netlink and FDB events, so the
+moment of its sync is not in the capture. The test asserts that C goes
+within the bound in each of the three cases and within 0.5 s of the
+switch's revocation (up to 2.5 s before it, for the switch's 2 s pass), and
+that A is never removed or written again. It fails with main's l2d (C is
+not removed by the switch's time) and without the grace or the write on a
+frame.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 

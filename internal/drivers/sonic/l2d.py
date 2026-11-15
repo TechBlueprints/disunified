@@ -2043,6 +2043,12 @@ MAB_TIMEOUT = 3.0  # seconds before a request is sent again
 MAB_TRIES = 2  # sends per server before the next server
 MAB_QUIET = 60.0  # seconds a refused or unanswered source is left alone (hostapd's quiet period)
 MAB_PENDING = 32  # requests in flight at most (a burst of new sources is policed by CoPP too)
+# A MAC-authenticated host's last frame is also written as l2d runs (the
+# row's mab_heard), at most this many seconds behind, so an l2d that dies
+# without stopping (SIGKILL, a crash) leaves the next one a time no later
+# than the host's last frame and less than this before it: that l2d gives
+# each host this long on top of its idle timeout (sonic.md 11.26.13).
+MAB_HEARD_STEP = 5.0
 ETH_P_PAE = 0x888E
 ETH_P_8021Q = 0x8100
 RADIUS_ACCESS_REQUEST, RADIUS_ACCESS_ACCEPT, RADIUS_ACCESS_REJECT = 1, 2, 3
@@ -2198,9 +2204,11 @@ class Dot1xGuard(object):
         self.stale = {}
         self.stale_mab = {}  # of those, the ones admitted by their MAC address
         # (interface, mac) -> when an l2d before this one last saw that
-        # MAC-authenticated host (the row's mab_seen, written as it stopped),
-        # so its idle timer carries on from there.
+        # MAC-authenticated host (the row's mab_seen, written as it stopped;
+        # after a crash its mab_heard, with a grace of MAB_HEARD_STEP), so
+        # its idle timer carries on from there.
         self.stale_seen = {}
+        self.stale_grace = {}
         # MAC authentication (mac_based ports, 11.26.8)
         self.idle = {}  # interface -> idle timeout (s) of a MAC-authenticated host; 0 = none
         self.mab = {}  # interface -> MACs admitted by their MAC address
@@ -2210,6 +2218,11 @@ class Dot1xGuard(object):
         self.auth_ports, self.mab_ports = set(), set()
         self.flusher = None
         self.seen = {}  # (interface, mac) -> last frame seen from a MAC-authenticated host
+        # (interface, mac) -> seconds added to the idle timeout for a host
+        # kept over a crash, until its next frame (its mab_heard may be up
+        # to MAB_HEARD_STEP behind its last frame)
+        self.grace = {}
+        self.heard = {}  # interface -> {mac: time} as last written to the row's mab_heard
         self.quiet = {}  # (interface, mac) -> until when a refused or unanswered source is left alone
         self.pending = {}  # RADIUS identifier -> the request in flight
         self.inflight = {}  # (interface, mac) -> RADIUS identifier
@@ -2230,14 +2243,17 @@ class Dot1xGuard(object):
                 mab = set(splitlist(row.get("mab", ""))) & macs
                 if mab:
                     self.stale_mab[port] = mab
-            for item in splitlist(row.get("mab_seen", "")):
-                mac, _, t = item.partition("=")
-                try:
-                    self.stale_seen[(port, mac)] = float(t)
-                except ValueError:
-                    pass
-            if "mab_seen" in row:
+            heard = parse_seen(row.get("mab_heard", ""))
+            if heard:
+                self.heard[port] = heard
+            if "mab_seen" in row:  # the l2d before stopped: its hosts' last frames as they were
+                for mac, t in parse_seen(row["mab_seen"]).items():
+                    self.stale_seen[(port, mac)] = t
                 self.st.hdel(port, "mab_seen")  # read once: a later crash must not find it stale
+            else:  # it died without stopping: what it wrote as it ran, at most MAB_HEARD_STEP behind
+                for mac, t in heard.items():
+                    self.stale_seen[(port, mac)] = t
+                    self.stale_grace[(port, mac)] = MAB_HEARD_STEP
 
     # --- configuration -----------------------------------------------------
 
@@ -2474,7 +2490,7 @@ class Dot1xGuard(object):
             key = (port, src)
             if src in self.admitted.get(port, ()):
                 if src in self.mab.get(port, ()):
-                    self.seen[key] = now
+                    self.mark_seen(port, src, now)
                 continue
             if key in self.inflight or self.quiet.get(key, 0) > now or len(self.pending) >= MAB_PENDING:
                 continue
@@ -2548,7 +2564,7 @@ class Dot1xGuard(object):
             if answer == "accept":
                 self.admit(port, mac, "by its MAC address")
                 self.mab.setdefault(port, set()).add(mac)
-                self.seen[(port, mac)] = now
+                self.mark_seen(port, mac, now)
             else:
                 self.failures[port] = self.failures.get(port, 0) + 1
                 self.last_fail[port] = mac
@@ -2567,10 +2583,37 @@ class Dot1xGuard(object):
             if t <= 0:
                 continue
             for mac in sorted(self.mab[port]):
-                if now - self.seen.get((port, mac), now) > t:
+                if now - self.seen.get((port, mac), now) > t + self.grace.get((port, mac), 0):
                     self.revoke(port, mac, "idle for %ds" % t)
         for key in [k for k, until in self.quiet.items() if until <= now]:
             del self.quiet[key]
+        self.write_heard()
+
+    def mark_seen(self, port, mac, now):
+        """A frame from a MAC-authenticated host: its idle timer starts again,
+        and the row's mab_heard is written once it is MAB_HEARD_STEP behind
+        (so it never is more than that, whenever l2d dies)."""
+        key = (port, mac)
+        self.seen[key] = now
+        self.grace.pop(key, None)
+        if now - self.heard.get(port, {}).get(mac, float("-inf")) >= MAB_HEARD_STEP:
+            self.write_heard(port)
+
+    def write_heard(self, port=None):
+        """The row's mab_heard: each MAC-authenticated host's last frame,
+        rewritten for one port (a frame or an admission) or, every pass, for
+        each port whose hosts changed; removed with the port's last host."""
+        for p in [port] if port else sorted(set(self.mab) | set(self.heard)):
+            cur = {m: self.seen[(p, m)] for m in self.mab.get(p, ()) if (p, m) in self.seen}
+            have = self.heard.get(p)
+            if port is None and have is not None and set(have) == set(cur):
+                continue
+            if cur:
+                put(self.st, p, [("mab_heard", format_seen(cur))])
+                self.heard[p] = cur
+            elif have is not None:
+                self.st.hdel(p, "mab_heard")
+                self.heard.pop(p, None)
 
     def carrier(self, port):
         return rd("%s/%s/carrier" % (SYS, port), "0") == "1"
@@ -2721,9 +2764,11 @@ class Dot1xGuard(object):
                 self.stale_seen.pop((port, mac), None)
             return  # left to drop_stale (a link down, or hostapd's list)
         keep, gone = {}, []
+        grace = {}
         for mac in sorted(macs):
             seen = self.stale_seen.pop((port, mac), now)
-            if t > 0 and now - seen > t:
+            grace[mac] = self.stale_grace.pop((port, mac), 0)
+            if t > 0 and now - seen > t + grace[mac]:
                 gone.append(mac)
             else:
                 keep[mac] = min(seen, now)
@@ -2737,6 +2782,8 @@ class Dot1xGuard(object):
             self.stale[port].discard(mac)
             self.mab.setdefault(port, set()).add(mac)
             self.seen[(port, mac)] = seen
+            if grace[mac]:
+                self.grace[(port, mac)] = grace[mac]
         if not self.stale.get(port):
             self.stale.pop(port, None)
 
@@ -2796,6 +2843,7 @@ class Dot1xGuard(object):
         macs.discard(mac)
         self.mab.get(port, set()).discard(mac)
         self.seen.pop((port, mac), None)
+        self.grace.pop((port, mac), None)
         keys = self.fdb.get(port, set())
         for key in self.fdb_keys(port, mac):
             if key in keys:
@@ -2857,7 +2905,8 @@ class Dot1xGuard(object):
                    ("failures", str(self.failures.get(port, 0))),
                    ("last_failed_mac", self.last_fail.get(port, "")),
                    ("mab", ",".join(sorted(self.mab.get(port, ()))))]
-            if self.db.hgetall(self.db.state, DOT1X_TABLE + "|" + port) != dict(row):
+            have = self.db.hgetall(self.db.state, DOT1X_TABLE + "|" + port)
+            if any(have.get(k) != v for k, v in row):  # mab_heard is write_heard's
                 put(self.st, port, row)
         self.dirty.clear()
 
@@ -2917,9 +2966,9 @@ class Dot1xGuard(object):
         idle timer carries on from it; hostapd, the chain and the FDB
         entries stay for that l2d to adopt."""
         for port in sorted(self.mab):
-            macs = sorted(m for m in self.mab[port] if (port, m) in self.seen)
-            if macs:
-                put(self.st, port, [("mab_seen", ",".join("%s=%.1f" % (m, self.seen[(port, m)]) for m in macs))])
+            seen = {m: self.seen[(port, m)] for m in self.mab[port] if (port, m) in self.seen}
+            if seen:
+                put(self.st, port, [("mab_seen", format_seen(seen))])
 
     def teardown(self):
         """Every authenticator stopped, every admission removed, the chain and
@@ -2947,10 +2996,28 @@ class Dot1xGuard(object):
         for port in sorted(set(self.failures)):
             put(self.st, port, [("mode", ""), ("authorized", ""), ("failures", str(self.failures[port])),
                                 ("last_failed_mac", self.last_fail.get(port, "")), ("mab", "")])
+        self.mab = {}
+        self.write_heard()
 
 
 def splitlist(s):
     return [x for x in (s or "").split(",") if x]
+
+
+def parse_seen(s):
+    """mab_seen / mab_heard: <mac>=<epoch>,..."""
+    out = {}
+    for item in splitlist(s):
+        mac, _, t = item.partition("=")
+        try:
+            out[mac] = float(t)
+        except ValueError:
+            pass
+    return out
+
+
+def format_seen(seen):
+    return ",".join("%s=%.1f" % (m, seen[m]) for m in sorted(seen))
 
 
 def teardown():

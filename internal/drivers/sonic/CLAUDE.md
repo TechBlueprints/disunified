@@ -1243,7 +1243,10 @@ was restarted.
     chain and in an open Credentials port's learning until settled, and
     settled before the first chain write; a MAC-authenticated host's last
     frame is the row's `mab_seen`, written in `main`'s `finally` on SIGTERM
-    and `hdel`ed by the next l2d. Before that fix every start dropped the
+    and `hdel`ed by the next l2d; after a SIGKILL or a crash, the row's
+    `mab_heard` (rewritten as l2d runs, never 5 s behind) plus 5 s
+    (§11.26.13; a silent host goes by idle + 5 s + a pass after its last
+    frame, however many kills). Before that fix every start dropped the
     admitted hosts in the kernel for 40-100 ms. Check a restart with a
     5 ms `ebtables -L DUI_DOT1X` poll and a Redis MONITOR, not snapshots.
   - **Every ebtables write l2d makes is one `ebtables-restore --noflush`**
