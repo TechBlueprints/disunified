@@ -68,6 +68,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 			}
 		}
 		c.markPortChannels(pr.pcVLAN)
+		c.forgetPortChannels(pr.removed)
 		if pr.joins != nil {
 			lanes := map[int][]devicemodel.Port{}
 			for k, v := range c.lanes {
@@ -174,6 +175,7 @@ type planResult struct {
 	notes   []string
 	joins   map[int]bool
 	pcVLAN  map[string]devicemodel.PortVLAN // the Port-Channels written, as the batch leaves them
+	removed []string                        // the Port-Channels the batch removes (portchannel.go)
 }
 
 // plan computes the batch for desired against snap. PlanPorts and
@@ -189,6 +191,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		base = laneBase(sc.cage)
 	}
 	c.mu.Lock()
+	channels := c.channelCfg
 	child := map[int]bool{}
 	childLanes := map[int][]devicemodel.Port{}
 	if !inLanes {
@@ -218,6 +221,16 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 	}
 	lagVLAN := map[int]devicemodel.PortDesired{} // LAG id -> the VLAN intent its Port-Channel carries
 	lagPorts := map[int][]int{}                  // LAG id -> its members' indexes
+	members := map[string]bool{}                 // the Port-Channels with a member once the batch has run
+	pushed := map[int]bool{}
+	for _, d := range desired {
+		pushed[d.Index] = true
+	}
+	for _, p := range snap.Ports {
+		if !pushed[p.Index] && p.LAG != "" {
+			members[p.LAG] = true
+		}
+	}
 	for _, d := range desired {
 		p, ok := live[d.Index]
 		if !ok {
@@ -269,6 +282,14 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			portCmds = append(portCmds, vlanCommands(p, d)...)
 			portCmds = append(portCmds, lagCommands(p, 0, base)...)
 		}
+		switch {
+		case owned || foreign:
+			if p.LAG != "" {
+				members[p.LAG] = true
+			}
+		case lag > 0:
+			members["Port-Channel"+strconv.Itoa(base+lag)] = true
+		}
 		if !owned {
 			portCmds = append(portCmds, fecCommands(p, d)...)
 			portCmds = append(portCmds, stormCommands(p, d)...)
@@ -299,7 +320,9 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		}
 		var dissolve []string
 		if owned && len(speedCmds) > 0 && d.SpeedMbps >= 40000 {
-			dissolve = dissolveLanes(d.Index, childLanes[d.Index])
+			var gone []string
+			dissolve, gone = dissolveLanes(d.Index, childLanes[d.Index])
+			pr.removed = append(pr.removed, gone...)
 			if len(dissolve) > 0 {
 				note("port %d: joining the cage removes its lane switch's aggregates and mirror sessions first", d.Index)
 			}
@@ -352,6 +375,28 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			}
 		}
 	}
+	// A Port-Channel of this plan's range that the batch leaves (or the
+	// switch already had) without a member goes: EOS keeps it, settings
+	// and all, when its last member leaves (portchannel.go).
+	lo, hi := 1, 0
+	if inLanes {
+		lo, hi = base+1, base+laneGroupSpan-1
+	} else {
+		for _, p := range snap.Ports {
+			hi = max(hi, p.Index) // the controller numbers aggregates within the switch's ports
+		}
+		hi = min(hi, laneGroupFloor-1)
+	}
+	remove, kept := staleChannels(channels, members, lo, hi)
+	for _, n := range remove {
+		name := "Port-Channel" + strconv.Itoa(n)
+		pr.cmds = append(pr.cmds, "no interface "+name)
+		pr.removed = append(pr.removed, name)
+		pr.changed++
+	}
+	for _, n := range slices.Sorted(maps.Keys(kept)) {
+		note("Port-Channel%d has no member and carries %q, which this driver never writes: left alone as made by hand", n, kept[n])
+	}
 	for i := range touched {
 		pr.ports = append(pr.ports, i)
 	}
@@ -363,21 +408,29 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 // on cage idx ahead of the join that replaces its lanes. The join is the
 // operator's decision on the switch itself, so the lane switch's own groups
 // are this plan's to undo. EOS refuses to remove a session that does not
-// exist, so only those the lanes report go.
-func dissolveLanes(idx int, lanes []devicemodel.Port) []string {
+// exist, so only those the lanes report go. The groups' Port-Channels go
+// after their members (EOS keeps an emptied one; portchannel.go): removed
+// names them.
+func dissolveLanes(idx int, lanes []devicemodel.Port) (cmds, removed []string) {
 	base := laneBase(idx)
-	var cmds []string
 	for _, l := range lanes {
 		if l.MirrorFrom > 0 {
 			cmds = append(cmds, "no monitor session "+strconv.Itoa(base+l.Index))
 		}
 	}
+	groups := map[int]bool{}
 	for _, l := range lanes {
 		if l.LAGID > 0 {
 			cmds = append(cmds, "interface "+laneNames(l)[0], "no channel-group")
+			groups[base+l.LAGID] = true
 		}
 	}
-	return cmds
+	for _, n := range slices.Sorted(maps.Keys(groups)) {
+		name := "Port-Channel" + strconv.Itoa(n)
+		cmds = append(cmds, "no interface "+name)
+		removed = append(removed, name)
+	}
+	return cmds, removed
 }
 
 // PlanPorts implements devicemodel.Planner: the ports ApplyPorts would

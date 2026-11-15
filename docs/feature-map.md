@@ -87,7 +87,7 @@ under mstpd ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b). Both verifie
 | `flowctrl_rx`, `flowctrl_tx` | `show interfaces flow-control` | done | n/a |
 | `jumbo` | mtu > 1518 | done | done |
 | `op_mode` (`switch`/`aggregate`) | `show port-channel summary` membership | done (mirror todo) | done: `aggregate` only for an 802.3ad/balance bond's slaves |
-| `aggregated_by` | `show port-channel summary` | done (Po1-4 exist, no members) | done (the bond) |
+| `aggregated_by` | `show port-channel summary` | done (an emptied Port-Channel is removed with its last member since 2026-11-15, [`drivers/arista-eos.md`](drivers/arista-eos.md) §4) | done (the bond) |
 | `lag_member` (every member); `aggregate_num_ports`, `lacp_state[]` (`active`, `member_port`, `speed`), `partner_system_id`, `service_mac_table` `[]` (the lowest member) | `show port-channel summary` (`lagMember` = bundled; no partner id without a `show lacp neighbor` capture) | built 2026-11-01, fixture-tested (the captured Po1's members read, not bundled) | not read (sonic: teamd's STATE_DB `LAG_MEMBER_TABLE`, held to the ECS's own inform, `docs/drivers/sonic.md` §11.4) |
 | `stp_pathcost` | `show spanning-tree` `cost` | done | the bridge port's cost (kernel or mstpd) |
 | `mac_table_count`, `link_down_count`, `stp_state_change_count`, `sfp_rxfault`/`sfp_txfault`, `ifname` (vendor name), setting echoes (`stp_port_mode`, `stp_edge_port`, `lldpmed_enabled`, `port_keepalive_enabled`, `isolation`, `egress_rate_limit_kbps_enabled`, `port_security_*`, `locating`) | what a real switch's port entry carries | `Port.Health`, `Port.MACs`, config state | done 2026-09-20; stored by the controller | done (carrier changes, FDB count, config echoes) |
