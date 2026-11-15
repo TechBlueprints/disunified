@@ -1,0 +1,8 @@
+enable
+configure
+ip access-list DUI_RW_TEST
+10 permit ip any any
+exit
+interface Ethernet1
+ip access-group DUI_RW_TEST in
+end

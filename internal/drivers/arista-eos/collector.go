@@ -93,15 +93,17 @@ type Collector struct {
 	installedKeys []string // what InstallSSHKeys last wrote (per process)
 
 	// acl is the running config's view of the driver's own ACLs and their
-	// bindings (acl.go). aclHeld names a change that left the switch
-	// unreachable, not sent again until the controller's rules change;
+	// bindings (acl.go). aclHeld names a change not sent again until the
+	// controller's rules change -- one that left the switch unreachable, or
+	// one the hardware could not program -- and aclHeldWhy says which;
 	// aclSettle is the wait between a timed commit and the dial that
 	// confirms it; dhcpGuard is the guard mode (options.dhcp_guard).
-	acl       aclState
-	aclHeld   string
-	aclSettle time.Duration
-	dhcpGuard string
-	aclStatus string // the last ACL read-back problem logged (acl_counters.go)
+	acl        aclState
+	aclHeld    string
+	aclHeldWhy string
+	aclSettle  time.Duration
+	dhcpGuard  string
+	aclStatus  string // the last ACL read-back problem logged (acl_counters.go)
 
 	stpHeld map[string]stpHold // per interface: holdSTPChanges
 

@@ -666,12 +666,16 @@ outputs are fixtures in `docs/fixtures/arista-eos-4.26.14M/`.
   tables hold 8192 entries each; `show hardware capacity`'s ACL rows lagged
   what the chip table showed and are not used for sizing.
 - **A session pending its timer aborts at once**: `configure session NAME
-  abort` reverts it immediately, with no wait for the timer (all four runs).
+  abort` reverts it with no wait for the timer (all four runs). The revert
+  is a config replace from the timer's checkpoint
+  (`%SYS-5-CONFIG_REPLACE_SUCCESS`), logged about 4 s after the command
+  returns: a read in those seconds still shows the session's change
+  (2026-11-15).
 - **Hitless update is offered.** `hardware access-list update
   default-result permit` exists on this switch's CLI (the 2026-11-01 notes
-  said, from the manual, that it does not). The driver does not set it;
-  whether it makes a rewrite hitless here was not measured (no traffic on
-  the test ports).
+  said, from the manual, that it does not). Measured 2026-11-15 (§9.7 item
+  1): it removes a rewrite's drop by letting all traffic pass for the
+  window instead; the driver does not set it.
 - **No MAC ACL on a switchport.** `mac access-list` exists (with a `vlan`
   qualifier), but `mac access-group` is "Unavailable command" on an Ethernet
   interface. MAC rules cannot be applied (§9.2).
@@ -909,10 +913,21 @@ does.
   interfaces, 57 port ACL ids in the chip's PortCfg table (1-57), every
   list active, no commit warning, both for one IP rule and for the guard. **A list the hardware cannot
   program does not fail the commit**: EOS prints `! Error in ACL commit
-  ... Insufficient HW resources` and commits anyway (§9.1). The driver does
-  not read that warning, and the summary's "Active" does not show it.
-  Within the claim the measured room makes it unlikely; reading the
-  warning (eAPI returns it apart from the output) is a follow-up. The ECS
+  ... Insufficient HW resources` and commits anyway (§9.1), and the
+  summary's "Active" does not show it. **Since 2026-11-15 the driver reads
+  the warning** (`ConfigWarner`, `docs/fixtures/arista-eos-4.26.14M/
+  acl-commit-warning/`): eAPI returns it in the `commit timer` command's
+  own result (`{"warnings": ["Error in ACL commit, configuration may
+  differ from hardware (...)"]}`, every other result `{}`), the CLI over
+  SSH as a `! ` line ending ` at line N`; both carry the same text. A
+  commit that reports it is aborted at once (never confirmed), and the
+  same change is held with a note naming the lists it wrote until the
+  controller's rules change, as an unreachable switch's change is. The
+  warning names no list. The summary has a switch-wide `warnings` entry
+  ("Not all ACLs are programmed in the hardware!") meanwhile, which the
+  read-back logs with the lists' status. Provoked on test port 2 with
+  1000 DSCP+TTL rules through eAPI and over SSH, each aborted. Within the
+  claim the measured room makes it unlikely. The ECS
   claims 512 and the DX010 128. 32 is what this chip's counters allow on
   every port at once.
 - **MAC rules are not claimed** (§9.1).
@@ -986,18 +1001,35 @@ the two test lists were on the switch, read them and reported
 uplink, seven forged replies were dropped and counted, a `-collect-once`
 reported `RogueDHCPDrops` 7 on port 1 (0 on port 53), and the deployed
 bridge's inform raised the controller's "Rogue DHCP server detected" alert
-for port 1. The deployed bridge reads the counters of the lists it knew at
-its previous collect, so a list written outside it is counted one cycle
-later (the alert came one inform after the frames).
+for port 1. A list written outside the bridge is counted in the first
+collect that sees it: the read-back takes its lists from the same collect's
+running config (`TestACLWrittenOutsideIsCountedAtOnce`, 2026-11-15; an
+earlier note here said one cycle later). The alert came in the inform after
+the frames because that is the first collect after them.
 
 ### 9.7 What waits
 
 1. ~~**Traffic through the guard**~~ -- done 2026-11-14 on the uplink, not
    a test port (§9.8): an untrusted reply dropped and counted on the right
    port, a trusted one passed, ARP and IPv6 unaffected, the count through a
-   collect and the alert. Left: whether `hardware access-list update
-   default-result permit` shortens a rewrite's drop (binding the lists cost
-   one or two 50 ms pings, §9.8; the knob was not tried).
+   collect and the alert. **`hardware access-list update default-result
+   permit`, measured 2026-11-15** (`docs/fixtures/arista-eos-4.26.14M/
+   acl-update-default-result/`): with a test list on the uplink and the
+   switch's own pings every 20 ms through it, rewriting a 500-rule list
+   lost exactly 10 consecutive pings (about 200 ms) in each of six runs;
+   with the knob set, six runs lost none. A 4-rule list's rewrite and a
+   1-rule list's bind lost nothing measurable either way. So the knob
+   removes the drop. **Its cost**: Arista's EOS manual ("ACLs and Route
+   Maps", "Permit All Traffic During ACL Update") says that by default
+   "all traffic is blocked on any interface using the ACL" while it is
+   modified, and that the knob permits all traffic there instead -- it
+   fails open for that window, switch-wide, every list included (the
+   guard's drop and a Block rule pass whatever they match until the new
+   rules are in the hardware). The manual's platform list does not name
+   the 7160; 4.26.14M accepts it and it works. **Not set by the driver**:
+   the choice between dropping all traffic on a rewritten interface for
+   ~200 ms and letting it all pass for as long is the operator's (Clint's
+   register), not a code fact.
 2. **The end-to-end guard push** (Rogue DHCP Server Detection on, the guard
    groups this switch gets): not run. Detection stays off site-wide by
    Clint's decision (2026-11-14), so the controller pushes
