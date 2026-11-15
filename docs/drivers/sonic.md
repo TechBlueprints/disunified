@@ -7395,7 +7395,15 @@ number (in the run above, its link event came first: 4157, which no port had
 then; had l2mcmgrd's report come first, 4096). Every later split or join
 re-creates names that the previous one deleted. Under AddressSanitizer the
 harness case below also hits a heap use-after-free on this path; the switch
-logged nothing of the kind.
+logged nothing of the kind. That use-after-free is not the breakout's: it is in
+`mcgrp_stop_phy_port()` (`src/igmp.c` 667-678 at upstream `651a13b`), which
+frees a port's membership with `mcgrp_destroy_mbrshp_entry()` and then reads
+and clears its `pims_mbr_flags`. Every link-down of a port that is a group
+member runs it, breakout or not: a scratch harness case (a member port's
+link-down, nothing else) hits it on upstream, on 0001-0012 and on upstream
+with both fixes (2026-11-15). Nothing allocates between the free and the
+write, so glibc's heap survives it, which is why the switch is quiet. Not
+fixed: a follow-up (`local-information/follow-ups.md`).
 
 **Not the driver's.** The driver runs `config interface breakout` and nothing
 of l2mcd; the numbering happens inside l2mcd on any port re-creation, by the
@@ -7439,7 +7447,19 @@ tree. On the build host's bookworm slave:
 | + 0011 | every check passes; LeakSanitizer: 4 libevent events (512 bytes) |
 | + 0012 | clean |
 
-With 0012, all 30 regression cases are clean. The IGMP and MLD fuzzers ran
+A second case, `port-delete` (added the same evening), shows 0012 on its own: a
+port created and then deleted from the port list leaves its two events
+allocated (LeakSanitizer: 2 libevent events, 256 bytes) without 0012 and is
+clean with it, on upstream `651a13b` as on the series. With 0012, all 30
+regression cases are clean.
+
+The same cases on upstream alone (`651a13b`, the two upstream branches of
+`docs/prior-art.md` §6.1 built by the same harness): `port-list-breakout` is
+the use-after-free above on `651a13b` and with 0012 alone, the 4-event leak
+with 0011 alone, and clean with both; `port-delete` leaks on `651a13b` and
+with 0011 alone and is clean with 0012 alone. No other case changes result
+between `651a13b` and either branch (the cases the six earlier PRs fix still
+fail there, as they should). The IGMP and MLD fuzzers ran
 240 s with 4 workers each on the patched tree (876 k and 718 k runs, no
 crash). gcc `-Wall` with the daemon's flags gives no new warning in the two
 changed files. The kit's `dry-run.sh` passed every check, run with private
