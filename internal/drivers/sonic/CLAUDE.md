@@ -541,12 +541,20 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `bcmcmd "fp stat get si=<n> t=Packets"`. §11.7.7's CPU-side reading
   was on 202505's `13.2.1.36`.
   **The kernel drops that copy instead (`acl_cpu.go`, §11.32, live by
-  hand 2026-11-15)**, as the ECS's tables keep blocked traffic off its own
+  hand and then through the driver from a UI rule, 2026-11-15, §11.32.5)**,
+  as the ECS's tables keep blocked traffic off its own
   address (a switched host behind internal port `Ethernet56`, not a trap).
   The L3 tables are mirrored into iptables' **`raw`** table: caclmgrd
   flushes and deletes every filter-table chain on any `ACL_TABLE` event,
-  the driver's own included. The marker is `/run/disunified/acl-cpu`
-  (collect.py `acl_cpu`), so a reboot rewrites it.
+  the driver's own included (seen live: IPv4 `raw` untouched). The marker
+  is `/run/disunified/acl-cpu` (collect.py `acl_cpu`), so a reboot
+  rewrites it. It is the reconcile's only view of the kernel: a hand
+  `iptables -t raw -F` that leaves the marker is not repaired. Testing it:
+  a LAN host's raw socket can send from a documentation source address
+  (Vlan4094's `rp_filter` is loose), so a rule needs no real host's
+  address; dhclient holds `0.0.0.0:68` for eth0, so a 68 listener binds
+  the switch's own address with `SO_REUSEADDR`; `ACL_RULE|DUI_…` rows with
+  no `ACL_TABLE` reach no chip (orchagent waits) but are mirrored.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client

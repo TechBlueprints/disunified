@@ -374,7 +374,14 @@ switched host behind an internal port. Both L3 tables are mirrored into
 iptables' `raw` table for packets arriving on front-panel interfaces.
 **Verified live by hand on the DX010 2026-11-15**: an untrusted 67 -> 68
 reply and a blocked UDP port were dropped before the switch's sockets while
-the controls arrived; removal restored delivery and the raw table. MAC rules
+the controls arrived; removal restored delivery and the raw table.
+**Verified through the driver the same evening** (§11.32.5): a UI Block
+rule scoped to the DX010 and covering its own address was mirrored by the
+bridge, the matched datagrams dropped and counted, the edit and the removal
+followed (the dispatcher gone with the last table), a bridge restart and a
+caclmgrd filter-table rewrite left it alone, and a lost marker was written
+again. The guard's mirror was written by the driver's reconcile from
+hand-made rows (no push: detection stays off site-wide). MAC rules
 are not mirrored: the UI refuses the management network for them, the only
 network the ECS or the DX010 has an address on.
 
@@ -398,7 +405,8 @@ on the right port only).
 | A breakout or a join with counted rules in place (fixture-tested: the lanes' rules go before the breakout, the new lanes' come once STATE_DB has them) | the split and join of an empty cage with detection on: no stalled breakout, the new lanes' rules `Active` |
 | Replacing a deployed `L3` guard with the counted one (fixture-tested) | a bridge update while detection is on: the old table, then the type, table and rules, all `Active` |
 | More than 256 guard entries (counted rules dropped per VLAN with a note; fixture-tested) | many guarded VLANs on a split switch, CRM's entry counts on the guard table |
-| The kernel mirror written by the deployed bridge from a controller push, and kept through caclmgrd's filter-table rewrite (fixture-tested; caclmgrd's behaviour read from its source, §11.32.4) | an IP rule scoped to the DX010 whose match covers the switch's address: the raw chains written by the bridge, the blocked traffic gone from the switch's sockets, an `ACL_TABLE` event (a breakout's rebind) leaving them in place, and the rule's removal clearing them |
+| The guard's kernel mirror from a real push (written by the driver's reconcile from hand-made rows, §11.32.5; detection stays off site-wide) | Rogue DHCP Server Detection on with a guarded network: the guard's chain written by the bridge, an untrusted reply to the switch dropped before its sockets, a trusted one delivered |
+| A breakout's rebind as the `ACL_TABLE` event under the mirror (a hand-made table event left it in place, §11.32.5) | the split and join of an empty cage with an IP rule in place: `iptables -t raw -S` unchanged after caclmgrd's rewrite |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, and no second port had a link, §11.7.8. Frames to the switch itself still reach its CPU through the traps' copy, which the UI cannot make a MAC rule reach: it refuses the management network, §11.32) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
 
