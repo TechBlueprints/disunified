@@ -42,9 +42,16 @@ type replayRecord struct {
 	} `json:"effects"`
 }
 
+// loadReplies reads a replies fixture: a bare name is under
+// controller-10.6.106/, a name with a directory (controller-11.0.99/...) is
+// under docs/fixtures/.
 func loadReplies(t *testing.T, name string) []replayRecord {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", name))
+	path := filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106", name)
+	if strings.Contains(name, "/") {
+		path = filepath.Join("..", "..", "docs", "fixtures", filepath.FromSlash(name))
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +72,12 @@ func loadReplies(t *testing.T, name string) []replayRecord {
 // replayDriver is one driver under replay.
 type replayDriver struct {
 	Name    string
-	Replies string // fixture file under controller-10.6.106/
+	Replies string // fixture file under controller-10.6.106/, or a path under docs/fixtures/ (loadReplies)
+	// Start is the device's state when the replay begins; nil = a fresh
+	// device, not adopted, on the default key (the recording starts with
+	// the adoption). A recording of a device already adopted starts from
+	// its key: the fake controller encrypts with it from the first reply.
+	Start *device.State
 	// Model is the UniFi model the device claims; "" = UDC48X6 (the USW
 	// Leaf every switch replay uses). A power device claims a PDU.
 	Model     string
@@ -123,6 +135,9 @@ func runReplay(t *testing.T, d replayDriver) {
 	// reply, encrypted the way the controller did (CBC before, GCM after).
 	next := 0
 	key := defaultKey
+	if d.Start != nil && d.Start.Adopted {
+		key = d.Start.Key
+	}
 	var lastInform map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -169,8 +184,14 @@ func runReplay(t *testing.T, d replayDriver) {
 	}))
 	defer srv.Close()
 
-	// Fresh device: not adopted, default key, as the bridge starts.
-	sess := device.NewSession(desc, srv.URL, device.State{InformURL: srv.URL}, nil, time.Now())
+	// Fresh device: not adopted, default key, as the bridge starts (or the
+	// driver's own start state).
+	st := device.State{InformURL: srv.URL}
+	if d.Start != nil {
+		st = *d.Start
+		st.InformURL = srv.URL
+	}
+	sess := device.NewSession(desc, srv.URL, st, nil, time.Now())
 	sess.SetCapabilities(caps)
 	sess.SetSnapshot(snap)
 	var logBuf strings.Builder

@@ -35,6 +35,11 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            keeps a routing capture's subnets: every address in <real> becomes
            the same host of <test> (a reserved test range: 198.18.0.0/15),
            and addresses already in a test range stay
+       scripts/sanitize-controller.py [--ip <real>=<test>]... <file>...
+           maps one address as another capture's scrub did (a reply log
+           replayed against a driver capture: the switch's own address and
+           its gateway must be the capture's); addresses already in a test
+           range stay, and every other one is numbered past the seeded ones
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -90,6 +95,7 @@ def map_mac(m):
 # they are (a route to 198.51.100.0/24 stays one). Every other address is
 # numbered by first appearance, as without the option.
 subnets = []
+seeded = False   # --ip given: test ranges are kept, as with --subnet
 KEEP_NETS = [ipaddress.ip_network(n) for n in ('198.51.100.0/24', '203.0.113.0/24', '198.18.0.0/15')]
 
 def map_ip(s):
@@ -106,11 +112,16 @@ def map_ip(s):
     for real, test in subnets:
         if ip.version == 4 and ip in real:
             return str(test.network_address + (int(ip) - int(real.network_address)))
-    if subnets and any(ip in n for n in KEEP_NETS):
+    if (subnets or seeded) and any(ip in n for n in KEEP_NETS):
         return s
     if s not in ips:
-        n = len(ips) + 1
-        ips[s] = str(ipaddress.ip_address('192.0.2.0') + n) if n < 250 else str(ipaddress.ip_address('198.51.100.0') + n - 249)
+        used, n = set(ips.values()), len(ips)
+        while True:   # past any address --ip seeded
+            n += 1
+            cand = str(ipaddress.ip_address('192.0.2.0') + n) if n < 250 else str(ipaddress.ip_address('198.51.100.0') + n - 249)
+            if cand not in used:
+                break
+        ips[s] = cand
     return ips[s]
 
 def map_ip6(s):
@@ -179,6 +190,8 @@ def scrub_cfg_text(text):
             v = '<community>'
         elif re.match(r'users\.\d+\.name$', k) and v not in ('admin', 'nobody', 'root', 'ubnt'):
             v = map_host(v)
+        elif re.match(r'resolv\.host\.\d+\.name$', k) and v not in ('localhost',):
+            v = map_host(v)   # the device's UniFi name, spaces removed (CLAUDE.md §7)
         elif re.match(r'sshd\.auth\.key\.\d+\.name$', k):
             v = map_host(v)   # key comments carry the owner's machine name
         elif k in ('system.timezone', 'locale.timezone', 'unifi.version'):
@@ -341,8 +354,14 @@ def scrub(o, key=None):
     return o
 
 args = sys.argv[1:]
-while args and args[0] == '--subnet':
+while args and args[0] in ('--subnet', '--ip'):
     real, _, test = args[1].partition('=')
+    if args[0] == '--ip':
+        ipaddress.ip_address(real), ipaddress.ip_address(test)
+        ips[real] = test
+        seeded = True
+        args = args[2:]
+        continue
     real, test = ipaddress.ip_network(real), ipaddress.ip_network(test)
     if real.prefixlen != test.prefixlen:
         sys.exit(f'--subnet {args[1]}: the two prefix lengths differ')
