@@ -22,6 +22,7 @@ type showVersion struct {
 	SystemMacAddress string  `json:"systemMacAddress"`
 	Version          string  `json:"version"`
 	Uptime           float64 `json:"uptime"`
+	BootupTimestamp  float64 `json:"bootupTimestamp"` // Unix seconds
 	MemTotal         uint64  `json:"memTotal"`
 	MemFree          uint64  `json:"memFree"`
 }
@@ -55,19 +56,20 @@ type eosInterface struct {
 }
 
 type eosCounters struct {
-	InOctets          uint64 `json:"inOctets"`
-	OutOctets         uint64 `json:"outOctets"`
-	InUcastPkts       uint64 `json:"inUcastPkts"`
-	InMulticastPkts   uint64 `json:"inMulticastPkts"`
-	InBroadcastPkts   uint64 `json:"inBroadcastPkts"`
-	OutUcastPkts      uint64 `json:"outUcastPkts"`
-	OutMulticastPkts  uint64 `json:"outMulticastPkts"`
-	OutBroadcastPkts  uint64 `json:"outBroadcastPkts"`
-	InDiscards        uint64 `json:"inDiscards"`
-	OutDiscards       uint64 `json:"outDiscards"`
-	TotalInErrors     uint64 `json:"totalInErrors"`
-	TotalOutErrors    uint64 `json:"totalOutErrors"`
-	LinkStatusChanges uint64 `json:"linkStatusChanges"`
+	InOctets          uint64  `json:"inOctets"`
+	OutOctets         uint64  `json:"outOctets"`
+	InUcastPkts       uint64  `json:"inUcastPkts"`
+	InMulticastPkts   uint64  `json:"inMulticastPkts"`
+	InBroadcastPkts   uint64  `json:"inBroadcastPkts"`
+	OutUcastPkts      uint64  `json:"outUcastPkts"`
+	OutMulticastPkts  uint64  `json:"outMulticastPkts"`
+	OutBroadcastPkts  uint64  `json:"outBroadcastPkts"`
+	InDiscards        uint64  `json:"inDiscards"`
+	OutDiscards       uint64  `json:"outDiscards"`
+	TotalInErrors     uint64  `json:"totalInErrors"`
+	TotalOutErrors    uint64  `json:"totalOutErrors"`
+	LinkStatusChanges uint64  `json:"linkStatusChanges"`
+	LastClear         float64 `json:"lastClear"` // Unix seconds: boot, or the last `clear counters`
 }
 
 type showLLDPNeighborsDetail struct {
@@ -180,18 +182,76 @@ func mediaFor(interfaceType string, bandwidth int64) devicemodel.Media {
 	return devicemodel.MediaUnknown
 }
 
+// ifUp is an interface's link state as the port table reports it.
+func ifUp(ifc eosInterface) bool {
+	return ifc.InterfaceStatus == "connected" || ifc.LineProtocolStatus == "up"
+}
+
+// clearedAtBoot is how close to `show version`'s bootupTimestamp an
+// interface's lastClear must be for its counters to count from boot: the
+// counters start within a second of it (the capture of 2026-09-19:
+// 0.48 s), the first link event comes minutes later.
+const clearedAtBoot = 60.0
+
+// linkDrops is how many times an interface's link went down, from EOS's
+// linkStatusChanges -- every transition, up or down, since lastClear.
+// Transitions alternate, so the count and the state now fix the number of
+// drops; the one thing the count does not say is how it started:
+//
+//   - counted from boot, EOS counts one transition per interface at the
+//     start (every interface of the 2026-09-19 capture shows 1 while down
+//     since boot, an SVI up since boot 2). That one is no drop, and the
+//     link starts down after it: drops = (n-1)/2, whatever the state now;
+//   - counted from a `clear counters` the count starts at 0 from whatever
+//     the link was then (live 2026-11-15: 0 on every interface, up or
+//     down, 14 h after a clear): a down link's last transition was a drop,
+//     an up link's a rise, so drops = ceil(n/2) down, floor(n/2) up.
+//
+// An admin shutdown of a link that was not up counts nothing (live
+// 2026-11-15, Ethernet2: notconnect -> disabled -> notconnect, 0 -> 0).
+// bootAt 0 (no `show version` reading) is taken as counting from boot.
+func linkDrops(c *eosCounters, up bool, bootAt float64) uint64 {
+	if c == nil {
+		return 0
+	}
+	n := c.LinkStatusChanges
+	if bootAt == 0 || c.LastClear == 0 || c.LastClear-bootAt < clearedAtBoot {
+		if n == 0 {
+			return 0
+		}
+		return (n - 1) / 2
+	}
+	if up {
+		return n / 2
+	}
+	return (n + 1) / 2
+}
+
+// linkChanges is what devicemodel's PortHealth.LinkChanges carries for a
+// port that went down drops times and is up (or not) now: the transitions
+// of a link that started down, so that half of it, rounded down, is the
+// drop count the controller is sent.
+func linkChanges(drops uint64, up bool) uint64 {
+	if up {
+		return 2*drops + 1
+	}
+	return 2 * drops
+}
+
 // portsFromInterfaces builds the front-panel port list from `show interfaces`,
 // folding breakout lanes (Ethernet50/1..4) into their slot. media is keyed by
-// EOS interface name (from `show interfaces status`, captured at startup).
-func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) ([]devicemodel.Port, error) {
+// EOS interface name (from `show interfaces status`, captured at startup);
+// bootAt is `show version`'s bootupTimestamp (linkDrops).
+func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media, bootAt float64, key ifKey) ([]devicemodel.Port, error) {
 	type slotAcc struct {
 		port  devicemodel.Port
 		lanes []string
+		drops uint64 // the lanes' link drops, summed
 	}
 	slots := map[int]*slotAcc{}
 
 	for name, ifc := range si.Interfaces {
-		slot, lane, ok := parseEthName(name)
+		slot, lane, ok := key(name)
 		if !ok {
 			continue // Management1, Port-ChannelN, VlanN, ...
 		}
@@ -204,15 +264,16 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) 
 			Lanes:       1,
 			Present:     ifc.LineProtocolStatus != "notPresent",
 			Enabled:     ifc.InterfaceStatus != "disabled",
-			Up:          ifc.InterfaceStatus == "connected" || ifc.LineProtocolStatus == "up",
+			Up:          ifUp(ifc),
 			FullDuplex:  ifc.Duplex == "duplexFull",
 			MTU:         ifc.MTU,
 		}
 		if lanePort.Up {
 			lanePort.SpeedMbps = int(ifc.Bandwidth / 1_000_000)
 		}
+		drops := linkDrops(ifc.Counters, lanePort.Up, bootAt)
+		lanePort.Health.LinkChanges = linkChanges(drops, lanePort.Up)
 		if c := ifc.Counters; c != nil {
-			lanePort.Health.LinkChanges = c.LinkStatusChanges
 			lanePort.Counters = devicemodel.Counters{
 				RxBytes:   c.InOctets,
 				TxBytes:   c.OutOctets,
@@ -232,7 +293,7 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) 
 
 		acc, seen := slots[slot]
 		if !seen {
-			acc = &slotAcc{port: lanePort}
+			acc = &slotAcc{port: lanePort, drops: drops}
 			slots[slot] = acc
 		} else {
 			// Fold: any lane up => slot up; counters summed; speed is the
@@ -247,7 +308,10 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) 
 			}
 			p.FullDuplex = p.FullDuplex || lanePort.FullDuplex
 			p.Counters.Add(lanePort.Counters)
-			p.Health.LinkChanges += lanePort.Health.LinkChanges
+			acc.drops += drops
+			// The cage's drops are its lanes' together; summing the
+			// lanes' LinkChanges would count each up lane's rise.
+			p.Health.LinkChanges = linkChanges(acc.drops, p.Up)
 			p.Interfaces = append(p.Interfaces, name)
 			if p.Media == devicemodel.MediaUnknown {
 				p.Media = lanePort.Media
@@ -288,13 +352,13 @@ func portsFromInterfaces(si showInterfaces, media map[string]devicemodel.Media) 
 
 // applyLLDP attaches neighbours to ports. Lane names (Ethernet50/2) are
 // mapped onto their folded slot.
-func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail) {
+func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail, key ifKey) {
 	byIndex := map[int]*devicemodel.Port{}
 	for i := range ports {
 		byIndex[ports[i].Index] = &ports[i]
 	}
 	for ifname, entry := range ld.LLDPNeighbors {
-		slot, _, ok := parseEthName(ifname)
+		slot, _, ok := key(ifname)
 		if !ok || len(entry.Info) == 0 {
 			continue
 		}
@@ -327,11 +391,11 @@ func applyLLDP(ports []devicemodel.Port, ld showLLDPNeighborsDetail) {
 
 // applySTP sets STPState from whichever instance lists the port; ports STP
 // does not mention are left "" (the presentation layer decides a default).
-func applySTPStates(ports []devicemodel.Port, st showSpanningTreeFull) {
+func applySTPStates(ports []devicemodel.Port, st showSpanningTreeFull, key ifKey) {
 	states := map[int]string{}
 	for _, inst := range st.Instances {
 		for ifname, e := range inst.Interfaces {
-			if slot, _, ok := parseEthName(ifname); ok {
+			if slot, _, ok := key(ifname); ok {
 				if cur, seen := states[slot]; !seen || cur != "forwarding" {
 					states[slot] = e.State
 				}

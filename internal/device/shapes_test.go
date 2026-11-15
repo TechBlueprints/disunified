@@ -12,8 +12,8 @@ import (
 
 // The shape test (docs/wire-shapes.md §4.3): every value a driver's
 // contract payload sends is held to the shapes of the values the site's real
-// `usw` devices held on the controller (docs/fixtures/controller-10.6.109/
-// shapes-usw.json, written by scripts/wire-shapes.py capture): no type a real
+// `usw` devices held on the controller (shapesReferences: Network 10.6.109's
+// and 11.0.99's shapes-usw.json, written by scripts/wire-shapes.py capture): no type a real
 // device never had, no string longer than the longest real one, no new
 // character class, no number negative, fractional or past 32 bits where no
 // real one was. The contract tests compare keys and types; a typed store
@@ -83,7 +83,7 @@ func mergeShapeExcusals(ms ...map[shapeExcusal]string) map[shapeExcusal]string {
 }
 
 var (
-	shapeKeyID   = regexp.MustCompile(`^(?:[0-9a-f]{24}|[0-9]+|([0-9a-f]{2}:){5}[0-9a-f]{2})$`)
+	shapeKeyID   = regexp.MustCompile(`^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9]+|([0-9a-f]{2}:){5}[0-9a-f]{2})$`)
 	shapePortN   = regexp.MustCompile(`_[0-9]+-`)
 	shapeDigits  = regexp.MustCompile(`^[0-9]+$`)
 	shapeDotted  = regexp.MustCompile(`^-?[0-9.]+$`)
@@ -321,38 +321,73 @@ func loadShapes(t *testing.T, path string) map[string]*shape {
 	return out
 }
 
-const shapesReference = "controller-10.6.109/shapes-usw.json"
+// shapesReferences are the captured manifests every payload is held to: the
+// site's real usw devices on Network 10.6.109 (2026-11-12) and on 11.0.99
+// (2026-11-15, ids now UUIDs; docs/wire-shapes.md §9). A value must fit
+// both: each is what a migration or a typed store of that version saw.
+var shapesReferences = []string{
+	"controller-10.6.109/shapes-usw.json",
+	"controller-11.0.99/shapes-usw.json",
+}
+
+// shapeExcusalsByRef are differences against one reference only, because
+// the real devices it was read from happened to hold a narrower value than
+// the other reference's did: per reference, then per driver.
+var shapeExcusalsByRef = map[string]map[string]map[shapeExcusal]string{
+	"controller-11.0.99/shapes-usw.json": {
+		"apc-ups": {
+			{"outlet_ac_power_consumption", "longer"}: "the Smart-UPS carries a rack, over 1000 W (\"1067.133\"); the 10.6.109 reference holds a real device's 8-character value, and on 11.0.99 every real device on the site drew under 1000 W. The format is a real device's (three decimals)",
+		},
+	},
+}
 
 func TestWireShapes(t *testing.T) {
-	ref := loadShapes(t, shapesReference)
+	refs := map[string]map[string]*shape{}
+	for _, r := range shapesReferences {
+		refs[r] = loadShapes(t, r)
+	}
 	known := map[string]bool{}
 	usedAll := map[shapeExcusal]bool{}
+	usedByRef := map[string]map[string]map[shapeExcusal]bool{}
 	for _, d := range contractPayloads {
 		known[d.driver] = true
 		t.Run(d.driver, func(t *testing.T) {
 			mine := shapesOf(d.build(t))
 			excused := shapeExcusals[d.driver]
 			used := map[shapeExcusal]bool{}
-			var failed []string
-			for _, diff := range shapeDifferences(mine, ref) {
-				k := shapeExcusal{diff.path, diff.kind}
-				if _, ok := excused[k]; ok {
-					used[k] = true
-					continue
+			for _, refName := range shapesReferences {
+				byRef := shapeExcusalsByRef[refName][d.driver]
+				var failed []string
+				for _, diff := range shapeDifferences(mine, refs[refName]) {
+					k := shapeExcusal{diff.path, diff.kind}
+					if _, ok := excused[k]; ok {
+						used[k] = true
+						continue
+					}
+					if _, ok := shapeExcusalsAll[k]; ok {
+						usedAll[k] = true
+						continue
+					}
+					if _, ok := byRef[k]; ok {
+						if usedByRef[refName] == nil {
+							usedByRef[refName] = map[string]map[shapeExcusal]bool{}
+						}
+						if usedByRef[refName][d.driver] == nil {
+							usedByRef[refName][d.driver] = map[shapeExcusal]bool{}
+						}
+						usedByRef[refName][d.driver][k] = true
+						continue
+					}
+					failed = append(failed, fmt.Sprintf("%-8s %-48s %s; ours e.g. %q", diff.kind, diff.path, diff.note, mine[diff.path].examples))
 				}
-				if _, ok := shapeExcusalsAll[k]; ok {
-					usedAll[k] = true
-					continue
+				if len(failed) > 0 {
+					t.Errorf("%s against %s: values no real UniFi switch sends (fix them, or excuse them in shapeExcusals with a reason):\n  %s",
+						d.driver, refName, strings.Join(failed, "\n  "))
 				}
-				failed = append(failed, fmt.Sprintf("%-8s %-48s %s; ours e.g. %q", diff.kind, diff.path, diff.note, mine[diff.path].examples))
-			}
-			if len(failed) > 0 {
-				t.Errorf("%s: values no real UniFi switch sends (fix them, or excuse them in shapeExcusals with a reason):\n  %s",
-					d.driver, strings.Join(failed, "\n  "))
 			}
 			for k, why := range excused {
 				if !used[k] {
-					t.Errorf("%s: shape excusal %s (%s) excuses nothing (%s): drop it", d.driver, k.path, k.kind, why)
+					t.Errorf("%s: shape excusal %s (%s) excuses nothing against any reference (%s): drop it", d.driver, k.path, k.kind, why)
 				}
 			}
 		})
@@ -365,6 +400,18 @@ func TestWireShapes(t *testing.T) {
 	for drv := range shapeExcusals {
 		if !known[drv] {
 			t.Errorf("shapeExcusals names %q, which has no contract payload", drv)
+		}
+	}
+	for refName, byDrv := range shapeExcusalsByRef {
+		for drv, ex := range byDrv {
+			if !known[drv] {
+				t.Errorf("shapeExcusalsByRef[%s] names %q, which has no contract payload", refName, drv)
+			}
+			for k, why := range ex {
+				if !usedByRef[refName][drv][k] {
+					t.Errorf("%s against %s: shape excusal %s (%s) excuses nothing (%s): drop it", drv, refName, k.path, k.kind, why)
+				}
+			}
 		}
 	}
 }
@@ -383,6 +430,7 @@ func TestWireShapesRules(t *testing.T) {
 	}
 	for in, want := range map[string]string{
 		"16": "<key>", "aa:bb:cc:dd:ee:ff": "<key>", "0123456789abcdef01234567": "<key>",
+		"01234567-89ab-cdef-0123-456789abcdef": "<key>", "01234567-89ab-cdef-0123": "01234567-89ab-cdef-0123",
 		"port_16-rx_bytes": "port_<n>-rx_bytes", "port_16_rx": "port_16_rx", "a_1-_2-": "a_<n>-_<n>-",
 		"x_1_2-": "x_1_<n>-", "sfp_found": "sfp_found",
 	} {

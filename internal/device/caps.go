@@ -22,6 +22,7 @@ const (
 // switch_caps.feature_caps
 const (
 	swCapL3Routing     = 1
+	swCapDot1X         = 2 // DOT1X: 802.1X port authentication (switch.dot1x*, each port's 802.1X control)
 	swCapPortIsolation = 4
 	swCapStormControl  = 8
 	swCapLLDPMED       = 16
@@ -297,6 +298,7 @@ func switchCaps(c devicemodel.Capabilities) map[string]any {
 	set(c.PortIsolation, swCapPortIsolation)
 	set(c.PortSecurity, swCapPortSecurity)
 	set(c.EgressRateLimit, swCapEgressRate)
+	set(c.Dot1X, swCapDot1X)
 	set(c.L3Routing, swCapL3Routing)
 	set(c.LoopProtection, swCapLoopProtect)
 	set(c.L3Routing && c.BGP, swCapBGP)
@@ -414,8 +416,8 @@ func speedCaps(p devicemodel.Port) int {
 // raises the matching alert (64 and 32 seen live 2026-11-13), so a bit is set
 // only for a condition a driver really detected; nothing is mapped onto this
 // table by a similar name. Real switches send 0 when healthy. The storm,
-// DHCP-rate, rogue-DHCP and MAC-locking bits follow the growth of the port's
-// own drop counters (Port.Health) since the previous inform; the cause named
+// DHCP-rate, rogue-DHCP, 802.1X and MAC-locking bits follow the growth of the
+// port's own counters (Port.Health) since the previous inform; the cause named
 // in a Port.Fault sets its bit for a port a device's protection shut down.
 //
 // custom_anomalies is a different table (1/2/4 SFP rx/tx/EEPROM, 8 loop by
@@ -429,7 +431,7 @@ const (
 	portAnomalyUnicastStorm   = 4    // ... unicast frames
 	portAnomalyDHCPRate       = 32   // the port's DHCP rate limit dropped DHCP frames
 	portAnomalyRogueDHCP      = 64   // DHCP guarding dropped server replies on the port
-	portAnomalyDot1X          = 128  // a port shut down after failed 802.1X authentication
+	portAnomalyDot1X          = 128  // a failed 802.1X authentication attempt on the port (or a port shut down for one)
 	portAnomalyMACLocking     = 256  // the port's MAC filter dropped a source not on its allowed list (or shut the port for one)
 	portAnomalyLoopProtection = 512  // a port held down by loop protection
 	portAnomalyDoS            = 1024 // a port shut down by the switch's denial-of-service protection

@@ -46,6 +46,13 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if d.IP == "" || d.PrefixLen <= 0 {
 		return false, fmt.Errorf("sonic: static address without an IP and prefix length")
 	}
+	// A move re-dials, swaps the runner and saves the config: never beside
+	// a lane switch's batch, which runs from its own loop (lockApply).
+	unlock, err := c.lockApply(ctx)
+	if err != nil {
+		return false, fmt.Errorf("sonic address: %w", err)
+	}
+	defer unlock()
 	c.mu.Lock()
 	snap, st, dial, redial, probe, probeAddr := c.last, c.state, c.Dial, c.Redial, c.Probe, c.ProbeAddr
 	c.mu.Unlock()

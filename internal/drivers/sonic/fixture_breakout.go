@@ -81,6 +81,26 @@ func (f *FixtureRunner) breakout(args []string) error {
 	if v := f.table("cfg_ntp_global")["NTP|global"]["src_intf"]; strings.HasPrefix(v, "Vlan") {
 		return fmt.Errorf(`libyang[0]: Invalid value "%s" in "src_intf" element. (path: /sonic-ntp:sonic-ntp/NTP/global/src_intf[.='%s'])`, v, v)
 	}
+	// ... and an ACL table's ports are leafrefs to PORT or PORTCHANNEL: a
+	// PortChannel deleted while a table bound it (`config portchannel del`
+	// leaves the name) refuses the breakout (the DX010, 2026-11-15,
+	// portchannel-del-acl-20261115.txt).
+	{
+		cports, lags := f.table("cfg_port"), f.table("cfg_lag")
+		keys := make([]string, 0)
+		for k := range f.table("cfg_acl_table") {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			for _, p := range strings.Split(f.table("cfg_acl_table")[k]["ports@"], ",") {
+				if p != "" && cports["PORT|"+p] == nil && lags["PORTCHANNEL|"+p] == nil {
+					name := strings.TrimPrefix(k, "ACL_TABLE|")
+					return fmt.Errorf(`libyang[0]: Invalid value "%s" in "ports" element. (path: /sonic-acl:sonic-acl/ACL_TABLE/ACL_TABLE_LIST[ACL_TABLE_NAME='%s']/ports[.='%s'])`+"\nFailed to break out Port. Error: Failed to load the config. Error: ConfigMgmtDPB Class creation failed", p, name, p)
+				}
+			}
+		}
+	}
 	// ... and a field the YANG model lacks leaves its whole entry
 	// untranslated (sonic_yang_ext _xlateList: KeyError in the leaf lookup),
 	// so everything that references the port dangles: learn_mode is in

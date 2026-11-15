@@ -1,0 +1,197 @@
+# DX010, igmp-202511.20261115-6c8eb1cf7 (sonic-swss 0004), 2026-11-15, by hand,
+# the deployed bridge stopped. Cage 29 (Ethernet112) split 4x25G[10G], a lane
+# aggregate PortChannel2901 of lanes 2-4 built as the driver builds one
+# (fast rate, min links 1, MTU 1500, untagged Vlan4094), lane 1 untagged
+# Vlan4094, and the driver's DUI_IP_ACL (L3, ingress) bound to Ethernet112 and
+# PortChannel2901. docs/drivers/sonic.md 11.25. Scrubbed: hostname, MAC.
+#
+# == 1. disunified-l2d's view after l2SetPorts (a probe built from the branch,
+# == every other port as l2.json had it, cage 29 edge enabled + BPDU guard +
+# == loop protection), before and after its write
+# before (mstpctl showportdetail Bridge PortChannel2901):
+  admin edge port    no                      auto edge port       yes
+  bpdu guard port    no                      bpdu guard error     no
+# l2.json after:
+{'Ethernet0': {'enabled': True, 'edge': 'disabled', 'bpdu_guard': False}, 'Ethernet112': {'enabled': True, 'edge': 'enabled', 'bpdu_guard': True}, 'PortChannel2901': {'enabled': True, 'edge': 'enabled', 'bpdu_guard': True}}
+guard {'enabled': True, 'threshold': 10, 'interval': 5, 'hold': 150, 'ports': ['Ethernet112', 'PortChannel2901']}
+# mstpctl showportdetail Bridge PortChannel2901 after:
+  admin edge port    yes                     auto edge port       yes
+  oper edge port     yes                     topology change ack  no
+  bpdu guard port    yes                     bpdu guard error     no
+# STATE_DB DUI_STP_PORT_TABLE|PortChannel2901 after:
+{'role': 'Disabled', 'state': 'discarding', 'external_port_cost': '200000000', 'admin_edge_port': 'yes', 'auto_edge_port': 'yes', 'oper_edge_port': 'yes', 'bpdu_guard_port': 'yes', 'bpdu_guard_error': 'no', 'bpdu_filter_port': 'no', 'num_rx_bpdu': '0', 'num_tx_bpdu': '0', 'num_rx_tcn': '0', 'num_transition_fwd': '0', 'num_transition_blk': '1', 'point_to_point': 'no', 'state_changes': '0'}
+Nov 15 08:41:17 host-1 mstpd[5595]: MSTP_IN_set_cist_port_config: Bridge:Ethernet112 BpduGuardPort new=1
+Nov 15 08:41:17 host-1 mstpd[5595]: MSTP_IN_set_cist_port_config: Bridge:PortChannel2901 BpduGuardPort new=1
+Nov 15 08:41:17 host-1 disunified-l2d[2326]: settings: Ethernet112 admin edge on; Ethernet112 bpdu guard on; PortChannel2901 admin edge on; PortChannel2901 bpdu guard on
+
+# == 2. the join's dissolveLanes as built before the fix: the table still binds
+# == the PortChannel at its delete
++ sudo config acl add table DUI_IP_ACL L3 -p Ethernet112,PortChannel2901 -s ingress
++ echo rc=0
+rc=0
++ sleep 3
++ set +x
+-- ACL_TABLE: Ethernet112,PortChannel2901  state: Active
+-- CONFIG PORTCHANNEL: 1  APPL LAG_TABLE: 1  STATE LAG_TABLE: 1  ASIC LAGs: 1  netdev: PortChannel2901  DOWN           02:00:00:00:00:01 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet113
++ echo rc=0
+rc=0
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet114
++ echo rc=0
+rc=0
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet115
++ echo rc=0
+rc=0
++ sudo config vlan member del 4094 PortChannel2901
++ echo rc=0
+rc=0
++ sleep 3
++ sudo config portchannel del PortChannel2901
++ echo rc=0
+rc=0
++ sleep 8
++ set +x
+-- ACL_TABLE: Ethernet112,PortChannel2901  state: Active
+-- CONFIG PORTCHANNEL: 0  APPL LAG_TABLE: 0  STATE LAG_TABLE: 0  ASIC LAGs: 1  netdev: Device "PortChannel2901" does not exist.
++ sudo config interface breakout -f -y Ethernet112 '1x100G[40G]'
+
+Running Breakout Mode : 4x25G[10G] 
+Target Breakout Mode : 1x100G[40G]
+
+Ports to be deleted : 
+ {
+    "Ethernet112": "25000",
+    "Ethernet113": "25000",
+    "Ethernet114": "25000",
+    "Ethernet115": "25000"
+}
+Ports to be added : 
+ {
+    "Ethernet112": "100000"
+}
+libyang[0]: Invalid value "PortChannel2901" in "ports" element. (path: /sonic-acl:sonic-acl/ACL_TABLE/ACL_TABLE_LIST[ACL_TABLE_NAME='DUI_IP_ACL']/ports[.='PortChannel2901'])
+sonic_yang(3):Data Loading Failed:Invalid value "PortChannel2901" in "ports" element.
+Data Loading Failed
+Invalid value "PortChannel2901" in "ports" element.
+ConfigMgmt Class creation failed
+Failed to break out Port. Error: Failed to load the config. Error: ConfigMgmtDPB Class creation failed
++ echo rc=1
+rc=1
++ sleep 8
++ set +x
+-- ACL_TABLE: Ethernet112,PortChannel2901  state: Active
+-- CONFIG PORTCHANNEL: 0  APPL LAG_TABLE: 0  STATE LAG_TABLE: 0  ASIC LAGs: 1  netdev: Device "PortChannel2901" does not exist.
+== cage
+4x25G[10G]
+PORT|Ethernet114
+PORT|Ethernet115
+PORT|Ethernet112
+PORT|Ethernet113
+== syslog
+2026 Nov 15 08:41:37.299427 host-1 NOTICE swss#orchagent: :- addAclTable: Created ACL table DUI_IP_ACL oid:70000000008c0
+2026 Nov 15 08:41:41.491276 host-1 INFO kernel: [40030.590414] PortChannel2901: Port device Ethernet113 removed
+2026 Nov 15 08:41:41.512457 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 type:team flags:4099
+2026 Nov 15 08:41:41.517851 host-1 NOTICE teamd#teammgrd: :- removeLagMember: Remove Ethernet113 from port channel PortChannel2901
+2026 Nov 15 08:41:41.536804 host-1 NOTICE swss#orchagent: :- removeLagMember: Remove member Ethernet113 from LAG PortChannel2901 lid:20000000008a2 lmid:1b0000000008a3
+2026 Nov 15 08:41:41.543829 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel2901 oper state set from down to down
+2026 Nov 15 08:41:42.577588 host-1 INFO kernel: [40031.679023] PortChannel2901: Port device Ethernet114 removed
+2026 Nov 15 08:41:42.594995 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 type:team flags:4099
+2026 Nov 15 08:41:42.611685 host-1 NOTICE teamd#teammgrd: :- removeLagMember: Remove Ethernet114 from port channel PortChannel2901
+2026 Nov 15 08:41:42.626145 host-1 NOTICE swss#orchagent: :- removeLagMember: Remove member Ethernet114 from LAG PortChannel2901 lid:20000000008a2 lmid:1b0000000008a4
+2026 Nov 15 08:41:42.632413 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel2901 oper state set from down to down
+2026 Nov 15 08:41:43.627088 host-1 INFO kernel: [40032.727040] PortChannel2901: Port device Ethernet115 removed
+2026 Nov 15 08:41:43.637518 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 type:team flags:4099
+2026 Nov 15 08:41:43.650905 host-1 NOTICE teamd#teammgrd: :- removeLagMember: Remove Ethernet115 from port channel PortChannel2901
+2026 Nov 15 08:41:43.675210 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel2901 oper state set from down to down
+2026 Nov 15 08:41:43.684018 host-1 NOTICE swss#orchagent: :- removeLagMember: Remove member Ethernet115 from LAG PortChannel2901 lid:20000000008a2 lmid:1b0000000008a5
+2026 Nov 15 08:41:44.619542 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 flags:4099
+2026 Nov 15 08:41:44.620437 host-1 NOTICE swss#portsyncd: :- onMsg: Cannot find PortChannel2901 in port table
+2026 Nov 15 08:41:44.634940 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 type:team flags:4099
+2026 Nov 15 08:41:44.635105 host-1 INFO kernel: [40033.735801] PortChannel2901: left allmulticast mode
+2026 Nov 15 08:41:44.635117 host-1 INFO kernel: [40033.735816] PortChannel2901: left promiscuous mode
+2026 Nov 15 08:41:44.635120 host-1 INFO kernel: [40033.735960] Bridge: port 29(PortChannel2901) entered disabled state
+2026 Nov 15 08:41:44.635250 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 flags:4099
+2026 Nov 15 08:41:44.635677 host-1 NOTICE swss#portsyncd: :- onMsg: Cannot find PortChannel2901 in port table
+2026 Nov 15 08:41:44.635757 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:17 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:5 flags:4099
+2026 Nov 15 08:41:44.639907 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:1 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:0 type:team flags:4099
+2026 Nov 15 08:41:44.642942 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel2901 oper state set from down to down
+2026 Nov 15 08:41:44.648284 host-1 NOTICE swss#orchagent: :- removeVlanMember: Remove member PortChannel2901 from VLAN Vlan4094 lid:ffe vmid:270000000008a7
+2026 Nov 15 08:41:44.651632 host-1 INFO disunified-l2d[2326]: topology change on PortChannel2901: FDB flushed in 11 VLANs
+2026 Nov 15 08:41:44.652238 host-1 NOTICE swss#orchagent: :- setPortPvid: Set pvid 1 to lag: PortChannel2901
+2026 Nov 15 08:41:44.703838 host-1 NOTICE swss#orchagent: :- removeBridgePort: Remove bridge port PortChannel2901 from default 1Q bridge
+2026 Nov 15 08:41:48.671282 host-1 NOTICE teamd#teammgrd: :- removeLag: Stop port channel PortChannel2901
+2026 Nov 15 08:41:48.675019 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:16 key:PortChannel2901 admin:0 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:0 type:team flags:4098
+2026 Nov 15 08:41:48.676553 host-1 NOTICE swss#portsyncd: :- onMsg: nlmsg type:17 key:PortChannel2901 admin:0 oper:0 addr:02:00:00:00:00:01 ifindex:55 master:0 type:team flags:4098
+2026 Nov 15 08:41:48.684474 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel2901 oper state set from down to down
+2026 Nov 15 08:41:48.685148 host-1 ERR teamd#tlm_teamd: :- get_dump: Can't get dump for LAG 'PortChannel2901'. Skipping
+2026 Nov 15 08:41:48.688209 host-1 NOTICE teamd#tlm_teamd: :- remove_lag: The LAG 'PortChannel2901' has been removed.
+2026 Nov 15 08:41:48.688786 host-1 ERR swss#orchagent: :- removeLag: Failed to remove ref count 1 LAG PortChannel2901
+2026 Nov 15 08:41:58.874947 host-1 ERR sonic_yang: Data Loading Failed:Invalid value "PortChannel2901" in "ports" element.
+2026 Nov 15 08:41:58.875272 host-1 ERR ConfigMgmt: Data Loading Failed#012Invalid value "PortChannel2901" in "ports" element.
+
+# == 3. the table rebound without the PortChannel: orchagent's retry removes the LAG
+2026 Nov 15 08:42:25.291476 host-1 ERR swss#orchagent: message repeated 254 times: [ :- removeLag: Failed to remove ref count 1 LAG PortChannel2901]
+2026 Nov 15 08:42:25.291476 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Deleting port PortChannel2901 from ACL list DUI_IP_ACL
+2026 Nov 15 08:42:25.291476 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Unbind and Unlink:PortChannel2901
+2026 Nov 15 08:42:25.297785 host-1 NOTICE swss#orchagent: :- unbind: 20000000008a2 port is unbound from DUI_IP_ACL ACL table
+2026 Nov 15 08:42:25.298434 host-1 NOTICE swss#orchagent: :- updateAclTablePorts: Removed:PortChannel2901 from portSet
+2026 Nov 15 08:42:25.300669 host-1 NOTICE swss#orchagent: :- removeLag: Remove LAG PortChannel2901 lid:20000000008a2
+
+# == 4. the fixed order: the table rebound before the delete
+== rebuild the aggregate, bind it
+Usage: config vlan member del [OPTIONS] <vid> <port>
+Try 'config vlan member del -h' for help.
+
+Error: Batch delete failed: Port Ethernet112 cannot be removed from Vlan4094. Please remove all associated static Layer 2 multicast group entries first.
+Usage: config vlan member add [OPTIONS] <vid> port
+Try 'config vlan member add -h' for help.
+
+Error: Ethernet112 is already a member of Vlan4094
+-- ACL_TABLE: PortChannel2901,Ethernet112  state: Active  CONFIG PC: 1  ASIC LAGs: 1
+== the fixed dissolve
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet113
++ echo rc=0
+rc=0
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet114
++ echo rc=0
+rc=0
++ for l in Ethernet113 Ethernet114 Ethernet115
++ sudo config portchannel member del PortChannel2901 Ethernet115
++ echo rc=0
+rc=0
++ sudo config vlan member del 4094 PortChannel2901
++ echo rc=0
+rc=0
++ sudo config acl add table DUI_IP_ACL L3 -p Ethernet112 -s ingress
++ echo rc=0
+rc=0
++ sudo config portchannel del PortChannel2901
++ echo rc=0
+rc=0
++ sudo config interface breakout -f -y Ethernet112 '1x100G[40G]'
++ grep -vE '^ |^\{|^\}|^$'
+Running Breakout Mode : 4x25G[10G] 
+Target Breakout Mode : 1x100G[40G]
+Ports to be deleted : 
+Ports to be added : 
+Breakout process got successfully completed.
+Please note loaded setting will be lost after system reboot. To preserve setting, run `config save`.
++ echo rc=0
+rc=0
++ set +x
+-- ACL_TABLE:   state: Active  CONFIG PC: 0  ASIC LAGs: 0
+== cage
+1x100G[40G]
+PORT|Ethernet112
+== syslog
+2026 Nov 15 08:43:11.744527 host-1 INFO ConfigMgmt: Check Key in Asic DB: ASIC_STATE:SAI_OBJECT_TYPE_PORT:oid:0x10000000007fa
+2026 Nov 15 08:43:11.744698 host-1 INFO ConfigMgmt: Check Key in Asic DB: ASIC_STATE:SAI_OBJECT_TYPE_PORT:oid:0x1000000000824
+2026 Nov 15 08:43:11.744807 host-1 INFO ConfigMgmt: Check Key in Asic DB: ASIC_STATE:SAI_OBJECT_TYPE_PORT:oid:0x100000000084e
+2026 Nov 15 08:43:11.744914 host-1 INFO ConfigMgmt: Check Key in Asic DB: ASIC_STATE:SAI_OBJECT_TYPE_PORT:oid:0x1000000000878
+2026 Nov 15 08:43:11.745818 host-1 INFO ConfigMgmt: Writing in Config DB
+2026 Nov 15 08:43:11.746912 host-1 INFO ConfigMgmt: Write in DB: {'PORT': {'Ethernet112': {'alias': 'Eth29', 'lanes': '113,114,115,116', 'speed': '100000', 'index': '29', 'subport': '0'}}}

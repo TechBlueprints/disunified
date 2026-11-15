@@ -226,7 +226,7 @@ func (s *swState) cagePorts(idx int) []string {
 
 // applyBreakout is a breakout's effect on CONFIG_DB with -f: the cage's
 // ports and every dependency on them (VLAN memberships, storm control, STP
-// port settings, LAG memberships) go, the mode's children come, and
+// port settings, LAG memberships, their place in an ACL table) go, the mode's children come, and
 // BREAKOUT_CFG records the mode. The children carry no admin_status (down)
 // and no MTU (SONiC's 9100): the driver writes the cage's intent on them.
 func (s *swState) applyBreakout(parent string, pp platformPort, idx int, children []childPort, mode string) {
@@ -255,6 +255,21 @@ func (s *swState) applyBreakout(parent string, pp platformPort, idx int, childre
 		delete(speeds, ch.name)
 	}
 	s.laneSpeeds = speeds
+	// -f takes the old ports out of every ACL table's ports@ (a YANG
+	// leafref), the table stays; applyACL binds the children after the batch.
+	gone := setOf(s.cagePorts(idx))
+	for t, tb := range s.aclTables {
+		keep := map[string]bool{}
+		for p := range tb.ports {
+			if !gone[p] {
+				keep[p] = true
+			}
+		}
+		if len(keep) != len(tb.ports) {
+			tb.ports = keep
+			s.aclTables[t] = tb
+		}
+	}
 	for _, name := range s.cagePorts(idx) {
 		delete(s.port, name)
 		delete(s.members, name)

@@ -72,7 +72,7 @@ func TestStormControlDropsCapturedLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	ports := []devicemodel.Port{{Index: 1}}
-	applyStormControl(ports, sc)
+	applyStormControl(ports, sc, parseEthName)
 	h, s := ports[0].Health, ports[0].StormCtrl
 	if h.StormDropsUnicast != 2230 || h.StormDropsBroadcast != 0 || h.StormDropsMulticast != 0 {
 		t.Errorf("drops = %d/%d/%d, want 0/0/2230", h.StormDropsBroadcast, h.StormDropsMulticast, h.StormDropsUnicast)

@@ -164,6 +164,7 @@ func TestPortAnomaliesProtectionDrops(t *testing.T) {
 		{"DHCP rate", func(h *devicemodel.PortHealth, n uint64) { h.DHCPRateDrops = n }, 32},
 		{"rogue DHCP", func(h *devicemodel.PortHealth, n uint64) { h.RogueDHCPDrops = n }, 64},
 		{"MAC locking", func(h *devicemodel.PortHealth, n uint64) { h.MACLockingDrops = n }, 256},
+		{"802.1X failures", func(h *devicemodel.PortHealth, n uint64) { h.Dot1XFailures = n }, 128},
 	} {
 		for _, up := range []bool{true, false} {
 			port := func(n uint64) devicemodel.Port {

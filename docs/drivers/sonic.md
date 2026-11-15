@@ -5494,7 +5494,7 @@ is in §11.18.1 and §11.18.4.
 |---|---|---|
 | 2048 PHY failure | no PHY between the ASIC and the cages, as on the ECS, whose SONiC describes none either; the per-port fault the DX010 does report is a link-down reason seen on the healthy uplink (§11.18.1) | nothing |
 | 256 MAC locking | enforces the MAC filter (§11.12); since 2026-11-14 a secured port's unknown sources go to the CPU (`cpu_trap`, as on the ECS), where disunified-l2d counts them per port; the port stays up (§11.18.2) | built: `Health.MACLockingDrops`, verified by hand on an empty cage |
-| 128 802.1X authentication failed | no authenticator on the image; 202511 holds Broadcom's Port Access Control sources, unbuilt and without an orchagent consumer (§11.18.3) | nothing |
+| 128 802.1X authentication failed | no authenticator on the image; 202511 holds Broadcom's Port Access Control sources, unbuilt and without an orchagent consumer (§11.18.3) | built 2026-11-15: hostapd under l2d, `Health.Dot1XFailures` (§11.26) |
 | 1024 DoS | the ECS's `denial-of-service` cause is a configuration row with nothing observable behind it (no detector in any database, the chip or the CPU path, no push key, no UI setting, no bit reported), so there is no condition to copy; the Tomahawk's own DoS header checks could be counted per port, but outside SAI and only as a condition of this project's choosing (§11.18.4) | nothing |
 
 #### 11.18.1 PHY failure (2048)
@@ -5744,6 +5744,10 @@ so far):
 
 Verification needs an 802.1X supplicant on a linked port and a RADIUS
 server: rack day at the earliest.
+
+**Built since (2026-11-15): §11.26**, on the second of two designs
+(hostapd's wired driver under disunified-l2d, not `src/sonic-pac`), with no
+image change.
 
 #### 11.18.4 DoS (1024)
 
@@ -6761,6 +6765,347 @@ A storm needs a source above the level: UniFi's lowest, 1 % of 100G, is
 far above what the CPU can send. A PR for the alert needs a cabled
 source on a test port in a VLAN of its own and the alert read from the
 controller's device alerts.
+
+### 11.25 A lane aggregate's STP settings, and deleting a PortChannel an ACL table binds (2026-11-15)
+
+Two leftovers of the lane switch (`docs/drivers/breakout.md` §14 items 4
+and 5), closed on branch `claude/lane-stp-ea4897`, checked by hand on the
+DX010 (`igmp-202511.20261115-6c8eb1cf7`, sonic-swss 0004) on empty cage 29
+with the deployed bridge stopped for five minutes. The record is
+`docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
+
+**11.25.1 Every bridge port a cage makes is named to l2d.** `l2SetPorts`
+took the PortChannel of a cage's *first* interface only. A lane aggregate
+that leaves lane 1 out (the controller's Flex XG push puts lanes 2-4 in
+`lag=1`: `PortChannel<100*cage+1>`) is a kernel bridge port of its own, and
+l2d was never told about it: mstpd ran it at its defaults, and the lanes in
+it were named instead (harmless, they are not bridge ports). Now each
+interface maps to its own bridge port -- itself, or its PortChannel -- and
+every one takes the cage's settings. **The settings are the cage's, from
+the parent's push**: the lane switch claims no STP (`breakout.md` §0), so
+the controller offers none on it and the parent's push is the only one
+carrying them; an operator's BPDU guard or loop protection on the cage
+covers every lane, in an aggregate or not. `ApplyLanes` derives l2d's
+per-port intent again from the parent's last push after a lane batch
+(`l2Refresh`), so an aggregate the lane switch makes or dissolves gets its
+settings in the same apply. Live, through a probe built from the branch
+(the real `l2SetPorts`/`applyL2` on the switch, every other port as
+`l2.json` had it, cage 29 with edge enabled, BPDU guard and loop
+protection): before it, mstpd ran `PortChannel2901` at `admin edge port no`,
+`bpdu guard port no`; after, `l2.json` named `Ethernet112` and
+`PortChannel2901` with the cage's settings and both under loop protection,
+l2d logged `settings: Ethernet112 admin edge on; Ethernet112 bpdu guard on;
+PortChannel2901 admin edge on; PortChannel2901 bpdu guard on`, and mstpd and
+STATE_DB `DUI_STP_PORT_TABLE|PortChannel2901` read admin edge, oper edge and
+BPDU guard yes. Test: `TestLaneAggregateTakesTheCageSTP`.
+
+**11.25.2 `config portchannel del` of a bound PortChannel.** The CLI's
+`remove_portchannel` checks VLAN memberships and members, never ACL_TABLE
+(202505 and 202511 source), and the driver's tables bind every PortChannel.
+Live, with `DUI_IP_ACL` bound to `Ethernet112,PortChannel2901` and the
+join's `dissolveLanes` as built (members out, the VLAN out, the delete):
+- the delete returns 0; CONFIG_DB `PORTCHANNEL`, APPL_DB `LAG_TABLE` and
+  STATE_DB `LAG_TABLE` lose the PortChannel and teamd removes the netdev;
+- **the table keeps the name** (`ports@` still `Ethernet112,PortChannel2901`,
+  status Active) and **orchagent keeps the LAG**: binding a table raises the
+  port's ref count (`bindAclTable`), and `removeLag` refuses while it is
+  above zero -- `Failed to remove ref count 1 LAG PortChannel2901`, retried
+  about seven times a second (254 times in 37 s), the ASIC_DB LAG object
+  still there;
+- **the join's breakout is refused**: sonic-yang loads the whole CONFIG_DB
+  first and `ports` is a leafref to PORT or PORTCHANNEL -- `libyang[0]:
+  Invalid value "PortChannel2901" in "ports" element ... Failed to break out
+  Port. Error: Failed to load the config. Error: ConfigMgmtDPB Class creation
+  failed`, exit 1. Under the batch's `set -e` the join would have failed on
+  every cycle.
+
+Rebinding the table without the PortChannel (`config acl add table
+DUI_IP_ACL L3 -p Ethernet112 -s ingress`) let orchagent's next retry remove
+the LAG (`unbind: ... port is unbound from DUI_IP_ACL`, then `Remove LAG`).
+**The fixed order rebinds before the delete**: members out, the VLAN out,
+`plan.aclUnbind` of the PortChannels about to go, `config portchannel del`,
+the breakout. Re-run from scratch on the same cage: every step exit 0, no
+`removeLag` error, no LAG in ASIC_DB, the cage `1x100G[40G]`, and `-f`
+taking the old lane out of the table. Both paths that delete a PortChannel
+do it: `dissolveLanes` (the join of an owned cage) and `lagJoins`' emptied
+or orphaned PortChannel (the parent's own aggregate taken apart, where
+nothing was refused but orchagent held the LAG until the post-batch
+`applyACL`). The plan's model of a breakout now also takes the old ports
+out of every ACL table, as `-f` does, so `applyACL` after the batch binds
+the new port in the same apply. The FixtureRunner models all three facts:
+the delete passes and leaves the table naming it (`HeldLAGs` until no
+table binds it), and the breakout refuses a dangling `ports@` entry with
+the live message. Tests: `TestLaneJoinUnbindsTheACLTables` (fails with the
+live refusal without the fix), `TestACLTablesFollowThePorts` (the parent's
+own aggregate).
+
+Not covered: a table that is not the driver's shape binding a PortChannel
+the plan deletes (noted and left alone, so its dangling name would refuse a
+later breakout), and a driver table bound to nothing but the PortChannel
+(noted: it cannot be rebound to nothing). Neither occurs while the driver
+binds every port.
+
+**11.25.3 After the test.** The deployed bridge's start-up reconcile restored
+cage 29's MTU, VLAN and snooping static groups. The only CONFIG_DB
+difference against the snapshot was `PORT|Ethernet112 dhcp_rate_limit 300`,
+which the breakout drops (§11.17: nothing enforces it); it was written back
+by hand and saved. Running and saved config then matched the snapshot,
+and `l2.json` was byte-identical. Side observation: after the split, lane 1
+could not leave Vlan4094 by hand ("remove all associated static Layer 2
+multicast group entries first") though nothing had written its static groups
+since the breakout. The driver's IGMP apply after the join logged `7 rows ...
+7 removed`, then `7 members set`, so the breakout appears to leave the old
+port's `L2MC_STATIC_MEMBER` rows, which carry no YANG dependency, behind. Not
+chased.
+
+### 11.26 802.1X port authentication: hostapd under disunified-l2d (2026-11-15)
+
+Clint, 2026-11-15: "Build it." This is §11.18.3's assessment carried out:
+an authenticator, a data plane that holds an unauthorised port closed and
+admits each authenticated host, the controller's claim and push, and the
+failed attempts as anomaly 128.
+
+#### 11.26.1 What the ECS does
+
+Nothing to copy. Read-only on 2026-11-15:
+
+- its controller record does not claim DOT1X (`switch_caps.feature_caps`
+  bit 2 clear) and its `port_table` carries no `dot1x_*` key, while the
+  site's UniFi switches that claim it report `dot1x_mode` and
+  `dot1x_status` per port (the controller's device list);
+- nothing on the switch is an authenticator: no `hostapd`, `authmgr`,
+  `pacmgr` or `mabmgr` on the host or in any container, no PAC table in
+  CONFIG_DB, APPL_DB or STATE_DB;
+- its `ERROR_DISABLE|dot1x` row is configuration only, as every row of
+  that table is (§11.20); its inform agent `mcad` holds
+  `ubnt_get_interface_dot1x_status` and reports the off values.
+
+So the departure from the ECS's pattern has a plain reason: the ECS has
+no 802.1X.
+
+#### 11.26.2 The choice: hostapd (wired) under l2d, not `src/sonic-pac`
+
+Two designs were open (§11.18.3):
+
+1. **Broadcom's Port Access Control** (`src/sonic-pac` in 202511):
+   authmgr, pacmgr, hostapdmgr, mab, mabmgr, paccfg, pacoper and their OS
+   layer fpinfra, 149 C/C++ files and about 66,000 lines, with no build
+   rule, no container, and no consumer in sonic-swss (nothing reads
+   `PAC_PORT_TABLE`, so no code turns its verdict into ASIC state).
+   Building it means porting it to 202511's libraries, writing the
+   orchagent consumer, and installing a new image.
+2. **hostapd's wired driver run by l2d**, the way mstpd runs: upstream's
+   own authenticator (the one sonic-pac's hostapdmgr drives too), built on
+   the switch, with l2d turning its verdicts into the mechanism the MAC
+   filter already uses and §11.12 verified on this ASIC (`learn_mode drop`
+   and a static FDB entry per admitted MAC).
+
+The second is built. Reasons:
+
+- what PAC adds over hostapd is a port state machine and MAB, and both
+  map onto pieces this driver already runs and has verified: the learn
+  mode and static FDB entries, and l2d's packet sockets on a port's netdev;
+- it needs no new orchagent code: every write is to a table orchagent
+  already consumes (`PORT_TABLE` learn mode, `FDB_TABLE`, CoPP);
+- it runs on the installed image, with no reboot (Clint asked for none on
+  2026-11-14), built on the switch from the upstream release as mstpd is,
+  so the bridge redistributes no binary;
+- **the image kit needs no patch for it.** The one thing the image lacked
+  was the EAPOL trap, and that is a CoPP row (below), as STP's is. So no
+  image was built for 802.1X: there is nothing to put in one.
+
+#### 11.26.3 As built
+
+**hostapd** (`build-hostapd.sh`): 2.11 from `w1.fi/releases`, pinned by the
+sha512 Alpine's aports pin for the same file, statically linked against
+musl in the pinned alpine container mstpd is built in (42 s on the DX010,
+616 KB). Configured for this job only: the wired driver, a RADIUS client,
+the control interface; no nl80211, no TLS library (the EAP methods run on
+the RADIUS server; the switch relays them), no WPS or DPP. EAP-MD5 and the
+integrated RADIUS server are built in so the switch can run a RADIUS
+server of its own for a test. A tarball placed beside the script is used
+when the switch cannot fetch it (the hash decides either way). The driver
+starts the build in a transient unit (`disunified-hostapd-build`, retried
+every 10 minutes after a failure) the first time a push controls a port,
+and installs `/usr/local/sbin/hostapd` and `hostapd_cli`.
+
+**The driver** (`l2.go`, `portfeat.go`):
+
+- claims 802.1X (`Capabilities.Dot1X`, `feature_caps` 2) where l2d can run
+  and hostapd is installed or docker can build it, and the collector reads
+  the port features' sections (the learn mode is theirs);
+- holds every port in a closed mode (`auto`, `multi_host`, `mac_based`,
+  `force_unauthorized`) closed in CONFIG_DB with the MAC filter's
+  `learn_mode drop`, from the first push, before any authenticator runs,
+  and across a reboot; a force-authorised port stays open;
+- leaves an aggregate's members open and out of l2d's config (hostapd
+  authenticates one netdev; no push for 802.1X on an aggregate is
+  captured);
+- writes l2d's `dot1x` section (each controlled interface and its mode,
+  the RADIUS servers' addresses and ports, the switch's management
+  address as the NAS address) and the servers' secrets, one per line, to
+  `/etc/sonic/disunified/dot1x-radius` (root, 0600). l2.json is read by
+  the login user (collect.py), so it holds no secret; the secrets file is
+  written whenever this bridge has not written that content since it
+  started, so nothing the bridge can read on the switch derives from a
+  secret, and no log line carries one;
+- keeps the static FDB entries l2d wrote for the hosts it admitted (the
+  MAC filter's plan deletes every static entry it does not want);
+- reads each port's mode from l2d's config, its admitted hosts and its
+  failed attempts from STATE_DB `DUI_DOT1X_TABLE` (collect.py `l2_dot1x`)
+  into `Port.Dot1X`, `Port.Dot1XAuthorized` and `Health.Dot1XFailures`.
+
+**l2d** (`Dot1xGuard`, `l2d.py`), per controlled interface in a mode that
+authenticates:
+
+- the kernel chain `DUI_DOT1X`, jumped to first from INPUT and FORWARD
+  (ahead of MAC locking's): the port's EAPOL accepted, each admitted
+  source RETURNed, the rest of the port's frames dropped, so an
+  unauthorised host cannot reach the switch's own CPU through a trapped
+  frame (ARP, DHCP, IGMP) either;
+- the EAPOL trap `COPP_TRAP|dui_eapol` (`trap_ids eapol`, `queue4_group1`,
+  `always_enabled true`) while any port authenticates;
+- a hostapd of its own (`-B -P /run/disunified-dot1x/<port>.pid`, config
+  0600 there: `driver=wired`, `use_pae_group_addr=1`, `eap_server=0`,
+  `eap_reauth_period=3600`, the servers and secrets), events read from its
+  control socket (`ATTACH`): `AP-STA-CONNECTED` admits the host (a static
+  FDB entry in every VLAN the port carries, through ProducerStateTable as
+  the MAC filter's, and a RETURN in the chain) -- on an `auto` port only
+  while no other host is admitted (a second one is deauthenticated and
+  logged), on a `multi_host` port every one --, `AP-STA-DISCONNECTED`
+  removes it, and
+  `CTRL-EVENT-EAP-FAILURE2` counts a failed attempt
+  (`DUI_DOT1X_TABLE|<port>` `failures`, since boot, carried over a
+  restart, and `last_failed_mac`);
+- a port losing its link, or leaving the config, loses its admissions;
+- hostapd outlives an l2d restart (the unit's `KillMode=process`), and the
+  next l2d adopts it by its pid file, attaches, and reads its station list
+  (`STA-FIRST`/`STA-NEXT`, `flags=[AUTHORIZED]`); an earlier l2d's
+  admissions keep their FDB entries until that list says otherwise;
+- `--teardown` stops every authenticator and removes every admission, the
+  chain and the trap; the ports stay closed (CONFIG_DB keeps the drop).
+
+**The device layer** claims `feature_caps` bit 2 with `Capabilities.Dot1X`
+and sets anomaly 128 when a port's `Health.Dot1XFailures` grew since the
+previous inform, as it does for the storm, DHCP and MAC-locking counts. The
+port reports `dot1x_mode`/`dot1x_status` `force_auth`/`authorized` for a
+force-authorised port (the values the site's own switches report) and the
+off values otherwise: what a UniFi switch reports for the other modes is
+not captured.
+
+#### 11.26.4 The controller's push (Network 11.0.99, captured 2026-11-15)
+
+With the DX010's bridge claiming DOT1X (a test deb from this work,
+`0.0.0+20261115.dot1x`, installed for the capture and replaced by the
+deployed build after it), the controller offered 802.1X in two places,
+and every setting below was restored afterwards:
+
+- **the device** (Settings -> Advanced, with "Global Switch Settings"
+  unticked so the device takes its own): "802.1X Control", with "RADIUS
+  Server" UniFi Integrated or External (a RADIUS profile) and
+  "Unauthorized VLAN" (a network). The site-wide switch is the
+  `global_switch` setting's `dot1x_portctrl_enabled`, which was not
+  touched. On the record: `dot1x_portctrl_enabled`, `radiusprofile_id`,
+  `dot1x_fallback_networkconf_id`. The REST API refuses a direct change of
+  the first (`api.err.Dot1xControlChangeNotAllowed`); the UI's steps undo
+  it. `radiusprofile_id` stays set (to the Default profile) once written;
+  it does nothing with 802.1X off;
+- **each port** (Port Manager -> port -> Advanced: Manual -> Port Security
+  -> "Client Authentication (802.1X)"), with a Method. The UI's own text:
+  it "authenticates either a single wired device or each device
+  individually using 802.1X credentials. Devices that do not support
+  802.1X can be authenticated using their MAC address." On the port
+  override: `dot1x_ctrl`, `dot1x_idle_timeout` (300).
+
+The pushes (`controller-11.0.99/system_cfg-dx010-dot1x-*.txt`, scrubbed):
+
+| UI | Push |
+|---|---|
+| 802.1X Control on (UniFi Integrated) | `switch.dot1x.status=enabled`, `switch.dot1x.dynvlan=disabled`, `switch.radius.auth.1.ip` (the gateway), `.port=1812`, `.secret`, and `switch.port.N.dot1x.mode=force_authorized` on every port |
+| Method Credentials | `switch.port.N.dot1x.mode=auto` |
+| Method Multiple Credentials | `multi_host` |
+| Method MAC Address | `mac_based`, with `switch.port.N.dot1x.idle_timeout=300` |
+| Method Always Unauthorized | `force_unauthorized` |
+| RADIUS Server External (a profile) | the profile's server in the same `switch.radius.auth.1.*` keys |
+| Unauthorized VLAN | **no key**: stored on the device record only; no push followed, nor after a `force-provision` |
+| 802.1X Control off (Global Switch Settings) | `switch.dot1x.status=disabled` alone |
+
+`unificfg` parses them (`Config.Dot1X`, `Port.Dot1XMode`,
+`Dot1XIdleTimeout`), the loop maps them to `DeviceDesired.Dot1X` and each
+`PortDesired.Dot1X` while 802.1X is on, and
+`TestReplaySonicDX010Dot1X` replays all seven on the capture from the new
+collector: force-authorised ports stay open and build nothing, each method
+closes its cage and reaches l2d, hostapd is built once, External changes
+the server, off opens every port and empties l2d's section, and nothing is
+logged as unsupported or carries the secret. The scrubber replaces
+`switch.radius.auth.N.secret` and `resolv.host.N.name` since.
+
+The two Credentials modes follow the UI's text: `auto` admits a single
+device per port (a second that authenticates is turned away), `multi_host`
+admits each device that authenticates.
+
+#### 11.26.5 Live, by hand (2026-11-15)
+
+Image `igmp-202511.20261115-6c8eb1cf7`, empty cage 31 (Ethernet120, `ce30`)
+in MAC loopback, the installed l2d paused for each window, under the test
+lock; a test RADIUS server (hostapd's integrated one, EAP-MD5, one user, a
+test secret) on 127.0.0.1; the supplicant a raw socket on the port's netdev
+sending EAPOL from a test MAC and reading the replies the loop brought
+back (`sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt`):
+
+- `COPP_TRAP|dui_eapol` put `SAI_HOSTIF_TRAP_TYPE_EAPOL` in ASIC_DB; an
+  EAPOL-Start to the PAE group address came back from the chip to the
+  port's netdev, **tagged with the port's VLAN** (4094); frames to a
+  unicast or broadcast address from an unknown source did not (6
+  `RPORTD`);
+- **hostapd saw nothing while ebtables INPUT dropped the port**: the
+  bridge hands a link-local frame to the port's protocol sockets only once
+  NF_BR_LOCAL_IN has passed it (`ETH_P_ALL` taps see it earlier). Hence
+  the chain's EAPOL ACCEPT first, for both the untagged and the 802.1Q
+  form;
+- the right password: EAP-Request/Identity, the MD5 challenge,
+  EAP-Success, `AP-STA-CONNECTED`, `flags=[AUTHORIZED]`; the wrong one:
+  EAP-Failure, `CTRL-EVENT-EAP-FAILURE2`, `dot1xAuthBackendAuthFails=1`;
+- the candidate l2d's `Dot1xGuard` run alone beside the installed l2d:
+  the chain and the trap, hostapd started; the authorised host admitted
+  (APPL_DB `FDB_TABLE:Vlan4094:<mac>`, ASIC_DB `SAI_FDB_ENTRY_TYPE_STATIC`,
+  the chain's RETURN); the refused host counted (`failures 1`); a second
+  guard (an l2d restart) adopted the running hostapd and admitted the host
+  again from its station list; an EAPOL-Logoff removed the admission from
+  the ASIC; the teardown left no hostapd, chain, trap or entry;
+- hostapd also hears its own frames come round the loop and makes a
+  station of the switch's MAC; l2d ignores the switch's own MAC (no
+  cabled port does this).
+
+`TestL2dDot1X` replays hostapd's captured events and station replies
+against l2d; `dot1x_test.go` tests the driver on a capture from the new
+collector (`collect-dot1x.txt`).
+
+#### 11.26.6 Not built, and not exercised
+
+- **MAB (`mac_based`)**: l2d runs hostapd on such a port, so an 802.1X
+  host authenticates, but nothing yet sends a host's MAC to the RADIUS
+  servers, and the push's `idle_timeout` is not used. Building it is a
+  RADIUS Access-Request from l2d on a frame from an unknown source (the
+  port at `cpu_trap`, as MAC locking's), and needs the user name and
+  password UniFi's RADIUS server expects for a MAC, which no capture
+  shows. In the loopback test unknown-source frames were dropped under
+  `cpu_trap` (6 `RPORTD`), unlike §11.18.2's run in a tagged VLAN: to be
+  probed first.
+- **The Unauthorized VLAN and a RADIUS-assigned VLAN**: the first reaches
+  no push on 11.0.99 (above), the second is `dynvlan`, disabled in every
+  capture; neither is built.
+- **The live driver path**: the capture deb ran the claim and the parser's
+  predecessor only (it logged the keys as unsupported); the deployed
+  build has none of this, so the bridge writing l2d's 802.1X config on the
+  switch has run in the fixtures and the replay, not live.
+- **Forwarding**: an admitted host's frames forwarded and an unadmitted
+  one's dropped through the chip, with a second linked port (the MAC
+  filter's open point too, §11.12).
+- **A cabled supplicant and the gateway's RADIUS server**: wpa_supplicant
+  or a real client on a linked port, against the controller's RADIUS
+  profile.
+- **The controller's alert for 128**, which needs the bridge deployed.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

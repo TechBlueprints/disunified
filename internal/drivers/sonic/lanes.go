@@ -25,9 +25,10 @@ import (
 //   - this device: the cage's speed (the breakout: split, re-split, join),
 //     the cage's admin state (disabled = every lane down), and what the
 //     driver computes switch-wide from its own ports -- the STP port
-//     settings disunified-l2d takes (l2.go keys them by cage), isolation,
-//     port security, the egress limit and LLDP-MED, which still apply to
-//     every lane of the cage as before.
+//     settings disunified-l2d takes (l2.go: the cage's, on every bridge
+//     port its lanes make, a lane aggregate included), isolation, port
+//     security, the egress limit and LLDP-MED, which still apply to every
+//     lane of the cage as before.
 // A join removes the lane switch's aggregates and mirror sessions first and
 // hands the cage back whole; a split gives the new lanes the cage's intent,
 // which the lane switch then seeds the controller from.
@@ -113,7 +114,12 @@ func reportChildren(ports []cagePort, macs []devicemodel.MACEntry, children map[
 
 // lockApply takes the write lock: one write (or collect) at a time, so two
 // plans never interleave their batches or diff against a state the other
-// is changing. It gives up when ctx does.
+// is changing. It gives up when ctx does. Every write that touches what a
+// plan reads or writes takes it, and so do the address move (it swaps the
+// runner and saves the config) and the reboot (it waits for a batch under
+// way). Three stay outside on purpose: the fan mode (pmon's fancontrol
+// files), the SSH keys (the login user's authorized_keys) and locate (an
+// LED, and its blink runs between calls) share nothing with a plan.
 func (c *Collector) lockApply(ctx context.Context) (func(), error) {
 	c.applyOnce.Do(func() { c.applySem = make(chan struct{}, 1) })
 	select {
@@ -207,6 +213,12 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 	if err != nil || n == 0 {
 		return n, err
 	}
+	// A lane aggregate made or dissolved is a new kernel bridge port: l2d
+	// takes the cage's STP settings for it now, not at this device's next
+	// push (l2SetPorts).
+	if err := c.l2Refresh(ctx); err != nil {
+		return n, err
+	}
 	if _, err := c.applyACL(ctx); err != nil {
 		return n, err
 	}
@@ -214,6 +226,21 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		return n, err
 	}
 	return n, nil
+}
+
+// l2Refresh derives l2d's per-port intent again from this device's last
+// port push against the state as it is now, and writes it if it changed.
+// Nothing before this device's first push: the intent is its own.
+func (c *Collector) l2Refresh(ctx context.Context) error {
+	c.mu.Lock()
+	st, desired, set := c.state, c.l2.desired, c.l2.portsSet
+	c.mu.Unlock()
+	if st == nil || st.stpFeature || !set {
+		return nil
+	}
+	c.l2SetPorts(desired, st)
+	_, err := c.applyL2(ctx)
+	return err
 }
 
 // PlanLanes implements devicemodel.LaneProvider (the first-push hold).
@@ -270,7 +297,9 @@ func (pl *plan) laneSpeed(p devicemodel.Port, d devicemodel.PortDesired) {
 }
 
 // dissolveLanes removes a lane switch's aggregates and lane mirror
-// sessions on cage idx ahead of a breakout that replaces its lanes: SONiC's
+// sessions on cage idx ahead of a breakout that replaces its lanes (members
+// out, mirrors, then each PortChannel's VLANs and ACL bindings and the
+// PortChannel itself): SONiC's
 // -f drops a member silently and leaves its PortChannel behind, and the
 // breakout is otherwise refused for a cage in an aggregate (breakoutBlocked).
 // The join is the operator's decision on the switch itself, so the lane
@@ -304,6 +333,15 @@ func (pl *plan) dissolveLanes(idx, cage int, write func(int, string, func(*swSta
 		}
 	}
 	sort.Strings(pcs)
+	// The driver's ACL tables bind every PortChannel: each leaves them
+	// before it goes. `config portchannel del` does not look at ACL_TABLE,
+	// so a table would keep naming it: orchagent then holds the LAG
+	// ("Failed to remove ref count 1 LAG"), and the breakout after it is
+	// refused by sonic-yang ("Invalid value ... in \"ports\" element"),
+	// both seen live on the DX010 (sonic.md §11.25).
+	if len(pcs) > 0 {
+		pl.aclUnbind(idx, pcs, "is to be deleted")
+	}
 	for _, pc := range pcs {
 		name := pc
 		pl.stripVLANs(idx, name)

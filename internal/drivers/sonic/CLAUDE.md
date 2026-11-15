@@ -980,7 +980,7 @@ was restarted.
     switch's own address arrives on the uplink through the same trap.
     Fixtures: `collect-dhcprate.txt`, `dhcp-frames-20261114.txt`
     (`testdata/l2d_dhcp_rate.py` runs the filter through a cBPF interpreter).
-- **Port anomalies 128/1024/2048 have no source on the image (256 does
+- **Port anomalies 1024/2048 have no source on the image (256 and 128 do
   since, below;
   `docs/drivers/sonic.md` §11.18, assessed 2026-11-14,
   `sonic-igmp-202511.20261106-f2e25f54c/anomaly-probes.txt`).** Before
@@ -992,7 +992,7 @@ was restarted.
   `DUI_MAC_ACL` cannot name its port; STATE_DB `PORT_OPERR_TABLE` (MAC
   local/remote fault per oper-down) counts ordinary drops of a healthy link,
   not a failed port; the image has no 802.1X authenticator (202511's
-  `src/sonic-pac` is unbuilt).
+  `src/sonic-pac` is unbuilt; 802.1X is hostapd under l2d since, below).
 - **DoS (1024) and PHY failure (2048): the ECS has nothing to copy**
   (§11.18.4, §11.18.1; read-only 2026-11-14). Its `ERROR_DISABLE|denial-of-service`
   row is configuration only: nothing in its databases, chip attributes, CoPP
@@ -1048,10 +1048,74 @@ was restarted.
   and mirrors first (`dissolveLanes`). Each plan owns its PortChannel range
   (`plan.mine`): a lane in any other is left in it, VLAN-less and at its
   PortChannel's MTU. `lockApply` serialises `Collect`, `ApplyPorts`,
-  `ApplyLanes`, `EnsureVLANs`, `ApplyDevice` and `ApplyManagementIPv6`. Facts from the capture
+  `ApplyLanes`, `EnsureVLANs`, `ApplyDevice`, `ApplyManagementIPv6`, `ApplyAddress` and `Reboot`; the fan mode, the SSH keys and locate stay outside it on purpose (they share nothing with a plan). Facts from the capture
   (`sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt`): a 25G lane's
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
   (so the Flex XG aggregate push's `cl-91` is refused); the controller's
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
-  STP port settings stay the cage's because `l2SetPorts` (l2.go) keys them
-  by cage; a lane aggregate without lane 1 is not named to l2d (open).
+  STP port settings stay the cage's (the lane switch claims no STP):
+  `l2SetPorts` (l2.go) names every bridge port a cage's interfaces make --
+  a lane aggregate without lane 1 included -- with the cage's settings, and
+  `ApplyLanes` re-derives them after a lane batch (§11.25.1, live
+  2026-11-15).
+- **`config portchannel del` does not look at ACL_TABLE** (§11.25.2, live
+  on the DX010 2026-11-15): a deleted PortChannel a table still binds stays
+  in the table, orchagent keeps the LAG (`removeLag: Failed to remove ref
+  count 1`, retried ~7/s until no table binds it), and the next `config
+  interface breakout` is refused by sonic-yang (`Invalid value
+  "PortChannel<n>" in "ports" element`). Every delete the plan makes is
+  preceded by `aclUnbind` of that PortChannel; the plan's breakout effect
+  takes the old ports out of the tables as `-f` does. The FixtureRunner
+  models both (`HeldLAGs`, the breakout's leafref check). Fixture:
+  `sonic-igmp-202511.20261115-6c8eb1cf7/portchannel-del-acl-20261115.txt`.
+- **802.1X (`l2d.py` `Dot1xGuard`, `l2.go` `dot1x`, `build-hostapd.sh`,
+  `docs/drivers/sonic.md` §11.26, built 2026-11-15, verified by hand on an
+  empty cage).** hostapd 2.11 (wired driver, a RADIUS client) built on the
+  switch like mstpd, one per controlled port under l2d; the port closed by
+  the MAC filter's CONFIG_DB `learn_mode drop`; each host hostapd
+  authorises gets a static FDB entry (APPL_DB, ProducerStateTable) and a
+  RETURN in ebtables `DUI_DOT1X`; failures (`CTRL-EVENT-EAP-FAILURE2`) in
+  STATE_DB `DUI_DOT1X_TABLE` -> `Health.Dot1XFailures` -> anomaly 128.
+  No image change. Facts that cost time:
+  - **The EAPOL trap is the macsec feature's** in the image's
+    `copp_cfg.json` and not installed; `COPP_TRAP|dui_eapol` with
+    `always_enabled` installs it, as STP's. A trapped EAPOL frame reaches
+    the port's netdev **tagged with the port's VLAN**.
+  - **ebtables INPUT decides whether hostapd sees EAPOL at all**: the
+    bridge passes a link-local frame to the port's protocol sockets
+    (hostapd's `ETH_P_PAE`) only after NF_BR_LOCAL_IN; a port-wide DROP
+    starved it while tcpdump (an `ETH_P_ALL` tap) still showed the frame.
+    The chain accepts EAPOL first, untagged and 802.1Q.
+  - **hostapd 2.11 built without `CONFIG_DEBUG_SYSLOG` has no `-s`**
+    (usage and exit 1); `logger_syslog` in its config sends its events to
+    syslog.
+  - **The RADIUS secrets never go in l2.json** (collect.py reads it as
+    the login user): `/etc/sonic/disunified/dot1x-radius`, root 0600,
+    rewritten once per bridge start; the bridge keeps the sha in memory
+    only.
+  - **The MAC filter's plan deletes every static FDB entry it does not
+    want**: l2d's admitted hosts (`DUI_DOT1X_TABLE` `authorized`) are
+    wanted while their port is controlled.
+  - **A looped test cage makes hostapd a station of the switch's own
+    MAC** (its own frames come back): l2d ignores the switch's MAC.
+  - **The DX010 had no IPv4 default route in the kernel on 2026-11-15**
+    (FRR: installed, offloaded; `ip route`: none), so the switch reached
+    no IPv4 host off the LAN: the build took a tarball placed beside the
+    script (the hash decides).
+  - **The push (11.0.99)**: `switch.dot1x.status`, `switch.radius.auth.N.
+    {ip,port,secret}`, `switch.port.N.dot1x.mode` (force_authorized on
+    every port by default; auto = Credentials = a single device,
+    multi_host = Multiple Credentials = each device, mac_based with
+    `dot1x.idle_timeout`, force_unauthorized). The Unauthorized VLAN
+    reaches no push. hostapd is built only once a port authenticates.
+  - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt` (the
+    hand runs: hostapd's events and station replies, the guard's writes),
+    `collect-dot1x.txt`.
+- **Hand tests on a switch that several sessions share take a lock on the
+  switch**: write `/tmp/dui-dx010.lock` with your session's name and what
+  you are doing, wait while another session holds it, remove it when done.
+  It covers anything the deployed bridge or another session's test would
+  see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
+  row, an l2d run by hand. Read-only commands need no lock. (The
+  convention lived only in session briefs until 2026-11-15; one session
+  used a different file name.)

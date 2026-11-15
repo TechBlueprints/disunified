@@ -96,10 +96,14 @@ type portFeat struct {
 	medKnown bool
 	med      map[string]string
 	medPol   map[string]string
+	// dot1xAuth is each 802.1X-controlled interface's hosts disunified-l2d
+	// admitted (STATE_DB DUI_DOT1X_TABLE): l2d writes their FDB entries,
+	// and the plan keeps them (§11.26).
+	dot1xAuth map[string][]string
 }
 
 func (f portFeat) clone() portFeat {
-	c := portFeat{known: f.known, medKnown: f.medKnown, iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]string{}, medPol: map[string]string{}}
+	c := portFeat{known: f.known, medKnown: f.medKnown, iso: map[string]bool{}, fdb: map[string]string{}, sched: map[string]string{}, qos: map[string]string{}, med: map[string]string{}, medPol: map[string]string{}, dot1xAuth: f.dot1xAuth}
 	for k := range f.iso {
 		c.iso[k] = true
 	}
@@ -129,6 +133,14 @@ func readPortFeat(db map[string]table, sec map[string]string) portFeat {
 	_, b := sec["appl_fdb"]
 	_, q := sec["cfg_qos"]
 	f.known = a && b && q
+	for k, v := range db["l2_dot1x"] {
+		if n, ok := strings.CutPrefix(k, "DUI_DOT1X_TABLE|"); ok && v["authorized"] != "" {
+			if f.dot1xAuth == nil {
+				f.dot1xAuth = map[string][]string{}
+			}
+			f.dot1xAuth[n] = splitList(strings.ToLower(v["authorized"]))
+		}
+	}
 	if g, ok := db["appl_iso"][isoKey]; ok {
 		for _, p := range splitList(g["MEMBERS"]) {
 			f.iso[p] = true
@@ -252,7 +264,7 @@ func (pl *plan) portFeatures(ds []devicemodel.PortDesired, caps devicemodel.Capa
 		pl.isolation(ds)
 	}
 	if caps.PortSecurity {
-		pl.portSecurity(ds)
+		pl.portSecurity(ds, caps.Dot1X)
 	}
 	if caps.EgressRateLimit {
 		pl.egress(ds)
@@ -303,15 +315,33 @@ func (pl *plan) isolation(ds []devicemodel.PortDesired) {
 	})
 }
 
-func (pl *plan) portSecurity(ds []devicemodel.PortDesired) {
+// dot1xClosed: 802.1X holds the port closed -- a mode that admits hosts
+// one by one, or none -- and the port is no aggregate's member (802.1X
+// authenticates one netdev: an aggregate's members stay open, l2.go).
+func (pl *plan) dot1xClosed(d devicemodel.PortDesired) bool {
+	return d.Dot1X.Closed() && d.LAG == 0 && pl.sim.lagOf(lanesOf(pl.ports[d.Index])[0]) == ""
+}
+
+// portSecurity plans the MAC filter's learn mode and static FDB entries,
+// and 802.1X's closed ports (the same learn mode; their admitted hosts'
+// entries are l2d's, kept here).
+func (pl *plan) portSecurity(ds []devicemodel.PortDesired, dot1x bool) {
 	wantFDB := map[string]string{}
 	owner := map[string]int{}
 	for _, d := range ds {
+		closed := dot1x && pl.dot1xClosed(d)
 		for _, t := range pl.secureTargets(d) {
 			owner[t] = d.Index
 			mode := ""
-			if d.PortSecurity {
+			if d.PortSecurity || closed {
 				mode = learnDrop
+			}
+			if closed {
+				for _, mac := range pl.sim.pf.dot1xAuth[t] {
+					for v := range pl.sim.members[t] {
+						wantFDB[fmt.Sprintf("vlan%d:%s", v, mac)] = t
+					}
+				}
 			}
 			if have := pl.learnMode(t); have != mode && !(mode == "" && have == learnHardware) {
 				pl.setLearnMode(d.Index, t, mode)

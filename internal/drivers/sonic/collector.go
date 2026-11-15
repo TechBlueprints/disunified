@@ -271,6 +271,12 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 	if st != nil && st.pf.medKnown {
 		caps.LLDPMED = true
 	}
+	// 802.1X: hostapd under disunified-l2d (§11.26), the ports closed
+	// through the MAC filter's learn mode, so the collector's sections for
+	// both.
+	if st != nil && !st.stpFeature && c.L2 && st.l2.canDot1X() && st.pf.known {
+		caps.Dot1X = true
+	}
 	// L3 routing needs FRR (l3.go): STATIC_ROUTE reaches the kernel and
 	// the ASIC only through bgpcfgd and zebra.
 	if st != nil && st.bgpOn() {
@@ -328,7 +334,7 @@ var redisSections = []string{
 // asic_bridge_port (each port's bridge port in the chip, §8.15) on
 // 2026-11-14, and appl_intf (orchagent's interface address rows, §11.22)
 // the same day.
-var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm", "asic_bridge_port", "appl_intf"}
+var laterSections = []string{"state_lag_member", "crm", "hwmon", "l2_bridge", "l2_port", "l2_guard", "l2_dhcp_rate", "l2_maclock", "cfg_acl_table", "cfg_acl_rule", "state_acl", "crm_acl", "state_switch_cap", "cfg_l2mc", "appl_iso", "appl_fdb", "cfg_qos", "l2_storm", "asic_bridge_port", "appl_intf", "l2_dot1x"}
 
 func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, error) {
 	sec := sections(out)
@@ -365,6 +371,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	if len(ports) == 0 {
 		return nil, fmt.Errorf("sonic: CONFIG_DB PORT is empty")
 	}
+	dot1xRead(ports, db, parseL2Inst(sec["l2d"]).Conf)
 	byIfname := map[string]int{}
 	for _, p := range ports {
 		for _, n := range p.Interfaces {
