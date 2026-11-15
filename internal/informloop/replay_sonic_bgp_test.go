@@ -1,7 +1,6 @@
 package informloop
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -17,11 +16,7 @@ import (
 // cycle that must write nothing.
 func TestReplaySonicDX010BGP(t *testing.T) {
 	r, _ := newDX010Rig(t, "collect-bgp.txt")
-	r.l.collect(context.Background())
-	r.l.reconcile(context.Background())
-	if got := r.writes(); len(got) != 0 {
-		t.Errorf("the capture under its own push wrote %q", got)
-	}
+	r.settle("the capture under its own push")
 	const load = `docker exec -i bgp sh -c 'umask 077 && f=$(mktemp /tmp/disunified-bgp.XXXXXX) && cat > "$f" && vtysh -f "$f"; rc=$?; rm -f "$f"; exit $rc'`
 	file := readECSPush(t, "system_cfg-dx010-bgp-1-enabled.txt")
 	conf := unificfg.Parse(file).BGP.Config
