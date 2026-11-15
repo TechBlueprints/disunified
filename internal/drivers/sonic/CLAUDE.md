@@ -1130,7 +1130,7 @@ was restarted.
   - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt` (the
     hand runs: hostapd's events and station replies, the guard's writes),
     `collect-dot1x.txt`.
-  - **MAB (`mac_based`, §11.26.7) is l2d's own RADIUS client**: hostapd
+  - **MAB (`mac_based`, §11.26.8) is l2d's own RADIUS client**: hostapd
     2.11's `macaddr_acl` is read only for 802.11 frames, and the wired
     driver never asks about a host that sends no EAPOL. User name and
     password are the MAC upper case without separators (the controller's

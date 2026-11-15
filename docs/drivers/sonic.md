@@ -7395,7 +7395,7 @@ collector (`collect-dot1x.txt`).
   one's dropped through the chip, with a second linked port (the MAC
   filter's open point too, §11.12).
 - **An authentication against the gateway's RADIUS server**: an 802.1X
-  accept and reject through the driver-run hostapd, and MAB's (§11.26.7),
+  accept and reject through the driver-run hostapd, and MAB's (§11.26.8),
   need a RADIUS user on the gateway's server (a site-wide change: Clint's
   call); a cabled supplicant needs a host on a linked port.
 - **The controller's alert for 128**: the count has grown only in the hand
@@ -7405,9 +7405,55 @@ collector (`collect-dot1x.txt`).
   not replayed.
 
 The driver's own path, which this list held until the evening of
-2026-11-15, ran live (§11.26.8), and MAB is built (§11.26.7).
+2026-11-15, ran live (§11.26.7), and MAB is built (§11.26.8).
 
-#### 11.26.7 MAC authentication (MAB), built 2026-11-15
+#### 11.26.7 The driver's path live, 2026-11-15
+
+Through the deployed build (`0.0.0+20261115.f3d3572`, which has §11.26.3),
+from the UI on the DX010's record and cage 31, under the test lock,
+17:51-18:06Z:
+
+| Step | What the switch did |
+|---|---|
+| Global Switch Settings unticked, 802.1X Control on (UniFi Integrated, no Unauthorized VLAN) | l2.json gained `dot1x`: 32 ports `force_authorized`, the gateway as the server, the switch's address as NAS; `/etc/sonic/disunified/dot1x-radius` root 0600; nothing closed, nothing built ("0 of 32 ports changed") |
+| Cage 31 to Credentials | `learn_mode drop` (CONFIG_DB and APPL_DB, saved); `disunified-hostapd-build` started and finished in 46 s, fetching from w1.fi over IPv4 (the default route was there); `COPP_TRAP|dui_eapol`; hostapd on Ethernet120 (`-B -P`, config 0600); `DUI_DOT1X` first in INPUT; STATE_DB `mode auto` |
+| (cage 31 in MAC loopback, one EAPOL-Start from a test MAC) | the driver-run hostapd answered with EAP-Request/Identity; nothing was sent on, so no request reached the gateway |
+| Multiple Credentials | the same hostapd kept (its config does not depend on the mode), `mode multi_host`, still closed |
+| MAC Address | `mode mac_based` (the UI's method shows "Idle Timeout 300 sec"; this build had no MAB) |
+| Always Unauthorized | hostapd stopped, the EAPOL trap removed, the port still `drop` with the chain's DROP |
+| External (the site's existing profile) | l2.json's server became the profile's, the secrets file rewritten (one line) |
+| UniFi Integrated, then 802.1X off | `learn_mode hardware` then the field removed, the chain gone, l2.json back to its size before |
+| Global Switch Settings on; the cage's override put back by REST | no new push: the controller's config version stayed the 802.1X-off one |
+
+The read-back: the controller stored `dot1x_mode force_auth` /
+`dot1x_status authorized` for the force-authorised ports and `unknown` /
+`disabled` for the Credentials port, as §11.26.3 reports them. The RADIUS
+secret was in no journal or syslog line.
+
+Found and fixed (in the same branch as §11.26.8):
+
+- **the secrets file outlived 802.1X going off** (root 0600, the
+  gateway's secret). The driver now removes it whenever no port is
+  controlled; collect.py reports whether it exists (never its content), so
+  a file left by an earlier bridge goes too. Replayed in
+  `TestReplaySonicDX010Dot1X`.
+- **STATE_DB kept `mode force_unauthorized` for the cage** after it left
+  the config (a port that never admitted a host was never re-published).
+  A port leaving the config is now published with an empty mode
+  (`TestL2dMAB`'s force-unauthorised port). The read side takes the mode
+  from l2.json, so the payload was right.
+
+Found, not changed: **the bridge's reply log keeps every push as it
+came**, `switch.radius.auth.N.secret` included (as it keeps the adoption's
+authkey and an SNMP community), in `/host/disunified/inform-log/<name>/`
+(the directory the login user's alone, the file 0644). It is the capture
+source the replay fixtures are scrubbed from; whether it should redact
+secrets is in the register.
+
+After the run the switch held only what the driver itself leaves: hostapd
+in `/usr/local/sbin` (as mstpd is) and its build directory.
+
+#### 11.26.8 MAC authentication (MAB), built 2026-11-15
 
 **What UniFi's RADIUS server expects.** The controller's own help text,
 Settings -> RADIUS Servers -> UniFi Integrated -> Local Credentials, the
@@ -7476,7 +7522,9 @@ them. Measured on cage 31 under `cpu_trap` with the installed l2d paused
 tagged in a hand-made VLAN 3997, 20 of 20. Ethernet120's state in
 Vlan4094's STP instance was `0` (disabled: l2d writes it for a port
 without link, and paused it kept it; running, a looped cage goes to
-blocking, §11.23). **The chip drops a non-forwarding port's frames at
+blocking, §11.23), and StpOrch maps disabled, blocking and listening alike
+to `SAI_STP_PORT_STATE_BLOCKING` (202511 `orchagent/stporch.cpp`,
+`getStpSaiState`). **The chip drops a non-forwarding port's frames at
 ingress before the learn decision**, so `cpu_trap` never sees them; EAPOL
 (its trap) and ARP requests (theirs) get through anyway, which is why
 802.1X itself worked in that loop. VLAN 3997 is in no instance. So MAB
@@ -7514,53 +7562,7 @@ idle timeout and the teardown behave as above. It caught one bug the hand
 run hid: an answer was published to STATE_DB only on the next 2 s pass.
 
 Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host, the
-driver's MAB path live (the deb check of §11.26.8 if it ran).
-
-#### 11.26.8 The driver's path live, 2026-11-15
-
-Through the deployed build (`0.0.0+20261115.f3d3572`, which has §11.26.3),
-from the UI on the DX010's record and cage 31, under the test lock,
-17:51-18:06Z:
-
-| Step | What the switch did |
-|---|---|
-| Global Switch Settings unticked, 802.1X Control on (UniFi Integrated, no Unauthorized VLAN) | l2.json gained `dot1x`: 32 ports `force_authorized`, the gateway as the server, the switch's address as NAS; `/etc/sonic/disunified/dot1x-radius` root 0600; nothing closed, nothing built ("0 of 32 ports changed") |
-| Cage 31 to Credentials | `learn_mode drop` (CONFIG_DB and APPL_DB, saved); `disunified-hostapd-build` started and finished in 46 s, fetching from w1.fi over IPv4 (the default route was there); `COPP_TRAP|dui_eapol`; hostapd on Ethernet120 (`-B -P`, config 0600); `DUI_DOT1X` first in INPUT; STATE_DB `mode auto` |
-| (cage 31 in MAC loopback, one EAPOL-Start from a test MAC) | the driver-run hostapd answered with EAP-Request/Identity; nothing was sent on, so no request reached the gateway |
-| Multiple Credentials | the same hostapd kept (its config does not depend on the mode), `mode multi_host`, still closed |
-| MAC Address | `mode mac_based` (the UI's method shows "Idle Timeout 300 sec"; this build had no MAB) |
-| Always Unauthorized | hostapd stopped, the EAPOL trap removed, the port still `drop` with the chain's DROP |
-| External (the site's existing profile) | l2.json's server became the profile's, the secrets file rewritten (one line) |
-| UniFi Integrated, then 802.1X off | `learn_mode hardware` then the field removed, the chain gone, l2.json back to its size before |
-| Global Switch Settings on; the cage's override put back by REST | no new push: the controller's config version stayed the 802.1X-off one |
-
-The read-back: the controller stored `dot1x_mode force_auth` /
-`dot1x_status authorized` for the force-authorised ports and `unknown` /
-`disabled` for the Credentials port, as §11.26.3 reports them. The RADIUS
-secret was in no journal or syslog line.
-
-Found and fixed (in the same branch as §11.26.7):
-
-- **the secrets file outlived 802.1X going off** (root 0600, the
-  gateway's secret). The driver now removes it whenever no port is
-  controlled; collect.py reports whether it exists (never its content), so
-  a file left by an earlier bridge goes too. Replayed in
-  `TestReplaySonicDX010Dot1X`.
-- **STATE_DB kept `mode force_unauthorized` for the cage** after it left
-  the config (a port that never admitted a host was never re-published).
-  A port leaving the config is now published with an empty mode
-  (`TestL2dMAB`'s force-unauthorised port). The read side takes the mode
-  from l2.json, so the payload was right.
-
-Found, not changed: **the bridge's reply log keeps every push as it
-came**, `switch.radius.auth.N.secret` included (as it keeps the adoption's
-authkey and an SNMP community), in `/host/disunified/inform-log/<name>/`
-(the directory the login user's alone, the file 0644). It is the capture
-source the replay fixtures are scrubbed from; whether it should redact
-secrets is in the register.
-
-After the run the switch held only what the driver itself leaves: hostapd
-in `/usr/local/sbin` (as mstpd is) and its build directory.
+driver's MAB path live (the deb check of §11.26.7 if it ran).
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

@@ -1812,7 +1812,7 @@ COPP_EAPOL = [("trap_ids", "eapol"), ("trap_group", COPP_GROUP_NAME), ("always_e
 # held closed with no authenticator; force_authorized is not in the config.
 DOT1X_AUTH_MODES = ("auto", "multi_host", "mac_based")
 DOT1X_RESTART_EVERY = 10.0  # seconds between starts of one port's hostapd
-# MAC authentication (mac_based, sonic.md 11.26.7): a host that sends no
+# MAC authentication (mac_based, sonic.md 11.26.8): a host that sends no
 # EAPOL is authenticated by its MAC address, which l2d sends to the RADIUS
 # servers itself (hostapd's wired driver has no MAC authentication: its
 # macaddr_acl is consulted only for 802.11 authentication frames).
@@ -1971,7 +1971,7 @@ class Dot1xGuard(object):
         # still authorises them (attach), or the port is gone.
         self.stale = {}
         self.stale_mab = {}  # of those, the ones admitted by their MAC address
-        # MAC authentication (mac_based ports, 11.26.7)
+        # MAC authentication (mac_based ports, 11.26.8)
         self.idle = {}  # interface -> idle timeout (s) of a MAC-authenticated host; 0 = none
         self.mab = {}  # interface -> MACs admitted by their MAC address
         self.mab_socks = {}  # interface -> packet socket reading its trapped frames

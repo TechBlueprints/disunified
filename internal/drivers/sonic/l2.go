@@ -146,7 +146,7 @@ type l2Dot1X struct {
 	Ports   map[string]string `json:"ports"`
 	// IdleTimeout is each mac_based interface's idle timeout in seconds
 	// (the push's dot1x.idle_timeout): a host admitted by its MAC address
-	// and silent that long must authenticate again (§11.26.7).
+	// and silent that long must authenticate again (§11.26.8).
 	IdleTimeout map[string]int `json:"idle_timeout,omitempty"`
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 // mabFixture is the DX010's MAC authentication run by hand
-// (docs/drivers/sonic.md §11.26.7): the requests decoded and the RADIUS
+// (docs/drivers/sonic.md §11.26.8): the requests decoded and the RADIUS
 // server's answers as received.
 const mabFixture = "../../../docs/fixtures/sonic-igmp-202511.20261115-6c8eb1cf7/mab-live.txt"
 
