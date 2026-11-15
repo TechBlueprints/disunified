@@ -86,6 +86,19 @@ class _Stub(object):
 sw = types.ModuleType("swsscommon.swsscommon")
 sw.DBConnector, sw.ProducerStateTable, sw.Table = Conn, PST, Table
 sw.SubscriberStateTable = sw.Select = _Stub
+
+
+class Flusher(object):
+    """fdborch's flush request channel: prints each request."""
+
+    def __init__(self, conn, channel):
+        self.channel = channel
+
+    def send(self, op, data, values):
+        print("FLUSH %s %s %s" % (self.channel, op, data))
+
+
+sw.NotificationProducer = Flusher
 sw.FieldValuePairs = lambda pairs: pairs
 pkg = types.ModuleType("swsscommon")
 pkg.swsscommon = sw
@@ -308,12 +321,15 @@ pump(g)
 state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
 state("chain", CHAINS.get(l2d.DOT1X_CHAIN))
 
-step("second host, single device")
+step("second host, Credentials")
 connected = [e for e in events["run_hostapd"] if "AP-STA-CONNECTED" in e][0]
 OTHER = [e for e in events["run_hostapd"] if "EAP-FAILURE2" in e][0].split()[-1]
 h.send(connected.replace(HOST, OTHER))
 pump(g)
 state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
+h.send("<3>AP-STA-DISCONNECTED " + OTHER)  # one host still holds the port open
+pump(g)
+state("chain", CHAINS.get(l2d.DOT1X_CHAIN))
 
 step("second host, multiple devices")
 CONF["dot1x"]["ports"]["Ethernet120"] = "multi_host"

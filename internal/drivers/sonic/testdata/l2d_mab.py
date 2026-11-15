@@ -88,6 +88,19 @@ class _Stub(object):
 sw = types.ModuleType("swsscommon.swsscommon")
 sw.DBConnector, sw.ProducerStateTable, sw.Table = Conn, PST, Table
 sw.SubscriberStateTable = sw.Select = _Stub
+
+
+class Flusher(object):
+    """fdborch's flush request channel: prints each request."""
+
+    def __init__(self, conn, channel):
+        self.channel = channel
+
+    def send(self, op, data, values):
+        print("FLUSH %s %s %s" % (self.channel, op, data))
+
+
+sw.NotificationProducer = Flusher
 sw.FieldValuePairs = lambda pairs: pairs
 pkg = types.ModuleType("swsscommon")
 pkg.swsscommon = sw

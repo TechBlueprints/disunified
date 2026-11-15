@@ -1163,8 +1163,10 @@ was restarted.
     script (the hash decides).
   - **The push (11.0.99)**: `switch.dot1x.status`, `switch.radius.auth.N.
     {ip,port,secret}`, `switch.port.N.dot1x.mode` (force_authorized on
-    every port by default; auto = Credentials = a single device,
-    multi_host = Multiple Credentials = each device, mac_based with
+    every port by default; auto = Credentials = the port opened to every
+    host by the first that authenticates, multi_host = Multiple
+    Credentials = each host on its own (not captured, §11.26.9),
+    mac_based with
     `dot1x.idle_timeout`, force_unauthorized). The Unauthorized VLAN
     reaches no push. hostapd is built only once a port authenticates.
   - Fixtures: `sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt` (the

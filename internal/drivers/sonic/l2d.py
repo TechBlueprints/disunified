@@ -1761,6 +1761,7 @@ EBTABLES = "/usr/sbin/ebtables"
 ETH_P_ALL = 3
 PACKET_OUTGOING = 4
 LEARN_TRAP = "cpu_trap"
+LEARN_HARDWARE = "hardware"
 MACLOCK_LOG_EVERY = 600.0  # seconds between log lines for one port and source
 
 
@@ -2118,11 +2119,14 @@ class Dot1xGuard(object):
     - AP-STA-CONNECTED <mac>: the host is admitted -- a static FDB entry in
       every VLAN the port carries (APPL_DB FDB_TABLE, as the MAC filter
       writes its allowed MACs) and a RETURN for the source in the kernel
-      chain DUI_DOT1X. The controller's modes, as its UI words them: auto
-      ("Credentials") authenticates a single wired device, so a second host
-      that authenticates while one is admitted is turned away
-      (deauthenticated, logged); multi_host ("Multiple Credentials")
-      authenticates each device individually, so each is admitted;
+      chain DUI_DOT1X. The controller's modes, as a UniFi switch is
+      understood to run them (sonic.md 11.26.9): auto ("Credentials") is
+      port-based -- once one host has authenticated, the port is open to
+      every host (the chain RETURNs the whole port and its learning is
+      hardware in APPL_DB), until the last one logs off or the link drops,
+      when the port closes again and forgets what it learnt; multi_host
+      ("Multiple Credentials") and mac_based authenticate each host on its
+      own, so only the admitted ones pass;
     - AP-STA-DISCONNECTED <mac>: the admission goes;
     - CTRL-EVENT-EAP-FAILURE2 <mac>: a failed attempt, counted for the port
       (STATE_DB DUI_DOT1X_TABLE|<port> failures, since boot; the anomaly 128
@@ -2162,7 +2166,9 @@ class Dot1xGuard(object):
         self.idle = {}  # interface -> idle timeout (s) of a MAC-authenticated host; 0 = none
         self.mab = {}  # interface -> MACs admitted by their MAC address
         self.mab_socks = {}  # interface -> packet socket reading its trapped frames
-        self.trapped = set()  # interfaces this daemon switched to cpu_trap
+        self.learn = {}  # interface -> the learn mode this daemon set in APPL_DB (cpu_trap, or hardware for an open auto port)
+        self.auth_ports, self.mab_ports = set(), set()
+        self.flusher = None
         self.seen = {}  # (interface, mac) -> last frame seen from a MAC-authenticated host
         self.quiet = {}  # (interface, mac) -> until when a refused or unanswered source is left alone
         self.pending = {}  # RADIUS identifier -> the request in flight
@@ -2247,11 +2253,15 @@ class Dot1xGuard(object):
             except (TypeError, ValueError):
                 pass
         mab = {p for p, m in want.items() if m == "mac_based" and servers}
-        # A port that stops authenticating by MAC gets its CONFIG_DB learn
-        # mode back first (the kernel's drop is still there), then loses
-        # its MAC-authenticated hosts.
-        for port in sorted(self.trapped - mab):
-            self.untrap(port)
+        # A port that stops authenticating by MAC, or stops being an open
+        # Credentials port, gets its CONFIG_DB learn mode back first (the
+        # kernel's drop is still there), then loses its hosts.
+        self.auth_ports = {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}
+        self.mab_ports = mab
+        # a port leaving the config: its row keeps its count, not its mode
+        self.dirty |= set(self.want) - set(want)
+        self.want = {p: m for p, m in self.want.items() if p in want}
+        self.learn_sync(close_only=True)
         for port in sorted(set(self.mab) - mab):
             for mac in sorted(self.mab.get(port, ())):
                 self.revoke(port, mac, "no longer authenticated by MAC address")
@@ -2261,8 +2271,6 @@ class Dot1xGuard(object):
             self.stop(port)
         for port in sorted(set(self.admitted) - set(want)):
             self.revoke_all(port, "no longer controlled")
-        # a port leaving the config: its row keeps its count, not its mode
-        self.dirty |= set(self.want) - set(want)
         self.want = want
         for port in sorted(set(self.stale) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
             self.drop_stale(port, set())
@@ -2277,10 +2285,10 @@ class Dot1xGuard(object):
             self.ensure(port)
         # MAC authentication: an unknown source's frames go to the CPU
         # (cpu_trap, MAC locking's mode; the chain above drops them in the
-        # kernel), where the first one starts a request.
+        # kernel), where the first one starts a request. An open
+        # Credentials port learns in hardware. Only with the chain in place.
         if self.written is not None:
-            for port in sorted(mab):
-                self.trap(port)
+            self.learn_sync()
         self.sync_mab_socks(mab)
         self.mab_tick(time.time())
         self.publish()
@@ -2290,18 +2298,55 @@ class Dot1xGuard(object):
     def configured_mode(self, port):
         return self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
 
-    def trap(self, port):
-        if self.db.hgetall(self.db.appl, "PORT_TABLE:" + port).get("learn_mode") != LEARN_TRAP:
-            put(self.db.ifport_pst, port, [("learn_mode", LEARN_TRAP)])
-            if port not in self.trapped:
-                log("802.1X: %s authenticates by MAC address (unknown sources trapped to the CPU)" % port)
-        self.trapped.add(port)
-
-    def untrap(self, port):
+    def learn_wanted(self):
+        """The learn mode each port should have in APPL_DB: cpu_trap where
+        hosts authenticate by MAC address, hardware on a Credentials port
+        some host has opened; a port MAC locking watches is its."""
         maclock = getattr(self.l2d, "maclock", None)
-        if not (maclock and port in maclock.want) and self.db.known(port):
-            put(self.db.ifport_pst, port, [("learn_mode", self.configured_mode(port))])
-        self.trapped.discard(port)
+        out = {}
+        for p in self.auth_ports:
+            if maclock and p in maclock.want:
+                continue
+            if p in self.mab_ports:
+                out[p] = LEARN_TRAP
+            elif self.want.get(p) == "auto" and self.admitted.get(p):
+                out[p] = LEARN_HARDWARE
+        return out
+
+    def learn_sync(self, close_only=False):
+        want = self.learn_wanted()
+        for p in sorted(self.learn):
+            if want.get(p) == self.learn[p]:
+                continue
+            prev = self.learn.pop(p)
+            maclock = getattr(self.l2d, "maclock", None)
+            if not (maclock and p in maclock.want) and self.db.known(p):
+                put(self.db.ifport_pst, p, [("learn_mode", self.configured_mode(p))])
+            if prev == LEARN_HARDWARE:
+                self.flush(p)  # what it learnt while open goes with it
+                log("802.1X: %s closed again (no host authenticated); its learnt addresses flushed" % p)
+        if close_only:
+            return
+        for p, mode in sorted(want.items()):
+            if self.db.hgetall(self.db.appl, "PORT_TABLE:" + p).get("learn_mode") != mode:
+                put(self.db.ifport_pst, p, [("learn_mode", mode)])
+            if self.learn.get(p) != mode:
+                self.learn[p] = mode
+                if mode == LEARN_TRAP:
+                    log("802.1X: %s authenticates by MAC address (unknown sources trapped to the CPU)" % p)
+                else:
+                    log("802.1X: %s open to every host (Credentials: %s authenticated)" %
+                        (p, ",".join(sorted(self.admitted.get(p, ())))))
+
+    def flush(self, port):
+        """The port's dynamic FDB entries, through fdborch's flush request
+        (op PORT: dynamic entries only; the static ones stay)."""
+        try:
+            if self.flusher is None:
+                self.flusher = sw.NotificationProducer(self.db.appl, "FLUSHFDBREQUEST")
+            self.flusher.send("PORT", port, sw.FieldValuePairs([]))
+        except Exception as e:  # the next aging pass forgets them anyway
+            log("802.1X: FDB flush of %s failed: %s" % (port, e), syslog.LOG_WARNING)
 
     def sync_mab_socks(self, ports):
         for port in list(self.mab_socks):
@@ -2612,12 +2657,6 @@ class Dot1xGuard(object):
         if mac == self.own:
             return  # the switch's own frames, looped back to it
         macs = self.admitted.setdefault(port, set())
-        if self.want.get(port) == "auto" and macs and mac not in macs:
-            # a single wired device per port: the first one holds it
-            log("802.1X: %s authenticated on %s, which admits a single device and has %s; not admitted" %
-                (mac, port, ",".join(sorted(macs))), syslog.LOG_WARNING)
-            self.ctrl(port, "DEAUTHENTICATE " + mac)
-            return
         new = mac not in macs
         macs.add(mac)
         keys = self.fdb.setdefault(port, set())
@@ -2629,6 +2668,8 @@ class Dot1xGuard(object):
         self.dirty.add(port)
         if new:
             log("802.1X: %s authorised on %s%s" % (mac, port, " " + how if how else ""))
+        if self.written is not None:
+            self.learn_sync()  # a Credentials port opens with its first host
 
     def revoke(self, port, mac, why):
         macs = self.admitted.get(port, set())
@@ -2642,6 +2683,7 @@ class Dot1xGuard(object):
             if key in keys:
                 self.fdb_pst._del(key)
                 keys.discard(key)
+        self.learn_sync(close_only=True)  # a Credentials port closes with its last host
         self.write_chain(self.rules())
         self.dirty.add(port)
         log("802.1X: %s no longer authorised on %s (%s)" % (mac, port, why))
@@ -2658,6 +2700,9 @@ class Dot1xGuard(object):
         out = []
         for port in sorted(self.want):
             out += eapol_rules(port)
+            if self.want[port] == "auto" and port in self.auth_ports and self.admitted.get(port):
+                out.append(["-i", port, "-j", "RETURN"])  # opened by a host: every host passes
+                continue
             for mac in sorted(self.admitted.get(port, ())):
                 out.append(["-i", port, "-s", mac, "-j", "RETURN"])
             out.append(["-i", port, "-j", "DROP"])
@@ -2761,8 +2806,8 @@ class Dot1xGuard(object):
         """Every authenticator stopped, every admission removed, the chain and
         the trap gone; the ports stay closed (CONFIG_DB keeps learn_mode drop).
         The counts stay: they are since boot."""
-        for port in sorted(self.trapped):
-            self.untrap(port)
+        self.auth_ports, self.mab_ports = set(), set()
+        self.learn_sync(close_only=True)
         for s in list(self.mab_socks.values()) + list(self.rsocks.values()):
             s.close()
         self.mab_socks, self.rsocks, self.pending, self.inflight = {}, {}, {}, {}

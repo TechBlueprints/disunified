@@ -106,11 +106,14 @@ const (
 	Dot1XForceAuthorized Dot1XMode = "force_authorized"
 	// Dot1XForceUnauthorized: the port forwards nothing from any host.
 	Dot1XForceUnauthorized Dot1XMode = "force_unauthorized"
-	// Dot1XAuto: each host is admitted once it authenticates (EAP through
-	// the RADIUS servers); the others are not.
+	// Dot1XAuto (UniFi's Credentials): port-based -- once one host has
+	// authenticated (EAP through the RADIUS servers), the port is open to
+	// every host behind it, until the last authenticated one is gone (a
+	// UniFi switch runs it as multi-host, docs/drivers/sonic.md §11.26.9).
 	Dot1XAuto Dot1XMode = "auto"
-	// Dot1XMultiHost: the first host to authenticate opens the port for
-	// every host behind it.
+	// Dot1XMultiHost (UniFi's Multiple Credentials): each host is admitted
+	// once it authenticates; the others are not (multi-sessions on a UniFi
+	// switch).
 	Dot1XMultiHost Dot1XMode = "multi_host"
 	// Dot1XMACBased: each host is admitted by its MAC address, which the
 	// RADIUS servers accept or refuse.

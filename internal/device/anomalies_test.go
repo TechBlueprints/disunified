@@ -308,3 +308,30 @@ func TestLastPayloadKeepsTheSentAnomalies(t *testing.T) {
 		t.Errorf("a second build: anomalies %v, want 0 (the history has moved on)", a)
 	}
 }
+
+// dot1x_mode and dot1x_status per mode: the captured off and
+// force-authorised values, the rest as docs/drivers/sonic.md §11.26.9
+// gives them (not captured).
+func TestDot1XReport(t *testing.T) {
+	host := []string{"02:00:00:00:00:03"}
+	for _, tc := range []struct {
+		mode       devicemodel.Dot1XMode
+		hosts      []string
+		wantMode   string
+		wantStatus string
+	}{
+		{"", nil, "unknown", "disabled"},
+		{devicemodel.Dot1XForceAuthorized, nil, "force_auth", "authorized"},
+		{devicemodel.Dot1XForceUnauthorized, nil, "force_unauth", "unauthorized"},
+		{devicemodel.Dot1XAuto, nil, "auto", "unauthorized"},
+		{devicemodel.Dot1XAuto, host, "auto", "authorized"},
+		{devicemodel.Dot1XMultiHost, host, "auto", "authorized"},
+		{devicemodel.Dot1XMACBased, nil, "mac_based", "unauthorized"},
+		{devicemodel.Dot1XMACBased, host, "mac_based", "authorized"},
+	} {
+		m, s := dot1xReport(devicemodel.Port{Dot1X: tc.mode, Dot1XAuthorized: tc.hosts})
+		if m != tc.wantMode || s != tc.wantStatus {
+			t.Errorf("%q with %d hosts: %s/%s, want %s/%s", tc.mode, len(tc.hosts), m, s, tc.wantMode, tc.wantStatus)
+		}
+	}
+}
