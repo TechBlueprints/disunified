@@ -6741,9 +6741,10 @@ authenticates:
   `eap_reauth_period=3600`, the servers and secrets), events read from its
   control socket (`ATTACH`): `AP-STA-CONNECTED` admits the host (a static
   FDB entry in every VLAN the port carries, through ProducerStateTable as
-  the MAC filter's, and a RETURN in the chain; with `multi_host` the
-  first admission opens the port: APPL_DB learning `hardware`, the whole
-  port RETURNed), `AP-STA-DISCONNECTED` removes it, and
+  the MAC filter's, and a RETURN in the chain) -- on an `auto` port only
+  while no other host is admitted (a second one is deauthenticated and
+  logged), on a `multi_host` port every one --, `AP-STA-DISCONNECTED`
+  removes it, and
   `CTRL-EVENT-EAP-FAILURE2` counts a failed attempt
   (`DUI_DOT1X_TABLE|<port>` `failures`, since boot, carried over a
   restart, and `last_failed_mac`);
@@ -6763,7 +6764,58 @@ force-authorised port (the values the site's own switches report) and the
 off values otherwise: what a UniFi switch reports for the other modes is
 not captured.
 
-#### 11.25.4 Live, by hand (2026-11-15)
+#### 11.25.4 The controller's push (Network 11.0.99, captured 2026-11-15)
+
+With the DX010's bridge claiming DOT1X (a test deb from this work,
+`0.0.0+20261115.dot1x`, installed for the capture and replaced by the
+deployed build after it), the controller offered 802.1X in two places,
+and every setting below was restored afterwards:
+
+- **the device** (Settings -> Advanced, with "Global Switch Settings"
+  unticked so the device takes its own): "802.1X Control", with "RADIUS
+  Server" UniFi Integrated or External (a RADIUS profile) and
+  "Unauthorized VLAN" (a network). The site-wide switch is the
+  `global_switch` setting's `dot1x_portctrl_enabled`, which was not
+  touched. On the record: `dot1x_portctrl_enabled`, `radiusprofile_id`,
+  `dot1x_fallback_networkconf_id`. The REST API refuses a direct change of
+  the first (`api.err.Dot1xControlChangeNotAllowed`); the UI's steps undo
+  it. `radiusprofile_id` stays set (to the Default profile) once written;
+  it does nothing with 802.1X off;
+- **each port** (Port Manager -> port -> Advanced: Manual -> Port Security
+  -> "Client Authentication (802.1X)"), with a Method. The UI's own text:
+  it "authenticates either a single wired device or each device
+  individually using 802.1X credentials. Devices that do not support
+  802.1X can be authenticated using their MAC address." On the port
+  override: `dot1x_ctrl`, `dot1x_idle_timeout` (300).
+
+The pushes (`controller-11.0.99/system_cfg-dx010-dot1x-*.txt`, scrubbed):
+
+| UI | Push |
+|---|---|
+| 802.1X Control on (UniFi Integrated) | `switch.dot1x.status=enabled`, `switch.dot1x.dynvlan=disabled`, `switch.radius.auth.1.ip` (the gateway), `.port=1812`, `.secret`, and `switch.port.N.dot1x.mode=force_authorized` on every port |
+| Method Credentials | `switch.port.N.dot1x.mode=auto` |
+| Method Multiple Credentials | `multi_host` |
+| Method MAC Address | `mac_based`, with `switch.port.N.dot1x.idle_timeout=300` |
+| Method Always Unauthorized | `force_unauthorized` |
+| RADIUS Server External (a profile) | the profile's server in the same `switch.radius.auth.1.*` keys |
+| Unauthorized VLAN | **no key**: stored on the device record only; no push followed, nor after a `force-provision` |
+| 802.1X Control off (Global Switch Settings) | `switch.dot1x.status=disabled` alone |
+
+`unificfg` parses them (`Config.Dot1X`, `Port.Dot1XMode`,
+`Dot1XIdleTimeout`), the loop maps them to `DeviceDesired.Dot1X` and each
+`PortDesired.Dot1X` while 802.1X is on, and
+`TestReplaySonicDX010Dot1X` replays all seven on the capture from the new
+collector: force-authorised ports stay open and build nothing, each method
+closes its cage and reaches l2d, hostapd is built once, External changes
+the server, off opens every port and empties l2d's section, and nothing is
+logged as unsupported or carries the secret. The scrubber replaces
+`switch.radius.auth.N.secret` and `resolv.host.N.name` since.
+
+The two Credentials modes follow the UI's text: `auto` admits a single
+device per port (a second that authenticates is turned away), `multi_host`
+admits each device that authenticates.
+
+#### 11.25.5 Live, by hand (2026-11-15)
 
 Image `igmp-202511.20261115-6c8eb1cf7`, empty cage 31 (Ethernet120, `ce30`)
 in MAC loopback, the installed l2d paused for each window, under the test
@@ -6800,18 +6852,24 @@ back (`sonic-igmp-202511.20261115-6c8eb1cf7/dot1x-live.txt`):
 against l2d; `dot1x_test.go` tests the driver on a capture from the new
 collector (`collect-dot1x.txt`).
 
-#### 11.25.5 Not built, and not exercised
+#### 11.25.6 Not built, and not exercised
 
 - **MAB (`mac_based`)**: l2d runs hostapd on such a port, so an 802.1X
   host authenticates, but nothing yet sends a host's MAC to the RADIUS
-  servers. Building it is a RADIUS Access-Request from l2d on a frame
-  from an unknown source (the port at `cpu_trap`, as MAC locking's), and
-  needs UniFi's user-name format, which is not captured. In the loopback
-  test unknown-source frames were dropped under `cpu_trap` (6 `RPORTD`),
-  unlike §11.18.2's run in a tagged VLAN: to be probed first.
-- **The fallback VLAN and a RADIUS-assigned VLAN**: a port move per host,
-  not built (and a native VLAN move is §11.18.2's hazard on an image
-  without sonic-swss 0004).
+  servers, and the push's `idle_timeout` is not used. Building it is a
+  RADIUS Access-Request from l2d on a frame from an unknown source (the
+  port at `cpu_trap`, as MAC locking's), and needs the user name and
+  password UniFi's RADIUS server expects for a MAC, which no capture
+  shows. In the loopback test unknown-source frames were dropped under
+  `cpu_trap` (6 `RPORTD`), unlike §11.18.2's run in a tagged VLAN: to be
+  probed first.
+- **The Unauthorized VLAN and a RADIUS-assigned VLAN**: the first reaches
+  no push on 11.0.99 (above), the second is `dynvlan`, disabled in every
+  capture; neither is built.
+- **The live driver path**: the capture deb ran the claim and the parser's
+  predecessor only (it logged the keys as unsupported); the deployed
+  build has none of this, so the bridge writing l2d's 802.1X config on the
+  switch has run in the fixtures and the replay, not live.
 - **Forwarding**: an admitted host's frames forwarded and an unadmitted
   one's dropped through the chip, with a second linked port (the MAC
   filter's open point too, §11.12).

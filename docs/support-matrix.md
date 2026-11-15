@@ -446,7 +446,11 @@ with the MAC filter's `learn_mode drop`, each authenticated host admitted
 with a static FDB entry and a kernel RETURN, EAPOL trapped with an
 `always_enabled` CoPP row; failed attempts counted per port into
 `Health.Dot1XFailures`, whose growth is anomaly 128. No image change
-([`drivers/sonic.md`](drivers/sonic.md) §11.25).
+([`drivers/sonic.md`](drivers/sonic.md) §11.25). **The controller's push
+captured on Network 11.0.99** from the UI on the DX010's empty cages (the
+device's 802.1X Control, UniFi Integrated and External RADIUS, each of the
+four methods, off), parsed and replayed
+(`informloop/replay_sonic_dot1x_test.go`).
 
 **Verified by hand on the DX010** (empty cage 31 in MAC loopback, a test
 RADIUS server on the switch, a scripted EAP-MD5 supplicant with a test MAC):
@@ -459,9 +463,9 @@ file, the admitted hosts' FDB entries kept, the read-back.
 
 | Gap | What the PR needs |
 |---|---|
-| The controller's 802.1X push (RADIUS profile, per-port control, fallback VLAN) captured, parsed and replayed | the DX010's bridge claiming DOT1X and 802.1X Control turned on for it in UniFi |
-| MAC-based authentication (MAB) | UniFi's MAB user-name format captured; a RADIUS request from l2d on an unknown source (the port at `cpu_trap`); the loopback dropped such frames, to be probed |
-| Fallback VLAN, RADIUS-assigned VLAN | not built: a per-host port move |
+| The driver's own 802.1X path live (the push applied, l2d configured, hostapd built by the driver) | this branch deployed, a method set on an empty cage |
+| MAC-based authentication (MAB) | the user name and password UniFi's RADIUS server expects for a MAC; a RADIUS request from l2d on an unknown source (the port at `cpu_trap`); the loopback dropped such frames, to be probed |
+| Unauthorized VLAN, RADIUS-assigned VLAN | the first reaches no push on 11.0.99; the second (`dynvlan`) is disabled in every capture; neither built |
 | Forwarding: an admitted host's frames through the chip, an unadmitted one's dropped | two linked ports (rack day) |
 | A cabled supplicant against the gateway's RADIUS server; the controller's 128 alert | a host on a linked port, the bridge deployed |
 | 802.1X on an aggregate | not offered: an aggregate's members stay open |
