@@ -61,7 +61,7 @@ type plan struct {
 	// image with l2mcd running and without the kit's sonic-swss 0004
 	// (§8.15).
 	bridgeWait bool
-	appl           []applOp // APPL_DB writes, run together at the end (portfeat.go)
+	appl       []applOp // APPL_DB writes, run together at the end (portfeat.go)
 
 	// The lane scope (ApplyLanes, lanes.go): ports are one cage's lanes
 	// keyed by lane number, aggregates and mirror sessions are numbered
