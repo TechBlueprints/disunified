@@ -81,7 +81,7 @@ func TestL2dDot1X(t *testing.T) {
 	ev := "captured events"
 	if !has(ev, "PST FDB_TABLE Vlan4094:02:00:00:00:00:03 port=Ethernet120 type=static") ||
 		!has(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -s 02:00:00:00:00:03 -j RETURN") ||
-		!has(ev, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "auto"}`) {
+		!has(ev, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) {
 		t.Errorf("the authorised host admitted, the refused one counted once:\n%s", show(ev))
 	}
 	if strings.Contains(show(ev), "02:00:00:00:00:02") {
@@ -90,23 +90,23 @@ func TestL2dDot1X(t *testing.T) {
 
 	one := "second host, single device"
 	if !has(one, "CTRL DEAUTHENTICATE 02:00:00:00:00:01") || strings.Contains(show(one), "PST FDB_TABLE") ||
-		!has(one, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "auto"}`) {
+		!has(one, `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) {
 		t.Errorf("auto (Credentials) admits a single device; a second one is turned away:\n%s", show(one))
 	}
 	many := "second host, multiple devices"
 	if !has(many, "PST FDB_TABLE Vlan4094:02:00:00:00:00:01 port=Ethernet120 type=static") ||
-		!has(many, `STATE row {"authorized": "02:00:00:00:00:01,02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "multi_host"}`) ||
+		!has(many, `STATE row {"authorized": "02:00:00:00:00:01,02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "multi_host"}`) ||
 		strings.Contains(show(many), "learn_mode") {
 		t.Errorf("multi_host (Multiple Credentials) admits each device on its own, the port stays closed to the rest:\n%s", show(many))
 	}
 
 	if strings.Contains(show("restart"), "PSTDEL") || strings.Contains(show("restart"), "/hostapd -B") ||
-		!has("restart", `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "auto"}`) {
+		!has("restart", `STATE row {"authorized": "02:00:00:00:00:03", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) {
 		t.Errorf("restart: the running hostapd is adopted, its authorised host kept without a gap, the count carried on:\n%s", show("restart"))
 	}
 
 	if !has("logoff", "PSTDEL FDB_TABLE Vlan4094:02:00:00:00:00:03") ||
-		!has("logoff", `STATE row {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": "auto"}`) ||
+		!has("logoff", `STATE row {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": "auto"}`) ||
 		strings.Contains(show("logoff"), "-s 02:00:00:00:00:03") {
 		t.Errorf("logoff: the admission goes, from the ASIC, the kernel and STATE_DB:\n%s", show("logoff"))
 	}
@@ -114,7 +114,7 @@ func TestL2dDot1X(t *testing.T) {
 	u := "unwatched"
 	if !has(u, "KILL hostapd Ethernet120") || !has(u, "STATE chain null") || !has(u, "STATE input []") ||
 		!has(u, "STATE copp null") || !has(u, "STATE hostapd []") ||
-		!has(u, `STATE row {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mode": ""}`) {
+		!has(u, `STATE row {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:00:01", "mab": "", "mode": ""}`) {
 		t.Errorf("unwatched: authenticator, chain and trap gone, the count kept:\n%s", show(u))
 	}
 }

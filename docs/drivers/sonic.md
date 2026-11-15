@@ -7585,29 +7585,192 @@ collector (`collect-dot1x.txt`).
 
 #### 11.26.6 Not built, and not exercised
 
-- **MAB (`mac_based`)**: l2d runs hostapd on such a port, so an 802.1X
-  host authenticates, but nothing yet sends a host's MAC to the RADIUS
-  servers, and the push's `idle_timeout` is not used. Building it is a
-  RADIUS Access-Request from l2d on a frame from an unknown source (the
-  port at `cpu_trap`, as MAC locking's), and needs the user name and
-  password UniFi's RADIUS server expects for a MAC, which no capture
-  shows. In the loopback test unknown-source frames were dropped under
-  `cpu_trap` (6 `RPORTD`), unlike §11.18.2's run in a tagged VLAN: to be
-  probed first.
 - **The Unauthorized VLAN and a RADIUS-assigned VLAN**: the first reaches
   no push on 11.0.99 (above), the second is `dynvlan`, disabled in every
   capture; neither is built.
-- **The live driver path**: the capture deb ran the claim and the parser's
-  predecessor only (it logged the keys as unsupported); the deployed
-  build has none of this, so the bridge writing l2d's 802.1X config on the
-  switch has run in the fixtures and the replay, not live.
 - **Forwarding**: an admitted host's frames forwarded and an unadmitted
   one's dropped through the chip, with a second linked port (the MAC
   filter's open point too, §11.12).
-- **A cabled supplicant and the gateway's RADIUS server**: wpa_supplicant
-  or a real client on a linked port, against the controller's RADIUS
-  profile.
-- **The controller's alert for 128**, which needs the bridge deployed.
+- **An authentication against the gateway's RADIUS server**: an 802.1X
+  accept and reject through the driver-run hostapd, and MAB's (§11.26.8),
+  need a RADIUS user on the gateway's server (a site-wide change: Clint's
+  call); a cabled supplicant needs a host on a linked port.
+- **The controller's alert for 128**: the count has grown only in the hand
+  runs, with the bridge stopped, so no inform has carried it yet.
+- **MAB's adoption over an l2d restart** (the STATE_DB row's `mab` list,
+  re-admitted when the restarted l2d attaches to the port's hostapd): built,
+  not replayed.
+
+The driver's own path, which this list held until the evening of
+2026-11-15, ran live (§11.26.7), and MAB is built (§11.26.8).
+
+#### 11.26.7 The driver's path live, 2026-11-15
+
+Through the deployed build (`0.0.0+20261115.f3d3572`, which has §11.26.3),
+from the UI on the DX010's record and cage 31, under the test lock,
+17:51-18:06Z:
+
+| Step | What the switch did |
+|---|---|
+| Global Switch Settings unticked, 802.1X Control on (UniFi Integrated, no Unauthorized VLAN) | l2.json gained `dot1x`: 32 ports `force_authorized`, the gateway as the server, the switch's address as NAS; `/etc/sonic/disunified/dot1x-radius` root 0600; nothing closed, nothing built ("0 of 32 ports changed") |
+| Cage 31 to Credentials | `learn_mode drop` (CONFIG_DB and APPL_DB, saved); `disunified-hostapd-build` started and finished in 46 s, fetching from w1.fi over IPv4 (the default route was there); `COPP_TRAP|dui_eapol`; hostapd on Ethernet120 (`-B -P`, config 0600); `DUI_DOT1X` first in INPUT; STATE_DB `mode auto` |
+| (cage 31 in MAC loopback, one EAPOL-Start from a test MAC) | the driver-run hostapd answered with EAP-Request/Identity; nothing was sent on, so no request reached the gateway |
+| Multiple Credentials | the same hostapd kept (its config does not depend on the mode), `mode multi_host`, still closed |
+| MAC Address | `mode mac_based` (the UI's method shows "Idle Timeout 300 sec"; this build had no MAB) |
+| Always Unauthorized | hostapd stopped, the EAPOL trap removed, the port still `drop` with the chain's DROP |
+| External (the site's existing profile) | l2.json's server became the profile's, the secrets file rewritten (one line) |
+| UniFi Integrated, then 802.1X off | `learn_mode hardware` then the field removed, the chain gone, l2.json back to its size before |
+| Global Switch Settings on; the cage's override put back by REST | no new push: the controller's config version stayed the 802.1X-off one |
+
+The read-back: the controller stored `dot1x_mode force_auth` /
+`dot1x_status authorized` for the force-authorised ports and `unknown` /
+`disabled` for the Credentials port, as §11.26.3 reports them. The RADIUS
+secret was in no journal or syslog line.
+
+Found and fixed (in the same branch as §11.26.8):
+
+- **the secrets file outlived 802.1X going off** (root 0600, the
+  gateway's secret). The driver now removes it whenever no port is
+  controlled; collect.py reports whether it exists (never its content), so
+  a file left by an earlier bridge goes too. Replayed in
+  `TestReplaySonicDX010Dot1X`.
+- **STATE_DB kept `mode force_unauthorized` for the cage** after it left
+  the config (a port that never admitted a host was never re-published).
+  A port leaving the config is now published with an empty mode
+  (`TestL2dMAB`'s force-unauthorised port). The read side takes the mode
+  from l2.json, so the payload was right.
+
+Found, not changed: **the bridge's reply log keeps every push as it
+came**, `switch.radius.auth.N.secret` included (as it keeps the adoption's
+authkey and an SNMP community), in `/host/disunified/inform-log/<name>/`
+(the directory the login user's alone, the file 0644). It is the capture
+source the replay fixtures are scrubbed from; whether it should redact
+secrets is in the register.
+
+After the run the switch held only what the driver itself leaves: hostapd
+in `/usr/local/sbin` (as mstpd is) and its build directory.
+
+#### 11.26.8 MAC authentication (MAB), built 2026-11-15
+
+**What UniFi's RADIUS server expects.** The controller's own help text,
+Settings -> RADIUS Servers -> UniFi Integrated -> Local Credentials, the
+(i) beside Username (Network 11.0.99): MAC addresses go in as both the
+user name and the password, and "For 802.1X, addresses must be entered
+upper case without separators" (WiFi has a format setting of its own). So
+a host `02:00:00:00:0a:01` is user `020000000A01` with password
+`020000000A01`. What a UniFi switch puts in the rest of its request is not
+captured: no switch on the site runs a MAC Address port, and making one do
+so is a production change.
+
+**Why not hostapd.** hostapd 2.11's `macaddr_acl=2` (RADIUS MAC ACL) is
+consulted only on 802.11 authentication and association frames
+(`ieee802_11.c`, `hostapd_allowed_address`). The wired driver turns an
+EAPOL frame, or a DHCP broadcast, into a new station
+(`driver_wired.c` `handle_data` / `handle_dhcp` -> `EVENT_NEW_STA` ->
+`hostapd_event_new_sta`), which only starts 802.1X: a host that sends no
+EAPOL is never asked about. So l2d sends the request itself.
+
+**As built** (`l2d.py`, `Dot1xGuard`; the driver passes the push's
+`dot1x.idle_timeout` as l2.json's `dot1x.idle_timeout` per interface):
+
+- a `mac_based` port keeps its hostapd (an 802.1X host still
+  authenticates there), and l2d sets its learning to `cpu_trap` in APPL_DB
+  once the `DUI_DOT1X` chain drops the port's frames in the kernel, as MAC
+  locking does (§11.18.2; CONFIG_DB keeps `drop`), and reads the port's
+  netdev on a packet socket;
+- the first frame from an unknown unicast source (not the switch, not
+  EAPOL, not admitted, not waiting on an answer, not quiet) sends an
+  Access-Request: User-Name and User-Password the MAC as above (the
+  password hidden as RFC 2865 hides it), Service-Type Call-Check (10),
+  NAS-IP-Address (the switch's management address), NAS-Identifier
+  `disunified` (as hostapd's), NAS-Port-Type Ethernet (15), NAS-Port-Id
+  the interface, Calling-Station-Id the host and Called-Station-Id the
+  switch in RFC 3580's `AA-BB-CC-DD-EE-FF` form, and a
+  Message-Authenticator (RFC 3579), as hostapd sends one for its own MAC
+  ACL. Sent again after 3 s, twice per server, then the next server; at
+  most 32 in flight;
+- an answer counts only when its Response Authenticator and its
+  Message-Authenticator both verify with the server's secret for that
+  request (an unsigned or forged one is logged and ignored);
+- **Access-Accept**: the host is admitted as an 802.1X host is (a static
+  FDB entry in every VLAN the port carries, a RETURN in the chain), and the
+  STATE_DB row lists it in `mab` too; **Access-Reject**: a failure counted
+  (`failures`, `last_failed_mac`: anomaly 128, as an EAP failure is) and
+  the source left alone for 60 s (hostapd's quiet period); **no answer**:
+  the source is left alone for 60 s, not counted, logged once a minute;
+- **the idle timeout**: an admitted host whose frames the CPU has not seen
+  for that long loses its admission, and its next frame (unknown again,
+  so trapped) authenticates it again. The CPU sees an admitted host's
+  frames only where something copies them there: in a VLAN where the
+  switch has an address, its ARP requests (ARP's trap); in a VLAN without
+  one, nothing, so such a host authenticates again every idle period and
+  loses the one frame that starts it. What a UniFi switch counts as idle
+  is not captured;
+- a port leaving `mac_based` gets its CONFIG_DB learn mode back (unless
+  MAC locking traps it) before the chain goes, and loses its
+  MAC-authenticated hosts.
+
+**The probe: why the first 802.1X run's loop dropped unknown sources.** The
+Vlan4094 loopback of §11.26.5 dropped unicast and broadcast frames from an
+unknown source (6 `RPORTD`), while §11.18.2's run in a tagged VLAN delivered
+them. Measured on cage 31 under `cpu_trap` with the installed l2d paused
+(`mab-live.txt`, `probe`): frames of an ethertype no protocol trap matches
+(0x88B5), untagged in Vlan4094, 0 of 20 reached the netdev (`RPORTD` +20);
+tagged in a hand-made VLAN 3997, 20 of 20. Ethernet120's state in
+Vlan4094's STP instance was `0` (disabled: l2d writes it for a port
+without link, and paused it kept it; running, a looped cage goes to
+blocking, §11.23), and StpOrch maps disabled, blocking and listening alike
+to `SAI_STP_PORT_STATE_BLOCKING` (202511 `orchagent/stporch.cpp`,
+`getStpSaiState`). **The chip drops a non-forwarding port's frames at
+ingress before the learn decision**, so `cpu_trap` never sees them; EAPOL
+(its trap) and ARP requests (theirs) get through anyway, which is why
+802.1X itself worked in that loop. VLAN 3997 is in no instance. So MAB
+sees a host's first frame once the port forwards in that VLAN: at once on
+an edge port, after RSTP's sync otherwise, as on a UniFi switch. A loop
+test of MAB needs a VLAN no instance maps.
+
+**By hand, 2026-11-15 18:11-18:15Z** (image
+`igmp-202511.20261115-6c8eb1cf7`, under the test lock; the deployed bridge
+stopped and the installed l2d paused for the window; cage 31 in MAC
+loopback with the hand-made tagged VLAN 3997; hostapd's integrated RADIUS
+server on 127.0.0.1:18120 with one MACACL user, `020000000A01`, and a test
+secret; the candidate `Dot1xGuard` driving the port, idle timeout 20 s;
+the "hosts" ARP requests from test MACs tagged 3997 out of the looped
+port; `mab-live.txt`):
+
+- the host that is a user: one request, Access-Accept 70 ms later, the
+  host admitted (APPL_DB `FDB_TABLE` in Vlan3997 and Vlan4094, ASIC_DB
+  `SAI_FDB_ENTRY_TYPE_STATIC` for both, the chain's RETURN); the test
+  server logged the MAC-ACL user found and its Calling-Station-Id;
+- the host that is not: Access-Reject ("User-Name not found"), `failures
+  1`, and its next frames sent nothing (quiet);
+- the idle timeout: the admitted host revoked 20 s after admission (its
+  later ARPs in VLAN 3997, which has no address of the switch's, never
+  reached the CPU), and its next frame admitted it again in 60 ms;
+- the teardown: hostapd stopped, the chain and the trap gone, the learn
+  mode back.
+
+The switch was restored and checked after (loop off, VLAN 3997 deleted,
+the test server and files removed, l2d resumed, the bridge started).
+`TestL2dMAB` replays the run: the requests this l2d builds are the hand
+run's attribute for attribute (with the run's request authenticators), the
+captured answers admit and refuse, a forged accept is ignored, and the
+idle timeout and the teardown behave as above. It caught one bug the hand
+run hid: an answer was published to STATE_DB only on the next 2 s pass.
+
+**Through the driver, 2026-11-15 19:04-19:12Z** (a deb of this branch,
+`0.0.0+20261115.mab66eb2c0`, installed from `/tmp` under the test lock, the
+carried deb in `/host/disunified` untouched and reinstalled after; no
+loopback, so no request left the switch): with 802.1X on and cage 31 set
+to MAC Address in the UI, the push's `idle_timeout=300` reached l2.json
+(`idle_timeout: {Ethernet120: 300}`), the cage was `drop` in CONFIG_DB and
+`cpu_trap` in APPL_DB, l2d logged it authenticating by MAC address beside
+its hostapd, and two later reconciles left both learn modes alone. With
+802.1X off: `rm -f` of the secrets file, the STATE_DB row's mode emptied,
+the cage back to `hardware`, hostapd, chain and trap gone (§11.26.7's two
+fixes).
+
+Not exercised: the gateway's RADIUS server (§11.26.6), a cabled host.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 

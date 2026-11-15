@@ -463,6 +463,8 @@ try:
     if os.access("/usr/local/sbin/hostapd", os.X_OK):
         _l2["hostapd"] = subprocess.run(["/usr/local/sbin/hostapd", "-v"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         timeout=5).stdout.decode().strip().split("\n")[0]
+    # whether the RADIUS secrets file exists (its content is root's and never read here)
+    _l2["dot1x_secret"] = os.path.exists("/etc/sonic/disunified/dot1x-radius")
     _l2["hostapd_build"] = "running" if _unit("is-active", "disunified-hostapd-build") == "active" else ""
     if not _l2["hostapd_build"]:
         try:

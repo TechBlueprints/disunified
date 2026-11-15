@@ -1,0 +1,145 @@
+# MAC authentication (MAB) by hand on the DX010 (docs/drivers/sonic.md
+# 11.26.7), 2026-11-15 18:11-18:15Z, image igmp-202511.20261115-6c8eb1cf7,
+# under the test lock: empty cage 31 (Ethernet120, ce30) in MAC loopback,
+# the deployed bridge stopped and the installed disunified-l2d paused for the
+# window, a hand-made tagged VLAN 3997 on the cage (no STP instance maps it).
+# The RADIUS server is hostapd's integrated one on 127.0.0.1:18120 with one
+# MACACL user, "020000000A01" (password the same), and the test secret
+# "dui-test-secret"; 02:00:00:00:0a:02 is no user. The candidate l2d.py's
+# Dot1xGuard drives the port in mac_based mode with an idle timeout of 20 s;
+# a "host" is a raw socket on the port's netdev sending ARP requests tagged
+# 3997 from a test MAC, which the loop brings back in as that source's
+# frames. Each request is decoded to its attributes (the switch's own MAC in
+# Called-Station-Id replaced by 02-00-00-00-00-02, the switch in
+# dot1x-live.txt; its Message-Authenticator is over the real one and is not
+# kept; its Request Authenticator is written in 4-byte groups); each answer
+# is the server's datagram as received.
+#
+# probe: which unknown-source frames reach the CPU under cpu_trap on the
+#   looped port: untagged (Vlan4094, the port's STP state there 0 =
+#   disabled, written by l2d while the port was down) vs tagged 3997.
+#   Ethertype 0x88B5, which no protocol trap matches (ARP requests reached
+#   the CPU in both VLANs through their own trap, so they prove nothing).
+@@@ probe
+STP 4094: 0  APPL learn: cpu_trap
+sent 10 from 02:00:00:00:0c:11 untagged (Vlan4094) to unicast: 0 reached the netdev
+sent 10 from 02:00:00:00:0c:12 untagged (Vlan4094) to broadcast: 0 reached the netdev
+sent 10 from 02:00:00:00:0c:13 tagged 3997 to unicast: 10 reached the netdev
+sent 10 from 02:00:00:00:0c:14 tagged 3997 to broadcast: 10 reached the netdev
+RPORTD.ce30 +20
+@@@ run
+  0.01 == step sync
+  0.06 LOG 802.1X: EAPOL trapped to the CPU
+  0.10 LOG 802.1X: authenticator started on Ethernet120 (mac_based, 1 RADIUS servers)
+  3.03 STATE sync {"authorized": "", "failures": "0", "last_failed_mac": "", "mab": "", "mode": "mac_based"}
+  3.03 APPL learn_mode cpu_trap CONFIG learn_mode None
+  3.03 APPL FDB []
+  3.04 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -i Ethernet120 -j DROP
+  3.04 == step A
+  3.19 LOG 802.1X: 02:00:00:00:0a:01 on Ethernet120 sent no EAPOL; asking the RADIUS server about its MAC address
+  3.20 REQ 02:00:00:00:0a:01 code=1 id=0 auth=188294f3-9a7c8330-b73aa4a6-63b33522
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet120
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+  3.20 ANS accept 02000026a2110c4a7a2d2e7d392b7831640f82fa50123d60bef44570833e67b47f63ba0a0155
+  3.26 LOG 802.1X: 02:00:00:00:0a:01 authorised on Ethernet120 by its MAC address
+  9.22 STATE A {"authorized": "02:00:00:00:0a:01", "failures": "0", "last_failed_mac": "", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+  9.22 APPL learn_mode cpu_trap CONFIG learn_mode None
+  9.22 APPL FDB ['FDB_TABLE:Vlan3997:02:00:00:00:0a:01', 'FDB_TABLE:Vlan4094:02:00:00:00:0a:01']
+  9.23 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet120 -j RETURN | -i Ethernet120 -j DROP
+  9.23 == step B
+  9.38 LOG 802.1X: 02:00:00:00:0a:02 on Ethernet120 sent no EAPOL; asking the RADIUS server about its MAC address
+  9.38 REQ 02:00:00:00:0a:02 code=1 id=1 auth=333e24b1-d1f9337c-80d5d836-41aeb386
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A02
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet120
+       attr Calling-Station-Id 02-00-00-00-0A-02
+       attr Called-Station-Id 02-00-00-00-00-02
+  9.38 ANS reject 0301002cbe0c46495ceae1e5feaae92d82449f375012b4b67cdc83d4dfe2511cd901f70f93804f0604000004
+  9.38 LOG 802.1X: 02:00:00:00:0a:02 refused by its MAC address on Ethernet120 (1 failures on this port since boot)
+ 15.40 STATE B {"authorized": "02:00:00:00:0a:01", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 15.41 APPL learn_mode cpu_trap CONFIG learn_mode None
+ 15.41 APPL FDB ['FDB_TABLE:Vlan3997:02:00:00:00:0a:01', 'FDB_TABLE:Vlan4094:02:00:00:00:0a:01']
+ 15.42 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet120 -j RETURN | -i Ethernet120 -j DROP
+ 15.42 == step Aagain
+ 18.74 STATE Aagain {"authorized": "02:00:00:00:0a:01", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 18.74 APPL learn_mode cpu_trap CONFIG learn_mode None
+ 18.74 APPL FDB ['FDB_TABLE:Vlan3997:02:00:00:00:0a:01', 'FDB_TABLE:Vlan4094:02:00:00:00:0a:01']
+ 18.75 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet120 -j RETURN | -i Ethernet120 -j DROP
+ 18.75 == step idle
+ 24.86 LOG 802.1X: 02:00:00:00:0a:01 no longer authorised on Ethernet120 (idle for 20s)
+ 44.75 STATE idle {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "", "mode": "mac_based"}
+ 44.75 APPL learn_mode cpu_trap CONFIG learn_mode None
+ 44.75 APPL FDB []
+ 44.76 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -i Ethernet120 -j DROP
+ 44.76 == step Areturn
+ 44.92 LOG 802.1X: 02:00:00:00:0a:01 on Ethernet120 sent no EAPOL; asking the RADIUS server about its MAC address
+ 44.92 REQ 02:00:00:00:0a:01 code=1 id=2 auth=4544b40b-cbd6ab81-4a841b3a-f2ff739b
+       attr Message-Authenticator <16 bytes>
+       attr User-Name 020000000A01
+       attr User-Password <16 bytes>
+       attr Service-Type 10
+       attr NAS-IP-Address 127.0.0.1
+       attr NAS-Identifier disunified
+       attr NAS-Port-Type 15
+       attr NAS-Port-Id Ethernet120
+       attr Calling-Station-Id 02-00-00-00-0A-01
+       attr Called-Station-Id 02-00-00-00-00-02
+ 44.92 ANS accept 02020026559ef6c8d6a7d6987d42ec560b112ef95012e036455a78d57da870330f5efe4f0b00
+ 44.98 LOG 802.1X: 02:00:00:00:0a:01 authorised on Ethernet120 by its MAC address
+ 50.95 STATE Areturn {"authorized": "02:00:00:00:0a:01", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "02:00:00:00:0a:01", "mode": "mac_based"}
+ 50.95 APPL learn_mode cpu_trap CONFIG learn_mode None
+ 50.95 APPL FDB ['FDB_TABLE:Vlan3997:02:00:00:00:0a:01', 'FDB_TABLE:Vlan4094:02:00:00:00:0a:01']
+ 50.96 CHAIN -p EAPOL -i Ethernet120 -j ACCEPT | -p 802_1Q -i Ethernet120 --vlan-encap 888E -j ACCEPT | -s 02:00:00:00:0a:01 -i Ethernet120 -j RETURN | -i Ethernet120 -j DROP
+ 50.96 == step teardown
+ 50.98 LOG 802.1X: authenticator on Ethernet120 stopped
+ 51.11 LOG 802.1X: kernel bridge rules removed
+ 51.11 LOG 802.1X: EAPOL trap removed
+ 51.11 STATE teardown {"authorized": "", "failures": "1", "last_failed_mac": "02:00:00:00:0a:02", "mab": "", "mode": ""}
+ 51.11 APPL learn_mode hardware CONFIG learn_mode None
+ 51.11 APPL FDB []
+ 51.12 CHAIN 
+@@@ asic
+# a second run of the sync, A and teardown steps: the chip's entries for the
+# admitted host while it was admitted (ASIC_DB)
+ASIC FDB "02:00:00:00:0A:01", SAI_FDB_ENTRY_TYPE_STATIC
+ASIC FDB "02:00:00:00:0A:01", SAI_FDB_ENTRY_TYPE_STATIC
+@@@ radius_server
+RADIUS SRV: Received 151 bytes from 127.0.0.1:34417
+RADIUS SRV: Creating a new session
+RADIUS SRV: Matching user entry found
+RADIUS SRV: Calling-Station-Id: 02:00:00:00:0a:01
+RADIUS SRV: [0x0 127.0.0.1] New session created
+RADIUS SRV: New session 0x0 initialized
+RADIUS SRV: Reply to 127.0.0.1:34417
+RADIUS SRV: [0x0 127.0.0.1] Sending Access-Accept
+RADIUS SRV: Received 151 bytes from 127.0.0.1:34417
+RADIUS SRV: Creating a new session
+RADIUS SRV: User-Name not found from user database
+RADIUS SRV: Could not create a new session
+RADIUS SRV: Reject invalid request from 127.0.0.1:34417
+RADIUS SRV: Received 151 bytes from 127.0.0.1:34417
+RADIUS SRV: Creating a new session
+RADIUS SRV: Matching user entry found
+RADIUS SRV: Calling-Station-Id: 02:00:00:00:0a:01
+RADIUS SRV: [0x1 127.0.0.1] New session created
+RADIUS SRV: New session 0x1 initialized
+RADIUS SRV: Reply to 127.0.0.1:34417
+RADIUS SRV: [0x1 127.0.0.1] Sending Access-Accept
+RADIUS SRV: Timing out authentication session 0x0
+RADIUS SRV: Received 151 bytes from 127.0.0.1:43440
+RADIUS SRV: Creating a new session
+RADIUS SRV: Matching user entry found
+RADIUS SRV: Calling-Station-Id: 02:00:00:00:0a:01

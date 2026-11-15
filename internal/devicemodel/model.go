@@ -92,6 +92,10 @@ type PortDesired struct {
 	// on (DeviceDesired.Dot1X); "" = no port control (802.1X off, or not
 	// in the push). Read by a driver claiming Capabilities.Dot1X.
 	Dot1X Dot1XMode
+	// Dot1XIdleTimeout is how long, in seconds, a host admitted by its MAC
+	// address (Dot1XMACBased) may stay idle before it must authenticate
+	// again; 0 = not in the push.
+	Dot1XIdleTimeout int
 }
 
 // Dot1XMode is a port's 802.1X control (IEEE 802.1X port access entity).

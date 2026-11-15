@@ -76,6 +76,8 @@
 # window with no spanning tree.
 import collections
 import ctypes
+import hashlib
+import hmac
 import json
 import math
 import os
@@ -1997,6 +1999,99 @@ COPP_EAPOL = [("trap_ids", "eapol"), ("trap_group", COPP_GROUP_NAME), ("always_e
 # held closed with no authenticator; force_authorized is not in the config.
 DOT1X_AUTH_MODES = ("auto", "multi_host", "mac_based")
 DOT1X_RESTART_EVERY = 10.0  # seconds between starts of one port's hostapd
+# MAC authentication (mac_based, sonic.md 11.26.8): a host that sends no
+# EAPOL is authenticated by its MAC address, which l2d sends to the RADIUS
+# servers itself (hostapd's wired driver has no MAC authentication: its
+# macaddr_acl is consulted only for 802.11 authentication frames).
+MAB_TIMEOUT = 3.0  # seconds before a request is sent again
+MAB_TRIES = 2  # sends per server before the next server
+MAB_QUIET = 60.0  # seconds a refused or unanswered source is left alone (hostapd's quiet period)
+MAB_PENDING = 32  # requests in flight at most (a burst of new sources is policed by CoPP too)
+ETH_P_PAE = 0x888E
+ETH_P_8021Q = 0x8100
+RADIUS_ACCESS_REQUEST, RADIUS_ACCESS_ACCEPT, RADIUS_ACCESS_REJECT = 1, 2, 3
+RADIUS_MESSAGE_AUTHENTICATOR = 80
+
+
+def mab_user(mac):
+    """The user name and password for a MAC: as the controller's UI says of
+    its RADIUS users, "For 802.1X, addresses must be entered upper case
+    without separators" (Settings -> RADIUS -> Local Credentials)."""
+    return mac.replace(":", "").replace("-", "").upper()
+
+
+def radius_attr(typ, value):
+    return struct.pack("BB", typ, len(value) + 2) + value
+
+
+def radius_hide(password, secret, auth):
+    """User-Password as RFC 2865 5.2 hides it."""
+    p = password + b"\0" * (-len(password) % 16)
+    if not p:
+        p = b"\0" * 16
+    out, prev = b"", auth
+    for i in range(0, len(p), 16):
+        key = hashlib.md5(secret + prev).digest()
+        prev = bytes(a ^ b for a, b in zip(p[i:i + 16], key))
+        out += prev
+    return out
+
+
+def mab_request(ident, auth, mac, secret, nas_ip, port, own):
+    """A MAC authentication Access-Request: the MAC as user name and
+    password, the usual MAB attributes (Service-Type Call-Check, the host
+    and the switch in RFC 3580's station form, NAS-Port-Type Ethernet) and a
+    Message-Authenticator (RFC 3579), as hostapd sends one for its MAC ACL."""
+    user = mab_user(mac).encode()
+    station = lambda m: "-".join(m.upper().split(":")).encode()
+    attrs = radius_attr(RADIUS_MESSAGE_AUTHENTICATOR, b"\0" * 16)
+    attrs += radius_attr(1, user)  # User-Name
+    attrs += radius_attr(2, radius_hide(user, secret, auth))  # User-Password
+    attrs += radius_attr(6, struct.pack("!I", 10))  # Service-Type Call-Check
+    if nas_ip:
+        try:
+            attrs += radius_attr(4, socket.inet_aton(nas_ip))  # NAS-IP-Address
+        except OSError:
+            pass
+    attrs += radius_attr(32, b"disunified")  # NAS-Identifier, as hostapd's nas_identifier
+    attrs += radius_attr(61, struct.pack("!I", 15))  # NAS-Port-Type Ethernet
+    attrs += radius_attr(87, port.encode())  # NAS-Port-Id
+    attrs += radius_attr(31, station(mac))  # Calling-Station-Id
+    if own:
+        attrs += radius_attr(30, station(own))  # Called-Station-Id
+    pkt = struct.pack("!BBH", RADIUS_ACCESS_REQUEST, ident, 20 + len(attrs)) + auth + attrs
+    ma = hmac.new(secret, pkt, hashlib.md5).digest()
+    return pkt[:22] + ma + pkt[38:]
+
+
+def radius_answer(data, ident, auth, secret):
+    """An Access-Accept or Access-Reject for the request (ident, auth):
+    "accept", "reject", or None when it is not one, or is not signed with
+    the secret -- the Response Authenticator and the Message-Authenticator,
+    which a reply must carry (RFC 3579 3.2, and the BlastRADIUS fix)."""
+    if len(data) < 20:
+        return None
+    code, rid, length = struct.unpack("!BBH", data[:4])
+    if rid != ident or length < 20 or length > len(data) or \
+            code not in (RADIUS_ACCESS_ACCEPT, RADIUS_ACCESS_REJECT):
+        return None
+    data = data[:length]
+    if hashlib.md5(data[:4] + auth + data[20:] + secret).digest() != data[4:20]:
+        return None
+    pos, ma = 20, -1
+    while pos + 2 <= length:
+        typ, alen = data[pos], data[pos + 1]
+        if alen < 2 or pos + alen > length:
+            return None
+        if typ == RADIUS_MESSAGE_AUTHENTICATOR and alen == 18:
+            ma = pos
+        pos += alen
+    if ma < 0:
+        return None
+    zeroed = data[:4] + auth + data[20:ma + 2] + b"\0" * 16 + data[ma + 18:]
+    if not hmac.compare_digest(hmac.new(secret, zeroed, hashlib.md5).digest(), data[ma + 2:ma + 18]):
+        return None
+    return "accept" if code == RADIUS_ACCESS_ACCEPT else "reject"
 
 
 def eapol_rules(port):
@@ -2062,6 +2157,19 @@ class Dot1xGuard(object):
         # entries stay until the port's running hostapd says whether it
         # still authorises them (attach), or the port is gone.
         self.stale = {}
+        self.stale_mab = {}  # of those, the ones admitted by their MAC address
+        # MAC authentication (mac_based ports, 11.26.8)
+        self.idle = {}  # interface -> idle timeout (s) of a MAC-authenticated host; 0 = none
+        self.mab = {}  # interface -> MACs admitted by their MAC address
+        self.mab_socks = {}  # interface -> packet socket reading its trapped frames
+        self.trapped = set()  # interfaces this daemon switched to cpu_trap
+        self.seen = {}  # (interface, mac) -> last frame seen from a MAC-authenticated host
+        self.quiet = {}  # (interface, mac) -> until when a refused or unanswered source is left alone
+        self.pending = {}  # RADIUS identifier -> the request in flight
+        self.inflight = {}  # (interface, mac) -> RADIUS identifier
+        self.next_id = 0
+        self.rsocks = {}  # address family -> the RADIUS client's UDP socket
+        self.noanswer = 0.0  # last time "no RADIUS server answered" was logged
         for k in self.db.keys(self.db.state, DOT1X_TABLE + "|*"):
             row = self.db.hgetall(self.db.state, k)
             port = k.split("|", 1)[1]
@@ -2073,6 +2181,9 @@ class Dot1xGuard(object):
             macs = set(splitlist(row.get("authorized", "")))
             if macs:
                 self.stale[port] = macs
+                mab = set(splitlist(row.get("mab", ""))) & macs
+                if mab:
+                    self.stale_mab[port] = mab
 
     # --- configuration -----------------------------------------------------
 
@@ -2129,11 +2240,29 @@ class Dot1xGuard(object):
             log("802.1X: no RADIUS secret on the switch (%s); no authenticator started" % DOT1X_SECRET,
                 syslog.LOG_WARNING)
         self.servers, self.nas_ip = servers, c.get("nas_ip") or ""
+        self.idle = {}
+        for p, t in (c.get("idle_timeout") or {}).items():
+            try:
+                self.idle[p] = max(0, int(t))
+            except (TypeError, ValueError):
+                pass
+        mab = {p for p, m in want.items() if m == "mac_based" and servers}
+        # A port that stops authenticating by MAC gets its CONFIG_DB learn
+        # mode back first (the kernel's drop is still there), then loses
+        # its MAC-authenticated hosts.
+        for port in sorted(self.trapped - mab):
+            self.untrap(port)
+        for port in sorted(set(self.mab) - mab):
+            for mac in sorted(self.mab.get(port, ())):
+                self.revoke(port, mac, "no longer authenticated by MAC address")
+            self.mab.pop(port, None)
         # A port leaving the config: its authenticator stops, its admissions go.
         for port in sorted(set(self.started) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
             self.stop(port)
         for port in sorted(set(self.admitted) - set(want)):
             self.revoke_all(port, "no longer controlled")
+        # a port leaving the config: its row keeps its count, not its mode
+        self.dirty |= set(self.want) - set(want)
         self.want = want
         for port in sorted(set(self.stale) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
             self.drop_stale(port, set())
@@ -2146,7 +2275,182 @@ class Dot1xGuard(object):
             if not self.carrier(port) and self.admitted.get(port):
                 self.revoke_all(port, "link down")
             self.ensure(port)
+        # MAC authentication: an unknown source's frames go to the CPU
+        # (cpu_trap, MAC locking's mode; the chain above drops them in the
+        # kernel), where the first one starts a request.
+        if self.written is not None:
+            for port in sorted(mab):
+                self.trap(port)
+        self.sync_mab_socks(mab)
+        self.mab_tick(time.time())
         self.publish()
+
+    # --- MAC authentication ----------------------------------------------------
+
+    def configured_mode(self, port):
+        return self.db.hgetall(self.db.cfg, "PORT|" + port).get("learn_mode") or "hardware"
+
+    def trap(self, port):
+        if self.db.hgetall(self.db.appl, "PORT_TABLE:" + port).get("learn_mode") != LEARN_TRAP:
+            put(self.db.ifport_pst, port, [("learn_mode", LEARN_TRAP)])
+            if port not in self.trapped:
+                log("802.1X: %s authenticates by MAC address (unknown sources trapped to the CPU)" % port)
+        self.trapped.add(port)
+
+    def untrap(self, port):
+        maclock = getattr(self.l2d, "maclock", None)
+        if not (maclock and port in maclock.want) and self.db.known(port):
+            put(self.db.ifport_pst, port, [("learn_mode", self.configured_mode(port))])
+        self.trapped.discard(port)
+
+    def sync_mab_socks(self, ports):
+        for port in list(self.mab_socks):
+            if port not in ports:
+                self.mab_socks.pop(port).close()
+        for port in sorted(ports):
+            if port in self.mab_socks or not os.path.isdir("%s/%s" % (SYS, port)):
+                continue
+            try:
+                s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
+                s.bind((port, 0))
+                s.setblocking(False)
+            except OSError as e:
+                log("802.1X: no packet socket on %s: %s" % (port, e), syslog.LOG_WARNING)
+                continue
+            self.mab_socks[port] = s
+
+    def rsock(self, ip):
+        fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+        s = self.rsocks.get(fam)
+        if s is None:
+            s = socket.socket(fam, socket.SOCK_DGRAM)
+            s.setblocking(False)
+            self.rsocks[fam] = s
+        return s
+
+    def drain_frames(self, port, s):
+        """Each inbound frame from a unicast source that is neither the
+        switch, nor admitted, nor waiting on an answer, nor quiet starts a
+        request; an admitted MAC-authenticated host's frames mark it
+        active."""
+        now = time.time()
+        for _ in range(256):
+            try:
+                data, addr = s.recvfrom(64)
+            except (BlockingIOError, InterruptedError):
+                return
+            except OSError:
+                return
+            if addr[2] == PACKET_OUTGOING or len(data) < 14 or bytearray(data)[6] & 1:
+                continue
+            src = mac_text(data[6:12])
+            if src == self.own:
+                continue
+            etype = struct.unpack("!H", data[12:14])[0]
+            if etype == ETH_P_8021Q and len(data) >= 18:
+                etype = struct.unpack("!H", data[16:18])[0]
+            if etype == ETH_P_PAE:
+                continue  # an 802.1X host: hostapd's
+            key = (port, src)
+            if src in self.admitted.get(port, ()):
+                if src in self.mab.get(port, ()):
+                    self.seen[key] = now
+                continue
+            if key in self.inflight or self.quiet.get(key, 0) > now or len(self.pending) >= MAB_PENDING:
+                continue
+            self.mab_start(port, src, now)
+
+    def mab_start(self, port, mac, now):
+        if not self.servers:
+            return
+        for _ in range(256):
+            ident, self.next_id = self.next_id, (self.next_id + 1) % 256
+            if ident not in self.pending:
+                break
+        else:
+            return
+        self.pending[ident] = {"port": port, "mac": mac, "server": 0, "tries": 0, "due": now, "auth": b""}
+        self.inflight[(port, mac)] = ident
+        log("802.1X: %s on %s sent no EAPOL; asking the RADIUS server about its MAC address" % (mac, port))
+        self.mab_send(ident, now)
+
+    def mab_send(self, ident, now):
+        req = self.pending[ident]
+        if req["tries"] >= MAB_TRIES:
+            req["server"], req["tries"], req["auth"] = req["server"] + 1, 0, b""
+        if req["server"] >= len(self.servers):
+            self.mab_done(ident)
+            self.quiet[(req["port"], req["mac"])] = now + MAB_QUIET
+            if now - self.noanswer > MAB_QUIET:
+                self.noanswer = now
+                log("802.1X: no RADIUS server answered for %s on %s; tried again in %ds" %
+                    (req["mac"], req["port"], MAB_QUIET), syslog.LOG_WARNING)
+            return
+        ip, port_no, secret = self.servers[req["server"]]
+        if not req["auth"]:
+            req["auth"] = os.urandom(16)
+        pkt = mab_request(ident, req["auth"], req["mac"], secret.encode(), self.nas_ip, req["port"], self.own)
+        try:
+            self.rsock(ip).sendto(pkt, (ip, port_no))
+        except OSError as e:
+            log("802.1X: RADIUS request to %s:%d not sent: %s" % (ip, port_no, e), syslog.LOG_WARNING)
+        req["tries"] += 1
+        req["due"] = now + MAB_TIMEOUT
+
+    def mab_done(self, ident):
+        req = self.pending.pop(ident, None)
+        if req:
+            self.inflight.pop((req["port"], req["mac"]), None)
+        return req
+
+    def drain_radius(self, s):
+        now = time.time()
+        for _ in range(64):
+            try:
+                data, addr = s.recvfrom(4096)
+            except (BlockingIOError, InterruptedError, OSError):
+                break
+            if len(data) < 20:
+                continue
+            req = self.pending.get(bytearray(data)[1])
+            if req is None or req["server"] >= len(self.servers):
+                continue
+            ip, port_no, secret = self.servers[req["server"]]
+            answer = radius_answer(data, bytearray(data)[1], req["auth"], secret.encode())
+            if answer is None:
+                log("802.1X: a reply from %s that is not a signed answer to the request for %s; ignored" %
+                    (addr[0], req["mac"]), syslog.LOG_WARNING)
+                continue
+            self.mab_done(bytearray(data)[1])
+            port, mac = req["port"], req["mac"]
+            if self.want.get(port) != "mac_based":
+                continue
+            if answer == "accept":
+                self.admit(port, mac, "by its MAC address")
+                self.mab.setdefault(port, set()).add(mac)
+                self.seen[(port, mac)] = now
+            else:
+                self.failures[port] = self.failures.get(port, 0) + 1
+                self.last_fail[port] = mac
+                self.quiet[(port, mac)] = now + MAB_QUIET
+                self.dirty.add(port)
+                log("802.1X: %s refused by its MAC address on %s (%d failures on this port since boot)" %
+                    (mac, port, self.failures[port]), syslog.LOG_WARNING)
+        self.publish()
+
+    def mab_tick(self, now):
+        for ident in sorted(self.pending):
+            if ident in self.pending and now >= self.pending[ident]["due"]:
+                self.mab_send(ident, now)
+        for port in sorted(self.mab):
+            t = self.idle.get(port, 0)
+            if t <= 0:
+                continue
+            for mac in sorted(self.mab[port]):
+                if now - self.seen.get((port, mac), now) > t:
+                    self.revoke(port, mac, "idle for %ds" % t)
+        for key in [k for k, until in self.quiet.items() if until <= now]:
+            del self.quiet[key]
 
     def carrier(self, port):
         return rd("%s/%s/carrier" % (SYS, port), "0") == "1"
@@ -2274,6 +2578,14 @@ class Dot1xGuard(object):
             if "[AUTHORIZED]" in reply:
                 self.admit(port, mac)
             reply = self.ctrl(port, "STA-NEXT " + mac)
+        # An earlier l2d's MAC-authenticated hosts are not hostapd's: they
+        # stay admitted while the port still authenticates by MAC (their
+        # idle time starts again).
+        for mac in sorted(self.stale_mab.pop(port, set()) & self.stale.get(port, set())):
+            if self.want.get(port) == "mac_based":
+                self.admit(port, mac, "by its MAC address, kept over a restart")
+                self.mab.setdefault(port, set()).add(mac)
+                self.seen[(port, mac)] = time.time()
         self.drop_stale(port, self.admitted.get(port, set()))
 
     def drop_stale(self, port, keep):
@@ -2296,7 +2608,7 @@ class Dot1xGuard(object):
 
     # --- admissions ------------------------------------------------------------
 
-    def admit(self, port, mac):
+    def admit(self, port, mac, how=""):
         if mac == self.own:
             return  # the switch's own frames, looped back to it
         macs = self.admitted.setdefault(port, set())
@@ -2316,13 +2628,15 @@ class Dot1xGuard(object):
         self.write_chain(self.rules())
         self.dirty.add(port)
         if new:
-            log("802.1X: %s authorised on %s" % (mac, port))
+            log("802.1X: %s authorised on %s%s" % (mac, port, " " + how if how else ""))
 
     def revoke(self, port, mac, why):
         macs = self.admitted.get(port, set())
         if mac not in macs:
             return
         macs.discard(mac)
+        self.mab.get(port, set()).discard(mac)
+        self.seen.pop((port, mac), None)
         keys = self.fdb.get(port, set())
         for key in self.fdb_keys(port, mac):
             if key in keys:
@@ -2387,7 +2701,8 @@ class Dot1xGuard(object):
             row = [("mode", self.want.get(port, "")),
                    ("authorized", ",".join(sorted(self.admitted.get(port, ())))),
                    ("failures", str(self.failures.get(port, 0))),
-                   ("last_failed_mac", self.last_fail.get(port, ""))]
+                   ("last_failed_mac", self.last_fail.get(port, "")),
+                   ("mab", ",".join(sorted(self.mab.get(port, ()))))]
             if self.db.hgetall(self.db.state, DOT1X_TABLE + "|" + port) != dict(row):
                 put(self.st, port, row)
         self.dirty.clear()
@@ -2395,12 +2710,21 @@ class Dot1xGuard(object):
     # --- events ----------------------------------------------------------------
 
     def fds(self):
-        return [s.fileno() for s in self.socks.values()]
+        return [s.fileno() for s in list(self.socks.values()) + list(self.mab_socks.values()) +
+                list(self.rsocks.values())]
 
     def readable(self, fd):
         for port, s in list(self.socks.items()):
             if s.fileno() == fd:
                 self.drain(port, s)
+                return
+        for port, s in list(self.mab_socks.items()):
+            if s.fileno() == fd:
+                self.drain_frames(port, s)
+                return
+        for s in list(self.rsocks.values()):
+            if s.fileno() == fd:
+                self.drain_radius(s)
                 return
 
     def drain(self, port, s):
@@ -2437,6 +2761,11 @@ class Dot1xGuard(object):
         """Every authenticator stopped, every admission removed, the chain and
         the trap gone; the ports stay closed (CONFIG_DB keeps learn_mode drop).
         The counts stay: they are since boot."""
+        for port in sorted(self.trapped):
+            self.untrap(port)
+        for s in list(self.mab_socks.values()) + list(self.rsocks.values()):
+            s.close()
+        self.mab_socks, self.rsocks, self.pending, self.inflight = {}, {}, {}, {}
         for port in sorted(set(self.admitted)):
             for mac in sorted(self.admitted.get(port, ())):
                 for key in self.fdb_keys(port, mac):
@@ -2453,7 +2782,7 @@ class Dot1xGuard(object):
         self.copp(False)
         for port in sorted(set(self.failures)):
             put(self.st, port, [("mode", ""), ("authorized", ""), ("failures", str(self.failures[port])),
-                                ("last_failed_mac", self.last_fail.get(port, ""))])
+                                ("last_failed_mac", self.last_fail.get(port, "")), ("mab", "")])
 
 
 def splitlist(s):

@@ -64,6 +64,11 @@ func (f *FixtureRunner) applyL2(script string) error {
 				return fmt.Errorf("%s: %v", m[3], err)
 			}
 			f.L2Files[m[3]] = string(body)
+			if m[3] == dot1xSecretPath {
+				has := true
+				in.Dot1XSecret = &has
+				continue
+			}
 			if m[3] == l2ConfPath {
 				var c l2Conf
 				if err := json.Unmarshal(body, &c); err != nil {
@@ -73,6 +78,10 @@ func (f *FixtureRunner) applyL2(script string) error {
 				continue
 			}
 			in.Files[m[3]] = sha(string(body))
+		case line == "sudo rm -f "+dot1xSecretPath:
+			delete(f.L2Files, dot1xSecretPath)
+			has := false
+			in.Dot1XSecret = &has
 		case line == "sudo systemctl daemon-reload", line == "sudo systemctl enable disunified-l2d >/dev/null 2>&1":
 		case line == "sudo systemctl stop disunified-l2d-deadman.timer >/dev/null 2>&1 || true":
 			in.Deadman = "inactive"
