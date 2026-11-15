@@ -81,6 +81,8 @@ for line in lines:
     for real, fake in chassis.items():
         line = line.replace(real, fake)
     line = MAC_RE.sub(lambda m: map_mac(m.group(0)), line)
+    # An interface's MAC-derived altname (udev's enx<mac>, in `ip -j link`).
+    line = re.sub(r'\benx([0-9a-f]{12})\b', lambda m: 'enx' + map_mac(':'.join(m.group(1)[i:i+2] for i in range(0, 12, 2))).replace(':', ''), line)
     line = BRIDGE_ID_RE.sub(lambda m: m.group(1) + '.' + map_mac(':'.join(m.group(2)[i:i+2] for i in range(0, 12, 2))).replace(':', ''), line)
     line = IP_RE.sub(lambda m: map_ip(m.group(0)), line)
     line = IP6_RE.sub(lambda m: map_ip6(m.group(0)), line)
