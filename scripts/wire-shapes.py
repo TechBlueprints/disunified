@@ -27,7 +27,8 @@ import ssl
 import sys
 import urllib.request
 
-KEY_ID = re.compile(r'[0-9a-f]{24}|[0-9]+|([0-9a-f]{2}:){5}[0-9a-f]{2}')
+# an id is 24 hex digits on Network 10, a UUID on 11 (docs/wire-shapes.md §9)
+KEY_ID = re.compile(r'[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9]+|([0-9a-f]{2}:){5}[0-9a-f]{2}')
 MAX_DEPTH = 8
 
 
@@ -95,12 +96,18 @@ def walk(v, path, out, depth=0):
             walk(x, (path + '.' if path else '') + norm_key(k), out, depth + 1)
 
 
+# Credentials the controller keeps on a record (Network 11 adds the adoption
+# login): even a length says something about a secret, and no bridged
+# payload carries them, so their shapes are not kept.
+SECRET_PATHS = re.compile(r'x_adopt_password|x_adopt_username|x_authkey|.*password')
+
+
 def shapes_of(devs):
     out = {}
     for d in devs:
         walk(d, '', out)
     out.pop('', None)
-    return out
+    return {p: e for p, e in out.items() if not SECRET_PATHS.fullmatch(p)}
 
 
 def to_json(shapes):
