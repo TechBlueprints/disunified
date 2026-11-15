@@ -241,7 +241,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   ~30 s. Start now collects again (5 s, up to 5 min, then fails for
   `main` to retry) until APPL_DB has `PORT_TABLE:PortInitDone` and the
   kernel carries the dialled address CONFIG_DB names. Runtime collects
-  are unchanged.
+  are unchanged. **A boot's timeline is in `/var/log/syslog`, not the
+  journal**: `journalctl -b` holds the kernel, systemd and the bridge,
+  but the containers' daemons (`swss#portsyncd`, `swss#intfmgrd`,
+  `swss#orchagent`, `bgp#bgpcfgd`) log only to syslog.
 - **`promote_secondaries` is 0 on SONiC** (`/proc/sys/net/ipv4/conf/<iface>/promote_secondaries`):
   deleting a subnet's primary address deletes its secondaries, and a new
   address in the same subnet is a secondary. A live move removed the old
