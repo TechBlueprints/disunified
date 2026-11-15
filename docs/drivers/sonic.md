@@ -8720,6 +8720,54 @@ clears the VLAN's DHCP relay and `STP_VLAN` rows itself. The FixtureRunner
 models those refusals in that order. An MLD snooping row (collect.py does
 not read MLD) would fail the batch with the CLI's message.
 
+**A lane switch's VLANs and their MTU (2026-11-15).** The VLAN list a lane
+switch's push names was kept by the prune, but no plan set its MTU.
+`vlanMTUs` (§12) ran only in the device's plan, over the native stand-in,
+the device's list and its routed VLANs; the lane plan skipped it. A VLAN
+only the lane switch listed was made at the ports' MTU in CONFIG_DB
+(`EnsureLaneVLANs`), but its `Vlan<id>` netdev stayed at vlanmgrd's 9100,
+the §12 trap, and a jumbo flip reached neither half. Shown on the 4x25G
+capture with vlanmgrd's netdev modelled (`FixtureRunner.VLANNetdevs`):
+`TestLaneOnlyVLANMTU` and `TestReplayLaneSwitchVLANMTU` (the Flex XG's
+captured push making Vlan69, then the child's jumbo flipped in that push).
+Against the old plan, the next cycle wrote nothing for the netdev, and the
+flip moved the lanes but no VLAN.
+
+Each VLAN now takes the lowest MTU of the pushes that list it. Those are
+the device's push (the native stand-in, its list, its routed VLANs) and
+each attached lane switch's (its list and the native stand-in). A plan
+knows its own push's MTU from its ports' desired MTU and the others' from
+what their last applied plan set (`Collector.mtuWant`). A push that has not
+applied yet counts for nothing. Both plans compute the same value, so
+neither undoes the other. The rules:
+
+- **Who writes it.** A lane plan writes only the VLANs the device's push
+  does not list. The device's plan writes every VLAN. So a lane switch
+  alone never raises the native stand-in, which is the management VLAN.
+- **A jumbo flip on the lane switch** moves its own VLANs with its lanes,
+  in the same batch.
+- **The stand-in** follows the lower of the two pushes at the device's
+  next plan.
+- **A new lane VLAN** is made at the lane switch's MTU (its last plan's,
+  else its lanes' as collected), not at the device's.
+- **Its netdev** waits for the first plan after a collect has seen it, as
+  the device's do. That is one cycle of either loop.
+- **The prune.** A lane VLAN the lane switch stops listing leaves its list.
+  The device's plan deletes it (`dropVLAN` takes its MTU entries), and no
+  plan sets an MTU on it after.
+- **A list not yet pushed.** A lane plan before the lane switch's first
+  `EnsureLaneVLANs` sets no VLAN's MTU. Its Allow All then falls back to
+  every VLAN on the switch, which is not a list. The device's plan makes
+  the same guess before its own first `EnsureVLANs`, and it then leaves a
+  VLAN the lane switch lists at the lane switch's MTU
+  (`TestLaneVLANMTUBeforeTheDevicesList`; without that rule the two plans
+  undid each other every cycle).
+
+The `arista-eos` parent has no such gap. EOS VLANs have no MTU, the driver
+writes no MTU at all (jumbo is logged, not applied, `arista-eos.md` §6),
+and it makes no SVI for any VLAN. Not run live: no lane switch is adopted
+(`breakout.md` §15 step 5 is the check).
+
 #### 11.29.5 Tests
 
 `vlan_prune_test.go` (collect-l3.txt): nothing deleted before a push or
