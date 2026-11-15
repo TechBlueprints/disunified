@@ -670,7 +670,16 @@ func l2Ports(out []cagePort, db map[string]table) {
 		p.BPDUGuard = s["bpdu_guard_port"] == "yes"
 		p.STPOperEdge = s["oper_edge_port"] == "yes"
 		p.STPEdge = s["bpdu_filter_port"] == "yes" && s["admin_edge_port"] == "yes"
-		p.Health.STPChanges = atoi(s["num_transition_fwd"]) + atoi(s["num_transition_blk"])
+		// l2d's count of the port's state changes (disabled, blocking,
+		// learning, forwarding), what a UniFi switch counts: 2 per drop on a
+		// port that stays discarding, 0 on one never up. Older l2d builds
+		// publish only mstpd's entries into forwarding and blocking, which
+		// miss the first and count 1 for the second (§11.23).
+		if n, err := strconv.Atoi(s["state_changes"]); err == nil {
+			p.Health.STPChanges = n
+		} else {
+			p.Health.STPChanges = atoi(s["num_transition_fwd"]) + atoi(s["num_transition_blk"])
+		}
 		if s["bpdu_guard_error"] == "yes" {
 			p.Fault = "errdisabled: bpduguard"
 		}
