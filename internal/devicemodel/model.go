@@ -88,6 +88,53 @@ type PortDesired struct {
 	// VoiceVLAN is the VLAN LLDP-MED's network policy advertises for voice
 	// (UniFi's Voice VLAN); 0 = none. Read with LLDPMED.
 	VoiceVLAN int
+	// Dot1X is the port's 802.1X control mode while the device's 802.1X is
+	// on (DeviceDesired.Dot1X); "" = no port control (802.1X off, or not
+	// in the push). Read by a driver claiming Capabilities.Dot1X.
+	Dot1X Dot1XMode
+}
+
+// Dot1XMode is a port's 802.1X control (IEEE 802.1X port access entity).
+type Dot1XMode string
+
+const (
+	// Dot1XForceAuthorized: the port forwards, nothing authenticates.
+	Dot1XForceAuthorized Dot1XMode = "force_authorized"
+	// Dot1XForceUnauthorized: the port forwards nothing from any host.
+	Dot1XForceUnauthorized Dot1XMode = "force_unauthorized"
+	// Dot1XAuto: each host is admitted once it authenticates (EAP through
+	// the RADIUS servers); the others are not.
+	Dot1XAuto Dot1XMode = "auto"
+	// Dot1XMultiHost: the first host to authenticate opens the port for
+	// every host behind it.
+	Dot1XMultiHost Dot1XMode = "multi_host"
+	// Dot1XMACBased: each host is admitted by its MAC address, which the
+	// RADIUS servers accept or refuse.
+	Dot1XMACBased Dot1XMode = "mac_based"
+)
+
+// Closed: the port drops a host's frames until it is admitted.
+func (m Dot1XMode) Closed() bool {
+	return m == Dot1XForceUnauthorized || m == Dot1XAuto || m == Dot1XMultiHost || m == Dot1XMACBased
+}
+
+// Dot1X is the device's 802.1X port authentication: the RADIUS servers its
+// controlled ports authenticate against.
+type Dot1X struct {
+	Enabled bool
+	Servers []RADIUSServer // in the order to try them
+	// FallbackVLAN is where a port's hosts go when none authenticates; 0 =
+	// none (they stay out).
+	FallbackVLAN int
+}
+
+// RADIUSServer is one authentication server. Secret is a credential: a
+// driver writes it where only the authenticator reads it and logs it
+// nowhere.
+type RADIUSServer struct {
+	Addr   string
+	Port   int
+	Secret string
 }
 
 // LLDPMEDSwitcher is an optional Controller capability: the driver turns
@@ -137,6 +184,11 @@ type DeviceDesired struct {
 	SyslogHosts  []string // same
 	ManageNTP    bool
 	ManageSyslog bool
+
+	// Dot1X is the device's 802.1X port authentication; nil = not in the
+	// push. Read by a driver claiming Capabilities.Dot1X, with each
+	// PortDesired.Dot1X.
+	Dot1X *Dot1X
 
 	DHCPSnooping *bool // nil = leave alone; else enable/disable (on every VLAN the switch has)
 	// DHCPGuards are, while DHCPSnooping is on, the DHCP servers trusted on
@@ -800,6 +852,10 @@ type Port struct {
 	EgressKbps   int
 	LLDPMEDOff   bool
 	VoiceVLAN    int
+	// Dot1X is the port's 802.1X control mode as applied ("" = none), and
+	// Dot1XAuthorized the hosts it admitted (lower-case MACs).
+	Dot1X           Dot1XMode
+	Dot1XAuthorized []string
 
 	Present bool // an optic/cable is present (always true for copper)
 	Enabled bool // administratively up
@@ -958,6 +1014,10 @@ type PortHealth struct {
 	DHCPRateDrops       uint64 // DHCP frames dropped by the port's DHCP rate limit
 	RogueDHCPDrops      uint64 // DHCP server replies dropped on this port by DHCP guarding (a server on an untrusted port)
 	MACLockingDrops     uint64 // frames from a source not allowed on the port that the port's MAC filter dropped
+	// Dot1XFailures is the port's failed 802.1X authentication attempts
+	// (the RADIUS servers refused the host), cumulative since boot, read
+	// like the drop counters above.
+	Dot1XFailures uint64
 }
 
 // Counters are lifetime interface counters.
@@ -1039,6 +1099,9 @@ type Capabilities struct {
 	PortSecurity bool
 	// EgressRateLimit: PortDesired.EgressKbps is honoured.
 	EgressRateLimit bool
+	// Dot1X: 802.1X port authentication (DeviceDesired.Dot1X and each
+	// PortDesired.Dot1X) is honoured.
+	Dot1X bool
 	// L3Routing: VLAN interfaces and static routes owned by the controller
 	// (DeviceDesired.L3Interfaces / StaticRoutes); L3Interfaces and
 	// StaticRoutes are the counts the controller is told.

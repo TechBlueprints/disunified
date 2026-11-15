@@ -168,6 +168,9 @@ section("l2_storm", "STATE_DB", "DUI_STORM_TABLE|*")
 section("l2_dhcp_rate", "STATE_DB", "DUI_DHCP_RATE_TABLE|*")
 # MAC locking's count per interface (docs/drivers/sonic.md 11.18.2).
 section("l2_maclock", "STATE_DB", "DUI_MACLOCK_TABLE|*")
+# 802.1X (11.26): each controlled interface's mode, admitted hosts and
+# failed attempts since boot.
+section("l2_dot1x", "STATE_DB", "DUI_DOT1X_TABLE|*")
 # orchagent's resource counters: the FDB's used and available entries.
 section("crm", "COUNTERS_DB", "CRM:STATS")
 # The bridge's own ACL tables (docs/drivers/sonic.md 11.7.5) -- DHCP
@@ -423,6 +426,18 @@ try:
     if os.access("/usr/local/sbin/mstpd", os.X_OK) and os.access("/usr/local/sbin/mstpctl", os.X_OK):
         _l2["mstpd"] = subprocess.run(["/usr/local/sbin/mstpd", "-V"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                       timeout=5).stdout.decode().strip()
+    # hostapd for 802.1X (11.26), built on the switch as mstpd is
+    _l2["hostapd"] = ""
+    if os.access("/usr/local/sbin/hostapd", os.X_OK):
+        _l2["hostapd"] = subprocess.run(["/usr/local/sbin/hostapd", "-v"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        timeout=5).stdout.decode().strip().split("\n")[0]
+    _l2["hostapd_build"] = "running" if _unit("is-active", "disunified-hostapd-build") == "active" else ""
+    if not _l2["hostapd_build"]:
+        try:
+            with open("/var/lib/disunified/hostapd-build/status") as _f:
+                _l2["hostapd_build"] = _f.read().strip()
+        except Exception:
+            pass
     _l2["service"] = _unit("is-active", "disunified-l2d")
     _l2["deadman"] = _unit("is-active", "disunified-l2d-deadman.timer")
     _l2["build"] = "running" if _unit("is-active", "disunified-mstpd-build") == "active" else ""

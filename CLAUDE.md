@@ -60,6 +60,13 @@ it): written, Active in the chip and removed live on the DX010 2026-11-06;
 the chip's entry matched exactly the blocked MAC's frames, a dropped switched
 frame is unseen (one linked port), and frames to the switch itself still
 reach its CPU through the traps' copy (§11.7.8).
+UniFi's 802.1X Control is hostapd (wired driver, built on the switch like
+mstpd) under disunified-l2d, the port closed by the MAC filter's learn mode
+and each authenticated host a static FDB entry, failed attempts as anomaly
+128: built 2026-11-15, verified by hand on an empty cage with a test RADIUS
+server, the controller's push captured on 11.0.99 and replayed (MAB and
+the Unauthorized VLAN not built), no image change
+(`docs/drivers/sonic.md` §11.26).
 UniFi's MAC Address Filter violations (anomaly 256) are counted per port by
 disunified-l2d since 2026-11-14: a secured port's learning is `cpu_trap` in
 APPL_DB behind a kernel-bridge drop, the port stays up (§11.18.2, verified

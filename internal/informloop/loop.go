@@ -826,6 +826,9 @@ func (l *Loop) desiredPorts(text string) []devicemodel.PortDesired {
 		d.EgressKbps = p.EgressKbps
 		d.LLDPMED = p.LLDPMED
 		d.VoiceVLAN = p.VoiceVLAN
+		if cfg.Dot1X != nil && cfg.Dot1X.Enabled {
+			d.Dot1X = dot1xMode(p.Dot1XMode)
+		}
 		if p.PortSecurity {
 			d.PortSecurity = true
 			for _, m := range p.SecurityMACs {
@@ -881,7 +884,7 @@ func (l *Loop) warnUnsupported(ver, text string) {
 	}
 	if c, ok := deviceAs[devicemodel.Capable](l); ok {
 		caps := c.Capabilities()
-		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity, "switch.routing_interface.": caps.L3Routing, "switch.bgp.": caps.BGP, "switch.ospf.": caps.OSPF, ".ospf": caps.OSPF} {
+		for key, on := range map[string]bool{"switch.dhcp_snoop": caps.DHCPSnooping, ".isolation": caps.PortIsolation, ".egress_rate": caps.EgressRateLimit, ".port-security": caps.PortSecurity, ".dot1x": caps.Dot1X, "switch.dot1x": caps.Dot1X, "switch.routing_interface.": caps.L3Routing, "switch.bgp.": caps.BGP, "switch.ospf.": caps.OSPF, ".ospf": caps.OSPF} {
 			if on {
 				delete(feats, key)
 			}
@@ -904,6 +907,17 @@ func (l *Loop) warnUnsupported(ver, text string) {
 	}
 }
 
+// dot1xMode maps switch.port.N.dot1x.mode (captured on 11.0.99) to the
+// model; anything else is no port control.
+func dot1xMode(m string) devicemodel.Dot1XMode {
+	switch devicemodel.Dot1XMode(m) {
+	case devicemodel.Dot1XForceAuthorized, devicemodel.Dot1XForceUnauthorized, devicemodel.Dot1XAuto,
+		devicemodel.Dot1XMultiHost, devicemodel.Dot1XMACBased:
+		return devicemodel.Dot1XMode(m)
+	}
+	return ""
+}
+
 // desiredDevice translates the switch-wide keys.
 func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 	cfg := unificfg.Parse(text)
@@ -914,6 +928,12 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		DHCPSnooping: cfg.DHCPSnoop,
 		DHCPGuards:   desiredGuards(cfg),
 		Timezone:     cfg.Timezone,
+	}
+	if cfg.Dot1X != nil {
+		d.Dot1X = &devicemodel.Dot1X{Enabled: cfg.Dot1X.Enabled}
+		for _, s := range cfg.Dot1X.Servers {
+			d.Dot1X.Servers = append(d.Dot1X.Servers, devicemodel.RADIUSServer{Addr: s.IP, Port: s.Port, Secret: s.Secret})
+		}
 	}
 	l.noteHeldACLs(desiredACLs(cfg, &d))
 	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().L3Routing {

@@ -438,6 +438,38 @@ for its validation and puts it back.
 | The router port in l2mcd (APPL_DB `L2MC_MROUTER_TABLE`): l2mcd lists a port only once it is oper up, and the cage used was empty | a linked port made a router port, its row in `L2MC_MROUTER_TABLE` |
 | LLDP-MED topology notify | an SNMP trap path; not modelled |
 
+### 802.1X port authentication (2026-11-15)
+
+hostapd (wired driver, 2.11, built on the switch as mstpd is) under
+disunified-l2d, one per controlled port; an unauthorised port held closed
+with the MAC filter's `learn_mode drop`, each authenticated host admitted
+with a static FDB entry and a kernel RETURN, EAPOL trapped with an
+`always_enabled` CoPP row; failed attempts counted per port into
+`Health.Dot1XFailures`, whose growth is anomaly 128. No image change
+([`drivers/sonic.md`](drivers/sonic.md) §11.26). **The controller's push
+captured on Network 11.0.99** from the UI on the DX010's empty cages (the
+device's 802.1X Control, UniFi Integrated and External RADIUS, each of the
+four methods, off), parsed and replayed
+(`informloop/replay_sonic_dot1x_test.go`).
+
+**Verified by hand on the DX010** (empty cage 31 in MAC loopback, a test
+RADIUS server on the switch, a scripted EAP-MD5 supplicant with a test MAC):
+the trap in ASIC_DB and EAPOL reaching the port's netdev; an accepted host
+authorised and admitted (APPL_DB and ASIC_DB static FDB entry), a refused
+one counted; l2d's restart adopting the running hostapd and its host; a
+logoff removing the admission; the teardown. Fixture- and replay-tested:
+the driver's claim, closed ports, l2d's config and the root-only secrets
+file, the admitted hosts' FDB entries kept, the read-back.
+
+| Gap | What the PR needs |
+|---|---|
+| The driver's own 802.1X path live (the push applied, l2d configured, hostapd built by the driver) | this branch deployed, a method set on an empty cage |
+| MAC-based authentication (MAB) | the user name and password UniFi's RADIUS server expects for a MAC; a RADIUS request from l2d on an unknown source (the port at `cpu_trap`); the loopback dropped such frames, to be probed |
+| Unauthorized VLAN, RADIUS-assigned VLAN | the first reaches no push on 11.0.99; the second (`dynvlan`) is disabled in every capture; neither built |
+| Forwarding: an admitted host's frames through the chip, an unadmitted one's dropped | two linked ports (rack day) |
+| A cabled supplicant against the gateway's RADIUS server; the controller's 128 alert | a host on a linked port, the bridge deployed |
+| 802.1X on an aggregate | not offered: an aggregate's members stay open |
+
 ### Layer 3 switching: routed networks, static routes, DHCP (2026-11-07)
 
 Claimed wherever FRR runs (`FEATURE|bgp`): L3 routing with 64 interfaces and
@@ -562,7 +594,6 @@ switch has no source that means exactly the condition.
 | Bit | Why not | What the PR needs |
 |---|---|---|
 | 2048 PHY failure | no PHY between the ASIC and the cages; the ASIC's per-port MAC local/remote fault (`PORT_OPERR_TABLE`) is a link-down reason, counted on the working uplink's ordinary drops. The ECS reports nothing for it either (no external PHY described, no cause, no `anomalies` key; read-only 2026-11-14) | an inform from a real UniFi switch reporting 2048 and what had failed on it; then a DX010 signal for a port the ASIC cannot bring up whatever the far end does |
-| 128 802.1X authentication failed | the image has no authenticator: no hostapd, and `docker-macsec` carries `wpa_supplicant` only; 202511's Port Access Control sources (`src/sonic-pac`) are built by no rule and consumed by nothing in sonic-swss | a PAC container with hostapd (wired) in the image kit, an orchagent consumer of `PAC_PORT_TABLE`, the controller's 802.1X push captured and applied, failed attempts per port as a `Port.Health` counter, a supplicant and a RADIUS server on a linked port ([`drivers/sonic.md`](drivers/sonic.md) §11.18.3) |
 | 1024 DoS | the ECS's `denial-of-service` error-disable cause is a configuration row with nothing observable behind it (no detector in its databases, chip or CPU path; no push key; no UI setting; no `anomalies` in its inform), so there is no condition to copy; the Tomahawk's DoS header checks (`DosAttack*`, off but SA=DA) could be counted per port through a free receive debug counter, outside SAI | an inform from a real UniFi switch reporting 1024 and the traffic that set it; then the matching checks turned on, counted per port into `Port.Health` and set on growth, verified with a cabled host ([`drivers/sonic.md`](drivers/sonic.md) §11.18.4) |
 
 ### IPv6 on the management interface (2026-11-14)
@@ -585,7 +616,7 @@ controller's own networkconf (`informloop/ipv6_test.go`,
 ### Refused (logged, not claimed)
 
 IGMP snooping on an image without l2mcd or with `options.igmp` off,
-802.1X (the image has no authenticator; what building one takes is [`drivers/sonic.md`](drivers/sonic.md) §11.18.3); MAC ACL
+MAC ACL
 rules on an image without the kit's sonic-swss 0003 (no L2 table type in the stock orchagent); an IP ACL rule shape
 no capture shows, or a set that would block the bridge's own SSH to the
 switch (the rules of that kind are held); breakout on a platform without `platform.json`
