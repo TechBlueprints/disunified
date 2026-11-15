@@ -213,6 +213,17 @@ type DeviceDesired struct {
 	MACACLSet bool
 	MACACLs   []MACACL
 
+	// BlockedClients are the MACs (lowercase, colon-separated) of the
+	// clients the controller blocks (UniFi's client Block): every frame
+	// from one is dropped, in every VLAN, the management VLAN and the
+	// device's own addresses included, as UniFi's own SONiC switch does it
+	// (docs/drivers/sonic.md §11.33). Kept apart from MACACLs: not an
+	// operator's rule and not counted against Capabilities.MACACLs.
+	// BlockedSet false = the controller has not said yet (no setparam since
+	// adoption): the device keeps the blocks it has.
+	BlockedSet     bool
+	BlockedClients []string
+
 	// SNMPCommunity: v1/v2c read-only community to configure; "" with SNMPSet = remove the managed one.
 	SNMPSet       bool
 	SNMPCommunity string

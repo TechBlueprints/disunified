@@ -8355,6 +8355,79 @@ datagrams to the switch's own address are the test.
   filter chains and ip6tables' `raw`. Seeing it live needs an `ACL_TABLE`
   event, which the test kept clear of.
 
+### 11.33 UniFi's client Block (2026-11-15)
+
+UniFi lets an operator Block a client (the client list's Block, or
+`cmd/stamgr block-sta`). The controller delivers it to every switch through
+the `setparam` envelope's `blocked_sta` and a `block-sta` cmd, not through
+`system_cfg` (captured 2026-11-15 by blocking a made-up MAC beside the site's
+one blocked client: `docs/feature-map.md` §3, `CLAUDE.md` §5).
+
+#### 11.33.1 What the ECS does
+
+Read-only, 2026-11-15. The ECS's `global_mac_acl` (type ANY, bound ingress
+to every front-panel port and PortChannel) held one rule the Policy Table
+did not make: `ACL_RULE|global_mac_acl|MB_<mac>` with `PACKET_ACTION DROP`,
+`PRIORITY 1023`, `SRC_MAC <mac>` (no mask) and no `VLAN_ID`. Its MAC is the
+one client the controller lists as `blocked: true` (`rest/user`), and the
+MAC every bridged switch's `setparam` carried as `blocked_sta`. The rule
+sits below the controller's MAC rules (9999 down) and, having no VLAN,
+covers the management VLAN too; with the ECS's own address a switched host
+(§11.32.1) the drop also keeps the client off the switch itself. The
+test client's Block was not read on the ECS (its rule's arrival there was
+not watched).
+
+#### 11.33.2 As built (`block.go`)
+
+- **The chip.** One rule per blocked client in the driver's own MAC table,
+  `DUI_MAC_ACL|MB_<mac>`, exactly the ECS's fields. The table is shared
+  with the controller's MAC rules (`RULE_N`, §11.7.8) but not their limit:
+  `max_custom_mac_acls` counts only the controller's rules. Each half is
+  kept as the switch has it while the other changes or is held. Like every
+  MAC rule it needs the image kit's sonic-swss 0003 (the L2 table type);
+  without it the Block is noted, not written.
+- **The switch's own address.** On this SAI an ACL drop leaves the traps'
+  copy to the CPU alone (§11.7.8), so the chip's rule alone would let a
+  blocked client reach the switch. The kernel drops that copy: an ebtables
+  chain `DUI_MAC_BLOCK`, jumped to first from the kernel Bridge's INPUT,
+  `-s <mac> -j DROP` per `MB_` rule the chip holds. That covers ARP, IPv4
+  and IPv6 alike, where the raw-table mirror of the L3 tables (§11.32.3) is
+  IPv4 only. A routed front-panel port is no Bridge member, so its frames
+  do not pass the chain. l2d's own chains (`DUI_MACLOCK`, `DUI_DOT1X`) are
+  separate and l2d touches only its own jumps; l2d inserting `DUI_DOT1X`
+  at INPUT's head later would put an EAPOL ACCEPT ahead of the block.
+  One `sudo bash -s -- disunified-mac-block` script writes the chain and
+  `/run/disunified/mac-block`, the chain's hash, which `collect.py` reads
+  (`mac_block`); a reboot clears both and the next apply rewrites them.
+  The kernel half follows the chip's rules in `applyACL`, after the chip
+  writes, and is not counted as a setting.
+- **Never the management path.** A client that is the switch itself, its
+  gateway or the host the bridge is reached from (`mgmtL2`) is held with a
+  note: the drop would cut the switch off from the controller.
+- **Timing.** The session takes `blocked_sta` from every `setparam` and the
+  `block-sta` / `unblock-sta` cmds onto a known list; the loop hands the list
+  to `ApplyDevice` on every apply and reconcile, so a Block reaches the
+  switch within a cycle of whichever arrives first.
+
+#### 11.33.3 Tests
+
+`block_test.go` (from the DX010's own captured replies, two clients):
+both rules and the chain, idempotence, a lost marker rewriting the chain
+only, one client unblocked, then none (table and chain removed); the
+controller's MAC rules from the ECS's push beside the block, each half kept
+while the other is not set; the gateway held; an image without the L2 type.
+`informloop/replay_sonic_block_test.go` replays the whole capture through
+the loop: the rules and the chain on the first `setparam` with both
+clients, the test client's rule removed on the Unblock's, the cmds writing
+nothing more.
+
+#### 11.33.4 Not run live
+
+The frame test on the DX010 (the rule and the chain written by hand on a
+looped empty cage, a frame with the test source counted dropped by the
+chip, then removed) is still to do, and the deployed bridge has not yet
+written the site's blocked client. Both are in the register.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH

@@ -155,6 +155,51 @@ by capture before implementing.
 
 Note on the time zone: 10.6.106 pushes a **POSIX TZ rule** (`MST7MDT,M3.2.0,M11.1.0` in every capture), not a zone name; a driver whose device takes zone names maps the rule onto one (the `sonic` driver: the zone of the switch's own tzdata with that rule, below).
 
+### `blocked_sta`: UniFi's client Block (captured 2026-11-15, Network 11.0.99)
+
+Not a `system_cfg` key: a field of the `setparam` envelope, in **every**
+`setparam` the controller sends a switch (the config pushes and the
+interval-only ones alike), absent from `noop`s and `cmd`s. Its value is the
+MACs of every client the controller lists as `blocked: true`
+(`rest/user`), lowercase with colons: `""` with none (every Network 10.6.106
+reply log), one MAC with one (every switch's reply since Network 11, where
+the site has one client blocked), and two joined by a **newline** with two
+(`"02:00:00:00:b1:01\n02:00:00:00:b1:02"`, the newer Block first, which was
+also their sorted order). Captured by blocking a made-up, locally
+administered MAC through `cmd/stamgr block-sta` beside the site's one
+blocked client, then `unblock-sta` and `forget-sta` (Clint's OK; the
+client list ended as it began): `controller-11.0.99/replies-dx010-block.ndjson`
+and `replies-arista-block.ndjson`.
+
+- **The Block changes no `system_cfg` key.** The cfgversions that moved in
+  that window were another session's 802.1X edits; the blocked list was the
+  only difference the Block made.
+- **Two paths.** A `cmd` `block-sta` / `unblock-sta` with `mac` at the
+  device's next inform, and the whole list in the next `setparam`. The
+  DX010 (30 s interval, pushes in flight) had the `setparam` 31 s after the
+  Block and 6 s after the Unblock, the cmd 30-65 s later; the Arista had
+  the cmd at its next inform (7 s and 70 s) and the Block's `setparam` only
+  85 s later, the Unblock's not within the window: the cmd is the only
+  timely signal where no push is due.
+- **The power path gets it too**: the PDU's replies carry the site's
+  blocked client; the two UPSes' last `setparam`s (2026-11-12, 14:26) carry
+  `""`, which may predate that Block (first seen in a switch's reply at
+  15:13 that day). Nothing on a power device acts on it.
+- **UniFi's own switch drops the client in every VLAN**: the ECS's MAC ACL
+  table holds `MB_<mac>` (DROP, PRIORITY 1023, SRC_MAC, no VLAN) for the
+  site's blocked client (read-only, 2026-11-15, [`drivers/sonic.md`](drivers/sonic.md) §11.32.1, §11.33).
+- **The bridge**: `device.ParseBlockedSTA` (commas and whitespace separate
+  too), persisted in `State.BlockedSTA` so a restart keeps the list, handed
+  to the driver as `DeviceDesired.BlockedClients` on every apply and
+  reconcile (`BlockedSet` false until a `setparam` has said: the device then
+  keeps what it has). `sonic`: `MB_<mac>` rules in `DUI_MAC_ACL` as the ECS
+  writes them and an ebtables chain for the switch's own address
+  ([`drivers/sonic.md`](drivers/sonic.md) §11.33); `arista-eos`: a static
+  MAC drop entry per VLAN ([`drivers/arista-eos.md`](drivers/arista-eos.md)
+  §9.9); `proxmox`: an nft bridge table ([`drivers/proxmox.md`](drivers/proxmox.md)
+  §4d). A client that is the device itself or its gateway is held with a
+  note.
+
 ### `setstate` (prior art; **not yet observed** on 10.6.106)
 
 `port_overrides` / `port_table` config objects. If 10.6 sends them for some edits (port
@@ -172,6 +217,7 @@ source of the same per-port intent.
 | `set-locate` / `unset-locate` (10.6 names; `locate`/`unlocate` too) | blink LEDs | reports `locating`; no LED control on the 7160 | done, replayed | reports `locating` |
 | `speed-test`, `traceroute`, `ping` | diagnostics | `ping`/`traceroute` via eAPI, report results | todo (nice to have) | todo |
 | `power-cycle` (`port_idx`) | PoE power cycle | `shutdown`, 3 s, `no shutdown` on every lane (for a PoE-capable driver) | n/a here: the controller only issues it for a PoE port powering a device (`api.err.InvalidTargetPort` otherwise, verified 2026-09-20), and the UI's "Power Cycle" appears only on such ports; the 7160 has no PoE, so no capture exists | implemented as a `link_down` bounce; the controller never issues it for a non-PoE port |
+| `block-sta` / `unblock-sta` (`mac`) | UniFi's client **Block** / Unblock, sent to every switch at its next inform after the operator's action, beside `blocked_sta` below (captured 2026-11-15 on Network 11.0.99, `controller-11.0.99/replies-{arista,dx010}-block.ndjson`) | the session updates the blocked list at once, onto a list a `setparam` has already made known (`device.Session.BlockedClients`); the drivers write it as below | **done**: static MAC drop entries | **done**: nft table |
 | `cable-test` | TDR | EOS has no TDR on 7160 | n/a | n/a |
 | `clear-counters`? | reset stats | `clear counters` | verify | verify |
 

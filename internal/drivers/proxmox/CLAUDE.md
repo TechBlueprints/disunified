@@ -91,6 +91,12 @@ supports Red Hat and Ubuntu, not Debian, and whether it names a tower's
 fans was not established; OpenManage Server Administrator is the servers'.
 Neither would change what the UI shows.
 
+**Client Block (built 2026-11-15, `block.go`, `docs/drivers/proxmox.md`
+§4d), fixture-tested only.** Its own table `bridge disunified_block`, one
+prerouting rule over every bridge port (uplinks too), needs `nft` only; a
+capture without the `macblock` section leaves the driver its own record of
+the table.
+
 **Rogue DHCP (built 2026-11-14, `dhcpguard.go`, `docs/drivers/proxmox.md`
 §4c).** `DHCPSnooping` is claimed where the node has `nft` and the bridge is
 VLAN-aware; the guard is the driver's own `table bridge disunified`, never

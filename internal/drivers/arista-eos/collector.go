@@ -88,6 +88,8 @@ type Collector struct {
 	portChannels map[string]devicemodel.PortVLAN // Port-ChannelN -> its switchport state
 	channelCfg   map[int][]string                // every Port-Channel in the running config: number -> its lines (portchannel.go)
 	managedSNMP  string                          // the SNMP community this bridge last configured
+	macDrops     map[string]bool                 // the running config's static MAC drop entries, by line (block.go)
+	blockNoted   map[string]bool                 // the client Block's notes already logged
 
 	sshKeyUser    string   // user that receives the controller's SSH keys
 	installedKeys []string // what InstallSSHKeys last wrote (per process)
@@ -305,6 +307,7 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	c.mu.Lock()
 	c.portChannels = portChannelVLANs(sp)
 	c.channelCfg = portChannelSections(rc)
+	c.macDrops = macDropsFrom(rc)
 	c.mu.Unlock()
 	stpMode, stpPrio := stpSystem(stp)
 

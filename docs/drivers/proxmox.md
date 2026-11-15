@@ -421,6 +421,28 @@ production hosts. Loop protection (512) and the rest of the table
 (802.1X, MAC locking, DoS, PHY, PoE) have nothing on a node that detects
 them.
 
+## 4d. UniFi's client Block (2026-11-15)
+
+The controller's blocked clients (`blocked_sta` and the `block-sta` cmd,
+`docs/feature-map.md` §3) are dropped as they enter the node's bridge from
+any port, guest NIC or uplink, as UniFi's own SONiC switch drops them on
+every front-panel port (`docs/drivers/sonic.md` §11.33). Bridge prerouting
+runs before the bridge's local delivery, so a blocked client reaches
+neither another port nor the node's own address.
+
+- **Built (`block.go`).** An nftables table of the driver's own, `table
+  bridge disunified_block`, apart from the DHCP guard's table and from
+  Proxmox's firewall: one chain hooked at prerouting, one rule `meta ibrname
+  "<bridge>" ether saddr { <macs> } counter drop`, the table comment
+  `dui:<fingerprint>`. Replaced whole in one `nft -f -` transaction when the
+  list changes, deleted when none is blocked; `collect.sh` lists it
+  (`macblock`). Needs `nft` only (not a VLAN-aware bridge). The node's own
+  bridge MAC is never written.
+- **Tests.** `block_test.go`, from the bridged switches' captured setparam
+  with two clients, against node 2's capture.
+- **Not verified on a node.** The nodes are production; no rule set has been
+  loaded, not even in a throwaway namespace as the guard's was (§4c).
+
 ## 5. Setup
 
 Per node, once:

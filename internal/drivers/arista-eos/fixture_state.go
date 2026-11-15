@@ -267,6 +267,10 @@ func (f *FixtureTransport) globalCmd(c string) bool {
 		}
 	case strings.HasPrefix(c, "no interface Port-Channel"):
 		return f.removePortChannel(strings.TrimPrefix(c, "no interface "))
+	case strings.HasPrefix(c, "mac address-table static "), strings.HasPrefix(c, "no mac address-table static "):
+		// As written, a one-liner (`mac address-table static 0200.0000.0001
+		// vlan 1 drop`, mac-drop/show-running-config-mac-drop.json).
+		return f.rcLine(c, "mac address-table static ", func(v string) string { return v })
 	case strings.HasPrefix(c, "ntp server "), strings.HasPrefix(c, "no ntp server "):
 		// One line per server, as written (`ntp server 192.0.2.2`, the
 		// capture's running config).

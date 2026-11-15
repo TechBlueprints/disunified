@@ -531,6 +531,12 @@ func (l *Loop) informOnce(ctx context.Context) {
 			if idx, err := strconv.Atoi(e.Text); err == nil {
 				l.pendingRecover = append(l.pendingRecover, idx)
 			}
+		case device.EffectBlockedClients:
+			if e.Text == "" {
+				lines = append(lines, "blocked clients: none")
+			} else {
+				lines = append(lines, fmt.Sprintf("blocked clients: %s", e.Text))
+			}
 		case device.EffectOutletCycle:
 			lines = append(lines, fmt.Sprintf("relayctl: power-cycle requested for outlet(s) %s", e.Text))
 			for _, s := range strings.Split(e.Text, ",") {
@@ -972,6 +978,11 @@ func (l *Loop) desiredDevice(text string) devicemodel.DeviceDesired {
 		}
 	}
 	l.noteHeldACLs(desiredACLs(cfg, &d))
+	// The client Block is no system_cfg key: it rides every setparam as
+	// blocked_sta, which the session keeps (docs/feature-map.md §3).
+	if l.session != nil {
+		d.BlockedClients, d.BlockedSet = l.session.BlockedClients()
+	}
 	if c, ok := deviceAs[devicemodel.Capable](l); ok && c.Capabilities().L3Routing {
 		notes := desiredL3(cfg, &d)
 		if c.Capabilities().BGP {
@@ -1666,6 +1677,8 @@ func effectName(k inform.EffectKind) string {
 		return "decode-error"
 	case device.EffectSystemCfg:
 		return "system-cfg"
+	case device.EffectBlockedClients:
+		return "blocked-clients"
 	}
 	return fmt.Sprintf("effect-%d", int(k))
 }

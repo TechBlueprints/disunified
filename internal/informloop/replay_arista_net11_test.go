@@ -83,11 +83,18 @@ func TestReplayAristaNetwork11(t *testing.T) {
 		}
 	}
 
-	// Record 0: one VLAN batch and one port batch, port 54 named as EOS
-	// names it.
+	// Record 0: one VLAN batch, the client Block (the setparam's one
+	// blocked client as a drop entry in each of the switch's VLANs,
+	// docs/drivers/arista-eos.md §9.9), and one port batch, port 54 named as
+	// EOS names it.
 	first := strings.Split(writes[0], "\n")
-	if len(first) != 2 || first[0] != "enable | configure | vlan 69,4000,4010 | end | write memory" || !strings.Contains(first[1], "interface Ethernet54/1 | description Ethernet54/1 |") {
-		t.Fatalf("record 0 is not one VLAN and one port batch:\n%s", writes[0])
+	if len(first) != 3 || first[0] != "enable | configure | vlan 69,4000,4010 | end | write memory" || !strings.Contains(first[2], "interface Ethernet54/1 | description Ethernet54/1 |") {
+		t.Fatalf("record 0 is not one VLAN, one block and one port batch:\n%s", writes[0])
+	}
+	for _, v := range []string{"1", "2", "69", "4000", "4010"} {
+		if !strings.Contains(first[1]+" |", "| mac address-table static 0200.0000.0001 vlan "+v+" drop |") {
+			t.Errorf("record 0's block has no drop entry in VLAN %s:\n%s", v, first[1])
+		}
 	}
 	port54 := func(desc string) string {
 		return "enable | configure | interface Ethernet54/1 | description " + desc + " | end | write memory"

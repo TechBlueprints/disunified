@@ -113,6 +113,11 @@ type swState struct {
 	// aclCPUKnown says the collector reads the marker (acl_cpu).
 	aclCPU      string
 	aclCPUKnown bool
+	// macBlock is the hash of the kernel chain of blocked clients
+	// (block.go, §11.33) as its marker records it, "" without one;
+	// macBlockKnown says the collector reads the marker (mac_block).
+	macBlock      string
+	macBlockKnown bool
 	// gc: the guard's per-port count (acl_count.go, §11.7.9).
 	gc guardCountState
 
@@ -364,6 +369,9 @@ func newState(db map[string]table, sec map[string]string) *swState {
 		if m, ok := sec["acl_cpu"]; ok {
 			s.aclCPUKnown, s.aclCPU = true, strings.TrimSpace(m)
 		}
+		if m, ok := sec["mac_block"]; ok {
+			s.macBlockKnown, s.macBlock = true, strings.TrimSpace(m)
+		}
 	}
 	for iface, f := range db["asic_bridge_port"] {
 		if f["admin"] == "false" {
@@ -442,7 +450,7 @@ func (s *swState) clone() *swState {
 		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
-		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, gc: s.gc.clone(),
+		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, macBlock: s.macBlock, macBlockKnown: s.macBlockKnown, gc: s.gc.clone(),
 		l2mcKnown: s.l2mcKnown, l2mcFeature: s.l2mcFeature, l2mc: map[string]map[string]string{}, bridgeDown: s.bridgeDown,
 		pf: s.pf.clone(), lagLearn: copyFields(s.lagLearn),
 	}

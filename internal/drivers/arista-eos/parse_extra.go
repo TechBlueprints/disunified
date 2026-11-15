@@ -495,6 +495,9 @@ func macTable(mt showMACAddressTable, key ifKey) []devicemodel.MACEntry {
 		if e.EntryType == "static" && e.Interface == "Cpu" {
 			continue // the switch's own address
 		}
+		if e.EntryType == "static" && e.Interface == "" {
+			continue // a drop entry (a blocked client, block.go): on no port
+		}
 		m := devicemodel.MACEntry{MAC: strings.ToLower(e.MACAddress), VLAN: e.VLANID}
 		if slot, _, ok := key(e.Interface); ok {
 			m.PortIndex = slot

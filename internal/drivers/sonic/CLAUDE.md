@@ -1217,6 +1217,19 @@ was restarted.
   - **The bridge's reply log (`inform-log/`) keeps every push verbatim**,
     the RADIUS secret included: grep it, not just the journal, when
     checking where a secret went.
+- **UniFi's client Block (`block.go`, `docs/drivers/sonic.md` §11.33,
+  built 2026-11-15, fixture- and replay-tested).** `MB_<mac>` rules in
+  `DUI_MAC_ACL` exactly as the ECS holds them (DROP, PRIORITY 1023, a bare
+  SRC_MAC, no VLAN), outside the MAC rules' limit, each half of the table
+  kept while the other is held or unknown; the kernel's copy is ebtables
+  `DUI_MAC_BLOCK` from INPUT (marker `/run/disunified/mac-block`, collect.py
+  `mac_block`), not the IPv4 raw mirror, so ARP and IPv6 are covered too.
+  **`swState.clone` lists its fields by hand**: a new field left out of it
+  is lost after every chip batch (the chain was written one apply late
+  until it was added). Scrubbed placeholders collide across captures
+  (a reply's first MAC and a collect's switch MAC are both
+  `02:00:00:00:00:01`): seed a reply log's clients with
+  `sanitize-controller.py --mac` or the driver holds them as the switch.
 - **Hand tests on a switch that several sessions share take a lock on the
   switch**: write `/tmp/dui-dx010.lock` with your session's name and what
   you are doing, wait while another session holds it, remove it when done.

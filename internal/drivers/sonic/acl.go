@@ -177,25 +177,58 @@ func (c *Collector) aclSet(d devicemodel.DeviceDesired, st *swState) {
 			}
 		}
 	}
-	if d.MACACLSet {
+	if d.MACACLSet || d.BlockedSet {
 		c.mu.Lock()
 		l2 := c.macACL
 		c.mu.Unlock()
 		switch {
 		case !l2:
-			if len(d.MACACLs) > 0 {
+			if d.MACACLSet && len(d.MACACLs) > 0 {
 				note("MAC ACL rules (%d): this image's orchagent has no L2 table type and no outer-MAC match (the image kit's sonic-swss 0003, docs/drivers/sonic.md §11.7.8); not written", len(d.MACACLs))
 			}
+			if d.BlockedSet && len(d.BlockedClients) > 0 {
+				note("blocked clients (%d): this image's orchagent has no L2 table type and no outer-MAC match (the image kit's sonic-swss 0003, docs/drivers/sonic.md §11.33); not written", len(d.BlockedClients))
+			}
 		default:
-			rules, why := macRules(d.MACACLs, c.NativeVLAN)
-			if why == "" {
-				why = cutsManagementMAC(d.MACACLs, c.NativeVLAN, c.mgmtL2())
+			// One table, two owners: the controller's MAC rules (RULE_N)
+			// and its blocked clients (MB_<mac>, §11.33), each kept as the
+			// switch has it when its half is held or not yet known.
+			have := map[string]map[string]string{}
+			if st != nil {
+				have = st.rulesOf(macACLTable)
 			}
-			if why != "" {
-				note("MAC ACL rules: %s; the switch's rules are left as they are", why)
+			rules := map[string]map[string]string{}
+			keep := func(block bool) {
+				for name, f := range have {
+					if isBlockRule(name) == block {
+						rules[name] = copyFields(f)
+					}
+				}
+			}
+			if d.MACACLSet {
+				ops, why := macRules(d.MACACLs, c.NativeVLAN)
+				if why == "" {
+					why = cutsManagementMAC(d.MACACLs, c.NativeVLAN, c.mgmtL2())
+				}
+				if why != "" {
+					note("MAC ACL rules: %s; the switch's rules are left as they are", why)
+					keep(false)
+				} else {
+					for k, r := range ops {
+						rules[k] = r
+					}
+				}
 			} else {
-				want[macACLTable] = rules
+				keep(false)
 			}
+			if d.BlockedSet {
+				for k, r := range blockRules(d.BlockedClients, c.mgmtL2(), note) {
+					rules[k] = r
+				}
+			} else {
+				keep(true)
+			}
+			want[macACLTable] = rules
 		}
 	}
 	for _, n := range notes {
@@ -753,6 +786,9 @@ func (c *Collector) applyACL(ctx context.Context) (int, error) {
 	st := c.state
 	c.mu.Unlock()
 	if _, err := c.applyCPU(ctx, st); err != nil {
+		return n, err
+	}
+	if _, err := c.applyBlockKernel(ctx, st); err != nil {
 		return n, err
 	}
 	return n, nil

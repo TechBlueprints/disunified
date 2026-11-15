@@ -70,6 +70,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 | Gap | Where it is marked | What the PR needs |
 |---|---|---|
 | **`numbering: node`** — per-node guest ports (48 per node) instead of 48 across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
+| **UniFi's client Block** (2026-11-15): the controller's blocked clients (`blocked_sta`, captured) as an nft bridge table of the driver's own, dropping their frames from every port at prerouting | `drivers/proxmox.md` §4d; fixture-tested only (the nodes are production) | the table loaded on a node, or first in a throwaway network namespace as `dhcpguard-netns-test.sh` does: a frame from a blocked source dropped and counted, another passing, the table gone on Unblock |
 | **LACP from the UniFi UI** converting a bond's mode through the Proxmox API | `drivers/proxmox.md` §3b | the round-trip on a node whose uplink you can afford to lose for a minute: aggregate in the UI → bond mode changes → un-aggregate → restored; the pushed `system_cfg` keys added to the replay fixture |
 
 ### Known limits (by design; a PR would be a design change, open an issue first)
@@ -139,6 +140,12 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 | **CNI backend** (Podman ≤ 3, or 4 upgraded in place) | different `inspect` shape; `InterfaceName` semantics differ | a capture from a CNI host and the parser cases for it |
 
 ### Not done (read-only by design today) — PRs welcome, open an issue first
+
+- **UniFi's client Block** (`blocked_sta`, `docs/feature-map.md` §3) is not
+  applied: no driver capability is built for a Podman host. A PR would drop
+  the blocked sources on the host's container bridges as the `proxmox`
+  driver's nft table does (`drivers/proxmox.md` §4d), with a capture of the
+  table read back.
 
 - **Port control**: port state → `ip link set … down` inside the netns, or
   `podman network disconnect`; VLANs have no meaning on a Podman network.
@@ -226,6 +233,8 @@ gateway's port and switch-facing ports
 | The end-to-end IP rule round through the controller (rule scoped to the Arista, pushed, written, deleted, removed) and a rule matching traffic | **live**, 2026-11-14 (§9.8); the round found the session-name defect fixed on branch `claude/arista-finish-60f078` (each change its own session, §9.3) |
 | A rule on a port carrying a client's traffic, a rewrite under that traffic | **untested**: needs a host on a test port |
 | Which mode a site runs | the operator's choice; `exact` guards no port on a switch of all-VLAN trunks with any unguarded network (the deployment keeps `exact`: detection is off, §9.7) |
+
+| **UniFi's client Block** (2026-11-15): the blocked clients (`blocked_sta`, captured) as `mac address-table static <mac> vlan <v> drop` in every VLAN (§9.9) | the command and its read-back **captured live** (committed under a timer, aborted; `mac-drop/`); the writes fixture- and replay-tested; **untested**: a frame with a blocked source dropped (Arista's manual says drop entries match source or destination), which needs a host behind a test port |
 
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
@@ -401,6 +410,15 @@ on the right port only).
 | The kernel mirror written by the deployed bridge from a controller push, and kept through caclmgrd's filter-table rewrite (fixture-tested; caclmgrd's behaviour read from its source, §11.32.4) | an IP rule scoped to the DX010 whose match covers the switch's address: the raw chains written by the bridge, the blocked traffic gone from the switch's sockets, an `ACL_TABLE` event (a breakout's rebind) leaving them in place, and the rule's removal clearing them |
 | A guard on a VLAN other than the native stand-in (the DX010 carries only VLAN 1) | a guarded tagged network on a DX010 port: the push's guard group, `VLAN_ID <v>` matched on tagged frames |
 | MAC rules: a switched frame dropped (written, `Active` and removed live on the DX010 2026-11-06 on the image with the kit's sonic-swss 0003; the chip's entry counted exactly the blocked MAC's frames, and no second port had a link, §11.7.8. Frames to the switch itself still reach its CPU through the traps' copy, which the UI cannot make a MAC rule reach: it refuses the management network, §11.32) | two linked ports on a VLAN the rule names: frames from the blocked MAC not forwarded and a control MAC's forwarded, then the rule's removal |
+
+### UniFi's client Block (2026-11-15)
+
+| What | Status |
+|---|---|
+| The controller's blocked clients (`blocked_sta` in every setparam, `block-sta`/`unblock-sta` cmds; captured on 11.0.99) as `MB_<mac>` rules in `DUI_MAC_ACL`, the ECS's own form, outside the MAC rules' limit | fixture- and replay-tested (`block_test.go`, `replay_sonic_block_test.go`, from the DX010's own reply log of a Block and an Unblock); needs the kit's sonic-swss 0003, as every MAC rule |
+| The kernel's copy: ebtables `DUI_MAC_BLOCK` from the Bridge's INPUT (ARP, IPv4, IPv6 to the switch's own address) | fixture-tested; **untested live** |
+| A frame with a blocked source on a looped empty cage, dropped by the chip's entry and by the chain; Unblock removes both | **untested**: the frame test under the switch lock ([`drivers/sonic.md`](drivers/sonic.md) §11.33.4) |
+| A routed front-panel port's traffic to the switch | not covered: a routed port is no Bridge member, so the chain does not see it (the chip's rule still drops what it forwards) |
 
 ### IGMP snooping (the custom image only)
 

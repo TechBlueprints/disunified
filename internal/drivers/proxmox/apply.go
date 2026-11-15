@@ -353,6 +353,11 @@ func (c *Collector) ApplyDevice(ctx context.Context, d devicemodel.DeviceDesired
 	if err != nil {
 		return changed, err
 	}
+	n, err = c.applyBlock(ctx, d)
+	changed += n
+	if err != nil {
+		return changed, err
+	}
 	if d.ManageSyslog && len(d.SyslogHosts) > 0 {
 		c.warnOnce("syslog", "the controller's remote syslog host %v is not applied: Proxmox logs through journald", d.SyslogHosts)
 	}

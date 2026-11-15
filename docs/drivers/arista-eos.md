@@ -1139,6 +1139,36 @@ switch's address port 68, and the frames were forged from 198.51.100.67:
 five of five reached the CPU before the rule, none with it, all again after
 its removal.
 
+### 9.9 UniFi's client Block (2026-11-15)
+
+The controller's blocked clients (`blocked_sta` and the `block-sta` cmd,
+`docs/feature-map.md` §3) cannot go into a MAC ACL here (§9.2: no `mac
+access-group` on a switchport). EOS has another way: a static MAC drop
+entry, `mac address-table static <mac> vlan <v> drop`. Arista's EOS manual
+(the Data Transfer chapter's drop entries) says frames whose source or
+destination MAC is the entry's are discarded in its VLAN, unicast addresses
+only. The command exists on 4.26.14M; its read-back was captured on
+2026-11-15 under a commit timer and the session aborted
+(`docs/fixtures/arista-eos-4.26.14M/mac-drop/`): the running config shows
+the line as written with the MAC in dotted form, and the MAC table lists the
+entry as `static` with no interface (so `macTable` reports no client for it).
+
+- **Built (`block.go`).** One entry per blocked client per VLAN in `show
+  vlan`, in the switch-settings batch (`configure` ... `write memory`); the
+  controller's list is the switch's, so a drop entry it does not name goes,
+  one made by hand included. A client that is the switch's own MAC or its
+  gateway is held with a note; a multicast MAC is refused (a drop entry is
+  unicast only). A VLAN created in the same apply gets its entries then
+  (EnsureVLANs runs first).
+- **Tests.** `block_test.go` (the Arista bridge's own captured setparam with
+  two clients): every line, idempotence across a collect, one client
+  unblocked, the unknown list left alone, the switch itself held; the read
+  back of the captured forms. `replay_arista_net11_test.go`'s record 0 now
+  writes the site's one blocked client in each VLAN.
+- **Not verified.** No frame with a blocked source has crossed the 7160 (no
+  host behind its test ports); the drop by source is the manual's, not
+  measured. The deployed bridge has not written one yet.
+
 ## 10. The 7160 as a lane-switch parent (2026-11-15)
 
 The `breakout` driver presents a split cage as a five-port switch of its
