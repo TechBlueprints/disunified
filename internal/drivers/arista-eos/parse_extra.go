@@ -39,9 +39,10 @@ type showInterfacesTransceiver struct {
 
 type showInventory struct {
 	XcvrSlots map[string]struct {
-		MfgName   string `json:"mfgName"`
-		ModelName string `json:"modelName"`
-		SerialNum string `json:"serialNum"`
+		MfgName     string `json:"mfgName"`
+		ModelName   string `json:"modelName"`
+		SerialNum   string `json:"serialNum"`
+		HardwareRev string `json:"hardwareRev"` // the module's vendor revision ("1", "A"), "" for a cable that has none
 	} `json:"xcvrSlots"`
 }
 
@@ -398,7 +399,7 @@ func applyExtras(ports []devicemodel.Port, static map[string]portStatic,
 			o.TempC, o.VoltageV, o.TxBiasMA, o.TxPowerDBm, o.RxPowerDBm = x.Temperature, x.Voltage, x.TxBias, x.TxPower, x.RxPower
 		}
 		if slotInv, ok := inv.XcvrSlots[strconv.Itoa(slot)]; ok {
-			o.Vendor, o.Part = slotInv.MfgName, slotInv.ModelName
+			o.Vendor, o.Part, o.Revision = slotInv.MfgName, slotInv.ModelName, slotInv.HardwareRev
 			if o.Serial == "" {
 				o.Serial = slotInv.SerialNum
 			}
