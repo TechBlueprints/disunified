@@ -425,6 +425,15 @@ these is marked "not captured".
   (the UI's own text, 2026-11-14): every other bit is a detection the port
   keeps running through (`docs/drivers/sonic.md` §11.20, with what the ECS's
   `ERROR_DISABLE` table does and does not show).
+- **The controller pins `stp.edge` from the reported `stp_edge_port`
+  (11.0.99, read from `server.log` 2026-11-15).** About every 5-6 minutes
+  per switch, `stp-edge-auto` takes each up port whose edge is left to the
+  controller and records `enabled` or `disabled` from that port's
+  `stp_edge_port`. The push then carries it as `stp.edge`, with no change to
+  the override. On the ECS and in l2d, `disabled` turns auto edge off, so a
+  port that was once up as a non-edge port (a looped test cage, a switch
+  link) stays non-edge. A `disabled` value lasts through the controller's
+  restarts (`docs/drivers/sonic.md` §11.23.3).
 
 ## 6. Driver facts
 
