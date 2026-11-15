@@ -196,3 +196,13 @@ that cost time on Clint's DCS-7160-48TC6-F.
   json` is "unconverted"). The admin speed is a startup read
   (`show interfaces transceiver properties`): a batch that writes a speed
   sets `c.refresh` so the next collect re-reads it.
+- **`no vlan N` deletes silently whatever still names the VLAN**
+  (2026-11-15, `docs/drivers/arista-eos.md` §12, `vlan-prune/`): an
+  `interface VlanN` stays (`lowerlayerdown`), as do `no ip igmp snooping
+  vlan N`, `no spanning-tree vlan-id` and any port's lines naming it. So the
+  driver's VLAN delete (`vlan_prune.go`) checks first: an SVI, a `vlan`
+  section line other than `name` (a trunk group) or an unwritten interface
+  naming it keeps the VLAN; VLAN 1 and the management VLAN never go. The
+  running config folds unnamed VLANs into one `vlan 69,3000,4000` section.
+  The prune needs this run's `EnsureVLANs` and every attached lane
+  switch's `EnsureLaneVLANs`.

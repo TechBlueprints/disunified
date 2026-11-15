@@ -1,0 +1,30 @@
+{
+  "interfaces": {
+    "Management1": {
+      "interfaceAddress": {
+        "ipAddr": {
+          "address": "0.0.0.0",
+          "maskLen": 0
+        }
+      },
+      "interfaceStatus": "connected",
+      "ipv4Routable240": false,
+      "lineProtocolStatus": "up",
+      "mtu": 1500,
+      "name": "Management1"
+    },
+    "Vlan1": {
+      "interfaceAddress": {
+        "ipAddr": {
+          "address": "192.0.2.1",
+          "maskLen": 16
+        }
+      },
+      "interfaceStatus": "connected",
+      "ipv4Routable240": false,
+      "lineProtocolStatus": "up",
+      "mtu": 1500,
+      "name": "Vlan1"
+    }
+  }
+}

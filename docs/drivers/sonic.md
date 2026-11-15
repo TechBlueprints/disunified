@@ -5899,7 +5899,8 @@ MACs), `disunified-l2d`'s `MacLockGuard`:
 
 1. writes the kernel bridge's chain `DUI_MACLOCK` (jumped to from INPUT and
    FORWARD): per secured port, `-i <port> -s <mac> -j RETURN` for each
-   allowed MAC, then `-i <port> -j DROP`;
+   allowed MAC, then `-i <port> -j DROP`; every write is one
+   `ebtables-restore --noflush` transaction (§11.26.12);
 2. only then sets the port's learning to `cpu_trap` in APPL_DB
    (`PORT_TABLE`, a PortChannel's `LAG_TABLE`, through ProducerStateTable),
    the ECS's mode: an unknown source is still neither learnt nor forwarded
@@ -7680,7 +7681,9 @@ authenticates:
   (ahead of MAC locking's): the port's EAPOL accepted, each admitted
   source RETURNed, the rest of the port's frames dropped, so an
   unauthorised host cannot reach the switch's own CPU through a trapped
-  frame (ARP, DHCP, IGMP) either;
+  frame (ARP, DHCP, IGMP) either; every write is one `ebtables-restore
+  --noflush` transaction, and a chain the kernel lost is written again
+  at the next sync (§11.26.12);
 - the EAPOL trap `COPP_TRAP|dui_eapol` (`trap_ids eapol`, `queue4_group1`,
   `always_enabled true`) while any port authenticates;
 - a hostapd of its own (`-B -P /run/disunified-dot1x/<port>.pid`, config
@@ -8108,7 +8111,8 @@ flush, the chain's DROP). The open port learnt nothing on the looped cage
 **This l2d (run4, a copy of `l2d.py` installed for the run, the deployed
 one put back after):** at the restart the chain was rewritten with both
 RETURNs ahead of the DROP (the rewrite flushes and appends in order, so
-for ~20 ms it passes everything, never drops), no FDB entry was written,
+for ~20 ms it passes everything, never drops; one transaction since,
+§11.26.12), no FDB entry was written,
 and `mab_seen` was written as it stopped and removed 0.5 s after; the
 silent host went 40.2 s after its last frame ("idle for 40s"); the refused
 host was refused again, its count carried over; after the 25 s stop the
@@ -8184,6 +8188,101 @@ and does not save its untick), the carried fef74fe reinstalled, l2.json's
 `dot1x` section gone, Ethernet120's learning `hardware` again, l2d's
 leftover STATE_DB `DUI_DOT1X_TABLE|Ethernet120` row (counts only) removed.
 No UniFi switch was touched.
+
+#### 11.26.12 The kernel chains are written in one transaction (2026-11-15)
+
+§11.26.10 saw `DUI_DOT1X` pass every frame for about 20 ms each time it
+was rewritten. The cause: `write_chain` flushed the chain (`ebtables -F`)
+and appended its rules one `ebtables` call at a time, and the DX010's
+`ebtables` is 1.8.11 on **nf_tables** (`ebtables -V`; `/usr/sbin/ebtables`
+is the alternatives link to `xtables-nft-multi`, beside an installed
+`ebtables-legacy` that nothing uses). Each call is a transaction of its own,
+so between the flush and the last append the chain held the EAPOL ACCEPTs
+and some RETURNs but not the port's DROP, and its policy RETURN let
+everything through. That happened at every admission, revocation, port
+change and l2d start. `MacLockGuard` wrote `DUI_MACLOCK` the same way.
+
+**As built.** Both guards hand the whole change to one `ebtables-restore
+--noflush` (`eb_restore`, `l2d.py`): the chain's declaration (`:<chain>
+RETURN`, which creates it or keeps it), `-F <chain>`, its rules, and the
+INPUT and FORWARD jumps that are missing (`-I <hook> 1` for 802.1X, ahead
+of MAC locking's `-A`). Removal is one restore too (`-D` the jumps, `-F`,
+`-X`). What that guarantees, measured on the switch (`ip netns`, nothing
+the switch's own tables see):
+
+- the whole input is one nf_tables transaction: `xtables-monitor -e`
+  prints one `NEWGEN` for it, the flush as a `-D` per rule inside it;
+- with `--noflush`, a declared chain that exists is emptied (nft); the
+  legacy `ebtables-legacy-restore` keeps its rules and appends, hence the
+  explicit `-F` (correct on both);
+- a refused line (a jump to a chain that does not exist) refuses the
+  batch: exit 2, the table as it was.
+
+**A chain the kernel lost is written again.** SONiC's `database.sh`
+(`ebtables_config`) loads `/etc/ebtables.filter.cfg` with a plain
+`ebtables-restore`, which empties the whole filter table, at every start of
+the database container. `MacLockGuard` already compared the kernel's rule
+count and jumps with what it wrote at each sync; `Dot1xGuard` returned as
+soon as its rules were unchanged, so after such a reload an 802.1X port
+passed every frame to the CPU until the next admission. Both now read the
+chain's state (`eb_state`) at each sync and write it again when the count
+or the jumps differ, with a warning for 802.1X.
+
+**The iptables mirror (`DUI_ACL_CPU`, §11.32) did not share the fault.**
+`acl_cpu.go`'s `cpuScript` already wrote every chain in one `iptables-restore
+-n` with the chains declared, and adds a PREROUTING hook only after the
+chains exist. Measured in a private netns with the driver's input (two
+table chains under `DUI_ACL_CPU`, a blocked source sending UDP every
+0.2 ms): 200 rewrites in 7 s, 36 139 packets into the hook, 0 past it, and
+6 rules after the last write (a declared chain is emptied by `-n`, so
+nothing piles up). No change.
+
+l2d writes no other ebtables chain (the DHCP-rate, storm and BPDU-guard
+paths use CoPP, counters and APPL_DB).
+
+**Measured on the switch** (`dot1x-atomic-live.txt` in the image's fixture
+directory):
+
+| | old: flush + one call per rule | new: one restore |
+|---|---|---|
+| netns bridge, a never-admitted source every 0.2 ms, 200 rewrites | 46 890 frames past the chain | 0 (27 561 dropped by the last chain alone) |
+| DX010, l2d driving cage 30 (MAB hosts admitted, idle-revoked and admitted again, two restarts, a 4 s link loss), `xtables-monitor -e` | 88 transactions; after 71 of them the port had no DROP; the 5 ms poll saw 17 such windows of 25-100 ms (mean 40) | 14 transactions, one per write, each `ebtables-restore`; the DROP after every one |
+
+The DX010's two runs are the same scenario through the deployed l2d
+(fef74fe) and this one. This l2d also wrote nothing at either restart (the
+kept admissions of §11.26.10); the deployed one rewrote the chain three
+times at each, at start and once per host it admitted again.
+
+**What a looped cage cannot show.** No frame from the loop exercised the
+DROP on the switch itself: a looped cage is STP-blocked (Backup), and the
+kernel bridge drops a blocked port's frames before ebtables PREROUTING,
+except link-local ones, which go to NF_BR_LOCAL_IN (ebtables INPUT) in any
+port state (BPDUs and LLDP are handed up without the hook). The link-local
+frame the chip traps here is EAPOL, which the chain ACCEPTs by design.
+Probed with 20 frames each from an unadmitted source:
+an untagged 0x88B5 frame to `01:80:c2:00:00:03` and an ARP request to that
+address never reached the netdev; a broadcast ARP request reached it (ARP's
+trap, tagged 4094) and was dropped by the bridge's blocking state, so none
+reached INPUT. The chain's DROP matters on a forwarding port with a host
+behind it; the frame counts above come from the netns bridge, the DX010's
+from the kernel's own record of every transaction.
+
+**Tests.** The l2d fakes share `testdata/l2d_ebtables.py`: single commands
+and `ebtables-restore --noflush` as the switch's nf_tables ebtables runs
+them (a restore applied whole or refused whole), and the kernel's walk of a
+never-admitted source through INPUT after every transaction. Each guard's
+`write_chain` is wrapped: a port that dropped that source before and after
+the call but passed it at a transaction in between prints `WINDOW`.
+`kernelAtomic` fails `TestL2dDot1X`, `TestL2dMAB`, `TestL2dMABRestart` (the
+replay of §11.26.10's run4) and `TestL2dMacLocking` on a `WINDOW` and on any
+`ebtables` write outside a restore; with the old `write_chain` the four
+print 1, 6, 9 and 2 windows. `TestL2dDot1X` also empties the filter table
+between two syncs, as `database.sh` does, and expects the chain and both
+jumps back (FORWARD's ahead of the image's own rules) in one restore.
+
+`TestDot1xChainAtomicLive` holds the capture to the table: 14 transactions
+by `ebtables-restore` with the DROP after each for the new run, 88 and 71
+for the old.
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
@@ -8309,6 +8408,8 @@ the 2026-11-07, 11-08 and 11-15 runs (§11.13, §11.16), and ten site VLANs
 the 2026-11-02 Allow All test created (§11.8) were still on the DX010 with
 no member. The driver now deletes a VLAN no push names, at the end of the
 port apply (`vlan_prune.go`).
+The `arista-eos` driver follows the same rule since the same day
+(`docs/drivers/arista-eos.md` §12).
 
 #### 11.29.1 When the controller stops naming a VLAN
 

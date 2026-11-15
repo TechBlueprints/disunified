@@ -34,6 +34,7 @@ func TestL2dDot1X(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	kernelAtomic(t, string(out))
 	steps := map[string][]string{}
 	var cur string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -54,9 +55,9 @@ func TestL2dDot1X(t *testing.T) {
 	has := func(step, line string) bool { i := index(step, line); return i >= 0 && steps[step][i] == line }
 	show := func(step string) string { return strings.Join(steps[step], "\n") }
 
-	drop := index("start", "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP")
-	eapol := index("start", "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -p 0x888e -j ACCEPT")
-	jump := index("start", "RUN /usr/sbin/ebtables -I INPUT 1 -j DUI_DOT1X")
+	drop := index("start", "EB -A DUI_DOT1X -i Ethernet120 -j DROP")
+	eapol := index("start", "EB -A DUI_DOT1X -i Ethernet120 -p 0x888e -j ACCEPT")
+	jump := index("start", "EB -I INPUT 1 -j DUI_DOT1X")
 	trap := index("start", "SET COPP_TRAP|dui_eapol trap_ids=eapol trap_group=queue4_group1 always_enabled=true")
 	group := index("start", "SET COPP_GROUP|queue4_group1 ")
 	hostapd := -1
@@ -78,13 +79,22 @@ func TestL2dDot1X(t *testing.T) {
 		!has("start", `STATE conf mode "0o600"`) {
 		t.Errorf("start: hostapd's config (wired driver, the NAS address, the server and its secret) is root's alone:\n%s", show("start"))
 	}
-	if len(steps["second sync"]) != 0 {
-		t.Errorf("a second sync wrote:\n%s", show("second sync"))
+	for _, l := range steps["second sync"] {
+		if l != "RUN /usr/sbin/ebtables -L" {
+			t.Errorf("a second sync wrote:\n%s", show("second sync"))
+			break
+		}
+	}
+	if !has("filter table reloaded", "RUN /usr/sbin/ebtables-restore --noflush") ||
+		!has("filter table reloaded", "EB -A DUI_DOT1X -i Ethernet120 -j DROP") ||
+		!has("filter table reloaded", `STATE input [["-j", "DUI_DOT1X"]]`) ||
+		!has("filter table reloaded", `STATE forward [["-j", "DUI_DOT1X"], ["-d", "BGA", "-j", "DROP"]]`) {
+		t.Errorf("filter table reloaded: the chain and its jumps (ahead of the image's FORWARD rules) written again:\n%s", show("filter table reloaded"))
 	}
 
 	ev := "captured events"
-	open, learn := index(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j RETURN"), index(ev, "PST PORT_TABLE Ethernet120 learn_mode=hardware")
-	if open < 0 || learn < open || index(ev, "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP") >= 0 {
+	open, learn := index(ev, "EB -A DUI_DOT1X -i Ethernet120 -j RETURN"), index(ev, "PST PORT_TABLE Ethernet120 learn_mode=hardware")
+	if open < 0 || learn < open || index(ev, "EB -A DUI_DOT1X -i Ethernet120 -j DROP") >= 0 {
 		t.Errorf("Credentials: the first host opens the port to every host, the chain before the chip:\n%s", show(ev))
 	}
 	if !has(ev, "PST FDB_TABLE Vlan4094:02:00:00:00:00:03 port=Ethernet120 type=static") ||
@@ -113,7 +123,7 @@ func TestL2dDot1X(t *testing.T) {
 		t.Errorf("restart: the running hostapd is adopted, its authorised host kept without a gap, the count carried on:\n%s", show("restart"))
 	}
 
-	closed, flush, drop2 := index("logoff", "PST PORT_TABLE Ethernet120 learn_mode=drop"), index("logoff", "FLUSH FLUSHFDBREQUEST PORT Ethernet120"), index("logoff", "RUN /usr/sbin/ebtables -A DUI_DOT1X -i Ethernet120 -j DROP")
+	closed, flush, drop2 := index("logoff", "PST PORT_TABLE Ethernet120 learn_mode=drop"), index("logoff", "FLUSH FLUSHFDBREQUEST PORT Ethernet120"), index("logoff", "EB -A DUI_DOT1X -i Ethernet120 -j DROP")
 	if closed < 0 || flush < closed || drop2 < flush {
 		t.Errorf("logoff: the last host closes the port (learn mode, flush, then the chain):\n%s", show("logoff"))
 	}
