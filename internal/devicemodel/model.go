@@ -500,11 +500,14 @@ type AddressDesired struct {
 	DNS       []string
 }
 
-// AddressReporter is an optional capability of a Collector: the address
-// the driver currently manages the device through, which can move under
-// the bridge (an applied IP Settings change, a fallback to another known
-// address). The loop reports it to the controller as the device's address
-// when it is an IP literal; "" = unknown.
+// AddressReporter is an optional capability of a Collector: the device's
+// own address as the driver knows it now -- the address it manages the
+// device through (sonic: an applied IP Settings change, a fallback to
+// another known address), or the address the device itself carries when the
+// bridge dials it elsewhere (podman: the host's LAN address, dialled over a
+// podman bridge network). The loop reports it to the controller as the
+// device's address when it is an IP literal: at start unless the operator
+// set one (`ip:`), and whenever it changes; "" = unknown.
 type AddressReporter interface {
 	CurrentAddress() string
 }

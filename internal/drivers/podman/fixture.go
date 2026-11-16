@@ -72,6 +72,9 @@ func (f *FixtureRunner) section(name string) string {
 	return rest
 }
 
+// Section returns a section's body from the capture.
+func (f *FixtureRunner) Section(name string) string { return f.section(name) }
+
 // SetSection replaces a section's body in the capture (tests start from a
 // host with no slot file yet, or a different NetworkManager state).
 func (f *FixtureRunner) SetSection(name, body string) { f.setSection(name, body) }

@@ -370,6 +370,30 @@ func isA[T any](sw devicemodel.Device) bool {
 }
 
 // runOne bridges one switch until ctx is cancelled.
+// reportedIP is the address the informs report the device at from start:
+// the operator's (`ip:`/-ip) when set; else the driver's own
+// (devicemodel.AddressReporter: an address move the bridge applied earlier,
+// or the address the device carries when it is dialled elsewhere -- the
+// Podman host over a podman bridge network); else the dial target, or, for a
+// target that is a name, the address it resolved to (the driver puts it
+// first in Addresses), so a lease-backed DNS name is followed without an
+// operator naming the address.
+func reportedIP(explicit, deviceURL, deviceSSH string, sw devicemodel.Device, snap *devicemodel.Snapshot) string {
+	if explicit != "" {
+		return explicit
+	}
+	ip := hostOf(deviceURL, deviceSSH)
+	if ar, ok := sw.(devicemodel.AddressReporter); ok {
+		if a := ar.CurrentAddress(); net.ParseIP(a) != nil {
+			ip = a
+		}
+	}
+	if net.ParseIP(ip) == nil && len(snap.System.Addresses) > 0 {
+		ip = snap.System.Addresses[0].IP
+	}
+	return ip
+}
+
 func runOne(ctx context.Context, o options) error {
 	log := o.logger
 
@@ -493,22 +517,7 @@ func runOne(ctx context.Context, o options) error {
 		if o.hostname == "" {
 			o.hostname = snap.System.Hostname
 		}
-		if o.ip == "" {
-			o.ip = hostOf(o.deviceURL, o.deviceSSH)
-			// A driver that follows the device's address (an address move
-			// the bridge applied earlier) reports where it reaches it now.
-			if ar, ok := sw.(devicemodel.AddressReporter); ok {
-				if a := ar.CurrentAddress(); net.ParseIP(a) != nil {
-					o.ip = a
-				}
-			}
-			// A device dialled by name reports the address the name resolved
-			// to (the driver puts it first in Addresses), so a lease-backed
-			// DNS name can be followed without an operator naming the address.
-			if net.ParseIP(o.ip) == nil && len(snap.System.Addresses) > 0 {
-				o.ip = snap.System.Addresses[0].IP
-			}
-		}
+		o.ip = reportedIP(o.ip, o.deviceURL, o.deviceSSH, sw, snap)
 		if o.uplink == 0 {
 			o.uplink = snap.UplinkPort()
 		}

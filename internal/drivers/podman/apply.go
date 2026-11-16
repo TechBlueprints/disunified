@@ -3,6 +3,7 @@ package podman
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
@@ -104,4 +105,52 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	return true, nil
 }
 
-var _ devicemodel.AddressController = (*Collector)(nil)
+// CurrentAddress implements devicemodel.AddressReporter: the host's own
+// LAN address, read on the host in the same poll as everything else. The
+// bridge may dial the host somewhere else (a bridge running on the host
+// reaches it over a podman bridge network, docs/drivers/podman.md §4b), so
+// the dial target is not the device's address; the uplink's is. It is the
+// address NetworkManager is set to on the uplink when that profile is static
+// (the controller's IP Settings, applied by ApplyAddress) and the uplink
+// carries it, else the uplink's first global IPv4 address. The uplink is the
+// NIC NetworkManager manages for the IP Settings: options.uplink, or the
+// default route's. "" before the first collect or with no address.
+//
+// The loop reports this at start unless the operator set `ip:` (which then
+// wins until this address changes) and follows it whenever it changes, so
+// a host whose address moves is reported where it is now.
+func (c *Collector) CurrentAddress() string {
+	c.mu.Lock()
+	last, nm, nic := c.last, c.nm, c.uplinkNIC
+	c.mu.Unlock()
+	if last == nil {
+		return ""
+	}
+	return hostAddress(last.System.Addresses, nic, nm)
+}
+
+// hostAddress picks the host's address on nic (see CurrentAddress).
+func hostAddress(addrs []devicemodel.IfAddress, nic string, nm nmState) string {
+	var on []string
+	for _, a := range addrs {
+		if a.Iface == nic && a.IP != "" {
+			on = append(on, a.IP)
+		}
+	}
+	if nm.Method == "manual" {
+		for _, p := range strings.Split(nm.Addresses, ",") {
+			if ip, _, _ := strings.Cut(strings.TrimSpace(p), "/"); slices.Contains(on, ip) {
+				return ip
+			}
+		}
+	}
+	if len(on) > 0 {
+		return on[0]
+	}
+	return ""
+}
+
+var (
+	_ devicemodel.AddressController = (*Collector)(nil)
+	_ devicemodel.AddressReporter   = (*Collector)(nil)
+)
