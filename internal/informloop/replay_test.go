@@ -18,6 +18,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 )
 
 // Replay: real controller replies (docs/fixtures/controller-10.6.106/
@@ -73,6 +74,9 @@ func loadReplies(t *testing.T, name string) []replayRecord {
 type replayDriver struct {
 	Name    string
 	Replies string // fixture file under controller-10.6.106/, or a path under docs/fixtures/ (loadReplies)
+	// Redact replays the replies as the recorder writes them since
+	// 2026-11-15: every pushed secret replaced (unificfg.RedactJSON).
+	Redact bool
 	// Start is the device's state when the replay begins; nil = a fresh
 	// device, not adopted, on the default key (the recording starts with
 	// the adoption). A recording of a device already adopted starts from
@@ -118,6 +122,19 @@ func runReplay(t *testing.T, d replayDriver) {
 	replies := loadReplies(t, d.Replies)
 	if len(replies) < 5 {
 		t.Fatalf("only %d replies in the fixture", len(replies))
+	}
+	if d.Redact {
+		redacted := 0
+		for i := range replies {
+			red, secrets := unificfg.RedactJSON(replies[i].Payload)
+			replies[i].Payload, redacted = red, redacted+len(secrets)
+			for j, e := range replies[i].Effects {
+				replies[i].Effects[j].Text, _ = unificfg.RedactCfg(e.Text)
+			}
+		}
+		if redacted == 0 {
+			t.Fatal("Redact: the fixture carries no secret to redact")
+		}
 	}
 	snap := d.Snapshot
 	ip := "192.0.2.9"

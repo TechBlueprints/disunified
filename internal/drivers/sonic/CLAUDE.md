@@ -1354,9 +1354,11 @@ was restarted.
   - **ARP proves nothing in such a probe** (its own trap): use an
     ethertype no trap matches (0x88B5). In a VLAN without the switch's
     address no copy of a known host's frames reaches the CPU at all.
-  - **The bridge's reply log (`inform-log/`) keeps every push verbatim**,
-    the RADIUS secret included: grep it, not just the journal, when
-    checking where a secret went.
+  - **The bridge's reply log (`inform-log/`) kept every push verbatim**,
+    the RADIUS secret included, until 2026-11-15; it now redacts every
+    pushed secret by key (`internal/unificfg/secrets.go`, `docs/install.md`
+    §8). An older file still holds them: grep it, not just the journal,
+    when checking where a secret went.
 - **UniFi's client Block (`block.go`, `docs/drivers/sonic.md` §11.33,
   built 2026-11-15, fixture- and replay-tested).** `MB_<mac>` rules in
   `DUI_MAC_ACL` exactly as the ECS holds them (DROP, PRIORITY 1023, a bare

@@ -29,6 +29,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/logredact"
 	"github.com/TechBlueprints/disunified/internal/powerevent"
 	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/jamesbraid/unifi-emu/inform"
@@ -403,8 +404,11 @@ func (l *Loop) informOnce(ctx context.Context) {
 		// The last payload as sent, for diagnosis (overwritten every cycle):
 		// the encoded one itself, since a second build would see no counter
 		// growth (Session.LastPayload).
+		// Its x_authkey is the device's inform key: redacted like the
+		// reply log (unificfg.RedactJSON).
 		if err == nil {
-			_ = os.WriteFile(filepath.Join(l.cfg.RecordDir, "payload-last.json"), l.session.LastPayload(), 0o600)
+			last, _ := unificfg.RedactJSON(l.session.LastPayload())
+			_ = os.WriteFile(filepath.Join(l.cfg.RecordDir, "payload-last.json"), last, 0o600)
 		}
 	}
 	url := l.session.InformURL()
@@ -469,6 +473,13 @@ func (l *Loop) informOnce(ctx context.Context) {
 	} else {
 		rec.RawBody = string(dec.Payload)
 	}
+	// The push's secrets are masked in every log line from here on
+	// (internal/logredact); the recorder redacts its own copy.
+	_, secrets := unificfg.RedactJSON(dec.Payload)
+	if rec.RawBody != "" {
+		secrets = unificfg.Secrets(rec.RawBody)
+	}
+	logredact.Remember(secrets...)
 
 	effects := l.session.Apply(time.Now(), dec.Payload)
 	l.mu.Lock()

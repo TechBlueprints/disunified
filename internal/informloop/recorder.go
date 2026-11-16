@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 )
 
 // Reply-log rotation defaults: a bridge on a switch's own flash
@@ -30,6 +32,11 @@ const (
 // whole lines. A record larger than the cap on its own is written to an empty
 // file rather than dropped. A file already over the cap when the bridge starts
 // is rotated before the first record.
+//
+// Every record is redacted before it is written (redactRecord): a pushed
+// secret never reaches the file, by the key table in
+// internal/unificfg/secrets.go. The directory is 0700 and the files 0600
+// (a file made by an older build is narrowed to 0600 when it is opened).
 type recorder struct {
 	name     string // the live file
 	maxSize  int64  // < 0: no cap
@@ -46,7 +53,7 @@ func newRecorder(dir, mac string, maxSize int64, keep int) (*recorder, error) {
 	if keep <= 0 {
 		keep = DefaultRecordKeep
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	r := &recorder{name: filepath.Join(dir, filepath.Base(mac)+".ndjson"), maxSize: maxSize, keep: keep}
@@ -57,10 +64,11 @@ func newRecorder(dir, mac string, maxSize int64, keep int) (*recorder, error) {
 }
 
 func (r *recorder) open() error {
-	f, err := os.OpenFile(r.name, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(r.name, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
+	_ = f.Chmod(0o600)
 	st, err := f.Stat()
 	if err != nil {
 		f.Close()
@@ -71,6 +79,7 @@ func (r *recorder) open() error {
 }
 
 func (r *recorder) write(rec record) error {
+	rec = redactRecord(rec)
 	if rec.Status == http.StatusNotFound && rec.Error == "" {
 		r.quiet404++
 		if r.quiet404 > 1 {
@@ -85,6 +94,31 @@ func (r *recorder) write(rec record) error {
 	}
 	r.quiet404 = 0
 	return r.encode(rec)
+}
+
+// redactRecord replaces every pushed secret in a record: in its payload (a
+// secret JSON field, a secret key of its system_cfg or mgmt_cfg text), in a
+// body that is not JSON, and in the effects' texts (the mgmt_cfg effect
+// carries the authkey). Each line keeps its shape, so a redacted log still
+// replays (unificfg.RedactCfg).
+func redactRecord(rec record) record {
+	if len(rec.Payload) > 0 {
+		red, _ := unificfg.RedactJSON(rec.Payload)
+		rec.Payload = json.RawMessage(red)
+	}
+	if rec.RawBody != "" {
+		red, _ := unificfg.RedactJSON([]byte(rec.RawBody))
+		rec.RawBody, _ = unificfg.RedactCfg(string(red))
+	}
+	if len(rec.Effects) > 0 {
+		effects := make([]effectRecord, len(rec.Effects))
+		for i, e := range rec.Effects {
+			e.Text, _ = unificfg.RedactCfg(e.Text)
+			effects[i] = e
+		}
+		rec.Effects = effects
+	}
+	return rec
 }
 
 // encode writes v as one line, exactly as json.Encoder does (the format the

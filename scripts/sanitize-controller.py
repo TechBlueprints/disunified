@@ -49,7 +49,7 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            system_cfg .txt), every other byte untouched -- for fixtures
            scrubbed before comments were
 """
-import json, re, sys, ipaddress
+import base64, json, re, sys, ipaddress
 
 MAC_RE = re.compile(r'\b([0-9a-f]{2}[:.-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b', re.I)
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
@@ -191,6 +191,10 @@ def scrub_cfg_text(text):
             v = '<hash>'
         elif k.endswith('.secret') or k.endswith('.x_secret'):
             v = '<secret>'   # a RADIUS server's shared secret (switch.radius.auth.N.secret, 2026-11-15)
+        elif re.search(r'\.(?:x_)?(?:passphrase|psk|key)$|_(?:password|passphrase|secret|key)$', k) or ('.community.' in k and k.endswith('.name')):
+            v = '<secret>' if v else v   # by name, as internal/unificfg/secrets.go (SNMPv3 and the rest: not captured)
+        elif re.match(r'switch\.bgp\.\d+\.raw_config_base64$', k):
+            v = scrub_frr_b64(v)   # an uploaded FRR file: neighbour passwords, then the addresses in it
         elif re.match(r'sshd\.auth\.key\.\d+\.value$', k):
             v = '<pubkey>'
         elif re.match(r'sshd\.auth\.key\.\d+\.comment$', k):
@@ -211,6 +215,27 @@ def scrub_cfg_text(text):
             v = scrub_plain(v)
         out.append(f'{k}={v}')
     return '\n'.join(out) + ('\n' if text.endswith('\n') else '')
+
+# The end of an FRR password line is its secret (`neighbor X password LINE`,
+# `ip ospf authentication-key KEY`, `... md5 KEY`, `key-string LINE`): the
+# same rule as unificfg.RedactFRR. A file the bridge already redacted
+# (<redacted>) is left so.
+FRR_SECRET_RE = re.compile(r'^(.*?\b(?:password|authentication-key|key-string|md5))[ \t]+(\S.*?)[ \t]*$')
+
+def scrub_frr_b64(v):
+    if not v:
+        return v
+    try:
+        text = base64.b64decode(v, validate=True).decode()
+    except Exception:
+        return '<secret>'
+    out = []
+    for line in text.split('\n'):
+        m = FRR_SECRET_RE.match(line)
+        if m and not line.lstrip().startswith('!') and m.group(2) != '<redacted>':
+            line = m.group(1) + ' <secret>'
+        out.append(scrub_plain(line))
+    return base64.b64encode('\n'.join(out).encode()).decode()
 
 FQDN_RE = re.compile(r'\b[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*){2,}\b')
 

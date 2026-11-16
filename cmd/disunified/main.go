@@ -31,8 +31,10 @@ import (
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/informloop"
+	"github.com/TechBlueprints/disunified/internal/logredact"
 	"github.com/TechBlueprints/disunified/internal/nutd"
 	"github.com/TechBlueprints/disunified/internal/unifiapi"
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/TechBlueprints/disunified/internal/unifimodel"
 	emu "github.com/jamesbraid/unifi-emu"
 	"github.com/jamesbraid/unifi-emu/inform"
@@ -124,6 +126,9 @@ func main() {
 		log.Printf("both -device-ssh and -switch-ssh set; using -device-ssh %q", deviceSSH)
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	// Every log line passes the controller's pushed secrets through a mask
+	// (internal/logredact; the loop hands it each push's values).
+	log.SetOutput(logredact.Stderr)
 
 	if *showBuild {
 		fmt.Println(buildVersion)
@@ -253,7 +258,7 @@ func collectConfig(ctx context.Context, f *config.File) error {
 
 // configOptions is one config-file device as runOne takes it.
 func configOptions(f *config.File, sw config.Device) options {
-	logger := log.New(os.Stderr, "["+sw.Name+"] ", log.LstdFlags|log.Lmicroseconds)
+	logger := log.New(logredact.Stderr, "["+sw.Name+"] ", log.LstdFlags|log.Lmicroseconds)
 	return options{
 		controller: f.Controller.Host, informURL: f.Controller.InformURL,
 		model: sw.Model, udapiVersion: sw.UDAPIVersion, interval: 10 * time.Second,
@@ -583,6 +588,13 @@ func runOne(ctx context.Context, o options) error {
 	st, err := store.Load()
 	if err != nil {
 		return err
+	}
+	// The state file keeps the applied push unredacted (a restart applies it
+	// again): its secrets are masked in the log before anything runs.
+	logredact.Remember(unificfg.Secrets(st.SystemCfg)...)
+	logredact.Remember(unificfg.Secrets(st.PendingSystemCfg)...)
+	if st.Key != inform.DefaultKey {
+		logredact.Remember(st.Key)
 	}
 	if st.Adopted {
 		log.Printf("resuming adopted state from %s (cfgversion %s, gcm=%v)", o.stateFile, st.CfgVersion, st.UseAESGCM)

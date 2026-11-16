@@ -161,6 +161,15 @@ reply, and the reported address following an applied move
   before it is committed, and **`scripts/check-site-info.sh --staged` must
   pass before every commit** (`scripts/check-site-info.sh` scans the whole
   tree). If it flags something, fix the file; never add an exception.
+- **The bridge writes no pushed secret** (2026-11-15): the reply log, its
+  effect texts and `payload-last.json` are redacted by key, and every log
+  line masks the push's secret values (one table,
+  `internal/unificfg/secrets.go`; `internal/logredact`; the inventory is
+  `docs/install.md` §8). `device.json` keeps the applied push unredacted
+  (0600), because a restart applies it again. A new secret key in a
+  capture fails `TestSecretTableCoversFixtures` until the table names it.
+  Logs written before that build still hold real values: a deployed
+  bridge's `inform-log/` is a secret store, never copied off whole.
 - He logs into the controller in Claude's Chrome tab so Claude can drive the
   UI for captures and round-trip tests; Claude never touches the 2FA code.
 - UI edits for testing go only on the test ports named in

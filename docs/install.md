@@ -340,6 +340,66 @@ bridge back with its config and state (`sonic-on-switch.md` §5). Keep
 exactly one deb in `/host/disunified`: the one installed. Updating the
 bridge is `sudo dpkg -i` of the new deb and replacing that file.
 
+## 8. What the bridge keeps on disk, and the controller's secrets
+
+The controller's pushes carry secrets: the adoption key, the device
+login's password hash, a RADIUS server's shared secret, SNMP communities,
+OSPF keys, a NUT login, and an uploaded BGP file that can hold neighbour
+passwords. The bridge needs each one in memory to apply it; what it writes
+keeps them out wherever it can, by one table of keys
+([`internal/unificfg/secrets.go`](../internal/unificfg/secrets.go)).
+
+| File | What it holds | Secrets | Mode |
+|---|---|---|---|
+| `state/<name>/device.json` | the adopted key, the last applied push and a pending one | **kept as they came**: a restart applies the stored push again and encrypts its informs with the key, so a placeholder there would be written to the device | 0600 |
+| `inform-log/<name>/<mac>.ndjson` (and `.1` ...) | every reply, and what the bridge did with it | **redacted** | 0600, directory 0700 |
+| `inform-log/<name>/payload-last.json` | the last inform sent | its `x_authkey` redacted | 0600 |
+| `state/<name>/sonic-managed.json` (sonic) | what the driver owns on the switch | the SNMP community it set (it must remove it later) | 0600 |
+| the log (stderr, the journal) | | every secret value of the current or the stored push masked as `<redacted>` | |
+
+The secrets that reach a device are the device's own business: the sonic
+driver keeps the RADIUS secrets in a root-only file on the switch and
+OSPF's keys in FRR's 0600 file.
+
+**Redacted, by key** (a value of 32 hex digits becomes 32 zeros, any other
+non-empty value `<redacted>`, an empty one stays empty; every line stays):
+
+- `mgmt_cfg` `authkey`; `system_cfg` `unifi.key`, `switch.wevent.key`,
+  `users.N.password`, `switch.radius.*.N.secret`,
+  `switch.snmp.community.*.name`, `switch.routing_interface.N.ospf.password`
+  and `...ospf.md5_keys.N.password`, `nutserver.password`;
+- `switch.bgp.N.raw_config_base64`: the file stays, each `password`,
+  `authentication-key`, `md5` or `key-string` line loses the rest of the
+  line;
+- any key not captured yet whose last part is `password`, `passphrase`,
+  `secret`, `psk`, `authkey` or `key` (or ends `_password`, `_secret`,
+  `_key`): SNMPv3 credentials and the like;
+- in a reply's JSON: `authkey`, `x_authkey`, `password`, `x_password`,
+  `secret`, `x_secret`, `credential`, the TURN `username` of
+  `build-ssh-session` (and a real device's `_authkey`, `guest_token`).
+
+Not secret, so kept: the controller's SSH **public** keys, `sshd.auth.passwd`
+(a flag), user names, the RADIUS server's address.
+
+A redacted log still replays: each redacted value is the same placeholder
+in every push, so it is never a change of its own
+(`TestReplayControllerRepliesAristaRedacted`, `TestReplaySonicDX010Dot1XRedacted`).
+There is no switch to turn redaction off. A capture for a fixture is
+scrubbed anyway (`scripts/sanitize-controller.py` replaces the same keys),
+so the redacted log is the capture source as before. If a new feature
+needs to see a real secret's form, read that one key from
+`state/<name>/device.json` on the device itself (`system_cfg` holds the
+last applied push), and copy nothing off it.
+
+**Logs written before this** (bridges before 2026-11-15) hold the secrets
+as they came, in files 0644. A new build narrows the live file to 0600 when
+it opens it, and the directory it creates is 0700; it does not rewrite old
+lines or touch the rotated generations. They age out through rotation
+(`reply_log.max_size` x `reply_log.keep`, 32 MB by default per device). To
+be rid of them at once, stop the bridge, remove `inform-log/<name>/*.ndjson*`
+(or keep a copy only where secrets may live), and start it again; nothing
+the bridge needs is in them (the adopted state is `device.json`).
+
 ## Troubleshooting
 
 - Device never appears: the inform URL must contain an IP literal, and the
@@ -359,7 +419,8 @@ bridge is `sudo dpkg -i` of the new deb and replacing that file.
   capped (a device's `reply_log.max_size`, default `8MB`): past the cap it
   moves to `<mac>.ndjson.1`, older ones to `.2`, `.3` (`reply_log.keep`,
   default 3, the oldest dropped), always between two whole lines, and a
-  fresh file starts. `max_size: off` lets it grow as before.
+  fresh file starts. `max_size: off` lets it grow as before. Pushed
+  secrets are redacted in it (§8).
 - The controller's own log is the second: on a UniFi OS console,
   `/usr/lib/unifi/logs/server.log` (root over SSH), lines shaped
   `[<time>] <thread> LEVEL  category - message`. `grep -a "> ERROR "` and

@@ -8118,8 +8118,11 @@ Found, not changed: **the bridge's reply log keeps every push as it
 came**, `switch.radius.auth.N.secret` included (as it keeps the adoption's
 authkey and an SNMP community), in `/host/disunified/inform-log/<name>/`
 (the directory the login user's alone, the file 0644). It is the capture
-source the replay fixtures are scrubbed from; whether it should redact
-secrets is in the register.
+source the replay fixtures are scrubbed from. **Changed since (2026-11-15):**
+the recorder redacts every pushed secret by key, files 0600 in a 0700
+directory, and every log line masks the push's secret values
+(`docs/install.md` §8); a log written before that build keeps its values
+until it rotates out or is removed.
 
 After the run the switch held only what the driver itself leaves: hostapd
 in `/usr/local/sbin` (as mstpd is) and its build directory.
