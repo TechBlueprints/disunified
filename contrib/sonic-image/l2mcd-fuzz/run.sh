@@ -16,7 +16,7 @@ in_ctr() {
   docker run --rm --network none --cap-add NET_ADMIN --cap-add NET_RAW --user root \
     -v "$here:/fz" -w /fz -e HARNESS_DEBUG -e HARNESS_LOGARGS "$img" bash -c "
       trap 'chown -R $(id -u):$(id -g) /fz' EXIT
-      for p in Ethernet4 Ethernet8 Vlan100; do ip link add \$p type dummy && ip link set \$p up; done
+      for p in Ethernet4 Ethernet8 Vlan100 Vlan4094; do ip link add \$p type dummy && ip link set \$p up; done
       $1"
 }
 cmd=$1; shift
@@ -31,6 +31,7 @@ case "$cmd" in
            igmp-ihl-beyond-totlen igmp-short-message igmp-v3-query-sources igmp-v1-query-group port-list-repeated port-list-breakout port-delete
            static-member-link-down mld-static-member-link-down static-member-reported mld-static-member-reported
            member-link-down mld-member-link-down member-vlan-leave
+           port-flap-vlan4094 port-flap-vlan100 cli-long-port-list cli-long-vlan-bitmap
            port-no-name-v2-report port-no-name-v3-report port-no-name-v2-leave
            mld-port-no-name-v1-report mld-port-no-name-v2-report mld-port-no-name-done
            portdb-name-overwrite portdb-name-moved portdb-name-twice mld-valid mld-65535-sources
@@ -45,8 +46,8 @@ case "$cmd" in
         # leaks: only what packets allocate (the harness hides setup from LSan)
         if HARNESS_CORPUS=corpus out/$tag/regress \$c > out/$tag/regress-\$c.log 2>&1; then
           r=\"clean \$(grep -o 'dropped as malformed.*' out/$tag/regress-\$c.log)\"
-        else r=\$(grep -m1 -oE 'ERROR: AddressSanitizer: [a-z-]+ on address|ERROR: AddressSanitizer: SEGV|ERROR: LeakSanitizer: [a-z ]+|runtime error: [^:]*|setup failed|open sockets: [0-9]+, then [0-9]+|l2mcd_is_peerlink\(NULL\)' out/$tag/regress-\$c.log || echo 'exit '\$?)
-          at=\$(grep -m1 -E '^ +#[0-9]+ .* in [a-z_0-9]+ /fz/src' out/$tag/regress-\$c.log | sed -E 's|.* in ([a-z_0-9]+) /fz/src-[a-z]+/([^ ]+).*|\\1 \\2|'); r=\"\$r @ \$at\"; fi
+        else r=\$(grep -m1 -oE 'ERROR: AddressSanitizer: [a-z-]+ on address|ERROR: AddressSanitizer: SEGV|ERROR: LeakSanitizer: [a-z ]+|runtime error: [^:]*|setup failed|open sockets: [0-9]+, then [0-9]+|l2mcd_is_peerlink\(NULL\)|harness: [a-z ]+ (entries|buffer)' out/$tag/regress-\$c.log || echo 'exit '\$?)
+          at=\$(grep -m1 -E '^ +#[0-9]+ .* in [a-z_0-9]+ /fz/src' out/$tag/regress-\$c.log | sed -E 's|.* in ([a-z_0-9]+) /fz/src-[a-z0-9]+/([^ ]+).*|\\1 \\2|'); r=\"\$r @ \$at\"; fi
         printf '%-28s %s\n' \$c \"\$r\"
       done" ;;
   fuzz)

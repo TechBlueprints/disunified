@@ -3219,6 +3219,204 @@ built: Clint's hold):
 - No line names 0015 in the binary, so the build record (15 sonic-l2mcd
   patches) is what says it is in.
 
+### 8.18 A VLAN numbered 2048 or higher taken for a tunnel, and a dead port entry per link-down (2026-11-16)
+
+**What was seen** (`igmp-202511.20261115-6c8eb1cf7`, every port an untagged
+member of Vlan4094). l2mcd logged `Interface not found for phy_port:16384`
+at ERR with every query it forwarded, about 7,000 lines a day at the log
+host. syslog folds them: one line, then `message repeated 43 times`.
+
+- After the boot of 2026-11-15 the line was absent for 17 minutes. It began
+  two seconds after the uplink aggregate was made (two lines per query).
+- It then grew by exactly one per `Port EthernetN oper state set from up to
+  down` of a test cage in Vlan4094. Nine link-downs of one cage between
+  14:05 and 14:30 took the count from 2 to 11. By 16:40 it stood at 44, and
+  it has not moved since; no link has changed since.
+- `l2mcd_ctl -s <f> -c 5` (each VLAN's port list) printed 28 named ports
+  and 44 `(null)` entries for Vlan4094. `-c 12` (the member tree) listed 31
+  members. The three members with no named entry are the cages whose last
+  event was a link-down.
+- No effect on traffic was seen. The uplink aggregate is the only linked
+  port, and the dumps did not change l2mcd's pid.
+
+**The cause.** `mcgrp_stop_phy_port()` (`src/igmp.c:688-690` on the series,
+`:693-695` on 651a13b) ends with:
+
+```c
+mcgrp_pport->is_up = FALSE;
+if (is_ip_tnnl_port(vir_port_id))
+    mcgrp_pport->phy_port_id = PORT_INDEX_INVALID;
+```
+
+`vir_port_id` is the VLAN. `is_ip_tnnl_port()` is the range 2048..10240
+(`FIRST_GRE_IP_TUNNEL_PORT`, `LAST_GRE_IP_TUNNEL_PORT`,
+`include/l2mcd_mcast_co.h`), and a VLAN is any id below 4096
+(`is_virtual_port()`, `include/l2mcd.h`). The two ranges share the VLAN ids
+2048..4094. `PORT_INDEX_INVALID` is 16384.
+
+- A port of such a VLAN that stops (`mld_vport_state_notify()`,
+  `src/mld_main.c`, the link-down branch; also snooping turned off and a
+  version change, through `mcgrp_stop_vir_port()`) has its
+  `MCGRP_PORT_ENTRY` set to index 16384. The entry stays in the VLAN's
+  `phy_port_list`.
+- At the link-up `mcgrp_find_phy_port_entry()` finds no entry for the port,
+  and `mld_vport_state_notify()` adds a second one (`mcgrp_add_phy_port()`).
+- `mcgrp_delete_veport()` looks an entry up by its real index, so nothing
+  removes the first one until the VLAN itself is deleted or l2mcd restarts.
+- That is one dead entry per link-down, in the IGMP list and in the MLD
+  list.
+- The query paths walk `phy_port_list` and send to every entry
+  (`mld_tx_query_rcvd_on_edge_port()` in `port/mld_pkt.c`,
+  the all-ports branch of `igmp_send_igmp_message()` in `src/igmp_io.c` and
+  of `mld_send_mld_message()` in `src/mld_io.c`).
+  `l2mcd_send_pkt()` and `l2mcd_fwd_pkt()` find no interface for 16384 and
+  log the line, once per dead entry.
+
+Upstream's head (`651a13b`, checked 2026-11-16: `dev` and `l2mcd-pre` are
+both still there) has the same code, and no issue or pull request there
+names it. It came with the repository's first import.
+
+**The second entry is not the first one.** Read from the source, not seen
+on the DX010, whose members are untagged: `mcgrp_pport->tagged` is set only
+by the VLAN-member update (`mld_map_port_vlan_state()`), and the entry a
+link-up makes starts at 0. `l2mcd_send_pkt()` and `l2mcd_fwd_pkt()` add
+the 802.1Q header from that flag. So a tagged member of a VLAN numbered
+2048 or higher is sent queries and forwarded reports without its tag
+after its first link-down. The harness case shows the flag lost.
+
+**The other `is_ip_tnnl_port()` tests** in `src/igmp.c` (line numbers on
+the series), each read for a VLAN id of 2048 or higher:
+
+| Where | What it does for such a VLAN | Harm |
+|---|---|---|
+| `mcgrp_alloc_init_l3if_entry()`, :327 | the VLAN's own `phy_port_id` becomes `mcast_tnnl_get_output_port()`, a stub that returns 0, instead of the VLAN id; `ve_port_mask` stays NULL | none: every reader of the VLAN's `phy_port_id` sits behind an `is_virtual_port()` test, or compares it with a port index (4096 and up) when a query arrives; the mask's users return at once (`mld_only_code` is never set) |
+| `mcgrp_activate_static_groups()`, :549, and `mcgrp_refresh_static_group()`, :2672 | both also need the VLAN's `phy_port_id` to be 16384; it is 0 | none: never true |
+| `mcgrp_start_phy_port()`, :575 | not reached: its two callers take the `is_virtual_port()` branch for a VLAN | none |
+| `mcgrp_create_l3intf()`, :1109 | keeps the VLAN's entry although its `phy_port_id` (0) is not the VLAN id | none: without it the entry would be freed with its ports |
+| `mcgrp_create_l3intf()`, :1143 | an `else if` behind `is_virtual_port()` | none |
+| `mcgrp_stop_phy_port()`, :689 | the fault above | 0017 |
+
+No vport in this port of the code is anything but a VLAN:
+`INTF_MODE_L3` is compared but never assigned, and nothing makes a tunnel
+port.
+
+#### The fix: sonic-l2mcd 0017
+
+`contrib/sonic-image/series/sonic-l2mcd/0017-*`: the test becomes
+`!is_virtual_port(vir_port_id) && is_ip_tnnl_port(vir_port_id)`. One line,
+and the same order `mcgrp_create_l3intf()` already uses (a VLAN first, then
+a tunnel). Deleting the two lines would do the same on SONiC, but it would
+ask a reviewer to agree that the tunnel code is dead, at one site of seven.
+The guard asks only that a VLAN is not a tunnel. The inherited tunnel
+branches stay as they are. It applies to `651a13b` alone as it does to the
+series.
+
+**The harness cases** (`contrib/sonic-image/l2mcd-fuzz`; each run by name):
+
+- `port-flap-vlan4094`: the setup runs in Vlan4094 with Ethernet8 a tagged
+  member. Ethernet8 loses link and gets it back three times
+  (`l2mcd_portstate_update()`, as the netlink handler calls it). Then an
+  IGMP and an MLD general query arrive on Ethernet4. Pass means: each
+  class's port list has one entry per port and none at
+  `PORT_INDEX_INVALID`; Ethernet8's entry is up and still tagged; each
+  query is forwarded to Ethernet8 once, with no `Interface not found for
+  phy_port` line.
+- `port-flap-vlan100`: the same in Vlan100, the control.
+
+| Tree | `port-flap-vlan4094` | `port-flap-vlan100` |
+|---|---|---|
+| 0001-0016 | **fails** | clean |
+| 0001-0017 | clean | clean |
+| 651a13b | **fails** | clean |
+| 651a13b + 0017 | clean | clean |
+
+The failing run, on 0001-0016 (651a13b prints the same):
+
+```
+case port-flap-vlan4094
+  Vlan4094 IGMP port list after 3 link-downs and link-ups of Ethernet8: 5 entries, Ethernet4 1, Ethernet8 1 (up 1, tagged 0), at PORT_INDEX_INVALID 3
+  Vlan4094 MLD port list after 3 link-downs and link-ups of Ethernet8: 5 entries, Ethernet4 1, Ethernet8 1 (up 1, tagged 0), at PORT_INDEX_INVALID 3
+  an IGMP and an MLD general query on Ethernet4: 2 frame(s) sent, 6 "Interface not found for phy_port" line(s)
+harness: dead port entries
+```
+
+With 0017:
+
+```
+case port-flap-vlan4094
+  Vlan4094 IGMP port list after 3 link-downs and link-ups of Ethernet8: 2 entries, Ethernet4 1, Ethernet8 1 (up 1, tagged 1), at PORT_INDEX_INVALID 0
+  Vlan4094 MLD port list after 3 link-downs and link-ups of Ethernet8: 2 entries, Ethernet4 1, Ethernet8 1 (up 1, tagged 1), at PORT_INDEX_INVALID 0
+  an IGMP and an MLD general query on Ethernet4: 2 frame(s) sent, 0 "Interface not found for phy_port" line(s)
+```
+
+`port-flap-vlan100` prints those three lines for Vlan100 on every tree.
+
+#### The dump's buffer: sonic-l2mcd 0018
+
+Looked at because the `-c 5` line grows with the dead entries. It is a
+real overflow, in every dump that builds a line. `port/l2mcd_cli.c` appends
+to a 4000-byte global with:
+
+```c
+j += snprintf(pbuf + j, L2MCD_PBUF_SIZE - j, ...);
+```
+
+`snprintf()` returns the length it would have written. A line longer than
+the buffer takes `j` past 4000. The next call's size is then negative, and
+as a `size_t` it is no bound: the call writes at `pbuf + j`, past the
+buffer, for every entry that follows.
+
+- The image's l2mcd does not catch it. Its calls are `__snprintf_chk()`
+  with the object size unknown (-1) and the size sign-extended from
+  `4000 - j` (read from the running image's binary and its dbgsym package,
+  not run). What follows `pbuf` in its `.bss` is `cmsgbuf6`, then `mmsg6`,
+  the MLD receive batch.
+- The lines that can get there: a VLAN's port list (`-c 5`) from about 333
+  entries; its member tree (`-c 12`) from about 210 members; a port's VLANs
+  (`-c 6`) from about 800 VLANs; a VLAN's addresses (`-c 9`).
+- The group dump stops at the end already. The static group's line wrote
+  up to 25 bytes from as far as 21 bytes before the end.
+- On the DX010 the longest line was the 72 entries above, under 900 bytes.
+  Without 0017 a switch reaches 333 entries after about 300 link-downs in
+  one VLAN numbered 2048 or higher. With 0017 it takes that many real
+  ports.
+
+`0018-*` sends every append through one `pbuf_append()`, which writes
+nothing more once the line is full. A line that does not fit is printed
+cut. Harness cases, each run by name: `cli-long-port-list` (the VLAN's IGMP
+port list with 400 more entries, then the `-c 5` dump) and
+`cli-long-vlan-bitmap` (Ethernet8 marked a member of 4094 VLANs, then the
+`-c 6` dump). Each must end with no line of 4000 characters or more.
+
+| Tree | `cli-long-port-list` | `cli-long-vlan-bitmap` |
+|---|---|---|
+| 0001-0017, and 651a13b | **fails**: `index 4008 out of bounds for type 'char[4000]'` | **fails**: `index 4003 out of bounds for type 'char[4000]'` |
+| 0001-0018, and 651a13b + 0018 | clean | clean |
+
+**The rest of the suite** (2026-11-16, the build VM's bookworm slave
+container): all 50 cases are clean on 0001-0018, with log arguments
+evaluated and without. Against 0001-0016 only the three cases above
+differ. On 651a13b, 0017 changes `port-flap-vlan4094` alone and 0018 the
+two `cli-long-*` cases alone. gcc 12 `-Wall -O2 -D_FORTIFY_SOURCE=2` gives
+no warning in `src/igmp.c` or `port/l2mcd_cli.c`, before or after. The
+fuzzers were not re-run: no packet path changed. `dry-run.sh` passed with
+18 patches.
+
+Not posted upstream. **The driver** needs no change. On the running image
+an l2mcd restart clears the dead entries until the next link-down.
+
+**What the next image's install must show on the DX010** (no image is
+built: Clint's hold):
+
+- After the boot, under the switch lock, one empty cage that is a member
+  of Vlan4094 is taken up and down by MAC loopback, as in §8.13.
+- Then `l2mcd_ctl -s <f> -c 5` lists no `(null)` entry for Vlan4094, and
+  the cage's name appears once.
+- After the next query (125 s at most) the log has no `Interface not found
+  for phy_port:16384`.
+- 0018 has no check of its own on the switch: no dump line there comes
+  near 4000 bytes. The build record (18 sonic-l2mcd patches) says it is in.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is

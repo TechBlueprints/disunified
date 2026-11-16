@@ -25,7 +25,10 @@
 #include <sanitizer/lsan_interface.h>
 #include <sanitizer/allocator_interface.h>
 
-#define VID 100
+static int vid = 100;                   /* the port-flap cases also run in Vlan4094 */
+#define VID vid
+static int tag_port1;                   /* port-flap cases: Ethernet8 is a tagged member */
+static unsigned not_found_lines;        /* "Interface not found for phy_port" lines l2mcd logged */
 static const char *ports[] = { "Ethernet4", "Ethernet8" };
 static mld_vlan_node_t *vnode;
 static unsigned int port_idx[3];        /* l2mcd's port index per port (2: port-list-breakout's Ethernet40) */
@@ -69,6 +72,8 @@ void __real_vsyslog(int, const char *, va_list);
 void __wrap_vsyslog(int pri, const char *fmt, va_list ap)
 {
     (void)pri;
+    if (strstr(fmt, "Interface not found for phy_port"))
+        not_found_lines++;
     if (getenv("HARNESS_DEBUG")) {
         vfprintf(stderr, fmt, ap);
         fputc('\n', stderr);
@@ -98,6 +103,7 @@ static void cfg(int type, int afi, int version, int opcode, int nports)
     for (i = 0; i < nports; i++) {
         strncpy(c->ports[i].pnames, ports[i], L2MCD_IFNAME_SIZE - 1);
         c->ports[i].oper_state = 1;
+        c->ports[i].tagged = i == 1 && tag_port1;
     }
     l2mcd_process_ipc_msg(m, sizeof(L2MCD_IPC_MSG) + dlen, none);
     free(m);
@@ -925,6 +931,126 @@ static int portdb_overlap(int kind)
     return bad;
 }
 
+/* The port-flap cases (sonic-l2mcd 0017, found on the DX010 2026-11-16):
+ * mcgrp_stop_phy_port() took a VLAN numbered 2048..4094 for a GRE tunnel port
+ * (is_ip_tnnl_port() is 2048..10240) and set the stopping port's entry to
+ * PORT_INDEX_INVALID, left in the VLAN's port list; the link-up then made a
+ * second entry, without the tagged flag. Ethernet8, a tagged member, loses
+ * link and gets it back three times. Each class's port list must then hold
+ * one entry per port and none at PORT_INDEX_INVALID, Ethernet8's up and still
+ * tagged; an IGMP and an MLD general query on Ethernet4 must each be forwarded
+ * to Ethernet8 once, with no "Interface not found for phy_port" line. Run in
+ * Vlan4094 (port-flap-vlan4094) and in Vlan100 (port-flap-vlan100, the
+ * control). Returns 0, or 1 when the state after is wrong. */
+static int port_flap(void)
+{
+    static uint8_t b[256], q[64];
+    UINT16 vir = (USHORT)vnode->ifindex;
+    char ln[L2MCD_IFNAME_SIZE];
+    size_t n, sent;
+    int afi, k, bad = 0;
+
+    for (k = 0; k < 3; k++) {
+        /* the link event's name, as l2mcd_nl_msg_handler() passes it */
+        snprintf(ln, sizeof(ln), "Ethernet8");
+        l2mcd_portstate_update(if_nametoindex("Ethernet8"), 0, ln);
+        l2mcd_portstate_update(if_nametoindex("Ethernet8"), 1, ln);
+    }
+    for (afi = L2MCD_IPV4_AFI; afi <= L2MCD_IPV6_AFI; afi++) {
+        MCGRP_L3IF *v = afi == L2MCD_IPV4_AFI ? gIgmp.port_list[vir] : gMld.port_list[vir];
+        MCGRP_PORT_ENTRY *e, *p8 = NULL;
+        unsigned total = 0, at[2] = { 0, 0 }, dead = 0;
+
+        for (e = v->phy_port_list; e; e = e->next) {
+            total++;
+            at[0] += e->phy_port_id == port_idx[0];
+            at[1] += e->phy_port_id == port_idx[1];
+            dead += e->phy_port_id == PORT_INDEX_INVALID;
+            if (e->phy_port_id == port_idx[1])
+                p8 = e;
+        }
+        fprintf(stderr, "  Vlan%d %s port list after 3 link-downs and link-ups of Ethernet8: %u entr%s, "
+                "Ethernet4 %u, Ethernet8 %u (up %d, tagged %d), at PORT_INDEX_INVALID %u\n",
+                VID, afi == L2MCD_IPV4_AFI ? "IGMP" : "MLD", total, total == 1 ? "y" : "ies", at[0], at[1],
+                p8 ? (int)p8->is_up : -1, p8 ? (int)p8->tagged : -1, dead);
+        bad |= total != 2 || at[0] != 1 || at[1] != 1 || dead || !p8 || !p8->is_up || !p8->tagged;
+    }
+    /* l2mcd's ERR lines reach the log wrapper, which counts the one looked for */
+    APP_LOG_SET_LEVEL(APP_LOG_LEVEL_ERR);
+    not_found_lines = 0;
+    sent = tx_count;
+    memset(q, 0, 12);
+    q[0] = 0x11; q[1] = 100; q[8] = 2; q[9] = 125;
+    n = mk_ip4(b, q, 12, 0, all_hosts);
+    b[12] = 192; b[13] = 0; b[14] = 2; b[15] = 1;               /* 192.0.2.1 */
+    fix_igmp_csum(b, n);
+    feed_ip4(0, b, n);
+    memset(q, 0, 28);
+    q[0] = 130; q[4] = 0x27; q[5] = 0x10; q[24] = 2; q[25] = 125;
+    n = mk_ip6(b, q, 28, 1, 0, 1);
+    b[23] = 0x01;                                               /* fe80::1 */
+    fix_mld_csum(b, n);
+    feed_ip6(0, b, n);
+    APP_LOG_SET_LEVEL(getenv("HARNESS_DEBUG") ? APP_LOG_LEVEL_DEBUG : APP_LOG_LEVEL_EMERG);
+    fprintf(stderr, "  an IGMP and an MLD general query on Ethernet4: %zu frame(s) sent, "
+            "%u \"Interface not found for phy_port\" line(s)\n", tx_count - sent, not_found_lines);
+    bad |= tx_count - sent != 2 || not_found_lines;
+    return bad;
+}
+
+/* The cli-long-* cases (sonic-l2mcd 0018): l2mcd_ctl's dumps build a line in
+ * the 4000-byte pbuf with j += snprintf(pbuf + j, 4000 - j, ...). snprintf()
+ * returns the length it would have written, so a line past 4000 bytes took j
+ * past the end and the next size negative, as a size_t no bound: a write past
+ * pbuf. kind 0: the VLAN's IGMP port list with 400 more entries (-c 5; about
+ * 333 fill the line); kind 1: Ethernet8 a member of every VLAN (-c 6). The
+ * dump must end with no line of 4000 characters or more. */
+static int cli_long(int kind)
+{
+    UINT16 vir = (USHORT)vnode->ifindex;
+    MCGRP_CLASS *igmp = IGMP_GET_INSTANCE_FROM_VRFINDEX(IPVRF_DEFAULT_VRF_IDX);
+    l2mcd_if_tree_t *t1, *t2;
+    char line[16384];
+    size_t longest = 0, lines = 0, len;
+    FILE *f = tmpfile();
+    int i;
+
+    if (!f)
+        return 2;
+    if (kind == 0) {
+        for (i = 0; i < 400; i++)
+            if (!mcgrp_add_phy_port(igmp, gIgmp.port_list[vir], 5000 + i))
+                return 2;
+    } else {
+        t1 = l2mcd_kif_to_if(if_nametoindex("Ethernet8"));
+        t2 = t1 ? l2mcd_if_to_kif(t1->ifid) : NULL;
+        if (!t1 || !t2)
+            return 2;
+        for (i = 1; i < 4095; i++) {
+            L2MCD_VLAN_BM_SET(t1->bm, i);
+            L2MCD_VLAN_BM_SET(t2->bm, i);
+        }
+    }
+    g_l2mcd_cmd_fp = f;
+    if (kind == 0)
+        l2mcd_dump_vdb_port_list(VID, 0);
+    else
+        l2mcd_dump_port_vlan_bm();
+    g_l2mcd_cmd_fp = NULL;
+    rewind(f);
+    while (fgets(line, sizeof(line), f)) {
+        lines++;
+        len = strcspn(line, "\n");
+        if (len > longest)
+            longest = len;
+    }
+    fclose(f);
+    fprintf(stderr, "  %s: %zu line(s) printed, the longest %zu characters (pbuf holds %d)\n",
+            kind == 0 ? "the port list of a VLAN with 402 entries" : "the VLANs of a port in 4094 VLANs",
+            lines, longest, 4000);
+    return longest < 3000 || longest >= 4000 + 64;
+}
+
 static const char *only;
 static int run(const char *name)
 {
@@ -947,6 +1073,10 @@ int main(int argc, char **argv)
     only = argc > 1 ? argv[1] : NULL;
     if (only && !strncmp(only, "query-src-", 10))
         addr_order = strcmp(only, "query-src-addr-after") ? 1 : 2;
+    if (only && !strncmp(only, "port-flap-vlan", 14)) {
+        tag_port1 = 1;
+        vid = atoi(only + 14);
+    }
     if (setup() < 0)
         return 2;
 
@@ -1277,6 +1407,26 @@ int main(int argc, char **argv)
                 return 2;
             if (r)
                 abort();
+        }
+    }
+    /* a member port's link flaps, in a VLAN numbered above 2048 and in one below (port_flap above) */
+    if (only && (!strcmp(only, "port-flap-vlan4094") || !strcmp(only, "port-flap-vlan100"))) {
+        run(only);
+        if (port_flap()) {
+            fprintf(stderr, "harness: dead port entries\n");
+            abort();
+        }
+    }
+    /* a dump line longer than l2mcd_cli.c's buffer (cli_long above); only when named: each changes the setup */
+    if (only && (!strcmp(only, "cli-long-port-list") || !strcmp(only, "cli-long-vlan-bitmap"))) {
+        int r;
+
+        run(only);
+        if ((r = cli_long(strcmp(only, "cli-long-port-list") != 0)) == 2)
+            return 2;
+        if (r) {
+            fprintf(stderr, "harness: dump line not held to the buffer\n");
+            abort();
         }
     }
     if (run("mld-valid")) {

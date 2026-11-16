@@ -203,6 +203,7 @@ two of them upstream's own fixes carried unchanged:
 | sonic-l2mcd 0010 | l2mcd's per-packet debug lines kept out of syslog at the default level (they reached the remote log host at ~75 lines/s) | -- ([`sonic.md`](sonic.md) §8.14) |
 | sonic-l2mcd 0011-0014, 0016 | a port a breakout re-creates keeps its own index, not another port's (0011); a closed port socket's event freed (0012); `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (0013); a report, leave or MLD done from a port the port db has no name for is dropped and counted instead of aborting the daemon on `std::logic_error` (0014, from l2mcd's core of 2026-11-15); the port db refuses a second name at a named index or a name at a second index, whose later delete freed a string still in use as a key, the fault under 0014's crash (0016). **Built into no image yet** (the image build is on hold, §3.3) | jasper-hou-micas/sonic-l2mcd-micas #8, #9, #10, #11, #13 ([`sonic.md`](sonic.md) §8.13, §11.25.3) |
 | sonic-l2mcd 0015 | a static group's refresh keeps running when one of its ports stops, so the other static members no longer lapse 260 s later (the uplink's reserved groups, 2026-11-15); the refresh renews only a port that is up; the link-up replay no longer leaks. **Built into no image yet** | jasper-hou-micas/sonic-l2mcd-micas #12 ([`sonic.md`](sonic.md) §8.17) |
+| sonic-l2mcd 0017-0018 | a VLAN numbered 2048 or higher is no longer taken for a tunnel port when one of its ports stops, which left a dead port entry per link-down and an ERR line per entry with every forwarded query (0017, the DX010's Vlan4094, 2026-11-16); `l2mcd_ctl`'s dump lines held to their buffer (0018). **Built into no image yet** | not posted yet ([`sonic.md`](sonic.md) §8.18) |
 
 **Building 202511 with those in** -- not features, fixes the build itself
 needed:
@@ -258,9 +259,10 @@ the CPLD watchdog, the trace that found it) is §8.14.
 
 ### 3.3 Status on the DX010, 2026-11-15
 
-- In the kit and in no image: sonic-l2mcd 0011-0016 (`sonic.md` §8.13, §8.17). Clint
+- In the kit and in no image: sonic-l2mcd 0011-0018 (`sonic.md` §8.13, §8.17, §8.18). Clint
   holds the next image build until the open work is done (2026-11-15); what
-  its install must prove is §11.25.3 (0011, 0012), §8.13 (0013, 0014, 0016) and §8.17 (0015).
+  its install must prove is §11.25.3 (0011, 0012), §8.13 (0013, 0014, 0016), §8.17 (0015)
+  and §8.18 (0017; 0018 has no check on the switch).
 - Running since 2026-11-15 (installed 02:59 UTC, confirmed 03:07 with bridge
   `812503a`): `igmp-202511.20261115-6c8eb1cf7`, the image below plus
   sonic-buildimage 0014 (`linux-bcm-genl`: the SAI's sFlow sampling, which

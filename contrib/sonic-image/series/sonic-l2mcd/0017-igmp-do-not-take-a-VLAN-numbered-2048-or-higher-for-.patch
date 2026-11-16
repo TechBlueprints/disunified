@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Mon, 16 Nov 2026 12:00:00 -0700
+Subject: [PATCH] igmp: do not take a VLAN numbered 2048 or higher for a
+ tunnel port
+
+mcgrp_stop_phy_port() ends with
+
+    if (is_ip_tnnl_port(vir_port_id))
+        mcgrp_pport->phy_port_id = PORT_INDEX_INVALID;
+
+vir_port_id is the VLAN, and is_ip_tnnl_port() is the range 2048..10240
+(FIRST_GRE_IP_TUNNEL_PORT..LAST_GRE_IP_TUNNEL_PORT), which holds the VLAN
+ids 2048..4094 as well. In such a VLAN every stop of a port (link down,
+snooping turned off, a version change) set the port's MCGRP_PORT_ENTRY to
+index 16384 and left it in the VLAN's phy_port_list. The link-up then
+found no entry for the port (mcgrp_find_phy_port_entry()) and
+mld_vport_state_notify() added a second one; mcgrp_delete_veport() looks
+an entry up by its real index, so nothing removed the first until the
+VLAN itself went. One dead entry per link-down, in the IGMP and the MLD
+list each.
+
+Every query forwarded to the VLAN's ports then reached l2mcd_send_pkt()
+or l2mcd_fwd_pkt() once per dead entry with port 16384 and logged
+"Interface not found for phy_port:16384" at ERR. On a switch whose ports
+are members of VLAN 4094, 44 link-downs left 44 such entries and that
+many lines per forwarded query. The second entry is also a new one: it
+has lost the port's tagged flag, which only the VLAN member update sets,
+so a tagged member of such a VLAN is sent to without its tag after its
+first link-down.
+
+A VLAN is tested first now, as mcgrp_create_l3intf() does (is_virtual_port()
+before is_ip_tnnl_port()). The other is_ip_tnnl_port() tests in igmp.c do
+no harm for a VLAN: the VLAN's own phy_port_id becomes 0 instead of its
+id (mcast_tnnl_get_output_port() returns 0), which every reader takes
+behind an is_virtual_port() test or compares with a port index.
+
+The harness's port-flap-vlan4094 case (a tagged member of VLAN 4094 loses
+link and gets it back three times, then a general query arrives) finds
+three dead entries per class, the member's entry untagged and six "not
+found" lines without this; port-flap-vlan100 is the same in VLAN 100 and
+passes either way.
+---
+ src/igmp.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/igmp.c b/src/igmp.c
+index 28fb554..1596fb5 100644
+--- a/src/igmp.c
++++ b/src/igmp.c
+@@ -686,7 +686,11 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+ 
+     } /* while (grp_entry) */
+     mcgrp_pport->is_up = FALSE;
+-    if (is_ip_tnnl_port(vir_port_id))
++    // A VLAN is not a tunnel: is_ip_tnnl_port() is the range 2048..10240,
++    // which holds the VLAN ids 2048..4094 too. Without the first test a port
++    // of such a VLAN lost its index here and stayed in phy_port_list under
++    // PORT_INDEX_INVALID, and its link-up made a second entry.
++    if (!is_virtual_port(vir_port_id) && is_ip_tnnl_port(vir_port_id))
+         mcgrp_pport->phy_port_id = PORT_INDEX_INVALID;  
+ }
+ 

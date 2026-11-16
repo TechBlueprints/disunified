@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Mon, 16 Nov 2026 12:30:00 -0700
+Subject: [PATCH] l2mcd_cli: hold a dump line to its buffer
+
+l2mcd_ctl's dumps build each line in the 4000-byte pbuf with
+
+    j += snprintf(pbuf + j, L2MCD_PBUF_SIZE - j, ...);
+
+snprintf() returns the length it would have written, not what fitted. A
+line longer than the buffer therefore takes j past its end, and the next
+call's size, L2MCD_PBUF_SIZE - j, is negative: converted to size_t it is
+no bound at all, and the call writes at pbuf + j, past the buffer, for as
+long as the dump has entries. The fortified build does not catch it:
+__snprintf_chk() is given an unknown object size for pbuf + j.
+
+The lines that can get there: a VLAN's port list (-c 5) from about 333
+entries, its member tree (-c 12) from about 210 members, a port's VLANs
+(-c 6) from about 800 VLANs, a VLAN's addresses (-c 9). The group dump
+stopped at the end already, and the static group's line wrote up to 25
+bytes from as far as 21 bytes before the end.
+
+Every append goes through pbuf_append() now, which writes nothing once
+the line is full; a line that does not fit is printed cut.
+
+The harness's cli-long-port-list case (a VLAN's port list with 402
+entries) and cli-long-vlan-bitmap (a port in 4094 VLANs) run past pbuf
+without this (UBSan: index 4008, and 4003, out of bounds for type
+'char[4000]').
+---
+ port/l2mcd_cli.c | 44 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 32 insertions(+), 12 deletions(-)
+
+diff --git a/port/l2mcd_cli.c b/port/l2mcd_cli.c
+index 5110da5..439bbf9 100644
+--- a/port/l2mcd_cli.c
++++ b/port/l2mcd_cli.c
+@@ -16,6 +16,7 @@
+  */
+ 
+ #include <sys/types.h>
++#include <stdarg.h>
+ #include "l2mcd.h"
+ #include <linux/filter.h>
+ #include "mld_vlan_db.h"
+@@ -31,6 +32,25 @@ extern struct list *snooping_enabled_vlans[MCAST_AFI_MAX];
+ #define L2MCD_PBUF_SIZE 4000
+ char pbuf[L2MCD_PBUF_SIZE];
+ 
++/* Append to the line in pbuf at *j. snprintf() returns the length it would
++ * have written, so a line longer than pbuf took j past its end, and the next
++ * call's size, L2MCD_PBUF_SIZE - j, was negative: as a size_t no bound at all,
++ * written at pbuf + j. A full line takes nothing more and is printed cut. */
++static void pbuf_append(int *j, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
++static void pbuf_append(int *j, const char *fmt, ...)
++{
++    va_list ap;
++    int n;
++
++    if (*j < 0 || *j >= L2MCD_PBUF_SIZE - 1)
++        return;
++    va_start(ap, fmt);
++    n = vsnprintf(pbuf + *j, L2MCD_PBUF_SIZE - *j, fmt, ap);
++    va_end(ap);
++    if (n > 0)
++        *j = (n < L2MCD_PBUF_SIZE - *j) ? *j + n : L2MCD_PBUF_SIZE - 1;
++}
++
+ void l2mcd_dump_port_vlan_bm()
+ {
+     l2mcd_if_tree_t *l2mcd_if_tree;
+@@ -43,7 +63,7 @@ void l2mcd_dump_port_vlan_bm()
+     for (l2mcd_if_tree = M_AVLL_FIRST(g_l2mcd_kif_to_if_tree); l2mcd_if_tree; l2mcd_if_tree = M_AVLL_NEXT(g_l2mcd_kif_to_if_tree, l2mcd_if_tree->node))
+     {
+         pbuf[0]='\0';
+-        for(i=0;i<4096;i++)  if (L2MCD_VLAN_IS_BM_SET(l2mcd_if_tree->bm,i)) { j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%d,", i);}
++        for(i=0;i<4096;i++)  if (L2MCD_VLAN_IS_BM_SET(l2mcd_if_tree->bm,i)) { pbuf_append(&j, "%d,", i);}
+         L2MCD_CLI_PRINT("%14s %6d  %s", l2mcd_if_tree->iname, l2mcd_if_tree->ifid, pbuf);
+         j=0;
+     }
+@@ -195,7 +215,7 @@ void l2mcd_dump_groups(int vid, int flag)
+             
+             if (!flag) 
+             {
+-                j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j, "Vlan:%d, GA:%s, Ports: count:%d List:",vlan_id, inet_ntoa(ipadr), mcgrp_entry->num_mbr_ports);
++                pbuf_append(&j, "Vlan:%d, GA:%s, Ports: count:%d List:",vlan_id, inet_ntoa(ipadr), mcgrp_entry->num_mbr_ports);
+             }
+             else
+             {
+@@ -211,8 +231,8 @@ void l2mcd_dump_groups(int vid, int flag)
+                     {
+                         if (!flag)
+                         {
+-                            j+=snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%s[%d] ",portdb_get_ifname_from_portindex(grp_mbrshp->phy_port_id),grp_mbrshp->phy_port_id);
+-                            if (j>=L2MCD_PBUF_SIZE) break;
++                            pbuf_append(&j, "%s[%d] ",portdb_get_ifname_from_portindex(grp_mbrshp->phy_port_id),grp_mbrshp->phy_port_id);
++                            if (j>=L2MCD_PBUF_SIZE-1) break;
+                         }
+                         else 
+                         {
+@@ -257,12 +277,12 @@ void l2mcd_dump_vdb_port_list(int vid, int tree_id)
+         mcgrp_vport = gIgmp.port_list[vlan_id];
+         if (!mcgrp_vport) {L2MCD_CLI_PRINT("mcgroup_vport not available for vlan:%d\n", vlan_id); continue;}
+         mcgrp_pport = mcgrp_vport->phy_port_list;
+-        j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%4d %4d   ", vlan_node->gvid, mcgrp_vport->ngroups);
++        pbuf_append(&j, "%4d %4d   ", vlan_node->gvid, mcgrp_vport->ngroups);
+         if (!tree_id)
+         {
+             while(mcgrp_pport)
+             {
+-                j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j, "%10s  ", portdb_get_ifname_from_portindex(mcgrp_pport->phy_port_id));
++                pbuf_append(&j, "%10s  ", portdb_get_ifname_from_portindex(mcgrp_pport->phy_port_id));
+                 mcgrp_pport=mcgrp_pport->next; 
+             }
+         }
+@@ -270,7 +290,7 @@ void l2mcd_dump_vdb_port_list(int vid, int tree_id)
+         {
+             for(vlan_port = M_AVLL_FIRST(vlan_node->port_tree); vlan_port;vlan_port = M_AVLL_NEXT(vlan_node->port_tree, vlan_port->node)) 
+             {
+-                j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j, "%10s(%d)  ", portdb_get_ifname_from_portindex(vlan_port->ifindex), vlan_port->ifindex);
++                pbuf_append(&j, "%10s(%d)  ", portdb_get_ifname_from_portindex(vlan_port->ifindex), vlan_port->ifindex);
+             }
+         }
+         
+@@ -295,12 +315,12 @@ void l2mcd_dump_ve_portdb_tree(void)
+     L2MCD_CLI_PRINT("port-index   Address");
+     for (port_entry = M_AVLL_FIRST(gMld.ve_portdb_tree); port_entry; port_entry = M_AVLL_NEXT(gMld.ve_portdb_tree, port_entry->node))
+     {
+-        j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%4d  ", port_entry->port_index);
++        pbuf_append(&j, "%4d  ", port_entry->port_index);
+         head = (port_link_list_t *)port_entry->ipv4_addr_data;
+         while(head)
+         {
+             in.s_addr=htonl(head->value.ipaddress);
+-            j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j," %s/%d ", inet_ntoa(in),head->value.prefix_length);
++            pbuf_append(&j, " %s/%d ", inet_ntoa(in),head->value.prefix_length);
+             head = head->next;
+         }
+         L2MCD_CLI_PRINT("%s", pbuf);
+@@ -311,7 +331,7 @@ void l2mcd_dump_ve_portdb_tree(void)
+     L2MCD_CLI_PRINT("==========================================================================");
+     for (port_entry = M_AVLL_FIRST(gMld.portdb_tree); port_entry; port_entry = M_AVLL_NEXT(gMld.portdb_tree, port_entry->node))
+     {
+-        j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%4u  %lu", port_entry->port_index, port_entry->ifindex);
++        pbuf_append(&j, "%4u  %lu", port_entry->port_index, port_entry->ifindex);
+         L2MCD_CLI_PRINT("%s", pbuf);
+         j=0;
+     }
+@@ -434,7 +454,7 @@ void l2mcd_print_global_var()
+     {
+         for (i=0;i<L2MCD_VLAN_MAX;i++)
+         {
+-            if (g_l2mcd_pkt_log[i]) {j+= snprintf(pbuf+j, L2MCD_PBUF_SIZE-j,"%d,", i); cnt++;}
++            if (g_l2mcd_pkt_log[i]) {pbuf_append(&j, "%d,", i); cnt++;}
+             if (cnt>20) {cnt=0; j=0; L2MCD_CLI_PRINT("%s", pbuf);}
+         }
+         if (cnt) L2MCD_CLI_PRINT("%s", pbuf);
+@@ -633,7 +653,7 @@ void dump_mcgrpl3if(int vid)
+         ipstr_struct.s_addr =htonl(static_group->group_address.ip.v4addr);
+         for (sg_port = M_AVLL_FIRST(static_group->port_tree);sg_port;sg_port = M_AVLL_NEXT(static_group->port_tree, sg_port->node))
+         {
+-            j+=snprintf(pbuf+j, 25, "%s(0x%x) ", portdb_get_ifname_from_portindex(sg_port->ifindex),sg_port->ifindex);
++            pbuf_append(&j, "%s(0x%x) ", portdb_get_ifname_from_portindex(sg_port->ifindex),sg_port->ifindex);
+             if (j>=L2MCD_PBUF_SIZE-20) break;
+         }  
+         L2MCD_CLI_PRINT("Static-Group:");
