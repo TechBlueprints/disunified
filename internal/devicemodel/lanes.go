@@ -37,6 +37,16 @@ type LaneProvider interface {
 	// cage's speed) and the cage's admin state: the lanes' other settings
 	// are the child's (ApplyLanes). A whole cage is the device's as before.
 	AttachLaneSwitch(cage int, child Attachment) error
+	// DetachLaneSwitch is the exact inverse: the cage is the device's again,
+	// reported and planned as the fold it was before the attach (from the
+	// next collect and the next plan). What the lane switch left on the
+	// lanes falls under the device's rules for a cage with no lane switch.
+	// Detaching a cage with none attached does nothing.
+	DetachLaneSwitch(cage int)
+	// SplitCages lists the port indexes of the cages the last snapshot saw
+	// split, ascending; nil before the first snapshot. Each can be presented
+	// as a lane switch (Lanes answers for it).
+	SplitCages() []int
 }
 
 // LaneVLANController is an optional LaneProvider capability: the VLANs a

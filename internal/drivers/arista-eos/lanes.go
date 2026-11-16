@@ -239,11 +239,55 @@ func (c *Collector) AttachLaneSwitch(cage int, a devicemodel.Attachment) error {
 	if c.last != nil && !slices.ContainsFunc(c.last.Ports, func(p devicemodel.Port) bool { return p.Index == cage }) {
 		return fmt.Errorf("arista-eos: the switch has no port %d", cage)
 	}
-	if c.children == nil {
-		c.children = map[int]devicemodel.Attachment{}
+	// A new map each time: finishLanes reads the old one outside the lock,
+	// and an attach can come from the lane switch's loop while this device
+	// collects (an adoption, docs/drivers/breakout.md 16).
+	next := make(map[int]devicemodel.Attachment, len(c.children)+1)
+	for k, v := range c.children {
+		next[k] = v
 	}
-	c.children[cage] = a
+	next[cage] = a
+	c.children = next
 	return nil
+}
+
+// DetachLaneSwitch implements devicemodel.LaneProvider: the inverse of
+// AttachLaneSwitch. The cage is the fold again from the next collect and
+// the next plan; the lane switch's VLAN list and its view of the cage's
+// disabled state go with it (docs/drivers/breakout.md 7c for what it left).
+func (c *Collector) DetachLaneSwitch(cage int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.children[cage]; ok {
+		// finishLanes reads the map outside the lock: replace it, never
+		// change the one a collect may be holding.
+		next := make(map[int]devicemodel.Attachment, len(c.children))
+		for k, v := range c.children {
+			if k != cage {
+				next[k] = v
+			}
+		}
+		c.children = next
+	}
+	delete(c.cageDown, cage)
+	delete(c.laneVLANs, cage)
+}
+
+// SplitCages implements devicemodel.LaneProvider.
+func (c *Collector) SplitCages() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.last == nil {
+		return nil
+	}
+	var out []int
+	for _, p := range c.last.Ports {
+		if p.Lanes > 1 && len(c.lanes[p.Index]) > 1 {
+			out = append(out, p.Index)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // LocalChassisID is what the switch sends as its own LLDP chassis id (`show

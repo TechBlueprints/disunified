@@ -152,6 +152,37 @@ func (c *Collector) AttachLaneSwitch(cage int, a devicemodel.Attachment) error {
 	return nil
 }
 
+// DetachLaneSwitch implements devicemodel.LaneProvider: the inverse of
+// AttachLaneSwitch. The cage is the fold again from the next collect and
+// the next plan; what the lane switch's push said (its VLAN list, the
+// cage's disabled state as it read it) goes with it, and an aggregate it
+// left is handled as any lane aggregate of a cage with no lane switch
+// (docs/drivers/breakout.md 7c).
+func (c *Collector) DetachLaneSwitch(cage int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.children, cage)
+	delete(c.cageDown, cage)
+	delete(c.laneVLANs, cage)
+}
+
+// SplitCages implements devicemodel.LaneProvider.
+func (c *Collector) SplitCages() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.last == nil {
+		return nil
+	}
+	var out []int
+	for cage, l := range c.lanes {
+		if len(l) > 1 {
+			out = append(out, cage)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
 // Lanes implements devicemodel.LaneProvider: the cage's lanes as of the
 // last collect, a lane aggregate's id as the lane switch's own (its lowest
 // member's lane number), any other PortChannel by name only.
