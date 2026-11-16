@@ -12,7 +12,8 @@ port and switch config applied to the vendor device). The initial public
 release (2026-09-20) shipped two drivers, both verified live on Network
 10.6.106: `arista-eos` (Clint's Arista DCS-7160-48TC6-F on EOS 4.26.14M,
 claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
-9.1 cluster as a `USWF07D` "ECS Core"). **Phase 0 (read) and phase 1
+9.1 cluster as a `UDC48X6` "USW Leaf" too; a `USWF07D` "ECS Core" for its
+first day only). **Phase 0 (read) and phase 1
 (control) are done for both** — see `docs/feature-map.md` for the
 per-feature status. A third driver, `apc-pdu`, followed: Clint's APC AP7931
 rack PDU (NMC AOS 3.9.2) as a `USPPDUP` power distribution unit, outlets read
@@ -170,8 +171,10 @@ reply, and the reported address following an applied move
   capture fails `TestSecretTableCoversFixtures` until the table names it.
   Logs written before that build still hold real values: a deployed
   bridge's `inform-log/` is a secret store, never copied off whole.
-- He logs into the controller in Claude's Chrome tab so Claude can drive the
-  UI for captures and round-trip tests; Claude never touches the 2FA code.
+- He logs into the controller in Claude in Chrome (the extension in his own
+  Chrome, not the app's built-in browser pane, which had no session there on
+  2026-10-31) so Claude can drive the UI for captures and round-trip tests;
+  Claude never touches the 2FA code.
 - UI edits for testing go only on the test ports named in
   `local-information/site.md` (an unused copper port and a down QSFP cage).
   Never touch a port that carries a live link.
