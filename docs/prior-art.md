@@ -157,6 +157,7 @@ The daemon's review happens in
 | [jasper-hou-micas/sonic-l2mcd-micas#4](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/4) | 0010 (counters on their own lines, so it stands alone) | per-packet lines out of syslog at the default level |
 | [jasper-hou-micas/sonic-l2mcd-micas#8](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/8) (posted 2026-11-15) | 0011 | a port a breakout or join re-creates keeps its own index, not another port's (§11.25.3 of [`drivers/sonic.md`](drivers/sonic.md)) |
 | [jasper-hou-micas/sonic-l2mcd-micas#9](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/9) (posted 2026-11-15) | 0012 | free a closed port socket's libevent event |
+| [jasper-hou-micas/sonic-l2mcd-micas#10](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/10) (posted 2026-11-15) | 0013 | `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (the review of #1 flagged it) |
 
 #8 and #9 were cut the same way, from branches `fix/breakout-port-index` and `fix/free-socket-event`, on `651a13b` (`dev` and `l2mcd-pre`, both still there on
 2026-11-15; no upstream change to either file since). Each applies and builds alone, and the
@@ -171,8 +172,9 @@ aidan-gallagher, 2026-02-20; answered "Will further revise and optimize accordin
 `651a13b` (2026-08-13) still has it. Its fix is the kit's sonic-l2mcd 0013 (§8.13 of
 [`drivers/sonic.md`](drivers/sonic.md)), cut the same way as branch
 `fix/stop-phy-port-freed-membership` (one commit on `651a13b`, `src/igmp.c` +7 -5) and
-credited to that review. **Prepared, not posted**: posting is Clint's decision. Its harness
-link needs disunified `85017b5` on GitHub first. The same commit corrects the harness's APPL_DB
+credited to that review: [#10](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/10),
+posted 2026-11-15 on Clint's approval in the posting session. Its harness link is disunified
+`85017b5`. The same commit corrects the harness's APPL_DB
 stub, which counted no member deletion at all (l2mcd sends them through
 `l2mcsync_add_l2mc_entry()` with `op_code` 0), so #8's "no member deleted" check could not
 fail at the commit #8 links; re-run with the counting stub, #8's results are unchanged.

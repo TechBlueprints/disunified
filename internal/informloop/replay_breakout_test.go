@@ -43,9 +43,19 @@ type laneRig struct {
 
 func newLaneRig(t *testing.T) *laneRig {
 	t.Helper()
+	return newLaneRigWith(t, nil)
+}
+
+// newLaneRigWith: edit runs on the capture's runner before the parent
+// starts; what it writes is not the loops'.
+func newLaneRigWith(t *testing.T, edit func(*sonic.FixtureRunner)) *laneRig {
+	t.Helper()
 	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", "collect-4x25g.txt"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if edit != nil {
+		edit(fr)
 	}
 	buf := &strings.Builder{}
 	logger := log.New(buf, "", 0)
@@ -72,7 +82,7 @@ func newLaneRig(t *testing.T) *laneRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &laneRig{t: t, fr: fr, coll: coll, parent: parent, log: buf}
+	r := &laneRig{t: t, fr: fr, coll: coll, parent: parent, log: buf, seen: len(fr.Recorded())}
 	r.cycleParent("the capture")
 
 	o, err := breakout.ParseOptions(map[string]string{"parent": "core", "cage": "2"})
@@ -129,11 +139,16 @@ func (r *laneRig) cycleChild(after string) {
 
 func (r *laneRig) pushChild(file, ver string) []string {
 	r.t.Helper()
+	return r.pushChildText(readECSPush(r.t, file), ver)
+}
+
+func (r *laneRig) pushChildText(text, ver string) []string {
+	r.t.Helper()
 	r.child.collect(context.Background())
-	body, _ := json.Marshal(map[string]string{"_type": "setparam", "system_cfg": readECSPush(r.t, file), "mgmt_cfg": "cfgversion=" + ver + "\n"})
+	body, _ := json.Marshal(map[string]string{"_type": "setparam", "system_cfg": text, "mgmt_cfg": "cfgversion=" + ver + "\n"})
 	r.csess.Apply(time.Now(), body)
 	if !r.child.applyPending(context.Background()) {
-		r.t.Fatalf("%s was not consumed", file)
+		r.t.Fatalf("cfgversion %s was not consumed", ver)
 	}
 	return r.writes()
 }

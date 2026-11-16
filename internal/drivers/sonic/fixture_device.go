@@ -387,6 +387,64 @@ func (f *FixtureRunner) kernelMTU(iface, m string) error {
 	return nil
 }
 
+// vlanNetdev is vlanmgrd's half of `config vlan add|del`: it makes the
+// kernel's Vlan<id> on the Bridge, which a VLAN device takes its MTU from
+// (9100, whatever the VLAN table's mtu: docs/drivers/sonic.md §12; the
+// deployed driver's capture collect-ospf.txt has Vlan3999 at 9100 with no
+// CONFIG_DB mtu), and removes it again. The new link is a copy of the
+// capture's own first Vlan link (its flags, qdisc and address) without
+// addresses; a capture with no Bridge or no Vlan link models nothing.
+func (f *FixtureRunner) vlanNetdev(id string, add bool) error {
+	body := strings.TrimSpace(f.section("addr"))
+	if !f.VLANNetdevs || body == "" {
+		return nil
+	}
+	var links []map[string]any
+	if err := json.Unmarshal([]byte(body), &links); err != nil {
+		return fmt.Errorf("addr section: %w", err)
+	}
+	name := "Vlan" + id
+	var bridge float64
+	var form map[string]any
+	maxIndex := 0.0
+	kept := links[:0:0]
+	for _, l := range links {
+		if l["ifname"] == "Bridge" {
+			bridge, _ = l["mtu"].(float64)
+		}
+		if n, _ := l["ifname"].(string); form == nil && strings.HasPrefix(n, "Vlan") && l["link"] == "Bridge" {
+			form = l
+		}
+		if i, _ := l["ifindex"].(float64); i > maxIndex {
+			maxIndex = i
+		}
+		if l["ifname"] == name {
+			if add {
+				return nil // already there
+			}
+			continue
+		}
+		kept = append(kept, l)
+	}
+	if add {
+		if bridge == 0 || form == nil {
+			return nil
+		}
+		l := map[string]any{}
+		for k, v := range form {
+			l[k] = v
+		}
+		l["ifindex"], l["ifname"], l["mtu"], l["addr_info"] = maxIndex+1, name, bridge, []any{}
+		kept = append(kept, l)
+	}
+	b, err := json.Marshal(kept)
+	if err != nil {
+		return err
+	}
+	f.setSection("addr", string(b))
+	return nil
+}
+
 // hasKernelAddress: the capture's `ip -j addr` shows ip/plen on iface.
 func (f *FixtureRunner) hasKernelAddress(iface, ip, plen string) bool {
 	var links []map[string]any

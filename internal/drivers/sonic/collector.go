@@ -68,6 +68,10 @@ type Collector struct {
 	// Allow All.
 	siteKnown bool
 	laneVLANs map[int][]int
+	// mtuWant is the port MTU each push's last applied plan set (0 = the
+	// device's own, a cage = its lane switch's; 0 or absent = none): a
+	// VLAN takes the lowest of the pushes that list it (vlanMTUs).
+	mtuWant map[int]int
 	// aclFrom is the device intent the ACL rules were last derived from
 	// (aclSet): the DHCP guard's rules follow the VLANs on the switch.
 	aclFrom *devicemodel.DeviceDesired
