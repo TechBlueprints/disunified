@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Mon, 16 Nov 2026 10:00:00 -0700
+Subject: [PATCH] l2mcd: hold a port name and its index once each way in the
+ port db
+
+portdb_add_ifname() inserted into both maps without looking at either.
+A second name at a named index replaced the index's name, but the first
+name stayed a key of the name-to-index map, still mapping to the index.
+portdb_delete_ifname() of the first name then removed that key and freed
+the index's current name, the second name's string, which was still a
+key of the same map: the next look-up whose probe reached it compared
+against freed memory, and the index was left with no name. A name added
+at a second index moved the name's index and left the first index named
+(a delete of the name then freed the second index's string and left the
+first one's). The same name twice at its own index replaced the index's
+string and lost the first one (mld_if_snoop_set() adds a VLAN's name
+once per address family).
+
+Seen on a Celestica DX010 (SONiC 202511): in l2mcd's core after a
+breakout, the name-to-index map held a freed "Ethernet115" string as a
+key of index 4096 (Ethernet0's), and index 4131 (Ethernet35's) was named
+Ethernet0. l2mcd_port_list_update() numbers a port it does not know
+4096 + its kernel ifindex, which is another front-panel port's index
+from port_ifname_db_init(), and added the name there.
+
+A name already at its own index is now no change, and any other overlap
+is refused, with a notice: the index and the name keep what they had. Refusing,
+not taking the index over, is what the callers need: the holder of an
+index is a port with a receive socket and a tree at that index, and
+taking its name away leaves exactly the nameless index whose reports
+crashed l2mcd. l2mcd_port_list_update() stops when the add is refused
+instead of building a tree at another port's index. A failed insert no
+longer leaks the string or leaves one map half written.
+---
+ port/l2mcd_portdb.c | 27 +++++++++++++++++++++++++++
+ port/l2mcd_utils.c  |  2 ++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/port/l2mcd_portdb.c b/port/l2mcd_portdb.c
+index e6763d5..04433ad 100644
+--- a/port/l2mcd_portdb.c
++++ b/port/l2mcd_portdb.c
+@@ -57,10 +57,34 @@ int ip6_addr_cmp(void *val1, void *val2) {
+     return memcmp(&p1->ipaddress, &p2->ipaddress, sizeof(IP6_IPV6_ADDRESS));
+ }
+ 
++/*
++ * A name and its index are held once each way: the name's string is a key of
++ * one map and the value of the other, and portdb_delete_ifname() frees the
++ * value of the index its name maps to. A second name at a named index left
++ * the first name a key of that index, and deleting the first name then freed
++ * the second name's string while it was still a key; a name added at a
++ * second index left the first index named. Either is refused here and the
++ * name and the index keep what they had; the name already at its own index
++ * is no change (mld_if_snoop_set() adds a VLAN's name once per address
++ * family, which lost the first string).
++ */
+ int portdb_add_ifname(char *ifname, int name_len, unsigned int port_index)
+ {
+     int ret;
+     char *interface_name; 
++    char *holder = portdb_get_ifname_from_portindex(port_index);
++    unsigned int held = portdb_get_portindex_from_ifname(ifname);
++
++    if (holder || held != NO_SUCH_PORT) {
++        if (holder && held == port_index && !strcmp(holder, ifname))
++            return 0;
++        if (holder && strcmp(holder, ifname))
++            L2MCD_LOG_NOTICE("%s port:%s index:%u refused: the index is %s's", __FUNCTION__, ifname, port_index, holder);
++        else
++            L2MCD_LOG_NOTICE("%s port:%s index:%u refused: the name has index %u", __FUNCTION__, ifname, port_index, held);
++        return -1;
++    }
++
+     if( !(interface_name = (char *)malloc(name_len + 1)) )
+         return -1;
+ 
+@@ -70,6 +94,7 @@ int portdb_add_ifname(char *ifname, int name_len, unsigned int port_index)
+     if(!ret)
+     {
+         L2MCD_LOG_NOTICE("%s index:%d to portname:%s ret:%d", __FUNCTION__, port_index, interface_name, ret);
++        free(interface_name);
+         return -1; //Failed to add interface name to hash table;
+     }
+ 
+@@ -77,6 +102,8 @@ int portdb_add_ifname(char *ifname, int name_len, unsigned int port_index)
+     if(!ret)
+     {
+         L2MCD_LOG_NOTICE("%s index:%d from portname:%s ret:%d", __FUNCTION__, port_index, interface_name,ret);
++        hashGrowGenericDelete(portdb_portindex_to_ifname_hash, port_index, NULL);
++        free(interface_name);
+         return -1; //Failed to add interface name to hash table;
+     }
+ 
+diff --git a/port/l2mcd_utils.c b/port/l2mcd_utils.c
+index a541467..5efb53a 100644
+--- a/port/l2mcd_utils.c
++++ b/port/l2mcd_utils.c
+@@ -327,6 +327,8 @@ int l2mcd_port_list_update(char *pnames, int oper_state, int is_add)
+         }
+         rc = portdb_add_ifname(pnames, strlen(pnames)+1, ifidx);
+         L2MCD_LOG_NOTICE("%s portdb add port:%s, index:%d rc:%d", __FUNCTION__, pnames, ifidx, rc);
++        if (rc) /* the index is another port's: leave that port alone */
++            return is_add ? -1 : 0;
+     }
+ 
+     if_tree = l2mcd_if_to_kif(ifidx);

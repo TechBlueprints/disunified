@@ -32,7 +32,8 @@ case "$cmd" in
            static-member-link-down mld-static-member-link-down static-member-reported mld-static-member-reported
            member-link-down mld-member-link-down member-vlan-leave
            port-no-name-v2-report port-no-name-v3-report port-no-name-v2-leave
-           mld-port-no-name-v1-report mld-port-no-name-v2-report mld-port-no-name-done mld-valid mld-65535-sources
+           mld-port-no-name-v1-report mld-port-no-name-v2-report mld-port-no-name-done
+           portdb-name-overwrite portdb-name-moved portdb-name-twice mld-valid mld-65535-sources
            mld-65535-groups mld-zero-sources-with-aux mld-type-0 mld-type-200 mld-no-hbh
            mld-hbh-oversized mld-payload-beyond-packet mld-v2-query-sources
            query-src-addr-before query-src-addr-after query-src-bare-vid"
@@ -44,7 +45,7 @@ case "$cmd" in
         # leaks: only what packets allocate (the harness hides setup from LSan)
         if HARNESS_CORPUS=corpus out/$tag/regress \$c > out/$tag/regress-\$c.log 2>&1; then
           r=\"clean \$(grep -o 'dropped as malformed.*' out/$tag/regress-\$c.log)\"
-        else r=\$(grep -m1 -oE 'ERROR: AddressSanitizer: [a-z-]+ on address|ERROR: AddressSanitizer: SEGV|runtime error: [^:]*|setup failed|open sockets: [0-9]+, then [0-9]+|l2mcd_is_peerlink\(NULL\)' out/$tag/regress-\$c.log || echo 'exit '\$?)
+        else r=\$(grep -m1 -oE 'ERROR: AddressSanitizer: [a-z-]+ on address|ERROR: AddressSanitizer: SEGV|ERROR: LeakSanitizer: [a-z ]+|runtime error: [^:]*|setup failed|open sockets: [0-9]+, then [0-9]+|l2mcd_is_peerlink\(NULL\)' out/$tag/regress-\$c.log || echo 'exit '\$?)
           at=\$(grep -m1 -E '^ +#[0-9]+ .* in [a-z_0-9]+ /fz/src' out/$tag/regress-\$c.log | sed -E 's|.* in ([a-z_0-9]+) /fz/src-[a-z]+/([^ ]+).*|\\1 \\2|'); r=\"\$r @ \$at\"; fi
         printf '%-28s %s\n' \$c \"\$r\"
       done" ;;

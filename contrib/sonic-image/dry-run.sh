@@ -6,7 +6,9 @@
 # without undefined names, every make variable the new rules use is defined,
 # and the daemon's submodule commit can be fetched.
 #
-# Needs: git, gh is not needed; a python3 with jinja2 and pyang (pyflakes
+# Needs: bash 4 or later (associative arrays; macOS's /bin/bash 3.2 stops at
+# "sonic: unbound variable": run it as /opt/homebrew/bin/bash ./dry-run.sh),
+# git, gh is not needed; a python3 with jinja2 and pyang (pyflakes
 # optional), e.g.  python3 -m venv /tmp/v && /tmp/v/bin/pip install jinja2 pyang pyflakes
 #   PYTHON=/tmp/v/bin/python ./dry-run.sh
 # Exit status 0 = every check passed.
