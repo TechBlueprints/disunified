@@ -3574,6 +3574,37 @@ clause or MSA for that module requires of the host:
 `internal/drivers/CLAUDE.md`'s "only write FEC when asked" gains this
 exception for drivers whose platform reads the module.
 
+**Live on the DX010, 2026-11-16 (Network 11.0.99, 202511 image).** A 1 m
+QSFP28-to-4xSFP28 passive DAC (`25GBASE-CR CA-25G-S or 50GBASE-CR2 with
+BASE-R`) went into an empty cage, and the cage was set to 25G from the port
+drawer. Three things showed:
+
+- **The controller still refuses every FEC at 25G on a QSFP28 port.** The
+  drawer offers FEC at 25G and picks FC-FEC itself, but the save is
+  `api.err.InvalidFecMode`. The same answer came for `fc-fec`, `disabled`
+  and `rs-fec` sent through REST, as on 10.6.109 (§11.8 run). Only a save
+  without `fec_mode` is accepted, so at 25G this rule is the only way FEC is
+  set. A real ECS Aggregation (USWF066, 4.0.1) shows the contrast. On one
+  of its empty SFP28 ports, the same REST save at 25G was accepted with
+  `fc-fec`, `rs-fec` and `disabled` alike (the override was removed after).
+  Its QSFP28 ports claim only 40G, 100G and autonegotiation in `speed_caps`
+  (1130496), so no UniFi QSFP28 port ever runs 25G. The likely reason for
+  the refusal is that the controller checks FEC by media and speed and has
+  no entry for QSFP28 at 25G. That is an inference, not tested: reporting
+  a split lane as SFP28 media would test it.
+- **xcvrd does not see a module inserted after boot.** The platform API's
+  `get_presence` and `sfputil show eeprom` read the cable, but xcvrd never
+  wrote `TRANSCEIVER_INFO` for it: `get_change_event` waits on a CPLD
+  interrupt, and a direct call returned `(False, {})` with the module seated.
+  The bridge then reports no module and this rule has nothing to read. The
+  breakout fixed it: xcvrd reads the module when it adds the new logical
+  ports. A module in a cage that is never split stays unseen until xcvrd
+  restarts or the switch reboots. Root cause not found.
+- **The rule ran.** The split ran from the push. Then, on the next cycle, the
+  driver wrote `config interface fec Ethernet<n> fc` on all four lanes, which
+  is within the lanes' `supported_fecs none,fc`. This was the rule's first
+  live write.
+
 ### 10.4 The optic's media type
 
 xcvrd's `specification_compliance` for an SFF-8636 module is Python's
