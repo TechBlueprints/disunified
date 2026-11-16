@@ -21,8 +21,12 @@ import (
 //   - port 5: the cable -- up when any lane is, at the cage's native speed,
 //     counters summed, the cage's module, the parent as its LLDP neighbour.
 //
-// The identity is the attachment's MAC; the address and the reachability
-// fields are the parent's (one address for two devices was fine, 6.6).
+// The identity is the attachment's MAC. The address is the lane switch's
+// own link-local one (Address): it has no interface, and reporting the
+// parent's made the controller refuse every save of a parent with static
+// IP Settings (api.err.StaticIpAlreadyUsedByDevice, naming the lane switch;
+// Network 11.0.99, 2026-11-16, docs/drivers/breakout.md 16.10). The
+// gateway and its MAC stay the parent's: the segment the device sits on.
 func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 	snap := &devicemodel.Snapshot{TakenAt: v.TakenAt, VLANs: slices.Clone(v.VLANs), UplinkHint: UplinkPort}
 	ps := v.System
@@ -32,11 +36,10 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		Uptime: ps.Uptime, GatewayMAC: ps.GatewayMAC, Gateway: ps.Gateway, DHCP: ps.DHCP,
 		ARP: ps.ARP, Timezone: ps.Timezone,
 	}
-	if len(ps.Addresses) > 0 {
+	if ip := Address(v.Child.MAC); ip != "" {
 		// One interface, as the stub that was placed reported it: the
 		// inform's if_table and uplink name it.
-		a := ps.Addresses[0]
-		sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: a.IP, PrefixLen: a.PrefixLen}}
+		sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: ip, PrefixLen: 16}}
 	}
 	snap.System = sys
 
@@ -139,4 +142,25 @@ func normMAC(s string) (string, error) {
 		return "", fmt.Errorf("%q is not a 6-byte MAC", s)
 	}
 	return hw.String(), nil
+}
+
+// Address is the IPv4 address a lane switch reports: link-local
+// (169.254.0.0/16, RFC 3927), made from the last two octets of its MAC --
+// 169.254.<1 + fifth octet mod 254>.<sixth octet, 1..254> -- so it is
+// stable, differs per cage of one parent (the sixth octet is the cage
+// number for a derived MAC) and names no routable host. "" for a MAC that
+// does not parse.
+func Address(mac string) string {
+	hw, err := net.ParseMAC(mac)
+	if err != nil || len(hw) != 6 {
+		return ""
+	}
+	last := int(hw[5])
+	if last < 1 {
+		last = 1
+	}
+	if last > 254 {
+		last = 254
+	}
+	return fmt.Sprintf("169.254.%d.%d", 1+int(hw[4])%254, last)
 }

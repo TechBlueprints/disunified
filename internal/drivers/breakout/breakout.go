@@ -336,21 +336,18 @@ func (d *Device) ApplyTimeout() time.Duration {
 	return 0
 }
 
-// CurrentAddress implements devicemodel.AddressReporter: the parent's, so
-// an address move on the parent is followed (the lane switch has no
-// address of its own; a shared one was fine, docs/breakout-lag.md 6.6).
+// CurrentAddress implements devicemodel.AddressReporter: the lane switch's
+// own link-local address (Address), never the parent's -- two devices on
+// one address made the controller refuse the parent's saves.
 func (d *Device) CurrentAddress() string {
-	if ar, ok := d.parent.(devicemodel.AddressReporter); ok {
-		if a := ar.CurrentAddress(); a != "" {
-			return a
-		}
-	}
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	if len(d.view.System.Addresses) > 0 {
-		return d.view.System.Addresses[0].IP
+	v := d.view
+	d.mu.Unlock()
+	self, err := d.identity(v)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return Address(self.MAC)
 }
 
 // Capabilities are the parent's per-port claims; the switch-wide ones (STP

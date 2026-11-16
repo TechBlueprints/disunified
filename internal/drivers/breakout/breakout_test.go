@@ -74,8 +74,8 @@ func TestSnapshotFourLanes(t *testing.T) {
 	if sys.MAC != childMAC || sys.Hostname != "lane-switch" || sys.Model != "Lane switch" || sys.SKU != "4x25G[10G]" || sys.Version == "" {
 		t.Errorf("system %+v", sys)
 	}
-	if len(sys.Addresses) != 1 || sys.Addresses[0].Iface != "eth0" || sys.Addresses[0].IP == "" {
-		t.Errorf("addresses %+v (the parent's, as the stub reported its own)", sys.Addresses)
+	if len(sys.Addresses) != 1 || sys.Addresses[0].Iface != "eth0" || sys.Addresses[0].IP != "169.254.1.170" || sys.Addresses[0].PrefixLen != 16 {
+		t.Errorf("addresses %+v, want the lane switch's own link-local 169.254.1.170/16 (from its MAC), never the parent's", sys.Addresses)
 	}
 	for i, p := range s.Ports[:4] {
 		if p.Index != i+1 || p.Media != devicemodel.MediaSFP28 || p.Optic != nil || !reflect.DeepEqual(p.SpeedCaps, []int{1000, 10000, 25000}) || p.IfName == "" {
@@ -103,7 +103,7 @@ func TestSnapshotFourLanes(t *testing.T) {
 		t.Errorf("capabilities %+v", caps)
 	}
 	if a := r.d.CurrentAddress(); a != sys.Addresses[0].IP {
-		t.Errorf("address %q, the parent's %q", a, sys.Addresses[0].IP)
+		t.Errorf("address %q, the snapshot's %q", a, sys.Addresses[0].IP)
 	}
 }
 

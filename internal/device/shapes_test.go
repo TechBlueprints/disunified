@@ -65,9 +65,13 @@ var shapeExcusals = map[string]map[shapeExcusal]string{
 	"podman-macvlan": {
 		{"sys_stats.mem_buffer", "number"}: "memory in bytes (3.5 GB of buffers and page cache in the 2026-11-13 capture) passes 2^31, as the Arista's does; Buffers plus Cached stays (docs/wire-shapes.md §8)",
 	},
-	"sonic":       {},
-	"sonic-hw":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
-	"sonic-l2":    mergeShapeExcusals(excuseOptics, excuseSonicPSU),
+	"sonic":    {},
+	"sonic-hw": mergeShapeExcusals(excuseOptics, excuseSonicPSU),
+	"sonic-l2": mergeShapeExcusals(excuseOptics, excuseSonicPSU),
+	"breakout": {
+		{"ip", "longer"}:                 "a lane switch's own link-local address (169.254.x.y, breakout.Address) can be a character longer than the site's longest address; any dotted quad is one a real device sends",
+		{"connect_request_ip", "longer"}: "the same address as ip",
+	},
 	"apc-ups":     excuseTestNetmask,
 	"apc-backups": excuseTestNetmask,
 }
