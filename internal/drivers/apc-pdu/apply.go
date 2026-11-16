@@ -63,7 +63,9 @@ func (c *Collector) ApplyOutlets(ctx context.Context, desired []devicemodel.Outl
 	}
 
 	if len(names) > 0 {
-		if err := c.r.PutConfig(ctx, outletNameConfig(names)); err != nil {
+		if !c.takeUpload() {
+			errs = append(errs, apcnmc.Busy+"; the outlet names are written on a later cycle")
+		} else if err := c.r.PutConfig(ctx, outletNameConfig(names)); err != nil {
 			errs = append(errs, err.Error())
 		} else {
 			changed += len(names)

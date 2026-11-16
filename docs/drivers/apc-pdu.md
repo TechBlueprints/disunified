@@ -399,8 +399,8 @@ NTPSecondaryServer=0.ubnt.pool.ntp.org
 The section is read at Start and logged. About a minute after an upload,
 the whole file is read back and logged. A card that does not take the
 upload is written three times and then left alone until the controller's
-settings change. The syslog, clock and address (IP Settings) uploads take
-turns (`apcnmc.Uploads`): the card drops an upload that arrives while it is
+settings change. The syslog, clock, address (IP Settings) and outlet-name
+uploads take turns (`apcnmc.Uploads`): the card drops an upload that arrives while it is
 still applying the last one, so the second waits out the first's settle
 time. On a first start that needs both, the clock follows the syslog host a
 minute later. An address change that has to wait is logged as an error and

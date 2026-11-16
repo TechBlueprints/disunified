@@ -161,3 +161,47 @@ func TestApplyAddressTakesItsTurnWithSyslogAndClock(t *testing.T) {
 		t.Errorf("uploads = %q, want the clock's third", r.Configs)
 	}
 }
+
+// The outlet names are a config.ini upload too, so they take their turn at
+// the same gate: a rename a moment after the syslog upload is refused as
+// busy and written nothing, and the same rename a settle time later goes as
+// one upload.
+func TestApplyOutletNamesTakeTheirTurnWithSyslog(t *testing.T) {
+	b, err := os.ReadFile("../../../docs/fixtures/controller-10.6.109/system_cfg-pdu-syslog-remote.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	push := unificfg.Parse(string(b))
+	c, r := newTestCollector(t)
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	now := time.Unix(0, 0)
+	c.syslog.Now = func() time.Time { return now }
+	c.clock.Now = func() time.Time { return now }
+	c.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	if s, err := c.ApplySyslog(ctx, push.SyslogHosts); !s || err != nil {
+		t.Fatalf("ApplySyslog = %v, %v; want the syslog upload", s, err)
+	}
+	desired := []devicemodel.OutletDesired{{Index: 2, On: true, Name: "NAS"}}
+	changed, err := c.ApplyOutlets(ctx, desired)
+	if changed != 0 || err == nil || !strings.Contains(err.Error(), apcnmc.Busy) {
+		t.Fatalf("names a moment after the syslog upload: changed=%d err=%v; want them refused as busy", changed, err)
+	}
+	if len(r.Configs) != 1 {
+		t.Fatalf("uploads = %q; the names must not follow the syslog one inside its settle time", r.Configs)
+	}
+
+	now = now.Add(apcnmc.DefaultSettle)
+	if changed, err := c.ApplyOutlets(ctx, desired); changed != 1 || err != nil {
+		t.Fatalf("names a settle time later: changed=%d err=%v; want the one rename", changed, err)
+	}
+	if len(r.Configs) != 2 || !strings.HasPrefix(r.Configs[1], "[RackPDUOutlet]\r\n") || !strings.Contains(r.Configs[1], "Name2=NAS\r\n") {
+		t.Errorf("uploads = %q, want the names' second", r.Configs)
+	}
+	if len(r.Sets) != 0 {
+		t.Errorf("renaming switched an outlet: %v", r.Sets)
+	}
+}

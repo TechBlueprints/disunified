@@ -110,7 +110,8 @@ func NewCollector(r Runner) *Collector {
 	}
 }
 
-// takeUpload is ApplyAddress's turn at the card's upload gate.
+// takeUpload is ApplyAddress's and the outlet names' turn at the card's
+// upload gate.
 func (c *Collector) takeUpload() bool {
 	now := time.Now
 	if c.now != nil {
