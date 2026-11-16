@@ -1,0 +1,187 @@
+# The DX010 on igmp-202511.20261115-6c8eb1cf7 (sonic-swss 0001-0004), 2026-11-15, times UTC-7.
+# docs/drivers/sonic.md 8.16. The uplink is PortChannel1 = Ethernet0 (ce0) + Ethernet4 (ce1), untagged in
+# Vlan4094 with the seven reserved static groups. Hostname scrubbed; only L2MC and LAG lines kept.
+@@@ 13:38-13:48 PortChannel1 made; its reserved-group members made while only Ethernet0 distributes (orchagent)
+13:40:58.328434 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Enable distribution on LAG member Ethernet0
+13:40:58.328960 host-1 NOTICE swss#orchagent: :- updatePortOperStatus: Port PortChannel1 oper state set from down to up
+13:40:58.687125 host-1 NOTICE swss#orchagent: :- AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,224.0.1.1,Vlan4094) Add l2mc group member PortChannel1 to l2mc_gid:310000000007e9
+13:48:04.079618 host-1 NOTICE swss#orchagent: :- setDistributionOnLagMember: Enable distribution on LAG member Ethernet4
+@@@ 14:08:13 and 14:13:10: l2mcd deletes PortChannel1's reserved groups as learned (static:0) though the static rows stand (l2mcd.log)
+13:40:58.677387 host-1 NOTICE l2mcd#l2mcd#Logs: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:PortChannel1 vid:4094 G:224.0.1.1 sa:0.0.0.0 port PortChannel1 static:0,is_remote:0  
+13:40:58.679590 host-1 NOTICE l2mcd#l2mcd#Logs: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:PortChannel1 vid:4094 G:224.0.1.1 sa:0.0.0.0 port PortChannel1 static:1,is_remote:0  
+13:40:58.680409 host-1 NOTICE l2mcd#l2mcd#Logs: :- addL2mcTableEntry: STATE_L2MC_ENTRY_TABLE Group-ADD key:Vlan4094:0.0.0.0:224.0.1.1:PortChannel1 vid:4094 G:224.0.1.1 sa:0.0.0.0 port PortChannel1 static:1 Exists 
+14:08:13.217840 host-1 NOTICE l2mcd#l2mcd#Logs: :- addL2mcTableEntry: APP_L2MC_ENTRY_TABLE Group-DEL key:Vlan4094:0.0.0.0:224.0.1.1:PortChannel1 vid:4094 G:224.0.1.1 sa:0.0.0.0 port PortChannel1 static:0 is_remote:0 
+@@@ 14:14:46 Ethernet116 (a looped test cage, a static member and a router port) goes down: the entry is removed first, then PortChannel1's member is refused (orchagent, syncd)
+14:14:46.287099 host-1 NOTICE swss#orchagent: :- doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan4094, source 0.0.0.0, group 224.0.1.1, port Ethernet116
+14:14:46.287099 host-1 NOTICE swss#orchagent: :- RemoveL2mcGroupMember: L2mc mrouter port is same as group member port (0.0.0.0, 224.0.1.1, 4094)
+14:14:46.292857 host-1 NOTICE swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: (0.0.0.0,224.0.1.1,4094) Delete l2mc group 310000000007e9
+14:14:46.302879 host-1 NOTICE swss#orchagent: :- countMember: port Ethernet116 l2mc_count 10 vlan Vlan4094 l2mc_count 21
+14:14:46.306241 host-1 ERR swss#orchagent: :- remove: remove status: SAI_STATUS_ITEM_NOT_FOUND
+14:14:46.306356 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007ea, rv:-7
+14:14:46.306700 host-1 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+14:14:46.306700 host-1 ERR syncd#syncd: :- sendApiResponse: api SAI_COMMON_API_REMOVE failed in syncd mode: SAI_STATUS_ITEM_NOT_FOUND
+@@@ the six other reserved groups the same, 14:14:46-14:19:15: one refusal each
+14:14:46.306356 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007ea, rv:-7
+14:14:46.331051 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007ec, rv:-7
+14:14:46.346449 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007ee, rv:-7
+14:14:46.367512 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 32000000000801, rv:-7
+14:14:46.393471 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007ff, rv:-7
+14:14:46.565023 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007f2, rv:-7
+14:19:15.597996 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove mrouter from l2mc group member 320000000007f0, rv:-7
+@@@ from then on every removal reaching those groups fails at the entry (rv:-7 = SAI_STATUS_ITEM_NOT_FOUND); count of such lines today and the first
+count 159
+14:15:34.338597 host-1 ERR swss#orchagent: :- RemoveL2mcEntry: RemoveL2mcEntry: Failed to remove l2mc entry  (0.0.0.0, 224.0.1.1, 4094) rv:-7
+@@@ the state at 16:27-16:33 (read-only): ASIC_DB L2MC_ENTRY 0, L2MC_GROUP 7, L2MC_GROUP_MEMBER 7 (each output 0x3a0000000007ca, PortChannel1's bridge port);
+@@@ APPL_DB: L2MC_MROUTER_TABLE:Vlan4094:PortChannel1:V4, L2MC_VLAN_TABLE:Vlan4094, no L2MC_MEMBER_TABLE row; bcmcmd "mc show": Group 0x2000001 only;
+@@@ bcmcmd "ipmc table show": no entry; show igmp-snooping groups vlan 4094: Mrouters PortChannel1(dynamic), Total number of entries: 0;
+@@@ l2mcd_ctl -v 4094: ngroups 0, every Static-Group line lists Ethernet16 Ethernet84 Ethernet96 Ethernet116 PortChannel1 (5 of the 31 configured), mrtportr PortChannel1 static:0
+@@@ the test rig, 16:39-16:43: cages 25/26 (Ethernet96 = ce24, Ethernet100 = ce25, empty) out of Vlan4094, PortChannel8 of them untagged in Vlan3998 with snooping;
+@@@ the members' APPL_DB LAG_MEMBER_TABLE status and one L2MC_MEMBER_TABLE row (239.1.2.3, PortChannel8, static) written through ProducerStateTable
+=== A1-created-one-distributing 16:41:19.267377118
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_MEMBER_TABLE:Vlan3998:0.0.0.0:239.1.2.3:PortChannel8
+{'status': 'enabled'}
+{'status': 'disabled'}
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+Group 0x2000009 (L3) :: 	port ce24, encap id -1
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+ok LAG_MEMBER_TABLE PortChannel8:Ethernet100 set
+=== A2-second-distributing 16:41:23.313654765
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_MEMBER_TABLE:Vlan3998:0.0.0.0:239.1.2.3:PortChannel8
+{'status': 'enabled'}
+{'status': 'enabled'}
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+Group 0x2000009 (L3) :: 	port ce24, encap id -1
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+ok L2MC_MEMBER_TABLE Vlan3998:0.0.0.0:239.1.2.3:PortChannel8 del
+=== A3-after-delete 16:41:28.353348804
+L2MC_VLAN_TABLE:Vlan3998
+{'status': 'enabled'}
+{'status': 'enabled'}
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+
+16:41:15.122802 NOTICE setCollectionOnLagMember: Enable collection on LAG member Ethernet96
+16:41:15.125635 NOTICE setDistributionOnLagMember: Enable distribution on LAG member Ethernet96
+16:41:17.230370 NOTICE doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan3998, source 0.0.0.0, group 239.1.2.3, port PortChannel8
+16:41:17.230494 NOTICE doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan3998 op SET
+16:41:17.233269 NOTICE AddL2mcEntry: AddL2mcEntry: success add l2mc group 31000000000cfa, rv:0
+16:41:17.233269 NOTICE AddL2mcEntry: AddL2mcEntry: create l2mc entry  (0.0.0.0, 239.1.2.3, 3998) 
+16:41:17.234920 NOTICE syncd#syncd: [none] SAI_API_L2MC:_brcm_sai_l2mc_table_add:369 L2MC table add: mc-ip:0xef010203 src:0x0 vlan:3998 vrf:0
+16:41:17.236238 NOTICE AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.1.2.3,Vlan3998) Add l2mc group member PortChannel8 to l2mc_gid:31000000000cfa
+16:41:17.239794 NOTICE countMember: port PortChannel8 l2mc_count 1 vlan Vlan3998 l2mc_count 1
+16:41:17.239794 NOTICE AddL2mcEntry: AddL2mcEntry: Added l2mc entry (0.0.0.0,239.1.2.3,3998) with l2mc-gid:31000000000cfa
+16:41:21.303241 NOTICE setCollectionOnLagMember: Enable collection on LAG member Ethernet100
+16:41:21.306071 NOTICE setDistributionOnLagMember: Enable distribution on LAG member Ethernet100
+16:41:25.321066 NOTICE doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan3998, source 0.0.0.0, group 239.1.2.3, port PortChannel8
+16:41:25.321066 NOTICE doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan3998 op DEL
+16:41:25.321137 NOTICE RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,239.1.2.3,Vlan3998) Delete l2mc group member PortChannel8 from l2mc_gid:31000000000cfa
+16:41:25.322271 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:25.323861 ERR RemoveL2mcGroupMember: RemoveL2mcGroupMember: Failed to remove l2mc group member 32000000000cfb, from l2mc-grp:31000000000cfa rv:-7
+16:41:25.324318 NOTICE doL2mcMemberTask: doL2mcMemberTask: Processing IPv4 vlan Vlan3998, source 0.0.0.0, group 239.1.2.3, port PortChannel8
+16:41:25.324318 NOTICE doL2mcMemberTask: doL2mcMemberTask: set vlan Vlan3998 op DEL
+16:41:25.324318 NOTICE RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,239.1.2.3,Vlan3998) Delete l2mc group member PortChannel8 from l2mc_gid:31000000000cfa
+16:41:25.325690 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:25.326761 ERR RemoveL2mcGroupMember: RemoveL2mcGroupMember: Failed to remove l2mc group member 32000000000cfb, from l2mc-grp:31000000000cfa rv:-7
+@@@ ... the same pair of lines about five times a second until the set changed
+@@@ A4: Ethernet100 disabled again (the create-time set): still refused (the first attempt had already taken ce24 out of the chip group)
+=== A4-second-disabled-again 16:41:45.012342816
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+16:41:41.231540 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:41.422082 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:41.982168 NOTICE setDistributionOnLagMember: Disable distribution on LAG member Ethernet100
+16:41:42.003802 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:42.232420 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:42.422216 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:43.231967 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:43.422157 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:43.770404 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+16:41:43.772881 ERR syncd#syncd: [none] SAI_API_L2MC_GROUP:brcm_sai_remove_l2mc_group_member:634 mcast egress remove failed with error Entry not found (0xfffffff9).
+@@@ A5: Ethernet96 disabled too (no member distributing): the removal goes through
+=== A5-none-distributing 16:41:59.398889009
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_ENTRY 0
+L2MC_GROUP 7
+L2MC_GROUP_MEMBER 7
+ :: mc show
+16:41:56.270688 NOTICE syncd#syncd: :- threadFunction: time span 0 ms for 'remove:SAI_OBJECT_TYPE_L2MC_GROUP_MEMBER:oid:0x32000000000cfb'
+16:41:56.367936 NOTICE setDistributionOnLagMember: Disable distribution on LAG member Ethernet96
+16:41:56.387457 NOTICE setCollectionOnLagMember: Disable collection on LAG member Ethernet96
+16:41:56.389859 NOTICE countMember: port PortChannel8 l2mc_count 0 vlan Vlan3998 l2mc_count 0
+16:41:56.390882 NOTICE syncd#syncd: [none] SAI_API_L2MC:_brcm_sai_l2mc_table_delete:388 L2MC table delete: mc-ip:0xef010203 src:0x0 vlan:3998 vrf:0
+16:41:56.391554 NOTICE RemoveL2mcEntry: RemoveL2mcEntry: (0.0.0.0,239.1.2.3,3998) Delete l2mc group 31000000000cfa
+@@@ B: both distributing before the member is made; C: made with both, Ethernet100 stops, then removed
+=== B1-created-both 16:42:21.368281286
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_MEMBER_TABLE:Vlan3998:0.0.0.0:239.1.2.3:PortChannel8
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+Group 0x2000009 (L3) :: 	port ce24, encap id -1
+Group 0x2000009 (L3) :: 	port ce25, encap id -1
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+=== B2-deleted 16:42:25.386853040
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_ENTRY 0
+L2MC_GROUP 7
+L2MC_GROUP_MEMBER 7
+ :: mc show
+B errors: 0
+=== C1-created-both 16:42:29.487126531
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_MEMBER_TABLE:Vlan3998:0.0.0.0:239.1.2.3:PortChannel8
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+Group 0x2000009 (L3) :: 	port ce24, encap id -1
+Group 0x2000009 (L3) :: 	port ce25, encap id -1
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+=== C2-second-stopped 16:42:33.490389694
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_MEMBER_TABLE:Vlan3998:0.0.0.0:239.1.2.3:PortChannel8
+L2MC_ENTRY 1
+L2MC_GROUP 8
+L2MC_GROUP_MEMBER 8
+ :: mc show
+Group 0x2000009 (L3) :: 	port ce24, encap id -1
+Group 0x2000009 (L3) :: 	port ce25, encap id -1
+0.0.0.0         239.1.2.3       3998  -1   -1   1  -1  0   0x2000009   0
+0x2000000 0      y      0
+=== C3-deleted 16:42:37.649927744
+L2MC_VLAN_TABLE:Vlan3998
+L2MC_ENTRY 0
+L2MC_GROUP 7
+L2MC_GROUP_MEMBER 7
+ :: mc show
+C errors: 0
+16:42:27.458168 NOTICE AddL2mcEntry: AddL2mcEntry: success add l2mc group 31000000000cfe, rv:0
+16:42:27.458688 NOTICE AddL2mcEntry: AddL2mcEntry: create l2mc entry  (0.0.0.0, 239.1.2.3, 3998) 
+16:42:27.459854 NOTICE syncd#syncd: [none] SAI_API_L2MC:_brcm_sai_l2mc_table_add:369 L2MC table add: mc-ip:0xef010203 src:0x0 vlan:3998 vrf:0
+16:42:27.460886 NOTICE AddL2mcGroupMember: AddL2mcGroupMember: (0.0.0.0,239.1.2.3,Vlan3998) Add l2mc group member PortChannel8 to l2mc_gid:31000000000cfe
+16:42:27.463217 NOTICE countMember: port PortChannel8 l2mc_count 1 vlan Vlan3998 l2mc_count 1
+16:42:27.463217 NOTICE AddL2mcEntry: AddL2mcEntry: Added l2mc entry (0.0.0.0,239.1.2.3,3998) with l2mc-gid:31000000000cfe
+16:42:31.459472 NOTICE setDistributionOnLagMember: Disable distribution on LAG member Ethernet100
+16:42:31.480496 NOTICE setCollectionOnLagMember: Disable collection on LAG member Ethernet100
+16:42:35.612909 NOTICE RemoveL2mcGroupMember: RemoveL2mcGroupMember: (0.0.0.0,239.1.2.3,Vlan3998) Delete l2mc group member PortChannel8 from l2mc_gid:31000000000cfe
+16:42:35.618030 NOTICE countMember: port PortChannel8 l2mc_count 0 vlan Vlan3998 l2mc_count 0
+16:42:35.619146 NOTICE syncd#syncd: [none] SAI_API_L2MC:_brcm_sai_l2mc_table_delete:388 L2MC table delete: mc-ip:0xef010203 src:0x0 vlan:3998 vrf:0
+16:42:35.621002 NOTICE RemoveL2mcEntry: RemoveL2mcEntry: (0.0.0.0,239.1.2.3,3998) Delete l2mc group 31000000000cfe

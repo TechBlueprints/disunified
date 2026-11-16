@@ -1,0 +1,577 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 15 Nov 2026 16:54:42 -0700
+Subject: [PATCH] l2mcorch: make a LAG's group members again when its
+ distributing members change, and remove an entry's members before the entry
+
+The Broadcom legacy-TH SAI (libsaibcm 13.2.1) programs an L2MC group member
+whose output is a LAG as one multicast egress per LAG member that is
+distributing when the member is made, and never follows a later change.
+Removing the member takes one egress per member distributing at that time,
+in turn, and is refused SAI_STATUS_ITEM_NOT_FOUND at the first port it never
+added, with the ports before it already gone. Measured on a Celestica DX010
+(Tomahawk-1) on 202511 with this series, on a test LAG of two ports whose
+members' status was set by hand:
+
+- made with one member distributing, the chip's group held that port alone;
+  after the second started distributing it still did, and the removal was
+  refused, retried by doL2mcMemberTask about five times a second;
+- with the first set back, still refused (its one port already taken out);
+  with no member distributing it went through;
+- made with both distributing, removed cleanly; made with both and one
+  stopped, the stopped port stayed in the chip's group until the group went.
+
+So a multicast group whose member is a LAG reaches only the ports that
+distributed when it was made, a LAG member that stops distributing keeps
+receiving it, and the member cannot be removed once a port has started
+distributing in between. On the DX010 the uplink is such a LAG: its
+members' first distribution came eight minutes apart, the reserved groups'
+members were made in between, and when the last group member of each left
+RemoveL2mcEntry() removed the entry, then failed on the uplink's member and
+returned. That left seven groups recorded with no entry in the chip: every
+later removal reaching them failed at remove_l2mc_entry() with -7 (159 times
+in the next two hours, at every PortChannel or VLAN removal), the groups and
+members stayed in ASIC_DB, and since hasL2mcGroup() was true, members joining
+those groups later never made the entry again.
+
+- PortsOrch::doLagMemberTask() takes the LAG's L2MC group members out of the
+  chip before a member is added, changes status or is removed
+  (L2mcOrch::detachLagMembers(), while the distributing set is still the one
+  they were made with) and makes them again after it (attachLagMembers()):
+  the records, the counts and the ref_counts stay, and the new members take
+  the new set. A member the SAI refuses to take out is kept as it was and
+  logged; one it refuses to make again is dropped with its counts.
+- RemoveL2mcEntry() removes the members first and the entry after them, as
+  RemoveL2mcEntrys() already did: a member the SAI refuses then leaves the
+  entry, the group and the record together, for a later removal to finish.
+
+L2mcOrchTest's mock SAI holds a LAG member's egress as measured. Its three
+new cases (a LAG gaining a distributing member, losing one and being taken
+off and back, and a refused member leaving its entry whole) fail without the
+orchagent half of this change and pass with it.
+---
+ orchagent/l2mcorch.cpp           | 130 +++++++++++++++--
+ orchagent/l2mcorch.h             |   2 +
+ orchagent/portsorch.cpp          |  17 +++
+ tests/mock_tests/l2mcorch_ut.cpp | 239 ++++++++++++++++++++++++++++++-
+ 4 files changed, 369 insertions(+), 19 deletions(-)
+
+diff --git a/orchagent/l2mcorch.cpp b/orchagent/l2mcorch.cpp
+index 392222c..2263140 100644
+--- a/orchagent/l2mcorch.cpp
++++ b/orchagent/l2mcorch.cpp
+@@ -470,6 +470,31 @@ bool L2mcOrch::RemoveL2mcEntry(const L2mcGroupKey &key, Port &vlan)
+                      key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id);
+         return true;
+     }
++    l2mc_group_id = getL2mcGroupId(vlan.m_alias, key);
++
++    /* The members first (the router ports' members a group keeps when its
++     * last group member leaves), the entry after them: a member the SAI
++     * refuses then leaves the entry, the group and the record as they are,
++     * for a later removal to finish. Removed the other way round, a refusal
++     * left the record of an entry no longer in the chip; every later removal
++     * of it failed SAI_STATUS_ITEM_NOT_FOUND, and members joining it later
++     * never made it again. */
++    for (auto l2mc_group_member = l2mc_group->second.l2mc_group_members.begin();
++         l2mc_group_member != l2mc_group->second.l2mc_group_members.end();)
++    {
++        status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
++        if (status != SAI_STATUS_SUCCESS)
++        {
++            SWSS_LOG_ERROR("RemoveL2mcEntry: Failed to remove mrouter from l2mc group member %lx, rv:%d",
++                           l2mc_group_member->second.l2mc_member_id, status);
++            return false;
++        }
++        if (l2mc_group_member->second.is_l2mc_member)
++            l2mc_group->second.ref_count--;
++        countMember(l2mc_group_member->first, vlan.m_alias, false);
++        l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
++    }
++
+     /*Remove l2mc entry */
+     l2mc_entry.switch_id = gSwitchId;
+     copy(l2mc_entry.source, key.source_address);
+@@ -495,25 +520,10 @@ bool L2mcOrch::RemoveL2mcEntry(const L2mcGroupKey &key, Port &vlan)
+                         key.source_address.to_string().c_str(), key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, status);
+         return false;
+     }
+-    l2mc_group_id = getL2mcGroupId(vlan.m_alias, key);
+ 
+     SWSS_LOG_NOTICE("RemoveL2mcEntry: (%s,%s,%d) Delete l2mc group %lx", key.source_address.to_string().c_str(),
+                     key.group_address.to_string().c_str(), vlan.m_vlan_info.vlan_id, l2mc_group_id);
+ 
+-    /* Remove all mrouter ports added as group members */
+-    for (auto l2mc_group_member = l2mc_group->second.l2mc_group_members.begin();
+-         l2mc_group_member != l2mc_group->second.l2mc_group_members.end();)
+-    {
+-        status = sai_l2mc_group_api->remove_l2mc_group_member(l2mc_group_member->second.l2mc_member_id);
+-        if (status != SAI_STATUS_SUCCESS)
+-        {
+-            SWSS_LOG_ERROR("RemoveL2mcEntry: Failed to remove mrouter from l2mc group member %lx, rv:%d",
+-                           l2mc_group_member->second.l2mc_member_id, status);
+-            return false;
+-        }
+-        countMember(l2mc_group_member->first, vlan.m_alias, false);
+-        l2mc_group_member = l2mc_group->second.l2mc_group_members.erase(l2mc_group_member);
+-    }
+     /* Remove l2mc group */
+     status = sai_l2mc_group_api->remove_l2mc_group(l2mc_group_id);
+     if (status != SAI_STATUS_SUCCESS)
+@@ -1623,6 +1633,96 @@ bool L2mcOrch::removeL2mcPortMembers(const Port &port, const string &vlan_alias)
+     return true;
+ }
+ 
++/* A LAG's L2MC group members, taken out of the chip before its distributing
++ * members change and made again after (PortsOrch::doLagMemberTask). The
++ * Broadcom legacy-TH SAI (libsaibcm 13.2.1) programs a LAG's member as one
++ * egress per LAG member then distributing and never follows a change: a
++ * member that starts distributing later gets no copy of the group's frames,
++ * one that stops keeps them, and removing the L2MC member, which takes one
++ * egress per member distributing at that time, is refused
++ * SAI_STATUS_ITEM_NOT_FOUND for a port it never added -- after removing the
++ * ports before it, so not even the original set can remove it again (seen on
++ * a Celestica DX010, 2026-11-15). Made again, the member takes the new set.
++ * The records, the counts and the group's ref_count stay: the member is gone
++ * from the chip only between the two calls. */
++bool L2mcOrch::detachLagMembers(const Port &lag)
++{
++    SWSS_LOG_ENTER();
++
++    bool detached = false;
++    for (auto &v : m_syncdL2mcEntries)
++    {
++        for (auto &e : v.second)
++        {
++            auto m = e.second.l2mc_group_members.find(lag.m_alias);
++            if (m == e.second.l2mc_group_members.end() || m->second.l2mc_member_id == SAI_NULL_OBJECT_ID)
++                continue;
++            sai_status_t status = sai_l2mc_group_api->remove_l2mc_group_member(m->second.l2mc_member_id);
++            if (status != SAI_STATUS_SUCCESS)
++            {
++                /* Kept as it is: the next change of the set may let it go */
++                SWSS_LOG_ERROR("detachLagMembers: (%s,%s,%s) failed to take l2mc group member %lx of %s out before its LAG members change, rv:%d",
++                               e.first.source_address.to_string().c_str(), e.first.group_address.to_string().c_str(),
++                               v.first.c_str(), m->second.l2mc_member_id, lag.m_alias.c_str(), status);
++                continue;
++            }
++            m->second.l2mc_member_id = SAI_NULL_OBJECT_ID;
++            detached = true;
++        }
++    }
++    return detached;
++}
++
++void L2mcOrch::attachLagMembers(const Port &lag)
++{
++    SWSS_LOG_ENTER();
++
++    size_t made = 0;
++    for (auto &v : m_syncdL2mcEntries)
++    {
++        vector<L2mcGroupKey> lost;
++        for (auto &e : v.second)
++        {
++            auto m = e.second.l2mc_group_members.find(lag.m_alias);
++            if (m == e.second.l2mc_group_members.end() || m->second.l2mc_member_id != SAI_NULL_OBJECT_ID)
++                continue;
++
++            vector<sai_attribute_t> attrs(2);
++            attrs[0].id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_GROUP_ID;
++            attrs[0].value.oid = e.second.l2mc_group_id;
++            attrs[1].id = SAI_L2MC_GROUP_MEMBER_ATTR_L2MC_OUTPUT_ID;
++            attrs[1].value.oid = lag.m_bridge_port_id;
++            sai_object_id_t member_id = SAI_NULL_OBJECT_ID;
++            sai_status_t status = sai_l2mc_group_api->create_l2mc_group_member(&member_id, gSwitchId,
++                                                                              (uint32_t)attrs.size(), attrs.data());
++            if (status != SAI_STATUS_SUCCESS)
++            {
++                /* No member in the chip: the record goes too, counted off */
++                SWSS_LOG_ERROR("attachLagMembers: (%s,%s,%s) failed to make l2mc group member %s again, rv:%d; dropped",
++                               e.first.source_address.to_string().c_str(), e.first.group_address.to_string().c_str(),
++                               v.first.c_str(), lag.m_alias.c_str(), status);
++                if (m->second.is_l2mc_member)
++                    e.second.ref_count--;
++                e.second.l2mc_group_members.erase(m);
++                countMember(lag.m_alias, v.first, false);
++                if (e.second.ref_count <= 0)
++                    lost.push_back(e.first);
++                continue;
++            }
++            m->second.l2mc_member_id = member_id;
++            made++;
++        }
++        Port vlan;
++        if (!lost.empty() && gPortsOrch->getPort(v.first, vlan))
++        {
++            for (const auto &key : lost)
++                RemoveL2mcEntry(key, vlan);
++        }
++    }
++    if (made)
++        SWSS_LOG_NOTICE("attachLagMembers: %zu l2mc group members of %s made again for its LAG members", made, lag.m_alias.c_str());
++}
++
+ void L2mcOrch::update(SubjectType type, void *cntx)
+ {
+     SWSS_LOG_ENTER();
+diff --git a/orchagent/l2mcorch.h b/orchagent/l2mcorch.h
+index 87aa973..88dabfc 100644
+--- a/orchagent/l2mcorch.h
++++ b/orchagent/l2mcorch.h
+@@ -102,6 +102,8 @@ public:
+     bool isSuppressionEnabled(string vlan_alias) const;
+     void removeMrouterPortFromL2mcEntries(string vlan, string mrouterport,string protocol);
+     bool removeL2mcPortMembers(const Port &port, const string &vlan_alias = "");
++    bool detachLagMembers(const Port &lag);
++    void attachLagMembers(const Port &lag);
+ 
+ private:
+ 
+diff --git a/orchagent/portsorch.cpp b/orchagent/portsorch.cpp
+index 2e21d59..737a3d1 100644
+--- a/orchagent/portsorch.cpp
++++ b/orchagent/portsorch.cpp
+@@ -6286,6 +6286,23 @@ void PortsOrch::doLagMemberTask(Consumer &consumer)
+             }
+         }
+ 
++        /* Every change below can change which members the LAG distributes
++         * on; L2mcOrch takes the LAG's L2MC group members out of the chip
++         * before it and makes them again when this entry is done
++         * (L2mcOrch::detachLagMembers: the SAI fixes a LAG member's egress
++         * ports when it is made). */
++        struct LagL2mcRefresh
++        {
++            Port lag;
++            bool detached;
++            LagL2mcRefresh(const Port &l) : lag(l), detached(gL2mcOrch && gL2mcOrch->detachLagMembers(l)) {}
++            ~LagL2mcRefresh()
++            {
++                if (detached)
++                    gL2mcOrch->attachLagMembers(lag);
++            }
++        } l2mcRefresh(lag);
++
+         /* Update a LAG member */
+         if (op == SET_COMMAND)
+         {
+diff --git a/tests/mock_tests/l2mcorch_ut.cpp b/tests/mock_tests/l2mcorch_ut.cpp
+index 19c478b..f833519 100644
+--- a/tests/mock_tests/l2mcorch_ut.cpp
++++ b/tests/mock_tests/l2mcorch_ut.cpp
+@@ -18,6 +18,7 @@
+ #include "stporch.h"
+ 
+ #include <map>
++#include <set>
+ 
+ extern L2mcOrch *gL2mcOrch;
+ 
+@@ -35,12 +36,81 @@ namespace l2mcorch_test
+     static const string G1 = "224.0.1.1";
+     static const string G2 = "224.0.1.22";
+     static const string G3 = "224.0.1.60";
++    static const string PC1 = "PortChannel1";
+ 
+     /* The chip's L2MC objects, as far as the test needs them: every member
+      * and the bridge port it outputs to. */
+     static map<sai_object_id_t, sai_object_id_t> g_members;
+     static sai_object_id_t g_next_oid = 0x7700000000000001;
+ 
++    /* The Broadcom legacy-TH SAI's L2MC member on a LAG, as measured on a
++     * DX010 (2026-11-15, docs/drivers/sonic.md 8.16): one egress per LAG
++     * member distributing when the member is made, never updated; a removal
++     * takes one egress per member distributing then, in turn, and is refused
++     * SAI_STATUS_ITEM_NOT_FOUND at the first it never added (the ones before
++     * it already gone). */
++    struct LagMember { sai_object_id_t lag; sai_object_id_t port; bool egress_disabled; };
++    static map<sai_object_id_t, LagMember> g_lag_members;
++    static map<sai_object_id_t, set<sai_object_id_t>> g_egress;
++    static set<pair<sai_object_id_t, uint32_t>> g_entries; /* (bv_id, group) */
++    static sai_lag_api_t *g_org_lag_api;
++
++    static sai_status_t ut_create_lag_member(sai_object_id_t *oid, sai_object_id_t sw, uint32_t count, const sai_attribute_t *attrs)
++    {
++        sai_status_t status = g_org_lag_api->create_lag_member(oid, sw, count, attrs);
++        if (status != SAI_STATUS_SUCCESS)
++            return status;
++        LagMember m = { SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID, false };
++        for (uint32_t i = 0; i < count; i++)
++        {
++            if (attrs[i].id == SAI_LAG_MEMBER_ATTR_LAG_ID)
++                m.lag = attrs[i].value.oid;
++            if (attrs[i].id == SAI_LAG_MEMBER_ATTR_PORT_ID)
++                m.port = attrs[i].value.oid;
++            if (attrs[i].id == SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
++                m.egress_disabled = attrs[i].value.booldata;
++        }
++        g_lag_members[*oid] = m;
++        return status;
++    }
++    static sai_status_t ut_remove_lag_member(sai_object_id_t oid)
++    {
++        g_lag_members.erase(oid);
++        return g_org_lag_api->remove_lag_member(oid);
++    }
++    static sai_status_t ut_set_lag_member_attribute(sai_object_id_t oid, const sai_attribute_t *attr)
++    {
++        if (attr->id == SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE && g_lag_members.count(oid))
++            g_lag_members[oid].egress_disabled = attr->value.booldata;
++        return g_org_lag_api->set_lag_member_attribute(oid, attr);
++    }
++
++    /* The ports a member on this bridge port egresses to now: a LAG's
++     * distributing members, a port itself; empty for a bridge port no
++     * port has any more. */
++    static set<sai_object_id_t> distributing(sai_object_id_t bridge_port)
++    {
++        set<sai_object_id_t> ports;
++        for (const auto &p : gPortsOrch->m_portList)
++        {
++            if (p.second.m_bridge_port_id != bridge_port)
++                continue;
++            if (p.second.m_type == Port::LAG)
++            {
++                for (const auto &m : g_lag_members)
++                {
++                    if (m.second.lag == p.second.m_lag_id && !m.second.egress_disabled)
++                        ports.insert(m.second.port);
++                }
++            }
++            else
++            {
++                ports.insert(p.second.m_port_id);
++            }
++        }
++        return ports;
++    }
++
+     static sai_status_t ut_create_l2mc_group(sai_object_id_t *oid, sai_object_id_t, uint32_t, const sai_attribute_t *)
+     {
+         *oid = g_next_oid++;
+@@ -62,19 +132,31 @@ namespace l2mcorch_test
+             return SAI_STATUS_INVALID_PARAMETER;
+         *oid = g_next_oid++;
+         g_members[*oid] = out;
++        g_egress[*oid] = distributing(out);
+         return SAI_STATUS_SUCCESS;
+     }
+     static sai_status_t ut_remove_l2mc_group_member(sai_object_id_t oid)
+     {
+-        return g_members.erase(oid) ? SAI_STATUS_SUCCESS : SAI_STATUS_ITEM_NOT_FOUND;
++        auto m = g_members.find(oid);
++        if (m == g_members.end())
++            return SAI_STATUS_ITEM_NOT_FOUND;
++        for (auto p : distributing(m->second))
++        {
++            if (!g_egress[oid].erase(p))
++                return SAI_STATUS_ITEM_NOT_FOUND;
++        }
++        g_members.erase(m);
++        g_egress.erase(oid);
++        return SAI_STATUS_SUCCESS;
+     }
+-    static sai_status_t ut_create_l2mc_entry(const sai_l2mc_entry_t *, uint32_t, const sai_attribute_t *)
++    static sai_status_t ut_create_l2mc_entry(const sai_l2mc_entry_t *e, uint32_t, const sai_attribute_t *)
+     {
++        g_entries.insert({ e->bv_id, e->destination.addr.ip4 });
+         return SAI_STATUS_SUCCESS;
+     }
+-    static sai_status_t ut_remove_l2mc_entry(const sai_l2mc_entry_t *)
++    static sai_status_t ut_remove_l2mc_entry(const sai_l2mc_entry_t *e)
+     {
+-        return SAI_STATUS_SUCCESS;
++        return g_entries.erase({ e->bv_id, e->destination.addr.ip4 }) ? SAI_STATUS_SUCCESS : SAI_STATUS_ITEM_NOT_FOUND;
+     }
+     static sai_status_t ut_get_switch_attribute(sai_object_id_t, uint32_t, sai_attribute_t *)
+     {
+@@ -92,6 +174,7 @@ namespace l2mcorch_test
+         sai_l2mc_api_t ut_entry_api, *org_entry_api;
+         sai_switch_api_t ut_switch_api, *org_switch_api;
+         sai_fdb_api_t ut_fdb_api, *org_fdb_api;
++        sai_lag_api_t ut_lag_api;
+ 
+         void ApplyInitialConfigs() override
+         {
+@@ -102,6 +185,8 @@ namespace l2mcorch_test
+             auto ports = ut_helper::getInitialSaiPorts();
+             port_table.set(ETHERNET0, ports[ETHERNET0]);
+             port_table.set(ETHERNET4, ports[ETHERNET4]);
++            port_table.set(ETHERNET8, ports[ETHERNET8]);
++            port_table.set(ETHERNET12, ports[ETHERNET12]);
+             port_table.set("PortConfigDone", { { "count", to_string(1) } });
+             port_table.set("PortInitDone", { {} });
+ 
+@@ -122,6 +207,16 @@ namespace l2mcorch_test
+         void PostSetUp() override
+         {
+             g_members.clear();
++            g_egress.clear();
++            g_entries.clear();
++            g_lag_members.clear();
++
++            g_org_lag_api = sai_lag_api;
++            ut_lag_api = *sai_lag_api;
++            ut_lag_api.create_lag_member = ut_create_lag_member;
++            ut_lag_api.remove_lag_member = ut_remove_lag_member;
++            ut_lag_api.set_lag_member_attribute = ut_set_lag_member_attribute;
++            sai_lag_api = &ut_lag_api;
+ 
+             org_group_api = sai_l2mc_group_api;
+             ut_group_api = {};
+@@ -166,6 +261,7 @@ namespace l2mcorch_test
+             sai_l2mc_entry_api = org_entry_api;
+             sai_switch_api = org_switch_api;
+             sai_fdb_api = org_fdb_api;
++            sai_lag_api = g_org_lag_api;
+         }
+ 
+         void l2mc(const string &table, const string &key, const string &op)
+@@ -188,6 +284,62 @@ namespace l2mcorch_test
+             consumer->addToSync(entries);
+             static_cast<Orch *>(gPortsOrch)->doTask();
+         }
++        void lag(const string &lag_alias, const string &op)
++        {
++            auto consumer = dynamic_cast<Consumer *>(gPortsOrch->getExecutor(APP_LAG_TABLE_NAME));
++            consumer->addToSync({ { lag_alias, op, { { "admin_status", "up" }, { "mtu", "9100" } } } });
++            static_cast<Orch *>(gPortsOrch)->doTask();
++        }
++        void lagMember(const string &lag_alias, const string &port_alias, const string &status)
++        {
++            auto consumer = dynamic_cast<Consumer *>(gPortsOrch->getExecutor(APP_LAG_MEMBER_TABLE_NAME));
++            if (status.empty())
++                consumer->addToSync({ { lag_alias + ":" + port_alias, DEL_COMMAND, {} } });
++            else
++                consumer->addToSync({ { lag_alias + ":" + port_alias, SET_COMMAND, { { "status", status } } } });
++            static_cast<Orch *>(gPortsOrch)->doTask();
++        }
++        /* the egress ports of the one SAI member on this port's bridge port */
++        set<sai_object_id_t> egress(const string &alias)
++        {
++            sai_object_id_t bp = port(alias).m_bridge_port_id;
++            for (const auto &m : g_members)
++            {
++                if (m.second == bp)
++                    return g_egress[m.first];
++            }
++            return {};
++        }
++        /* an entry is recorded exactly while the chip has it */
++        void expectEntriesInChip()
++        {
++            size_t recorded = 0;
++            for (const auto &v : gL2mcOrch->m_syncdL2mcEntries)
++            {
++                Port vlan = port(v.first);
++                for (const auto &e : v.second)
++                {
++                    recorded++;
++                    EXPECT_TRUE(g_entries.count({ vlan.m_vlan_info.vlan_oid, e.first.group_address.getV4Addr() }))
++                        << e.first.group_address.to_string() << " recorded, not in the chip";
++                }
++            }
++            EXPECT_EQ(g_entries.size(), recorded);
++        }
++        /* PortChannel1 = Ethernet8 + Ethernet12, tagged in Vlan1000 beside
++         * the ports; Ethernet12 distributing too or not */
++        void lagUp(bool both)
++        {
++            lag(PC1, SET_COMMAND);
++            lagMember(PC1, ETHERNET8, "enabled");
++            lagMember(PC1, ETHERNET12, both ? "enabled" : "disabled");
++            vlanMembers({ { VLAN_1000 + ":" + PC1, SET_COMMAND, { { "tagging_mode", "tagged" } } } });
++        }
++        size_t pendingL2mcMembers()
++        {
++            auto consumer = dynamic_cast<Consumer *>(gL2mcOrch->getExecutor(APP_L2MC_MEMBER_TABLE_NAME));
++            return consumer->m_toSync.size();
++        }
+         size_t pendingVlanMembers()
+         {
+             auto consumer = dynamic_cast<Consumer *>(gPortsOrch->getExecutor(APP_VLAN_MEMBER_TABLE_NAME));
+@@ -333,4 +485,83 @@ namespace l2mcorch_test
+         EXPECT_EQ(chipMembers(ETHERNET4), 0u);
+         EXPECT_EQ(port(ETHERNET4).m_l2mc_count, 0u);
+     }
++
++    /* The DX010's uplink, 2026-11-15: its reserved groups' members made while
++     * one member distributed, the second distributing minutes later, a
++     * member removed after that. Each time the LAG's distributing set
++     * changes its L2MC members are made again, so they reach every
++     * distributing port and come out. */
++    TEST_F(L2mcOrchTest, LagGainsADistributingMember)
++    {
++        lagUp(false);
++        member(G1, PC1, SET_COMMAND);
++        member(G2, PC1, SET_COMMAND);
++        member(G1, ETHERNET0, SET_COMMAND);
++        ASSERT_EQ(chipMembers(PC1), 2u);
++        EXPECT_EQ(egress(PC1), set<sai_object_id_t>({ port(ETHERNET8).m_port_id }));
++
++        lagMember(PC1, ETHERNET12, "enabled");
++        EXPECT_EQ(chipMembers(PC1), 2u);
++        EXPECT_EQ(egress(PC1), set<sai_object_id_t>({ port(ETHERNET8).m_port_id, port(ETHERNET12).m_port_id }));
++        EXPECT_EQ(port(PC1).m_l2mc_count, 2u);
++        expectRefCounts();
++
++        member(G1, PC1, DEL_COMMAND);
++        member(G2, PC1, DEL_COMMAND);
++        EXPECT_EQ(pendingL2mcMembers(), 0u);
++        EXPECT_EQ(chipMembers(PC1), 0u);
++        EXPECT_EQ(port(PC1).m_l2mc_count, 0u);
++        EXPECT_FALSE(gL2mcOrch->m_syncdL2mcEntries[VLAN_1000].count(L2mcGroupKey(VLAN_1000, IpAddress("0.0.0.0"), IpAddress(G2))));
++        expectRefCounts();
++        expectEntriesInChip();
++    }
++
++    /* A member's link drops: teamd stops distributing on it, and the LAG's
++     * group members leave its port. Taken off the LAG entirely after that,
++     * and back, the members follow too. */
++    TEST_F(L2mcOrchTest, LagLosesADistributingMember)
++    {
++        lagUp(true);
++        mrouter(PC1, SET_COMMAND);
++        member(G1, ETHERNET0, SET_COMMAND); /* PortChannel1 joins G1 as a router port */
++        member(G1, PC1, SET_COMMAND);
++        ASSERT_EQ(egress(PC1).size(), 2u);
++
++        lagMember(PC1, ETHERNET12, "disabled");
++        EXPECT_EQ(egress(PC1), set<sai_object_id_t>({ port(ETHERNET8).m_port_id }));
++        lagMember(PC1, ETHERNET12, "");
++        lagMember(PC1, ETHERNET12, "enabled");
++        EXPECT_EQ(egress(PC1).size(), 2u);
++        EXPECT_EQ(port(PC1).m_l2mc_count, 1u);
++        expectRefCounts();
++
++        member(G1, PC1, DEL_COMMAND);
++        mrouter(PC1, DEL_COMMAND);
++        member(G1, ETHERNET0, DEL_COMMAND);
++        EXPECT_EQ(pendingL2mcMembers(), 0u);
++        EXPECT_EQ(chipMembers(PC1), 0u);
++        EXPECT_EQ(port(PC1).m_l2mc_count, 0u);
++        EXPECT_TRUE(gL2mcOrch->m_syncdL2mcEntries[VLAN_1000].empty());
++        expectEntriesInChip();
++    }
++
++    /* A member the SAI refuses when its group's last group member leaves
++     * (here a router port's member whose LAG changed behind the orch, as on
++     * the DX010 before this fix): the entry stays in the chip with its record,
++     * instead of a record of an entry the chip no longer has. */
++    TEST_F(L2mcOrchTest, RefusedMemberLeavesTheEntryWhole)
++    {
++        lagUp(false);
++        mrouter(PC1, SET_COMMAND);
++        member(G1, ETHERNET0, SET_COMMAND);
++        ASSERT_EQ(chipMembers(PC1), 1u);
++        for (auto &m : g_lag_members)
++            m.second.egress_disabled = false; /* Ethernet12 distributes; the orch was not told */
++
++        member(G1, ETHERNET0, DEL_COMMAND);
++        EXPECT_EQ(chipMembers(ETHERNET0), 0u);
++        EXPECT_TRUE(gL2mcOrch->m_syncdL2mcEntries[VLAN_1000].count(L2mcGroupKey(VLAN_1000, IpAddress("0.0.0.0"), IpAddress(G1))));
++        expectEntriesInChip();
++        expectRefCounts();
++    }
+ }

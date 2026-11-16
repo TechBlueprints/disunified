@@ -772,6 +772,36 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - The orch tests run in the build host's bookworm slave
     (`tests/mock_tests`, `--gtest_filter=L2mcOrchTest.*`), as root
     (`docker run -u root`), with the tree's `target/debs/bookworm` installed.
+- **A LAG's L2MC member keeps the egress ports it was made with
+  (`docs/drivers/sonic.md` §8.16, measured on a test LAG 2026-11-15; fixed
+  by sonic-swss 0005, not yet in an image).** The legacy-TH SAI programs
+  one egress per LAG member distributing at creation and never follows a
+  change. A removal after another member started distributing is refused
+  ITEM_NOT_FOUND (`mcast egress remove failed with error Entry not found`).
+  Before 0005, `RemoveL2mcEntry` had removed the entry first and kept the
+  record: every later removal logs `rv:-7` and the group never comes back
+  into the chip until a swss restart or reboot. Facts that cost time:
+  - **`rv:-7` at a PortChannel or VLAN removal is the symptom**: find the
+    first `Failed to remove mrouter from l2mc group member` (the trigger is
+    the last group member leaving), and the LAG's
+    `setDistributionOnLagMember` lines between the member's creation and it.
+  - **Tolerating ITEM_NOT_FOUND does not help**: sairedis keeps the member
+    after a refused remove, so the group can never be removed either.
+  - **A refused member cannot come out with the original set either** (the
+    SAI took the ports before the failing one); with no member distributing
+    it can. Never do that to the uplink: it is the uplink down.
+  - **Testing it needs no cabled LAG**: an LACP aggregate of looped cages
+    never distributes, but a ProducerStateTable write of APPL_DB
+    `LAG_MEMBER_TABLE:<pc>:<port>` `status enabled|disabled` makes orchagent
+    set `EGRESS_DISABLE`, and an `L2MC_MEMBER_TABLE` row makes the member;
+    `bcmcmd "mc show"` lists the egress ports. Taking a cage into an
+    aggregate means its `DUI_MAC_ACL` binding out first (`ports@` hset;
+    AclOrch rebinds as a diff) and the PortChannel's MTU by `hset`.
+- **l2mcd drops a static member when the same group's learned membership
+  ages out on that port** (seen on PortChannel1, 2026-11-15, §8.16): it
+  sends `Group-DEL ... static:0`, and the static is not put back; its own
+  dump (`l2mcd_ctl -s <f> -v <vid>`) then lists fewer ports in `Static-Group`
+  than CONFIG_DB names. Open (the register).
 - **Port isolation, MAC filter, egress limit, LLDP-MED, Voice VLAN,
   router ports (`portfeat.go`, `docs/drivers/sonic.md` §11.12, built and
   verified live on the DX010 2026-11-07).** Isolation is one SAI isolation
