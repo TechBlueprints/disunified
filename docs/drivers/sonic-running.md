@@ -201,7 +201,7 @@ two of them upstream's own fixes carried unchanged:
 | sonic-l2mcd 0002-0007 | the receive path hardened: malformed packets dropped, counted and rate-limited in the log; the IGMPv3 and MLDv2 parsers held to the message length and the bytes received; a one-past read in the group state machine; one receive socket per port instead of one per resend | -- ([`sonic.md`](sonic.md) §8.13; fuzzed under ASan/UBSan/libFuzzer, the harness is in the kit) |
 | sonic-l2mcd 0008-0009 | the querier election against an IGMPv2 router (its port learned as the router port) and queries from the VLAN's address, not 0.0.0.0 | -- ([`sonic.md`](sonic.md) §8.14; found live on the DX010) |
 | sonic-l2mcd 0010 | l2mcd's per-packet debug lines kept out of syslog at the default level (they reached the remote log host at ~75 lines/s) | -- ([`sonic.md`](sonic.md) §8.14) |
-| sonic-l2mcd 0011-0013 | a port a breakout re-creates keeps its own index, not another port's (0011); a closed port socket's event freed (0012); `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (0013). **Built into no image yet** (the image build is on hold, §3.3) | jasper-hou-micas/sonic-l2mcd-micas #8, #9 (0011, 0012); 0013 prepared ([`sonic.md`](sonic.md) §8.13, §11.25.3) |
+| sonic-l2mcd 0011-0013 | a port a breakout re-creates keeps its own index, not another port's (0011); a closed port socket's event freed (0012); `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (0013). **Built into no image yet** (the image build is on hold, §3.3) | jasper-hou-micas/sonic-l2mcd-micas #8, #9, #10 ([`sonic.md`](sonic.md) §8.13, §11.25.3) |
 
 **Building 202511 with those in** -- not features, fixes the build itself
 needed:
