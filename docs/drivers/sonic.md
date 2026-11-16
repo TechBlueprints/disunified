@@ -2175,15 +2175,100 @@ or an MLDv1 done. Results:
   its name goes.
 
 0014 is therefore a guard against a way not yet found, as much as a fix: any such case becomes a
-counted drop instead of an abort. The port db's own fault is not fixed: an overwritten name stays a
-key, and a later delete by the old name frees the index's current name while it is still a key. With
-0011 nothing reaches it (a follow-up).
+counted drop instead of an abort. The port db's own fault (an overwritten name stays a key, and a
+later delete by the old name frees the index's current name while it is still a key) is 0016's,
+below.
 
 **What an image install with 0014 has to prove.** A breakout and a join of an empty cage, as in
 §11.25.3, then the uplink's next link event. l2mcd keeps its pid, logs no `rx_bad_if` growth
 (`l2mcd_ctl -s <file> -c 2`) and leaves no new core in `/var/core`. With 0011 in the image the
 nameless index should never occur, so the install shows only that nothing regressed; the
 fault's absence is the harness's proof.
+
+**0016: the port db holds a name and its index once each way (2026-11-16).** The fault under
+0014's crash, read with the series through 0014 applied (`port/l2mcd_portdb.c` is the same on
+`651a13b`; other files' lines on `651a13b` in brackets).
+- **The two maps.** `portdb_portindex_to_ifname_hash` maps an index to a string, and
+  `portdb_ifname_to_portindex_hash` maps a string to its index. Both are `hashGrowGeneric`
+  tables created without a `key_init`, so the name map's key is the very pointer stored, not a
+  copy. `portdb_add_ifname()` (60) mallocs one string and inserts it into both: it is the index
+  map's value and the name map's key. `portdb_delete_ifname(name)` (318) looks the name up,
+  removes that key without freeing it (`ret_key` NULL), then removes the index's value and frees
+  it (333). That is right only while the key and the value are the same string.
+- **The fault.** `portdb_add_ifname()` looks at neither map first. `hashGrowGenericInsert()`
+  answers a key it already holds by replacing the data and returning 2, which the function
+  takes for success. A second name B at index i, named A, replaces i's value with B's string;
+  A's key still maps to i. `portdb_delete_ifname(A)` then removes A's key and frees B's string,
+  which is still B's key: the next look-up whose probe reaches it compares against freed memory
+  (`string_key_compare()`), and i has no name. That is the freed "Ethernet115" key at 4096 in
+  0014's core. Two more shapes of the same fault: A added at a second index j moves A's key to
+  j and leaves i naming A (a delete of A frees j's string and leaves i's); A added twice at i
+  replaces i's string, and the first one is no longer freed by anything (13 bytes for
+  "Ethernet900").
+- **The callers.** Four: `port_ifname_db_init()` (`l2mcd_system.c` 2284 [2252]), once at start,
+  Ethernet0-511 at 4096 + N into an empty db; `l2mcd_port_list_update()` (`l2mcd_utils.c` 328
+  [266]), only for a name the db does not hold; `mld_map_port_add_del()` (`l2mcd_mld_port.c`
+  1461 [1457]), a VLAN's name at its VLAN id. `mld_if_snoop_set()` adds `VLAN<vid>` there once
+  per address family, so a VLAN snooped for IPv4 and IPv6 takes the third shape and loses a
+  string each time, and `mld_add_vlan_to_protocol()` (1030) adds the VLAN node's own
+  `VLAN%04d` name at the same index when the VLAN has no port-db entry. Deletes come from
+  `l2mcd_port_list_update()` by the port's own name and from `mld_map_port_add_del()` by the
+  index's current name.
+- **Reachable without 0011** (`651a13b`): yes, and it was reached on the DX010.
+  `l2mcd_port_list_update()` numbers a port it does not know 4096 + its kernel ifindex, which
+  is Ethernet<ifindex>'s index from the start-up loop (4096 itself for a lane reported before
+  its netdev), and the add overwrote that port's name.
+- **Reachable with 0011:** not on SONiC, and only through one gap. `l2mcd_port_index_for()`
+  refuses an index another name holds on its ifindex branch, but its EthernetN branch returns
+  4096 + N without asking. That index is free whenever EthernetN's name is absent, except when a
+  name that is not a canonical EthernetN (such as "Ethernet01") was numbered 4096 + ifindex with
+  ifindex N meanwhile; SONiC's port list carries only canonical names and PortChannels, which
+  are numbered 4608 + ifindex, above every EthernetN index. VLAN names never meet a port's (they sit below 4096), and a VLAN's
+  delete passes the index's current name, so the VLAN path only loses strings. The harness
+  setup, the breakout case and the VLAN-leave case log no refused add with 0016 (checked with
+  `HARNESS_DEBUG`); whether `mld_add_vlan_to_protocol()`'s `VLAN%04d` add ever runs after
+  `mld_if_snoop_set()`'s `VLAN%d` one is not checked; with 0016 it is refused and logged.
+
+**The fix, sonic-l2mcd 0016:** `portdb_add_ifname()` looks both up first. The name already at
+its own index is no change (return 0, nothing allocated). Any other overlap, a named index or
+a name at another index, is refused (-1, a notice naming the holder), and both keep what they
+had. A failed insert frees its string and takes back the index map's entry. `l2mcd_port_list_update()`
+stops on a refused add (-1 for an add, 0 for a delete) instead of building a tree, or on a delete
+closing the sockets, at another port's index.
+
+Refusing rather than taking the index over, because of what the callers need. The holder of a
+port index is a port with its receive sockets and tree at that index. Taking its name would
+leave exactly the nameless index whose report crashed l2mcd (0014), and the holder could no
+longer be found by name to delete. No caller wants a name to move: the port path adds only an
+unknown name, and a VLAN's name always goes to its VLAN id. On `651a13b` alone, 0016 turns the
+DX010's corruption into a re-created port without an index (no snooping on it, logged); 0011
+gives that port its own index.
+
+**Harness:** three cases, each run by name, on free indexes 4000 and 4001 with names past
+Ethernet511. `portdb-name-overwrite` adds Ethernet900 at 4000, then Ethernet901 at 4000, deletes
+Ethernet900, then reads index 4000 and looks Ethernet901 up; with the fix it also adds Ethernet901
+at the freed index and deletes it. `portdb-name-moved` adds Ethernet900 at 4000, then at 4001.
+`portdb-name-twice` adds Ethernet900 at 4000 twice. After each step every name and index must
+agree both ways, and after the deletes the db must be as it was with no byte still allocated
+(ASan's allocated-bytes count: LeakSanitizer does not see the lost string, because the hash
+leaves a deleted key's pointer in its slot).
+- On `651a13b` and on the series 0001-0014: `portdb-name-overwrite` is a heap-use-after-free,
+  a read in `string_key_compare()` from `portdb_get_portindex_from_ifname("Ethernet901")` of the
+  string `portdb_delete_ifname("Ethernet900")` freed. `portdb-name-moved` fails its checks (4000
+  still names Ethernet900 after the delete). `portdb-name-twice` fails with 13 bytes still allocated.
+- With 0016, on both bases, all three are clean.
+- All 42 cases on the series with 0016 are clean, with the debug log's arguments evaluated as
+  well as without. On `651a13b` with 0016 alone, every other case gives the result it gives on
+  `651a13b` except `port-list-breakout`: there Ethernet40 now keeps its index, tree, sockets and
+  membership (on `651a13b` the case stopped at 0013's use-after-free), and it fails because
+  the two lanes get no index, which is 0011's part.
+- gcc 12 `-Wall`: no warning in `l2mcd_portdb.c` or `l2mcd_utils.c`, with or without 0016. The
+  fuzzers were not run: they feed packets to named ports, and 0016 touches no packet path.
+- `dry-run.sh` passed with 0016 in the series (2026-11-16).
+
+**What an image install with 0016 has to prove:** nothing beyond 0011's and 0014's lists
+(§11.25.3, above). A refused add logs `portdb_add_ifname port:<name> index:<n> refused`. With
+0011 none should appear, so one in the log is a caller this section has not found.
 
 ### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
