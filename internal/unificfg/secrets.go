@@ -55,7 +55,7 @@ var cfgSecrets = []secretRule{
 	rule(`switch\.wevent\.key`, "system_cfg: the switch event channel's key, in every switch push"),
 	rule(`users\.\d+\.password`, "system_cfg: the device login's password hash, in every push"),
 	rule(`switch\.radius\.[a-z]+\.\d+\.secret`, "system_cfg: a RADIUS server's shared secret (802.1X, 11.0.99)"),
-	rule(`switch\.snmp\.community\.[^.]+\.name`, "system_cfg: the SNMP community (a live log of 2026-09; no fixture yet)"),
+	rule(`switch\.snmp\.community\.[^.]+\.name`, "system_cfg: the SNMP community (10.6.106, system_cfg-snmp-community.txt)"),
 	rule(`switch\.routing_interface\.\d+\.ospf\.password`, "system_cfg: OSPF plain-text authentication key (10.6.109)"),
 	rule(`switch\.routing_interface\.\d+\.ospf\.md5_keys\.\d+\.password`, "system_cfg: an OSPF MD5 key (10.6.109)"),
 	rule(`nutserver\.password`, "system_cfg: the NUT server's login password (UPS)"),
