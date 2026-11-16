@@ -194,6 +194,30 @@ func (s *Session) MarkApplied(cfgversion string) error {
 	return nil
 }
 
+// DHCPPending reports a switch to DHCP the device has still to take.
+func (s *Session) DHCPPending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.st.DHCPPending
+}
+
+// SetDHCPPending records, and persists, whether a switch to DHCP is still
+// to be written to the device.
+func (s *Session) SetDHCPPending(pending bool) error {
+	s.mu.Lock()
+	if s.st.DHCPPending == pending {
+		s.mu.Unlock()
+		return nil
+	}
+	s.st.DHCPPending = pending
+	st := s.st.clone()
+	s.mu.Unlock()
+	if s.store != nil {
+		return s.store.Save(st)
+	}
+	return nil
+}
+
 // Snapshot returns the current switch snapshot (nil before the first poll).
 func (s *Session) Snapshot() *devicemodel.Snapshot {
 	s.mu.Lock()

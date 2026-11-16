@@ -63,7 +63,7 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 		return false, fmt.Errorf("podman: the uplink's NetworkManager profile is unknown (is NetworkManager managing %q?); address left alone", nic)
 	}
 	if d.DHCP {
-		return false, fmt.Errorf("podman: refusing DHCP for %s: the controller no longer holds this host's reservation once it is adopted, so a lease could move the host -- set DHCP on the host by hand if that is meant", nic)
+		return false, devicemodel.AddressDeclined(fmt.Errorf("podman: refusing DHCP for %s: the controller no longer holds this host's reservation once it is adopted, so a lease could move the host -- set DHCP on the host by hand if that is meant", nic))
 	}
 	if d.IP == "" || d.PrefixLen <= 0 {
 		return false, fmt.Errorf("podman: static IP Settings without an address")

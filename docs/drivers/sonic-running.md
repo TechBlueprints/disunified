@@ -201,9 +201,9 @@ two of them upstream's own fixes carried unchanged:
 | sonic-l2mcd 0002-0007 | the receive path hardened: malformed packets dropped, counted and rate-limited in the log; the IGMPv3 and MLDv2 parsers held to the message length and the bytes received; a one-past read in the group state machine; one receive socket per port instead of one per resend | -- ([`sonic.md`](sonic.md) §8.13; fuzzed under ASan/UBSan/libFuzzer, the harness is in the kit) |
 | sonic-l2mcd 0008-0009 | the querier election against an IGMPv2 router (its port learned as the router port) and queries from the VLAN's address, not 0.0.0.0 | -- ([`sonic.md`](sonic.md) §8.14; found live on the DX010) |
 | sonic-l2mcd 0010 | l2mcd's per-packet debug lines kept out of syslog at the default level (they reached the remote log host at ~75 lines/s) | -- ([`sonic.md`](sonic.md) §8.14) |
-| sonic-l2mcd 0011-0014, 0016 | a port a breakout re-creates keeps its own index, not another port's (0011); a closed port socket's event freed (0012); `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (0013); a report, leave or MLD done from a port the port db has no name for is dropped and counted instead of aborting the daemon on `std::logic_error` (0014, from l2mcd's core of 2026-11-15); the port db refuses a second name at a named index or a name at a second index, whose later delete freed a string still in use as a key, the fault under 0014's crash (0016). **Built into no image yet** (the image build is on hold, §3.3) | jasper-hou-micas/sonic-l2mcd-micas #8, #9, #10, #11, #13 ([`sonic.md`](sonic.md) §8.13, §11.25.3) |
-| sonic-l2mcd 0015 | a static group's refresh keeps running when one of its ports stops, so the other static members no longer lapse 260 s later (the uplink's reserved groups, 2026-11-15); the refresh renews only a port that is up; the link-up replay no longer leaks. **Built into no image yet** | jasper-hou-micas/sonic-l2mcd-micas #12 ([`sonic.md`](sonic.md) §8.17) |
-| sonic-l2mcd 0017-0018 | a VLAN numbered 2048 or higher is no longer taken for a tunnel port when one of its ports stops, which left a dead port entry per link-down and an ERR line per entry with every forwarded query (0017, the DX010's Vlan4094, 2026-11-16); `l2mcd_ctl`'s dump lines held to their buffer (0018). **Built into no image yet** | jasper-hou-micas/sonic-l2mcd-micas #14 (0017), #15 (0018) ([`sonic.md`](sonic.md) §8.18) |
+| sonic-l2mcd 0011-0014, 0016 | a port a breakout re-creates keeps its own index, not another port's (0011); a closed port socket's event freed (0012); `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (0013); a report, leave or MLD done from a port the port db has no name for is dropped and counted instead of aborting the daemon on `std::logic_error` (0014, from l2mcd's core of 2026-11-15); the port db refuses a second name at a named index or a name at a second index, whose later delete freed a string still in use as a key, the fault under 0014's crash (0016). Built into `igmp-202511.20261116-6c8eb1cf7` (§3.3) | jasper-hou-micas/sonic-l2mcd-micas #8, #9, #10, #11, #13 ([`sonic.md`](sonic.md) §8.13, §11.25.3) |
+| sonic-l2mcd 0015 | a static group's refresh keeps running when one of its ports stops, so the other static members no longer lapse 260 s later (the uplink's reserved groups, 2026-11-15); the refresh renews only a port that is up; the link-up replay no longer leaks. Built into `igmp-202511.20261116-6c8eb1cf7` (§3.3) | jasper-hou-micas/sonic-l2mcd-micas #12 ([`sonic.md`](sonic.md) §8.17) |
+| sonic-l2mcd 0017-0018 | a VLAN numbered 2048 or higher is no longer taken for a tunnel port when one of its ports stops, which left a dead port entry per link-down and an ERR line per entry with every forwarded query (0017, the DX010's Vlan4094, 2026-11-16); `l2mcd_ctl`'s dump lines held to their buffer (0018). Built into `igmp-202511.20261116-6c8eb1cf7` (§3.3) | jasper-hou-micas/sonic-l2mcd-micas #14 (0017), #15 (0018) ([`sonic.md`](sonic.md) §8.18) |
 
 **Building 202511 with those in** -- not features, fixes the build itself
 needed:
@@ -257,18 +257,49 @@ The arrival-day procedure for a DX010 is [`sonic.md`](sonic.md) §3; what the
 first install on the hardware exposed (two failed boots and their cause,
 the CPLD watchdog, the trace that found it) is §8.14.
 
-### 3.3 Status on the DX010, 2026-11-15
+### 3.3 Status on the DX010, 2026-11-16
 
-- In the kit and in no image: sonic-l2mcd 0011-0018 (`sonic.md` §8.13, §8.17, §8.18). Clint
-  holds the next image build until the open work is done (2026-11-15); what
-  its install must prove is §11.25.3 (0011, 0012), §8.13 (0013, 0014, 0016), §8.17 (0015)
-  and §8.18 (0017; 0018 has no check on the switch).
-- Running since 2026-11-15 (installed 02:59 UTC, confirmed 03:07 with bridge
+- Running since 2026-11-16 (installed 20:31 UTC, confirmed 20:36 with bridge
+  `6dbeab6`): `igmp-202511.20261116-6c8eb1cf7`, the image below plus
+  sonic-l2mcd 0011-0018 and sonic-swss 0005. The buildimage commit is the
+  one below, so only the date in the id differs; the MANIFEST kept with the
+  image names the nine patches. The l2mcd and orchagent binaries in the
+  image are the rebuilt packages' (compared by sha256 before the install).
+  The install deleted the `42cccc87a` slot; the other slot is the image
+  below, the fallback. CONFIG_DB was identical across the change (39
+  tables). What the install showed, under the lock, the same hour:
+  - **After the boot:** Vlan4094's seven reserved groups are in l2mcd
+    (`ngroups` 7), in `show igmp-snooping groups` with PortChannel1, in
+    ASIC_DB with an `L2MC_ENTRY` each, and in the chip with both uplink
+    ports (`mc show`: ce0 and ce1 in each of the seven).
+  - **0013, 0015, 0017** (an empty cage up for 15 s by MAC loopback, then
+    down; the bridge running): its seven members came and went (ASIC_DB 14,
+    then 7), l2mcd kept its pid, and `ngroups` stayed 7 where the image
+    before went to 0. Eight minutes later: no `Group-DEL ... PortChannel1`,
+    the uplink still in all seven groups, the VLAN's port list (`-c 5`) with
+    no `(null)` entry and the cage once per list, and no `Interface not
+    found for phy_port:16384` since the boot.
+  - **0011, 0012, 0014, 0016** (an empty cage split, joined, split and
+    joined; the bridge stopped): the cage kept its own index (4096 + N) with
+    a new kif, its lanes took theirs, every other port's index, kif and
+    event pointer were unchanged, and the log has no `delete2`, `Err
+    kif_to_if`, refused add, unnamed-port drop or router-port delete. l2mcd
+    kept its pid and there is no core. The bridge's reconcile restored the
+    cage (1 of 32 ports); CONFIG_DB then differed only in the order of an
+    ACL table's port list and in `dhcp_rate_limit` missing from the
+    re-created port (a field the image's start adds, on 29 of 35 ports).
+  - **Not exercised: sonic-swss 0005's own path.** Both uplink members were
+    distributing before the groups were made at this boot, so nothing was
+    made again. The patch is in the binary (its notice string, once) and
+    its mock tests pass; the test LAG of `sonic.md` §8.16 was not re-run,
+    and the uplink's next member change is the first real use.
+  - With the MAC loopback, `bcmcmd` port names shift when a cage is split:
+    with cage 3 at 4x25G, `ce4` is Ethernet20 (cage 6), not Ethernet16.
+- Before it, 2026-11-15 (installed 02:59 UTC, confirmed 03:07 with bridge
   `812503a`): `igmp-202511.20261115-6c8eb1cf7`, the image below plus
   sonic-buildimage 0014 (`linux-bcm-genl`: the SAI's sFlow sampling, which
   the unknown-unicast storm detection reads, `sonic.md` §11.24, proven live
-  on it). The install deleted the `f2e25f54c` slot; the other slot is the
-  image below, the fallback.
+  on it). The install deleted the `f2e25f54c` slot.
 - Before it, 2026-11-14 (installed 22:49 UTC, confirmed 22:58 with bridge
   `c7d8a82`): `igmp-202511.20261114-42cccc87a`, the image below plus
   sonic-swss 0004 (the L2MC count, `sonic.md` §8.15, proven live on it) and

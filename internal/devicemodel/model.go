@@ -6,6 +6,7 @@ package devicemodel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -564,9 +565,27 @@ type PowerEventSettings struct {
 // everything else. Optional. Implementations must be idempotent and must
 // refuse an address they cannot verify is reachable from the bridge, because
 // a wrong one takes the device off the network.
+//
+// A switch to DHCP that fails is asked again on later cycles until it is
+// written (the loop keeps the intent). A driver that will never take DHCP
+// returns its reason through AddressDeclined, and is asked once.
 type AddressController interface {
 	ApplyAddress(ctx context.Context, desired AddressDesired) (changed bool, err error)
 }
+
+// AddressDeclined marks an ApplyAddress error as the driver's decision, not
+// a failed write: asking again would get the same answer. The text is err's.
+func AddressDeclined(err error) error { return addressDeclined{err} }
+
+// IsAddressDeclined says whether err carries AddressDeclined's mark.
+func IsAddressDeclined(err error) bool {
+	var d addressDeclined
+	return errors.As(err, &d)
+}
+
+type addressDeclined struct{ error }
+
+func (d addressDeclined) Unwrap() error { return d.error }
 
 // ManagementIPv6Controller is optional: a device whose management
 // interface takes IPv6 from the gateway's router advertisements only when

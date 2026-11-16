@@ -132,8 +132,8 @@ func (c *Collector) CycleOutlet(ctx context.Context, idx int) error {
 // A diff: the card's current mode and address are compared first. The
 // upload takes its turn at the card's gate with the syslog and clock
 // uploads, as on the PDU: within a settle time of another it is not made,
-// and the error says so (a static address goes a cycle later; a switch to
-// DHCP is not retried).
+// and the error says so (either a static address or a switch to DHCP goes a
+// cycle later).
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	c.mu.Lock()
 	last, dhcp, cardGW := c.last, c.dhcp, c.cardGW
@@ -149,7 +149,7 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 			return false, nil
 		}
 		if !c.takeUpload() {
-			return false, fmt.Errorf("apc-backups: %s; the switch to DHCP is not written, and the loop does not retry it", apcnmc.Busy)
+			return false, fmt.Errorf("apc-backups: %s; the switch to DHCP is written on a later cycle", apcnmc.Busy)
 		}
 		if err := c.r.PutConfig(ctx, tcpipConfig(c.MAC, "DHCP Only", "", "", "")); err != nil {
 			return false, fmt.Errorf("apc-backups: %w", err)

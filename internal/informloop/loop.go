@@ -218,6 +218,7 @@ type Loop struct {
 	collectFailures int
 	staleSilenced   bool // informs withheld because collection keeps failing
 	applyFailures   int
+	dhcpFailures    int // attempts at a switch to DHCP still pending
 	reconciledOnce  bool
 	layoutSig       string
 	pendingCycles   []int
@@ -1156,6 +1157,15 @@ func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 		return
 	}
 	d, reason, ok := addressIntent(prev, text)
+	if a := unificfg.Parse(text).Address; a == nil || !a.DHCP {
+		// Static, or no IP Settings at all: a switch to DHCP still waiting
+		// to be written is no longer what the controller wants.
+		l.setDHCPPending(false)
+	} else if !ok && l.session.DHCPPending() {
+		// The switch to DHCP was made by an earlier push and its write
+		// failed: this push (or this reconcile) still says DHCP, so ask again.
+		d, ok = devicemodel.AddressDesired{DHCP: true}, true
+	}
 	if !ok {
 		if reason != "" {
 			l.cfg.Logger.Printf("[%s] IP Settings: %s", l.desc.MAC, reason)
@@ -1164,8 +1174,22 @@ func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 	}
 	changed, err := l.cfg.AddressController.ApplyAddress(ctx, d)
 	if err != nil {
+		if d.DHCP && !devicemodel.IsAddressDeclined(err) {
+			l.setDHCPPending(true)
+			l.dhcpFailures++
+			if l.dhcpFailures == 1 || l.dhcpFailures%10 == 0 {
+				l.cfg.Logger.Printf("[%s] apply IP Settings (%d attempts): %v; the switch to DHCP is asked again every cycle until it is written", l.desc.MAC, l.dhcpFailures, err)
+			}
+			return
+		}
+		if d.DHCP {
+			l.setDHCPPending(false)
+		}
 		l.cfg.Logger.Printf("[%s] apply IP Settings: %v", l.desc.MAC, err)
 		return
+	}
+	if d.DHCP {
+		l.setDHCPPending(false)
 	}
 	if !changed {
 		return
@@ -1175,6 +1199,16 @@ func (l *Loop) applyAddress(ctx context.Context, prev, text string) {
 	} else {
 		l.cfg.Logger.Printf("[%s] applied IP Settings: the device now has %s/%d via %s", l.desc.MAC, d.IP, d.PrefixLen, d.Gateway)
 		l.setDeviceIP(d.IP, "the controller's IP Settings were applied")
+	}
+}
+
+// setDHCPPending records whether a switch to DHCP is still to be written.
+func (l *Loop) setDHCPPending(pending bool) {
+	if !pending {
+		l.dhcpFailures = 0
+	}
+	if err := l.session.SetDHCPPending(pending); err != nil {
+		l.cfg.Logger.Printf("[%s] persist state: %v", l.desc.MAC, err)
 	}
 }
 

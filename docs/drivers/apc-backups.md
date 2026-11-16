@@ -72,7 +72,7 @@ held one across restarts would run into that limit.
   `Override=<card MAC>` (the card ignores the section otherwise),
   `BootMode=Manual` + address/mask/gateway or `BootMode=DHCP Only` -- the
   apc-pdu path, and the same rule that DHCP is applied only when it
-  replaces a static setting. **The controller's push for a `usp` device
+  replaces a static setting (and then asked again until it is written). **The controller's push for a `usp` device
   carries no `route.1.gateway`** (the switch path's does), so the driver
   writes `options.gateway`, else the gateway of the site network holding
   the new address (§8), else the card's current one, and treats the

@@ -3203,8 +3203,8 @@ Upstream as [jasper-hou-micas/sonic-l2mcd-micas#12](https://github.com/jasper-ho
 loss of link starts this. A static port coming up within the next query
 interval undoes it until the next link-down.
 
-**What the next image's install must show on the DX010** (no image is
-built: Clint's hold):
+**What the next image's install must show on the DX010** (shown on
+`igmp-202511.20261116-6c8eb1cf7`, 2026-11-16: [`sonic-running.md`](sonic-running.md) §3.3):
 
 - After the boot, `l2mcd_ctl -s <f> -v 4094` shows `ngroups 7`, and
   `show igmp-snooping groups vlan 4094` lists the seven reserved groups with
@@ -3410,8 +3410,8 @@ and [#15](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/15) (0018)
 **The driver** needs no change. On the running image
 an l2mcd restart clears the dead entries until the next link-down.
 
-**What the next image's install must show on the DX010** (no image is
-built: Clint's hold):
+**What the next image's install must show on the DX010** (shown on
+`igmp-202511.20261116-6c8eb1cf7`, 2026-11-16: [`sonic-running.md`](sonic-running.md) §3.3):
 
 - After the boot, under the switch lock, one empty cage that is a member
   of Vlan4094 is taken up and down by MAC loopback, as in §8.13.

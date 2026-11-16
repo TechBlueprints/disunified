@@ -69,6 +69,9 @@ func TestApplyAddressDeclinesDHCP(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "cannot be confirmed") {
 		t.Errorf("the error must say why: %v", err)
 	}
+	if !devicemodel.IsAddressDeclined(err) {
+		t.Errorf("the refusal must be marked declined, or the loop asks every cycle: %v", err)
+	}
 }
 
 // A gateway change keeps the address, so the same transport confirms: one

@@ -44,6 +44,13 @@ type State struct {
 	// blocked client through until the controller's next setparam.
 	BlockedSTA      []string `json:"blocked_sta,omitempty"`
 	BlockedSTAKnown bool     `json:"blocked_sta_known,omitempty"`
+
+	// DHCPPending says the controller's IP Settings went from static to
+	// DHCP and the device has not taken the change yet (the write failed).
+	// The push alone cannot say it: a chosen DHCP and the default DHCP are
+	// the same keys. Kept so that the loop asks again, across a restart
+	// too, until the write succeeds or a static setting replaces it.
+	DHCPPending bool `json:"dhcp_pending,omitempty"`
 }
 
 func (st State) clone() State {
