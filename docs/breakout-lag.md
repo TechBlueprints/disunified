@@ -661,3 +661,9 @@ xcvrd misses one inserted after boot), or a REST save.
 - A decision, not taken: whether Auto on an empty split cage should join
   it, so the fold has a way back from the UI. Today an empty split cage
   on Auto stays split.
+- Since the same day the lane switch is specified to appear by itself for
+  every split cage and to take the lanes when it is adopted
+  ([`drivers/breakout.md`](drivers/breakout.md) §16); the hand-over is
+  where a forced 25G saved on the fold becomes a pair the controller
+  refuses for a QSFP28, checked live before anything is built on it
+  (§16.7 there).

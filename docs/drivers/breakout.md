@@ -1068,6 +1068,15 @@ entry, its adoption (Clint's) and a far end. The entry, in the container's
 
 ## 15. The first live adoption (DX010, cage 2)
 
+**Superseded in part, 2026-11-16.** This section was written for an empty
+cage 2 and a declared lane switch. Since then cage 2 is in use (a 100G DAC,
+up), the breakout cable went into cage 3 (split to `4x25G[10G]`, lanes
+`fc`, nothing on the far ends), and the controller turned out to refuse the
+drawer's 25G save on a whole cage (`docs/breakout-lag.md` §7), so step 2
+below cannot be done from the drawer. The first adoption runs on cage 3
+through §16.8; steps 3 to 8 here still describe what to look at, with cage
+3's numbers (Ethernet8-11, `PortChannel301`).
+
 Clint's to start; nothing here has been run. The DX010's bridge runs on the
 switch (`docs/drivers/sonic-on-switch.md`), so the lane switch is one more
 entry in `/host/disunified/config.yaml`, beside the switch's own, and the
@@ -1149,4 +1158,257 @@ DX010's `payload-last.json` for the MAC in port 2's `mac_table` and
 `lldp_table`); a write on the wrong cage (the journal names `cage 2 lanes`
 and Ethernet4-7 only); the parent's own ports touched by the child's push
 (they are not in the lane scope; the replay asserts it).
+
+## 16. Automatic lane switches (spec, 2026-11-16)
+
+Status: **specified, not built.** Clint, 2026-11-16: the lane switch is to
+appear when a breakout cable or a QSA is detected, without a config entry.
+This section is what to build; it rests on the breakout-cable run of the
+same day (`docs/breakout-lag.md` §7, `docs/drivers/sonic.md` §10.3) and on
+the questions that run's session answered afterwards (recorded where they
+are used).
+
+### 16.1 The rule
+
+Every split cage of a parent that can present lanes (`LaneProvider`) gets a
+lane switch, started by the bridge itself. It informs as a pending `USFXG`
+like any unadopted device. **Nothing about the parent changes until the
+operator adopts it**: the cage stays the fold it is today (one port, its
+lanes' form, its settings on every lane). Adoption is the hand-over: from
+then on the lanes are the lane switch's (§0's "owned" table) and the cage on
+the parent keeps only its mode and admin state. Forgetting the lane switch
+in the controller hands the lanes back.
+
+So the operator's consent is given in UniFi (Adopt, Forget), not in a file,
+and an upgrade changes nothing for a site that never adopts: a pending
+device is the whole visible difference. A parent's `lane_switches: off`
+(§16.4) turns even that off. A declared `driver: breakout` entry keeps
+working exactly as built (attached at start, adopted or not) and wins over
+the automatic one for its cage.
+
+### 16.2 What "detected" means
+
+- **The trigger is the split, not the cable.** A cable's EEPROM cannot
+  always say it is a breakout: a QSFP28-to-4xSFP28 DAC coded `100GBASE-CR4,
+  25GBASE-CR CA-25G-L ...` reads the same as a straight 100G DAC
+  (`sonic.md` §10.9). What the bridge can know is that the cage *is* split.
+- **Detection is what splits a cage by itself**: the module rule (§10.9,
+  `moduleSpeed`/`moduleRuns`). On Auto, a cage whose module runs only split
+  layouts (the `CA-25G-S` and `CA-25G-N` codes, `4 x 10GBASE-SR`) is split
+  to the module's native layout. That rule exists; its FEC half wrote live
+  on 2026-11-16, its split has never run live (the day's split came from a
+  REST save, see below). A cage split any other way counts the same.
+- **From the UI, Auto is the only way to a first split.** The port drawer
+  sends a `fec_mode` with a forced 25G and the controller refuses it on a
+  QSFP28 port, which a whole cage always is (`breakout-lag.md` §7.1). A
+  REST save without `fec_mode` is the other way in.
+- **The module must have been read, and xcvrd misses one inserted after
+  boot** (DX010, 2026-11-16: the platform API says present and `sfputil
+  show eeprom` reads it, STATE_DB has no `TRANSCEIVER_INFO`; it lasts until
+  an xcvrd restart, a reboot or a breakout; root cause open in the
+  register). So on that day Auto could not have split the cage. §16.6
+  closes the gap from the driver's side.
+- **A QSA** (an SFP or SFP28 in a QSFP cage through an adapter) would join
+  the module table as "runs only split, one usable lane", and its lane
+  switch would report lane 1 and three empty slots. **Not built: no QSA has
+  been in the switch, so there is no record to build from** (the platform
+  reads every cage as a QSFP; an SFP behind an adapter answers with an
+  SFP's identifier and layout, so the compliance code may not be where the
+  SFF-8636 reader looks). It waits on its capture (§16.9).
+
+### 16.3 Lifecycle
+
+| Event | The bridge | The parent's cage | The controller |
+|---|---|---|---|
+| a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval | fold, unchanged | a pending `USFXG` |
+| the operator adopts it | attaches it (`AttachLaneSwitch`) when the adoption handshake completes | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
+| the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending | fold again; the cage's own settings go back on the lanes at the next plan | pending again (same MAC) |
+| the cage is joined | nothing: the child's collect fails "not split", its informs stop | whole, the parent's | disconnected, placement kept, until forgotten |
+| the cage is split again | the same child resumes (its state file kept) | owned again if the child is still adopted | connected again |
+| the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes); a pending one is started by the watcher | as before the restart | no change |
+
+A lane switch, once started, is never stopped while the process runs; a
+whole cage simply does not answer. The bridge forgets nothing in the
+controller by itself (§16.9).
+
+### 16.4 Config, names, identity
+
+- Device key **`lane_switches: auto | off`** on the parent's entry
+  (`internal/config`), default `auto`. Only with a config file: the flag
+  form runs one device and starts none.
+- Name: `<parent's name>-cage<N>`; hostname the same. If another entry of
+  the file already has that name and is not that cage's declared lane
+  switch, the automatic one is not started (one log line).
+- MAC: `devicemodel.LaneSwitchMAC(parent MAC, cage)`, computed by main and
+  handed to both sides. State: `state/<name>/device.json` like any device;
+  that file being adopted is what "an adopted child" means at start.
+- Model `USFXG`. `control.ports` follows the parent's entry (`off` there is
+  `off` here). No other option exists.
+- Cages 1..99 (the PortChannel range, §5.2); a higher cage gets no lane
+  switch, logged once.
+
+### 16.5 Code
+
+- **`internal/devicemodel/lanes.go`**: `LaneProvider` gains `SplitCages()
+  []int` (the split cages of the last snapshot; nil before one) and
+  `DetachLaneSwitch(cage int)`. Both parents implement them. Detach is the
+  exact inverse of attach: the cage is the fold again (report and plan),
+  and what the child left is handled by the existing rules for a lane
+  switch that is no longer attached (§7c: a lane aggregate with members is
+  left, with a note; an empty one in the cage's range is the parent's to
+  delete).
+- **`internal/drivers/breakout`**: the child no longer needs to be attached
+  to answer. Its MAC comes from `options.mac` (main always sets it; a
+  declared entry's default is computed the same way), and `Collect` fails
+  only when the view's attachment names a *different* MAC. `Capabilities`,
+  names and the snapshot are unchanged. Applying while unattached cannot
+  happen (an unadopted device gets no push); `ApplyPorts`/`PlanPorts`
+  refuse with a clear error if it does.
+- **`internal/informloop`**: a hook beside `OnConnected` for the session
+  returning to pending (`EffectFactoryReset`, the controller's
+  `setdefault`), `OnUnadopted`. Confirm in the live run that a Forget of a
+  connected device arrives that way; if the controller only stops
+  answering, detect it the way the loop already tells an unadopted session
+  and say which in §0.
+- **`cmd/disunified/main.go`**: after a parent with `lane_switches` not
+  `off` is opened and before its loop starts: attach every automatic child
+  whose state file is adopted (and start it). Then a watcher per parent
+  (every 15 s, in memory: `SplitCages()`): a split cage with no child
+  running, declared or automatic, gets one started through the same
+  `runOne` a declared entry uses, with the synthesized options of §16.4.
+  The child's loop gets `OnConnected` → `AttachLaneSwitch` and
+  `OnUnadopted` → `DetachLaneSwitch`, each logged with the cage and the
+  MAC. `collectConfig` (`-collect-once`) starts none.
+- **`internal/drivers/sonic`** and **`arista-eos`**: `SplitCages`,
+  `DetachLaneSwitch`. On SONiC also the two items below.
+- **A down port reports its configured FEC** (`lanePort`, SONiC). Today
+  `FEC` is STATE_DB's operating value, absent on a down port, so a split
+  cage whose lanes are configured `fc` is stored with no `fec_mode`. On a
+  lane switch that shows FEC unticked, and a drawer save at 25G then pushes
+  `disabled` over the module's `fc`. Rule: where the port has no operating
+  FEC and CONFIG_DB has a `fec` field, report the configured mode (`none`
+  as disabled); a port with no `fec` field reports none, as now. Basis: a
+  real ECS's down SFP28 ports with a module report `fec_mode: "disabled"`,
+  and its empty never-configured port reports none (read 2026-11-16; a down
+  ECS port configured `fc` or `rs` was not seen).
+- Docs as built: §0 gains the automatic path; `docs/install.md`'s config
+  reference the key; `deploy/config.example.yaml` a comment;
+  `docs/feature-map.md` and `docs/support-matrix.md` rows;
+  `internal/drivers/breakout/CLAUDE.md`.
+
+### 16.6 Reading a module xcvrd has not read (`docs/drivers/sonic.md` §11.36)
+
+Without this, "a breakout cable is detected" is false for any cable put in
+after boot on the DX010. **Capture first** (read-only, on the DX010 as it
+stands: cage 2 holds a DAC xcvrd has not read): `sudo sfputil show
+presence` and `sudo sfputil show eeprom -p <the cage's interface>`,
+scrubbed with `sanitize-sonic.py` into the SONiC fixture directory, and a
+fresh `collect.py` capture with cage 3 split and its module read (the
+record: `type` `QSFP28 or later`, the compliance dict whose `Extended
+Specification Compliance` is the `CA-25G-S` code, under every lane's key).
+
+Then: for a cage with no `TRANSCEIVER_INFO` that the platform says is
+present, the driver reads the EEPROM through `sfputil` and uses it exactly
+as it uses xcvrd's record (the optic it reports, `moduleRuns`, the module
+FEC). xcvrd's record wins as soon as it exists. Read-only, at start and
+then at most one extra exec a minute, and only while some cage is present
+and unread; one log line per cage ("port 2: module present but not read by
+xcvrd; read through sfputil"). If `sfputil`'s output does not carry what
+the rules need (the compliance code), stop at the log line and say so in
+§11.36: the note still tells the operator why Auto did nothing.
+
+### 16.7 The hand-over's stored override: check before relying on the flip
+
+While the cage is the fold it reports SFP28, and the operator may have
+saved a forced 25G with a FEC on the parent's port (the DX010's port 3
+holds `autoneg false, speed 25000, full_duplex true, fec_mode fc-fec`
+today). At adoption the parent reports that port as QSFP28 again, for which
+the controller refuses that pair on a save. **Not known: whether the
+controller re-validates an unchanged entry when another port is saved**
+(the UI sends the whole `port_overrides` array with every save). If it
+does, every drawer save on the parent fails with `port_idx 3` until that
+entry changes.
+
+- Check it live (§16.8 step 4) before anything is built for it.
+- If saves pass: at attach, log once when the parent's push holds a forced
+  speed below 40G for the owned cage ("port 3: a lane switch has the lanes
+  now; set this port to Auto in UniFi -- its forced 25G keeps the cage
+  split but cannot be saved again from the port drawer").
+- If saves are refused: at attach, and only with a controller API the
+  bridge can reach, the bridge resets that one port's override to Auto
+  (`autoneg true`; `speed`, `full_duplex` and `fec_mode` removed), logged
+  with the before and after; without an API, the log line above as a
+  warning. Auto on an owned cage keeps its mode (the module's, or as it is
+  for an empty cage), so the reset changes nothing on the switch. This is
+  the one place the bridge would edit an operator's override; `CLAUDE.md`
+  §2's rule for `internal/unifiapi` gets the exception written in.
+
+Either way the capture `breakout.md` §14.1 has been waiting for comes out
+of this run: the parent's `port_overrides` entry with its speed keys (from
+`stat/device`) and the push that carried `switch.port.3.speed`/`.fec` (the
+reply log on the switch), both scrubbed into
+`docs/fixtures/controller-11.0.99/`.
+
+### 16.8 Tests, then the live run on cage 3
+
+Tests (real captures only): `SplitCages` and attach/detach on both parents'
+captures; the fold before adoption and after a detach is byte-for-byte the
+unattached report; the child answering unattached and refusing a different
+MAC; main's start with an adopted and a pending state file (the adopted one
+attached before the parent's first plan: the test is the parent's first
+plan leaving the lanes alone); the watcher starting one child per split
+cage and none for a declared cage or `off`; `OnUnadopted` from the recorded
+`setdefault`; the configured FEC of a down lane on the new capture; the
+`sfputil` read on its capture. `go vet ./... && go test ./...` and
+`scripts/check-site-info.sh --staged` before every commit.
+
+Live, on the DX010 (free to test on; its lock is `/tmp/dui-dx010.lock`,
+`internal/drivers/sonic/CLAUDE.md`; cage 3 only, nothing is cabled to its
+lanes; never the uplink):
+
+1. The captures of §16.6 first, before any build is installed.
+2. Install the build. Expect `dx010-cage3` started and pending, the DX010's
+   own cycle writing nothing and its port 3 still stored as SFP28 with
+   `fec_mode` now `fc-fec` (the down-port rule).
+3. Adopt `dx010-cage3` by exact MAC. Expect the attach line, placement
+   under port 3 within a minute, port 3 stored as QSFP28, the child's four
+   lanes SFP28 with `fc-fec`, port 5 the uplink with the DAC as its module,
+   the first push applied or held as §15 step 2 describes, then a
+   zero-change cycle on both loops.
+4. **The override check (§16.7)**: from the drawer, rename another DX010
+   port and rename it back. Refused with `port_idx 3`, or saved? Then save
+   port 3 itself as Auto and confirm nothing is written on the switch for
+   three cycles (the module keeps the split; never run before today).
+5. On the child: save a 25G FEC (`fc-fec`) on a lane from the drawer, then
+   10G and back. Expect each accepted and the lane batch in the DX010's
+   journal (`breakout-lag.md` §7.3's first check).
+6. The join from the drawer: force 100G on the DX010's port 3. Expect it
+   accepted (QSFP28), the breakout in the journal, the child stale and
+   shown disconnected. Then Auto on port 3: **the module rule's first live
+   split** (`CA-25G-S` runs only split layouts), and the child back
+   without a new adoption.
+7. Forget the child: the detach line, port 3 the fold again (SFP28), the
+   device pending. Adopt it again and leave it adopted, port 3 on Auto.
+8. Record: both records at each step, the pushes and the override entry as
+   fixtures (scrubbed), the journal lines; §0 and this section updated with
+   what ran and anything that departed, with the reason.
+
+### 16.9 Not in this build
+
+- **The QSA half** (§16.2): needs a QSA with a module in a cage, read whole
+  and split (`TRANSCEIVER_INFO`, `sfputil show eeprom`), then the table row
+  and the one-lane lane switch. And a decision that is Clint's: a QSA has
+  one far end, and the fold already serves it (one port, SFP28 form, FEC
+  and 10G from the parent's drawer, verified 2026-11-16), so a five-port
+  device with one used lane may be more than it needs.
+- **Forgetting a retired lane switch** in the controller (a joined cage's
+  child stays disconnected until the operator forgets it, as an unplugged
+  switch does).
+- **xcvrd's root cause** (the register's entry); §16.6 reads around it.
+- **Auto on an empty split cage**: stays split, as today (the register's
+  open decision for the fold). With a lane switch adopted the join is a
+  forced 100G on the parent's port, so the fold's missing way back does
+  not arise there.
+- The Arista's live run (§11b), when a cage of it is free: the same steps;
+  its split cages get automatic lane switches by the same watcher.
 
