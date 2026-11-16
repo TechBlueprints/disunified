@@ -3402,7 +3402,11 @@ no warning in `src/igmp.c` or `port/l2mcd_cli.c`, before or after. The
 fuzzers were not re-run: no packet path changed. `dry-run.sh` passed with
 18 patches.
 
-Not posted upstream. **The driver** needs no change. On the running image
+Upstream as [jasper-hou-micas/sonic-l2mcd-micas#14](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/14) (0017)
+and [#15](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/15) (0018)
+(posted 2026-11-16, one commit each on `651a13b`; [`prior-art.md`](../prior-art.md) §6.1).
+
+**The driver** needs no change. On the running image
 an l2mcd restart clears the dead entries until the next link-down.
 
 **What the next image's install must show on the DX010** (no image is

@@ -161,6 +161,8 @@ The daemon's review happens in
 | [jasper-hou-micas/sonic-l2mcd-micas#11](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/11) (posted 2026-11-16) | 0014 | a report, leave or MLD done from a port the port db has no name for is dropped and counted, instead of aborting l2mcd on `std::logic_error` (§8.13 of [`drivers/sonic.md`](drivers/sonic.md), from l2mcd's core of 2026-11-15) |
 | [jasper-hou-micas/sonic-l2mcd-micas#12](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/12) (posted 2026-11-16) | 0015 | a static group's refresh timer keeps running when one of its ports stops, so the group's other static members no longer lapse; the refresh renews only a port that is up (§8.17 of [`drivers/sonic.md`](drivers/sonic.md)) |
 | [jasper-hou-micas/sonic-l2mcd-micas#13](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/13) (posted 2026-11-16) | 0016 | the port db refuses a second name at a named index and a name at a second index, whose later delete freed a string still in use as a key (§8.13 of [`drivers/sonic.md`](drivers/sonic.md)) |
+| [jasper-hou-micas/sonic-l2mcd-micas#14](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/14) (posted 2026-11-16) | 0017 | a VLAN numbered 2048 or higher is tested as a VLAN before the tunnel-port range in `mcgrp_stop_phy_port()`, so a link-down no longer leaves a dead port entry and an ERR line per entry with every forwarded query (§8.18 of [`drivers/sonic.md`](drivers/sonic.md)) |
+| [jasper-hou-micas/sonic-l2mcd-micas#15](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/15) (posted 2026-11-16) | 0018 | `l2mcd_ctl`'s dump lines are held to their 4000-byte buffer (§8.18 of [`drivers/sonic.md`](drivers/sonic.md)) |
 
 #8 and #9 were cut the same way, from branches `fix/breakout-port-index` and `fix/free-socket-event`, on `651a13b` (`dev` and `l2mcd-pre`, both still there on
 2026-11-15; no upstream change to either file since). Each applies and builds alone, and the
@@ -195,6 +197,11 @@ cases and a stub of `l2mcd_is_peerlink()` that aborts on NULL as the real one do
 links are disunified `bf75a8d` (the `static-member-*` cases) and `7ccd876` (the three
 `portdb-name-*` cases). #12 was tested on `651a13b` with #10 applied, because its case's
 link-down reaches #10's use-after-free first under ASan.
+
+[#14](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/14) (the kit's 0017) and [#15](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/15) (0018) followed the same day, on Clint's approval:
+branches `fix/vlan-not-tunnel-port` (`src/igmp.c` +5 -1) and `fix/cli-dump-buffer`
+(`port/l2mcd_cli.c` +32 -12), one commit each on `651a13b`. Each merges with #2-#13. Their
+harness link is disunified `b5062ef` (the `port-flap-*` and `cli-long-*` cases).
 
 The four sonic-net drafts each got a comment linking a rebase branch on
 Clint's forks (`igmp-snp-202511`, on the commits `series/BASES` pins):
