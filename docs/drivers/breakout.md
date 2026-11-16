@@ -65,9 +65,10 @@ and faults (`l2Ports`), the storm and DHCP-rate counts, DHCP guard drops,
 the FDB entries learned on each lane (`laneMACs`; a lane aggregate's on its
 lowest member) and a lane-to-lane mirror. A lane's `SpeedCaps` are its
 STATE_DB `supported_speeds` (the DX010's 25G lanes: 1000,10000,25000 --
-what portconfig checks), else the mode's speeds; its media is SFP28 at 25G
-and below 50G, QSFP28 at 50G (the Flex XG drew a 50G lane as a QSFP tile,
-§6.6.3 of the note). `Lanes(cage)` hands the child those ports, the folded
+what portconfig checks), else the mode's speeds; its media is SFP28 for a
+lane whose fastest speed is 25G (at 10G too: the controller takes a FEC at
+25G only from an SFP28, `docs/breakout-lag.md` §7), QSFP28 at 50G (the
+Flex XG drew a 50G lane as a QSFP tile, §6.6.3 of the note). `Lanes(cage)` hands the child those ports, the folded
 cage, the parent's `System`, `VLANs`, its LLDP chassis id
 (`LLDP_LOC_CHASSIS`), the mode, the cage's admin state and the attachment.
 The child's `Collect` is that view, no device read; it errors while the
@@ -476,7 +477,10 @@ cage's neighbour slot), `SpeedMbps` = the cage's native speed (100000; a
 split cage reports its lane speed today), the child's MAC in `MACs`
 (beside the lanes' real FDB entries, which stay: a real upstream switch
 sees every downstream MAC on the port). Counters, health, `Lanes`, the
-module, `SpeedCaps` unchanged.
+module, `SpeedCaps` unchanged. Its media is the cage's own (QSFP28), not
+its lanes': the join is a forced 100G or 40G on this port, and the
+controller takes the FEC the drawer sends with it only from a QSFP28
+(`docs/breakout-lag.md` §7, 2026-11-16).
 
 ## 6. The parent contract (`devicemodel`)
 

@@ -469,7 +469,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   25G or more, so it cannot split a whole cage to 25G, nor join a split one
   by a forced speed: those are REST saves without `fec_mode`, or Auto with
   a module. The form is by the fastest speed a lane runs, never its
-  configured speed. The lane switch's uplink keeps `cageForm`.
+  configured speed (a lane switch's lanes too). A cage with a lane switch
+  attached and the lane switch's uplink keep `cageForm` (QSFP28): the
+  join's forced 100G is saved on the parent's cage
+  (`docs/breakout-lag.md` §7).
   **xcvrd misses a module inserted after boot** on the DX010 (no
   `TRANSCEIVER_INFO`, while `sfputil show eeprom` reads it): the module
   rules see an empty cage until a breakout re-adds the ports or xcvrd

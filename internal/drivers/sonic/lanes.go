@@ -78,8 +78,12 @@ func laneMACs(db map[string]table, ports []cagePort, native int, linkDown func(s
 // split cage: the child's MAC in the cage's MAC table and the switch's, the
 // child as the cage's LLDP neighbour (the hosts' own neighbours are the
 // lanes', on the lane switch), the cage at its native speed (the cable's
-// capacity: the folded lane speed would read as a 25G link to a switch),
-// and no aggregate or mirror of the cage's own (those are the lanes').
+// capacity: the folded lane speed would read as a 25G link to a switch)
+// and in the cage's own form (its speed is the breakout control, and the
+// controller takes the join's 100G or 40G with a FEC only from a QSFP28;
+// the lanes' FEC is set on the lane switch's SFP28 ports:
+// docs/breakout-lag.md 7), and no aggregate or mirror of the cage's own
+// (those are the lanes').
 // Either entry places the child (docs/breakout-lag.md 6.6); both are sent,
 // as informloop's children: knob sends them.
 func reportChildren(ports []cagePort, macs []devicemodel.MACEntry, children map[int]devicemodel.Attachment, now time.Time) []devicemodel.MACEntry {
@@ -95,6 +99,7 @@ func reportChildren(ports []cagePort, macs []devicemodel.MACEntry, children map[
 				p.SpeedMbps = s
 			}
 		}
+		p.Media = cageForm(p.SpeedCaps)
 		p.LAG, p.LAGID, p.LACP, p.MirrorFrom = "", 0, nil, 0
 		vlan := p.VLAN.NativeVLAN
 		if vlan == 0 {

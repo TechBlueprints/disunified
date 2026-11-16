@@ -539,10 +539,21 @@ func TestLaneJoinUnbindsTheACLTables(t *testing.T) {
 // A split cage is reported in its lanes' form, a whole one as a QSFP28:
 // the controller takes a FEC for a port by its reported media and speed (a
 // QSFP28 at 40G and 100G only, an SFP28 at 25G; docs/drivers/sonic.md
-// 10.3, live 2026-11-16). The lane switch's uplink keeps the cage's own.
+// 10.3, live 2026-11-16). With a lane switch attached the cage keeps its
+// own form: its speed is the breakout control, the lanes' FEC is the lane
+// switch's (docs/breakout-lag.md 7).
 func TestSplitCageReportsItsLanesForm(t *testing.T) {
-	r := laneRig(t)
-	snap, err := r.c.Collect(context.Background())
+	media := func(snap *devicemodel.Snapshot, idx int) devicemodel.Media {
+		for _, p := range snap.Ports {
+			if p.Index == idx {
+				return p.Media
+			}
+		}
+		t.Fatalf("no port %d", idx)
+		return ""
+	}
+	bare := rig20261106(t, fixture20261106Split)
+	snap, err := bare.c.Collect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,11 +566,24 @@ func TestSplitCageReportsItsLanesForm(t *testing.T) {
 			t.Errorf("port %d (%d lanes): media %q, want %q", p.Index, p.Lanes, p.Media, want)
 		}
 	}
+
+	r := laneRig(t)
+	if snap, err = r.c.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if m := media(snap, 2); m != devicemodel.MediaQSFP28 {
+		t.Errorf("cage 2 with a lane switch attached: media %q, want the cage's own QSFP28", m)
+	}
 	v, err := r.c.Lanes(2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.Cage.Media != devicemodel.MediaQSFP28 {
 		t.Errorf("the lane view's cage: media %q, want the cage's own QSFP28", v.Cage.Media)
+	}
+	for _, l := range v.Lanes {
+		if l.Media != devicemodel.MediaSFP28 {
+			t.Errorf("lane %d: media %q, want SFP28", l.Index, l.Media)
+		}
 	}
 }

@@ -3611,8 +3611,11 @@ drawer. Three things showed:
   So `media` is the gate, and bit 21 is not needed. The form follows the
   fastest speed a lane runs, not its configured speed: four 25G lanes are
   SFP28 at 10G too, as a UniFi SFP28 port is, and two 50G lanes stay
-  QSFP28. A whole cage is QSFP28 as before, and the lane switch's uplink
-  keeps the cage's own form (`cageForm`).
+  QSFP28. A whole cage is QSFP28 as before. So is a split cage with a lane
+  switch attached (its speed is the breakout control, and a join's 100G
+  needs a QSFP28), and so is the lane switch's uplink (`cageForm`). What
+  this means for the fold and the lane switch is
+  [`docs/breakout-lag.md`](../breakout-lag.md) §7.
   **The cost is the other direction.** The drawer sends a `fec_mode` with
   every forced speed of 25G or more (`disabled` when unticked). For a port
   reported as SFP28 the controller refuses it at 40G, 50G and 100G, so a

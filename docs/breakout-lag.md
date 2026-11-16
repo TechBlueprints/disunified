@@ -3,7 +3,8 @@
 Status: **shape 2 (the lane switch, §6) built 2026-11-14** with `sonic` as
 the parent, fixture- and replay-tested, not yet adopted live
 ([`docs/drivers/breakout.md`](drivers/breakout.md) §0, §15); §6.8 is what the build
-decided. Shape 1 (§4-5) stays the record of the road not taken. Originally:
+decided, and §7 (2026-11-16) is what the controller's FEC check means for
+both shapes. Shape 1 (§4-5) stays the record of the road not taken. Originally:
 **two shapes written up, neither chosen, nothing built.** Clint's
 question (2026-11-02): when the far end of a breakout cable bundles its
 lanes with LACP (say three of a 4x25G cable into one bond), can the bridge
@@ -561,3 +562,102 @@ controller-side state (the stub's reply log shows every inform answered
 through the window), and a real parent is built for `sonic` and
 fixture-tested only (`docs/drivers/breakout.md` §14).
 
+
+## 7. The controller's FEC check, and why it favours the lane switch (2026-11-16)
+
+Measured on Network 11.0.99 with a 4x25G breakout DAC in a DX010 cage and
+an empty SFP28 port of a real ECS Aggregation
+([`docs/drivers/sonic.md`](drivers/sonic.md) §10.3 has the runs).
+
+### 7.1 The problem
+
+The controller accepts a port's `fec_mode` only at certain speeds, and
+which speeds depends on the `media` the device reports for that port:
+
+| Reported `media` | `fec_mode` accepted at | Refused (`api.err.InvalidFecMode`) at |
+|---|---|---|
+| QSFP28 | 40G, 100G | 10G, 25G, 50G |
+| SFP28 | 25G | 10G, 40G, 50G, 100G |
+
+No capability claim changes this: a real ECS's record has no FEC
+capability field, and the check moved when the DX010's reported `media`
+changed and nothing else did. A save without `fec_mode` passes at every
+claimed speed.
+
+The port drawer makes the check matter. At a forced 25G, 40G or 100G it
+offers FEC and always sends a `fec_mode` with the save (`disabled` when
+the box is unticked). At 10G it shows no FEC and sends none (seen on a
+port reported as SFP28). 50G was not tried in the drawer; over REST a
+`fec_mode` at 50G is refused for both forms. So from the drawer:
+
+- a port reported as QSFP28 can be forced to 10G, 40G or 100G, and never
+  to 25G or 50G;
+- a port reported as SFP28 can be forced to 10G or 25G, and never to 40G,
+  50G or 100G.
+
+A breakout cage is both things. Whole, it is a QSFP28 that runs 40G or
+100G with a FEC. Split, it is four SFP28-class lanes that run 25G with a
+FEC. One UniFi port has one `media`, so the fold (a split cage as one
+port) can serve only one side at a time:
+
+| From the drawer | Fold reports QSFP28 always (until 2026-11-16) | Fold reports its lanes' form when split (since) |
+|---|---|---|
+| FEC on the 25G lanes | refused | **works** |
+| lanes to 10G | passes over REST without `fec_mode`; the drawer was not tried | works |
+| join by forcing 100G or 40G | works | **refused** |
+| split a whole cage by forcing 25G | refused | refused (a whole cage is QSFP28) |
+| 2x50G by forcing 50G | refused with any `fec_mode` (REST) | the same |
+| Auto | the module decides (`sonic.md` §10.9) | the same |
+
+Whichever form the fold reports, one direction needs a REST save without
+`fec_mode`, and 50G needs one in every case. The fold now reports its
+lanes' form while split, because a FEC that cannot be set at all is worse
+than a join that needs Auto or one REST call.
+
+### 7.2 What the lane switch changes
+
+The lane switch gives the two forms two ports, which is what the
+controller's check wants:
+
+- **The cage on the parent stays QSFP28.** With a lane switch attached,
+  the cage's speed is only the breakout control (`breakout.md` §5.4) and
+  its FEC is not applied. Forcing 100G or 40G there is the join, and the
+  drawer's `fec_mode` at those speeds is accepted for a QSFP28. The parent
+  therefore reports an attached cage in the cage's own form
+  (`reportChildren`, `cageForm`), not its lanes'.
+- **Each lane is an SFP28 port of the lane switch.** FEC at 25G is
+  accepted there, per lane, and 10G needs none. A lane reports SFP28 by
+  the fastest speed it runs, so it keeps that form at 10G, as a UniFi
+  SFP28 port does. A 2x50G lane is QSFP28 (§6.6), and no drawer can set
+  its FEC: 50G takes none under either form. The module's FEC rule covers
+  it.
+
+| From the UI | Fold | Lane switch attached |
+|---|---|---|
+| FEC on a 25G lane | all four lanes together | each lane on its own |
+| join | Auto with a 100G module, or REST | force 100G or 40G on the parent's cage |
+| split a whole cage | Auto with a breakout module, or REST | the same: the parent's cage is a QSFP28 |
+| per-lane VLANs, names, clients | one port for four devices | a port per lane |
+
+What the lane switch does not fix is the first split. A whole cage is a
+QSFP28 in every shape, so the drawer cannot force it to 25G or 50G. The
+ways in are Auto with a breakout module in the cage (the module rule
+splits it; this needs the switch to have read the module, and the DX010's
+xcvrd misses one inserted after boot), or a REST save.
+
+### 7.3 Status and what is open
+
+- Verified live on the DX010: the two-row table of §7.1, the fold's
+  SFP28 report with FEC saved from the drawer, 10G saved from the drawer,
+  and the join by 100G refused from the drawer once the fold reports
+  SFP28.
+- Built, fixture-tested, not live: the attached cage keeping QSFP28 and
+  the lanes reporting SFP28 by the fastest speed they run. The first live
+  adoption of a lane switch (`breakout.md` §15) should save a 25G FEC on
+  a lane and a forced 100G on the parent's cage from the drawer.
+- Not measured: what the controller accepts for other forms (SFP+, QSFP+),
+  and whether the Arista's split cages meet the same refusals on Network
+  11 (its fold reports QSFP28).
+- A decision, not taken: whether Auto on an empty split cage should join
+  it, so the fold has a way back from the UI. Today an empty split cage
+  on Auto stays split.

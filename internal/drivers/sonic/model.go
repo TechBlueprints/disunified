@@ -146,12 +146,12 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 			if len(names) > 1 {
 				// The lane as a port of its own: its speeds are what the SAI
 				// says it runs (portconfig checks only that), its media the
-				// lane's own form.
+				// lane's own form by the fastest of them (SFP28 at 10G too).
 				ln := lp
 				ln.Index = i + 1
 				ln.Interfaces = []string{name}
 				ln.SpeedCaps = speedList(state[name]["supported_speeds"])
-				ln.Media = laneMedia(atoi(cfg[name]["speed"]))
+				ln.Media = splitForm(ln.SpeedCaps, atoi(cfg[name]["speed"]))
 				cage.lanes = append(cage.lanes, cagePort{Port: ln, alias: cfg[name]["alias"]})
 			}
 			if i == 0 {
@@ -288,7 +288,8 @@ func laneDetail(out []cagePort, db map[string]table) {
 	}
 }
 
-// laneMedia is a lane's form by its configured speed: a 25G lane is an
+// laneMedia is a lane's form by a speed (splitForm passes the fastest the
+// lane runs): a 25G lane is an
 // SFP28, a 50G lane two serdes of a QSFP28 (the Flex XG draws it as a
 // QSFP tile, docs/breakout-lag.md 6.6), 10G SFP+.
 func laneMedia(speed int) devicemodel.Media {
