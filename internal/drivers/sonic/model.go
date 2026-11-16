@@ -319,6 +319,16 @@ func lanePort(idx int, name string, cfg, appl, state, ctr map[string]string, vl 
 		FECConfig:   fecOf(cfg["fec"]),
 		FEC:         fecOf(state["fec"]),
 	}
+	// A port without link has no operating FEC in STATE_DB. It reports the
+	// mode it is configured for (none = disabled), as a UniFi switch's down
+	// SFP28 port with a module reports "disabled": left unreported, a split
+	// cage's lanes configured fc showed FEC unticked on a lane switch, and a
+	// drawer save at 25G then pushed "disabled" over the module's FEC
+	// (docs/drivers/breakout.md 16.5). A port with no fec field reports
+	// none, as before.
+	if p.FEC == devicemodel.FECUnknown && state["fec"] == "" {
+		p.FEC = p.FECConfig
+	}
 	// The description is CONFIG_DB's alone: `hdel … description` leaves
 	// APPL_DB's copy behind (seen on the VS), so APPL_DB is not read for it.
 	if !p.AutoNeg {

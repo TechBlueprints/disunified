@@ -112,3 +112,33 @@ func TestDetachLaneSwitchIsTheInverseOfAttach(t *testing.T) {
 	r.c.DetachLaneSwitch(3)
 	r.c.DetachLaneSwitch(7)
 }
+
+// A down port reports its configured FEC (docs/drivers/breakout.md 16.5):
+// cage 3's lanes are configured fc and have no link, so STATE_DB has no
+// operating FEC for them; cage 4 is empty and has no fec field at all.
+func TestDownPortReportsItsConfiguredFEC(t *testing.T) {
+	r := rig20261106(t, fixtureSplitDAC)
+	snap, err := r.c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := foldOf(t, snap, 3); p.Up || p.FEC != devicemodel.FECFC || p.FECConfig != devicemodel.FECFC {
+		t.Errorf("cage 3 (down, fec fc): up %v FEC %q config %q, want fc", p.Up, p.FEC, p.FECConfig)
+	}
+	v, err := r.c.Lanes(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range v.Lanes {
+		if l.Up || l.FEC != devicemodel.FECFC {
+			t.Errorf("lane %d: up %v FEC %q, want down and fc", l.Index, l.Up, l.FEC)
+		}
+	}
+	if p := foldOf(t, snap, 4); p.Up || p.FEC != devicemodel.FECUnknown {
+		t.Errorf("cage 4 (empty, no fec field): up %v FEC %q, want none reported", p.Up, p.FEC)
+	}
+	// A port with link keeps its operating value.
+	if p := foldOf(t, snap, 2); !p.Up || p.FEC != devicemodel.FECRS {
+		t.Errorf("cage 2 (up, rs): up %v FEC %q", p.Up, p.FEC)
+	}
+}
