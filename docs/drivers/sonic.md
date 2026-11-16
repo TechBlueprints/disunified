@@ -2272,6 +2272,9 @@ leaves a deleted key's pointer in its slot).
   fuzzers were not run: they feed packets to named ports, and 0016 touches no packet path.
 - `dry-run.sh` passed with 0016 in the series (2026-11-16).
 
+Upstream as [jasper-hou-micas/sonic-l2mcd-micas#13](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/13)
+(posted 2026-11-16, one commit on `651a13b`; [`prior-art.md`](../prior-art.md) §6.1).
+
 **What an image install with 0016 has to prove:** nothing beyond 0011's and 0014's lists
 (§11.25.3, above). A refused add logs `portdb_add_ifname port:<name> index:<n> refused`. With
 0011 none should appear, so one in the log is a caller this section has not found.
@@ -3191,6 +3194,9 @@ without it, with log arguments evaluated or not. gcc 12 `-Wall` gives the
 same warnings in the two changed files with and without it. The fuzzers
 were not re-run: the receive path is unchanged. `dry-run.sh` passed with 15
 patches (2026-11-16).
+
+Upstream as [jasper-hou-micas/sonic-l2mcd-micas#12](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/12)
+(posted 2026-11-16, one commit on `651a13b`; [`prior-art.md`](../prior-art.md) §6.1).
 
 **The driver** needs no change. On the running image, any static member's
 loss of link starts this. A static port coming up within the next query
