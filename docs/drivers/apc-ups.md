@@ -632,3 +632,10 @@ over the bridge container's own network namespace, read with `nsenter`
 on the host (`docs/fixtures/bridge-linux-6.12/`, scrubbed by
 `sanitize-controller.py --text` with the same subnet mappings, so the
 gateway is the same address in both).
+
+Live (2026-11-16): deployed with both UPSes' `netmask`, `gateway_mac` and
+`gateway` options removed. Both report the site network's /16 and gateway,
+and the gateway MAC every other bridge in the container reports. Both kept
+their topology parents. Before the options were removed, the log named the
+stale MAC each one overrode. The nudge for a missing neighbour entry has not
+run live: the container always holds the gateway's entry.

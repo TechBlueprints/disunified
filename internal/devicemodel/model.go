@@ -620,6 +620,28 @@ type SyslogController interface {
 	ApplySyslog(ctx context.Context, hosts []string) (changed bool, err error)
 }
 
+// Clock is the controller's time settings for a device without port
+// control, as the push carries them: Timezone is system.timezone
+// (locale.timezone when that is absent), a POSIX TZ string with its DST
+// rule on the power path ("MST7MDT,M3.2.0,M11.1.0"), "" when not pushed;
+// NTPServers are the enabled ntpclient.N.server entries in order, IP
+// literals or host names, nil when none are pushed.
+type Clock struct {
+	Timezone   string
+	NTPServers []string
+}
+
+// ClockController gives the controller's time zone, DST rule and NTP
+// servers to a device without port control -- a power device whose
+// management card keeps its own -- so the controller owns its clock, as it
+// does a switch's (which takes them with the rest of DeviceDesired). An
+// empty Timezone or nil NTPServers leaves that part alone. A setting the
+// device cannot express exactly is refused and logged, never approximated.
+// Optional; implementations must be idempotent.
+type ClockController interface {
+	ApplyClock(ctx context.Context, c Clock) (changed bool, err error)
+}
+
 // OutletController switches and names outlets on a power device. It is
 // optional and discovered with a type assertion, like the other write-side
 // interfaces, so a read-only PDU driver is a valid first step.

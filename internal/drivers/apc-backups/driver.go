@@ -88,4 +88,5 @@ var (
 	_ devicemodel.AddressController = (*Collector)(nil)
 	_ devicemodel.SyslogController  = (*Collector)(nil)
 	_ devicemodel.SiteNetworkUser   = (*Collector)(nil)
+	_ devicemodel.ClockController   = (*Collector)(nil)
 )

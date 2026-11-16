@@ -190,6 +190,22 @@ func (c *Collector) ApplySyslog(ctx context.Context, hosts []string) (bool, erro
 	return changed, nil
 }
 
+// ApplyClock sets the card's time zone, daylight saving and NTP servers to
+// the controller's, through a partial [SystemDate/Time] in the same config
+// file: NTPTimeZone is the zone's fixed offset, DSTConfiguration the card's
+// "Traditional US" when the push's POSIX rule is exactly the US one, and
+// the two NTP server fields the push's servers. A diff against the section
+// read at Start, read back about a minute after an upload; a zone the card
+// cannot express exactly is logged once and left alone
+// (docs/drivers/apc-pdu.md §12).
+func (c *Collector) ApplyClock(ctx context.Context, clk devicemodel.Clock) (bool, error) {
+	changed, err := c.clock.Apply(ctx, clk)
+	if err != nil {
+		return false, fmt.Errorf("apc-pdu: %w", err)
+	}
+	return changed, nil
+}
+
 // tcpipConfig renders the [NetworkTCP/IP] partial. mask and gateway are
 // omitted when empty (a DHCP switch needs neither).
 func tcpipConfig(mac, mode, ip, mask, gw string) []byte {

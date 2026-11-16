@@ -1,0 +1,421 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>APC |&nbsp;Switched Rack PDU</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<meta http-equiv="Expires" content="-1" />
+<link href="core.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<table id="main" cellspacing="0" cellpadding="0" border="0"> 
+  <tr>
+    <td colspan="2"><table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="update"><img src="images/info.gif" width="15" height="15" class="align" alt="Unknown, Unknown" title="Unknown, Unknown"/>192.0.2.1</td>
+<td id="logout"><a href="genhelp.htm#datentp" target="_blank" title="Launch Help" alt="Launch Help">Help</a>&nbsp;| <a href="logout.htm">Log Off&nbsp;<img src="images/exit.gif" width="15" height="15" border="0" align="top" alt="Log Off" title="Log Off" /></a></td>
+
+</tr>
+<tr>
+          <td><table width="100%" border="0" cellspacing="0" cellpadding="0" id="headnav"><tr><td>
+<ul><li><a href="home.htm">Home</a></li>
+<li><a href="loadman.htm">Device Manager</a></li>
+<li><a href="eventweb.htm">Logs</a></li>
+<li id="select"><a href="datentp.htm">Administration</a></li>
+</ul></td></tr></table></td>
+</tr>
+<tr>
+        <td colspan="2"><table width="100%" border="0" cellspacing="0" cellpadding="0" id="subheader">
+          <tr>
+          <td width="1%" class="cornerL"><img src="images/leftcorner.gif" alt="" width="5" height="5"/></td>
+<td width="75%" class="submenu"><a href="adminusr.htm" alt="Security" title="Security">Security</a>
+&nbsp;&nbsp;<a href="tcpcfg.htm" alt="Network Access" title="Network Access">Network</a>
+&nbsp;&nbsp;<a href="eventind.htm" alt="Notification" title="Notification">Notification</a>
+&nbsp;&nbsp;<a href="datentp.htm" alt="General" title="General" class="subselect">General</a>
+</td>
+<td width="23%" colspan="2" class="icons"><a href="home.htm" title="No alarms present"><img src="images/goodstat.gif" width="16" height="15" border="0" style="vertical-align:bottom;" alt="No alarms present"/>&nbsp;No Alarms</a>&nbsp;&nbsp;</td>
+<td width="1%" class="cornerR"><img src="images/rightcorner.gif" alt="" width="5" height="5" border="0"/></td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr><td colspan="2" id="container"><table width="100%" cellspacing="0" cellpadding="0" class="shadow">
+  <tr><td colspan="3" class="bumper">&nbsp;</td>
+</tr>
+<tr>
+  <td class="Lbumper">&nbsp;</td>
+<td id="navcontainer"><table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td>
+<ul>
+  <li><a href="genid.htm" title="Identification" alt="Identification">Identification</a></li>
+  <li><div class="nolink">Date &amp; Time</div><ul>
+    <li><a href="dateman.htm" title="Mode: Manual or NTP" alt="Mode: Manual or NTP">mode</a></li>
+    <li class="selected"><a href="datentp.htm" title="Daylight Saving Time" alt="Daylight Saving Time">daylight saving</a></li>
+    <li><a href="dateform.htm" title="Date & Time: Format" alt="Date & Time: Format">date format</a></li>
+  </ul></li>
+  <li><a href="genini.htm" title="Upload .ini Files" alt="Upload .ini Files">User Config File</a></li>
+  <li><a href="genprefs.htm" title="Preferences" alt="Preferences">Preferences</a></li>
+  <li><a href="genreset.htm" title="Reset/Reboot" alt="Reset/Reboot">Reset/Reboot</a></li>
+  <li><a href="genqlink.htm" title="Quick Links" alt="Quick Links">Quick Links</a></li>
+  <li><a href="factinfo.htm" title="About" alt="About">About</a></li>
+</ul>
+</td>
+</tr>
+</table>
+</td>
+<td id="content"><table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td colspan="3">&nbsp;</td>
+</tr>
+<tr>
+<td width="2%">&nbsp;</td>
+<td width="96%"><form method="post" action="/NMC/TOKEN/Forms/datentp1" name="HashForm1">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" class="data">
+<tr>
+<td colspan="2" class="dataSection">Daylight Saving Time</td>
+</tr>
+<tr><td colspan="2" class="space">&nbsp;</td>
+</tr>
+<tr>
+<td colspan="2" class="dataName"><input type="radio" name="DSTSelectChoice" value="None" checked onClick="enableGroup()" />
+Disable DST</td>
+</tr>
+<tr>
+<td colspan="2" class="dataName"><input type="radio" name="DSTSelectChoice" value="Continental_United_States" onClick="enableGroup()" />
+Traditional US DST (Second Sunday in March to First Sunday in November)</td>
+</tr>
+<tr>
+<td colspan="2" class="dataName"><input type="radio" name="DSTSelectChoice" value="Custom" onClick="enableGroup()" />
+Custom DST Definition (Adds 1 hour at start, subtracts 1 hour at end)</td>
+</tr>
+<tr>
+<td colspan="2" class="dataSubSection indent3">Start</td>
+</tr>
+<tr>
+<td width="10%" class="dataName indent3">Date:</td>
+<td width="90%"><select name="DSTSelectStartDay" size="1">
+<option value=1 selected="true">First</option>
+<option value=2>Second</option>
+<option value=3>Third</option>
+<option value=4>Fourth/Last</option>
+<option value=5>Fifth/Last</option>
+</select>&nbsp;
+<select name="DSTStartDay" size="1">
+<option value=1 selected="true">Sunday</option>
+<option value=2>Monday</option>
+<option value=3>Tuesday</option>
+<option value=4>Wednesday</option>
+<option value=5>Thursday</option>
+<option value=6>Friday</option>
+<option value=7>Saturday</option>
+</select>&nbsp;of&nbsp; <select name="DSTStartMonth" size="1">
+<option value=1 selected="true">January</option>
+<option value=2>February</option>
+<option value=3>March</option>
+<option value=4>April</option>
+<option value=5>May</option>
+<option value=6>June</option>
+<option value=7>July</option>
+<option value=8>August</option>
+<option value=9>September</option>
+<option value=10>October</option>
+<option value=11>November</option>
+<option value=12>December</option>
+</select></td>
+</tr>
+<tr>
+<td class="dataName indent3">Time:</td>
+<td><select name="DSTStartHour" size="1">
+<option selected>00</option>
+<option>01</option>
+<option>02</option>
+<option>03</option>
+<option>04</option>
+<option>05</option>
+<option>06</option>
+<option>07</option>
+<option>08</option>
+<option>09</option>
+<option>10</option>
+<option>11</option>
+<option>12</option>
+<option>13</option>
+<option>14</option>
+<option>15</option>
+<option>16</option>
+<option>17</option>
+<option>18</option>
+<option>19</option>
+<option>20</option>
+<option>21</option>
+<option>22</option>
+<option>23</option>
+</select>:<select name="DSTStartMinute" size="1">
+<option selected>00</option>
+<option>01</option>
+<option>02</option>
+<option>03</option>
+<option>04</option>
+<option>05</option>
+<option>06</option>
+<option>07</option>
+<option>08</option>
+<option>09</option>
+<option>10</option>
+<option>11</option>
+<option>12</option>
+<option>13</option>
+<option>14</option>
+<option>15</option>
+<option>16</option>
+<option>17</option>
+<option>18</option>
+<option>19</option>
+<option>20</option>
+<option>21</option>
+<option>22</option>
+<option>23</option>
+<option>24</option>
+<option>25</option>
+<option>26</option>
+<option>27</option>
+<option>28</option>
+<option>29</option>
+<option>30</option>
+<option>31</option>
+<option>32</option>
+<option>33</option>
+<option>34</option>
+<option>35</option>
+<option>36</option>
+<option>37</option>
+<option>38</option>
+<option>39</option>
+<option>40</option>
+<option>41</option>
+<option>42</option>
+<option>43</option>
+<option>44</option>
+<option>45</option>
+<option>46</option>
+<option>47</option>
+<option>48</option>
+<option>49</option>
+<option>50</option>
+<option>51</option>
+<option>52</option>
+<option>53</option>
+<option>54</option>
+<option>55</option>
+<option>56</option>
+<option>57</option>
+<option>58</option>
+<option>59</option>
+</select></td>
+</tr>
+<tr>
+<td colspan="2" class="dataSubSection indent3">End</td>
+</tr>
+<tr>
+<td class="dataName indent3">Date:</td>
+<td><select name="DSTSelectEndDay" size="1">
+<option value=1 selected="true">First</option>
+<option value=2>Second</option>
+<option value=3>Third</option>
+<option value=4>Fourth/Last</option>
+<option value=5>Fifth/Last</option>
+</select>&nbsp;
+<select name="DSTEndDay" size="1">
+<option value=1 selected="true">Sunday</option>
+<option value=2>Monday</option>
+<option value=3>Tuesday</option>
+<option value=4>Wednesday</option>
+<option value=5>Thursday</option>
+<option value=6>Friday</option>
+<option value=7>Saturday</option>
+</select>&nbsp;of&nbsp;
+<select name="DSTEndMonth" size="1">
+<option value=1 selected="true">January</option>
+<option value=2>February</option>
+<option value=3>March</option>
+<option value=4>April</option>
+<option value=5>May</option>
+<option value=6>June</option>
+<option value=7>July</option>
+<option value=8>August</option>
+<option value=9>September</option>
+<option value=10>October</option>
+<option value=11>November</option>
+<option value=12>December</option>
+</select></td>
+</tr>
+<tr>
+<td class="dataName indent3">Time:</td>
+<td><select name="DSTEndHour" size="1">
+<option selected>00</option>
+<option>01</option>
+<option>02</option>
+<option>03</option>
+<option>04</option>
+<option>05</option>
+<option>06</option>
+<option>07</option>
+<option>08</option>
+<option>09</option>
+<option>10</option>
+<option>11</option>
+<option>12</option>
+<option>13</option>
+<option>14</option>
+<option>15</option>
+<option>16</option>
+<option>17</option>
+<option>18</option>
+<option>19</option>
+<option>20</option>
+<option>21</option>
+<option>22</option>
+<option>23</option>
+</select>:<select name="DSTEndMinute" size="1">
+<option selected>00</option>
+<option>01</option>
+<option>02</option>
+<option>03</option>
+<option>04</option>
+<option>05</option>
+<option>06</option>
+<option>07</option>
+<option>08</option>
+<option>09</option>
+<option>10</option>
+<option>11</option>
+<option>12</option>
+<option>13</option>
+<option>14</option>
+<option>15</option>
+<option>16</option>
+<option>17</option>
+<option>18</option>
+<option>19</option>
+<option>20</option>
+<option>21</option>
+<option>22</option>
+<option>23</option>
+<option>24</option>
+<option>25</option>
+<option>26</option>
+<option>27</option>
+<option>28</option>
+<option>29</option>
+<option>30</option>
+<option>31</option>
+<option>32</option>
+<option>33</option>
+<option>34</option>
+<option>35</option>
+<option>36</option>
+<option>37</option>
+<option>38</option>
+<option>39</option>
+<option>40</option>
+<option>41</option>
+<option>42</option>
+<option>43</option>
+<option>44</option>
+<option>45</option>
+<option>46</option>
+<option>47</option>
+<option>48</option>
+<option>49</option>
+<option>50</option>
+<option>51</option>
+<option>52</option>
+<option>53</option>
+<option>54</option>
+<option>55</option>
+<option>56</option>
+<option>57</option>
+<option>58</option>
+<option>59</option>
+</select></td>
+</tr>
+<tr>
+<td colspan="2" class="applyCancel"><input type="submit" name="submit" value="Apply" class="btn" />
+&nbsp;<input type="reset" value="Cancel" onClick="reload()" />
+</td>
+</tr>
+<tr><td colspan="2" class="rebootReq">Note: Custom DST end time must be one hour or greater from the start time.</td>
+</tr>
+</table>
+
+</form>
+</td>
+<td width="2%">&nbsp;</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+</table>
+  </td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+    <td colspan="2"><table cellpadding="0" cellspacing="0" border="0" id="footer">
+      <tr>
+        <td width="19%" nowrap="nowrap" class="quick"><a href="http://www.apc.com" target="_blank" title="APC's Web Site" alt="APC's Web Site">Link 1</a>&nbsp;|&nbsp;<a href="http://testdrive.apc.com" target="_blank" title="Testdrive Demo" alt="Testdrive Demo">Link 2</a>&nbsp;|&nbsp;<a href="http://rms.apc.com" target="_blank" title="APC Monitoring" alt="APC Monitoring">Link 3</a></td>
+<td width="68%" class="product">&nbsp;Switched Rack PDU</td>
+<td width="3%" class="ralign"><img src="images/logocorner.gif" alt="" width="20" height="20" /></td>
+<td width="10%" class="logotab edge"><img src="images/smapc.gif" width="59" height="17" align="top" alt="APC" />&nbsp;&nbsp;</td>
+</tr>
+<tr>
+        <td colspan="4" class="mainbottom">&nbsp;</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+    <td class="copyright">&copy; 1995 - 2009, American Power Conversion Corp. All rights reserved.</td>
+<td class="copyright ralign">Updated: 11/15/2026 at 17:21&nbsp;&nbsp;</td>
+</tr>
+</table>
+
+</body>
+</html>
+<script type="text/javascript">
+enableGroup();
+function reload() {
+location.href = location.href;
+}
+function enableGroup() {
+if (document.forms[0].DSTSelectChoice[2].checked) {
+document.forms[0].DSTSelectStartDay.disabled = false;
+document.forms[0].DSTStartDay.disabled = false;
+document.forms[0].DSTStartMonth.disabled = false;
+document.forms[0].DSTStartHour.disabled = false;
+document.forms[0].DSTStartMinute.disabled = false;
+document.forms[0].DSTSelectEndDay.disabled = false;
+document.forms[0].DSTEndDay.disabled = false;
+document.forms[0].DSTEndMonth.disabled = false;
+document.forms[0].DSTEndHour.disabled = false;
+document.forms[0].DSTEndMinute.disabled = false;
+} else {
+document.forms[0].DSTSelectStartDay.disabled = true;
+document.forms[0].DSTStartDay.disabled = true;
+document.forms[0].DSTStartMonth.disabled = true;
+document.forms[0].DSTStartHour.disabled = true;
+document.forms[0].DSTStartMinute.disabled = true;
+document.forms[0].DSTSelectEndDay.disabled = true;
+document.forms[0].DSTEndDay.disabled = true;
+document.forms[0].DSTEndMonth.disabled = true;
+document.forms[0].DSTEndHour.disabled = true;
+document.forms[0].DSTEndMinute.disabled = true;
+}
+}
+</script>

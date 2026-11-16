@@ -89,15 +89,19 @@ type Collector struct {
 	// syslog keeps the card's syslog servers on the controller's remote
 	// syslog host, through the same config file.
 	syslog *apcnmc.SyslogApplier
+	// clock keeps the card's time zone, DST and NTP servers on the
+	// controller's, through the same file; the two take turns uploading.
+	clock *apcnmc.ClockApplier
 }
 
 // NewCollector builds a collector over a runner.
 func NewCollector(r Runner) *Collector {
-	return &Collector{r: r, warned: map[string]bool{}, syslog: &apcnmc.SyslogApplier{
-		Get:  r.GetConfig,
-		Put:  r.PutConfig,
-		Logf: func(format string, args ...any) { log.Printf("apc-pdu: "+format, args...) },
-	}}
+	logf := func(format string, args ...any) { log.Printf("apc-pdu: "+format, args...) }
+	up := &apcnmc.Uploads{}
+	return &Collector{r: r, warned: map[string]bool{},
+		syslog: &apcnmc.SyslogApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up},
+		clock:  &apcnmc.ClockApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up},
+	}
 }
 
 // Start runs every read the driver will ever do, once, so a wrong community
@@ -110,6 +114,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 		c.dhcp, c.dhcpRead = configBootMode(b)
 		c.mu.Unlock()
 		c.syslog.Load(b)
+		c.clock.Load(b)
 	}
 	snap, err := c.Collect(ctx)
 	if err != nil {

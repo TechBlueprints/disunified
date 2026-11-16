@@ -278,10 +278,13 @@ the issue which outlet is safe to switch.
 card's syslog section in `config.ini`, read back from the card, and the
 card's own event (a wrong-community SNMP read) at the log host. **Untested:**
 remote logging switched off in UniFi (`Syslog=disabled` is fixture-tested
-only) and a host on a port other than 514. **Not done:** the controller's
-time zone and NTP server on the cards -- both cards run NTP at a fixed
-`-07:00` with daylight saving disabled, so from March to November their
-syslog lines are stamped an hour behind.
+only) and a host on a port other than 514. **Built 2026-11-15, fixture-tested:**
+the controller's time zone, DST rule and NTP servers on both cards
+(`[SystemDate/Time]`: a fixed offset, `Disabled` or `Traditional US`, two
+servers; [`drivers/apc-pdu.md`](drivers/apc-pdu.md) §12). **Not built:** a
+DST rule other than the US one (the card's custom rule keys are not
+captured; a PR needs the config.ini of a card set to a custom rule), and
+zero or positive UTC offsets (their config.ini spelling is not captured).
 
 ---
 
