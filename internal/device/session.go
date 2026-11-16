@@ -583,6 +583,13 @@ func (s *Session) Apply(now time.Time, body []byte) []inform.Effect {
 		// (observed 2026-10-27 on 10.6.106 for a usw device). Same effect as
 		// the reboot cmd.
 		effects = s.applyCmd(now, informResponse{Type: "cmd", Cmd: "reboot"})
+	case "setdefault":
+		// A Forget of a connected device arrives as a top-level reply of
+		// its own, {"_type":"setdefault","server_time_in_utc":...}, not as
+		// a cmd (captured 2026-11-16 on 11.0.99 from a forgotten lane
+		// switch: controller-11.0.99/reply-setdefault.ndjson). Same effect
+		// as the setdefault cmd.
+		effects = s.applyCmd(now, informResponse{Type: "cmd", Cmd: "setdefault"})
 	case "noop":
 		if r.Interval > 0 {
 			effects = []inform.Effect{{Kind: inform.EffectInterval, Interval: time.Duration(r.Interval) * time.Second}}

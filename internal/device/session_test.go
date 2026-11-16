@@ -283,3 +283,36 @@ func TestPortRecoveryCarriesItsPort(t *testing.T) {
 		t.Errorf("effects = %+v, want one port recovery for port 17", effects)
 	}
 }
+
+// The controller's Forget of a connected device (cmd/sitemgr delete-device,
+// the UI's Forget): the device's next inform is answered with the reply
+// captured on Network 11.0.99 from a forgotten lane switch, a top-level
+// `_type: setdefault`. The session is back on the default key, unadopted,
+// and holds no push of the controller that dropped it.
+func TestForgetArrivesAsSetdefault(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", "reply-setdefault.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	st := State{Key: "0123456789abcdef0123456789abcdef", Adopted: true, UseAESGCM: true, CfgVersion: "c09c23495493524e", SystemCfg: "switch.port.1.name=x\n", PendingCfgVersion: "1", PendingSystemCfg: "switch.port.1.name=y\n"}
+	s := NewSession(testDesc(), "http://192.0.2.1:8080/inform", st, nil, time.Now())
+	effects := s.Apply(time.Now(), rec.Payload)
+	if len(effects) != 1 || effects[0].Kind != inform.EffectFactoryReset {
+		t.Fatalf("effects = %+v, want one factory reset", effects)
+	}
+	if s.Adopted() || s.AuthKey() != inform.DefaultKey || s.UseAESGCM() {
+		t.Errorf("after setdefault: adopted %v, key default %v, gcm %v", s.Adopted(), s.AuthKey() == inform.DefaultKey, s.UseAESGCM())
+	}
+	if _, _, ok := s.Applied(); ok {
+		t.Error("the applied push survived the forget")
+	}
+	if _, _, ok := s.Pending(); ok {
+		t.Error("the pending push survived the forget")
+	}
+}
