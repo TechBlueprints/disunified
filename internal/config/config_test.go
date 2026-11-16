@@ -225,3 +225,29 @@ func TestFirmware(t *testing.T) {
 		}
 	}
 }
+
+// lane_switches: auto (the default) or off, per device
+// (docs/drivers/breakout.md 16).
+func TestLaneSwitches(t *testing.T) {
+	for _, tc := range []struct {
+		v, want string
+		ok      bool
+	}{{"", "auto", true}, {"auto", "auto", true}, {"off", "off", true}, {"on", "", false}} {
+		p := filepath.Join(t.TempDir(), "c.yaml")
+		body := "controller:\n  host: 192.0.2.1\ndevices:\n  - name: sw\n    driver: sonic\n    ssh: admin@192.0.2.2\n    lane_switches: " + tc.v + "\n"
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Load(p)
+		if (err == nil) != tc.ok {
+			t.Errorf("lane_switches %q: err %v, want ok=%v", tc.v, err, tc.ok)
+			continue
+		}
+		if err == nil && f.Devices[0].LaneSwitches != tc.want {
+			t.Errorf("lane_switches %q loaded as %q, want %q", tc.v, f.Devices[0].LaneSwitches, tc.want)
+		}
+	}
+	if got := AutoLaneSwitchName("sw", 3); got != "sw-cage3" {
+		t.Errorf("name %q", got)
+	}
+}

@@ -222,14 +222,18 @@ type options struct {
 	children                                   []informloop.Child
 	laneSwitches                               []config.LaneSwitch // lane switches on this device's cages (attached at start)
 	laneDriver                                 bool                // a lane switch: no transport, opened through its parent
+	// autoLanes builds this device's automatic lane switches' watcher once
+	// the device is open (nil: none, lanes.go); onAdopted and onUnadopted
+	// are an automatic lane switch's own hand-over hooks.
+	autoLanes              func(*log.Logger, devicemodel.LaneProvider, string) *autoLanes
+	onAdopted, onUnadopted func()
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
 // to start is logged and the others keep running.
 func runConfig(ctx context.Context, f *config.File) {
 	var wg sync.WaitGroup
-	for _, sw := range f.Devices {
-		o := configOptions(f, sw)
+	spawn := func(o options) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -237,6 +241,14 @@ func runConfig(ctx context.Context, f *config.File) {
 				o.logger.Printf("FAILED: %v", err)
 			}
 		}()
+	}
+	for _, sw := range f.Devices {
+		o := configOptions(f, sw)
+		// A split cage of this device gets a lane switch by itself
+		// (lane_switches: auto, the default): started from its watcher,
+		// through the same runOne a declared entry uses.
+		o.autoLanes = newAutoLanes(f, sw, spawn)
+		spawn(o)
 	}
 	wg.Wait()
 }
@@ -435,6 +447,9 @@ func runOne(ctx context.Context, o options) error {
 				}
 			}
 		}
+		if o.laneDriver && opts["name"] == "" {
+			opts["name"] = o.name // a lane switch reports its entry's name whether or not it is attached
+		}
 		if d := stateDirOf(o); d != "" {
 			opts["state_dir"] = d // drivers with their own persistent state keep it next to device.json
 		}
@@ -492,6 +507,15 @@ func runOne(ctx context.Context, o options) error {
 		if o.name != "" && !o.collectOnce {
 			devicemodel.RegisterOpened(o.name, sw)
 			defer devicemodel.UnregisterOpened(o.name, sw)
+		}
+		// The automatic ones (docs/drivers/breakout.md 16): an adopted one
+		// is attached here, before this device's loop starts, for the same
+		// reason; a split cage without one gets a pending one from the
+		// watcher. Both find this device by its name, registered above.
+		if lp, ok := sw.(devicemodel.LaneProvider); ok && o.autoLanes != nil && o.name != "" && !o.collectOnce {
+			al := o.autoLanes(log, lp, snap.System.MAC)
+			al.startAdopted()
+			go al.watch(ctx)
 		}
 	}
 
@@ -785,10 +809,16 @@ func runOne(ctx context.Context, o options) error {
 			}
 		},
 		OnConnected: func(snap *devicemodel.Snapshot) {
+			// An automatic lane switch takes its lanes over before it is
+			// seeded and before its first push is planned.
+			if o.onAdopted != nil {
+				o.onAdopted()
+			}
 			if provision != nil {
 				provision(snap)
 			}
 		},
+		OnUnadopted: o.onUnadopted,
 		OnHeld: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)
@@ -1181,3 +1211,5 @@ func (r *apiRetry) succeeded() (recovered bool) {
 	r.failing, r.wait = false, 0
 	return recovered
 }
+
+func itoa(n int) string { return strconv.Itoa(n) }

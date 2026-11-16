@@ -93,6 +93,27 @@ type Device struct {
 	// cage's lane switch, docs/breakout-lag.md §6.4). Reported values only:
 	// nothing is written to the device.
 	Children []Child `yaml:"children"`
+
+	// LaneSwitches is "auto" (the default) or "off": whether the bridge
+	// starts a lane switch by itself for each split cage of this device
+	// (docs/drivers/breakout.md 16). An automatic one is named
+	// "<name>-cage<N>" and informs as a pending device; nothing on this
+	// device changes until the operator adopts it in the controller. Only a
+	// driver that can present lanes starts any; a declared `driver:
+	// breakout` entry for a cage wins over the automatic one.
+	LaneSwitches string `yaml:"lane_switches"`
+}
+
+// LaneSwitches values.
+const (
+	LaneSwitchesAuto = "auto"
+	LaneSwitchesOff  = "off"
+)
+
+// AutoLaneSwitchName is the name of the automatic lane switch on a cage of
+// the entry named parent: its config name, state directory and hostname.
+func AutoLaneSwitchName(parent string, cage int) string {
+	return fmt.Sprintf("%s-cage%d", parent, cage)
 }
 
 // LaneDriver is the driver of a lane switch (docs/drivers/breakout.md): a
@@ -343,6 +364,13 @@ func Load(path string) (*File, error) {
 			if _, ok := devicemodel.ParseFanMode(s.FanMode); !ok {
 				return nil, fmt.Errorf("%s: device %q: fan_mode %q: must be \"default\" or \"quiet\"", path, s.Name, s.FanMode)
 			}
+		}
+		switch s.LaneSwitches {
+		case "":
+			s.LaneSwitches = LaneSwitchesAuto
+		case LaneSwitchesAuto, LaneSwitchesOff:
+		default:
+			return nil, fmt.Errorf("%s: device %q: lane_switches %q: must be \"auto\" or \"off\"", path, s.Name, s.LaneSwitches)
 		}
 		if s.Control.ApplyTimeout != "" {
 			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {

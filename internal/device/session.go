@@ -605,6 +605,12 @@ func (s *Session) applyCmd(now time.Time, r informResponse) []inform.Effect {
 		s.st.CfgVersion = "0"
 		s.st.UseAESGCM = false
 		s.st.Provisioned = nil
+		// The controller's config goes with the adoption: a forgotten
+		// device keeps what it runs, and no longer holds itself to a push
+		// from a controller that has dropped it (the loop reconciles the
+		// applied push every cycle). The next adoption's first push is a
+		// first push again.
+		s.st.SystemCfg, s.st.PendingSystemCfg, s.st.PendingCfgVersion = "", "", ""
 		return []inform.Effect{{Kind: inform.EffectFactoryReset}}
 	case "reboot":
 		s.bootTime = now

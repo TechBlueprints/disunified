@@ -173,6 +173,12 @@ type Config struct {
 	// here, because a device adopted after the bridge started has no other
 	// trigger (found 2026-09-20: a re-adopted switch stayed "USW Leaf").
 	OnConnected func(snap *devicemodel.Snapshot)
+	// OnUnadopted runs once each time the controller takes the adoption
+	// back: its `setdefault` (a Forget of a connected device), after which
+	// the session is on the default key and pending again. An automatic
+	// lane switch hands its lanes back to its parent here
+	// (docs/drivers/breakout.md 16).
+	OnUnadopted func()
 
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
@@ -500,6 +506,10 @@ func (l *Loop) informOnce(ctx context.Context) {
 			lines = append(lines, "authkey adopted from mgmt_cfg, now ADOPTING")
 		case inform.EffectFactoryReset:
 			l.state = StatePending
+			// The session dropped the controller's config with the
+			// adoption; the next adoption's first push is held as a first
+			// push again.
+			l.everApplied, l.heldVersion = false, ""
 			lines = append(lines, "setdefault received, factory reset, back to PENDING")
 		case inform.EffectRebooted:
 			if _, ok := deviceAs[devicemodel.Rebooter](l); ok && l.cfg.ControlReboot {
@@ -561,6 +571,12 @@ func (l *Loop) informOnce(ctx context.Context) {
 			}
 		}
 	}
+	unadoptedNow := false
+	for _, e := range effects {
+		if e.Kind == inform.EffectFactoryReset {
+			unadoptedNow = true
+		}
+	}
 	connectedNow := false
 	if wasAdopting && l.session.Adopted() && l.state == StateAdopting {
 		l.state = StateConnected
@@ -576,6 +592,9 @@ func (l *Loop) informOnce(ctx context.Context) {
 	l.record(rec)
 	if connectedNow && l.cfg.OnConnected != nil {
 		l.cfg.OnConnected(l.session.Snapshot())
+	}
+	if unadoptedNow && l.cfg.OnUnadopted != nil {
+		l.cfg.OnUnadopted()
 	}
 	replied = true
 	l.cyclePorts(ctx)
