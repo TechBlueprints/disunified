@@ -2737,6 +2737,142 @@ Clint's go; the kit's procedure, step by step as planned
   The wait failing on a leaked count cannot happen on this image and stays
   fixture-tested.
 
+### 8.16 A LAG's group members, and the entries the orch could not remove (2026-11-15)
+
+**What was seen.** On the DX010 (`igmp-202511.20261115-6c8eb1cf7`, the
+uplink an aggregate since that afternoon: PortChannel1 = Ethernet0 +
+Ethernet4, untagged in Vlan4094 with the seven reserved static groups),
+orchagent logged `RemoveL2mcEntry: Failed to remove l2mc entry (0.0.0.0,
+<group>, 4094) rv:-7` for the seven reserved groups 159 times in two hours:
+seven at a time, at every PortChannel or VLAN removal on the test cages.
+ASIC_DB held 7 `L2MC_GROUP`, 7 `L2MC_GROUP_MEMBER` (each output
+PortChannel1's bridge port) and no `L2MC_ENTRY`; the chip had no IPMC entry
+and no multicast group for them (`bcmcmd "ipmc table show"`, `"mc show"`).
+-7 is `SAI_STATUS_ITEM_NOT_FOUND`. The record is
+`sonic-igmp-202511.20261115-6c8eb1cf7/l2mc-lag-egress-20261115.txt`.
+
+**The removals were a symptom.** The cause is one event, at 14:14:46:
+
+1. 13:40:58, PortChannel1 came up with only Ethernet0 distributing. l2mcd
+   added PortChannel1's seven reserved-group members then. Ethernet4 started
+   distributing at 13:48:04.
+2. 14:14:46, a looped test cage (Ethernet116, a static member and a router
+   port) went down. Its member deletes took each reserved group's
+   `ref_count` to 0. By then PortChannel1 was in those groups only as a
+   router port (l2mcd had dropped its static membership, below).
+3. `RemoveL2mcEntry` (sonic-swss 0001) removes the **entry first**, then the
+   members it kept for router ports. Ethernet116's member went. syncd
+   refused PortChannel1's: `brcm_sai_remove_l2mc_group_member:634 mcast
+   egress remove failed with error Entry not found`. The orch returned
+   there, half-way, seven times.
+4. That left seven groups recorded with no entry in the chip. Every later
+   removal that reached them (a test cage's PortChannel or VLAN leaving, in
+   `removeL2mcPortMembers`) failed at `remove_l2mc_entry` with -7. And
+   because `hasL2mcGroup()` stays true, a member joining those groups later
+   never makes the entry again. **The seven reserved groups are out of the
+   chip until a swss restart or a reboot.** Meanwhile they flood as unknown
+   multicast (`forward_unknown_multicast` is on, §8.14), so nothing that
+   wanted them lost them.
+
+**Why the SAI refused only those members**, measured on a test LAG
+(16:39-16:43). Cages 25 and 26 (Ethernet96 = ce24, Ethernet100 = ce25,
+empty) were taken out of Vlan4094 and made PortChannel8, untagged in
+Vlan3998 with snooping on. A LACP aggregate of looped cages never
+distributes, so the members' APPL_DB `LAG_MEMBER_TABLE` status and one
+`L2MC_MEMBER_TABLE` row (239.1.2.3, PortChannel8) were written through
+ProducerStateTable. This was done under the lock, with the parent session's
+OK for the two cages' rows, and restored after.
+
+| Run | Chip group (`mc show`) | Removal |
+|---|---|---|
+| A: made with ce24 distributing, then ce25 enabled | ce24 only, before and after | refused ITEM_NOT_FOUND, retried ~5/s |
+| A, ce25 disabled again (the create-time set) | empty: the first attempt had taken ce24 out | still refused |
+| A, ce24 disabled too (none distributing) | | went through: entry and group gone |
+| B: made with both distributing | ce24, ce25 | clean |
+| C: made with both, ce25 then disabled | ce24, ce25 (ce25 kept) | clean; the group went with ce25 in it |
+
+So the legacy-TH SAI programs a LAG's L2MC member as one egress per LAG
+member distributing when the member is made, and never follows a later
+change. Its removal takes one egress per member distributing **at that
+time**, and fails at the first port it never added. What this means for a
+LAG:
+
+- **Delivery.** A group made while one member distributes sends only through
+  that member's port. One made with both keeps sending through a member that
+  has stopped.
+- **Removal.** Once a port has started distributing since the member was
+  made, the member cannot be removed. The SAI's own object stays in
+  sairedis after the refusal, so tolerating ITEM_NOT_FOUND in the orch would
+  not help: the group could then never be removed either.
+
+PortChannel1's members made after 13:48 (the learned groups, from 14:08)
+were removed cleanly all afternoon, after their entry as well. This is the
+first time the uplink has been an aggregate: no earlier syslog on the switch
+has one `mcast egress remove failed`.
+
+**Does anything leak?** Not per removal: the 159 failures are the same seven
+groups each time, and the ASIC_DB and chip counts did not grow. The seven
+stranded groups and their members stay in ASIC_DB until a swss restart or a
+reboot. The test rig left nothing: CONFIG_DB was identical in all 39
+tables, and APPL_DB's and ASIC_DB's L2MC keys were the same before and
+after.
+
+**The uplink's own snooping state.** PortChannel1 is still the router port
+(`show igmp-snooping vlan 4094`, l2mcd's `mrtportr PortChannel1`), and it
+kept that role through the test. Its reserved-group membership is gone, for
+a separate reason found on the way:
+
+- l2mcd held PortChannel1's reserved groups as learned (`Group-ADD ...
+  static:0`) beside the static rows, since the LAN reports them.
+- When the learned membership aged out (14:08:13, 14:13:10, `l2mcd.log`), it
+  sent `Group-DEL ... static:0` and did not put the static back.
+- Now `l2mcd_ctl -v 4094` shows `ngroups : 0`, and its static list names 5
+  of the 31 configured ports. `show igmp-snooping groups vlan 4094` shows 0
+  entries.
+
+That is l2mcd's, not the orch's. It is filed as its own item in the register.
+
+#### The fix: sonic-swss 0005
+
+`contrib/sonic-image/series/sonic-swss/0005-*`:
+
+- **A LAG's members are made again around every change of its members.**
+  `PortsOrch::doLagMemberTask` takes the LAG's L2MC group members out of the
+  chip before a member is added, changes status or is removed
+  (`L2mcOrch::detachLagMembers`, while the distributing set is still the
+  one they were made with). It makes them again when that entry is done
+  (`attachLagMembers`). Records, counts and `ref_count`s stay; the new
+  members take the new set, so delivery follows the LAG and every removal
+  matches. A member the SAI refuses to take out is kept and logged; one it
+  refuses to make again is dropped with its counts.
+- **`RemoveL2mcEntry` removes the members before the entry**, as
+  `RemoveL2mcEntrys` already did. A refused member then leaves the entry,
+  the group and the record together for a later removal, instead of a
+  record of an entry the chip no longer has.
+
+`L2mcOrchTest`'s mock SAI now holds a LAG member's egress as the table
+above measured it. Three new cases: a LAG gaining a distributing member,
+one losing a member and being taken off and back, and a refused member
+leaving its entry whole. They fail on the orch without 0005 and pass with
+it, with the whole mock suite (the slave container on the build VM).
+
+**The driver.** Nothing in its order causes this: a LAG's distributing set
+changes with LACP, not with a push. It needs no change. On an image without
+0005, any LACP change on an aggregate with snooped groups can strand those
+groups. The uplink's next member flap is the likely one.
+
+**What the next image's install must prove** (the register's install check):
+
+- orchagent carries 0005: `docker exec swss grep -c -a -F "made again for
+  its LAG members" /usr/bin/orchagent` is 1.
+- After the reboot, ASIC_DB holds an `L2MC_ENTRY` for every reserved group
+  and `bcmcmd "ipmc table show"` lists them. With l2mcd's static loss still
+  open, that holds only while the LAN keeps reporting the groups.
+- `bcmcmd "mc show"` lists ce0 and ce1 in each group PortChannel1 is in.
+- A test LAG as above (one member distributing, the member made, the second
+  enabled) shows the group on both ports, removes cleanly, and syslog has no
+  `mcast egress remove failed` or `rv:-7` line.
+
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 
 The ECS Aggregation's CONFIG_DB (§8.5; read-only, one sample per table) is
