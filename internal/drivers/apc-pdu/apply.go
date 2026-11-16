@@ -143,9 +143,8 @@ func (c *Collector) warnOnce(key, msg string) {
 //
 // The upload takes its turn at the card's gate with the syslog and clock
 // uploads: within a settle time of another one it is not made, and the
-// error says so. The loop re-applies a static address every cycle, so that
-// one goes a cycle later; a switch to DHCP is applied only on the push that
-// makes it, so that one is not retried.
+// error says so. The loop re-applies a static address every cycle and keeps
+// asking for a switch to DHCP that failed, so either goes a cycle later.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	c.mu.Lock()
 	last := c.last
@@ -162,7 +161,7 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 			return false, nil
 		}
 		if !c.takeUpload() {
-			return false, fmt.Errorf("apc-pdu: %s; the switch to DHCP is not written, and the loop does not retry it", apcnmc.Busy)
+			return false, fmt.Errorf("apc-pdu: %s; the switch to DHCP is written on a later cycle", apcnmc.Busy)
 		}
 		if err := c.r.PutConfig(ctx, tcpipConfig(last.System.MAC, "DHCP Only", "", "", "")); err != nil {
 			return false, err

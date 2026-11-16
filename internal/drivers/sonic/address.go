@@ -41,7 +41,7 @@ import (
 // fails like any other and leaves the switch on its old address.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	if d.DHCP {
-		return false, fmt.Errorf("sonic: the controller wants this switch on DHCP; a SONiC VLAN interface has no DHCP client, and a lease could not be confirmed by dialling it before the old address goes -- the switch keeps its static address; set it to static in the controller")
+		return false, devicemodel.AddressDeclined(fmt.Errorf("sonic: the controller wants this switch on DHCP; a SONiC VLAN interface has no DHCP client, and a lease could not be confirmed by dialling it before the old address goes -- the switch keeps its static address; set it to static in the controller"))
 	}
 	if d.IP == "" || d.PrefixLen <= 0 {
 		return false, fmt.Errorf("sonic: static address without an IP and prefix length")

@@ -56,7 +56,7 @@ func TestApplyAddressMakesTheLeaseStatic(t *testing.T) {
 func TestApplyAddressRefusesMovesAndDHCP(t *testing.T) {
 	c, fr, snap := startFixture(t)
 	fr.Commands = nil
-	if _, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); err == nil || !strings.Contains(err.Error(), "refusing DHCP") {
+	if _, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); err == nil || !strings.Contains(err.Error(), "refusing DHCP") || !devicemodel.IsAddressDeclined(err) {
 		t.Errorf("DHCP: %v", err)
 	}
 	if _, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.250", PrefixLen: 24, Gateway: snap.System.Gateway}); err == nil || !strings.Contains(err.Error(), "refusing to move") {

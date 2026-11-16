@@ -404,7 +404,8 @@ uploads take turns (`apcnmc.Uploads`): the card drops an upload that arrives whi
 still applying the last one, so the second waits out the first's settle
 time. On a first start that needs both, the clock follows the syslog host a
 minute later. An address change that has to wait is logged as an error and
-goes on a later cycle; a switch to DHCP is not retried.
+goes on a later cycle, a switch to DHCP included: the loop keeps that intent
+until the write succeeds.
 
 **Verified live 2026-11-16** (Network 11.0.99), on both cards:
 

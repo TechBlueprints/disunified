@@ -487,7 +487,7 @@ func TestRestartReconnectsThroughTheNewAddress(t *testing.T) {
 
 func TestApplyAddressDeclinesDHCP(t *testing.T) {
 	r := newRig(t, nil)
-	if _, err := r.c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); err == nil || !strings.Contains(err.Error(), "no DHCP client") {
+	if _, err := r.c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); err == nil || !strings.Contains(err.Error(), "no DHCP client") || !devicemodel.IsAddressDeclined(err) {
 		t.Errorf("DHCP = %v", err)
 	}
 }

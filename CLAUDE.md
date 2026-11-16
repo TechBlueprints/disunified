@@ -565,7 +565,7 @@ address** (`control.address`): its IP Settings are pushed as `netconf.1.*` +
 to the PDU's card via config.ini (`Override=<MAC>` required), to the Arista
 inside a config session with `commit timer 00:02:00` that the switch reverts
 itself unless the driver, having dialled the new address, confirms with
-`configure session dui-address commit`. DHCP is applied only when it replaces a static setting in the previous push (the default is never applied), and declined on the Arista, whose driver cannot confirm a lease it cannot predict.
+`configure session dui-address commit`. DHCP is applied only when it replaces a static setting in the previous push (the default is never applied; a write that fails is asked again every cycle until it succeeds or a static setting replaces it, `State.DHCPPending`, 2026-11-16), and declined on the Arista, whose driver cannot confirm a lease it cannot predict.
 Both devices' IP Settings in UniFi are static (2026-09-23).
 
 **Hostname (2026-09-24).** The controller stores a bridged device's `hostname`
