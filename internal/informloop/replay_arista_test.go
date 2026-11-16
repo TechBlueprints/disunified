@@ -21,7 +21,15 @@ import (
 // the UI to set-locate/unset-locate) drive the real driver against the
 // real EOS 4.26.14M captures. What must come out is the exact EOS
 // configuration each push produced live.
-func TestReplayControllerRepliesArista(t *testing.T) {
+func TestReplayControllerRepliesArista(t *testing.T) { replayArista(t, false) }
+
+// The same replay from the log as the recorder now writes it: every pushed
+// secret redacted (the mgmt_cfg authkey, unifi.key, the password hashes).
+// It must adopt on the placeholder key and write exactly what the raw log
+// writes, reply by reply: a placeholder is never a change of its own.
+func TestReplayControllerRepliesAristaRedacted(t *testing.T) { replayArista(t, true) }
+
+func replayArista(t *testing.T, redact bool) {
 	ft := aristaeos.NewFixtureTransport(filepath.Join("..", "..", "docs", "fixtures", "arista-eos-4.26.14M"))
 	coll := aristaeos.NewCollector(ft)
 	coll.Log = log.New(os.Stderr, "", 0)
@@ -46,7 +54,7 @@ func TestReplayControllerRepliesArista(t *testing.T) {
 		return v
 	}
 	runReplay(t, replayDriver{
-		Name: "arista-eos", Replies: "replies.ndjson", Collector: coll, Control: coll, Snapshot: snap,
+		Name: "arista-eos", Replies: "replies.ndjson", Redact: redact, Collector: coll, Control: coll, Snapshot: snap,
 		GatewayIP: "192.0.2.1", // the gateway in the scrubbed EOS ARP fixture
 		Written:   written,
 		Loop: func(c *Config) {

@@ -4,51 +4,45 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
+	"github.com/TechBlueprints/disunified/internal/drivers/reach"
 )
 
 // Collector reads the card's pages and builds the neutral snapshot.
 type Collector struct {
 	r Runner
-	// Addr is the card's address as dialled (host or host:port), reported
-	// as the device's own; MAC, Netmask and GatewayMAC are what the
-	// operator supplies for the controller to place the device by, as for
-	// the apc-ups driver (the pages carry no network identity).
-	Addr       string
-	MAC        string
-	Netmask    string
-	GatewayMAC string
-	// Gateway is the default gateway to write with a static address when
-	// the controller's push carries none: on the power path ("usp") the
-	// controller sends netconf.1.* and the nameservers but no route, so a
-	// card made static from that push alone would have no gateway.
-	Gateway string
-	// Resolve turns a host name into addresses; nil = the system resolver.
-	Resolve func(ctx context.Context, host string) ([]net.IP, error)
-	Log     *log.Logger
+	// Identity is the card's MAC (options.mac), the address dialled and
+	// reported, and the netmask, gateway and gateway MAC the controller
+	// places it by, as for the apc-ups driver: the pages carry no network
+	// identity, so they come from the site's network list and the bridge's
+	// neighbour table, or from the options (docs/drivers/apc-backups.md §8).
+	// The gateway is also what a static address is written with when the
+	// controller's push carries none: on the power path ("usp") it sends
+	// netconf.1.* and the nameservers but no route.
+	reach.Identity
+	Log *log.Logger
 
-	mu       sync.Mutex
-	last     *devicemodel.Snapshot
-	about    about
-	ratedV   int
-	dhcp     bool
-	cardGW   string // DefaultGateway from the card's config.ini (0.0.0.0 = none)
-	names    []string
-	rows     []outletRow // the last poll's rows, in snapshot order
-	resolved string
-	warned   map[string]bool
-	syslog   *apcnmc.SyslogApplier // the card's syslog servers, through config.ini
+	mu     sync.Mutex
+	last   *devicemodel.Snapshot
+	about  about
+	ratedV int
+	dhcp   bool
+	cardGW string // DefaultGateway from the card's config.ini (0.0.0.0 = none)
+	names  []string
+	rows   []outletRow // the last poll's rows, in snapshot order
+	warned map[string]bool
+	syslog *apcnmc.SyslogApplier // the card's syslog servers, through config.ini
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r Runner) *Collector {
 	c := &Collector{r: r, Log: log.Default(), warned: map[string]bool{}}
+	c.Driver = "apc-backups"
 	c.syslog = &apcnmc.SyslogApplier{
 		Get:  r.GetConfig,
 		Put:  r.PutConfig,
@@ -126,9 +120,9 @@ func (c *Collector) build(ctx context.Context, pages map[string]string) (*device
 	snap := &devicemodel.Snapshot{TakenAt: time.Now()}
 	snap.System = devicemodel.System{
 		Vendor: "APC", Model: ab.Model, Serial: ab.Serial, Version: strings.TrimPrefix(strings.SplitN(ab.Firmware, " /", 2)[0], "UPS "),
-		MAC: strings.ToLower(c.MAC), GatewayMAC: strings.ToLower(c.GatewayMAC), DHCP: dhcp, Gateway: c.Gateway,
+		DHCP: dhcp,
 	}
-	c.fillAddress(ctx, &snap.System)
+	c.Fill(ctx, &snap.System)
 
 	// --- battery, from the home page ---
 	b := &devicemodel.Battery{
@@ -187,59 +181,10 @@ func (c *Collector) build(ctx context.Context, pages map[string]string) (*device
 	return snap, nil
 }
 
-// fillAddress reports the card's address: the dialled host, resolved when
-// it is a name (the address follows a lease that way), with the
-// operator-supplied netmask.
-func (c *Collector) fillAddress(ctx context.Context, sys *devicemodel.System) {
-	host := c.Addr
-	if h, _, err := net.SplitHostPort(c.Addr); err == nil {
-		host = h
-	}
-	ip := host
-	if net.ParseIP(host) == nil {
-		resolve := c.Resolve
-		if resolve == nil {
-			resolve = func(ctx context.Context, h string) ([]net.IP, error) {
-				addrs, err := net.DefaultResolver.LookupIPAddr(ctx, h)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]net.IP, 0, len(addrs))
-				for _, a := range addrs {
-					out = append(out, a.IP)
-				}
-				return out, nil
-			}
-		}
-		ips, err := resolve(ctx, host)
-		ip = ""
-		for _, a := range ips {
-			if v4 := a.To4(); v4 != nil {
-				ip = v4.String()
-				break
-			}
-		}
-		if err != nil || ip == "" {
-			c.Log.Printf("apc-backups: %s does not resolve to an IPv4 address (%v); address unreported this cycle", host, err)
-			return
-		}
-		c.mu.Lock()
-		if c.resolved != "" && c.resolved != ip {
-			c.Log.Printf("apc-backups: %s now resolves to %s (was %s): following the lease", host, ip, c.resolved)
-		}
-		c.resolved = ip
-		c.mu.Unlock()
-	}
-	sys.Addresses = []devicemodel.IfAddress{{Iface: "eth0", IP: ip, PrefixLen: prefixLen(c.Netmask)}}
-}
-
-func prefixLen(mask string) int {
-	ip := net.ParseIP(mask)
-	if ip == nil {
-		return 0
-	}
-	ones, _ := net.IPMask(ip.To4()).Size()
-	return ones
+// SetSiteNetworkLookup takes the site's network list (the bridge's
+// controller read) for the card's netmask and gateway.
+func (c *Collector) SetSiteNetworkLookup(lookup func(ctx context.Context, ip string) (devicemodel.SiteNetwork, error)) {
+	c.SiteNetwork = lookup
 }
 
 func (c *Collector) warnOnce(key, format string, args ...any) {

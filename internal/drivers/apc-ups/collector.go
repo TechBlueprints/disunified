@@ -214,7 +214,9 @@ type Collector struct {
 	// Identity is the unit's MAC (the SmartConnect port's, when the operator
 	// supplied it), the address dialled and reported, and the network mask
 	// and gateway MAC the controller places it by: Modbus carries no IP
-	// configuration. The UPS's address is held only by a DHCP lease (nothing
+	// configuration, so they come from the site's network list and the
+	// bridge's neighbour table, or from the options (docs/drivers/apc-ups.md
+	// §14). The UPS's address is held only by a DHCP lease (nothing
 	// can push one onto it), and the gateway keeps a DNS name for the lease
 	// itself -- one that survives adoption deleting the client record.
 	// Dialling that name follows the lease; the resolved address is reported.
@@ -233,6 +235,12 @@ type Collector struct {
 	ShedOnBatteryAfter time.Duration
 	names              []string   // the unit's own name for each reported outlet group, for logs only
 	shed               []LoadShed // each reported group's load-shed policy, same order; for logs and Sheds
+}
+
+// SetSiteNetworkLookup takes the site's network list (the bridge's
+// controller read) for the unit's netmask and gateway.
+func (c *Collector) SetSiteNetworkLookup(lookup func(ctx context.Context, ip string) (devicemodel.SiteNetwork, error)) {
+	c.SiteNetwork = lookup
 }
 
 // NewCollector builds a collector over a runner.

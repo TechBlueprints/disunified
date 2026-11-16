@@ -36,13 +36,16 @@ import (
 //	         as a client, and adopting a device under its own MAC replaces
 //	         that client record (and any fixed-IP reservation on it). Without
 //	         it a stable locally-administered address is derived from the serial.
-//	netmask      the unit's network mask, dotted (e.g. 255.255.255.0), and
-//	gateway_mac  the gateway's L2 address AS THE SEGMENT SEES IT (`ip neigh
-//	             show <gateway>` from a host on that network) -- not the
-//	             controller's listed MAC for the gateway device, which can be
-//	             a different interface. Modbus carries no IP configuration,
-//	             and the controller reads these reachability fields when it
-//	             places a device (docs/topology-placement.md).
+//	netmask      overrides of the unit's network mask (dotted), its
+//	gateway      gateway and the gateway's L2 address. Modbus carries no IP
+//	gateway_mac  configuration, and the controller reads these when it
+//	             places a device (docs/topology-placement.md), so without
+//	             them the mask and gateway come from the controller's network
+//	             list (the network holding the unit's address) and the MAC
+//	             from the bridge's own neighbour table when the bridge has an
+//	             address on that network; a bridge on another segment reports
+//	             no gateway MAC unless gateway_mac is set
+//	             (docs/drivers/apc-ups.md §14).
 //	shed_on_battery_after  a duration, e.g. 30s: make every switched outlet
 //	         group shed its load (turn itself off) once the unit has been on
 //	         battery this long, returning on its own when mains is back. The
@@ -149,4 +152,5 @@ var (
 	_ devicemodel.OutletCycler     = (*Collector)(nil)
 	_ devicemodel.OutletPlanner    = (*Collector)(nil)
 	_ devicemodel.PowerEventSource = (*Collector)(nil)
+	_ devicemodel.SiteNetworkUser  = (*Collector)(nil)
 )

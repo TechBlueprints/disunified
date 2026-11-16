@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 )
 
 // fixtureRecords is the controller's real replies (the replay fixture), as
@@ -45,11 +47,11 @@ func fixtureRecords(t *testing.T) []record {
 }
 
 // line is a record exactly as the recorder wrote it before rotation
-// existed: json.Encoder's output, one line.
+// existed: json.Encoder's output, one line, of the record redacted.
 func line(t *testing.T, r record) []byte {
 	t.Helper()
 	var b bytes.Buffer
-	if err := json.NewEncoder(&b).Encode(r); err != nil {
+	if err := json.NewEncoder(&b).Encode(redactRecord(r)); err != nil {
 		t.Fatal(err)
 	}
 	return b.Bytes()
@@ -305,5 +307,83 @@ func TestRecorderCollapsed404sRotate(t *testing.T) {
 	}
 	if b, _ := readGen(t, dir, 2); wholeLines(t, ".2", b) != 1 || !strings.Contains(string(b), `"status":404`) {
 		t.Errorf(".2 = %q, want the first 404", b)
+	}
+}
+
+// The recorder writes no pushed secret: the 802.1X push of 2026-11-15
+// (its RADIUS secret, password hashes, unifi.key) and the adoption's
+// mgmt_cfg, in the payload and in the mgmt_cfg effect's text, come out
+// redacted with every line kept; the files are owner-only. The capture's
+// placeholders (<secret>, <hash>, <key>, the fixture authkey) stand for
+// the real values.
+func TestRecorderRedactsSecrets(t *testing.T) {
+	cfg, err := os.ReadFile("../../docs/fixtures/controller-11.0.99/system_cfg-dx010-dot1x-1-enabled.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const authkey = "00000000000000000000000000000001" // the fixtures' adopted key
+	mgmt := "authkey=" + authkey + "\ncfgversion=5a4ff4412e1e20d4\nuse_aes_gcm=true\n"
+	payload, _ := json.Marshal(map[string]string{"_type": "setparam", "system_cfg": string(cfg), "mgmt_cfg": mgmt})
+	dir := filepath.Join(t.TempDir(), "inform-log")
+	r, err := newRecorder(dir, testMAC, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := record{Status: http.StatusOK, Payload: payload, Effects: []effectRecord{{Kind: "mgmt-cfg", Text: mgmt}}}
+	if err := r.write(rec); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	b, _ := readGen(t, dir, 0)
+	// json.Encoder writes < and > as < and >.
+	for _, secret := range []string{"<secret>", "\\u003csecret\\u003e", "<hash>", "\\u003chash\\u003e", "unifi.key=\\u003ckey\\u003e", "authkey=" + authkey} {
+		if strings.Contains(string(b), secret) {
+			t.Errorf("the reply log holds %q", secret)
+		}
+	}
+	var got record
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]string
+	if err := json.Unmarshal(got.Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := unificfg.RedactCfg(string(cfg))
+	if p["system_cfg"] != want || strings.Count(p["system_cfg"], "\n") != strings.Count(string(cfg), "\n") {
+		t.Errorf("system_cfg not redacted line for line")
+	}
+	if !strings.Contains(p["system_cfg"], "switch.radius.auth.1.secret="+unificfg.Redacted+"\n") {
+		t.Errorf("the RADIUS secret's line is gone or unredacted")
+	}
+	wantMgmt := "authkey=" + unificfg.RedactedHex + "\ncfgversion=5a4ff4412e1e20d4\nuse_aes_gcm=true\n"
+	if p["mgmt_cfg"] != wantMgmt || got.Effects[0].Text != wantMgmt {
+		t.Errorf("mgmt_cfg = %q, effect %q; want %q", p["mgmt_cfg"], got.Effects[0].Text, wantMgmt)
+	}
+	// What the loop holds is untouched: the driver gets the real values.
+	if rec.Effects[0].Text != mgmt || !strings.Contains(string(rec.Payload), authkey) {
+		t.Error("redaction changed the caller's record")
+	}
+	for path, mode := range map[string]os.FileMode{dir: 0o700, filepath.Join(dir, testMAC+".ndjson"): 0o600} {
+		if st, err := os.Stat(path); err != nil || st.Mode().Perm() != mode {
+			t.Errorf("%s: mode %v, want %v (%v)", path, st.Mode().Perm(), mode, err)
+		}
+	}
+}
+
+// A reply log made by an older build (0644) is narrowed when it is opened.
+func TestRecorderNarrowsAnOldLog(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, testMAC+".ndjson")
+	if err := os.WriteFile(name, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := newRecorder(dir, testMAC, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if st, _ := os.Stat(name); st.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v, want 0600", st.Mode().Perm())
 	}
 }

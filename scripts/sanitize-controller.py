@@ -44,12 +44,16 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            maps one MAC as another capture's scrub did, or to a placeholder
            of its own (a blocked client that must not collide with a driver
            capture's switch MAC); every other one is numbered past the seeded
+       scripts/sanitize-controller.py [--subnet ...]... --text <file>...
+           a host's plain-text capture (a neighbour table, `ip addr`), every
+           line scrubbed; give it the --subnet mappings of the controller
+           capture it is read against, so the two still agree
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
            scrubbed before comments were
 """
-import json, re, sys, ipaddress
+import base64, json, re, sys, ipaddress
 
 MAC_RE = re.compile(r'\b([0-9a-f]{2}[:.-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b', re.I)
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
@@ -191,6 +195,10 @@ def scrub_cfg_text(text):
             v = '<hash>'
         elif k.endswith('.secret') or k.endswith('.x_secret'):
             v = '<secret>'   # a RADIUS server's shared secret (switch.radius.auth.N.secret, 2026-11-15)
+        elif re.search(r'\.(?:x_)?(?:passphrase|psk|key)$|_(?:password|passphrase|secret|key)$', k) or ('.community.' in k and k.endswith('.name')):
+            v = '<secret>' if v else v   # by name, as internal/unificfg/secrets.go (SNMPv3 and the rest: not captured)
+        elif re.match(r'switch\.bgp\.\d+\.raw_config_base64$', k):
+            v = scrub_frr_b64(v)   # an uploaded FRR file: neighbour passwords, then the addresses in it
         elif re.match(r'sshd\.auth\.key\.\d+\.value$', k):
             v = '<pubkey>'
         elif re.match(r'sshd\.auth\.key\.\d+\.comment$', k):
@@ -211,6 +219,27 @@ def scrub_cfg_text(text):
             v = scrub_plain(v)
         out.append(f'{k}={v}')
     return '\n'.join(out) + ('\n' if text.endswith('\n') else '')
+
+# The end of an FRR password line is its secret (`neighbor X password LINE`,
+# `ip ospf authentication-key KEY`, `... md5 KEY`, `key-string LINE`): the
+# same rule as unificfg.RedactFRR. A file the bridge already redacted
+# (<redacted>) is left so.
+FRR_SECRET_RE = re.compile(r'^(.*?\b(?:password|authentication-key|key-string|md5))[ \t]+(\S.*?)[ \t]*$')
+
+def scrub_frr_b64(v):
+    if not v:
+        return v
+    try:
+        text = base64.b64decode(v, validate=True).decode()
+    except Exception:
+        return '<secret>'
+    out = []
+    for line in text.split('\n'):
+        m = FRR_SECRET_RE.match(line)
+        if m and not line.lstrip().startswith('!') and m.group(2) != '<redacted>':
+            line = m.group(1) + ' <secret>'
+        out.append(scrub_plain(line))
+    return base64.b64encode('\n'.join(out).encode()).decode()
 
 FQDN_RE = re.compile(r'\b[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*){2,}\b')
 
@@ -387,11 +416,20 @@ while args and args[0] in ('--subnet', '--ip', '--mac'):
 comments_only = bool(args) and args[0] == '--comments-only'
 if comments_only:
     args = args[1:]
+# --text: a host's text capture beside a controller one (the bridge's own
+# neighbour table and addresses, read against rest/networkconf): every line
+# scrubbed as plain text, with the same --subnet/--ip/--mac mappings.
+text_mode = bool(args) and args[0] == '--text'
+if text_mode:
+    args = args[1:]
 for path in args:
     comments.clear()   # key-N numbering is per file
     raw = open(path).read()
     if comments_only:
         open(path, 'w').write(scrub_comments_only(raw))
+        continue
+    if text_mode:
+        open(path, 'w').write('\n'.join(scrub_plain(l) for l in raw.splitlines()) + ('\n' if raw.endswith('\n') else ''))
         continue
     if path.endswith('.ndjson'):
         lines = []

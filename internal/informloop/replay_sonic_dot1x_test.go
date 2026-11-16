@@ -12,6 +12,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/drivers/sonic"
+	"github.com/TechBlueprints/disunified/internal/unificfg"
 	"github.com/jamesbraid/unifi-emu/inform"
 )
 
@@ -187,5 +188,55 @@ func TestReplaySonicDX010Dot1X(t *testing.T) {
 	}
 	if strings.Contains(s, "<secret>") {
 		t.Errorf("the RADIUS secret reached the log:\n%s", s)
+	}
+}
+
+// pushRedacted11 is push11 from the reply log as the recorder writes it:
+// the push's secrets redacted (unificfg.RedactJSON), the RADIUS secret
+// among them.
+func (r *breakoutRig) pushRedacted11(file, ver string) []string {
+	r.t.Helper()
+	body, _ := json.Marshal(map[string]string{"_type": "setparam", "system_cfg": read11(r.t, file), "mgmt_cfg": "cfgversion=" + ver + "\n"})
+	red, secrets := unificfg.RedactJSON(body)
+	if len(secrets) == 0 {
+		r.t.Fatalf("%s: nothing redacted", file)
+	}
+	if strings.Contains(string(red), "<secret>") || strings.Contains(string(red), "\\u003csecret\\u003e") {
+		r.t.Fatalf("%s: the RADIUS secret survived redaction", file)
+	}
+	r.sess.Apply(time.Now(), red)
+	if !r.l.applyPending(context.Background()) {
+		r.t.Fatalf("%s was not consumed", file)
+	}
+	return r.writes()
+}
+
+// A replay of the redacted 802.1X pushes drives the driver as the raw ones
+// do, with the placeholder where the secret was, and the placeholder is
+// never a change of its own: the same push again writes nothing.
+func TestReplaySonicDX010Dot1XRedacted(t *testing.T) {
+	raw, _ := newDot1XRig(t)
+	red, _ := newDot1XRig(t)
+	for _, r := range []*breakoutRig{raw, red} {
+		r.l.collect(context.Background())
+		r.l.reconcile(context.Background())
+		r.writes()
+	}
+	steps := []struct{ file, ver string }{
+		{"system_cfg-dx010-dot1x-1-enabled.txt", "5a4ff4412e1e20d4"},
+		{"system_cfg-dx010-dot1x-2-port31-credentials.txt", "87d0f163631f307e"},
+		{"system_cfg-dx010-dot1x-7-external.txt", "88400aa3336f2d5f"},
+	}
+	for _, s := range steps {
+		want := raw.push11(s.file, s.ver)
+		got := red.pushRedacted11(s.file, s.ver)
+		wantWrites(t, s.file+" (redacted)", got, want)
+		red.cycle(s.file + " (redacted)")
+		if again := red.pushRedacted11(s.file, s.ver+"0"); len(again) != 0 {
+			t.Errorf("%s pushed again, redacted, wrote %q", s.file, again)
+		}
+	}
+	if s := red.fr.L2Files["/etc/sonic/disunified/dot1x-radius"]; s != unificfg.Redacted+"\n" {
+		t.Errorf("the secrets file from the redacted log = %q", s)
 	}
 }

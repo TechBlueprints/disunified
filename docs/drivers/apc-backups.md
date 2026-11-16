@@ -51,7 +51,7 @@ held one across restarts would run into that limit.
   yet); a critical alarm or "replace battery" as a fault; charging derived
   as on-mains-below-100 %.
 - **Address**: the dialled host (an address, or a name resolved each poll)
-  with the operator's netmask and gateway MAC; `DHCP` from the card's
+  with the netmask and gateway MAC from the site (§8); `DHCP` from the card's
   BootMode.
 
 ## 3. Control
@@ -74,8 +74,9 @@ held one across restarts would run into that limit.
   apc-pdu path, and the same rule that DHCP is applied only when it
   replaces a static setting. **The controller's push for a `usp` device
   carries no `route.1.gateway`** (the switch path's does), so the driver
-  writes `options.gateway`, or failing that keeps the card's current one,
-  and treats the gateway as part of the diff. Found live: the first static
+  writes `options.gateway`, else the gateway of the site network holding
+  the new address (§8), else the card's current one, and treats the
+  gateway as part of the diff. Found live: the first static
   write left the card at `DefaultGateway=0.0.0.0` until the option existed.
 - **Syslog host** (no key): the controller's remote logging host
   into the card's syslog servers, the apc-pdu write
@@ -106,9 +107,9 @@ devices:
     hostname: ups-2
     options:
       mac: 02:00:00:00:00:03          # the card's MAC (About page / config.ini Override)
-      netmask: 255.255.255.0
-      gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it
-      gateway: 192.0.2.1              # written with a static address (the usp push has no route)
+      # netmask: 255.255.255.0        # overrides: by default from the controller's network list and
+      # gateway: 192.0.2.1            # the bridge's neighbour table (§8); the gateway is also what a
+      # gateway_mac: 02:00:00:00:00:fe  # static address is written with (the usp push has no route)
     control:
       outlets: "3,4"                  # the switched groups; 1-2 are main groups and refused regardless
 ```
@@ -170,3 +171,30 @@ live driver.
   the setting.
 - Two Back-UPS bridges in one container that both turn on NUT need
   different ports in the UI: the server binds the pushed port.
+
+## 8. Netmask, gateway and gateway MAC -- from the site, not the config (2026-11-15)
+
+The card's pages carry no network identity, so its `netmask`,
+`gateway_mac` and `gateway` were config options, as on the Smart-UPS. They
+now come from the controller's network list and the bridge's own
+neighbour table, through the code the two UPS drivers share
+(`internal/drivers/reach`; the full rules, fallbacks and captures are in
+[`apc-ups.md`](apc-ups.md) §14). The options stay as overrides.
+
+- **Netmask and gateway**: the enabled corporate or guest network in
+  `rest/networkconf` whose `ip_subnet` holds the card's address. The
+  `ip_subnet` value is the gateway's own address with the prefix.
+- **Gateway MAC**: the bridge's neighbour-table entry for that gateway, read
+  only when the bridge has an address on the card's subnet. On another
+  segment the bridge reports none unless `options.gateway_mac` is set.
+- **The gateway a static address is written with.** The power path's IP
+  Settings push carries no `route.1.gateway` (CLAUDE.md §5). The driver
+  takes, in this order: the push's gateway if one ever comes, then
+  `options.gateway`, then the gateway of the site network holding the *new*
+  address, then whatever gateway the card already holds. A move to another
+  network therefore gets that network's gateway, not the old one. Only when
+  all of these are empty does the card get none, with one warning in the
+  log. `TestApplyAddressTakesTheSiteNetworksGateway` holds this.
+
+The driver now embeds `reach.Identity` instead of keeping its own copy of
+the address and option handling, as `internal/drivers/CLAUDE.md` asks.

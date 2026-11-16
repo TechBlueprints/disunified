@@ -89,8 +89,9 @@ devices:
     model: USWDA25               # UPS 2U; "auto" ranks by port layout and will not pick a UPS
     options:
       mac: 02:00:00:00:00:02     # the SmartConnect port's MAC (Modbus does not expose it)
-      netmask: 255.255.255.0     # the unit's network, and
-      gateway_mac: 02:00:00:00:00:fe  # the gateway's L2 MAC as the segment sees it (ip neigh), not its listed device MAC
+      # netmask: 255.255.255.0   # overrides: by default the controller's network list gives the mask and
+      # gateway: 192.0.2.1       # gateway, and the bridge's neighbour table the gateway's L2 MAC (§14)
+      # gateway_mac: 02:00:00:00:00:fe
       # shed_on_battery_after: 30s  # hold every switched group to "shed after 30 s on battery" (written to the unit at start if it differs)
       # low_runtime: 2m           # power-event log: runtime below this is low_battery (§13); the unit's own warning counts too
       # load_alarm_w: 1200        # power-event log: output at or above this is overload (default: the rating)
@@ -105,9 +106,9 @@ No username or password: the port has none. `mac` is worth setting to the
 port's real address so the controller sees one device rather than a device
 and a separate client — but note §7. `netmask` and `gateway_mac` are what
 the controller places a device in a network by (the reachability fields a
-real device reports beside `connect_request_ip`); Modbus carries no IP
-configuration, so they come from the operator. Leave them out and the UPS
-adopts but has no parent in the topology.
+real device reports beside `connect_request_ip`). Modbus carries no IP
+configuration, so they come from the controller's network list and the
+bridge's neighbour table, and the options override them (§14).
 
 ## 6. Model claimed
 
@@ -573,3 +574,61 @@ The two APC cards (`apc-pdu`, `apc-backups`) do not ask for these lines:
 they syslog their own events (`docs/drivers/apc-pdu.md`, `apc-backups.md`), and the
 bridge would only duplicate them.
 
+
+## 14. Netmask, gateway and gateway MAC -- from the site, not the config (2026-11-15)
+
+Modbus carries no IP configuration, so the unit's `netmask` and
+`gateway_mac` were config options from the first day. The fleet audit of
+2026-10-31 ("UniFi is in control") left them as the last hand-typed
+placement fields. They now come from what the controller and the network
+already know. The options stay as overrides. The code is shared with
+`apc-backups` (`internal/drivers/reach`, `devicemodel.SiteNetworkUser`).
+
+| Field | From | Override |
+|---|---|---|
+| prefix (`netmask` in the inform) | the controller's `rest/networkconf`: the enabled corporate or guest network whose `ip_subnet` holds the unit's address (longest prefix wins) | `options.netmask` |
+| gateway (`System.Gateway`) | the same network's `ip_subnet`, which is the gateway's own address with the prefix (`198.18.0.1/16` in the capture) | `options.gateway` |
+| `gateway_mac` | the bridge's own neighbour table (`/proc/net/arp`, complete entries) for that gateway, read only when the bridge has an address on the unit's subnet | `options.gateway_mac` |
+
+- **The bridge reads the controller with its API key** (`DUI_UNIFI_API_KEY`,
+  the same one naming uses), and caches each answer for five minutes. A
+  failed read keeps the last good answer. Without a key, or with no network
+  holding the address, only the options say anything, and the start-up log
+  says so.
+- **VLAN-only networks are left out.** One in the capture carries an
+  `ip_subnet`, but nothing has shown that its gateway is the address
+  written there (a VLAN-only network is one UniFi's gateway does not serve).
+  A unit on such a network needs the options.
+- **The gateway MAC needs the bridge on the unit's segment.** The deployed
+  container has a leg on the LAN (its macvlan, CLAUDE.md §4), so its kernel
+  resolves the gateway exactly as the unit's segment does. A bridge whose
+  addresses are all on other subnets knows only its own gateway, which is
+  not the unit's. There it reports **no** gateway MAC unless
+  `options.gateway_mac` is set, and logs that once. Placement does not wait
+  on it: the parent comes from the switch port that sees the unit's MAC
+  (`docs/topology-placement.md`). Both UPSes were placed throughout the
+  weeks their `gateway_mac` was wrong (below).
+- **A missing entry is resolved, not guessed.** When the table has no
+  entry for the gateway, the bridge sends one UDP datagram to the gateway's
+  discard port (9), at most once a minute. The kernel resolves the address
+  first, and the next collect reads the entry. An entry that ages out keeps
+  the last one seen.
+- **Each disagreement is logged once.** When an option overrides a
+  different derived value, the log says both, for example
+  `options.gateway_mac … overrides …, the gateway … as the bridge's
+  neighbour table has it`. Removing the option is the operator's call.
+- **Why it mattered.** The site's gateway was replaced after the options
+  were written. The UPSes went on reporting the old gateway's MAC while
+  every bridge that reads its own table (the PDU, the Arista, the Podman
+  host) reported the new one. The old gateway answered ARP one MAC above
+  the one the controller lists for it; the new one answers with exactly the
+  listed MAC. A rule taken from one gateway does not carry over to the next.
+
+Tests: `internal/unifiapi/subnet_test.go` over the controller's network
+list (`docs/fixtures/controller-11.0.99/rest-networkconf-subnets.json`,
+captured 2026-11-15, reduced to the fields read, scrubbed with each real
+subnet mapped into 198.18.0.0/15) and `internal/drivers/reach/reach_test.go`
+over the bridge container's own network namespace, read with `nsenter`
+on the host (`docs/fixtures/bridge-linux-6.12/`, scrubbed by
+`sanitize-controller.py --text` with the same subnet mappings, so the
+gateway is the same address in both).

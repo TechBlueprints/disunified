@@ -60,6 +60,11 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   refuses DHCP -- the bridge reaches this host by that address and, on site,
   runs on it. The fixture runner answers `nmcli -g ipv4.method con show`
   from its `nmipv4` section and applies `con mod` to it.
+- **The reported address is the host's LAN address, not the dial target**
+  (`CurrentAddress`, an `AddressReporter`, 2026-11-15): a bridge on the host
+  dials it at a podman bridge's gateway, which must never be reported. The
+  uplink's address, the static profile's when NetworkManager holds one; the
+  loop follows it when it changes, and `ip:` only overrides it until then.
 - **No rogue DHCP detection, by decision (2026-11-14).** macvlan's bridge
   mode (netavark's default) delivers a container's frames to the host's
   other macvlan containers inside the driver, broadcast offers included,

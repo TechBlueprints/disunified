@@ -1,0 +1,137 @@
+{
+  "data": [
+    {
+      "_id": "00000000000000000000000000000001",
+      "enabled": true,
+      "ip_subnet": "198.19.1.1/24",
+      "ipv6_enabled": true,
+      "ipv6_interface_type": "pd",
+      "name": "corporate-1",
+      "networkgroup": "LAN",
+      "purpose": "corporate",
+      "vlan": 2,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000002",
+      "enabled": true,
+      "ip_subnet": "198.19.2.1/24",
+      "ipv6_interface_type": "none",
+      "name": "corporate-2",
+      "networkgroup": "LAN",
+      "purpose": "corporate",
+      "vlan": 8,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000003",
+      "enabled": true,
+      "ip_subnet": "198.19.3.1/24",
+      "ipv6_interface_type": "none",
+      "name": "corporate-3",
+      "networkgroup": "LAN",
+      "purpose": "corporate",
+      "vlan": 9,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000004",
+      "enabled": true,
+      "ip_subnet": "198.18.0.1/16",
+      "ipv6_enabled": true,
+      "ipv6_interface_type": "pd",
+      "name": "Default",
+      "networkgroup": "LAN",
+      "purpose": "corporate",
+      "vlan_enabled": false
+    },
+    {
+      "_id": "00000000000000000000000000000005",
+      "enabled": true,
+      "ip_subnet": "198.19.4.1/24",
+      "ipv6_interface_type": "pd",
+      "name": "guest-1",
+      "networkgroup": "LAN",
+      "purpose": "guest",
+      "vlan": 69,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000006",
+      "enabled": true,
+      "name": "vlan-only-1",
+      "purpose": "vlan-only",
+      "vlan": 1000,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000007",
+      "enabled": true,
+      "name": "vlan-only-2",
+      "purpose": "vlan-only",
+      "vlan": 2000,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000008",
+      "enabled": true,
+      "ip_subnet": "198.19.5.1/24",
+      "ipv6_interface_type": "none",
+      "name": "vlan-only-3",
+      "networkgroup": "LAN",
+      "purpose": "vlan-only",
+      "vlan": 10,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "00000000000000000000000000000009",
+      "enabled": true,
+      "name": "vlan-only-4",
+      "purpose": "vlan-only",
+      "vlan": 3000,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "0000000000000000000000000000000a",
+      "enabled": true,
+      "name": "vlan-only-5",
+      "purpose": "vlan-only",
+      "vlan": 4000,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "0000000000000000000000000000000b",
+      "enabled": true,
+      "name": "vlan-only-6",
+      "purpose": "vlan-only",
+      "vlan": 4010,
+      "vlan_enabled": true
+    },
+    {
+      "_id": "0000000000000000000000000000000c",
+      "enabled": true,
+      "ipv6_enabled": true,
+      "name": "wan-1",
+      "purpose": "wan",
+      "vlan_enabled": false
+    },
+    {
+      "_id": "0000000000000000000000000000000d",
+      "enabled": true,
+      "ipv6_enabled": true,
+      "name": "wan-2",
+      "purpose": "wan",
+      "vlan_enabled": false
+    },
+    {
+      "_id": "0000000000000000000000000000000e",
+      "enabled": true,
+      "name": "wan-3",
+      "purpose": "wan",
+      "vlan_enabled": false
+    }
+  ],
+  "meta": {
+    "rc": "ok"
+  }
+}

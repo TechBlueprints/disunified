@@ -3464,8 +3464,8 @@ feature the DX010 does not claim:
 
 | Feature (claim) | ECS claims | DX010 claims | Keys the ECS receives |
 |---|---|---|---|
-| STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | no, 0 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
-| Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | no | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
+| STP, RSTP (`feature_caps` 64; `stp_caps` BPDU_GUARD 1, AUTO_EDGE 2) | yes, `stp_caps` 3 | yes since 2026-11-01 through disunified-l2d (§11.5), `stp_caps` 11 | `switch.stp.status/version/priority`; `switch.port.N.stp.port_mode/edge/bpdu_guard` |
+| Loop protection (`KEEPALIVE_LOOP_PROTECTION` 1048576) | yes | yes since 2026-11-01 (§11.5) | `switch.port.N.ld_mode`, `switch.port.N.keepalive` |
 | IGMP snooping (256; `IGMP_SNOOPING_ADVANCED` 67108864; `igmp_snoop_caps` 31) | yes | with `options.igmp: on` on the l2mcd image (§8.14), off until H4 | `switch.vlan.N.igmp_*` (snooping, querier, fast leave, membership, max response, mrouter expiry, suppression), `switch.vlan.N.forward_unknown_multicast`, `switch.multicast.*` |
 | DHCP snooping (128) | yes | yes since the 2026-11-01 build (§11.7.6) | `switch.dhcp_snoop.status`, and with it on `switch.dhcp_guard.N.server/vlan/status` (captured 2026-11-01, §11.7) |
 | Port isolation (4), port security (512) | yes | yes since 2026-11-07 (§11.12) | `switch.port.N.port-security` (isolation keys only when set) |
@@ -3473,9 +3473,10 @@ feature the DX010 does not claim:
 | Egress rate limit (32) | yes | yes since 2026-11-07 (§11.12) | none while unset |
 | L3 routing (1), BGP (33554432), `max_l3_intf` 64, `max_static_routes` 256 | yes | L3 routing, 64/256, and BGP since 2026-11-07 (§11.13, §11.14) | `switch.routing_enabled`, and `switch.routing_interface.N.*` once a network is routed on the switch (captured 2026-11-07, §11.13); `switch.bgp.1.*` once a BGP router names the switch (§11.14) |
 | OSPF (`feature_caps2` 4) | no (`feature_caps2` 128) | yes since 2026-11-07 (§11.14) | `switch.ospf.*`, and `switch.routing_interface.N.ospf.*` for each routed network in an area (captured 2026-11-07, §11.14) |
-| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128, MAC 0 since the 2026-11-01 build (§11.7.6) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
+| Custom ACLs (`max_custom_ip_acls`/`mac_acls`/`global_acls` 512; no feature bit) | yes | IP 128 since the 2026-11-01 build (§11.7.6); MAC 128 since 2026-11-06 on the image with the kit's sonic-swss 0003 (§11.7.8) | none while no rule exists; `switch.acl.mac.N.*`, `switch.acl.ip.N.*` once one does (captured 2026-11-01, §11.7) |
 | Routed ports and aggregates (`feature_caps2` 16, `PORT_ROUTING`) | no | yes since 2026-11-08 (§11.16) | `switch.routing_interface.N.type=port` / `=lag` with `port` / `lag` (captured 2026-11-08, §11.16) |
 | VRRP (268435456) | no | no: offered only as an MC-LAG group's L3 Automatic Failover (§11.16) | `switch.routing_interface.N.vrrp.*` from the MC-LAG group's context |
+| 802.1X (`feature_caps` 2) | no | yes since 2026-11-15 where l2d can run (§11.26) | the 802.1X keys captured on 11.0.99 (§11.26) |
 | MC-LAG (16777216) | yes | no | needs a second switch; out of scope |
 | LACP, FEC, jumbo, storm control | yes (storm by errdisable) | yes | the same |
 
@@ -8210,8 +8211,11 @@ Found, not changed: **the bridge's reply log keeps every push as it
 came**, `switch.radius.auth.N.secret` included (as it keeps the adoption's
 authkey and an SNMP community), in `/host/disunified/inform-log/<name>/`
 (the directory the login user's alone, the file 0644). It is the capture
-source the replay fixtures are scrubbed from; whether it should redact
-secrets is in the register.
+source the replay fixtures are scrubbed from. **Changed since (2026-11-15):**
+the recorder redacts every pushed secret by key, files 0600 in a 0700
+directory, and every log line masks the push's secret values
+(`docs/install.md` §8); a log written before that build keeps its values
+until it rotates out or is removed.
 
 After the run the switch held only what the driver itself leaves: hostapd
 in `/usr/local/sbin` (as mstpd is) and its build directory.

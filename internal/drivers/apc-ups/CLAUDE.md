@@ -31,11 +31,11 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - NUT's own status code reads `regbuf[18]` for both shutdown-imminent (LB)
   and needs-replacement (RB); the second looks like a bug, so no
   replace-battery flag is derived from it here.
-- Modbus does not expose the port's MAC, netmask or gateway. `options:
-  mac`, `netmask`, `gateway_mac` supply them; the last two are what the
-  controller places the device in a network by (the Arista's missing-parent
-  lesson), so without them it adopts with no topology parent. The
-  controller already lists the port as a client under that MAC, and
+- Modbus does not expose the port's MAC, netmask or gateway. `options.mac`
+  supplies the MAC. Since 2026-11-15 the netmask and gateway come from the
+  controller's `rest/networkconf` and the gateway MAC from the bridge's own
+  neighbour table (`reach`, `docs/drivers/apc-ups.md` §14); `netmask`,
+  `gateway` and `gateway_mac` override them. The controller already lists the port as a client under that MAC, and
   **adopting a device deletes its client record and any fixed-IP
   reservation** (the PDU lost its address this way) — give the unit a manual
   address, or accept that, before adopting.
@@ -44,8 +44,10 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   function 16 -- `0x0204`/`0x0202`/`0x0210` = Group 1 off/on/reboot. Tests
   hold it byte-exact to NUT's `apc_modbus`. Groups only (one relay per
   switched group); the Main group (row 1) is reported without a relay and
-  refused if pushed. **`control.outlets: "2"` is on in the deployed config** since 2026-09-26
-  evening (rebuilt from 8630fe0); no command has been sent yet.
+  refused if pushed. Outlet control has been on since 2026-09-26 evening (rebuilt from 8630fe0);
+  no command has been sent yet. Since 2026-10-31 `control.outlets` is unset in the deployed
+  config, which means all outlets: Group 1 is still the only one that can switch, since the Main
+  group is refused and the placeholder rows 3-8 are ignored ("the unit has 2 outlet groups").
 - **The loop holds the first outlet push of a run** that would switch
   anything (`OutletPlanner`), per process -- a read-only bridge has an
   applied cfgversion, so the ports' from-state hold would not fire when
@@ -85,10 +87,14 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
 - "Update Available" is the honest version "15.5" losing to the UPS 2U's
   release number. The rule is to accept it (ECS Core precedent): the
   emulated upgrade persists and reports the controller's version, base kept.
-- **`gateway_mac` is the gateway's L2 address on the segment**, from `ip
-  neigh` on a host there -- the UDM answered ARP as `…:0b:a4` while the
-  controller lists the device as `…:0b:a3`. The PDU and Arista get it right
-  because they read their own ARP tables; an operator option has to be told.
+- **`gateway_mac` is the gateway's L2 address on the segment**, from a
+  neighbour table there, never from the controller's listed MAC for the
+  gateway device: the first gateway answered ARP one MAC above the listed
+  one, its replacement with the listed one itself. The hand-typed option
+  kept the first gateway's MAC for weeks after the swap, while the PDU, the
+  Arista and the Podman host followed it on their own. The bridge's own
+  table is now the source, read only when the bridge has an address on the
+  unit's subnet (§14).
 - **The port refuses a new connection for a moment after a session closes.**
   Restarting the bridge (SIGINT, reconnect ~0.3 s later) got `connect:
   connection refused` on the first attempt; `main.go`'s start retry
@@ -136,8 +142,9 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   logged. Idempotent -- a unit already holding the policy gets no write.
   The Main group is never written and an absent option never clears
   anything. Live result recorded in `docs/drivers/apc-ups.md` §11.
-- **NUT server (2026-09-27).** `control.nut: true` claims `smart_power_caps`
-  bit 1; the controller then offers the NUT Server form and pushes
+- **NUT server (2026-09-27).** Every UPS claims `smart_power_caps` bit 1
+  (`control.nut` is accepted and no longer needed: without the claim the UI
+  cannot save the device's settings); the controller then offers the NUT Server form and pushes
   `nutserver.status/id/port/credential/username/password` (captured:
   `system_cfg-ups-nutserver.txt`) and plants `nut_client_ips: []`.
   `internal/nutd` runs upsd's protocol over the session snapshot; the loop

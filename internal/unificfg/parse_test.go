@@ -170,6 +170,38 @@ func TestParseSyslogRemote(t *testing.T) {
 	}
 }
 
+// The site's SNMP switched on (Settings -> CyberSecure -> Traffic Logging;
+// 10.6.106, the Arista bridge's own reply log of 2026-09-19): three keys, the
+// v1/v2c read-only community under the fixed name "public". The push carries
+// no location or contact key. With the site's SNMP off the block is absent.
+func TestParseSNMPCommunity(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-10.6.106/system_cfg-snmp-community.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Parse(string(b))
+	if c.SNMP == nil || !c.SNMP.Enabled || c.SNMP.Version != "1_2c" || c.SNMP.Community != "<secret>" {
+		t.Fatalf("SNMP = %+v, want enabled, 1_2c, the scrubbed community", c.SNMP)
+	}
+	for k := range c.Raw {
+		if strings.HasPrefix(k, "switch.snmp.") && k != "switch.snmp.status" && k != "switch.snmp.version" && k != "switch.snmp.community.public.name" {
+			t.Errorf("an SNMP key the parser does not read: %s", k)
+		}
+	}
+	if !CfgKeySecret("switch.snmp.community.public.name") {
+		t.Error("the community must be redacted in what the bridge writes")
+	}
+	var off []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(l, "switch.snmp.") {
+			off = append(off, l)
+		}
+	}
+	if Parse(strings.Join(off, "\n")).SNMP != nil {
+		t.Error("a push without switch.snmp.* must leave SNMP nil")
+	}
+}
+
 // The ECS Aggregation's push (Ubiquiti's own SONiC switch, which claims STP,
 // BPDU guard, auto edge and loop protection) carries the spanning-tree and
 // loop-protection keys the controller withholds from a device that does not
