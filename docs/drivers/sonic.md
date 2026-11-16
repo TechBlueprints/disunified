@@ -10361,9 +10361,9 @@ Auto is what splits it.
 - `sfp-read-unread.txt`: `sudo sfputil show presence` (cages 1, 2 and 3's
   four lanes `Present`, the rest `Not present`) and `sudo sfputil show
   eeprom -p Ethernet4`, in the layout of the driver's read script. The two
-  commands were run one after the other by hand and joined under the
-  script's `@@@` lines; the script itself had not run on the switch when
-  this was written.
+  commands were first run by hand and joined under the script's `@@@`
+  lines; the read script itself, run on the switch the same afternoon with
+  the driver's list of 30 unread cages, printed the same bytes.
 - `sfp-read-cage3.txt`: the same for `Ethernet8`, a module xcvrd *has*
   read, so the two sources can be compared on one module.
 
