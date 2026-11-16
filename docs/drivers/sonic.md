@@ -2179,6 +2179,9 @@ counted drop instead of an abort. The port db's own fault is not fixed: an overw
 key, and a later delete by the old name frees the index's current name while it is still a key. With
 0011 nothing reaches it (a follow-up).
 
+Upstream as [jasper-hou-micas/sonic-l2mcd-micas#11](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/11)
+(posted 2026-11-16, one commit on `651a13b`; [`prior-art.md`](../prior-art.md) §6.1).
+
 **What an image install with 0014 has to prove.** A breakout and a join of an empty cage, as in
 §11.25.3, then the uplink's next link event. l2mcd keeps its pid, logs no `rx_bad_if` growth
 (`l2mcd_ctl -s <file> -c 2`) and leaves no new core in `/var/core`. With 0011 in the image the

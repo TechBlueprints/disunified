@@ -158,6 +158,7 @@ The daemon's review happens in
 | [jasper-hou-micas/sonic-l2mcd-micas#8](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/8) (posted 2026-11-15) | 0011 | a port a breakout or join re-creates keeps its own index, not another port's (§11.25.3 of [`drivers/sonic.md`](drivers/sonic.md)) |
 | [jasper-hou-micas/sonic-l2mcd-micas#9](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/9) (posted 2026-11-15) | 0012 | free a closed port socket's libevent event |
 | [jasper-hou-micas/sonic-l2mcd-micas#10](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/10) (posted 2026-11-15) | 0013 | `mcgrp_stop_phy_port()` no longer reads and clears a membership it has just freed (the review of #1 flagged it) |
+| [jasper-hou-micas/sonic-l2mcd-micas#11](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/11) (posted 2026-11-16) | 0014 | a report, leave or MLD done from a port the port db has no name for is dropped and counted, instead of aborting l2mcd on `std::logic_error` (§8.13 of [`drivers/sonic.md`](drivers/sonic.md), from l2mcd's core of 2026-11-15) |
 
 #8 and #9 were cut the same way, from branches `fix/breakout-port-index` and `fix/free-socket-event`, on `651a13b` (`dev` and `l2mcd-pre`, both still there on
 2026-11-15; no upstream change to either file since). Each applies and builds alone, and the
@@ -178,6 +179,12 @@ posted 2026-11-15 on Clint's approval in the posting session. Its harness link i
 stub, which counted no member deletion at all (l2mcd sends them through
 `l2mcsync_add_l2mc_entry()` with `op_code` 0), so #8's "no member deleted" check could not
 fail at the commit #8 links; re-run with the counting stub, #8's results are unchanged.
+
+[#11](https://github.com/jasper-hou-micas/sonic-l2mcd-micas/pull/11) (the kit's 0014) was cut
+the same way, as branch `fix/unnamed-port-report` (one commit on `651a13b`, `src/igmp_io.c` +11,
+`src/mld_io.c` +10), and posted 2026-11-16 on Clint's approval in the posting session. It merges
+in any order with #2-#10. Its harness link is disunified `1eee9ba` (the six `port-no-name-*`
+cases and a stub of `l2mcd_is_peerlink()` that aborts on NULL as the real one does).
 
 The four sonic-net drafts each got a comment linking a rebase branch on
 Clint's forks (`igmp-snp-202511`, on the commits `series/BASES` pins):
