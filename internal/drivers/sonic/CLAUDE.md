@@ -899,6 +899,11 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   - **The loopback toggle is slow**: each `bcmcmd "port ceN lb=..."` takes
     about 0.8 s, so a 2.5 s period cycles every ~4 s. Measure the rate from
     the payloads, not the period.
+  - **`bcmcmd` reads stdin.** In a script fed over SSH (`ssh switch 'bash -s' <
+    script`) the first `bcmcmd` swallows the rest of the script as drivshell
+    input, and the steps after it never run (2026-11-15). Copy the script to
+    the switch and run it with `< /dev/null`, and give each `bcmcmd` in it
+    `< /dev/null` too.
 - **A PortChannel member must hold no chip STP port (`l2d.py`
   `in_bridge`, `repair_strays`, `docs/drivers/sonic.md` §11.34,
   2026-11-15).** StpOrch's `addStpPort` creates a bridge port for a port
