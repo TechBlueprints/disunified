@@ -622,6 +622,89 @@ static int member_stop(int afi, int leave)
     return bad;
 }
 
+/* The port-no-name cases (found on the DX010, 2026-11-15): l2mcd aborted on an
+ * uncaught std::logic_error ("basic_string: construction from null is not
+ * valid"). An IGMPv3 report had arrived on a receive socket whose port index
+ * had lost its name in portdb -- a breakout had numbered other ports under
+ * Ethernet0's index, then deleted the name there -- and receive_igmp_packet()
+ * passed portdb_get_ifname_from_portindex()'s NULL to l2mcd_is_peerlink(),
+ * which makes a std::string of it. Here Ethernet8's name is taken out of
+ * portdb (its tree and sockets stay, as on the switch), then one message of
+ * the given type arrives on it. kind: 0 IGMPv2 report, 1 IGMPv3 report,
+ * 2 IGMPv2 leave, 3 MLDv1 report, 4 MLDv2 report, 5 MLDv1 done. It must be
+ * dropped and counted (rx_bad_if), not forwarded, and make no membership.
+ * Returns 0, 1 when it was not dropped so, 2 when the setup failed. */
+static int no_name(int kind)
+{
+    static uint8_t m[64], pk[128];
+    static const uint8_t grp4[4] = { 239, 1, 2, 3 }, all_routers[4] = { 224, 0, 0, 2 };
+    int afi = kind < 3 ? L2MCD_IPV4_AFI : L2MCD_IPV6_AFI;
+    MCGRP_CLASS *mcgrp = MCGRP_GET_INSTANCE_FROM_VRFINDEX(afi, L2MCD_DEFAULT_VRF_IDX);
+    UINT16 vir = (USHORT)vnode->ifindex;
+    char name[L2MCD_IFNAME_SIZE];
+    l2mcd_if_tree_t *t = l2mcd_if_to_kif(port_idx[1]);
+    unsigned bad_if;
+    IPV6_ADDRESS a6;
+    MCGRP_ENTRY *e;
+    MADDR_ST g;
+    size_t n = 0, len = 0, tx;
+    char *nm;
+
+    snprintf(name, sizeof(name), "Ethernet8");
+    if (!t || portdb_delete_ifname(name) || portdb_get_ifname_from_portindex(port_idx[1])) {
+        fprintf(stderr, "harness: setup failed: Ethernet8's tree %p, its name not removed\n", (void *)t);
+        return 2;
+    }
+    fprintf(stderr, "  Ethernet8: index %u has no name now; its tree (kif %d, igmp fd %d) stays\n",
+            port_idx[1], (int)t->kif, t->igmp_sock_fd);
+    memset(m, 0, sizeof(m));
+    memset(&a6, 0, sizeof(a6));
+    a6.address.address8[0] = 0xff; a6.address.address8[1] = 0x3e; a6.address.address8[15] = 1;
+    if (afi == L2MCD_IPV4_AFI)
+        mcast_set_ipv4_addr(&g, 0xef010203);                    /* 239.1.2.3 */
+    else
+        mcast_set_ipv6_addr(&g, &a6);                           /* ff3e::1 */
+    switch (kind) {
+    case 0:                                                     /* IGMPv2 report to the group */
+    case 2:                                                     /* IGMPv2 leave to all routers */
+        m[0] = kind ? 0x17 : 0x16;
+        memcpy(m + 4, grp4, 4);
+        len = mk_ip4(pk, m, 8, 0, kind ? all_routers : grp4);
+        break;
+    case 1:                                                     /* IGMPv3 report, one EXCLUDE {} record */
+        n = igmpv3_hdr(m, 1);
+        n += igmpv3_rec(m + n, 4, 0, 0, 0, 0);
+        len = mk_ip4(pk, m, n, 0, v3_reports);
+        break;
+    case 3:                                                     /* MLDv1 report to the group */
+    case 5:                                                     /* MLDv1 done to all routers */
+        m[0] = kind == 3 ? 131 : 132;
+        memcpy(m + 8, a6.address.address8, 16);
+        len = mk_ip6(pk, m, 24, 1, 0, 2);
+        if (kind == 3)
+            memcpy(pk + 24, a6.address.address8, 16);
+        fix_mld_csum(pk, len);
+        break;
+    case 4:                                                     /* MLDv2 report, one EXCLUDE {} record */
+        n = mldv2_hdr(m, 1);
+        n += mldv2_rec(m + n, 4, 0, 0, 0, 0);
+        len = mk_ip6(pk, m, n, 1, 0, 0x16);
+        break;
+    }
+    bad_if = mcgrp->rx_bad_if;
+    tx = tx_count;
+    if (afi == L2MCD_IPV4_AFI)
+        feed_ip4(1, pk, len);
+    else
+        feed_ip6(1, pk, len);
+    e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+    nm = portdb_get_ifname_from_portindex(port_idx[1]);
+    fprintf(stderr, "  after the message: rx_bad_if %u (was %u), %s membership at index %u, forwarded %zu, index named %s\n",
+            mcgrp->rx_bad_if, bad_if, e && mcgrp_find_mbrshp_entry(e, port_idx[1]) ? "a" : "no",
+            port_idx[1], tx_count - tx, nm ? nm : "(none)");
+    return mcgrp->rx_bad_if != bad_if + 1 || (e && mcgrp_find_mbrshp_entry(e, port_idx[1])) || tx_count != tx;
+}
+
 static const char *only;
 static int run(const char *name)
 {
@@ -910,6 +993,26 @@ int main(int argc, char **argv)
                 continue;
             run(mc[i].name);
             if ((r = member_stop(mc[i].afi, mc[i].leave)) == 2)
+                return 2;
+            if (r)
+                abort();
+        }
+    }
+    /* a message on a port index portdb does not name (no_name above) */
+    {
+        static const char *nc[] = {
+            "port-no-name-v2-report", "port-no-name-v3-report", "port-no-name-v2-leave",
+            "mld-port-no-name-v1-report", "mld-port-no-name-v2-report", "mld-port-no-name-done",
+        };
+        unsigned i;
+        int r;
+
+        for (i = 0; i < sizeof(nc) / sizeof(nc[0]); i++) {
+            /* each takes Ethernet8's name for good: only when named */
+            if (!only || strcmp(only, nc[i]))
+                continue;
+            run(nc[i]);
+            if ((r = no_name(i)) == 2)
                 return 2;
             if (r)
                 abort();

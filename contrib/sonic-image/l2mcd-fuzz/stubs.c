@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sanitizer/common_interface_defs.h>
 #include "l2mcd.h"
 
 void l2mcsync_add_vlan_entry(uint16_t vlan_id) { (void)vlan_id; }
@@ -29,7 +31,20 @@ void l2mcsync_add_l2mc_entry(L2MCD_APP_TABLE_ENTRY *msg)
 void l2mcsync_del_l2mc_entry(L2MCD_APP_TABLE_ENTRY *msg) { stub_count_del(msg); }
 void l2mcsync_process_mrouterentry(L2MCD_APP_TABLE_ENTRY *msg) { (void)msg; }
 void l2mcsync_debug_print(const char *fmt, ...) { (void)fmt; }
-int l2mcd_is_peerlink(char *portname) { (void)portname; return 0; }
+/* l2mcd_sync.cpp makes a std::string of the name (L2mcSync::isPortPeerLink
+ * takes one): from NULL that throws std::logic_error, which nothing in l2mcd
+ * catches, so the daemon aborts (the DX010, 2026-11-15). The stub does the same,
+ * with the caller's stack. */
+int l2mcd_is_peerlink(char *portname)
+{
+    if (!portname) {
+        fprintf(stderr, "l2mcd_is_peerlink(NULL): terminate called after throwing an instance of "
+                "'std::logic_error' (basic_string: construction from null is not valid)\n");
+        __sanitizer_print_stack_trace();
+        abort();
+    }
+    return 0;
+}
 void l2mcsync_notify_config_done(char *option, char *paraname) { (void)option; (void)paraname; }
 void l2mcsync_notify_warm_reboot_done(char *option, char *paraname) { (void)option; (void)paraname; }
 void l2mcsync_clear_l2mc_entry(void) { }

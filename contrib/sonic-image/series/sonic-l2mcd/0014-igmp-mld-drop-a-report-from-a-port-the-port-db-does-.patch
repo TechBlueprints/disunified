@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Sun, 15 Nov 2026 18:30:00 -0700
+Subject: [PATCH] igmp, mld: drop a report from a port the port db does not
+ name
+
+The IGMP report and leave paths and the MLD report and done handlers
+pass portdb_get_ifname_from_portindex() of the receiving port to
+l2mcd_is_peerlink() unchecked; receive_igmp_packet()'s own peer-link
+test checks it. l2mcd_is_peerlink() makes a std::string of the name,
+and NULL throws std::logic_error, which nothing catches: the daemon
+aborts. A port index without a name is reached when a breakout numbers
+a re-created port under another port's index and the name there is
+then deleted, leaving that port's receive socket on the index.
+
+Seen on a Celestica DX010 (SONiC 202511): l2mcd aborted on
+"basic_string: construction from null is not valid" one second after a
+port's link came back up at the index whose name a breakout had taken
+(l2mcd's core: receive_igmp_packet() -> l2mcd_is_peerlink(), an IGMPv3
+report on index 4096, which the port db held no name for). systemd
+restarted it three minutes later.
+
+receive_igmp_packet() and receive_mld_packet() now drop any message but
+a query from such a port, counted in rx_bad_if and logged with the
+VLAN's debug log, as a packet from a down port is. Queries take no
+name on their way and are processed as before.
+---
+ src/igmp_io.c | 11 +++++++++++
+ src/mld_io.c  | 10 ++++++++++
+ 2 files changed, 21 insertions(+)
+
+diff --git a/src/igmp_io.c b/src/igmp_io.c
+index 867eb20..4827893 100644
+--- a/src/igmp_io.c
++++ b/src/igmp_io.c
+@@ -728,6 +728,17 @@ int receive_igmp_packet (IP_PARAMETERS  *sptr_ip_parameters)
+             FN,LN, sptr_igmp_message->type, sptr_ip_parameters->rx_phy_port_number, portdb_get_ifname_from_portindex(sptr_ip_parameters->rx_phy_port_number),
+             mcast_print_addr(&group_addr), dest_ip,clnt_src_ip);
+     }
++    /* A report or leave from a port the port db does not name is dropped: the
++     * report and leave paths below pass the name to l2mcd_is_peerlink(), which
++     * makes a std::string of it, and NULL throws std::logic_error, which nothing
++     * catches. Such a port is one numbered under an index that has lost its name
++     * (a port re-created at another port's index); a query takes no name. */
++    if (!if_name && sptr_igmp_message->type != IGMP_MEMBERSHIP_QUERY_TYPE) {
++        L2MCD_VLAN_LOG_ERR(vid, "%s:%d:[vlan:%d] igmp_type:0x%x rx_port_num:%d: the port has no name in the port db. Dropping packet",
++            FN, LN, vid, sptr_igmp_message->type, sptr_ip_parameters->rx_phy_port_number);
++        igmp->rx_bad_if++;
++        goto free_packet;
++    }
+ 
+     if (!MCGRP_IS_VALID_INTF(rx_port_number))
+     {
+diff --git a/src/mld_io.c b/src/mld_io.c
+index fa5a9d7..dcdd972 100644
+--- a/src/mld_io.c
++++ b/src/mld_io.c
+@@ -1638,6 +1638,16 @@ int receive_mld_packet(IP6_RX_PKT_MSG *mld_pkt_msg)
+     }
+     mld_pkt_msg->ip_param.hopbyhop_length = hbh_len;
+ 
++    /* As in receive_igmp_packet(): the report and done handlers pass the port's
++     * name to l2mcd_is_peerlink(), and a NULL name throws std::logic_error. */
++    if (!ifname && icmp6h->type != MLD_MEMBERSHIP_QUERY_TYPE)
++    {
++        L2MCD_VLAN_LOG_ERR(vid, "%s:%d:[vlan:%d] mld_type:%d rx_port_num:%u: the port has no name in the port db. Dropping packet",
++                           FN, LN, vid, icmp6h->type, rx_phy_port);
++        mld->rx_bad_if++;
++        return 0;
++    }
++
+     switch (icmp6h->type)
+     {
+     case MLD_MEMBERSHIP_QUERY_TYPE: // MLDv1v2 Query
