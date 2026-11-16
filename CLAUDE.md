@@ -12,7 +12,8 @@ port and switch config applied to the vendor device). The initial public
 release (2026-09-20) shipped two drivers, both verified live on Network
 10.6.106: `arista-eos` (Clint's Arista DCS-7160-48TC6-F on EOS 4.26.14M,
 claimed as `UDC48X6` "USW Leaf") and `proxmox` (each node of his Proxmox VE
-9.1 cluster as a `USWF07D` "ECS Core"). **Phase 0 (read) and phase 1
+9.1 cluster as a `UDC48X6` "USW Leaf" too; a `USWF07D` "ECS Core" for its
+first day only). **Phase 0 (read) and phase 1
 (control) are done for both** — see `docs/feature-map.md` for the
 per-feature status. A third driver, `apc-pdu`, followed: Clint's APC AP7931
 rack PDU (NMC AOS 3.9.2) as a `USPPDUP` power distribution unit, outlets read
