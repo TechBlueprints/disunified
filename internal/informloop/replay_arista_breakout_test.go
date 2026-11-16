@@ -72,7 +72,7 @@ func newAristaLaneRig(t *testing.T) *aristaLaneRig {
 	r := &aristaLaneRig{t: t, ft: ft, coll: coll, parent: parent, log: buf}
 	r.cycleParent("the capture")
 
-	o, err := breakout.ParseOptions(map[string]string{"parent": "arista", "cage": "54"})
+	o, err := breakout.ParseOptions(map[string]string{"parent": "arista", "cage": "54", "mac": laneSwitchMAC, "name": "lane-switch"})
 	if err != nil {
 		t.Fatal(err)
 	}

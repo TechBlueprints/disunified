@@ -34,7 +34,7 @@ func buildBreakoutContractPayload(t *testing.T) map[string]any {
 	if _, err := c.Collect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	d := breakout.New(breakout.Options{Parent: "core", Cage: 2, MaxAge: 1000 * time.Hour}, c, c)
+	d := breakout.New(breakout.Options{Parent: "core", Cage: 2, MAC: "02:00:00:00:00:aa", Name: "lane-switch", MaxAge: 1000 * time.Hour}, c, c)
 	snap, err := d.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)

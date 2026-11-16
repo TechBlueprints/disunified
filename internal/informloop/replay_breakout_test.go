@@ -85,7 +85,7 @@ func newLaneRigWith(t *testing.T, edit func(*sonic.FixtureRunner)) *laneRig {
 	r := &laneRig{t: t, fr: fr, coll: coll, parent: parent, log: buf, seen: len(fr.Recorded())}
 	r.cycleParent("the capture")
 
-	o, err := breakout.ParseOptions(map[string]string{"parent": "core", "cage": "2"})
+	o, err := breakout.ParseOptions(map[string]string{"parent": "core", "cage": "2", "mac": laneSwitchMAC, "name": "lane-switch"})
 	if err != nil {
 		t.Fatal(err)
 	}

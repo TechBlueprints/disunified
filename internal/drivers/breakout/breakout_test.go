@@ -2,6 +2,7 @@ package breakout
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -45,7 +46,7 @@ func newRig(t *testing.T) *rig {
 	if _, err := c.Collect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	o, err := ParseOptions(map[string]string{"parent": "core", "cage": "2"})
+	o, err := ParseOptions(map[string]string{"parent": "core", "cage": "2", "mac": childMAC, "name": "lane-switch"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,17 +157,98 @@ func TestNotAnswering(t *testing.T) {
 	if _, err := New(o, r.c, r.c).Collect(context.Background()); err == nil || !strings.Contains(err.Error(), "not split") {
 		t.Errorf("a whole cage: %v", err)
 	}
-	// A split cage without an attachment (the parent is not main's).
-	r2 := newRig(t)
-	fr, _ := sonic.NewFixtureRunner(filepath.Join("..", "..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", "collect-4x25g.txt"))
-	bare := sonic.NewCollector(fr)
-	bare.Log = log.New(r2.log, "", 0)
-	if _, err := bare.Start(context.Background()); err != nil {
+}
+
+// bareParent is the split capture with no lane switch attached.
+func bareParent(t *testing.T) *sonic.Collector {
+	t.Helper()
+	fr, err := sonic.NewFixtureRunner(filepath.Join("..", "..", "..", "docs", "fixtures", "sonic-igmp-202511.20261106-f2e25f54c", "collect-4x25g.txt"))
+	if err != nil {
 		t.Fatal(err)
 	}
+	c := sonic.NewCollector(fr)
+	c.Log = log.New(&strings.Builder{}, "", 0)
+	if _, err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// An unattached lane switch answers (docs/drivers/breakout.md 16): the same
+// snapshot as the attached one, under its own MAC and name, and it writes
+// nothing. A cage attached to another MAC is refused.
+func TestUnattached(t *testing.T) {
+	ctx := context.Background()
+	attached := newRig(t).snap()
+
+	bare := bareParent(t)
+	o, _ := ParseOptions(map[string]string{"parent": "core", "cage": "2", "mac": childMAC, "name": "lane-switch"})
+	d := New(o, bare, bare)
+	buf := &strings.Builder{}
+	d.Log = log.New(buf, "", 0)
+	snap, err := d.Collect(ctx)
+	if err != nil {
+		t.Fatalf("unattached: %v", err)
+	}
+	if snap.System.MAC != childMAC || snap.System.Hostname != "lane-switch" {
+		t.Errorf("unattached identity: %s %q", snap.System.MAC, snap.System.Hostname)
+	}
+	snap.TakenAt, attached.TakenAt = time.Time{}, time.Time{}
+	snap.System.Uptime, attached.System.Uptime = 0, 0
+	snap.System.CPUPercent, attached.System.CPUPercent = 0, 0
+	a, _ := json.Marshal(attached)
+	b, _ := json.Marshal(snap)
+	if string(a) != string(b) {
+		t.Errorf("the unattached snapshot differs from the attached one:\n attached   %s\n unattached %s", a, b)
+	}
+
+	// Nothing is written while unattached.
+	ds := []devicemodel.PortDesired{{Index: 1, Enabled: false, VLANSet: true, NativeVLAN: 1}}
+	if got := d.PlanPorts(ds); got != nil {
+		t.Errorf("PlanPorts unattached = %v, want nil", got)
+	}
+	if !strings.Contains(buf.String(), "not attached") {
+		t.Errorf("no note for a push while unattached: %q", buf.String())
+	}
+	if _, err := d.ApplyPorts(ctx, ds); err == nil || !strings.Contains(err.Error(), "not attached") {
+		t.Errorf("ApplyPorts unattached: %v", err)
+	}
+	if _, err := d.EnsureVLANs(ctx, []int{7}); err == nil {
+		t.Error("EnsureVLANs unattached: no error")
+	}
+
+	// The default MAC is main's: derived from the parent's.
 	o, _ = ParseOptions(map[string]string{"parent": "core", "cage": "2"})
-	if _, err := New(o, bare, bare).Collect(context.Background()); err == nil || !strings.Contains(err.Error(), "no lane switch attached") {
-		t.Errorf("unattached: %v", err)
+	snap, err = New(o, bare, bare).Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := bare.Lanes(2)
+	want, _ := devicemodel.LaneSwitchMAC(v.System.MAC, 2)
+	if snap.System.MAC != want || snap.System.Hostname != "core-cage2" {
+		t.Errorf("default identity: %s %q, want %s core-cage2", snap.System.MAC, snap.System.Hostname, want)
+	}
+
+	// Attached to another MAC: this one does not answer.
+	if err := bare.AttachLaneSwitch(2, devicemodel.Attachment{MAC: "02:00:00:00:00:bb", Name: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Collect(ctx); err == nil || !strings.Contains(err.Error(), "another lane switch") {
+		t.Errorf("attached to another MAC: %v", err)
+	}
+	// Attached to this one: it applies again; detached: refused again.
+	if err := bare.AttachLaneSwitch(2, devicemodel.Attachment{MAC: childMAC, Name: "lane-switch"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ApplyPorts(ctx, nil); err != nil {
+		t.Errorf("ApplyPorts attached: %v", err)
+	}
+	bare.DetachLaneSwitch(2)
+	if _, err := d.ApplyPorts(ctx, ds); err == nil {
+		t.Error("ApplyPorts after a detach: no error")
 	}
 }
 

@@ -42,13 +42,17 @@ const DefaultMaxAge = 3 * time.Minute
 //	         an entry of the same config file, opened before this one)
 //	cage     the parent's port index of the cage (required)
 //	mac      the lane switch's MAC; default derived from the parent's
-//	         (devicemodel.LaneSwitchMAC); main attaches it, Collect reads it
-//	         back from the parent
+//	         (devicemodel.LaneSwitchMAC), as main derives it when it attaches
+//	name     the name it reports (its hostname); main sets the entry's name;
+//	         default "<parent>-cage<N>"
 //	max_age  how old the parent's snapshot may be (a Go duration; default 3m)
 //
-// main attaches the lane switch to its parent (AttachLaneSwitch) before the
-// parent's loop starts, from the same options; this driver only finds the
-// parent and reads the attachment back.
+// A lane switch answers whether or not it is attached to its parent
+// (AttachLaneSwitch): unattached it reports the lanes and writes nothing,
+// which is how an automatic one waits for its adoption
+// (docs/drivers/breakout.md 16). main attaches a declared one before the
+// parent's loop starts and an automatic one when the controller adopts it;
+// this driver only refuses a cage that is attached to another MAC.
 type Driver struct{}
 
 func init() { devicemodel.RegisterDriver(Driver{}) }
@@ -64,12 +68,13 @@ type Options struct {
 	Parent string
 	Cage   int
 	MAC    string
+	Name   string
 	MaxAge time.Duration
 }
 
 // ParseOptions reads and checks the options (config.Load runs it too).
 func ParseOptions(opts map[string]string) (Options, error) {
-	o := Options{Parent: strings.TrimSpace(opts["parent"]), MaxAge: DefaultMaxAge}
+	o := Options{Parent: strings.TrimSpace(opts["parent"]), Name: strings.TrimSpace(opts["name"]), MaxAge: DefaultMaxAge}
 	if o.Parent == "" {
 		return o, errors.New("breakout: options.parent is required: the config name of the device whose cage this is")
 	}
@@ -165,8 +170,12 @@ func (d *Device) Collect(context.Context) (*devicemodel.Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("breakout: %s: %w", d.opt.Parent, err)
 	}
-	if v.Child.MAC == "" {
-		return nil, fmt.Errorf("breakout: cage %d of %s has no lane switch attached (main attaches it before the parent starts)", d.opt.Cage, d.opt.Parent)
+	self, err := d.identity(v)
+	if err != nil {
+		return nil, err
+	}
+	if v.Child.MAC != "" && v.Child.MAC != self.MAC {
+		return nil, fmt.Errorf("breakout: cage %d of %s is attached to another lane switch (%s); this one is %s", d.opt.Cage, d.opt.Parent, v.Child.MAC, self.MAC)
 	}
 	if age := d.now().Sub(v.TakenAt); age > d.opt.MaxAge {
 		return nil, fmt.Errorf("breakout: %s's last snapshot is %s old (max_age %s): the parent is not answering", d.opt.Parent, age.Round(time.Second), d.opt.MaxAge)
@@ -174,10 +183,51 @@ func (d *Device) Collect(context.Context) (*devicemodel.Snapshot, error) {
 	if len(v.Lanes) > maxLanes {
 		return nil, fmt.Errorf("breakout: cage %d of %s has %d lanes; a lane switch has %d", d.opt.Cage, d.opt.Parent, len(v.Lanes), maxLanes)
 	}
+	// Unattached, the snapshot still carries this lane switch's own identity
+	// (Snapshot reads it from the view's Child); d.view keeps the parent's
+	// answer, which is how attached() tells the two apart.
 	d.mu.Lock()
 	d.view = v
 	d.mu.Unlock()
+	v.Child = self
 	return Snapshot(v), nil
+}
+
+// identity is this lane switch's MAC and name: options.mac, or the MAC
+// derived from the parent's as main derives it; options.name, or
+// "<parent>-cage<N>".
+func (d *Device) identity(v devicemodel.LaneView) (devicemodel.Attachment, error) {
+	a := devicemodel.Attachment{MAC: d.opt.MAC, Name: d.opt.Name}
+	if a.MAC == "" {
+		m, err := devicemodel.LaneSwitchMAC(v.System.MAC, d.opt.Cage)
+		if err != nil {
+			return a, fmt.Errorf("breakout: cage %d of %s: %w", d.opt.Cage, d.opt.Parent, err)
+		}
+		a.MAC = m
+	}
+	if a.Name == "" {
+		a.Name = fmt.Sprintf("%s-cage%d", d.opt.Parent, d.opt.Cage)
+	}
+	return a, nil
+}
+
+// attached reports whether the parent has this lane switch on the cage now
+// (asked of the parent, not of the last collect: an attach or a detach
+// takes effect at once). Unattached, the lanes are the parent's cage's, and
+// nothing a push says may be written to them.
+func (d *Device) attached() error {
+	v, err := d.lp.Lanes(d.opt.Cage)
+	if err != nil {
+		return fmt.Errorf("breakout: %s: %w", d.opt.Parent, err)
+	}
+	self, err := d.identity(v)
+	if err != nil {
+		return err
+	}
+	if v.Child.MAC != self.MAC {
+		return fmt.Errorf("breakout: cage %d of %s is not attached to this lane switch (%s): the lanes are still the cage's on %s, and nothing is written to them until the controller has adopted the lane switch", d.opt.Cage, d.opt.Parent, self.MAC, d.opt.Parent)
+	}
+	return nil
 }
 
 // Close has nothing of its own to release; the parent is the parent's.
@@ -238,11 +288,19 @@ func uplinkAsks(p devicemodel.PortDesired) string {
 
 // ApplyPorts implements devicemodel.Controller through the parent.
 func (d *Device) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	if err := d.attached(); err != nil {
+		return 0, err
+	}
 	return d.lp.ApplyLanes(ctx, d.opt.Cage, d.split(desired))
 }
 
 // PlanPorts implements devicemodel.Planner through the parent.
+// Unattached it plans nothing and says why once: ApplyPorts then refuses.
 func (d *Device) PlanPorts(desired []devicemodel.PortDesired) []int {
+	if err := d.attached(); err != nil {
+		d.noteOnce(fmt.Sprintf("a push arrived while unattached; not planned (%v)", err))
+		return nil
+	}
 	return d.lp.PlanLanes(d.opt.Cage, d.split(desired))
 }
 
@@ -251,6 +309,9 @@ func (d *Device) PlanPorts(desired []devicemodel.PortDesired) []int {
 // carry, which can differ from the parent's own push, so a parent that
 // keeps the lists apart (devicemodel.LaneVLANController) gets it per cage.
 func (d *Device) EnsureVLANs(ctx context.Context, ids []int) (int, error) {
+	if err := d.attached(); err != nil {
+		return 0, err
+	}
 	if lc, ok := d.parent.(devicemodel.LaneVLANController); ok {
 		return lc.EnsureLaneVLANs(ctx, d.opt.Cage, ids)
 	}
