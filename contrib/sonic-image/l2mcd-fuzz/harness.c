@@ -23,6 +23,7 @@
  */
 #include "port/l2mcd_system.c"     /* for the static IPC dispatcher (-I <src>) */
 #include <sanitizer/lsan_interface.h>
+#include <sanitizer/allocator_interface.h>
 
 #define VID 100
 static const char *ports[] = { "Ethernet4", "Ethernet8" };
@@ -705,6 +706,88 @@ static int no_name(int kind)
     return mcgrp->rx_bad_if != bad_if + 1 || (e && mcgrp_find_mbrshp_entry(e, port_idx[1])) || tx_count != tx;
 }
 
+/* The portdb-* cases (2026-11-16, from l2mcd's core of 2026-11-15, where a
+ * freed "Ethernet115" string was still the key of Ethernet0's index):
+ * portdb_add_ifname() put a name at an index without looking at either map.
+ * A second name at a named index replaced the index's name but left the
+ * first name a key of it, and portdb_delete_ifname() of the first name then
+ * freed the second name's string, still a key: the next look-up that compared
+ * against it read freed memory. The same name at a second index moved the
+ * name's index and left the first index named; the same name twice at its own
+ * index lost the first string (mld_if_snoop_set() adds "VLAN<vid>" once per
+ * address family): the delete took the first string's key out and freed the
+ * second. LeakSanitizer does not see that loss, because the hash leaves a deleted
+ * key's pointer in its slot, so the case counts ASan's allocated bytes across
+ * the two adds and the delete. kind: 0 a second name at a named index, 1 the name at a
+ * second index, 2 the name twice at its own index. Indexes 4000 and 4001 are
+ * free (no VLAN but 100 is set up, and ports start at 4096); the names are past
+ * port_ifname_db_init()'s Ethernet511. After each step every name and index the
+ * case used must agree both ways, and after the deletes the db must be as it
+ * was, with no byte still allocated. Returns 0, 1 when it is not so, 2 when the
+ * setup failed. */
+static int portdb_agrees(unsigned idx, const char *name)    /* 1: idx is name's, both ways */
+{
+    char *nm = portdb_get_ifname_from_portindex(idx);
+
+    if (!name)
+        return !nm;
+    return nm && !strcmp(nm, name) && portdb_get_portindex_from_ifname((char *)name) == idx;
+}
+
+static void portdb_show(const char *when, unsigned i, unsigned j, char *a, char *b)
+{
+    char *ni = portdb_get_ifname_from_portindex(i), *nj = portdb_get_ifname_from_portindex(j);
+    unsigned ia = portdb_get_portindex_from_ifname(a), ib = portdb_get_portindex_from_ifname(b);
+
+    fprintf(stderr, "  %s: index %u is %s, index %u is %s; %s has index %d, %s has index %d\n", when,
+            i, ni ? ni : "(none)", j, nj ? nj : "(none)",
+            a, ia == NO_SUCH_PORT ? -1 : (int)ia, b, ib == NO_SUCH_PORT ? -1 : (int)ib);
+}
+
+static int portdb_overlap(int kind)
+{
+    static const char *what[] = { "a second name at a named index", "the name at a second index",
+                                  "the name twice at its own index" };
+    char a[L2MCD_IFNAME_SIZE], b[L2MCD_IFNAME_SIZE];
+    unsigned i = 4000, j = 4001, at = kind == 1 ? j : i;
+    int ra, rb, rd, bad = 0;
+    size_t held = __sanitizer_get_current_allocated_bytes();
+
+    snprintf(a, sizeof(a), "Ethernet900");
+    snprintf(b, sizeof(b), kind == 0 ? "Ethernet901" : "Ethernet900");
+    if (!portdb_agrees(i, NULL) || !portdb_agrees(j, NULL) ||
+        portdb_get_portindex_from_ifname(a) != NO_SUCH_PORT || portdb_get_portindex_from_ifname(b) != NO_SUCH_PORT) {
+        fprintf(stderr, "harness: setup failed: index %u or %u, or %s or %s, is in the port db\n", i, j, a, b);
+        return 2;
+    }
+    ra = portdb_add_ifname(a, strlen(a) + 1, i);
+    rb = portdb_add_ifname(b, strlen(b) + 1, at);
+    fprintf(stderr, "  %s: %s at %u: rc %d; %s at %u: rc %d (want %d)\n", what[kind], a, i, ra, b, at, rb,
+            kind == 2 ? 0 : -1);
+    portdb_show("then", i, j, a, b);
+    /* the first name keeps its index; a refused add changes nothing */
+    bad |= ra != 0 || rb != (kind == 2 ? 0 : -1) || !portdb_agrees(i, a) || !portdb_agrees(j, NULL);
+    if (kind == 0)
+        bad |= portdb_get_portindex_from_ifname(b) != NO_SUCH_PORT;
+    rd = portdb_delete_ifname(a);
+    /* the first look-up of the second name is the read of its freed string */
+    portdb_show("after deleting the first name", i, j, a, b);
+    bad |= rd != 0 || !portdb_agrees(i, NULL) || !portdb_agrees(j, NULL) ||
+           portdb_get_portindex_from_ifname(a) != NO_SUCH_PORT || portdb_get_portindex_from_ifname(b) != NO_SUCH_PORT;
+    if (kind == 0) {
+        /* the index is free again: the second name takes it, and goes */
+        rb = portdb_add_ifname(b, strlen(b) + 1, i);
+        bad |= rb != 0 || !portdb_agrees(i, b);
+        rd = portdb_delete_ifname(b);
+        bad |= rd != 0 || !portdb_agrees(i, NULL) || portdb_get_portindex_from_ifname(b) != NO_SUCH_PORT;
+        portdb_show("then the second name added at the index and deleted", i, j, a, b);
+    }
+    held = __sanitizer_get_current_allocated_bytes() - held;
+    fprintf(stderr, "  bytes still allocated: %zu\n", held);
+    bad |= held != 0;
+    return bad;
+}
+
 static const char *only;
 static int run(const char *name)
 {
@@ -1013,6 +1096,23 @@ int main(int argc, char **argv)
                 continue;
             run(nc[i]);
             if ((r = no_name(i)) == 2)
+                return 2;
+            if (r)
+                abort();
+        }
+    }
+    /* a name or an index the port db already holds, added again (portdb_overlap above) */
+    {
+        static const char *pc[] = { "portdb-name-overwrite", "portdb-name-moved", "portdb-name-twice" };
+        unsigned i;
+        int r;
+
+        for (i = 0; i < sizeof(pc) / sizeof(pc[0]); i++) {
+            /* only when named: before the fix the first reads freed memory */
+            if (!only || strcmp(only, pc[i]))
+                continue;
+            run(pc[i]);
+            if ((r = portdb_overlap(i)) == 2)
                 return 2;
             if (r)
                 abort();
