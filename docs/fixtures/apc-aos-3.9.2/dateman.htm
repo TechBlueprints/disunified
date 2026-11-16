@@ -1,0 +1,299 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>APC |&nbsp;Switched Rack PDU</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<meta http-equiv="Expires" content="-1" />
+<link href="core.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<table id="main" cellspacing="0" cellpadding="0" border="0"> 
+  <tr>
+    <td colspan="2"><table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="update"><img src="images/info.gif" width="15" height="15" class="align" alt="Unknown, Unknown" title="Unknown, Unknown"/>192.0.2.1</td>
+<td id="logout"><a href="genhelp.htm#dateman" target="_blank" title="Launch Help" alt="Launch Help">Help</a>&nbsp;| <a href="logout.htm">Log Off&nbsp;<img src="images/exit.gif" width="15" height="15" border="0" align="top" alt="Log Off" title="Log Off" /></a></td>
+
+</tr>
+<tr>
+          <td><table width="100%" border="0" cellspacing="0" cellpadding="0" id="headnav"><tr><td>
+<ul><li><a href="home.htm">Home</a></li>
+<li><a href="loadman.htm">Device Manager</a></li>
+<li><a href="eventweb.htm">Logs</a></li>
+<li id="select"><a href="dateman.htm">Administration</a></li>
+</ul></td></tr></table></td>
+</tr>
+<tr>
+        <td colspan="2"><table width="100%" border="0" cellspacing="0" cellpadding="0" id="subheader">
+          <tr>
+          <td width="1%" class="cornerL"><img src="images/leftcorner.gif" alt="" width="5" height="5"/></td>
+<td width="75%" class="submenu"><a href="adminusr.htm" alt="Security" title="Security">Security</a>
+&nbsp;&nbsp;<a href="tcpcfg.htm" alt="Network Access" title="Network Access">Network</a>
+&nbsp;&nbsp;<a href="eventind.htm" alt="Notification" title="Notification">Notification</a>
+&nbsp;&nbsp;<a href="dateman.htm" alt="General" title="General" class="subselect">General</a>
+</td>
+<td width="23%" colspan="2" class="icons"><a href="home.htm" title="No alarms present"><img src="images/goodstat.gif" width="16" height="15" border="0" style="vertical-align:bottom;" alt="No alarms present"/>&nbsp;No Alarms</a>&nbsp;&nbsp;</td>
+<td width="1%" class="cornerR"><img src="images/rightcorner.gif" alt="" width="5" height="5" border="0"/></td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr><td colspan="2" id="container"><table width="100%" cellspacing="0" cellpadding="0" class="shadow">
+  <tr><td colspan="3" class="bumper">&nbsp;</td>
+</tr>
+<tr>
+  <td class="Lbumper">&nbsp;</td>
+<td id="navcontainer"><table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td>
+<ul>
+  <li><a href="genid.htm" title="Identification" alt="Identification">Identification</a></li>
+  <li><div class="nolink">Date &amp; Time</div><ul>
+    <li class="selected"><a href="dateman.htm" title="Mode: Manual or NTP" alt="Mode: Manual or NTP">mode</a></li>
+    <li><a href="datentp.htm" title="Daylight Saving Time" alt="Daylight Saving Time">daylight saving</a></li>
+    <li><a href="dateform.htm" title="Date & Time: Format" alt="Date & Time: Format">date format</a></li>
+  </ul></li>
+  <li><a href="genini.htm" title="Upload .ini Files" alt="Upload .ini Files">User Config File</a></li>
+  <li><a href="genprefs.htm" title="Preferences" alt="Preferences">Preferences</a></li>
+  <li><a href="genreset.htm" title="Reset/Reboot" alt="Reset/Reboot">Reset/Reboot</a></li>
+  <li><a href="genqlink.htm" title="Quick Links" alt="Quick Links">Quick Links</a></li>
+  <li><a href="factinfo.htm" title="About" alt="About">About</a></li>
+</ul>
+</td>
+</tr>
+</table>
+</td>
+<td id="content"><table width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr>
+<td colspan="3">&nbsp;</td>
+</tr>
+<tr>
+<td width="2%">&nbsp;</td>
+<td width="96%"><table width="100%" border="0" cellspacing="0" cellpadding="0" class="data">
+<tr><td colspan="2" class="dataSection">Current Settings</td>
+</tr>
+<tr><td colspan="2" class="space">&nbsp;</td>
+</tr>
+<tr>
+<td width="25%" class="dataName">Date:</td>
+<td width="75%">11/15/2026</td>
+</tr>
+<tr>
+<td class="dataName">Time:</td>
+<td>17:21:41</td>
+</tr>
+<tr>
+<td class="dataName">Status:</td>
+<td>Last update successful.</td>
+</tr>
+<tr>
+<td class="dataName">Next NTP Update:</td>
+<td>22 hours</td>
+</tr>
+</table>
+</td>
+<td width="2%">&nbsp;</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr>
+<td width="2%">&nbsp;</td>
+<td width="96%"><form method="post" action="/NMC/TOKEN/Forms/dateman1" name="HashForm1">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" class="data">
+<tr><td colspan="3" class="dataSection">System Time Configuration</td>
+</tr>
+<tr><td colspan="3" class="space">&nbsp;</td>
+</tr>
+<tr>
+<td colspan="3" class="dataName"><input type="radio" name="date_time_mode" value="AddCert" onClick="enableGroup()" />
+Manual</td>
+</tr>
+<tr>
+<td width="6%">&nbsp;</td>
+<td width="30%" class="dataName">Date:</td>
+<td width="64%"><input type="text" name="manualDate" size="12" maxlength="10" value="11/15/2026" />
+mm/dd/yyyy</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td class="dataName">Time:</td>
+<td><input type="text" name="manualTime" size="10" maxlength="8" value="17:21:41" />
+hh:mm:ss</td>
+</tr>
+<tr>
+<td class="dataName">&nbsp;</td>
+<td colspan="2"><input type="checkbox" name="useComputerTime" />
+Apply local computer time.</td>
+</tr>
+<tr>
+<td colspan="3" class="space">&nbsp;</td>
+</tr>
+<tr>
+<td colspan="3" class="dataName"><input type="radio" name="date_time_mode" value="Remove" checked onClick="enableGroup()" />
+Synchronize with NTP Server</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td class="dataName">Primary NTP Server:</td>
+<td><input type="text" name="primaryNTPServer" size="17" maxlength="64" value="192.0.2.2" />
+</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td class="dataName">Secondary NTP Server:</td>
+<td><input type="text" name="secondaryNTPServer" size="17" maxlength="64" value="192.0.2.3" />
+</td>
+</tr>
+<tr>
+<td class="dataName">&nbsp;</td>
+<td>Time Zone:</td>
+<td><select name="timeZone" size="1">
+<option>-12:00 hours (Eniwetok, Kwajalein)
+<option>-11:00 hours (Midway Island, Samoa)
+<option>-10:00 hours (Hawaii)
+<option>-09:00 hours (Alaska)
+<option>-08:00 hours (Pacific Time)
+<option selected>-07:00 hours (Arizona, Mountain Time)
+<option>-06:00 hours (Central Time)
+<option>-05:00 hours (Eastern Time)
+<option>-04:00 hours (Atlantic Time - Canada)
+<option>-03:30 hours (Newfoundland)
+<option>-03:00 hours (Brasilia)
+<option>-02:00 hours (Mid-Atlantic)
+<option>-01:00 hour (Azores, Cape Verde Is.)
+<option>+/- 0 hours (Dublin, Lisbon, London)
+<option>+01:00 hour (Amsterdam, Berlin, Rome)
+<option>+02:00 hours (Athens, Istanbul, Minsk)
+<option>+03:00 hours (Moscow, Baghdad, Riyadh)
+<option>+03:30 hours (Tehran)
+<option>+04:00 hours (Baku, Tbilisi)
+<option>+04:30 hours (Kabul)
+<option>+05:00 hours (Islamabad, Tashkent)
+<option>+05:30 hours (Bombay, Calcutta)
+<option>+05:45 hours (Kathmandu)
+<option>+06:00 hours (Almaty, Dhaka)
+<option>+06:30 hours (Rangoon)
+<option>+07:00 hours (Bangkok, Hanoi, Jakarta)
+<option>+08:00 hours (Beijing, Hong Kong)
+<option>+09:00 hours (Osaka, Sapporo, Tokyo)
+<option>+09:30 hours (Adelaide, Darwin)
+<option>+10:00 hours (Canberra, Sydney)
+<option>+11:00 hours (Magadan, Solomon Is.)
+<option>+12:00 hours (Auckland, Wellington)
+</select></td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td class="dataName">Update Interval:</td>
+<td><input type="text" name="ntpUpdateFrequency" size="6" maxlength="4" value="336" />
+hours <span class="range">[1-8760]</span></td>
+</tr>
+<tr>
+<td class="dataName">&nbsp;</td>
+<td colspan="2"><input type="checkbox" name="ntpUpdateNow" OnClick="SetPollNTPFlag()" />
+Update using NTP now.</td>
+</tr>
+<input type="hidden" name="pollNTPServerFlag" value="" />
+<input type="hidden" name="dateSet" value="" />
+<tr>
+<td colspan="3" class="applyCancel"><input type="submit" name="submit" value="Apply" class="btn" onClick="SetUseComputerTime()" />
+&nbsp;<input type="reset" value="Cancel" onClick="reload()" />
+</td>
+</tr>
+</table>
+
+</form>
+</td>
+<td width="2%">&nbsp;</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+</table>
+  </td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+    <td colspan="2"><table cellpadding="0" cellspacing="0" border="0" id="footer">
+      <tr>
+        <td width="19%" nowrap="nowrap" class="quick"><a href="http://www.apc.com" target="_blank" title="APC's Web Site" alt="APC's Web Site">Link 1</a>&nbsp;|&nbsp;<a href="http://testdrive.apc.com" target="_blank" title="Testdrive Demo" alt="Testdrive Demo">Link 2</a>&nbsp;|&nbsp;<a href="http://rms.apc.com" target="_blank" title="APC Monitoring" alt="APC Monitoring">Link 3</a></td>
+<td width="68%" class="product">&nbsp;Switched Rack PDU</td>
+<td width="3%" class="ralign"><img src="images/logocorner.gif" alt="" width="20" height="20" /></td>
+<td width="10%" class="logotab edge"><img src="images/smapc.gif" width="59" height="17" align="top" alt="APC" />&nbsp;&nbsp;</td>
+</tr>
+<tr>
+        <td colspan="4" class="mainbottom">&nbsp;</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+    <td class="copyright">&copy; 1995 - 2009, American Power Conversion Corp. All rights reserved.</td>
+<td class="copyright ralign">Updated: 11/15/2026 at 17:21&nbsp;&nbsp;</td>
+</tr>
+</table>
+
+</body>
+</html>
+<script type="text/javascript">
+enableGroup();
+function reload() {
+location.href = location.href;
+}
+function enableGroup() {
+if (document.forms[0].date_time_mode[0].checked) {
+document.forms[0].primaryNTPServer.disabled = true;
+document.forms[0].secondaryNTPServer.disabled = true;
+document.forms[0].timeZone.disabled = true;
+document.forms[0].ntpUpdateFrequency.disabled = true;
+document.forms[0].ntpUpdateNow.disabled = true;
+document.forms[0].manualDate.disabled = false;
+document.forms[0].manualTime.disabled = false;
+document.forms[0].useComputerTime.disabled = false;
+} else {
+document.forms[0].primaryNTPServer.disabled = false;
+document.forms[0].secondaryNTPServer.disabled = false;
+document.forms[0].timeZone.disabled = false;
+document.forms[0].ntpUpdateFrequency.disabled = false;
+document.forms[0].ntpUpdateNow.disabled = false;
+document.forms[0].manualDate.disabled = true;
+document.forms[0].manualTime.disabled = true;
+document.forms[0].useComputerTime.disabled = true;
+}
+}
+function SetUseComputerTime() {
+if (document.forms[0].useComputerTime.checked) {
+var computerTime = new Date()
+var hours = computerTime.getHours()
+var minutes = computerTime.getMinutes()
+var seconds = computerTime.getSeconds()
+var month = computerTime.getMonth()+1
+var DoM = computerTime.getDate()
+var year = computerTime.getFullYear()
+var date = ((month < 10) ? "0" : "") + month + "/"
+date += ((DoM < 10) ? "0" : "") + DoM + "/" + year
+var time = ((hours < 10) ? "0" : "") + hours
+time += ((minutes < 10) ? ":0" : ":") + minutes
+time += ((seconds < 10) ? ":0" : ":") + seconds
+document.forms[0].manualTime.value = time
+document.forms[0].manualDate.value = date
+}
+}
+function SetPollNTPFlag() {
+if (document.forms[0].ntpUpdateNow.checked) {
+document.forms[0].pollNTPServerFlag.value = "1"
+} else {
+document.forms[0].pollNTPServerFlag.value = ""
+}
+}
+</script>

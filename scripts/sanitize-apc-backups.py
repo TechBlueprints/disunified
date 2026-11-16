@@ -13,7 +13,8 @@ and "unplugged" are kept). Everything else stays byte for byte, so the
 parser sees real pages.
 
 config.ini: only the sections the driver reads are kept -- [NetworkTCP/IP],
-[NetworkDNS], [SystemID] and the UPS section ([Back-UPS/...]) -- because
+[NetworkDNS], [SystemID], [NetworkSYSLOG], [SystemDate/Time] and the UPS
+section ([Back-UPS/...]) -- because
 the rest (SNMP communities, e-mail, RADIUS, users) is configuration that
 never belongs in a public repo; the kept sections are scrubbed as above.
 
@@ -29,7 +30,7 @@ SERIAL_RE = re.compile(r'\b[0-9][A-Z][0-9]{4}[A-Z][0-9]{5}\b')
 MAC_SP_RE = re.compile(r'\b([0-9A-F]{2} ){5}[0-9A-F]{2}\b')
 MAC_RE = re.compile(r'\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
 IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
-KEEP_SECTIONS = ('NetworkTCP/IP', 'NetworkDNS', 'SystemID')
+KEEP_SECTIONS = ('NetworkTCP/IP', 'NetworkDNS', 'SystemID', 'NetworkSYSLOG', 'SystemDate/Time')
 KEEP_NAMES = {'unplugged', ''}
 
 serials, ips = {}, {}
