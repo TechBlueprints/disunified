@@ -301,8 +301,9 @@ severity informational, and the event code at the end
 from <addr>. 0x0004`). Its timestamp is the card's local time with no
 zone: this card runs NTP at `NTPTimeZone=-07:00` with
 `DSTConfiguration=Disabled` (`[SystemDate/Time]`), so from March to
-November its lines are stamped an hour behind. The controller's
-`system.timezone` and `ntpclient.*` are not applied to the card.
+November its lines are stamped an hour behind. Since 2026-11-15 the
+controller's time zone, DST rule and NTP servers are written to the card
+too (§12).
 
 ## 11. Things that will bite
 
@@ -319,3 +320,116 @@ November its lines are stamped an hour behind. The controller's
 - `ifPhysAddress` is six raw bytes on the wire, not text. `snmpwalk` renders
   it as hex, so a fixture-only test passes while the live path puts binary
   into the snapshot.
+
+## 12. Its clock: the controller's time zone, DST rule and NTP servers
+
+Every power-path push carries the site's time zone as a POSIX TZ string
+with its daylight saving rule, and its NTP servers (captured from this PDU
+on Network 10.6.109, `controller-10.6.109/system_cfg-pdu-syslog-remote.txt`):
+
+```
+system.timezone=MST7MDT,M3.2.0,M11.1.0
+ntpclient.1.server=192.0.2.4
+ntpclient.2.server=0.ubnt.pool.ntp.org
+```
+
+The card keeps its clock in `[SystemDate/Time]`: a fixed UTC offset, a
+daylight saving choice, and two NTP servers. It shipped with
+`NTPTimeZone=-07:00`, `DSTConfiguration=Disabled` and servers of its own
+(`apc-aos-3.9.2/config.ini`). The bridge now writes the controller's values
+into that section through the same config file, as it does the syslog host
+(`apcnmc.ClockApplier`, behind `devicemodel.ClockController`).
+
+**What the card can say.** Its Date/Time forms, captured read-only
+(`apc-aos-3.9.2/dateman.htm`, `datentp.htm`), set the limits:
+
+- *Time Zone* is a list of 32 fixed offsets, from -12:00 to +12:00. They
+  include the half-hour zones and +05:45, and none of them carries a DST
+  rule.
+- *Daylight Saving* has three choices: "Disable DST", "Traditional US DST
+  (Second Sunday in March to First Sunday in November)", and a custom rule
+  that "Adds 1 hour at start, subtracts 1 hour at end". The custom rule is
+  set by week (First ... Fifth/Last), weekday, month and hour.
+- The NTP fields take "the IP address or domain name" (the card's help
+  page), up to 64 characters.
+
+**The mapping.** It is exact, or nothing is written:
+
+| Push | Card |
+|---|---|
+| the standard offset (`MST7`: 7 h west of UTC) | `NTPTimeZone=-07:00`, if that offset is in the list |
+| no DST part | `DSTConfiguration=Disabled` |
+| `M3.2.0,M11.1.0` (02:00 both ends, the default), shifting by one hour | `DSTConfiguration=Traditional US` |
+| one or two NTP servers | `NTPEnable=enabled`, `NTPPrimaryServer`, `NTPSecondaryServer` (`0.0.0.0` when there is one) |
+
+The config file does not spell the choices the way the form does: the
+form's radio values are `None`, `Continental_United_States` and `Custom`,
+the file says `Disabled`. The value `Traditional US` comes from an exported
+config.ini quoted on APC's own community forum. No card on site has held it
+before this change. The read back after the first upload is what confirms
+it. A value the card rejects is dropped from the upload, and the card's
+event log records the error (its help page: "The upload succeeds even if
+the file contains errors").
+
+The bridge refuses, logs once and leaves alone:
+
+- a zone name such as `America/Denver` (the ECS's push carries one; the
+  power path's does not);
+- any other DST rule or a shift other than one hour. The custom rule's
+  config.ini keys are not captured, and they appear in the file only once a
+  custom rule is set;
+- an offset not in the card's list;
+- a zero or positive offset, whose config.ini spelling is not captured;
+- more than two NTP servers, or a server that is neither an address nor a
+  host name.
+
+A refused part leaves only that part alone. A push with an unsupported
+zone still sets the NTP servers.
+
+**The write.** It writes only the keys whose value differs, in the card's
+own spelling and order. The site's push against this card is one upload:
+
+```
+[SystemDate/Time]
+DSTConfiguration=Traditional US
+NTPPrimaryServer=192.0.2.4
+NTPSecondaryServer=0.ubnt.pool.ntp.org
+```
+
+The section is read at Start and logged. About a minute after an upload,
+the whole file is read back and logged. A card that does not take the
+upload is written three times and then left alone until the controller's
+settings change. The syslog and clock uploads take turns
+(`apcnmc.Uploads`): the card drops an upload that arrives while it is still
+applying the last one, so the second waits out the first's settle time. On
+a first start that needs both, the clock follows the syslog host a minute
+later.
+
+**Verified live 2026-11-16** (Network 11.0.99), on both cards:
+
+- The spelling, first, by hand on this card. A one-key upload of
+  `DSTConfiguration=Traditional US` was held in the file read back 90 s
+  later. The card's event log said `Configuration change. Daylight saving
+  time mode.` and `Configuration file upload complete, with 1 valid values.`
+- Then the deployed bridge. Here it uploaded only `NTPSecondaryServer`
+  (the primary server and DST already matched) and read the file back
+  90 s later: `now reads ... DSTConfiguration=Traditional US,
+  NTPPrimaryServer=<the controller's first>, NTPSecondaryServer=<its
+  second>, NTPTimeZone=-07:00`. The card logged `Configuration change.
+  Secondary NTP server address.`
+- The card's clock and its event log read MST to the second, as they
+  should in November.
+- A line reached the log host within a second: an SNMP read with a wrong
+  community, sent from the Podman host. The Mac's attempt never reached the
+  card, and a failed FTP login is not an event on AOS 3.9.2.
+- The log host (VictoriaLogs) files a line by the time it was received.
+  The card's own RFC 3164 stamp is not kept there, so its hour can be
+  read only on the card (the event log, which stamps the same clock) or
+  in a packet capture.
+
+**Not verifiable before March.** With `Traditional US` set, the card's
+clock in November still reads standard time, as it should. The first DST
+change it makes is 02:00 on 14 March 2027. The form names the dates but
+not the hour; the help says only "as implemented in most areas of the
+United States", and the US changes at 02:00 local time.
+

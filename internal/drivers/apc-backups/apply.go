@@ -196,6 +196,19 @@ func (c *Collector) ApplySyslog(ctx context.Context, hosts []string) (bool, erro
 	return changed, nil
 }
 
+// ApplyClock sets the card's time zone, daylight saving and NTP servers to
+// the controller's through a partial [SystemDate/Time], as the apc-pdu
+// driver does; AOS 6.0.1 has NTPManualOverride beside the PDU's keys, set
+// on with the servers so a DHCP lease's NTP servers do not replace them
+// (docs/drivers/apc-backups.md §9).
+func (c *Collector) ApplyClock(ctx context.Context, clk devicemodel.Clock) (bool, error) {
+	changed, err := c.clock.Apply(ctx, clk)
+	if err != nil {
+		return false, fmt.Errorf("apc-backups: %w", err)
+	}
+	return changed, nil
+}
+
 // tcpipConfig renders the [NetworkTCP/IP] partial; mask and gateway are
 // omitted when empty (a DHCP switch needs neither).
 func tcpipConfig(mac, mode, ip, mask, gw string) []byte {

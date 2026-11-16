@@ -105,6 +105,10 @@ type Config struct {
 	// DeviceController with ControlSyslog). nil = the device's own syslog
 	// settings are left alone.
 	SyslogController devicemodel.SyslogController
+	// ClockController applies the controller's time zone, DST rule and NTP
+	// servers to a power device the bridge controls (a switch takes them
+	// through DeviceController). nil = the device's clock is left alone.
+	ClockController devicemodel.ClockController
 	// ManagementIPv6 says whether the controller runs IPv6 on the network
 	// with that VLAN (the push's switch.managementvlan, 1 when absent): a
 	// REST read, unifiapi.Client.ManagementIPv6. The loop asks it only for
@@ -681,6 +685,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text)
 		l.applySyslog(cctx, text)
+		l.applyClock(cctx, text)
 		l.applyDeviceSettings(cctx, text)
 		l.installSSHKeys(cctx, text)
 		return
@@ -694,6 +699,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 		l.applyAddress(cctx, "", text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		l.applySyslog(cctx, text)
+		l.applyClock(cctx, text)
 		l.applyDeviceSettings(cctx, text)
 		l.installSSHKeys(cctx, text)
 		outlets := l.desiredOutlets(text)
@@ -1176,6 +1182,25 @@ func (l *Loop) applySyslog(ctx context.Context, text string) {
 	}
 }
 
+// applyClock hands the controller's time zone and NTP servers to a driver
+// that can set them on a device without port control. Errors are reported,
+// not fatal; a setting the device cannot express is the driver's to log.
+func (l *Loop) applyClock(ctx context.Context, text string) {
+	if l.cfg.ClockController == nil {
+		return
+	}
+	cfg := unificfg.Parse(text)
+	c := devicemodel.Clock{Timezone: cfg.Timezone, NTPServers: cfg.NTPServers}
+	changed, err := l.cfg.ClockController.ApplyClock(ctx, c)
+	if err != nil {
+		l.cfg.Logger.Printf("[%s] apply time zone and NTP: %v", l.desc.MAC, err)
+		return
+	}
+	if changed {
+		l.cfg.Logger.Printf("[%s] applied the clock: the device was given time zone %q and NTP servers %v", l.desc.MAC, c.Timezone, c.NTPServers)
+	}
+}
+
 // setDeviceIP makes the informs report ip as the device's address (`ip`,
 // `connect_request_ip`, if_table, netmask) when it is an IP literal and
 // differs from what they report now. The descriptor's address is set once
@@ -1293,6 +1318,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text)
 		l.applySyslog(cctx, text)
+		l.applyClock(cctx, text)
 		l.applyDeviceSettings(cctx, text)
 		l.installSSHKeys(cctx, text)
 		cancel()
@@ -1318,6 +1344,7 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 		l.applyAddress(cctx, prevText, text)
 		l.applyNUT(text) // before the outlet branch returns: the NUT block is independent of outlets
 		l.applySyslog(cctx, text)
+		l.applyClock(cctx, text)
 		l.applyDeviceSettings(cctx, text)
 		l.installSSHKeys(cctx, text)
 		outlets := l.desiredOutlets(text)
