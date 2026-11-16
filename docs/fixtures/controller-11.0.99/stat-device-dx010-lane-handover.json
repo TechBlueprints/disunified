@@ -1,0 +1,396 @@
+{
+  "data": [
+    {
+      "_id": "00000000000000000000000000000001",
+      "adopted": true,
+      "mac": "02:00:00:00:00:01",
+      "model": "USWF07D",
+      "name": "device-1",
+      "port_overrides": [
+        {
+          "aggregate_members": [
+            1,
+            2
+          ],
+          "autoneg": false,
+          "dot1x_ctrl": "force_authorized",
+          "dot1x_idle_timeout": 300,
+          "egress_rate_limit_kbps_enabled": false,
+          "fec_mode": "rs-fec",
+          "forward": "native",
+          "full_duplex": true,
+          "isolation": false,
+          "lag_idx": 1,
+          "ld_status": false,
+          "lldpmed_enabled": true,
+          "multicast_router_mode": "NONE",
+          "name": "device-2",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "op_mode": "aggregate",
+          "port_idx": 1,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "speed": 100000,
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-3",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 2,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "autoneg": false,
+          "dot1x_ctrl": "force_authorized",
+          "dot1x_idle_timeout": 300,
+          "egress_rate_limit_kbps_enabled": false,
+          "fec_mode": "fc-fec",
+          "forward": "native",
+          "full_duplex": true,
+          "isolation": false,
+          "ld_status": false,
+          "lldpmed_enabled": true,
+          "multicast_router_mode": "NONE",
+          "name": "device-4",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 3,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "speed": 25000,
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "autoneg": true,
+          "forward": "native",
+          "name": "device-5",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 4,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "autoneg": true,
+          "forward": "native",
+          "name": "device-6",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 5,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "autoneg": true,
+          "forward": "native",
+          "name": "device-7",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 6,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "autoneg": true,
+          "forward": "native",
+          "name": "device-8",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 7,
+          "port_keepalive_enabled": false,
+          "port_security_enabled": false,
+          "port_security_mac_address": [],
+          "sd_wan_underlay_port": false,
+          "setting_preference": "auto",
+          "stp_bpdu_guard_enabled": false,
+          "stp_edge_state": "auto",
+          "stp_port_mode": true,
+          "stp_uplink": false,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-9",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 8,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-10",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 9,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-11",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 10,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-12",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 11,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-13",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 12,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-14",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 13,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-15",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 14,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-16",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 15,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-17",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 16,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-18",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 17,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-19",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 18,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-20",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 19,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-21",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 20,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-22",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 21,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-23",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 22,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-24",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 23,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-25",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 24,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-26",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 25,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-27",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 26,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-28",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 27,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-29",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 28,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-30",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 29,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-31",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 30,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-32",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 31,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-33",
+          "native_networkconf_id": "00000000000000000000000000000003",
+          "port_idx": 32,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        }
+      ],
+      "port_table": [
+        {
+          "autoneg": false,
+          "fec_mode": "rs-fec",
+          "full_duplex": true,
+          "media": "QSFP28",
+          "name": "device-3",
+          "op_mode": "aggregate",
+          "port_idx": 2,
+          "sfp_found": true,
+          "speed": 100000,
+          "up": true
+        },
+        {
+          "autoneg": false,
+          "fec_mode": "fc-fec",
+          "full_duplex": true,
+          "media": "QSFP28",
+          "name": "device-4",
+          "op_mode": "switch",
+          "port_idx": 3,
+          "sfp_found": true,
+          "speed": 25000,
+          "up": false
+        },
+        {
+          "autoneg": true,
+          "full_duplex": false,
+          "media": "QSFP28",
+          "name": "device-5",
+          "op_mode": "switch",
+          "port_idx": 4,
+          "sfp_found": false,
+          "speed": 0,
+          "up": false
+        }
+      ],
+      "type": "usw"
+    }
+  ],
+  "meta": {
+    "rc": "ok"
+  }
+}

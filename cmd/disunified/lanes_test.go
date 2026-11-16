@@ -111,6 +111,9 @@ func TestWatcherStartsOnePendingLaneSwitchPerSplitCage(t *testing.T) {
 	if got := plan(); len(got) != 0 {
 		t.Errorf("adopted: the parent's plan changes %v, want nothing", got)
 	}
+	if !strings.Contains(buf.String(), "no controller API is configured") {
+		t.Errorf("no hand-over note without an API: %q", buf.String())
+	}
 	o.onUnadopted()
 	if v, _ := c.Lanes(3); v.Child.MAC != "" {
 		t.Errorf("after the forget hook: child %+v", v.Child)
@@ -167,5 +170,35 @@ func TestWatcherStartsNoneWhereItShouldNot(t *testing.T) {
 	}
 	if mk := newAutoLanes(&config.File{}, config.Device{Name: "x", Driver: config.LaneDriver, LaneSwitches: config.LaneSwitchesAuto}, nil); mk != nil {
 		t.Error("a lane switch got a watcher of its own")
+	}
+}
+
+// The hand-over (16.7): on the attach the cage's port goes to Auto in the
+// controller when it held a forced lane speed, said once with what it was.
+func TestHandOverSetsTheCageToAuto(t *testing.T) {
+	c, snap, _ := laneParent(t)
+	al, started, buf, _ := watcher(t, c, snap, config.Device{})
+	var asked []int
+	al.cageToAuto = func(_ context.Context, cage int) (map[string]any, error) {
+		asked = append(asked, cage)
+		return map[string]any{"autoneg": false, "speed": float64(25000), "full_duplex": true, "fec_mode": "fc-fec"}, nil
+	}
+	al.tick()
+	if len(asked) != 0 {
+		t.Fatalf("a pending lane switch changed the controller (%v)", asked)
+	}
+	(*started)[0].onAdopted()
+	if !reflect.DeepEqual(asked, []int{3}) {
+		t.Errorf("asked for %v, want [3]", asked)
+	}
+	if !strings.Contains(buf.String(), "port 3: set to Auto in UniFi (was autoneg false, speed 25000, full_duplex true, fec_mode fc-fec)") {
+		t.Errorf("log: %q", buf.String())
+	}
+	// Nothing to change: nothing said.
+	al.cageToAuto = func(context.Context, int) (map[string]any, error) { return nil, nil }
+	n := strings.Count(buf.String(), "Auto")
+	(*started)[0].onAdopted()
+	if strings.Count(buf.String(), "Auto") != n {
+		t.Errorf("a cage already on Auto was logged: %q", buf.String())
 	}
 }
