@@ -3618,9 +3618,11 @@ drawer. Three things showed:
   reported as SFP28 the controller refuses it at 40G, 50G and 100G, so a
   split cage cannot be joined by a forced speed in the drawer. It was the
   mirror image before: a whole cage (QSFP28) cannot be set to 25G there.
-  What works from the UI: FEC on a split cage, and Auto, where the module
-  decides (§10.9). A join of an empty split cage needs a REST save without
-  `fec_mode`.
+  What works from the UI: FEC on a split cage, its lanes at 10G (the
+  drawer shows no FEC below 25G and sends none), and Auto, where the
+  module decides (§10.9). A join of an empty split cage needs a REST save
+  without `fec_mode`. Deployed the same hour (6dbeab6): 10 GbE and then
+  25 GbE with FC-FEC were both saved from the drawer on the split cage.
 - **xcvrd does not see a module inserted after boot.** The platform API's
   `get_presence` and `sfputil show eeprom` read the cable, but xcvrd never
   wrote `TRANSCEIVER_INFO` for it: `get_change_event` waits on a CPLD
