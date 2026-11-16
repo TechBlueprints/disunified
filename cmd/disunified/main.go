@@ -829,6 +829,10 @@ func runOne(ctx context.Context, o options) error {
 		loopCfg.SyslogController = sc
 		log.Printf("control: the controller's remote syslog host is written to the device")
 	}
+	if cc, ok := sw.(devicemodel.ClockController); sw != nil && ok {
+		loopCfg.ClockController = cc
+		log.Printf("control: the controller's time zone, DST rule and NTP servers are written to the device")
+	}
 	// IPv6 on the management interface follows the management network's
 	// IPv6 setting, which the push does not carry: a REST read
 	// (docs/drivers/sonic.md §11.22).

@@ -149,7 +149,8 @@ there.
 `docs/fixtures/apc-backups-05.3/`: the card's real pages (`home`,
 `ulabout`, `ulinput`, `uloutcfg2`, `ulsogctl`, the confirmation page
 `ulsogcfm`) and a **reduced** `config.ini` (only the sections the driver
-reads: TCP/IP, DNS, SystemID and the UPS section -- the rest is SNMP
+reads: TCP/IP, DNS, SystemID, the UPS section, syslog and the clock
+(`[SystemDate/Time]`, captured 2026-11-15, §9) -- the rest is SNMP
 communities, e-mail and users), scrubbed by `scripts/sanitize-apc-backups.py`
 (session tokens, serials, MAC, addresses, host/domain, outlet names that
 name equipment). The fixture runner flips a switched group's state in its
@@ -198,3 +199,49 @@ neighbour table, through the code the two UPS drivers share
 
 The driver now embeds `reach.Identity` instead of keeping its own copy of
 the address and option handling, as `internal/drivers/CLAUDE.md` asks.
+
+## 9. Its clock: the controller's time zone, DST rule and NTP servers
+
+The Back-UPS card takes the controller's time zone, DST rule and NTP
+servers the way the PDU's card does ([`apc-pdu.md`](apc-pdu.md) §12, the
+same `apcnmc.ClockApplier`). Its `[SystemDate/Time]` was captured read-only
+on 2026-11-15 and added to the reduced fixture
+(`apc-backups-05.3/config.ini`; the scrub script now keeps that section and
+`[NetworkSYSLOG]`). It also captured the card's Date/Time and Daylight
+Saving forms (`dateman.htm`, `datentp.htm`):
+
+```
+[SystemDate/Time]
+DSTConfiguration=Disabled
+NTPEnable=enabled
+NTPPrimaryServer=192.0.2.5
+NTPSecondaryServer=0.0.0.0
+NTPTimeZone=-07:00
+NTPUpdateInterval=336
+NTPManualOverride=enabled
+```
+
+What AOS 6.0.1 does differently from the PDU's AOS 3.9.2:
+
+- It has no `DateFormat` key.
+- It has `NTPManualOverride` (the form's "Override Manual NTP Settings").
+  With it off, a DHCP lease's NTP servers replace the manual ones, so the
+  bridge sets it on whenever it writes servers. It was already on here.
+- The Time Zone list is the same 32 offsets; the page renders `+` as a
+  space. The DST form has the same three choices, and its custom rule adds
+  minutes.
+
+The site's push against this card is the same single upload as on the PDU:
+`DSTConfiguration=Traditional US` and the controller's two servers, in
+place of the card's one.
+
+**Verified live 2026-11-16.** The deployed bridge read the section at
+Start and uploaded the three keys that differed. It read the file back
+84 s later as `now reads ... DSTConfiguration=Traditional US`, with the
+controller's two servers and `NTPManualOverride=enabled`. The card logged
+`NTP update successful` 12 s after the upload, so the new servers answer.
+Its event log reads MST to the second. A failed FTP login is an event on
+AOS 6 (`Detected an unauthorized user attempting to access the FTP
+interface`), and its line reached the log host within a second. As on the
+PDU, the log host keeps the receive time, not the card's stamp, and the
+first DST change (14 March 2027) is still to be seen.

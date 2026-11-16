@@ -37,7 +37,8 @@ Built 2026-09-27 for a Back-UPS Pro 500 (BG500) behind its embedded NMC
 - **config.ini over FTP works as on the PDU**: `[NetworkTCP/IP]` with
   `Override=<MAC as "00 C0 B7 ..">`, `BootMode=Manual|DHCP Only`; applies
   live. The whole file carries SNMP communities, e-mail and users -- the
-  fixture keeps only the four sections the driver reads.
+  fixture keeps only the sections the driver reads (TCP/IP, DNS, SystemID,
+  the UPS section, syslog and `[SystemDate/Time]`).
 - **Adoption deleted the card's client record** (fixed IP + DNS name);
   the card's DHCP hostname is `apcXXXXXX`, and the gateway publishes no
   name for an adopted device (the device `hostname` field changes nothing

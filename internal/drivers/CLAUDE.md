@@ -69,8 +69,13 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   is idempotent, and is read back before it is logged.
 - **`apcnmc` is not a driver**: it registers nothing and holds what the
   APC drivers share about the management card itself -- its `config.ini`
-  (section parsing, the fixture runners' `Merge`) and the syslog section
-  (`SyslogApplier`, behind `devicemodel.SyslogController`). A key it writes must exist in the card's own file.
+  (section parsing, the fixture runners' `Merge`), the syslog section
+  (`SyslogApplier`, behind `devicemodel.SyslogController`) and the clock
+  (`ClockApplier`, `[SystemDate/Time]`, behind `devicemodel.ClockController`:
+  a POSIX zone mapped exactly onto the card's fixed offsets and its
+  `Traditional US` DST, or refused). A key it writes must exist in the
+  card's own file, and a card's appliers share one `Uploads` gate: the card
+  drops an upload that lands while it applies the last.
 - **`reach` is not a driver** either: the MAC, netmask, gateway, gateway
   MAC and reported address of a device that cannot report them itself
   (`apc-ups`, `apc-backups`, `stub`). The netmask and gateway come from the

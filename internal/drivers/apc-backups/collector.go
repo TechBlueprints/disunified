@@ -37,17 +37,17 @@ type Collector struct {
 	rows   []outletRow // the last poll's rows, in snapshot order
 	warned map[string]bool
 	syslog *apcnmc.SyslogApplier // the card's syslog servers, through config.ini
+	clock  *apcnmc.ClockApplier  // its time zone, DST and NTP servers, the same way
 }
 
 // NewCollector wraps a runner.
 func NewCollector(r Runner) *Collector {
 	c := &Collector{r: r, Log: log.Default(), warned: map[string]bool{}}
 	c.Driver = "apc-backups"
-	c.syslog = &apcnmc.SyslogApplier{
-		Get:  r.GetConfig,
-		Put:  r.PutConfig,
-		Logf: func(format string, args ...any) { c.Log.Printf("apc-backups: "+format, args...) },
-	}
+	logf := func(format string, args ...any) { c.Log.Printf("apc-backups: "+format, args...) }
+	up := &apcnmc.Uploads{} // the two appliers take turns: the card drops an upload that lands while one applies
+	c.syslog = &apcnmc.SyslogApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up}
+	c.clock = &apcnmc.ClockApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up}
 	return c
 }
 
@@ -76,6 +76,7 @@ func (c *Collector) Start(ctx context.Context) (*devicemodel.Snapshot, error) {
 	}
 	c.mu.Unlock()
 	c.syslog.Load(cfg)
+	c.clock.Load(cfg)
 	snap, err := c.build(ctx, pages)
 	if err != nil {
 		return nil, err
