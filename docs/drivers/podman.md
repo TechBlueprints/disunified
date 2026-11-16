@@ -187,6 +187,9 @@ the capture with a client behind a port, used for the MAC learn time
 (`internal/drivers/podman/mactimes_test.go`, `docs/mac-table-times.md` §6).
 `collect-carrier.txt` (2026-11-15) is the first with the carrier counts
 (`internal/drivers/podman/carrier_test.go`).
+`collect-address.txt` (2026-11-15) is the host with its uplink static from
+the controller's IP Settings, taken while the bridge on it dials it over a
+podman bridge network: the reported address (§7).
 `internal/drivers/podman/collector_test.go` drives the driver against the first;
 `internal/device/contract_podman_test.go` holds its payload to the wire
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
@@ -207,6 +210,28 @@ adoption the controller no longer holds the reservation, so a lease could
 land anywhere). Idempotent. This is the answer to "adoption deletes the
 reservation": adopt, then set IP Settings → Static with the same address,
 and UniFi owns the host's address from then on.
+
+**The reported address is the host's own (2026-11-15).** The informs'
+`ip` / `connect_request_ip` come from the host, read in the same poll
+(`collect.sh`'s `addr` and `nmipv4` sections, no new command): the address
+of the uplink -- the NIC whose NetworkManager profile the IP Settings are
+applied to, `options.uplink` or the default route's -- that the profile
+holds when it is static and the uplink carries it, else the uplink's first
+global IPv4 address. The driver hands it to the loop as
+`devicemodel.AddressReporter` (`Collector.CurrentAddress`), the path the
+sonic driver's dial target takes: `main` reports it from start, and the
+loop follows it after every collect in which it changed, so a host whose
+address moves is reported where it is now; an applied static push is
+reported as well (it can only re-affirm an address the uplink carries).
+Until then the dial target was reported, which for a bridge on the host
+(§4b) is the podman bridge network's gateway address, so the device entry
+needed the LAN address typed by hand as `ip:`. `ip:` is an override now:
+reported from start, kept while the host's address stays put, replaced
+once it moves. Tests: `collect-address.txt` (the host dialled over
+`podman4`, the uplink static from the controller), in
+`internal/drivers/podman/address_test.go`, `cmd/disunified/address_test.go`
+(`reportedIP`: from the host; `ip:` wins) and
+`internal/informloop/address_podman_test.go` (`ip:` kept, a move followed).
 
 ## 8. Not done
 

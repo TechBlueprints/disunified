@@ -500,13 +500,33 @@ type AddressDesired struct {
 	DNS       []string
 }
 
-// AddressReporter is an optional capability of a Collector: the address
-// the driver currently manages the device through, which can move under
-// the bridge (an applied IP Settings change, a fallback to another known
-// address). The loop reports it to the controller as the device's address
-// when it is an IP literal; "" = unknown.
+// AddressReporter is an optional capability of a Collector: the device's
+// own address as the driver knows it now -- the address it manages the
+// device through (sonic: an applied IP Settings change, a fallback to
+// another known address), or the address the device itself carries when the
+// bridge dials it elsewhere (podman: the host's LAN address, dialled over a
+// podman bridge network). The loop reports it to the controller as the
+// device's address when it is an IP literal: at start unless the operator
+// set one (`ip:`), and whenever it changes; "" = unknown.
 type AddressReporter interface {
 	CurrentAddress() string
+}
+
+// SiteNetwork is the network an address is in as the site's own
+// configuration has it: its prefix length and the gateway's address on it.
+type SiteNetwork struct {
+	PrefixLen int
+	Gateway   string
+}
+
+// SiteNetworkUser is optional: a device that cannot report its own netmask
+// and gateway (a UPS's Modbus port, a management card's web pages) takes
+// them from the site's configuration. The bridge hands it a lookup before
+// Start when it can read the controller; an error, or a SiteNetwork with no
+// prefix, means the site has no network for that address. Without a lookup
+// the device's options are all it has.
+type SiteNetworkUser interface {
+	SetSiteNetworkLookup(lookup func(ctx context.Context, ip string) (SiteNetwork, error))
 }
 
 // ApplyBudget is optional: a driver whose writes take long (SONiC: ~250 ms

@@ -30,8 +30,10 @@ Built 2026-09-27 for a Back-UPS Pro 500 (BG500) behind its embedded NMC
 - **The `usp` IP Settings push has no gateway.** `netconf.1.*` and
   `resolv.nameserver.*` arrive, `route.1.gateway` does not (the switch
   path sends it). The first static write left the card at
-  `DefaultGateway=0.0.0.0`; `options.gateway` is the fallback and the
-  gateway is part of the address diff.
+  `DefaultGateway=0.0.0.0`. The fallback is `options.gateway`, then the
+  gateway of the site network holding the new address (`reach.GatewayFor`,
+  `docs/drivers/apc-backups.md` §8), then the card's own. The gateway is
+  part of the address diff.
 - **config.ini over FTP works as on the PDU**: `[NetworkTCP/IP]` with
   `Override=<MAC as "00 C0 B7 ..">`, `BootMode=Manual|DHCP Only`; applies
   live. The whole file carries SNMP communities, e-mail and users -- the

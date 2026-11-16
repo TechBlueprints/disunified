@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for scripts/sanitize-controller.py on the controller's alert log
-(v2 system-log/device-alert), over the committed alert fixtures.
+(v2 system-log/device-alert), over the committed alert fixtures, and on its
+--text mode over the bridge's own neighbour table (docs/fixtures/bridge-linux-*).
 
 Each fixture is a real capture, already scrubbed. The test gives it its
 identifiers back -- every placeholder name, MAC, address and id replaced by
@@ -108,7 +109,38 @@ def main():
                 print('FAIL: %s\n    %s' % (name, '\n    '.join(problems)))
             else:
                 print('ok: %s (%d values planted, none left)' % (name, len(planted)))
+    fails += text_mode()
     return 1 if fails else 0
+
+
+def text_mode():
+    """--text on the bridge's neighbour table and addresses: the subnets
+    come back as site-looking ones, the MACs as site-looking MACs; the
+    scrub with the same --subnet mappings must give the committed fixture
+    again and leave none of them."""
+    fails = 0
+    site16, site24 = '1' + '0.7', '1' + '0.5.5'   # a /16 and a /24, built here
+    def back(text):
+        text = re.sub(r'\b198\.18\.(\d+)\.(\d+)\b', lambda m: '%s.%s.%s' % (site16, m.group(1), m.group(2)), text)
+        text = re.sub(r'\b198\.19\.6\.(\d+)\b', lambda m: '%s.%s' % (site24, m.group(1)), text)
+        return re.sub(r'\b02:00:00:00:00:([0-9a-f]{2})\b', lambda m: '5' + 'a:5a:5a:5a:5a:' + m.group(1), text)
+    with tempfile.TemporaryDirectory() as work:
+        for path in sorted(glob.glob(os.path.join(root, 'docs', 'fixtures', 'bridge-linux-*', '*.txt'))):
+            name = os.path.relpath(path, root)
+            committed = open(path).read()
+            text = back(committed)
+            tmp = os.path.join(work, os.path.basename(path))
+            open(tmp, 'w').write(text)
+            subprocess.run([sys.executable, '-I', os.path.join(here, 'sanitize-controller.py'),
+                            '--subnet', site16 + '.0.0/16=198.18.0.0/16', '--subnet', site24 + '.0/24=198.19.6.0/24', '--text', tmp],
+                           check=True, capture_output=True)
+            out = open(tmp).read()
+            if site16 + '.' in out or site24 + '.' in out or '5a:5a:5a' in out or out != committed:
+                fails += 1
+                print('FAIL: %s: --text did not give the committed fixture back' % name)
+            else:
+                print('ok: %s (--text)' % name)
+    return fails
 
 
 if __name__ == '__main__':

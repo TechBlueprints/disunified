@@ -44,6 +44,10 @@ Usage: scripts/sanitize-controller.py <file>...   (writes the file back;
            maps one MAC as another capture's scrub did, or to a placeholder
            of its own (a blocked client that must not collide with a driver
            capture's switch MAC); every other one is numbered past the seeded
+       scripts/sanitize-controller.py [--subnet ...]... --text <file>...
+           a host's plain-text capture (a neighbour table, `ip addr`), every
+           line scrubbed; give it the --subnet mappings of the controller
+           capture it is read against, so the two still agree
        scripts/sanitize-controller.py --comments-only <file>...
            rewrites only the SSH key comments, any format (.ndjson, .json,
            system_cfg .txt), every other byte untouched -- for fixtures
@@ -412,11 +416,20 @@ while args and args[0] in ('--subnet', '--ip', '--mac'):
 comments_only = bool(args) and args[0] == '--comments-only'
 if comments_only:
     args = args[1:]
+# --text: a host's text capture beside a controller one (the bridge's own
+# neighbour table and addresses, read against rest/networkconf): every line
+# scrubbed as plain text, with the same --subnet/--ip/--mac mappings.
+text_mode = bool(args) and args[0] == '--text'
+if text_mode:
+    args = args[1:]
 for path in args:
     comments.clear()   # key-N numbering is per file
     raw = open(path).read()
     if comments_only:
         open(path, 'w').write(scrub_comments_only(raw))
+        continue
+    if text_mode:
+        open(path, 'w').write('\n'.join(scrub_plain(l) for l in raw.splitlines()) + ('\n' if raw.endswith('\n') else ''))
         continue
     if path.endswith('.ndjson'):
         lines = []

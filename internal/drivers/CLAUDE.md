@@ -71,9 +71,14 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   APC drivers share about the management card itself -- its `config.ini`
   (section parsing, the fixture runners' `Merge`) and the syslog section
   (`SyslogApplier`, behind `devicemodel.SyslogController`). A key it writes must exist in the card's own file.
-- **`reach` is not a driver** either: the `mac`, `netmask` and
-  `gateway_mac` options and the reported address for a device that cannot
-  report them itself (`apc-ups`, `stub`). A new driver with the same need
+- **`reach` is not a driver** either: the MAC, netmask, gateway, gateway
+  MAC and reported address of a device that cannot report them itself
+  (`apc-ups`, `apc-backups`, `stub`). The netmask and gateway come from the
+  site's network list, which a driver takes by implementing
+  `devicemodel.SiteNetworkUser` (`stub` does not: it reports what its file
+  and options say). The gateway MAC comes from the bridge's own neighbour
+  table, read only on the device's segment. The options override all of
+  them (`docs/drivers/apc-ups.md` §14). A new driver with the same need
   embeds `reach.Identity`; it does not copy it.
 - **`breakout` has no device** (the lane switch, `docs/drivers/breakout.md`):
   a split cage of a parent that implements `devicemodel.LaneProvider`,

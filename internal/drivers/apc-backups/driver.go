@@ -21,14 +21,19 @@ import (
 //	             Override= in config.ini). The controller places the device
 //	             by it, and the card applies an uploaded TCP/IP section only
 //	             when the section names it.
-//	netmask      the card's network mask, dotted (e.g. 255.255.255.0), and
-//	gateway_mac  the gateway's L2 address as the segment sees it: with the
-//	             mask, what the controller places the device by.
-//	gateway      the default gateway to write with a static address. The
-//	             controller's push for a UPS-class ("usp") device carries
-//	             the address, mask and nameservers but no route, so
-//	             without this a card made static keeps whatever gateway it
-//	             had -- none, if it was on DHCP.
+//	netmask      overrides of the card's network mask (dotted), its
+//	gateway      gateway and the gateway's L2 address: what the controller
+//	gateway_mac  places the device by, and the gateway a static address is
+//	             written with (the controller's push for a UPS-class "usp"
+//	             device carries the address, mask and nameservers but no
+//	             route). Without them the mask and gateway come from the
+//	             controller's network list (the network holding the card's
+//	             address) and the MAC from the bridge's own neighbour table
+//	             when the bridge has an address on that network; a bridge on
+//	             another segment reports no gateway MAC unless gateway_mac is
+//	             set (docs/drivers/apc-backups.md §8). With neither a gateway
+//	             option nor a site network, a card made static keeps the
+//	             gateway it had -- none, if it was on DHCP.
 //	timeout      per-request timeout (default 15s)
 //
 // The card accepts a handful of concurrent web sessions; the driver logs
@@ -66,11 +71,7 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		w.http.Timeout = d
 	}
 	c := NewCollector(w)
-	c.Addr = w.Host
-	c.MAC = strings.ToLower(strings.TrimSpace(cfg.Options["mac"]))
-	c.Netmask = strings.TrimSpace(cfg.Options["netmask"])
-	c.GatewayMAC = strings.ToLower(strings.TrimSpace(cfg.Options["gateway_mac"]))
-	c.Gateway = strings.TrimSpace(cfg.Options["gateway"])
+	c.SetOptions(w.Host, cfg.Options)
 	return c, nil
 }
 
@@ -86,4 +87,5 @@ var (
 	_ devicemodel.OutletPlanner     = (*Collector)(nil)
 	_ devicemodel.AddressController = (*Collector)(nil)
 	_ devicemodel.SyslogController  = (*Collector)(nil)
+	_ devicemodel.SiteNetworkUser   = (*Collector)(nil)
 )
