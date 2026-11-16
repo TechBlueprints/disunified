@@ -2080,18 +2080,110 @@ allocator, its tuning or the struct changes. 0013 removes it.
 With no sanitizer on the switch, the install cannot show the fault's absence directly.
 That proof is the harness's.
 
-**A separate fault, seen in the same logs: l2mcd's abort at 11:16:47 on 2026-11-15.** One
-second after Ethernet0 was re-created at index 4131 (§11.25.3), l2mcd died on an uncaught
-`std::logic_error` ("basic_string: construction from null is not valid"; core
-`/var/core/l2mcd.1794766607.26.core.gz`). systemd restarted its container at 11:19:48, so
-snooping was down for three minutes. The likely cause, from the source:
-`receive_igmp_packet()` checks the receiving port's name for NULL before
-`l2mcd_is_peerlink()` (`src/igmp_io.c` 639-640), but the v1/v2 and v3 report paths pass
-`portdb_get_ifname_from_portindex(multicast->source_port)` to it unchecked (`igmp_io.c`
-777 and 835). `l2mcd_is_peerlink()` builds a `std::string` from that name. A report that
-arrives on an index portdb no longer names, as after 0011's fault, therefore aborts the
-daemon. The harness cannot see it: its stub of the C++ layer accepts NULL. Not fixed yet (a
-follow-up). 0011 removes the way it was reached that day.
+**0014: l2mcd aborted on a report from a port the port db no longer named (2026-11-15).**
+At 11:16:47 l2mcd died on an uncaught `std::logic_error` ("basic_string: construction from
+null is not valid"; core `/var/core/l2mcd.1794766607.26.core.gz`). That was one second after
+Ethernet0's link event had rebuilt its tree (§11.25.3). systemd restarted the container at
+11:19:48, so snooping was down for three minutes.
+
+**The cause, from the core.** The core was copied off the switch (read-only) and opened with
+gdb in the bookworm build slave. The image's `l2mcd` binary is in the build tree that made
+`igmp-202511.20261115-6c8eb1cf7` (`target/debs/bookworm/l2mcd_1.0.0_amd64.deb`, md5 equal to
+the running `/usr/bin/l2mcd`), with its `l2mcd-dbgsym` package beside it. The sysroot is the
+image's `docker-l2mcd.gz` layers. The build VM's `~/out` holds only the installer images.
+- **Backtrace** of the only thread: `std::__throw_logic_error` ← `basic_string(const char *)`
+  ← `l2mcd_is_peerlink()` (`l2mcd_sync.cpp:138`) ← `receive_igmp_packet()`
+  (`src/igmp_io.c:920` in the image's source, upstream line 835) ← `l2mcd_recv_igmp_msg()`
+  (fd 57) ← libevent.
+- **The packet:** an IGMPv3 report on Vlan4094, to 224.0.0.22, `rx_phy_port_number` 4096. That
+  is the receive socket Ethernet0's link event had opened at index 4096 a second before.
+- **The port db in the core:** the index→name table has **no entry for 4096**, and 4131 names
+  Ethernet0. Ethernet35's own name had been overwritten at 4131 (its name→index entry still says
+  4131). The name→index table also holds a key at 4096 whose string reads empty: that is the
+  freed "Ethernet115" (below).
+
+**How 4096 lost its name** (l2mcd's log, `l2mcd-breakout-index-20261115.txt`, read against
+`port/l2mcd_portdb.c`). `portdb_add_ifname()` overwrites an index's name when the index already
+has one: the hash insert returns 2 and replaces the data. The old name keeps its
+name→index entry. `portdb_delete_ifname(name)` looks the
+name up, then deletes and frees whatever name the index now holds.
+1. At 10:48:27 Ethernet113, 114 and 115 were each added at 4096. Index 4096 ended up naming
+   Ethernet115, and all four names (Ethernet0 too) still mapped to 4096.
+2. Ethernet113's `delete2` then removed 4096's entry and freed the "Ethernet115" string, which
+   was still a key of the name→index table. That freed string is the empty key in the core.
+3. From then on no name was added at 4096 (Ethernet114's `delete2` logged rc -1).
+4. At 11:16:46 Ethernet0's recovery found its name still mapped to 4096. The `delete2` branch
+   built its new tree and sockets there, then deleted the name. The next update numbered
+   Ethernet0 4131 (4096 + kif 35), so the socket sat at 4096 with no name. The first IGMPv3
+   report on it aborted the daemon.
+
+**Every place with the same fault** (`651a13b` lines; the series through 0013 in brackets).
+`l2mcd_is_peerlink()` is the only consumer of a port-db name that cannot take NULL, and six
+calls pass it unchecked:
+- `receive_igmp_packet()`: the v1/v2 report at 777 [862], the v3 report at 835 [920], the v2
+  leave at 850 [935];
+- `l2mcd_mld_process_v1_report()` at 391 [469], `l2mcd_mld_process_done()` at 490 [568],
+  `l2mcd_mld_process_v2_report()` at 573 [651].
+
+The rest are safe:
+- `receive_igmp_packet()`'s own peer-link test (640) and `mcgrp_add_router_port()`
+  (`l2mcd_mld_port.c` 2040) check the name first.
+- Every other assignment from `portdb_get_ifname_from_portindex()` or the
+  `mld_get_if_name_from_*` wrappers checks for NULL before `strcmp`, `strncpy` or a delete
+  (lines on the series): `l2mcd_utils.c` 178 and 302, `l2mcd_mld_port.c` 1473, 1699, 1844, 2327
+  and 2357, `mld_vdb.c` 803.
+- The remaining calls are arguments of log formats. glibc prints `(null)` for a NULL `%s`, and
+  the harness evaluating every per-VLAN log argument (`HARNESS_LOGARGS`) reports nothing on
+  these cases. They are left as they are.
+
+**The fix, sonic-l2mcd 0014.** `receive_igmp_packet()` and `receive_mld_packet()` drop any
+message except a query from a port the port db does not name, before the handlers run. The
+drop is counted in `rx_bad_if` and logged with the VLAN's debug log, as a packet from a down
+port is; that is the only place it shows with the debug log off. Queries take no name on their
+way (`mcgrp_add_router_port()` checks it) and are processed as before. The patch applies to
+`651a13b` as it is. gcc 12 `-Wall` gives the same single warning in `mld_io.c` (an unused
+`dest_ip`) with and without it, and none in `igmp_io.c`.
+
+**Harness.** The stub of `l2mcd_is_peerlink()` now aborts on NULL, with the caller's stack, as
+the real one does. Before, it accepted NULL, which is why no case saw the fault. The six
+`port-no-name-*` cases each take Ethernet8's name out of the port db with
+`portdb_delete_ifname()`, keeping its tree and sockets as on the switch. Each then sends one
+message: an IGMPv2 report, an IGMPv3 report, an IGMPv2 leave, an MLDv1 report, an MLDv2 report
+or an MLDv1 done. Results:
+- On `651a13b` and on the series 0001-0013, each aborts in `l2mcd_is_peerlink(NULL)` at its own
+  line above. On the series, `port-no-name-v3-report` aborts at `igmp_io.c:920`, the core's
+  line.
+- With 0014, on both bases, each is clean: `rx_bad_if` one higher, nothing forwarded, no
+  membership.
+- The other 33 cases give the same result with and without 0014, on each base, with the debug
+  log's arguments evaluated as well as without.
+- The IGMP and MLD fuzzers ran 30 minutes with 4 workers each on the series with 0014: 39.0
+  million IGMP and 24.0 million MLD packets, about 1,095 and 1,157 edges, no crash and no
+  sanitizer report. They feed a named port, so they show that the parsers are unchanged, not
+  the new check; that is the six cases' job.
+- `dry-run.sh` passed with 0014 in the series (2026-11-15).
+
+**Is it still reachable with 0011?** Not in any way found:
+- 0011 stops `delete2` deleting the name, so a re-created port's tree and its name keep one
+  index.
+- `l2mcd_port_index_for()` never numbers a port at an index another name holds. The other
+  callers of `portdb_add_ifname()` are the start-up loop and `mld_map_port_add_del()`
+  (`l2mcd_mld_port.c` 1461 on the series), which names a VLAN at its VLAN id, below 4096. So with
+  0011 nothing overwrites a port's name.
+- A packet cannot outlive its port's deletion. `l2mcd_recv_igmp_msg()` parses each packet in
+  the socket's own callback (frame 11 above), and a port-list delete closes the socket before
+  its name goes.
+
+0014 is therefore a guard against a way not yet found, as much as a fix: any such case becomes a
+counted drop instead of an abort. The port db's own fault is not fixed: an overwritten name stays a
+key, and a later delete by the old name frees the index's current name while it is still a key. With
+0011 nothing reaches it (a follow-up).
+
+**What an image install with 0014 has to prove.** A breakout and a join of an empty cage, as in
+§11.25.3, then the uplink's next link event. l2mcd keeps its pid, logs no `rx_bad_if` growth
+(`l2mcd_ctl -s <file> -c 2`) and leaves no new core in `/var/core`. With 0011 in the image the
+nameless index should never occur, so the install shows only that nothing regressed; the
+fault's absence is the harness's proof.
 
 ### 8.14 The image on the virtual switch and the DX010 (2026-11-01/02)
 
@@ -7647,7 +7739,7 @@ from `/var/log/l2mcd.log`) read against its source (`port/l2mcd_utils.c`,
   ("terminate called after throwing an instance of 'std::logic_error'",
   "basic_string: construction from null is not valid", a core in
   `/var/core`), and systemd restarted the container at 11:19:48: the
-  "restart" earlier notes took for a hand one (§8.13 has the likely cause).
+  "restart" earlier notes took for a hand one (§8.13 has the cause, from its core, and the fix, 0014).
   Ethernet64 had no tree until then.
 
 **So the deletions are not confined to the cage being split.** Any breakout
