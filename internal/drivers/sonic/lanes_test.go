@@ -535,3 +535,31 @@ func TestLaneJoinUnbindsTheACLTables(t *testing.T) {
 		t.Errorf("after the join: %v", sortIfnames(bound))
 	}
 }
+
+// A split cage is reported in its lanes' form, a whole one as a QSFP28:
+// the controller takes a FEC for a port by its reported media and speed (a
+// QSFP28 at 40G and 100G only, an SFP28 at 25G; docs/drivers/sonic.md
+// 10.3, live 2026-11-16). The lane switch's uplink keeps the cage's own.
+func TestSplitCageReportsItsLanesForm(t *testing.T) {
+	r := laneRig(t)
+	snap, err := r.c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range snap.Ports {
+		want := devicemodel.MediaQSFP28
+		if p.Index == 2 {
+			want = devicemodel.MediaSFP28
+		}
+		if p.Media != want {
+			t.Errorf("port %d (%d lanes): media %q, want %q", p.Index, p.Lanes, p.Media, want)
+		}
+	}
+	v, err := r.c.Lanes(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Cage.Media != devicemodel.MediaQSFP28 {
+		t.Errorf("the lane view's cage: media %q, want the cage's own QSFP28", v.Cage.Media)
+	}
+}

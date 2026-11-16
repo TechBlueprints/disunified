@@ -461,6 +461,19 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   alias (`Eth2/1` -> `Eth2`); every mode's speeds are claimed. The tests
   build the DX010 variant from the VS capture plus the upstream
   `dx010-platform.json` / `dx010-hwsku.json` beside it.
+- **A split cage reports its lanes' form, a whole one QSFP28 (`splitForm`,
+  `docs/drivers/sonic.md` §10.3, live 2026-11-16).** The controller takes a
+  `fec_mode` by the port's reported media and speed: QSFP28 at 40G and 100G,
+  SFP28 at 25G, `api.err.InvalidFecMode` otherwise; no capability bit is
+  involved. The UI's drawer sends a `fec_mode` with every forced speed of
+  25G or more, so it cannot split a whole cage to 25G, nor join a split one
+  by a forced speed: those are REST saves without `fec_mode`, or Auto with
+  a module. The form is by the fastest speed a lane runs, never its
+  configured speed. The lane switch's uplink keeps `cageForm`.
+  **xcvrd misses a module inserted after boot** on the DX010 (no
+  `TRANSCEIVER_INFO`, while `sfputil show eeprom` reads it): the module
+  rules see an empty cage until a breakout re-adds the ports or xcvrd
+  restarts. Open (the register).
 - **Time zone (`zones.go`).** The controller pushes a POSIX rule
   (`system.timezone=MST7MDT,M3.2.0,M11.1.0`), and `config clock timezone`
   accepts only names from `timedatectl list-timezones`. The driver reads

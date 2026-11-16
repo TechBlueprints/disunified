@@ -165,7 +165,8 @@ hostnames, descriptions, optic serials); `scripts/check-site-info.sh
 `internal/drivers/sonic`: `Driver` registered as `sonic`, an `sshrun.Runner`,
 a `FixtureRunner` serving the captures. Port index = `CONFIG_DB PORT` `index`
 (1..32), name `Ethernet<n>`, alias `Eth<i>` as the vendor name; four lanes
-fold into one cage, split cages set `LanesDiverge`; media QSFP28; speed caps
+fold into one cage, split cages set `LanesDiverge`; media QSFP28, a split
+cage its lanes' form (SFP28 for 25G lanes, §10.3); speed caps
 from the hardware SKU's `platform.json` breakout modes (hardware) with a
 sane default on the VS; `Port.Health` from the SAI counters; LLDP, FDB,
 VLANs, LAGs, STP as available. `System`: hostname, platform, HwSKU,
@@ -3601,11 +3602,25 @@ drawer. Three things showed:
   record has no FEC capability field, and neither switch sets `speed_caps`
   bit 21 (unifi-emu's `FEC` bit). So the check follows what the device
   reports for the port. The pair that fits both rows is `media` and speed:
-  a QSFP28 gets FEC at 40G and 100G, an SFP28 at 25G. A split cage folded
-  into one QSFP28 port therefore cannot have its lanes' FEC set from UniFi.
-  The lane switch (`docs/drivers/breakout.md`) reports each 25G lane as
-  SFP28, which should pass. Not tested: that report on a live device, and
-  whether claiming bit 21 changes the answer.
+  a QSFP28 gets FEC at 40G and 100G, an SFP28 at 25G.
+- **A split cage reports its lanes' form (`splitForm`, the same day).**
+  Clint: the controller exposes what the device says it supports. A test
+  build reported the split cage as `SFP28` and nothing else changed. The
+  same save then passed with `fc-fec`, `rs-fec` and `disabled`, the drawer
+  showed FC-FEC as stored, and the push carried `switch.port.3.fec=cl-74`.
+  So `media` is the gate, and bit 21 is not needed. The form follows the
+  fastest speed a lane runs, not its configured speed: four 25G lanes are
+  SFP28 at 10G too, as a UniFi SFP28 port is, and two 50G lanes stay
+  QSFP28. A whole cage is QSFP28 as before, and the lane switch's uplink
+  keeps the cage's own form (`cageForm`).
+  **The cost is the other direction.** The drawer sends a `fec_mode` with
+  every forced speed of 25G or more (`disabled` when unticked). For a port
+  reported as SFP28 the controller refuses it at 40G, 50G and 100G, so a
+  split cage cannot be joined by a forced speed in the drawer. It was the
+  mirror image before: a whole cage (QSFP28) cannot be set to 25G there.
+  What works from the UI: FEC on a split cage, and Auto, where the module
+  decides (§10.9). A join of an empty split cage needs a REST save without
+  `fec_mode`.
 - **xcvrd does not see a module inserted after boot.** The platform API's
   `get_presence` and `sfputil show eeprom` read the cable, but xcvrd never
   wrote `TRANSCEIVER_INFO` for it: `get_change_event` waits on a CPLD

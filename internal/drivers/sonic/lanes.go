@@ -169,6 +169,9 @@ func (c *Collector) Lanes(cage int) (devicemodel.LaneView, error) {
 		TakenAt: snap.TakenAt, System: snap.System, Cage: snap.Ports[i], CageAlias: c.aliases[cage],
 		ChassisID: c.chassisID, VLANs: slices.Clone(snap.VLANs), CageDisabled: c.cageDown[cage], Child: c.children[cage],
 	}
+	// The lane switch's uplink is the cable in the cage, so the view keeps
+	// the cage's own form: the device's port reports its lanes' (model.go).
+	v.Cage.Media = cageForm(v.Cage.SpeedCaps)
 	var modeSpeeds []int
 	if parent, _, ok := st.platformCage(cage); ok {
 		v.Mode = st.brkout[parent]

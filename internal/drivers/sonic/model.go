@@ -199,6 +199,15 @@ func buildPorts(db map[string]table, native int, plat map[string]platformPort) [
 		}
 		p.SpeedCaps = caps
 		p.Media = mediaOf(cageLanes, atoi(firstCfg["speed"]), laneCount(firstCfg["lanes"]), caps)
+		if len(names) > 1 {
+			// A split cage is reported in its lanes' form, by the fastest
+			// speed a lane runs (four 25G lanes: SFP28, at 10G too, as a
+			// UniFi SFP28 port is). The controller checks a pushed FEC
+			// against the reported media and speed: a QSFP28 gets FEC at
+			// 40G and 100G only, an SFP28 at 25G (docs/drivers/sonic.md
+			// 10.3).
+			p.Media = splitForm(speedList(state[names[0]]["supported_speeds"]), atoi(firstCfg["speed"]))
+		}
 		// The optic sits in the cage; SONiC keys it by the first interface.
 		if x := xcvr[names[0]]; len(x) > 0 {
 			p.Present = true
@@ -445,6 +454,30 @@ func mediaOf(cageLanes, speed, ifLanes int, caps []int) devicemodel.Media {
 		return devicemodel.MediaSFP
 	}
 	return devicemodel.MediaQSFP28
+}
+
+// splitForm is the form of a split cage's lanes: the fastest speed a lane
+// runs, or its configured speed where the switch lists none.
+func splitForm(laneCaps []int, speed int) devicemodel.Media {
+	top := 0
+	for _, s := range laneCaps {
+		top = max(top, s)
+	}
+	if top == 0 {
+		top = speed
+	}
+	return laneMedia(top)
+}
+
+// cageForm is a split cage's own form, whatever its lanes run: a cage with
+// a 25G or faster lane is a QSFP28, else a QSFP+.
+func cageForm(caps []int) devicemodel.Media {
+	for _, s := range caps {
+		if s >= 25000 {
+			return devicemodel.MediaQSFP28
+		}
+	}
+	return devicemodel.MediaQSFPPlus
 }
 
 // neighborOf maps an APPL_DB LLDP_ENTRY_TABLE entry.

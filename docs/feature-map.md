@@ -272,6 +272,9 @@ What the media label affects: the port icon; which **speed options** the UI offe
 port (SFP28: 1/10/25G; 10GBASE-T: 100M/1G/2.5G/5G/10G); PoE controls (none on SFP28,
 correct for us); and possibly an "SFP module not detected" hint on empty SFP28 ports —
 the bridge currently omits `sfp_found` on the copper ports, so watch what the UI shows.
+It also decides **at which speeds a FEC is accepted** (11.0.99, 2026-11-16): a port
+reported as QSFP28 takes `fec_mode` at 40G and 100G only, one reported as SFP28 at 25G
+only, `api.err.InvalidFecMode` otherwise (`docs/drivers/sonic.md` §10.3).
 It does **not** affect adoption, stats, VLANs, STP, or enable/disable. Recommendation:
 stay on `UDC48X6`; if the UI shows a module warning on ports 1-48, report `sfp_found: true`
 there (harmless) rather than change model.
