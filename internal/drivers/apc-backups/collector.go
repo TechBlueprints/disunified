@@ -38,6 +38,12 @@ type Collector struct {
 	warned map[string]bool
 	syslog *apcnmc.SyslogApplier // the card's syslog servers, through config.ini
 	clock  *apcnmc.ClockApplier  // its time zone, DST and NTP servers, the same way
+	// uploads is the card's config.ini gate: the syslog and clock uploads
+	// and ApplyAddress's take turns there, since the card drops an upload
+	// that lands while it applies the last. now is the address upload's
+	// clock for it (nil = time.Now).
+	uploads *apcnmc.Uploads
+	now     func() time.Time
 }
 
 // NewCollector wraps a runner.
@@ -45,10 +51,20 @@ func NewCollector(r Runner) *Collector {
 	c := &Collector{r: r, Log: log.Default(), warned: map[string]bool{}}
 	c.Driver = "apc-backups"
 	logf := func(format string, args ...any) { c.Log.Printf("apc-backups: "+format, args...) }
-	up := &apcnmc.Uploads{} // the two appliers take turns: the card drops an upload that lands while one applies
+	up := &apcnmc.Uploads{} // the appliers and ApplyAddress take turns: the card drops an upload that lands while one applies
+	c.uploads = up
 	c.syslog = &apcnmc.SyslogApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up}
 	c.clock = &apcnmc.ClockApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up}
 	return c
+}
+
+// takeUpload is ApplyAddress's turn at the card's upload gate.
+func (c *Collector) takeUpload() bool {
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	return c.uploads.Take(now(), apcnmc.DefaultSettle)
 }
 
 // Start reads the identity pages and the card's config once, then polls.

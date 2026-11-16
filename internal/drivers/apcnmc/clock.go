@@ -368,15 +368,21 @@ func (t Time) Render(want map[string]string, keys []string) []byte {
 
 // Uploads keeps one card's config.ini uploads apart. The card drops an
 // upload that arrives while it is still applying the last one, without a
-// word, so the appliers that share a card (syslog, clock) take a turn here
-// and wait out the settle time between theirs. Nil = no gate.
+// word, so the uploads that share a card -- the syslog and clock appliers'
+// and the driver's own address upload -- take a turn here and wait out the
+// settle time between theirs. Nil = no gate.
 type Uploads struct {
 	mu   sync.Mutex
 	last time.Time
 }
 
-// take reports whether an upload may go now, and if so marks it.
-func (u *Uploads) take(now time.Time, settle time.Duration) bool {
+// Busy is why an upload Take refused was not made, for its caller's error.
+const Busy = "the card is still applying a config.ini upload made under a minute ago and would drop another"
+
+// Take reports whether an upload may go now, settle after the last one, and
+// if so marks now as the last: the caller uploads straight after. A caller
+// refused uploads nothing and tries again on a later cycle.
+func (u *Uploads) Take(now time.Time, settle time.Duration) bool {
 	if u == nil {
 		return true
 	}
@@ -400,7 +406,7 @@ type ClockApplier struct {
 	Logf    func(format string, args ...any)      // nil = silent
 	Settle  time.Duration                         // 0 = DefaultSettle
 	Now     func() time.Time                      // nil = time.Now
-	Uploads *Uploads                              // shared with the card's other appliers
+	Uploads *Uploads                              // shared with the card's other uploads
 
 	mu       sync.Mutex
 	cur      Time
@@ -470,8 +476,8 @@ func (a *ClockApplier) Apply(ctx context.Context, c devicemodel.Clock) (changed 
 		a.refuse(fmt.Sprintf("the card did not take %v in %d uploads; not writing it again until the controller's settings change or the bridge restarts", want, maxMisses))
 		return false, nil
 	}
-	if !a.Uploads.take(a.now(), a.settle()) {
-		return false, nil // another applier's upload is still settling
+	if !a.Uploads.Take(a.now(), a.settle()) {
+		return false, nil // another upload is still settling
 	}
 	body := a.cur.Render(want, keys)
 	a.logf("clock: the card differs from the controller in %s; uploading %s", strings.Join(keys, ", "), strings.ReplaceAll(strings.TrimSpace(string(body)), "\r\n", " "))

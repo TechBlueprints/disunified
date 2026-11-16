@@ -96,6 +96,8 @@ func TestControlFailureChangesNothing(t *testing.T) {
 // only when the card is not already on it, nothing without the MAC.
 func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	c, fr, _ := startFixture(t)
+	now := time.Unix(0, 0)
+	c.now = func() time.Time { return now } // each upload a settle time after the last, as the card needs
 	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24, Gateway: "192.0.2.1"})
 	if err != nil || !changed {
 		t.Fatalf("static: %v, %v", changed, err)
@@ -110,6 +112,7 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	// operator's gateway option fills it, and a card holding a different
 	// gateway is rewritten.
 	c.Gateway = "192.0.2.254"
+	now = now.Add(apcnmc.DefaultSettle)
 	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24})
 	if err != nil || !changed || !strings.Contains(fr.Puts[len(fr.Puts)-1], "DefaultGateway=192.0.2.254\r\n") {
 		t.Errorf("gateway from the option: %v, %v, %q", changed, err, fr.Puts[len(fr.Puts)-1])
@@ -117,6 +120,7 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.30", PrefixLen: 24}); changed {
 		t.Error("with the card holding the option's gateway, no rewrite")
 	}
+	now = now.Add(apcnmc.DefaultSettle)
 	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true})
 	if err != nil || !changed || len(fr.Puts) != 3 || !strings.Contains(fr.Puts[2], "BootMode=DHCP Only\r\n") {
 		t.Errorf("back to DHCP: %v, %v, puts %q", changed, err, fr.Puts)
@@ -137,6 +141,8 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 // network holds keeps the card's own gateway.
 func TestApplyAddressTakesTheSiteNetworksGateway(t *testing.T) {
 	c, fr, _ := startFixture(t)
+	now := time.Unix(0, 0)
+	c.now = func() time.Time { return now }
 	c.LocalAddrs = func() ([]net.Addr, error) { return nil, nil }
 	c.SetSiteNetworkLookup(func(ctx context.Context, ip string) (devicemodel.SiteNetwork, error) {
 		if strings.HasPrefix(ip, "198.18.") {
@@ -148,6 +154,7 @@ func TestApplyAddressTakesTheSiteNetworksGateway(t *testing.T) {
 	if err != nil || !changed || len(fr.Puts) != 1 || !strings.Contains(fr.Puts[0], "SubnetMask=255.255.0.0\r\n") || !strings.Contains(fr.Puts[0], "DefaultGateway=198.18.0.1\r\n") {
 		t.Fatalf("static from a route-less push: %v, %v, %q", changed, err, fr.Puts)
 	}
+	now = now.Add(apcnmc.DefaultSettle)
 	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "203.0.113.22", PrefixLen: 24})
 	if err != nil || !changed || !strings.Contains(fr.Puts[len(fr.Puts)-1], "DefaultGateway=198.18.0.1\r\n") {
 		t.Errorf("an address off every site network keeps the card's gateway: %v, %v, %q", changed, err, fr.Puts[len(fr.Puts)-1])
