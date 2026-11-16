@@ -421,7 +421,7 @@ Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build
 | Fan mode (the device's `fan_mode:`; the controller keeps Fan Mode only for a gateway) | `sys_fan_mode` (`caps` 3, `mode`) reported; no push exists for a switch | **done, verified live on the DX010 2026-11-07** (`docs/drivers/sonic.md` §11.15): Default = the stock fancontrol floor (MINTEMP 26, PWM 89), Quiet = patch 0012's (35, PWM 51 = 20 %), on `fancontrol-F2B`, `fancontrol` and pmon's copy, read back each cycle; F2B airflow only |
 | Routed ports and aggregates; DHCP fixed IPs | `switch.routing_interface.N.type=port\|lag` → the port out of every VLAN (`PortDesired.Routed`), then `config interface ip add Ethernet<n>\|PortChannel<n> <addr>` (the port apply re-runs the L3 apply); `dhcp_server.static_ip.K` → udhcpd `static_lease <mac> <ip>` | **done, verified live on the DX010 2026-11-08** (`docs/drivers/sonic.md` §11.16): the address in CONFIG_DB, APPL_DB, the kernel and the ASIC (a port router interface), quiet after, back to switching cleanly; each fixed-IP MAC leased its address from a namespace client. Not live: traffic over a routed port (no cabled peer); a routed aggregate gets only the member the controller pushes (the first). VRRP is offered only for an MC-LAG pair: not claimed |
 
-## Lane switches — `breakout` (a split cage as its own switch; built 2026-11-14, `sonic` parent)
+## Lane switches — `breakout` (a split cage as its own switch; built 2026-11-14, automatic since 2026-11-16)
 
 A split cage presented as a five-port `USFXG` whose ports 1-4 are the
 lanes and port 5 the cable ([`drivers/breakout.md`](drivers/breakout.md); the
@@ -430,6 +430,7 @@ Every row is built and fixture-tested; none has run live.
 
 | Feature | Wire | Status |
 |---|---|---|
+| Appears by itself for a split cage (`lane_switches: auto`, the default; [`drivers/breakout.md`](drivers/breakout.md) §16) | a pending `USFXG` named `<parent>-cage<N>`; the lanes are handed over on the adoption handshake and back on the controller's `setdefault` (Forget) | built 2026-11-16, `cmd/disunified/lanes_test.go`, both parents' `lanes_auto_test.go`; not yet run live |
 | Placement under the cage | the parent's `port_table[cage].mac_table` and `lldp_table` carry the child's MAC (the stub proved either places, §6.6.1) | built, `lanes_test.go`; the controller side verified with the stub 2026-11-02 |
 | The lanes' state, speed, counters, FEC counters, neighbour, MACs, LACP, STP state | the child's `port_table[1..4]` from the parent's per-lane ports | built, `breakout_test.go` |
 | The cable | `port_table[5]`, `is_uplink`, QSFP28 at the cage's native speed, the module, the parent as its LLDP neighbour | built, `TestLaneSwitchPayload` |

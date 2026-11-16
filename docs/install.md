@@ -120,17 +120,43 @@ only: nothing is written to the device; the start log has one line per
 child. `report: lldp` or `report: mac` on a child reports only that entry
 (for telling which one the controller places by; unset = both).
 
-A **lane switch** presents a split cage of another entry as a five-port
+A **lane switch** presents a split cage of another device as a five-port
 switch of its own ([`docs/drivers/breakout.md`](drivers/breakout.md)): ports
-1-4 are the cage's lanes, port 5 the breakout cable. It is an entry of the
-**same file as its parent** (it runs in the parent's process and reads and
-writes through the parent's driver; no `url`, `ssh` or credentials):
+1-4 are the cage's lanes, port 5 the breakout cable.
+
+**It appears by itself.** When a cage of a `sonic` or `arista-eos` device
+is split (a breakout cable on a port left on Auto, a forced lane speed, or
+by hand), the bridge starts a lane switch for it within about 15 seconds,
+named `<device>-cage<N>` (`core-1-cage3`), and it shows up in the
+controller as a pending Flex XG. **Nothing changes on the switch until you
+adopt it**: the cage stays one port on its device, as before. Adopt it and
+the lanes are the lane switch's ports (state, name, VLANs, lane speed, FEC,
+aggregates), while the cage's port on the device keeps only its speed (the
+split itself) and its admin state; the log says `lane switch core-1-cage3
+(<MAC>) attached to port 3`. Forget it in the controller and the lanes go
+back to the cage's port. Join the cage (force its port to 100G or 40G on
+the device) and the lane switch shows disconnected until the cage is split
+again or you forget it. The key on the device's entry:
+
+```yaml
+    lane_switches: "off"    # default auto: a pending lane switch per split cage
+```
+
+Its state is kept under `state/<device>-cage<N>/` like any device's. It
+needs a config file (the flag form runs one device and starts none), and
+`-collect-once` starts none.
+
+**It can also be declared**, which attaches it from the start whether or
+not the controller has adopted it, lets you name it and pick its MAC, and
+wins over the automatic one for that cage. It is an entry of the **same
+file as its parent** (it runs in the parent's process and reads and writes
+through the parent's driver; no `url`, `ssh` or credentials):
 
 ```yaml
   - name: core-1-cage2
     driver: breakout
     options:
-      parent: core-1        # the entry whose cage this is (sonic today)
+      parent: core-1        # the entry whose cage this is (sonic or arista-eos)
       cage: "2"             # the parent's port index of the cage, 1..99
       # mac: "02:00:00:00:00:a5"   # default: derived from the parent's MAC
       # max_age: 3m                # how old the parent's snapshot may be

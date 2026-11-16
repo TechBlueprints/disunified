@@ -820,7 +820,8 @@ cage by hand (below).
 | Gap | What the PR needs |
 |---|---|
 | STP port settings, isolation, port security, egress limit, LLDP-MED on the lane switch (today the cage's, on every lane) | the switch-wide computations taking both loops' intent (`l2SetPorts` in `sonic/l2.go`, `portFeatures`); the claims then on the child |
-| A lane switch that appears by itself on a split (§12) | the loop adding and removing devices at run time, and the bridge forgetting a retired child |
+| The bridge forgetting a retired lane switch in the controller (a joined cage's stays disconnected until the operator forgets it; `breakout.md` §16.9) | the forget through `unifiapi` (`cmd/sitemgr delete-device`) with a rule for when a cage counts as retired |
+| A lane switch for a QSA (an SFP or SFP28 in a QSFP cage through an adapter; `breakout.md` §16.2, §16.9) | a capture of such a cage whole and split (`TRANSCEIVER_INFO`, `sfputil show eeprom`), then the module table's row and the one-lane report |
 
 ---
 

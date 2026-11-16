@@ -474,9 +474,18 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   join's forced 100G is saved on the parent's cage
   (`docs/breakout-lag.md` §7).
   **xcvrd misses a module inserted after boot** on the DX010 (no
-  `TRANSCEIVER_INFO`, while `sfputil show eeprom` reads it): the module
-  rules see an empty cage until a breakout re-adds the ports or xcvrd
-  restarts. Open (the register).
+  `TRANSCEIVER_INFO`, while `sfputil show eeprom` reads it). The driver
+  reads such a cage itself (`xcvr_read.go`, `docs/drivers/sonic.md`
+  §11.36): `sudo sfputil show presence`, then `show eeprom -p` for the
+  present cages xcvrd has no record of, the answer standing in for
+  `TRANSCEIVER_INFO` until xcvrd has one; at start, once a minute while a
+  cage is present and unread, every five minutes otherwise. sfputil's
+  labels are xcvrd's fields by their display names, padding included. Why
+  xcvrd misses the module is open (the register).
+  **A port without link reports its configured FEC** (`lanePort`):
+  STATE_DB has an operating `fec` only with link, and a split cage's down
+  lanes configured `fc` were stored with no `fec_mode`
+  (`docs/drivers/breakout.md` §16.5).
 - **Time zone (`zones.go`).** The controller pushes a POSIX rule
   (`system.timezone=MST7MDT,M3.2.0,M11.1.0`), and `config clock timezone`
   accepts only names from `timedatectl list-timezones`. The driver reads

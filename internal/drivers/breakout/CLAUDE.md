@@ -1,18 +1,31 @@
 # breakout — facts that cost time
 
 Read `internal/drivers/CLAUDE.md` first. Write-up: `docs/drivers/breakout.md`
-(§0 as built, §14 open, §15 the first live adoption). Built 2026-11-14 with
-`sonic` as the parent; nothing of it has run live.
+(§0 as built, §14 open, §15 the first live adoption, §16 automatic lane
+switches). Built 2026-11-14 with `sonic` as the parent; automatic since
+2026-11-16; nothing of it has run live.
 
 - **No device, no transport.** The child is a view over its parent's last
   snapshot (`devicemodel.LaneProvider.Lanes`) and a caller into the parent's
   plan (`ApplyLanes`/`PlanLanes`). It runs in the parent's process: an entry
   of the same config file, found by name (`devicemodel.OpenedDevice`).
-- **main attaches, the child reads back.** `cmd/disunified` calls
-  `AttachLaneSwitch` before the parent's loop starts (else the parent's first
-  apply writes the cage's intent over the lanes on every restart) and computes
-  the MAC once (`devicemodel.LaneSwitchMAC` or `options.mac`); the child takes
-  it from `LaneView.Child`, never computes its own.
+- **Attachment is ownership, and the child answers without it.** Unattached,
+  the child reports the lanes under its own MAC and name and refuses every
+  write (`attached()` asks the parent each time): that is an automatic lane
+  switch waiting for its adoption (`cmd/disunified/lanes.go`, §16). Its loop
+  attaches on `OnConnected` and detaches on `OnUnadopted` (`setdefault`). A
+  declared entry, and an automatic one whose state file is adopted, is
+  attached by main **before the parent's loop starts** (else the parent's
+  first apply writes the cage's intent over the lanes on every restart).
+- **The MAC is the child's own**: `options.mac`, else
+  `devicemodel.LaneSwitchMAC(parent MAC, cage)`, the same derivation main
+  uses for the attachment; the name is `options.name` (main passes the
+  entry's name). A cage attached to a different MAC does not answer. A test
+  that attaches a made-up MAC must pass the same one in the options.
+- **A `setdefault` drops the stored push** (`device.Session`, every driver):
+  a forgotten device stops reconciling, and its next adoption's first push
+  is held as a first push again. Without it a forgotten lane switch tried to
+  apply its old push every cycle and was refused.
 - **The controller side is proven by the stub, not by this driver**
   (`docs/breakout-lag.md` §6.6): placement by the parent's MAC-table or LLDP
   entry, the shared address, the Flex XG profile (port 5 the uplink), the

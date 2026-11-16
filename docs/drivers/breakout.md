@@ -23,6 +23,22 @@ the scoped `plan()` in `apply.go` (the second parent, §7b),
 `internal/config` (the entry's rules),
 `cmd/disunified/main.go` (the attachment and the registry).
 
+**Automatic since 2026-11-16 (§16).** Every split cage of a parent gets a
+lane switch by itself, named `<parent>-cage<N>`, unless the parent's entry
+says `lane_switches: off` or the file declares one for that cage (below; a
+declared one wins). `cmd/disunified/lanes.go`: a watcher per parent looks
+at `SplitCages()` every 15 s and starts a child through the same `runOne` a
+declared entry uses. An automatic child starts **unattached**: it informs
+as a pending `USFXG`, reports the lanes, and writes nothing (`ApplyPorts`,
+`PlanPorts` and `EnsureVLANs` refuse while the parent has no attachment for
+its MAC). Its loop calls `AttachLaneSwitch` when the adoption handshake
+completes (`OnConnected`, before the seed and the first push) and
+`DetachLaneSwitch` on the controller's `setdefault` (`OnUnadopted`, new in
+`informloop`). An automatic child whose state file is adopted is attached
+and started before the parent's loop starts, for the reason given below
+for declared ones. What ran live, and the departures from the spec, are in
+§16.
+
 **Declared in the parent's file, attached by main.** A lane switch is a
 config entry with `driver: breakout`, `options.parent` (another entry of
 the same file, not a lane switch) and `options.cage` (1..99), no
@@ -43,9 +59,13 @@ main's start retry (15 s doubling) brings it up.
 `devicemodel.LaneSwitchMAC(parent MAC, cage)`: the parent's MAC with the
 locally administered bit set and the multicast bit clear in the first
 octet, the cage in the last (DX010 cage 2 from a parent `xx:..:yy` is
-`(xx|02):..:02`). main computes it once and the child reads it back from
-the parent (`LaneView.Child`), so the parent's report and the child's
-inform cannot disagree. The serial is the MAC's digits like every bridged
+`(xx|02):..:02`). main computes it for the attachment and the child
+computes the same default for itself (`options.mac`, which main sets for an
+automatic child, else the same derivation from the parent's MAC in the
+view), so the parent's report and the child's inform agree; a child whose
+cage is attached to a different MAC does not answer. (Until 2026-11-16 the
+child read its MAC back from the parent's attachment and did not answer
+without one; an automatic child has to answer before it is attached.) The serial is the MAC's digits like every bridged
 device's (`device.SerialFor`, `CLAUDE.md` §5). Hostname = the child's config
 name; model string "Lane switch", SKU the cage's mode (`4x25G[10G]`);
 version the parent's. Address: `AddressReporter` returns the parent's
@@ -974,13 +994,10 @@ entry, its adoption (Clint's) and a far end. The entry, in the container's
 
 ## 12. Later
 
-- **Automatic lane switches**: a `sonic` option (`lane_switches: auto`)
-  that creates a child for every split cage and retires it on a join,
-  which needs the loop to add and remove devices at run time (today the
-  device list is fixed at start, `runConfig`), and the bridge to forget a
-  retired child in the controller (`cmd/sitemgr delete-device`, which the
-  `unifiapi` client can send). The declared form is the first step
-  because it needs neither.
+- **Automatic lane switches**: built 2026-11-16 (§16). A child is started
+  at run time and never stopped (a joined cage's simply does not answer);
+  the bridge forgetting a retired child in the controller is still not
+  built (§16.9).
 - A `PortCycler` on the child (bounce one lane).
 - `docs/breakout-lag.md` §4-5 (shape 1) stay as the record of the road
   not taken; nothing there is built.
@@ -1159,9 +1176,10 @@ DX010's `payload-last.json` for the MAC in port 2's `mac_table` and
 and Ethernet4-7 only); the parent's own ports touched by the child's push
 (they are not in the lane scope; the replay asserts it).
 
-## 16. Automatic lane switches (spec, 2026-11-16)
+## 16. Automatic lane switches (spec and build, 2026-11-16)
 
-Status: **specified, not built.** Clint, 2026-11-16: the lane switch is to
+Status: **built 2026-11-16** from the spec below; §16.10 is what the build
+did differently and what ran live. Clint, 2026-11-16: the lane switch is to
 appear when a breakout cable or a QSA is detected, without a config entry.
 This section is what to build; it rests on the breakout-cable run of the
 same day (`docs/breakout-lag.md` §7, `docs/drivers/sonic.md` §10.3) and on
