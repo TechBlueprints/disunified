@@ -332,10 +332,15 @@ func attachLaneSwitches(log *log.Logger, sw devicemodel.Device, snap *devicemode
 
 // openAndStart opens a driver and takes its first snapshot, closing the
 // device again if Start fails so a retry begins from a clean connection.
-func openAndStart(ctx context.Context, drv devicemodel.Driver, cfg devicemodel.DriverConfig) (devicemodel.Device, *devicemodel.Snapshot, error) {
+// prepare, when set, runs between the two (a site-network lookup handed to
+// a device that takes one).
+func openAndStart(ctx context.Context, drv devicemodel.Driver, cfg devicemodel.DriverConfig, prepare func(devicemodel.Device)) (devicemodel.Device, *devicemodel.Snapshot, error) {
 	sw, err := drv.Open(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
+	}
+	if prepare != nil {
+		prepare(sw)
 	}
 	started := time.Now()
 	snap, err := sw.Start(ctx)
@@ -429,6 +434,18 @@ func runOne(ctx context.Context, o options) error {
 			opts["state_dir"] = d // drivers with their own persistent state keep it next to device.json
 		}
 		cfg := devicemodel.DriverConfig{URL: o.deviceURL, SSH: o.deviceSSH, Username: o.username, Password: o.password, Options: opts}
+		// A device that cannot report its own netmask and gateway (a UPS)
+		// takes them from the controller's network list; its options
+		// override (docs/drivers/apc-ups.md §14).
+		var prepare func(devicemodel.Device)
+		if o.unifiURL != "" && o.unifiKey != "" {
+			lookup := cachedSiteNetwork(unifiapi.New(o.unifiURL, o.unifiKey, o.unifiSite, true), 5*time.Minute)
+			prepare = func(d devicemodel.Device) {
+				if u, ok := d.(devicemodel.SiteNetworkUser); ok {
+					u.SetSiteNetworkLookup(lookup)
+				}
+			}
+		}
 		// A device that does not answer at startup is retried, not dropped.
 		// Start is meant to fail loudly on a wrong command or credential, and
 		// it still does -- every attempt is logged -- but the same failure
@@ -438,7 +455,7 @@ func runOne(ctx context.Context, o options) error {
 		// 2026-09-22: one SNMP timeout at start, then nothing for hours).
 		// -collect-once keeps failing fast: it is a probe, not a service.
 		for attempt, wait := 1, 15*time.Second; ; attempt++ {
-			sw, snap, err = openAndStart(ctx, drv, cfg)
+			sw, snap, err = openAndStart(ctx, drv, cfg, prepare)
 			if err == nil {
 				break
 			}
@@ -459,6 +476,9 @@ func runOne(ctx context.Context, o options) error {
 			}
 		}
 		defer sw.Close()
+		if _, ok := sw.(devicemodel.SiteNetworkUser); ok && prepare == nil {
+			log.Printf("reach: no controller API URL or key (DUI_UNIFI_API_KEY): the device's netmask and gateway come from its options only")
+		}
 		log.Printf("switch: %s %s serial %s, %s, %d ports", snap.System.Vendor, snap.System.Model, snap.System.Serial, snap.System.Version, len(snap.Ports))
 		// Lane switches on this device's cages are attached before its loop
 		// starts, so its first apply already leaves their lanes to them; a
@@ -1081,6 +1101,35 @@ func cachedManagementIPv6(api *unifiapi.Client, ttl time.Duration) func(context.
 		}
 		at, vlanAt, on = time.Now(), vlan, v
 		return v, nil
+	}
+}
+
+// cachedSiteNetwork is the controller's network for an address, read
+// again after ttl: a device asks every collect. An error is not cached (the
+// device keeps its own last good answer).
+func cachedSiteNetwork(api *unifiapi.Client, ttl time.Duration) func(context.Context, string) (devicemodel.SiteNetwork, error) {
+	type entry struct {
+		at time.Time
+		n  devicemodel.SiteNetwork
+	}
+	var (
+		mu    sync.Mutex
+		cache = map[string]entry{}
+	)
+	return func(ctx context.Context, ip string) (devicemodel.SiteNetwork, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if e, ok := cache[ip]; ok && time.Since(e.at) < ttl {
+			return e.n, nil
+		}
+		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		n, err := api.NetworkFor(cctx, ip)
+		if err != nil {
+			return n, err
+		}
+		cache[ip] = entry{time.Now(), n}
+		return n, nil
 	}
 }
 

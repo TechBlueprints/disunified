@@ -3,6 +3,7 @@ package apcbackups
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -126,6 +127,30 @@ func TestApplyAddressWritesTheTCPIPSection(t *testing.T) {
 	c.MAC = ""
 	if _, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.31", PrefixLen: 24}); err == nil {
 		t.Error("without the card's MAC the section would be ignored; must be refused")
+	}
+}
+
+// Without options.gateway, a static address pushed without a route (the
+// power path's push) takes the gateway of the site's network for that
+// address: the Default network of the controller's list,
+// 198.18.0.1/16 (internal/unifiapi/subnet_test.go). An address no site
+// network holds keeps the card's own gateway.
+func TestApplyAddressTakesTheSiteNetworksGateway(t *testing.T) {
+	c, fr, _ := startFixture(t)
+	c.LocalAddrs = func() ([]net.Addr, error) { return nil, nil }
+	c.SetSiteNetworkLookup(func(ctx context.Context, ip string) (devicemodel.SiteNetwork, error) {
+		if strings.HasPrefix(ip, "198.18.") {
+			return devicemodel.SiteNetwork{PrefixLen: 16, Gateway: "198.18.0.1"}, nil
+		}
+		return devicemodel.SiteNetwork{}, errors.New("no network holds " + ip)
+	})
+	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "198.18.0.22", PrefixLen: 16})
+	if err != nil || !changed || len(fr.Puts) != 1 || !strings.Contains(fr.Puts[0], "SubnetMask=255.255.0.0\r\n") || !strings.Contains(fr.Puts[0], "DefaultGateway=198.18.0.1\r\n") {
+		t.Fatalf("static from a route-less push: %v, %v, %q", changed, err, fr.Puts)
+	}
+	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "203.0.113.22", PrefixLen: 24})
+	if err != nil || !changed || !strings.Contains(fr.Puts[len(fr.Puts)-1], "DefaultGateway=198.18.0.1\r\n") {
+		t.Errorf("an address off every site network keeps the card's gateway: %v, %v, %q", changed, err, fr.Puts[len(fr.Puts)-1])
 	}
 }
 

@@ -156,13 +156,16 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	}
 	gw := d.Gateway
 	if gw == "" {
-		gw = c.Gateway // the push carried no route (the power path never does); the operator's
+		// The push carried no route (the power path never does): the
+		// operator's options.gateway, else the gateway of the site's network
+		// for the new address.
+		gw = c.GatewayFor(ctx, d.IP)
 	}
 	if gw == "" {
 		gw = cardGW // keep whatever the card holds rather than blank it
 	}
 	if gw == "" {
-		c.warnOnce("no-gateway", "static IP Settings carry no gateway and options.gateway is not set: the card will have none (on-subnet only)")
+		c.warnOnce("no-gateway", "static IP Settings carry no gateway, no site network holds %s and options.gateway is not set: the card will have none (on-subnet only)", d.IP)
 	}
 	cur := last.System.Addresses
 	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen && cardGW == gw {

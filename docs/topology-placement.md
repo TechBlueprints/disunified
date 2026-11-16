@@ -13,8 +13,8 @@ device is. A real device sends, and a bridge must send:
 | Key | What it is | Where the bridge gets it |
 |---|---|---|
 | `connect_request_ip` | the device's own address | the address the bridge dials (`ip:` / `url:`) |
-| `netmask` | its mask, dotted | the device (Arista/PDU: its own interface; UPS: operator option) |
-| `gateway_mac` | **the gateway's L2 address as the segment sees it** | the device's ARP table (Arista, PDU) or `ip neigh show <gw>` from a host on that segment (UPS) |
+| `netmask` | its mask, dotted | the device (Arista/PDU: its own interface; UPS: the controller's network list, an option overriding; `docs/drivers/apc-ups.md` §14) |
+| `gateway_mac` | **the gateway's L2 address as the segment sees it** | the device's ARP table (Arista, PDU) or, for a UPS, the bridge's own neighbour table when the bridge is on that segment (an option overriding) |
 | `if_table` | its management interface, named | the device layer renders `eth0` from the uplink port |
 | `uplink` | **a string**: the name of that interface, `"eth0"` | the device layer; an object here is silently ignored |
 

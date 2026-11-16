@@ -512,6 +512,23 @@ type AddressReporter interface {
 	CurrentAddress() string
 }
 
+// SiteNetwork is the network an address is in as the site's own
+// configuration has it: its prefix length and the gateway's address on it.
+type SiteNetwork struct {
+	PrefixLen int
+	Gateway   string
+}
+
+// SiteNetworkUser is optional: a device that cannot report its own netmask
+// and gateway (a UPS's Modbus port, a management card's web pages) takes
+// them from the site's configuration. The bridge hands it a lookup before
+// Start when it can read the controller; an error, or a SiteNetwork with no
+// prefix, means the site has no network for that address. Without a lookup
+// the device's options are all it has.
+type SiteNetworkUser interface {
+	SetSiteNetworkLookup(lookup func(ctx context.Context, ip string) (SiteNetwork, error))
+}
+
 // ApplyBudget is optional: a driver whose writes take long (SONiC: ~250 ms
 // per CLI call, dozens per push) asks for this much time per write --
 // apply, SSH keys, address, port or outlet cycle, reboot. Without it a
