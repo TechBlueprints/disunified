@@ -18,7 +18,9 @@ authorized_keys (the site's public keys: each becomes
 "<type> SCRUBBEDKEY<N> key-N"). Everything else -- build info, the
 hardware SKU, the SAI counters, port OIDs -- stays byte for byte so the
 parser sees real output. Lists of LLDP management addresses are rewritten
-element-wise by the same patterns.
+element-wise by the same patterns. The same script scrubs the output of the
+driver's sfputil read (internal/drivers/sonic/xcvr_read.go: "@@@ presence",
+"@@@ eeprom <port>" sections), where the module's "Vendor SN" is a serial.
 
 Usage: scripts/sanitize-sonic.py <in> <out>
 """
@@ -176,6 +178,13 @@ def main(src, dst):
         if f:
             keys.append(f'{f[0]} SCRUBBEDKEY{i}' + (f' key-{i}' if len(f) > 2 else ''))
     text = set_section(text, 'authorized_keys', ''.join(k + '\n' for k in keys))
+
+    # `sfputil show eeprom` (the driver's read of a module xcvrd has not
+    # read, "@@@ eeprom <port>" sections): the module's serial, padding kept.
+    def sfputil_serial(m):
+        v = m.group(2)
+        return m.group(1) + placeholder_serial(v.rstrip()) + v[len(v.rstrip()):]
+    text = re.sub(r'^(\s*Vendor SN: )(.*)$', sfputil_serial, text, flags=re.M)
 
     out = text
     for old in sorted(names, key=len, reverse=True):

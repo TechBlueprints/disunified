@@ -179,6 +179,7 @@ type Collector struct {
 	lanes     map[int][]cagePort
 	children  map[int]devicemodel.Attachment
 	cageDown  map[int]bool
+	sfp       sfpState // the driver's own reads of modules xcvrd has not read (xcvr_read.go)
 	chassisID string
 	// applySem serialises the writes and the collect: a lane switch's apply
 	// runs from its own loop, beside this device's (lockApply).
@@ -322,7 +323,9 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	if err != nil {
 		return nil, fmt.Errorf("sonic: collect: %w", err)
 	}
-	snap, err := c.build(out, time.Now())
+	now := time.Now()
+	c.sfpRefresh(ctx, out, now)
+	snap, err := c.build(out, now)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +390,9 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		}
 	}
 
+	c.mu.Lock()
+	c.sfpMerge(db["xcvr"])
+	c.mu.Unlock()
 	_, plat := parsePlatform(sec["platform_json"])
 	ports := buildPorts(db, c.NativeVLAN, plat)
 	if len(ports) == 0 {

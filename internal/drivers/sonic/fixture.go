@@ -118,6 +118,11 @@ type FixtureRunner struct {
 	// POSIX rule (zones.txt beside the capture, through sanitize-sonic.py).
 	Zones     string
 	ZoneReads int // how often the zone list was read
+	// SfpRead answers sfpReadCommand: a capture of the driver's sfputil
+	// read (presence, then the EEPROM of the present cages xcvrd has not
+	// read). Empty = the switch has no working sfputil (the VS).
+	SfpRead  string
+	SfpReads []string // the scripts run
 	// LEDWorks models a platform whose API sets the chassis status LED (the
 	// DX010); otherwise LED writes fail as on the VS, whose platform API
 	// raises FileNotFoundError for its chassis metadata. LED is the colour
@@ -214,6 +219,12 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 	switch {
 	case command == collectCommand:
 		return f.Fixture, nil
+	case command == sfpReadCommand:
+		f.SfpReads = append(f.SfpReads, stdin)
+		if f.SfpRead == "" {
+			return "", fmt.Errorf("sfputil: no capture")
+		}
+		return f.SfpRead, nil
 	case command == zonesCommand:
 		f.ZoneReads++
 		if f.Zones == "" {

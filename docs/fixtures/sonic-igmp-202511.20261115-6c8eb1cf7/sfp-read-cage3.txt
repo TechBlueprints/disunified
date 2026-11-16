@@ -1,0 +1,68 @@
+@@@ presence
+Port         Presence
+-----------  -----------
+Ethernet0    Present
+Ethernet4    Present
+Ethernet8    Present
+Ethernet9    Present
+Ethernet10   Present
+Ethernet11   Present
+Ethernet12   Not present
+Ethernet16   Not present
+Ethernet20   Not present
+Ethernet24   Not present
+Ethernet28   Not present
+Ethernet32   Not present
+Ethernet36   Not present
+Ethernet40   Not present
+Ethernet44   Not present
+Ethernet48   Not present
+Ethernet52   Not present
+Ethernet56   Not present
+Ethernet60   Not present
+Ethernet64   Not present
+Ethernet68   Not present
+Ethernet72   Not present
+Ethernet76   Not present
+Ethernet80   Not present
+Ethernet84   Not present
+Ethernet88   Not present
+Ethernet92   Not present
+Ethernet96   Not present
+Ethernet100  Not present
+Ethernet104  Not present
+Ethernet108  Not present
+Ethernet112  Not present
+Ethernet116  Not present
+Ethernet120  Not present
+Ethernet124  Not present
+@@@ eeprom Ethernet8
+Ethernet8: SFP EEPROM detected
+        Application Advertisement: N/A
+        Connector: No separable connector
+        Encoding: Unspecified
+        Extended Identifier: Power Class 1 Module (1.5W max.), No CLEI code present in Page 02h, No CDR in TX, No CDR in RX
+        Extended RateSelect Compliance: Unknown
+        Identifier: QSFP28 or later
+        Length Cable Assembly(m): 1.0
+        Nominal Bit Rate(100Mbs): 255
+        Specification compliance:
+                10/40G Ethernet Compliance Code: Extended
+                Extended Specification Compliance: 25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R
+                Fibre Channel Link Length: Unknown
+                Fibre Channel Speed: Unknown
+                Fibre Channel Transmission Media: Unknown
+                Fibre Channel Transmitter Technology: Unknown
+                Gigabit Ethernet Compliant Codes: Unknown
+                SAS/SATA Compliance Codes: Unknown
+                SONET Compliance Codes: Unknown
+        Vendor Date Code(YYYY-MM-DD Lot): 2022-05-30   
+        Vendor Name: Arista Networks 
+        Vendor OUI: 00-00-00
+        Vendor PN: CAB-ZQP-4ZSP-P1M
+        Vendor Rev:   
+        Vendor SN: SSJ0000000000   
+        type_abbrv_name: QSFP28
+
+
+@@@ end

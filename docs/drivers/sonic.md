@@ -10339,6 +10339,75 @@ by hand.
    ports changed`). CONFIG_DB was identical to the dump before the test.
    The fix reaches the switch with the next deploy.
 
+### 11.36 Reading a module xcvrd has not read (2026-11-16)
+
+xcvrd on the DX010 misses a module put in after boot (found 2026-11-16,
+image `igmp-202511.20261115-6c8eb1cf7`): the platform says the cage is
+present and `sfputil show eeprom` reads the module, but STATE_DB has no
+`TRANSCEIVER_INFO` for it until xcvrd restarts, the switch reboots or a
+breakout re-adds the cage's ports. Why xcvrd misses it is not found (the
+register has it). The driver saw an empty cage: no optic in the port's
+record, and none of the module rules (§10.3 the FEC, §10.9 the layout a
+module calls for) could run, so Auto did nothing for a breakout cable put
+in while the switch ran. `docs/drivers/breakout.md` §16.2 is why that
+matters: the lane switch appears when the cage is split, and from the UI
+Auto is what splits it.
+
+**The captures** (read-only, before the code; `sonic-igmp-202511.20261115-6c8eb1cf7/`):
+
+- `collect-split-dac.txt`: cage 2 (`Ethernet4`) holds a 100G DAC, link up,
+  no `TRANSCEIVER_INFO`; cage 3 holds a QSFP28-to-4xSFP28 DAC, split
+  `4x25G[10G]`, its record under each of `Ethernet8`..`11`.
+- `sfp-read-unread.txt`: `sudo sfputil show presence` (cages 1, 2 and 3's
+  four lanes `Present`, the rest `Not present`) and `sudo sfputil show
+  eeprom -p Ethernet4`, in the layout of the driver's read script. The two
+  commands were run one after the other by hand and joined under the
+  script's `@@@` lines; the script itself had not run on the switch when
+  this was written.
+- `sfp-read-cage3.txt`: the same for `Ethernet8`, a module xcvrd *has*
+  read, so the two sources can be compared on one module.
+
+**What sfputil's answer carries.** Everything the rules need. Its lines are
+xcvrd's own fields under their display names (`Identifier` is `type`,
+`Vendor Name` `manufacturer`, `Vendor PN` `model`, `Vendor SN` `serial`,
+`Length Cable Assembly(m)` the `cable_type` and `cable_length` pair), and
+the compliance codes are an indented block under `Specification
+compliance:` with the same nine keys xcvrd stores as a dict, the `Extended
+Specification Compliance` among them. For cage 3's module every field the
+driver reads is equal in the two sources, padding included
+(`TestSfputilEEPROMReadsAsXcvrdsRecord`). Cage 2's reads `100GBASE-CR4,
+25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS`.
+
+**The rule** (`xcvr_read.go`). After each collect the driver lists the
+cages with no `TRANSCEIVER_INFO` under any of their interfaces. When a read
+is due it runs one exec, `sudo bash -s -- disunified-sfp-read`: `sfputil
+show presence`, then `sfputil show eeprom -p <first interface>` for each
+listed cage the table calls `Present`. Each answer is turned into
+`TRANSCEIVER_INFO`'s fields and stands in for the missing record in that
+and the following collects: the port's optic, `moduleRuns` and the module
+FEC read it as they read xcvrd's. xcvrd's record wins as soon as it exists
+(the driver's copy is dropped). One line per cage, once: `port 2
+(Ethernet4): module present but not read by xcvrd; read through sfputil
+(<vendor> <part>, <code>)`. A cage whose answer names no compliance code
+gets a line saying the module rules cannot run for it, and a switch where
+`sfputil` cannot be run (the virtual switch) one line in all.
+
+**Pace.** A read at start, then once a minute while some cage is present
+and unread, and every five minutes while none is. The spec asked for reads
+"only while some cage is present and unread"; the five-minute read is the
+departure, because presence is itself only known from `sfputil` (STATE_DB
+is what xcvrd writes, and xcvrd is what missed the module), so without it a
+module put in later would never be found. No read at all while xcvrd has a
+record for every cage. The read needs root (`sfputil` refuses otherwise)
+and writes nothing; it runs inside the collect, under the driver's write
+lock.
+
+**Not covered.** DOM values (`sfputil show eeprom -d`) are not read: the
+cage reports the module without temperature or power until xcvrd has it. A
+QSA with an SFP behind it has not been in the switch (`breakout.md` §16.9).
+**Live:** fixture-tested only at the time of writing; see `breakout.md`
+§16.8 for what the live run saw.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH
