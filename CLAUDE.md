@@ -162,8 +162,10 @@ reply, and the reported address following an applied move
   before it is committed, and **`scripts/check-site-info.sh --staged` must
   pass before every commit** (`scripts/check-site-info.sh` scans the whole
   tree). If it flags something, fix the file; never add an exception.
-- He logs into the controller in Claude's Chrome tab so Claude can drive the
-  UI for captures and round-trip tests; Claude never touches the 2FA code.
+- He logs into the controller in Claude in Chrome (the extension in his own
+  Chrome, not the app's built-in browser pane, which had no session there on
+  2026-10-31) so Claude can drive the UI for captures and round-trip tests;
+  Claude never touches the 2FA code.
 - UI edits for testing go only on the test ports named in
   `local-information/site.md` (an unused copper port and a down QSFP cage).
   Never touch a port that carries a live link.

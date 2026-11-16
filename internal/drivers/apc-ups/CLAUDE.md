@@ -44,8 +44,10 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   function 16 -- `0x0204`/`0x0202`/`0x0210` = Group 1 off/on/reboot. Tests
   hold it byte-exact to NUT's `apc_modbus`. Groups only (one relay per
   switched group); the Main group (row 1) is reported without a relay and
-  refused if pushed. **`control.outlets: "2"` is on in the deployed config** since 2026-09-26
-  evening (rebuilt from 8630fe0); no command has been sent yet.
+  refused if pushed. Outlet control has been on since 2026-09-26 evening (rebuilt from 8630fe0);
+  no command has been sent yet. Since 2026-10-31 `control.outlets` is unset in the deployed
+  config, which means all outlets: Group 1 is still the only one that can switch, since the Main
+  group is refused and the placeholder rows 3-8 are ignored ("the unit has 2 outlet groups").
 - **The loop holds the first outlet push of a run** that would switch
   anything (`OutletPlanner`), per process -- a read-only bridge has an
   applied cfgversion, so the ports' from-state hold would not fire when
@@ -136,8 +138,9 @@ Read `internal/drivers/CLAUDE.md` first. Full write-up: `docs/drivers/apc-ups.md
   logged. Idempotent -- a unit already holding the policy gets no write.
   The Main group is never written and an absent option never clears
   anything. Live result recorded in `docs/drivers/apc-ups.md` §11.
-- **NUT server (2026-09-27).** `control.nut: true` claims `smart_power_caps`
-  bit 1; the controller then offers the NUT Server form and pushes
+- **NUT server (2026-09-27).** Every UPS claims `smart_power_caps` bit 1
+  (`control.nut` is accepted and no longer needed: without the claim the UI
+  cannot save the device's settings); the controller then offers the NUT Server form and pushes
   `nutserver.status/id/port/credential/username/password` (captured:
   `system_cfg-ups-nutserver.txt`) and plants `nut_client_ips: []`.
   `internal/nutd` runs upsd's protocol over the session snapshot; the loop
