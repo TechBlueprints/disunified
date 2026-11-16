@@ -304,7 +304,11 @@ tables, its informs), read-only, and nothing copied off it is committed.
   Back-UPS card shipped with syslog on and no server; the PDU already listed
   the log host and was simply quiet (it syslogs outlet, load, PSU, restart
   and unauthorised-access events, not logins). Both stamp lines in local
-  time with daylight saving off: an hour behind from March to November.
+  time. Until 2026-11-16 that was a fixed -07:00 with daylight saving off,
+  an hour behind from March to November. Since then both cards follow the
+  controller's zone and NTP servers (`DSTConfiguration=Traditional US`,
+  verified live in the cards' files and clocks, `docs/drivers/apc-pdu.md`
+  §12); the first DST change they make, on 14 March 2027, is not yet seen.
 - **A serial is at most 12 characters (Network 11, 2026-11-12).** Network
   11 moves the controller's config from MongoDB to PostgreSQL, whose
   `device` table holds `serial` in a `varchar(12)`; one longer record halts

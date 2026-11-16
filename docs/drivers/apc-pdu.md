@@ -405,6 +405,28 @@ applying the last one, so the second waits out the first's settle time. On
 a first start that needs both, the clock follows the syslog host a minute
 later.
 
+**Verified live 2026-11-16** (Network 11.0.99), on both cards:
+
+- The spelling, first, by hand on this card. A one-key upload of
+  `DSTConfiguration=Traditional US` was held in the file read back 90 s
+  later. The card's event log said `Configuration change. Daylight saving
+  time mode.` and `Configuration file upload complete, with 1 valid values.`
+- Then the deployed bridge. Here it uploaded only `NTPSecondaryServer`
+  (the primary server and DST already matched) and read the file back
+  90 s later: `now reads ... DSTConfiguration=Traditional US,
+  NTPPrimaryServer=<the controller's first>, NTPSecondaryServer=<its
+  second>, NTPTimeZone=-07:00`. The card logged `Configuration change.
+  Secondary NTP server address.`
+- The card's clock and its event log read MST to the second, as they
+  should in November.
+- A line reached the log host within a second: an SNMP read with a wrong
+  community, sent from the Podman host. The Mac's attempt never reached the
+  card, and a failed FTP login is not an event on AOS 3.9.2.
+- The log host (VictoriaLogs) files a line by the time it was received.
+  The card's own RFC 3164 stamp is not kept there, so its hour can be
+  read only on the card (the event log, which stamps the same clock) or
+  in a packet capture.
+
 **Not verifiable before March.** With `Traditional US` set, the card's
 clock in November still reads standard time, as it should. The first DST
 change it makes is 02:00 on 14 March 2027. The form names the dates but

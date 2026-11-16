@@ -234,3 +234,14 @@ What AOS 6.0.1 does differently from the PDU's AOS 3.9.2:
 The site's push against this card is the same single upload as on the PDU:
 `DSTConfiguration=Traditional US` and the controller's two servers, in
 place of the card's one.
+
+**Verified live 2026-11-16.** The deployed bridge read the section at
+Start and uploaded the three keys that differed. It read the file back
+84 s later as `now reads ... DSTConfiguration=Traditional US`, with the
+controller's two servers and `NTPManualOverride=enabled`. The card logged
+`NTP update successful` 12 s after the upload, so the new servers answer.
+Its event log reads MST to the second. A failed FTP login is an event on
+AOS 6 (`Detected an unauthorized user attempting to access the FTP
+interface`), and its line reached the log host within a second. As on the
+PDU, the log host keeps the receive time, not the card's stamp, and the
+first DST change (14 March 2027) is still to be seen.
