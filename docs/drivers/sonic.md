@@ -3588,10 +3588,24 @@ drawer. Three things showed:
   of its empty SFP28 ports, the same REST save at 25G was accepted with
   `fc-fec`, `rs-fec` and `disabled` alike (the override was removed after).
   Its QSFP28 ports claim only 40G, 100G and autonegotiation in `speed_caps`
-  (1130496), so no UniFi QSFP28 port ever runs 25G. The likely reason for
-  the refusal is that the controller checks FEC by media and speed and has
-  no entry for QSFP28 at 25G. That is an inference, not tested: reporting
-  a split lane as SFP28 media would test it.
+  (1130496), so no UniFi QSFP28 port ever runs 25G. Every speed was then
+  tried with each `fec_mode` on an empty port of each switch (REST, the
+  overrides restored after):
+
+  | Reported port | FEC accepted at | `InvalidFecMode` at |
+  |---|---|---|
+  | DX010, `media` QSFP28, caps 10/25/40/50/100G | 40G, 100G | 10G, 25G, 50G |
+  | ECS, `media` SFP28, caps 10/25G | 25G | 1G, 10G |
+
+  A save without `fec_mode` passed at every claimed speed. The ECS's stored
+  record has no FEC capability field, and neither switch sets `speed_caps`
+  bit 21 (unifi-emu's `FEC` bit). So the check follows what the device
+  reports for the port. The pair that fits both rows is `media` and speed:
+  a QSFP28 gets FEC at 40G and 100G, an SFP28 at 25G. A split cage folded
+  into one QSFP28 port therefore cannot have its lanes' FEC set from UniFi.
+  The lane switch (`docs/drivers/breakout.md`) reports each 25G lane as
+  SFP28, which should pass. Not tested: that report on a live device, and
+  whether claiming bit 21 changes the answer.
 - **xcvrd does not see a module inserted after boot.** The platform API's
   `get_presence` and `sfputil show eeprom` read the cable, but xcvrd never
   wrote `TRANSCEIVER_INFO` for it: `get_change_event` waits on a CPLD
