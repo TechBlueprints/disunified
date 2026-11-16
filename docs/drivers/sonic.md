@@ -2063,7 +2063,10 @@ VLAN dump: `ngroups` 7 before, 0 after). The uplink's static rows are in the chi
 l2mcd's static-group list, but no membership in that tree held the groups, so the cage's
 departure emptied them. That is the function's normal path and the same with 0013. Why the
 7 groups were in the tree beforehand with no member (another session's looped cage had gone
-down at 15:51) was not chased.
+down at 15:51) was not chased. **Settled 2026-11-16 (§8.17):** PortChannel1 was still a
+member then. Its static memberships lapsed at 15:54:55, 5 s after the cage's link-down,
+because the 15:51:34 link-down had stopped the groups' refresh. This is sonic-l2mcd 0015's
+fault, and nothing particular to a LAG.
 
 **The risk on a switch with real receivers.** Every member's link-down, leave of the VLAN,
 snooping turned off and version change takes this path. On this image's glibc it changes
@@ -2914,15 +2917,19 @@ after.
 kept that role through the test. Its reserved-group membership is gone, for
 a separate reason found on the way:
 
-- l2mcd held PortChannel1's reserved groups as learned (`Group-ADD ...
-  static:0`) beside the static rows, since the LAN reports them.
-- When the learned membership aged out (14:08:13, 14:13:10, `l2mcd.log`), it
-  sent `Group-DEL ... static:0` and did not put the static back.
+- l2mcd sent `Group-DEL ... PortChannel1 static:0` for the reserved groups
+  at 14:08:13 and 14:13:10 (`l2mcd.log`) and did not put them back.
 - Now `l2mcd_ctl -v 4094` shows `ngroups : 0`, and its static list names 5
   of the 31 configured ports. `show igmp-snooping groups vlan 4094` shows 0
   entries.
 
-That is l2mcd's, not the orch's. It is filed as its own item in the register.
+That is l2mcd's, not the orch's. **Settled in §8.17 (2026-11-16):** this is
+not a learned membership that aged out beside the static one. `static:0` is
+what l2mcd's membership code sends for every add and delete, the static
+membership's own included. The static memberships lapsed because a looped
+test cage, a static member of the same groups, had lost link 4 s before
+their refresh. `mcgrp_stop_phy_port()` stops the group's refresh for every
+port. The fix is sonic-l2mcd 0015. The static list's 5 ports are by design.
 
 #### The fix: sonic-swss 0005
 
@@ -2958,12 +2965,165 @@ groups. The uplink's next member flap is the likely one.
 - orchagent carries 0005: `docker exec swss grep -c -a -F "made again for
   its LAG members" /usr/bin/orchagent` is 1.
 - After the reboot, ASIC_DB holds an `L2MC_ENTRY` for every reserved group
-  and `bcmcmd "ipmc table show"` lists them. With l2mcd's static loss still
-  open, that holds only while the LAN keeps reporting the groups.
+  and `bcmcmd "ipmc table show"` lists them. On an image without
+  sonic-l2mcd 0015 (§8.17), that holds only until a static member of the
+  groups loses link.
 - `bcmcmd "mc show"` lists ce0 and ce1 in each group PortChannel1 is in.
 - A test LAG as above (one member distributing, the member made, the second
   enabled) shows the group on both ports, removes cleanly, and syslog has no
   `mcast egress remove failed` or `rv:-7` line.
+
+### 8.17 A static member lost when another port of its group stops (2026-11-16)
+
+**What was seen** (§8.16, `igmp-202511.20261115-6c8eb1cf7`). l2mcd sent
+`Group-DEL ... PortChannel1 static:0` for all seven of Vlan4094's reserved
+groups at 14:08:13 and again at 14:13:10. It did not put them back.
+`l2mcd_ctl -s <f> -v 4094` ended at `ngroups 0`, and `show igmp-snooping
+groups vlan 4094` showed 0 entries. The uplink kept its static rows and its
+router-port role.
+
+**Not a learned membership beside a static one.** §8.16 read the
+`Group-ADD ... static:0` lines as learned memberships. That reading was
+wrong. Every add or delete that the membership code sends goes out through
+`l2mcd_system_group_entry_notify()` with `is_static` 0. That includes the
+membership made from a static row. The static row's own notify then follows
+with `static:1` (`mcgrp_notify_l2_staticGroup_change()`). So the `static:0` +
+`static:1` pair at 13:40:58 is one static membership. The `Group-DEL ...
+static:0` is that static membership ageing out.
+
+**The cause.** A static group in a VLAN (`MCGRP_STATIC_ENTRY`) has one
+refresh timer, `l2_static_grp_tmr`. Every query interval (125 s) it renews
+the static membership of every port in the group's port tree
+(`mcgrp_refresh_l2_static_group()`, `port/l2mcd_mld_port.c:2489` on the
+series, `:2485` on 651a13b). A static membership ages like any other: it
+lapses one group membership time (260 s) after its last renewal.
+`mcgrp_stop_phy_port()` (`src/igmp.c:651-661` on the series, `:650-660` on
+651a13b) deletes that timer for each group that the stopping port is a
+member of. The port can be stopping for any reason: link down, snooping
+turned off, a version change. The timer serves every port of the group,
+not only the one stopping. Only a static port's next link-up starts it
+again (`mld_static_grp_replay_confg()` -> `mcgrp_add_l2_staticGroup()`,
+`:2135`). Until then, every other static member of those groups lapses
+260 s after its last renewal. The code has been there since the
+repository's first import (`2d6554f`).
+
+The DX010's `l2mcd.log` matches it to the second. The cage involved is
+Ethernet116, a looped test cage and a static member of the same groups:
+
+| Time | Event | Effect on the timer |
+|---|---|---|
+| 13:40:58 | PortChannel1 up; its static memberships made; timer armed | renewals at 13:40:58 + n x 125 s |
+| 14:03:53 | the 11th renewal | PortChannel1 good until 14:08:13 |
+| 14:05:54 | Ethernet116 down | **timer deleted**, 4 s before the next renewal |
+| 14:06:45 | Ethernet116 up | re-armed: first renewal 14:08:50 |
+| **14:08:13** | PortChannel1's seven `Group-DEL` | 14:03:53 + 260 s |
+| 14:08:50 | the renewal: PortChannel1's seven `Group-ADD` | good until 14:13:10 |
+| 14:09:20, 14:10:08 | Ethernet116 down (up at 14:09:28 in between) | deleted before each renewal |
+| **14:13:10** | PortChannel1's six remaining reserved groups' `Group-DEL` | 14:08:50 + 260 s |
+| 14:14:46 ... | Ethernet116 flapping, down each time within 125 s of coming up | never renewed again |
+
+The same pattern repeats later that day. At 15:44:35 Ethernet116 came up
+and re-armed the timer, and at 15:46:39 the renewal made PortChannel1's
+memberships again. Ethernet116 went down at 15:48:10 and came up at
+15:48:31, which re-armed the timer with its first renewal at 15:50:36.
+Ethernet116 went down for good at 15:51:34. PortChannel1's `Group-DEL`
+came at 15:54:55.8, which is 15:50:36 + 260 s.
+
+**The "Unclear" note of §8.13 is the same fault.** That note said that
+before the cage-5 test Vlan4094 held 7 groups with no membership, and that
+the cage's link-down destroyed them. In fact, PortChannel1's static
+memberships were still in the tree then, renewed at 15:50:36. Cage 5
+(Ethernet16) was up from 15:54:37 to 15:54:50. PortChannel1's memberships
+lapsed 5 s after that, at 15:54:55, from Ethernet116's 15:51:34 link-down.
+The two events only looked like one. Nothing here is particular to a LAG:
+any static member of a group loses it once another static member of that
+group stops and no static port comes up within a query interval.
+
+`Static-Group` listing 5 of the 31 configured ports is not part of the
+fault. A port enters a static group's port tree when its row is applied
+while the port is up, or at its next link-up. The IPC handler skips a row
+for a port that is down (`is_interface_up()`). The port leaves the tree when
+its row is deleted or it leaves the VLAN. A port with a row that has not
+been up since l2mcd started is not listed. PortChannel1 stayed listed
+throughout.
+
+**On the wire.** The reserved groups flood as unknown multicast
+(`forward_unknown_multicast`, §8.14), so receivers lost nothing.
+Take a port that holds a group by a static row only, while other ports have
+learned that group. 260 s after another static port of the group stopped,
+that port would drop out of the chip's group for it.
+
+#### The fix: sonic-l2mcd 0015
+
+`contrib/sonic-image/series/sonic-l2mcd/0015-*`, three parts:
+
+- **`mcgrp_stop_phy_port()` leaves the static group's refresh timer
+  running.**
+- **`mcgrp_refresh_l2_static_group()` renews only a port that is up.**
+  `mcgrp_update_l2_static_group()` and the L3 twin
+  `mcgrp_refresh_static_group()` already check this. Without the check, the
+  running refresh would make a static membership for a port with no link.
+  The harness showed it doing so, below. A stopped port's static membership
+  comes back with its link-up replay, as before.
+- **The replay no longer leaks a port-tree node.** A stopped port stays in
+  the group's port tree, and its link-up replay adds it again.
+  `mld_sg_porttree_addport()` took a NULL from `avl_probe()` as the only
+  failure. For a port already in the tree, `avl_probe()` returns the node
+  already there, and the new node leaked: 8 bytes per static group at every
+  link-up of a static port (seven per flap of a cage on the DX010). The new
+  node is now freed.
+
+**The harness cases** (`contrib/sonic-image/l2mcd-fuzz`; each is run by
+name):
+
+- `static-member-link-down` and `mld-static-member-link-down`: Ethernet4
+  and Ethernet8 are static members of 239.1.2.3 (ff3e::1). Ethernet8 loses
+  link. Then 600 s pass on l2mcd's own clock and its one-second wheel timer
+  (four refreshes, two membership times). Ethernet8's link comes back, and
+  300 s more pass. Pass means:
+  - Ethernet4 stays a static member throughout, with no deletion sent;
+  - Ethernet8 is out while it has no link and a static member again after
+    its link comes back.
+- `static-member-reported` and `mld-static-member-reported`: a control.
+  Both ports are static members, Ethernet4 also reports the group, and no
+  link changes for 600 s.
+
+| Tree | `*-link-down` | `*-reported` |
+|---|---|---|
+| 0001-0014 (the series before 0015) | **fails**: after 600 s Ethernet4 is out, its deletion sent (it comes back only from the refresh Ethernet8's link-up re-arms) | clean |
+| 0001-0014 + the timer part alone | **fails**: Ethernet4 kept, but the refresh makes Ethernet8 a static member while its link is down | clean |
+| 0001-0014 + the timer and refresh parts | **fails** LeakSanitizer: one `sg_port_t` from `mld_sg_porttree_addport()` in the link-up replay | clean |
+| 0001-0015 | clean | clean |
+| 651a13b + 0013 (upstream #10) | **fails** as the series does | clean |
+| 651a13b + 0013 + 0015 | clean | clean |
+| 651a13b alone | reaches 0013's use-after-free at the link-down first (ASan) | clean |
+
+The rest of the regression suite gives the same results with 0015 and
+without it, with log arguments evaluated or not. gcc 12 `-Wall` gives the
+same warnings in the two changed files with and without it. The fuzzers
+were not re-run: the receive path is unchanged. `dry-run.sh` passed with 15
+patches (2026-11-16).
+
+**The driver** needs no change. On the running image, any static member's
+loss of link starts this. A static port coming up within the next query
+interval undoes it until the next link-down.
+
+**What the next image's install must show on the DX010** (no image is
+built: Clint's hold):
+
+- After the boot, `l2mcd_ctl -s <f> -v 4094` shows `ngroups 7`, and
+  `show igmp-snooping groups vlan 4094` lists the seven reserved groups with
+  PortChannel1.
+- Then, under the lock, an empty cage that is a static member of Vlan4094
+  is brought up and down with MAC loopback, as in §8.13. Then wait at least
+  7 minutes (260 s plus a query interval). Pass means:
+  - `l2mcd.log` has no `Group-DEL ... PortChannel1` for a reserved group;
+  - `ngroups` is still 7 and the `show` command still lists PortChannel1 in
+    each group;
+  - ASIC_DB's reserved-group members are unchanged.
+- At the cage's next link-up its own `Group-ADD ... static:1` lines return.
+- No line names 0015 in the binary, so the build record (15 sonic-l2mcd
+  patches) is what says it is in.
 
 ## 9. What Ubiquiti's own SONiC does, and what the driver takes from it (2026-10-28)
 

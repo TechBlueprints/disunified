@@ -622,6 +622,143 @@ static int member_stop(int afi, int leave)
     return bad;
 }
 
+/* A static row as l2mcmgrd sends it from CFG_L2MC_STATIC_MEMBER_TABLE
+ * (Vlan100|<group>|<port>): L2MCD_SNOOP_STATIC_CONFIG_MSG, op 1 set */
+static void static_msg(int afi, const char *group, const char *name)
+{
+    size_t dlen = sizeof(L2MCD_CONFIG_MSG) + sizeof(PORT_ATTR);
+    L2MCD_IPC_MSG *msg = calloc(1, sizeof(L2MCD_IPC_MSG) + dlen);
+    L2MCD_CONFIG_MSG *c = (L2MCD_CONFIG_MSG *)msg->data;
+    struct sockaddr_un none;
+
+    memset(&none, 0, sizeof(none));
+    msg->msg_type = L2MCD_SNOOP_STATIC_CONFIG_MSG;
+    msg->msg_len = dlen;
+    c->op_code = 1;
+    c->afi = afi;
+    c->vlan_id = VID;
+    c->count = 1;
+    snprintf(c->gaddr, sizeof(c->gaddr), "%s", group);
+    snprintf(c->saddr, sizeof(c->saddr), "%s", afi == L2MCD_IPV4_AFI ? "0.0.0.0" : "::");
+    strncpy(c->ports[0].pnames, name, L2MCD_IFNAME_SIZE - 1);
+    c->ports[0].oper_state = 1;
+    l2mcd_process_ipc_msg(msg, sizeof(L2MCD_IPC_MSG) + dlen, none);
+    free(msg);
+}
+
+/* l2mcd's clock (read_tb_sec(): CLOCK_MONOTONIC less l3_ref_time) and its
+ * one-second wheel timer (l2mcd_100ms_timer() ticks it every tenth call),
+ * run forward together one second at a time */
+static void advance(int afi, unsigned secs)
+{
+    while (secs--) {
+        l3_ref_time -= 1000;
+        mcgrp_service_wheel_timer(afi);
+    }
+}
+
+/* "in" with a static membership, "in" learned only, or "out" */
+static const char *static_state(MCGRP_ENTRY *e, unsigned idx)
+{
+    MCGRP_MBRSHP *mb = e ? mcgrp_find_mbrshp_entry(e, idx) : NULL;
+
+    return !mb ? "out" : mb->static_mmbr ? "in (static)" : "in (learned)";
+}
+
+/* The static-member cases (found on the DX010, 2026-11-15): the uplink's
+ * static membership of Vlan4094's reserved groups aged out 260 s (the group
+ * membership time) after its last refresh, and never came back. A looped test
+ * cage, a static member of the same groups, had lost link: mcgrp_stop_phy_port()
+ * stopped each group's static refresh timer, which renews every port of the
+ * static group, not only the stopped one. Here Ethernet4 and Ethernet8 are
+ * static members of 239.1.2.3 (afi 1) or ff3e::1 (afi 2). kind 0: Ethernet8
+ * loses link; kind 1 (a control): Ethernet4 also reports the group and no link
+ * changes. Then 600 s pass (four refreshes, two membership times). Ethernet4 must
+ * stay a static member, with no deletion sent, and a port without link must
+ * not be made a member by the refresh; with kind 0 Ethernet8's link then comes
+ * back, and it must be a static member again and stay one for another 300 s.
+ * Returns 0, 1 when the state after is wrong, 2 when the setup failed. */
+static int static_age(int afi, int kind)
+{
+    static uint8_t m[64], pk[128];
+    MCGRP_CLASS *mcgrp = MCGRP_GET_INSTANCE_FROM_VRFINDEX(afi, L2MCD_DEFAULT_VRF_IDX);
+    UINT16 vir = (USHORT)vnode->ifindex;
+    const char *group = afi == L2MCD_IPV4_AFI ? "239.1.2.3" : "ff3e::1";
+    char ln[L2MCD_IFNAME_SIZE];
+    IPV6_ADDRESS a6;
+    MADDR_ST g;
+    MCGRP_ENTRY *e;
+    unsigned dels;
+    size_t n, t;
+    int bad = 0;
+
+    memset(&a6, 0, sizeof(a6));
+    a6.address.address8[0] = 0xff; a6.address.address8[1] = 0x3e; a6.address.address8[15] = 1;
+    if (afi == L2MCD_IPV4_AFI)
+        mcast_set_ipv4_addr(&g, 0xef010203);                    /* 239.1.2.3 */
+    else
+        mcast_set_ipv6_addr(&g, &a6);                           /* ff3e::1 */
+    static_msg(afi, group, "Ethernet4");
+    static_msg(afi, group, "Ethernet8");
+    e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+    fprintf(stderr, "  %s static on Ethernet4 and Ethernet8: Ethernet4 %s, Ethernet8 %s\n",
+            group, static_state(e, port_idx[0]), static_state(e, port_idx[1]));
+    if (!e || strcmp(static_state(e, port_idx[0]), "in (static)") ||
+        strcmp(static_state(e, port_idx[1]), "in (static)")) {
+        fprintf(stderr, "harness: setup failed: the group has not both static members\n");
+        return 2;
+    }
+    if (kind == 0) {
+        snprintf(ln, sizeof(ln), "Ethernet8");
+        l2mcd_portstate_update(if_nametoindex("Ethernet8"), 0, ln);
+        e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+        fprintf(stderr, "  after Ethernet8 lost link: Ethernet4 %s, Ethernet8 %s\n",
+                static_state(e, port_idx[0]), static_state(e, port_idx[1]));
+    } else {
+        /* Ethernet4 reports the group too (as the LAN reports the reserved groups) */
+        if (afi == L2MCD_IPV4_AFI) {
+            n = igmpv3_hdr(m, 1);
+            n += igmpv3_rec(m + n, 4, 0, 0, 0, 0);
+            t = mk_ip4(pk, m, n, 0, v3_reports);
+            feed_ip4(0, pk, t);
+        } else {
+            n = mldv2_hdr(m, 1);
+            n += mldv2_rec(m + n, 4, 0, 0, 0, 0);
+            t = mk_ip6(pk, m, n, 1, 0, 0x16);
+            feed_ip6(0, pk, t);
+        }
+        e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+        fprintf(stderr, "  after Ethernet4's report: Ethernet4 %s, Ethernet8 %s\n",
+                static_state(e, port_idx[0]), static_state(e, port_idx[1]));
+    }
+    dels = stub_l2mc_dels;
+    advance(afi, 600);
+    e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+    fprintf(stderr, "  600 s later: Ethernet4 %s, Ethernet8 %s; %u member deletion(s) sent%s%s\n",
+            static_state(e, port_idx[0]), static_state(e, port_idx[1]), stub_l2mc_dels - dels,
+            stub_l2mc_dels != dels ? ", the last under " : "", stub_l2mc_dels != dels ? stub_l2mc_del_port : "");
+    bad |= strcmp(static_state(e, port_idx[0]), "in (static)") || stub_l2mc_dels != dels;
+    if (kind == 0) {
+        bad |= strcmp(static_state(e, port_idx[1]), "out") != 0;
+        snprintf(ln, sizeof(ln), "Ethernet8");
+        l2mcd_portstate_update(if_nametoindex("Ethernet8"), 1, ln);
+        e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+        fprintf(stderr, "  Ethernet8's link back: Ethernet4 %s, Ethernet8 %s\n",
+                static_state(e, port_idx[0]), static_state(e, port_idx[1]));
+        bad |= strcmp(static_state(e, port_idx[1]), "in (static)") != 0;
+        dels = stub_l2mc_dels;
+        advance(afi, 300);
+        e = mcgrp_find_group_address_entry(mcgrp, vir, &g);
+        fprintf(stderr, "  300 s later: Ethernet4 %s, Ethernet8 %s; %u member deletion(s) sent\n",
+                static_state(e, port_idx[0]), static_state(e, port_idx[1]), stub_l2mc_dels - dels);
+        bad |= strcmp(static_state(e, port_idx[0]), "in (static)") ||
+               strcmp(static_state(e, port_idx[1]), "in (static)") || stub_l2mc_dels != dels;
+    } else {
+        bad |= strcmp(static_state(e, port_idx[1]), "in (static)") != 0;
+    }
+    return bad;
+}
+
 /* The port-no-name cases (found on the DX010, 2026-11-15): l2mcd aborted on an
  * uncaught std::logic_error ("basic_string: construction from null is not
  * valid"). An IGMPv3 report had arrived on a receive socket whose port index
@@ -996,6 +1133,30 @@ int main(int argc, char **argv)
                 return 2;
             if (r)
                 abort();
+        }
+    }
+    /* a static member beside another that loses link, or that also reports (static_age above) */
+    {
+        static const struct { const char *name; int afi, kind; } sc[] = {
+            { "static-member-link-down", L2MCD_IPV4_AFI, 0 },
+            { "mld-static-member-link-down", L2MCD_IPV6_AFI, 0 },
+            { "static-member-reported", L2MCD_IPV4_AFI, 1 },
+            { "mld-static-member-reported", L2MCD_IPV6_AFI, 1 },
+        };
+        unsigned i;
+        int r;
+
+        for (i = 0; i < sizeof(sc) / sizeof(sc[0]); i++) {
+            /* each runs l2mcd's clock forward: only when named */
+            if (!only || strcmp(only, sc[i].name))
+                continue;
+            run(sc[i].name);
+            if ((r = static_age(sc[i].afi, sc[i].kind)) == 2)
+                return 2;
+            if (r) {
+                fprintf(stderr, "harness: static member lost\n");
+                abort();
+            }
         }
     }
     /* a message on a port index portdb does not name (no_name above) */

@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Mon, 16 Nov 2026 08:30:00 -0700
+Subject: [PATCH] igmp: keep a static group's refresh running when one of its
+ ports stops
+
+A static group's refresh timer (l2_static_grp_tmr, one per static group of
+a VLAN) renews the static membership of every port in the group's port
+tree every query interval, below the group membership time. When any one
+of those ports stopped (link down, snooping off, a version change),
+mcgrp_stop_phy_port() deleted that timer, and only a static port's next
+link-up (mcgrp_add_l2_staticGroup() from the replay) started it again.
+Meanwhile the other ports' static memberships aged out one group
+membership time after their last refresh, with a member delete sent for
+each, and stayed out. On a switch whose uplink was a static member of a
+VLAN's groups beside a test port that flapped, the uplink's memberships
+went 260 s after the last refresh, at the second, each time the test port
+had lost link in between, and for good after its last link-down.
+
+The timer is left running. mcgrp_refresh_l2_static_group() now skips a
+port that is not up, as mcgrp_update_l2_static_group() and
+mcgrp_refresh_static_group() already do; without that the running refresh
+would make a static membership for a port with no link. The port's own
+membership still comes back with its link-up replay.
+
+That replay adds the port to the group's port tree again, though a
+stopped port stays in it: avl_probe() returns the node already in the
+tree, so mld_sg_porttree_addport() kept its new node and leaked it, once
+per static group at every link-up of a static port. It is freed now.
+
+The harness's static-member-link-down and mld-static-member-link-down
+cases (two static ports, one loses link, 600 s, the link comes back) lose
+the other port's static membership without this; static-member-reported
+and mld-static-member-reported (a static port that also reports the group)
+pass either way.
+---
+ port/l2mcd_mld_port.c | 17 ++++++++++++++++-
+ src/igmp.c            | 17 +++++------------
+ 2 files changed, 21 insertions(+), 13 deletions(-)
+
+diff --git a/port/l2mcd_mld_port.c b/port/l2mcd_mld_port.c
+index 48fdf13..fff66f8 100644
+--- a/port/l2mcd_mld_port.c
++++ b/port/l2mcd_mld_port.c
+@@ -2197,6 +2197,7 @@ MCGRP_STATIC_ENTRY * mcgrp_add_l2_staticGroup(MCGRP_CLASS * mcgrp,
+ int mld_sg_porttree_addport(L2MCD_AVL_TREE *port_tree, uint32_t port)
+ {
+ 	sg_port_t *sg_port;
++	void **slot;
+    	sg_port = calloc(1,sizeof(sg_port_t));
+     if(sg_port == NULL) {
+ 		L2MCD_LOG_ERR("%s alloc sg_port fail port:0x%x", FN, port);
+@@ -2204,11 +2205,17 @@ int mld_sg_porttree_addport(L2MCD_AVL_TREE *port_tree, uint32_t port)
+     }
+ 	M_AVLL_INIT_NODE(sg_port->node); 
+     sg_port->ifindex = port;
+-    if (!M_AVLL_INSERT(*port_tree,sg_port)){
++    slot = M_AVLL_INSERT(*port_tree,sg_port);
++    if (!slot){
+ 		L2MCD_LOG_NOTICE("%s insert sg_port to avl fail port:0x%x",FN, port);
+        	free(sg_port);
+        	return (-1);
+     }
++    /* avl_probe() returns the port already in the tree, and leaves the new
++     * one out: a static port stays in the tree while its link is down, and
++     * its link-up replays the add (mld_static_grp_replay_confg()) */
++    if (*slot != sg_port)
++        free(sg_port);
+     return 0;
+ }
+ 
+@@ -2522,7 +2529,15 @@ void mcgrp_refresh_l2_static_group(MCGRP_CLASS * mcgrp,
+     {
+ 
+         MCGRP_MBRSHP      *mcgrp_mbrshp = NULL;
++        MCGRP_PORT_ENTRY  *mcgrp_pport;
+ 		phy_port_id = sg_port->ifindex;
++        /* Only a port that is up is refreshed, as mcgrp_update_l2_static_group()
++         * makes the membership only for one: the timer keeps running while a
++         * port of the group is down (mcgrp_stop_phy_port()), and the port's
++         * static membership comes back with its link (mld_static_grp_replay_confg()). */
++        mcgrp_pport = mcgrp_find_phy_port_entry(mcgrp, mcgrp_vport, phy_port_id);
++        if (mcgrp_pport == NULL || !mcgrp_pport->is_up)
++            continue;
+          // On update, the PIM/DVMRP functions get the port# from this data struct
+         mcgrp_mbrshp = mcgrp_find_mbrshp_entry_for_grpaddr(mcgrp,
+                                                            group_address,
+diff --git a/src/igmp.c b/src/igmp.c
+index b93ad6c..28fb554 100644
+--- a/src/igmp.c
++++ b/src/igmp.c
+@@ -622,7 +622,6 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+ 
+     MCGRP_ENTRY         *mcgrp_entry, *next_entry;
+     MCGRP_MBRSHP        *mcgrp_mbrshp;
+-    MCGRP_STATIC_ENTRY  *mcgrp_static_entry;
+     UINT16               vir_port_id = mcgrp_vport->vir_port_id;
+     UINT32               phy_port_id = mcgrp_pport->phy_port_id;
+     BOOLEAN              is_pim_snp_mbr;
+@@ -648,17 +647,11 @@ void mcgrp_stop_phy_port (MCGRP_CLASS       *mcgrp,
+         mcgrp_notify_phy_port_del(mcgrp, &mcgrp_entry->group_address,
+                 mcgrp_vport, phy_port_id, TRUE);
+ 
+-        //Stop wheeltimer on static group 
+-        mcgrp_static_entry = mcgrp_find_l2_staticGroup(mcgrp, vir_port_id, &mcgrp_entry->group_address);
+-        if (mcgrp_static_entry != NULL)
+-        {
+-             if (WheelTimerSuccess == WheelTimer_IsElementEnqueued
+-                                        (&mcgrp_static_entry->l2_static_grp_tmr.mcgrp_wte))
+-            {
+-                WheelTimer_DelElement(mcgrp->mcgrp_wtid,  &mcgrp_static_entry->l2_static_grp_tmr.mcgrp_wte);
+-                L2MCD_VLAN_LOG_DEBUG(vir_port_id, "%s:%d:[vlan:%d] Wheeltimer deleted from static Port:%d ", FN, LN, vir_port_id, phy_port_id);
+-            }
+-        }
++        // The static group's refresh timer is left running: it renews every
++        // port of the static group, not only this one, and stopping it here
++        // let the other ports' static memberships age out. The refresh skips
++        // a port that is not up (mcgrp_refresh_l2_static_group); this port's
++        // static membership comes back when it does (mld_static_grp_replay_confg).
+ 
+         // Remove this port from the group membership. The membership is
+         // freed by mcgrp_destroy_mbrshp_entry(), so what is needed of it is

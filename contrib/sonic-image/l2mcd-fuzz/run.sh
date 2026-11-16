@@ -29,6 +29,7 @@ case "$cmd" in
     cases="igmp-valid igmp-valid-aux igmp-65535-sources igmp-65535-groups igmp-truncated-record
            igmp-aux-claimed igmp-type-0 igmp-type-200 igmp-totlen-beyond-packet igmp-totlen-forwarded
            igmp-ihl-beyond-totlen igmp-short-message igmp-v3-query-sources igmp-v1-query-group port-list-repeated port-list-breakout port-delete
+           static-member-link-down mld-static-member-link-down static-member-reported mld-static-member-reported
            member-link-down mld-member-link-down member-vlan-leave
            port-no-name-v2-report port-no-name-v3-report port-no-name-v2-leave
            mld-port-no-name-v1-report mld-port-no-name-v2-report mld-port-no-name-done mld-valid mld-65535-sources
