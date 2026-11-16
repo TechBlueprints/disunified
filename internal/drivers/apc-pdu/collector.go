@@ -90,18 +90,34 @@ type Collector struct {
 	// syslog host, through the same config file.
 	syslog *apcnmc.SyslogApplier
 	// clock keeps the card's time zone, DST and NTP servers on the
-	// controller's, through the same file; the two take turns uploading.
+	// controller's, through the same file.
 	clock *apcnmc.ClockApplier
+	// uploads is the card's config.ini gate: the syslog and clock uploads
+	// and ApplyAddress's take turns there, since the card drops an upload
+	// that lands while it applies the last. now is the address upload's
+	// clock for it (nil = time.Now).
+	uploads *apcnmc.Uploads
+	now     func() time.Time
 }
 
 // NewCollector builds a collector over a runner.
 func NewCollector(r Runner) *Collector {
 	logf := func(format string, args ...any) { log.Printf("apc-pdu: "+format, args...) }
 	up := &apcnmc.Uploads{}
-	return &Collector{r: r, warned: map[string]bool{},
+	return &Collector{r: r, warned: map[string]bool{}, uploads: up,
 		syslog: &apcnmc.SyslogApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up},
 		clock:  &apcnmc.ClockApplier{Get: r.GetConfig, Put: r.PutConfig, Logf: logf, Uploads: up},
 	}
+}
+
+// takeUpload is ApplyAddress's and the outlet names' turn at the card's
+// upload gate.
+func (c *Collector) takeUpload() bool {
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	return c.uploads.Take(now(), apcnmc.DefaultSettle)
 }
 
 // Start runs every read the driver will ever do, once, so a wrong community

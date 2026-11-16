@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // ApplyOutlets makes the listed outlets match desired. It is a diff: the loop
@@ -62,7 +63,9 @@ func (c *Collector) ApplyOutlets(ctx context.Context, desired []devicemodel.Outl
 	}
 
 	if len(names) > 0 {
-		if err := c.r.PutConfig(ctx, outletNameConfig(names)); err != nil {
+		if !c.takeUpload() {
+			errs = append(errs, apcnmc.Busy+"; the outlet names are written on a later cycle")
+		} else if err := c.r.PutConfig(ctx, outletNameConfig(names)); err != nil {
 			errs = append(errs, err.Error())
 		} else {
 			changed += len(names)
@@ -137,6 +140,12 @@ func (c *Collector) warnOnce(key, msg string) {
 // reboot; the card simply starts answering at the new address. It is a diff:
 // the card's current mode and address are compared first, and a controller
 // that re-sends the address the card already has produces no upload.
+//
+// The upload takes its turn at the card's gate with the syslog and clock
+// uploads: within a settle time of another one it is not made, and the
+// error says so. The loop re-applies a static address every cycle, so that
+// one goes a cycle later; a switch to DHCP is applied only on the push that
+// makes it, so that one is not retried.
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	c.mu.Lock()
 	last := c.last
@@ -152,6 +161,9 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 		if dhcp {
 			return false, nil
 		}
+		if !c.takeUpload() {
+			return false, fmt.Errorf("apc-pdu: %s; the switch to DHCP is not written, and the loop does not retry it", apcnmc.Busy)
+		}
 		if err := c.r.PutConfig(ctx, tcpipConfig(last.System.MAC, "DHCP Only", "", "", "")); err != nil {
 			return false, err
 		}
@@ -165,6 +177,9 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	}
 	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen && (d.Gateway == "" || d.Gateway == last.System.Gateway) {
 		return false, nil
+	}
+	if !c.takeUpload() {
+		return false, fmt.Errorf("apc-pdu: %s; the static address %s/%d is written on a later cycle", apcnmc.Busy, d.IP, d.PrefixLen)
 	}
 	if err := c.r.PutConfig(ctx, tcpipConfig(last.System.MAC, "Manual", d.IP, maskFromPrefix(d.PrefixLen), d.Gateway)); err != nil {
 		return false, err

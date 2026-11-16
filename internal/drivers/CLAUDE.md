@@ -74,8 +74,10 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   (`ClockApplier`, `[SystemDate/Time]`, behind `devicemodel.ClockController`:
   a POSIX zone mapped exactly onto the card's fixed offsets and its
   `Traditional US` DST, or refused). A key it writes must exist in the
-  card's own file, and a card's appliers share one `Uploads` gate: the card
-  drops an upload that lands while it applies the last.
+  card's own file, and a card's config.ini uploads share one `Uploads` gate
+  (the appliers', the driver's `ApplyAddress` and the PDU's outlet names;
+  a new upload takes its turn there too, `Uploads.Take`): the card drops an upload that lands
+  while it applies the last.
 - **`reach` is not a driver** either: the MAC, netmask, gateway, gateway
   MAC and reported address of a device that cannot report them itself
   (`apc-ups`, `apc-backups`, `stub`). The netmask and gateway come from the

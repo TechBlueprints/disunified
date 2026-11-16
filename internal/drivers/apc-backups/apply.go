@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/drivers/apcnmc"
 )
 
 // ApplyOutlets switches the switched outlet groups to match desired: a
@@ -128,7 +129,11 @@ func (c *Collector) CycleOutlet(ctx context.Context, idx int) error {
 // controller's IP Settings through a partial config.ini over FTP, exactly
 // as the apc-pdu driver does: the section must carry Override= with the
 // card's MAC or the card ignores it; the change applies live, no reboot.
-// A diff: the card's current mode and address are compared first.
+// A diff: the card's current mode and address are compared first. The
+// upload takes its turn at the card's gate with the syslog and clock
+// uploads, as on the PDU: within a settle time of another it is not made,
+// and the error says so (a static address goes a cycle later; a switch to
+// DHCP is not retried).
 func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesired) (bool, error) {
 	c.mu.Lock()
 	last, dhcp, cardGW := c.last, c.dhcp, c.cardGW
@@ -142,6 +147,9 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if d.DHCP {
 		if dhcp {
 			return false, nil
+		}
+		if !c.takeUpload() {
+			return false, fmt.Errorf("apc-backups: %s; the switch to DHCP is not written, and the loop does not retry it", apcnmc.Busy)
 		}
 		if err := c.r.PutConfig(ctx, tcpipConfig(c.MAC, "DHCP Only", "", "", "")); err != nil {
 			return false, fmt.Errorf("apc-backups: %w", err)
@@ -170,6 +178,9 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	cur := last.System.Addresses
 	if !dhcp && len(cur) == 1 && cur[0].IP == d.IP && cur[0].PrefixLen == d.PrefixLen && cardGW == gw {
 		return false, nil
+	}
+	if !c.takeUpload() {
+		return false, fmt.Errorf("apc-backups: %s; the static address %s/%d is written on a later cycle", apcnmc.Busy, d.IP, d.PrefixLen)
 	}
 	if err := c.r.PutConfig(ctx, tcpipConfig(c.MAC, "Manual", d.IP, maskFromPrefix(d.PrefixLen), gw)); err != nil {
 		return false, fmt.Errorf("apc-backups: %w", err)

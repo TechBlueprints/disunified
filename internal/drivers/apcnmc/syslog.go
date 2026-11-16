@@ -168,8 +168,8 @@ type SyslogApplier struct {
 	Logf   func(format string, args ...any)      // nil = silent
 	Settle time.Duration                         // 0 = DefaultSettle
 	Now    func() time.Time                      // nil = time.Now
-	// Uploads is shared with the card's other appliers (the clock), so
-	// two uploads never land inside one settle time.
+	// Uploads is shared with the card's other uploads (the clock, the
+	// driver's address), so two uploads never land inside one settle time.
 	Uploads *Uploads
 
 	mu       sync.Mutex
@@ -241,8 +241,8 @@ func (a *SyslogApplier) Apply(ctx context.Context, hosts []string) (changed bool
 		a.refuse(err.Error() + "; its syslog host is left alone")
 		return false, nil
 	}
-	if !a.Uploads.take(a.now(), a.settle()) {
-		return false, nil // another applier's upload is still settling
+	if !a.Uploads.Take(a.now(), a.settle()) {
+		return false, nil // another upload is still settling
 	}
 	a.logf("syslog: the card sends to %v, the controller's host is %v; uploading %s", a.cur.Hosts(), hosts, strings.ReplaceAll(strings.TrimSpace(string(body)), "\r\n", " "))
 	if err := a.Put(ctx, body); err != nil {

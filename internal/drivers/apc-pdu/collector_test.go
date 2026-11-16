@@ -361,12 +361,15 @@ func TestApplyAddressIsANoOpWhenTheCardAlreadyHasIt(t *testing.T) {
 
 // Switching the card to DHCP, and to a different manual address, each upload
 // one [NetworkTCP/IP] partial carrying the Override line -- without it the
-// card silently ignores the section.
+// card silently ignores the section. The second goes a settle time after the
+// first: the card drops an upload that lands while it applies the last.
 func TestApplyAddressWritesTheTCPIPSectionWithOverride(t *testing.T) {
 	c, r := newTestCollector(t)
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	now := time.Unix(0, 0)
+	c.now = func() time.Time { return now }
 	changed, err := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true})
 	if err != nil || !changed {
 		t.Fatalf("to DHCP: changed=%v err=%v", changed, err)
@@ -378,6 +381,7 @@ func TestApplyAddressWritesTheTCPIPSectionWithOverride(t *testing.T) {
 	if changed, _ := c.ApplyAddress(context.Background(), devicemodel.AddressDesired{DHCP: true}); changed {
 		t.Error("re-sending DHCP wrote again")
 	}
+	now = now.Add(apcnmc.DefaultSettle)
 	changed, err = c.ApplyAddress(context.Background(), devicemodel.AddressDesired{IP: "192.0.2.40", PrefixLen: 24, Gateway: "192.0.2.1"})
 	if err != nil || !changed {
 		t.Fatalf("to static: changed=%v err=%v", changed, err)
