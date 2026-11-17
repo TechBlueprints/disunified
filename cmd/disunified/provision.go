@@ -33,9 +33,10 @@ type provisionSpacer struct {
 	// asking again (the API could not be reached), or 0 for no retry.
 	action func(snap *devicemodel.Snapshot) (retry time.Duration)
 
-	mu    sync.Mutex
-	last  time.Time
-	timer stopper // a retry, or a layout change waiting for the spacing
+	mu      sync.Mutex
+	last    time.Time
+	timer   stopper // a retry, or a layout change waiting for the spacing
+	stopped bool    // the run is over (stop)
 }
 
 // newProvisionSpacer is the spacer on the real clock.
@@ -56,7 +57,7 @@ func newProvisionSpacer(adopted func() bool, current func() *devicemodel.Snapsho
 func (p *provisionSpacer) provision(snap *devicemodel.Snapshot) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.adopted() || snap == nil || p.now().Sub(p.last) < provisionSpacing {
+	if p.stopped || !p.adopted() || snap == nil || p.now().Sub(p.last) < provisionSpacing {
 		return
 	}
 	p.last = p.now()
@@ -77,6 +78,10 @@ func (p *provisionSpacer) provision(snap *devicemodel.Snapshot) {
 // retry, or an earlier layout change) covers it.
 func (p *provisionSpacer) layoutChanged(snap *devicemodel.Snapshot) {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return
+	}
 	if wait := provisionSpacing - p.now().Sub(p.last); wait > 0 && p.timer == nil && p.adopted() {
 		p.timer = p.afterFunc(wait, p.fire)
 		p.mu.Unlock()
@@ -88,3 +93,17 @@ func (p *provisionSpacer) layoutChanged(snap *devicemodel.Snapshot) {
 
 // fire is a timer's provision, from the session's snapshot at that moment.
 func (p *provisionSpacer) fire() { p.provision(p.current()) }
+
+// stop ends the spacer with its run: a pending timer is stopped, and no
+// later call -- a timer already on its way included -- provisions or arms
+// one. runOne defers it, because runConfig's context outlives a device
+// whose runOne returned an error.
+func (p *provisionSpacer) stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopped = true
+	if p.timer != nil {
+		p.timer.Stop()
+		p.timer = nil
+	}
+}

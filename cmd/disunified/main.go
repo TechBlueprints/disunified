@@ -810,6 +810,9 @@ func runOne(ctx context.Context, o options) error {
 				}
 				return 0
 			})
+			// The run ends with runOne, the context not always: a retry
+			// timer must not outlive it.
+			defer spacer.stop()
 			provision, layoutChanged = spacer.provision, spacer.layoutChanged
 			if snap != nil {
 				provision(snap)

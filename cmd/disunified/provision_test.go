@@ -278,3 +278,44 @@ func TestProvisionSpacerRetry(t *testing.T) {
 		t.Errorf("after a success: %d timers, want none", n)
 	}
 }
+
+// When the run ends (runOne returns: an option refused after the startup
+// provision, informloop.New failing, the loop stopped) the spacer stops: a
+// retry that was armed is stopped, one already on its way does nothing, and
+// no later call provisions or arms anything. runConfig's context outlives a
+// device whose runOne returned an error, so before this a failed startup
+// provision kept asking the controller's API every five minutes for a
+// device that no longer ran.
+func TestProvisionSpacerStop(t *testing.T) {
+	r := newSpacerRig(t)
+	r.retry = 15 * time.Second
+	r.p.provision(snapNamed("startup"))
+	live := r.live()
+	if len(live) != 1 {
+		t.Fatalf("after a failure: %d timers, want 1", len(live))
+	}
+	r.p.stop()
+	if !live[0].stopped {
+		t.Error("stop left the retry timer running")
+	}
+	r.advance(15 * time.Second)
+	live[0].f() // a timer whose Stop came too late still runs
+	r.advance(provisionSpacing)
+	r.p.provision(snapNamed("after"))
+	r.p.layoutChanged(snapNamed("after"))
+	if r.ncalls() != 1 {
+		t.Errorf("after stop: %d calls, want only the one before", r.ncalls())
+	}
+	if n := len(r.live()); n != 0 {
+		t.Errorf("after stop: %d timers live, want none", n)
+	}
+	// A layout change waiting for the spacing is stopped too.
+	r2 := newSpacerRig(t)
+	r2.p.provision(snapNamed("startup"))
+	r2.p.layoutChanged(snapNamed("change"))
+	ft := r2.live()
+	r2.p.stop()
+	if len(ft) != 1 || !ft[0].stopped {
+		t.Error("stop left a waiting layout change's timer running")
+	}
+}
