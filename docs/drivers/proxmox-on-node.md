@@ -71,6 +71,24 @@ needs only that it fails without changing another node's guest.
 
 ### 4.1 An unmounted `/etc/pve` is not "no guests"
 
+**Built 2026-11-17** (`collector.go` `build`, `parse.go`
+`crossCheckGuests`/`nodeName`; tests in `pmxcfs_test.go` and
+`internal/informloop/replay_proxmox_test.go`), fixture-tested only; the
+unmounted-namespace check of §7 step 2 is the live test. The errors read:
+
+- `proxmox startup: proxmox: /etc/pve/.vmlist is empty: pmxcfs is not
+  mounted (is pve-cluster running?); no guest can be read` (at `Start`;
+  without the `proxmox startup:` prefix on a later poll);
+- `proxmox: /etc/pve changed under the poll (or pmxcfs disagrees with
+  itself): qemu 100 has a config under proxmox-2 but is not in .vmlist`
+  (each differing guest named, `; `-separated);
+- `proxmox: collector output lacks section "lxc"` (or `vmlist`, `qemu`).
+
+Without the guard the loop test shows the hole mid-run as well as at
+start: the empty snapshot is a layout change, and the loop's
+`OnLayoutChange` provision runs from it. No `readlink /etc/pve/local`
+section was added; the first label of the hostname is the comparison.
+
 Today, with pmxcfs not mounted, `collect.sh` prints empty `vmlist`, `qemu`
 and `lxc` sections (`cat … 2>/dev/null`, globs that match nothing), and
 `build` accepts that: it requires only that the `qemu` section is present,
