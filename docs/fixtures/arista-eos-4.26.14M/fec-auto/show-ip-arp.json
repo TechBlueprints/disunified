@@ -1,0 +1,44 @@
+{
+  "dynamicEntries": 6,
+  "ipV4Neighbors": [
+    {
+      "address": "192.0.2.2",
+      "age": 460,
+      "hwAddress": "0200.0000.003c",
+      "interface": "Vlan1, Ethernet49/1"
+    },
+    {
+      "address": "192.0.2.3",
+      "age": 10830,
+      "hwAddress": "0200.0000.003d",
+      "interface": "Vlan1, Ethernet49/1"
+    },
+    {
+      "address": "192.0.2.4",
+      "age": 1612,
+      "hwAddress": "0200.0000.003e",
+      "interface": "Vlan1, Ethernet49/1"
+    },
+    {
+      "address": "192.0.2.5",
+      "age": 11118,
+      "hwAddress": "0200.0000.003f",
+      "interface": "Vlan1, Ethernet49/1"
+    },
+    {
+      "address": "192.0.2.6",
+      "age": 1,
+      "hwAddress": "0200.0000.0040",
+      "interface": "Vlan1, Ethernet49/1"
+    },
+    {
+      "address": "192.0.2.7",
+      "age": 72,
+      "hwAddress": "0200.0000.0041",
+      "interface": "Vlan1, Ethernet49/1"
+    }
+  ],
+  "notLearnedEntries": 0,
+  "staticEntries": 0,
+  "totalEntries": 6
+}

@@ -94,6 +94,7 @@ func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc sh
 				continue
 			}
 			portfast, bpdufilter := false, false
+			fecRS, fecFC := false, false
 			for line := range body.Cmds {
 				switch {
 				case line == "spanning-tree portfast":
@@ -103,12 +104,20 @@ func applyRunningConfig(ports []devicemodel.Port, sys *devicemodel.System, rc sh
 				case line == "spanning-tree bpduguard enable":
 					p.BPDUGuard = true
 				case line == "error-correction encoding reed-solomon":
-					p.FECConfig = devicemodel.FECRS
+					fecRS = true
 				case line == "error-correction encoding fire-code":
-					p.FECConfig = devicemodel.FECFC
+					fecFC = true
 				case line == "no error-correction encoding":
 					p.FECConfig = devicemodel.FECDisabled
 				}
+			}
+			// The encodings are additive (fec.go); with both configured the
+			// interface runs Reed-Solomon (fec-auto/, the fc-rs capture).
+			switch {
+			case fecRS:
+				p.FECConfig = devicemodel.FECRS
+			case fecFC:
+				p.FECConfig = devicemodel.FECFC
 			}
 			p.STPEdge = portfast && bpdufilter
 			continue

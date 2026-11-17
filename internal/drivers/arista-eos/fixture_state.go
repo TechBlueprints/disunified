@@ -3,6 +3,7 @@ package aristaeos
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -605,9 +606,12 @@ func (f *FixtureTransport) interfaceCmd(iface, c string) bool {
 			f.unmodelled("interface "+iface, c)
 		}
 	case strings.HasPrefix(c, "spanning-tree "), strings.HasPrefix(c, "no spanning-tree "),
-		strings.HasPrefix(c, "error-correction encoding "), c == "no error-correction encoding",
 		strings.HasPrefix(c, "ip access-group "), strings.HasPrefix(c, "no ip access-group "):
 		if !f.ifLine(iface, c) {
+			f.unmodelled("interface "+iface, c)
+		}
+	case strings.HasSuffix(c, "error-correction encoding") || strings.Contains(c, "error-correction encoding "):
+		if !f.fec(iface, c) {
 			f.unmodelled("interface "+iface, c)
 		}
 	case strings.HasPrefix(c, "speed "):
@@ -812,9 +816,7 @@ func (f *FixtureTransport) storm(iface, c string) bool {
 //   - `spanning-tree bpduguard enable` (cage 54 in the capture) and `no
 //     spanning-tree bpduguard`; `spanning-tree portfast`, `spanning-tree
 //     bpdufilter enable` and their `no` (write-forms/);
-//   - `error-correction encoding reed-solomon` (the capture's 100G cages),
-//     `fire-code` and `no error-correction encoding`, one line replacing
-//     the other (write-forms/);
+//   - the FEC lines are fec's (below);
 //   - `ip access-group NAME in` (show-running-config-dui-acl.json, after
 //     session-dui-acl-test-ports.txt) and its `no`.
 func (f *FixtureTransport) ifLine(iface, c string) bool {
@@ -831,13 +833,6 @@ func (f *FixtureTransport) ifLine(iface, c string) bool {
 		delete(s, "spanning-tree bpdufilter enable")
 	case "spanning-tree bpduguard enable", "spanning-tree portfast", "spanning-tree bpdufilter enable":
 		s[c] = nil
-	case "error-correction encoding reed-solomon", "error-correction encoding fire-code", "no error-correction encoding":
-		for k := range s {
-			if strings.HasPrefix(k, "error-correction encoding ") || k == "no error-correction encoding" {
-				delete(s, k)
-			}
-		}
-		s[c] = nil
 	default:
 		if name, ok := strings.CutPrefix(c, "no ip access-group "); ok {
 			delete(s, "ip access-group "+name)
@@ -850,6 +845,90 @@ func (f *FixtureTransport) ifLine(iface, c string) bool {
 			return true
 		}
 		return false
+	}
+	return true
+}
+
+// fec applies an interface's error-correction command to the running
+// config and to its row of `show interfaces error-correction`, in the
+// forms fec-auto/ captured on a 25G lane (and write-forms/ on the empty
+// cage, for the running config):
+//
+//   - `error-correction encoding reed-solomon|fire-code` adds its line
+//     beside the other encoding's (both configured: the fc-rs capture) and
+//     replaces `no error-correction encoding` (the rs capture, written
+//     over the none one);
+//   - `no error-correction encoding <x>` takes that line out (the session
+//     diffs), `no error-correction encoding` replaces every encoding with
+//     itself (the none capture), `default error-correction encoding`
+//     removes them all (the capture after it equals the one before);
+//   - the row's flags follow the lines: fire-code sets
+//     fecEncodingConfigFireCodeEnabled, reed-solomon sets
+//     fecEncodingConfigReedSolomonEnabled and ...ReedSolomon544Enabled,
+//     the bare `no` sets fecEncodingConfigDisabled;
+//   - the operating status follows a configured encoding the interface
+//     lists as available: reedSolomon with reed-solomon (alone or beside
+//     fire-code), fireCode with fire-code alone, disabled with the bare
+//     `no`. Back at the default it is the capture's own status, when the
+//     capture had the interface at its default. Any other case (an
+//     encoding the interface does not list, a default the capture does
+//     not show) leaves the status and is recorded as unmodelled.
+func (f *FixtureTransport) fec(iface, c string) bool {
+	const rs, fc, off = "error-correction encoding reed-solomon", "error-correction encoding fire-code", "no error-correction encoding"
+	s := f.rcSection("interface "+iface, true)
+	if s == nil {
+		return false
+	}
+	switch c {
+	case rs, fc:
+		delete(s, off)
+		s[c] = nil
+	case "no " + rs, "no " + fc:
+		delete(s, strings.TrimPrefix(c, "no "))
+	case off:
+		delete(s, rs)
+		delete(s, fc)
+		s[off] = nil
+	case "default error-correction encoding":
+		delete(s, rs)
+		delete(s, fc)
+		delete(s, off)
+	default:
+		return false
+	}
+	_, hasRS := s[rs]
+	_, hasFC := s[fc]
+	_, isOff := s[off]
+	const cmd = "show interfaces error-correction"
+	var pristine any
+	if b, err := os.ReadFile(f.path(cmd)); err == nil {
+		var v map[string]any
+		if json.Unmarshal(b, &v) == nil {
+			if row := child(child(v, "interfaceErrCorrStatuses", false), iface, false); row != nil &&
+				row["fecEncodingConfigDisabled"] == false && row["fecEncodingConfigFireCodeEnabled"] == false && row["fecEncodingConfigReedSolomonEnabled"] == false {
+				pristine = row["errCorrEncodingStatus"]
+			}
+		}
+	}
+	row := child(child(f.doc(cmd).vOrNil(), "interfaceErrCorrStatuses", false), iface, false)
+	if row == nil {
+		return true // no row (an interface the switch does not list): the running config alone
+	}
+	row["fecEncodingConfigDisabled"] = isOff
+	row["fecEncodingConfigFireCodeEnabled"] = hasFC
+	row["fecEncodingConfigReedSolomonEnabled"] = hasRS
+	row["fecEncodingConfigReedSolomon544Enabled"] = hasRS
+	switch {
+	case isOff:
+		row["errCorrEncodingStatus"] = "disabled"
+	case hasRS && row["fecEncodingReedSolomonAvailable"] == true:
+		row["errCorrEncodingStatus"] = "reedSolomon"
+	case hasFC && !hasRS && row["fecEncodingFireCodeAvailable"] == true:
+		row["errCorrEncodingStatus"] = "fireCode"
+	case !hasRS && !hasFC && pristine != nil:
+		row["errCorrEncodingStatus"] = pristine
+	default:
+		f.unmodelled("interface "+iface, c+" (the operating FEC)")
 	}
 	return true
 }

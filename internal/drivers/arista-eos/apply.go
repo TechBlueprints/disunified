@@ -79,6 +79,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		}
 		c.markPortChannels(pr.pcVLAN)
 		c.forgetPortChannels(pr.removed)
+		c.markFEC(pr.fec)
 		if pr.joins != nil {
 			lanes := map[int][]devicemodel.Port{}
 			for k, v := range c.lanes {
@@ -153,6 +154,22 @@ func markApplied(ports []devicemodel.Port, desired []devicemodel.PortDesired, ba
 	}
 }
 
+// markFEC records the FEC a batch set on its interfaces (c.mu held), so a
+// second apply before the next collect writes nothing.
+func (c *Collector) markFEC(written map[string]devicemodel.FEC) {
+	if len(written) == 0 {
+		return
+	}
+	rows := make(map[string]errCorr, len(c.fecRows))
+	for k, v := range c.fecRows {
+		rows[k] = v
+	}
+	for name, f := range written {
+		rows[name] = rows[name].set(f)
+	}
+	c.fecRows = rows
+}
+
 // markPortChannels records the Port-Channels a batch wrote (c.mu held).
 func (c *Collector) markPortChannels(written map[string]devicemodel.PortVLAN) {
 	if len(written) == 0 {
@@ -184,6 +201,11 @@ func (c *Collector) childCages(snap *devicemodel.Snapshot) map[int]bool {
 type planScope struct {
 	cage     int
 	cageDown bool // the device's own push has the cage disabled: no lane comes up
+	// controllerOnly plans without the driver's own writes -- the FEC a
+	// module calls for where the controller says auto (fec.go) -- for
+	// PlanPorts and PlanLanes: the first-push hold must never wait on a
+	// write no controller setting can match.
+	controllerOnly bool
 }
 
 // planResult is a plan: the commands between `configure` and `end`, the
@@ -196,6 +218,7 @@ type planResult struct {
 	notes   []string
 	joins   map[int]bool
 	pcVLAN  map[string]devicemodel.PortVLAN // the Port-Channels written, as the batch leaves them
+	fec     map[string]devicemodel.FEC      // the interfaces whose FEC the batch sets, and to what (fec.go)
 	removed []string                        // the Port-Channels the batch removes (portchannel.go)
 }
 
@@ -212,6 +235,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		base = laneBase(sc.cage)
 	}
 	c.mu.Lock()
+	fecIn := fecInputs{rows: c.fecRows, types: c.ifTypes, codes: c.eeprom, stale: c.eepromStale}
 	channels := c.channelCfg
 	child := map[int]bool{}
 	childLanes := map[int][]devicemodel.Port{}
@@ -267,6 +291,8 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			d.Enabled = false // the cage is disabled on the switch itself: every lane down
 		}
 		var portCmds []string
+		var fecCmds map[string][]string // per interface (fec.go), spliced into portCmds at fecAt
+		fecAt := 0
 		if d.Enabled != p.Enabled {
 			if d.Enabled {
 				portCmds = append(portCmds, "no shutdown")
@@ -318,7 +344,19 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			members["Port-Channel"+strconv.Itoa(base+lag)] = true
 		}
 		if !owned {
-			portCmds = append(portCmds, fecCommands(p, d)...)
+			cage := d.Index
+			if inLanes {
+				cage = sc.cage
+			}
+			var fecWant map[string]devicemodel.FEC
+			fecAt = len(portCmds)
+			fecCmds, fecWant = fecPlan(fecIn, p, d, cage, sc.controllerOnly, note)
+			for n, f := range fecWant {
+				if pr.fec == nil {
+					pr.fec = map[string]devicemodel.FEC{}
+				}
+				pr.fec[n] = f
+			}
 			portCmds = append(portCmds, stormCommands(p, d)...)
 		}
 		if !inLanes {
@@ -358,7 +396,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			}
 			pr.joins[d.Index] = true
 		}
-		if len(portCmds) == 0 && len(speedCmds) == 0 {
+		if len(portCmds) == 0 && len(speedCmds) == 0 && len(fecCmds) == 0 {
 			continue
 		}
 		pr.changed++
@@ -370,6 +408,10 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			laneCmds := portCmds
 			if i == 0 || speedEveryLane {
 				laneCmds = append(append([]string(nil), speedCmds...), portCmds...)
+			}
+			if f := fecCmds[ifname]; len(f) > 0 {
+				at := len(laneCmds) - len(portCmds) + fecAt
+				laneCmds = slices.Concat(laneCmds[:at], f, laneCmds[at:])
 			}
 			if len(laneCmds) == 0 {
 				continue
@@ -481,7 +523,7 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 	if snap == nil {
 		return nil
 	}
-	return c.plan(snap, desired, planScope{}).ports
+	return c.plan(snap, desired, planScope{controllerOnly: true}).ports
 }
 
 // speedCommands: an explicit UniFi speed is forced; "auto" is written only
