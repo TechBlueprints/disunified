@@ -1,0 +1,7 @@
+{"at": "2026-11-13T09:25:48.579034857Z", "body_len": 163, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}
+{"at": "2026-11-13T09:27:14.744607848Z", "body_len": 163, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}
+{"at": "2026-11-13T09:28:34.690905033Z", "body_len": 163, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}
+{"at": "2026-11-13T09:29:53.517378827Z", "body_len": 0, "sent_adopted": true, "sent_gcm": true, "error": "Post \"http://192.0.2.1:8080/inform\": dial tcp 192.0.2.1:8080: connect: connection refused"}
+{"at": "2026-11-13T09:31:12.363461398Z", "body_len": 19018, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}
+{"at": "2026-11-13T09:32:32.108463983Z", "body_len": 163, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}
+{"at": "2026-11-13T09:34:11.708345006Z", "body_len": 163, "sent_adopted": true, "sent_gcm": true, "status": 200, "state_after": "CONNECTED"}

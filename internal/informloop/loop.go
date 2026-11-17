@@ -179,6 +179,12 @@ type Config struct {
 	// lane switch hands its lanes back to its parent here
 	// (docs/drivers/breakout.md 16).
 	OnUnadopted func()
+	// ForgetOnRejectedKey reads a sustained run of empty-body HTTP 400s on
+	// the adopted key as the Forget whose one setdefault the bridge missed,
+	// and applies that setdefault (rejectedkey.go). Only automatic lane
+	// switches set it; every other device logs the run once and keeps its
+	// key.
+	ForgetOnRejectedKey bool
 
 	// OnLayoutChange runs after a collect whose port layout (lane counts,
 	// interface names) differs from the previous one — a cage split or joined.
@@ -278,6 +284,15 @@ type Loop struct {
 	statusRun  int
 	lastMgmt   string
 
+	// rejectRun counts the empty-body HTTP 400s answered to the adopted
+	// key in a row, since rejectSince; rejectWarned: the run was logged
+	// (rejectedkey.go). Touched by informOnce only.
+	rejectRun    int
+	rejectSince  time.Time
+	rejectWarned bool
+	// now is the loop's clock (time.Now; tests replay recorded times).
+	now func() time.Time
+
 	recorder *recorder
 }
 
@@ -310,6 +325,7 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 		session:  sess,
 		state:    StatePending,
 		interval: cfg.Interval,
+		now:      time.Now,
 	}
 	if sess.Adopted() {
 		l.state = StateConnected
@@ -409,7 +425,7 @@ func (l *Loop) informOnce(ctx context.Context) {
 			l.reconcile(ctx)
 		}
 	}()
-	now := time.Now()
+	now := l.now()
 	enc, err := l.session.EncodeInform(now)
 	if l.cfg.RecordDir != "" {
 		// The last payload as sent, for diagnosis (overwritten every cycle):
@@ -456,11 +472,19 @@ func (l *Loop) informOnce(ctx context.Context) {
 
 	rec := record{At: now, Status: resp.StatusCode, BodyLen: len(raw), SentAdopted: wasAdopted, SentGCM: wasGCM}
 	l.noteStatus(resp.StatusCode)
+	missed := l.noteRejectedKey(now, resp.StatusCode, len(raw), wasAdopted)
 
+	var payload []byte
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		l.record(rec)
 		return
+	case missed:
+		// The refused key stands for the Forget's setdefault, which this
+		// bridge never received (rejectedkey.go).
+		l.cfg.Logger.Printf("[%s] inform got %s: %s", l.desc.MAC, resp.Status, raw)
+		rec.Inferred = "setdefault"
+		payload = missedForget
 	case resp.StatusCode != http.StatusOK:
 		rec.RawBody = string(raw)
 		l.cfg.Logger.Printf("[%s] inform got %s: %s", l.desc.MAC, resp.Status, raw)
@@ -471,28 +495,31 @@ func (l *Loop) informOnce(ctx context.Context) {
 		return
 	}
 
-	dec, err := inform.Decode(raw, key)
-	if err != nil {
-		rec.Error = "decode: " + err.Error()
-		rec.RawBodyHex = fmt.Sprintf("%x", raw)
-		l.cfg.Logger.Printf("[%s] decode reply: %v", l.desc.MAC, err)
-		l.record(rec)
-		return
+	if payload == nil {
+		dec, err := inform.Decode(raw, key)
+		if err != nil {
+			rec.Error = "decode: " + err.Error()
+			rec.RawBodyHex = fmt.Sprintf("%x", raw)
+			l.cfg.Logger.Printf("[%s] decode reply: %v", l.desc.MAC, err)
+			l.record(rec)
+			return
+		}
+		if json.Valid(dec.Payload) {
+			rec.Payload = json.RawMessage(dec.Payload)
+		} else {
+			rec.RawBody = string(dec.Payload)
+		}
+		// The push's secrets are masked in every log line from here on
+		// (internal/logredact); the recorder redacts its own copy.
+		_, secrets := unificfg.RedactJSON(dec.Payload)
+		if rec.RawBody != "" {
+			secrets = unificfg.Secrets(rec.RawBody)
+		}
+		logredact.Remember(secrets...)
+		payload = dec.Payload
 	}
-	if json.Valid(dec.Payload) {
-		rec.Payload = json.RawMessage(dec.Payload)
-	} else {
-		rec.RawBody = string(dec.Payload)
-	}
-	// The push's secrets are masked in every log line from here on
-	// (internal/logredact); the recorder redacts its own copy.
-	_, secrets := unificfg.RedactJSON(dec.Payload)
-	if rec.RawBody != "" {
-		secrets = unificfg.Secrets(rec.RawBody)
-	}
-	logredact.Remember(secrets...)
 
-	effects := l.session.Apply(time.Now(), dec.Payload)
+	effects := l.session.Apply(l.now(), payload)
 	l.mu.Lock()
 	wasAdopting := l.state == StateAdopting
 	var lines []string
@@ -511,7 +538,11 @@ func (l *Loop) informOnce(ctx context.Context) {
 			// adoption; the next adoption's first push is held as a first
 			// push again.
 			l.everApplied, l.heldVersion = false, ""
-			lines = append(lines, "setdefault received, factory reset, back to PENDING")
+			if missed {
+				lines = append(lines, "forgotten (the setdefault missed), factory reset, back to PENDING")
+			} else {
+				lines = append(lines, "setdefault received, factory reset, back to PENDING")
+			}
 		case inform.EffectRebooted:
 			if _, ok := deviceAs[devicemodel.Rebooter](l); ok && l.cfg.ControlReboot {
 				lines = append(lines, "reboot requested: reloading the switch")
@@ -1788,6 +1819,9 @@ type record struct {
 	Payload     json.RawMessage `json:"payload,omitempty"`
 	Effects     []effectRecord  `json:"effects,omitempty"`
 	StateAfter  string          `json:"state_after,omitempty"`
+	// Inferred names the reply the loop applied in place of one it never
+	// got: "setdefault" for a missed Forget (rejectedkey.go).
+	Inferred string `json:"inferred,omitempty"`
 }
 
 type effectRecord struct {

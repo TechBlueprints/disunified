@@ -234,6 +234,10 @@ func autoLaneOptions(f *config.File, parent config.Device, c autoLane) options {
 		ReplyLog:     parent.ReplyLog,
 	})
 	o.onAdopted, o.onUnadopted = c.attach, c.detach
+	// A Forget while the bridge was down comes back as an adopted state
+	// file and a key the controller refuses: read as the Forget it was,
+	// the lanes go back to the cage (docs/drivers/breakout.md 16.11).
+	o.forgetOnRejectedKey = true
 	return o
 }
 

@@ -227,6 +227,10 @@ type options struct {
 	// are an automatic lane switch's own hand-over hooks.
 	autoLanes              func(*log.Logger, devicemodel.LaneProvider, string) *autoLanes
 	onAdopted, onUnadopted func()
+	// forgetOnRejectedKey: an automatic lane switch reads a sustained run
+	// of HTTP 400s on its adopted key as a Forget it missed
+	// (informloop.Config.ForgetOnRejectedKey).
+	forgetOnRejectedKey bool
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
@@ -818,7 +822,8 @@ func runOne(ctx context.Context, o options) error {
 				provision(snap)
 			}
 		},
-		OnUnadopted: o.onUnadopted,
+		OnUnadopted:         o.onUnadopted,
+		ForgetOnRejectedKey: o.forgetOnRejectedKey,
 		OnHeld: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)

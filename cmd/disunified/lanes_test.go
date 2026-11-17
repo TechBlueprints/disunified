@@ -71,7 +71,7 @@ func adopt(t *testing.T, f *config.File, name string) {
 // parent's plan for the cage untouched.
 func TestWatcherStartsOnePendingLaneSwitchPerSplitCage(t *testing.T) {
 	c, snap, plan := laneParent(t)
-	al, started, buf, _ := watcher(t, c, snap, config.Device{Control: config.Control{Ports: "off"}})
+	al, started, buf, f := watcher(t, c, snap, config.Device{Control: config.Control{Ports: "off"}})
 	al.startAdopted()
 	if len(*started) != 0 {
 		t.Fatalf("no state file is adopted, yet %d started before the loop", len(*started))
@@ -92,6 +92,11 @@ func TestWatcherStartsOnePendingLaneSwitchPerSplitCage(t *testing.T) {
 	}
 	if o.autoLanes != nil {
 		t.Error("a lane switch must not start lane switches of its own")
+	}
+	// A missed Forget (refused key) releases an automatic lane switch,
+	// and nothing else (docs/drivers/breakout.md 16.11).
+	if !o.forgetOnRejectedKey || configOptions(f, f.Devices[0]).forgetOnRejectedKey {
+		t.Errorf("forget on a refused key: lane switch %v, parent %v; want true, false", o.forgetOnRejectedKey, configOptions(f, f.Devices[0]).forgetOnRejectedKey)
 	}
 	if v, err := c.Lanes(3); err != nil || v.Child.MAC != "" {
 		t.Errorf("a pending lane switch is attached: %+v, %v", v.Child, err)
