@@ -776,7 +776,7 @@ func (l *Loop) reconcile(ctx context.Context) {
 	l.applyNUT(text)
 	l.installSSHKeys(cctx, text)
 	l.applyAddress(cctx, "", text)
-	desired := l.withholdFreshPorts(l.desiredPorts(text))
+	desired := l.withholdFreshPorts(text, l.desiredPorts(text))
 	changed, err := l.applyPorts(cctx, desired)
 	if err != nil {
 		l.cfg.Logger.Printf("[%s] reconcile system_cfg %s: %v", l.desc.MAC, ver, err)
@@ -1456,10 +1456,10 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 	}
 
 	desired := l.desiredPorts(text)
-	if held := l.holdInitialPush(ver, desired); held {
+	if held := l.holdInitialPush(ver, text, desired); held {
 		return true
 	}
-	desired = l.withholdFreshPorts(desired)
+	desired = l.withholdFreshPorts(text, desired)
 	cctx, cancel := context.WithTimeout(ctx, l.cfg.ApplyTimeout)
 	defer cancel()
 	l.ensureVLANs(cctx, text)
@@ -1486,15 +1486,14 @@ func (l *Loop) applyPending(ctx context.Context) bool {
 
 // holdInitialPush keeps the first push after adoption from changing ports
 // (see Config.AllowInitialChanges). It reports whether the push is held.
-func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bool {
+func (l *Loop) holdInitialPush(ver, text string, desired []devicemodel.PortDesired) bool {
 	if l.everApplied || l.cfg.AllowInitialChanges {
 		return false
 	}
-	planner, ok := l.cfg.Controller.(devicemodel.Planner)
+	changed, ok := l.planBeforeVLANs(text, withoutMTU(desired))
 	if !ok {
 		return false
 	}
-	changed := planner.PlanPorts(withoutMTU(desired))
 	if len(changed) == 0 {
 		return false
 	}
@@ -1506,6 +1505,31 @@ func (l *Loop) holdInitialPush(ver string, desired []devicemodel.PortDesired) bo
 		l.cfg.OnHeld(l.session.Snapshot())
 	}
 	return true
+}
+
+// planBeforeVLANs is the driver's plan for desired as the apply will see
+// it, for the checks that run before ensureVLANs (the first-push hold and
+// the fresh-port withholding): with the push's VLANs planned as if they
+// existed where the driver's plan depends on them (devicemodel.VLANPlanner).
+// Planned against the switch's VLANs as they were, a push whose only change
+// was tagging VLANs the switch did not have yet showed no change: a lane
+// switch's first push, Allow All over the VLANs its parent had pruned, went
+// through and tagged ten VLANs on every lane until the seeded push took
+// them off (docs/drivers/breakout.md §16.10). ok is false without a Planner.
+func (l *Loop) planBeforeVLANs(text string, desired []devicemodel.PortDesired) (changed []int, ok bool) {
+	planner, ok := l.cfg.Controller.(devicemodel.Planner)
+	if !ok {
+		return nil, false
+	}
+	vp, isVP := l.cfg.Controller.(devicemodel.VLANPlanner)
+	if _, isVC := l.cfg.Controller.(devicemodel.VLANController); isVP && isVC {
+		ids := unificfg.Parse(text).VLANIDs()
+		if ids == nil {
+			ids = []int{}
+		}
+		return vp.PlanPortsWithVLANs(desired, ids), true
+	}
+	return planner.PlanPorts(desired), true
 }
 
 // withoutMTU is desired with every port's MTU left alone, for the first-push
@@ -1594,16 +1618,16 @@ func (l *Loop) applyPorts(ctx context.Context, desired []devicemodel.PortDesired
 // overwrite what they have. A fresh port whose desired state matches its
 // live state stops being fresh. Needs a Planner; drivers without one write
 // as before. AllowInitialChanges disables the withholding too.
-func (l *Loop) withholdFreshPorts(desired []devicemodel.PortDesired) []devicemodel.PortDesired {
+func (l *Loop) withholdFreshPorts(text string, desired []devicemodel.PortDesired) []devicemodel.PortDesired {
 	if len(l.freshPorts) == 0 || l.cfg.AllowInitialChanges {
 		return desired
 	}
-	planner, ok := l.cfg.Controller.(devicemodel.Planner)
+	changed, ok := l.planBeforeVLANs(text, withoutMTU(desired))
 	if !ok {
 		return desired
 	}
 	wouldChange := map[int]bool{}
-	for _, idx := range planner.PlanPorts(withoutMTU(desired)) {
+	for _, idx := range changed {
 		wouldChange[idx] = true
 	}
 	out := desired[:0:0]

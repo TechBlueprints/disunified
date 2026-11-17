@@ -1232,6 +1232,19 @@ type Planner interface {
 	PlanPorts(desired []PortDesired) (changed []int)
 }
 
+// VLANPlanner is an optional Planner capability for a driver whose plan
+// depends on the VLANs the switch has (a membership per VLAN, Allow All as
+// the site's list): PlanPortsWithVLANs is PlanPorts as ApplyPorts will plan
+// it once VLANController.EnsureVLANs(ids) has run -- each of ids planned as
+// if it existed, and ids as what Allow All tags. The loop's first-push hold
+// and fresh-port withholding run before EnsureVLANs; planned against the
+// VLANs already there, a push whose only change was tagging VLANs the
+// switch did not have yet looked like no change and went through
+// (docs/drivers/breakout.md §16.10). Writes nothing, creates nothing.
+type VLANPlanner interface {
+	PlanPortsWithVLANs(desired []PortDesired, ids []int) (changed []int)
+}
+
 // LayoutPlanner is an optional Controller capability beside Planner, for a
 // driver whose apply can change a port's layout (split or join a breakout
 // cage) by a rule of its own as well as by the controller's speed: a

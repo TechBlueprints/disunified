@@ -1567,16 +1567,46 @@ so no cage was present and unread. The read script itself was run on the
 switch before the reboot and printed the fixture's bytes (`sonic.md`
 §11.36). The Arista parent, and a lane with a far end.
 
+**The first push after an adoption was not held when its only change was
+tagging VLANs the parent had pruned (found at each of the three
+adoptions, fixed and run again live the same night).** The lane switch's
+first push is the controller's default for unseeded ports: Allow All over
+every site network. The parent deletes the VLANs its own push does not
+name, so before the adoption the switch had none of the ten. The loop's
+first-push hold plans before `EnsureVLANs` runs, and SONiC's plan read
+Allow All as the VLANs already on the switch and dropped a membership of
+a VLAN it did not have: it saw no change and let the push through.
+`EnsureVLANs` then made the ten VLANs and the apply tagged all of them on
+every lane, until the seeded push took them off again 18 to 60 s later.
+Nothing was cabled; on a lane with a host that was up to a minute of VLANs
+the port was not carrying.
+
+The fix (`devicemodel.VLANPlanner`, `LaneVLANPlanner`): the hold, and the
+fresh-port withholding beside it, plan with the push's VLAN list as if
+`EnsureVLANs` had run -- each VLAN present and the list what Allow All
+tags, in the plan's copy only. The same order applied to a SONiC device's
+own first push and fresh ports (`PlanPorts`), which got the same fix. The
+Arista parent never had the gap: on EOS Allow All is the trunk's own mode,
+diffed against the port, never against the switch's VLANs (a lane already
+an Allow All trunk carries a VLAN made later; its seeded push is Allow All
+too, so no window opens). Proxmox's plan does not depend on the bridge's
+VLANs and its `EnsureVLANs` creates nothing. Replayed from the recorded
+adoption (`replay_lane_first_push_test.go`).
+
+Live on 0.0.0+20261116.eaf1612 (22:44-22:50 MST): the Forget, the parent
+`deleting VLANs [2 8 9 10 69 1000 2000 3000 4000 4010]`, the lane switch
+pending; `cmd/devmgr adopt` by exact MAC; CONNECTED 22:49:01 with the
+attach, `4 ports seeded`, then **`HOLDING the first push after adoption
+(system_cfg d26fde79faba1ed5): it would change 4 ports [1 2 3 4]`**; the
+parent meanwhile `has not applied a push yet; no VLAN is deleted`; the
+seeded push at 22:50:24 `created 10 VLANs` and `applied ... 0 of 5 ports
+changed`. A watch of the lanes' `VLAN_MEMBER` rows, once a second from
+before the Forget to after the seeded push, saw `Vlan4094` alone on
+Ethernet8-11 throughout: no lane gained a VLAN. The window is closed. Port
+3 stayed on Auto (it held no forced speed, so no reset ran).
+
 **Found and left open** (the register has each):
 
-- **The first push after an adoption is not held when it only adds VLANs
-  the parent has pruned.** The lane switch's first push is the
-  controller's default (Allow All). The hold's plan ran while those VLANs
-  did not exist on the switch (the parent deletes what its own push does
-  not name), so it saw nothing to change; `EnsureVLANs` then created them
-  and the apply tagged all ten on every lane. The seeded push took them off
-  again 18 to 60 s later. Nothing was connected; on a lane with a host that
-  is a minute of VLANs the port was not carrying.
 - **A missed `setdefault`** leaves a forgotten lane switch attached
   (item 3).
 **Closed since (2026-11-16, the same night).**
