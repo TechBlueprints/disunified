@@ -24,8 +24,9 @@ session), STP/BPDU guard/port cost only under mstpd, and DHCP snooping
 only with `nft` and a VLAN-aware bridge (below).
 For port-level tests make a throwaway, diskless guest (`qm create <id>
 --name stu-test --memory 128 --net0 virtio,bridge=vmbr0`) and destroy it
-afterwards (`qm stop <id>; qm destroy <id> --purge`); the last one, VM
-999, was destroyed 2026-09-20 once its checks were done.
+afterwards (`qm stop <id>; qm destroy <id> --purge`). Check what an id is
+before using or destroying it: the first test guest (VM 999, destroyed
+2026-09-20) gave its id to a lab guest that still exists.
 The firmware version reported to the controller is the node's own PVE
 version (`9.1.6`), not the UniFi model profile's.
 The node is the switch (device MAC = the bridge MAC, same IP and hostname;
