@@ -295,10 +295,11 @@ func (d *Device) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesir
 }
 
 // PlanPorts implements devicemodel.Planner through the parent.
-// Unattached it plans nothing and says why once: ApplyPorts then refuses.
+// Unattached, or with the cage whole, it plans nothing and says why once:
+// ApplyPorts then refuses.
 func (d *Device) PlanPorts(desired []devicemodel.PortDesired) []int {
 	if err := d.attached(); err != nil {
-		d.noteOnce(fmt.Sprintf("a push arrived while unattached; not planned (%v)", err))
+		d.noteOnce(fmt.Sprintf("a push is not planned: %v", err))
 		return nil
 	}
 	return d.lp.PlanLanes(d.opt.Cage, d.split(desired))
