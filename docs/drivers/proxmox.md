@@ -281,7 +281,13 @@ destination was seeded with its config along with every other node; the
 arrived port is still treated as fresh there, because port overrides are
 per device in UniFi — if the destination's override for that port was
 edited to something else, the guest keeps its own config and the log says
-so until the two agree. What is *not* covered: a tag changed by
+so until the two agree. The comparison has a baseline from the first
+collect of a run on (2026-11-17): the previous run's record
+(`layout.json` in the state directory), or the startup snapshot when there
+is none. So a guest that arrives between the bridge's start and its first
+collect, or while the bridge is stopped, is fresh too, and a port withheld
+when the bridge stops is still withheld when it starts again
+(`docs/drivers/proxmox-on-node.md` §5.5). What is *not* covered: a tag changed by
 hand on a node after adoption — UniFi is the source of truth from then on
 and the reconcile puts the controller's value back (change it in UniFi).
 

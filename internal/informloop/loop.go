@@ -263,6 +263,9 @@ type Loop struct {
 	freshPorts   map[int]string // port -> interface name, for the log
 	freshWarned  map[int]bool
 	layoutByPort map[int]string
+	// layoutSaveErr is the last error saving the layout record (layout.go),
+	// to log on change only.
+	layoutSaveErr string
 	// wrotePorts are the ports a port apply wrote from the controller's
 	// config since the last collect: a layout change on one of them (a
 	// breakout the push asked for, or one the driver's own rule made for the
@@ -348,6 +351,10 @@ func New(desc inform.Descriptor, sess *device.Session, cfg Config) (*Loop, error
 	l.learn = newLearnTimes(cfg.StateDir, func(format string, args ...any) {
 		cfg.Logger.Printf("[%s] "+format, append([]any{desc.MAC}, args...)...)
 	})
+	// The startup snapshot is the one the controller was provisioned from:
+	// the first collect is compared with it (or with the previous run's
+	// record), not taken as the baseline itself.
+	l.seedLayout(sess.Snapshot())
 	if snap := sess.Snapshot(); snap != nil {
 		sess.SetSnapshot(l.learn.apply(l.withChildren(snap)))
 	}
@@ -543,6 +550,12 @@ func (l *Loop) informOnce(ctx context.Context) {
 			// adoption; the next adoption's first push is held as a first
 			// push again.
 			l.everApplied, l.heldVersion = false, ""
+			// The config the fresh ports were measured against went with
+			// the adoption; that hold covers every port.
+			if len(l.freshPorts) > 0 {
+				l.freshPorts, l.freshWarned = nil, nil
+				l.saveLayout()
+			}
 			if missed {
 				lines = append(lines, "forgotten (the setdefault missed), factory reset, back to PENDING")
 			} else {
@@ -1634,6 +1647,13 @@ func (l *Loop) withholdFreshPorts(text string, desired []devicemodel.PortDesired
 		wouldChange[idx] = true
 	}
 	out := desired[:0:0]
+	if before := len(l.freshPorts); before > 0 {
+		defer func() {
+			if len(l.freshPorts) != before {
+				l.saveLayout()
+			}
+		}()
+	}
 	for _, d := range desired {
 		name, fresh := l.freshPorts[d.Index]
 		if !fresh {
@@ -1728,20 +1748,13 @@ func (l *Loop) collect(ctx context.Context) {
 	wrote := l.wrotePorts
 	l.wrotePorts = nil // a write shows in the collect right after it, or not at all
 	if sig := layoutSignature(snap); sig != l.layoutSig {
+		// "" only for a loop built without a snapshot: its first collect
+		// is the baseline. Every other run was seeded (seedLayout), so a
+		// first collect that differs from the startup snapshot, or from
+		// the previous run's record, is a change like any other.
 		changed := l.layoutSig != ""
 		l.layoutSig = sig
-		// A port's identity for freshness is its interface name plus the
-		// interfaces behind it: a guest that migrates onto this node keeps
-		// its port number and name but gains its tap here, and must be
-		// treated as fresh — this device's controller config for the port
-		// may differ from the guest's own.
-		byPort := map[int]string{}
-		for _, p := range snap.Ports {
-			if p.IfName == "" {
-				continue
-			}
-			byPort[p.Index] = p.IfName + "/" + strings.Join(p.Interfaces, ",")
-		}
+		byPort := portIdentities(snap)
 		if changed {
 			var fresh, written []string
 			for idx, name := range byPort {
@@ -1772,6 +1785,7 @@ func (l *Loop) collect(ctx context.Context) {
 			}
 		}
 		l.layoutByPort = byPort
+		l.saveLayout()
 	}
 }
 

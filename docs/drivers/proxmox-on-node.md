@@ -230,13 +230,50 @@ NIC is not seen, since the parser emits a guest through its NICs.
 
 ### 5.5 The loop: a snapshot that changes between start and the first cycle
 
+**Built 2026-11-17** (`internal/informloop/layout.go`).
+
 `informloop` treats a port whose occupant changed as fresh and withholds
-writes to it, but its layout signature starts empty, so the first collect of
-a run is never compared with the snapshot the startup provision used. Seed
-the signature (and the per-port identities) from the startup snapshot when
-the loop is built, so anything that differs between the two is fresh. This
-touches every driver: the replay tests for all of them must pass unchanged.
-It is a second line behind §4.1, and it closes the same window for a device
+writes to it, but its layout signature started empty, so the first collect
+of a run was never compared with the snapshot the startup provision used:
+a guest that arrived between the two got the stored push for its port (the
+failing test, on two captures of one node: `qm set 999 --net0 …,tag=2,…`
+written to a guest that was on another node when the bridge started).
+
+The loop now starts with a baseline, and the first collect is compared with
+it like every later one:
+
+- **The baseline is the previous run's record**, `layout.json` in the
+  device's state directory (the layout signature, each port's identity, the
+  ports still fresh; written when any of them changes). Without a record
+  (the first run of this build, no state directory) it is the startup
+  snapshot, the one `main.go` puts in the session before it builds the loop;
+  `main.go` hands over nothing new.
+- **Between the start and the first collect:** a port whose occupant
+  differs is fresh. The seed that follows the change used to fall inside
+  the provision's 10 s spacing and be dropped; a layout change now waits
+  for the spacing to end (`main.go`, `layoutChanged`).
+- **While the bridge was stopped:** a port whose occupant differs from the
+  record is fresh at the first collect, though the run's own snapshots
+  agree. The node's reboot, a package update and a crash are all this case.
+- **Fresh when the bridge stopped:** fresh when it starts again. A restart
+  no longer releases a withheld port; the controller's config matching it
+  does (the seed, or the port set in the UI), or
+  `control.allow_initial_changes: true`, or removing `layout.json` while
+  the bridge is stopped.
+- **A start whose first collect equals the baseline is as it was:** no
+  seed call, no hold, no log line. Every driver's replay and contract test
+  passes unchanged.
+
+Not covered: the first run of this build has no record, so a change made
+while the previous build was stopped is not seen (the window before the
+first collect is). A record that cannot be read is logged and the run
+starts from its own snapshot; one that cannot be written is logged once,
+and the ports withheld then are not withheld after a restart. A Forget
+drops the fresh set with the controller's config (the first-push hold
+covers every port again). The spacing change in `main.go` is compiled and
+read, not exercised by a test.
+
+It is a second line behind §4.1, and it closes the same windows for a
 restart on any driver.
 
 ## 6. The on-node config (documentation values)

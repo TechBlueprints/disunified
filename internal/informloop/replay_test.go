@@ -94,6 +94,13 @@ type replayDriver struct {
 	Written func() string
 	// Loop is applied to the loop config (control flags).
 	Loop func(*Config)
+	// From is the first recorded reply served; the ones before it are what
+	// the device saw before the replay begins (Start says where that left
+	// it). Expect and Check count from the first reply served.
+	From int
+	// Before runs on the built loop before the first inform: what a run
+	// does between its start and the controller's first reply.
+	Before func(t *testing.T, l *Loop, written func() string, logText func() string)
 	// Expect: what each reply must (not) have written to the switch.
 	Expect map[int]replayExpect
 	// Quiet: a reply Expect does not name must write nothing (a driver
@@ -123,6 +130,7 @@ func runReplay(t *testing.T, d replayDriver) {
 	if len(replies) < 5 {
 		t.Fatalf("only %d replies in the fixture", len(replies))
 	}
+	replies = replies[d.From:]
 	if d.Redact {
 		redacted := 0
 		for i := range replies {
@@ -235,6 +243,9 @@ func runReplay(t *testing.T, d replayDriver) {
 	l.client = srv.Client()
 	l.cfg.GatewayIP = d.GatewayIP
 	ctx := context.Background()
+	if d.Before != nil {
+		d.Before(t, l, d.Written, logBuf.String)
+	}
 	for i, rec := range replies {
 		l.informOnce(ctx)
 		got := d.Written()
