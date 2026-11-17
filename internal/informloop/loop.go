@@ -1777,8 +1777,25 @@ func (l *Loop) collect(ctx context.Context) {
 			if len(written) > 0 {
 				l.cfg.Logger.Printf("[%s] port layout changed as the controller's config asked: %v", l.desc.MAC, written)
 			}
-			if len(fresh) > 0 || len(written) == 0 {
+			switch {
+			case len(fresh) > 0:
 				l.cfg.Logger.Printf("[%s] port layout changed: new, changed or arrived ports %v are not written until the controller's config matches them", l.desc.MAC, fresh)
+			case len(written) == 0:
+				// Nothing is withheld: the change only freed ports (a
+				// guest made a template or gone) or touched no port's
+				// identity (its lanes).
+				var released []string
+				for idx, name := range l.layoutByPort {
+					if name != "" && byPort[idx] == "" {
+						released = append(released, fmt.Sprintf("%d(%s)", idx, name))
+					}
+				}
+				sort.Strings(released)
+				if len(released) > 0 {
+					l.cfg.Logger.Printf("[%s] port layout changed: ports %v released, none new, changed or arrived", l.desc.MAC, released)
+				} else {
+					l.cfg.Logger.Printf("[%s] port layout changed: no port new, changed, arrived or released", l.desc.MAC)
+				}
 			}
 			if l.cfg.OnLayoutChange != nil {
 				l.cfg.OnLayoutChange(snap)
