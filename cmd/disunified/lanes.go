@@ -129,24 +129,121 @@ func (a *autoLanes) child(cage int) (autoLane, bool) {
 }
 
 // handOver clears a forced lane speed from the cage's port on the parent in
-// the controller. As a fold the cage reported its lanes' form and took a
-// forced 25G with a FEC; owned, it reports QSFP28, for which the controller
-// refuses that pair -- on every save of any port of the parent, since each
-// save carries every override (seen live, docs/drivers/breakout.md 16.7).
-// Auto keeps an owned cage as it is, so nothing changes on the switch.
-func (a *autoLanes) handOver(cage int) {
-	if a.cageToAuto == nil {
-		a.log.Printf("port %d: a lane switch has the lanes now. If this port holds a forced speed below 40G in UniFi, set it to Auto there: the controller refuses every port save on this device until it is (no controller API is configured, so the bridge cannot do it)", cage)
+// the controller (handOverCage).
+func (a *autoLanes) handOver(cage int) { handOverCage(a.log, a.cageToAuto, cage) }
+
+// handOverCage clears a forced lane speed from the cage's port on the
+// parent in the controller, logged on the parent's logger. As a fold the
+// cage reported its lanes' form and took a forced 25G with a FEC; owned,
+// it reports QSFP28, for which the controller refuses that pair -- on every
+// save of any port of the parent, since each save carries every override
+// (seen live, docs/drivers/breakout.md 16.7). Auto keeps an owned cage as
+// it is, so nothing changes on the switch. toAuto nil: no controller API.
+func handOverCage(lg *log.Logger, toAuto func(context.Context, int) (map[string]any, error), cage int) {
+	if toAuto == nil {
+		lg.Printf("port %d: a lane switch has the lanes now. If this port holds a forced speed below 40G in UniFi, set it to Auto there: the controller refuses every port save on this device until it is (no controller API is configured, so the bridge cannot do it)", cage)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	before, err := a.cageToAuto(ctx, cage)
+	before, err := toAuto(ctx, cage)
 	switch {
 	case err != nil:
-		a.log.Printf("WARNING: port %d: a lane switch has the lanes now, and this port's settings in UniFi could not be checked (%v). If it holds a forced speed below 40G, set it to Auto there: the controller refuses every port save on this device until it is", cage, err)
+		lg.Printf("WARNING: port %d: a lane switch has the lanes now, and this port's settings in UniFi could not be checked (%v). If it holds a forced speed below 40G, set it to Auto there: the controller refuses every port save on this device until it is", cage, err)
 	case before != nil:
-		a.log.Printf("port %d: set to Auto in UniFi (was %s): a lane switch has the lanes now, and the controller refuses a forced lane speed on the cage's port, with it every port save on this device. Auto keeps the cage split as it is", cage, overrideText(before))
+		lg.Printf("port %d: set to Auto in UniFi (was %s): a lane switch has the lanes now, and the controller refuses a forced lane speed on the cage's port, with it every port save on this device. Auto keeps the cage split as it is", cage, overrideText(before))
+	}
+}
+
+// cageToAutoFor is the hand-over's controller step for one parent, nil
+// without a controller API URL and key.
+func cageToAutoFor(f *config.File, parentMAC string) func(context.Context, int) (map[string]any, error) {
+	key := f.Controller.APIKey()
+	if f.Controller.APIURL == "" || key == "" {
+		return nil
+	}
+	api := unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true)
+	return func(ctx context.Context, cage int) (map[string]any, error) {
+		return api.CageToAuto(ctx, parentMAC, cage)
+	}
+}
+
+// Declared lane switches (a `driver: breakout` entry; docs/drivers/breakout.md
+// 0) are attached by the parent at start, adopted or not: the file is the
+// operator's say that the lanes are the lane switch's. So they own the cage
+// from the start, and the hand-over's controller step runs then (off the
+// start's path), and again when the controller adopts the lane switch. A
+// Forget does not detach one: the file still declares it, and the log says
+// how to hand the lanes back (remove the entry, or adopt it again).
+
+// declaredLane is one declared lane switch's hand-over hooks, shared by its
+// parent's start (bind) and its own loop (adopted, forgotten).
+type declaredLane struct {
+	name string
+	cage int
+	// toAutoFor builds the controller step from the parent's MAC
+	// (cageToAutoFor); goFn runs the start's step off the start's path.
+	toAutoFor func(parentMAC string) func(context.Context, int) (map[string]any, error)
+	goFn      func(func())
+
+	mu     sync.Mutex
+	bound  bool
+	log    *log.Logger // the parent's
+	mac    string
+	toAuto func(context.Context, int) (map[string]any, error)
+}
+
+// declaredLanes are the file's declared lane switches by name.
+func declaredLanes(f *config.File) map[string]*declaredLane {
+	out := map[string]*declaredLane{}
+	for _, d := range f.Devices {
+		if d.Driver != config.LaneDriver {
+			continue
+		}
+		for _, l := range f.LaneSwitchesOf(strings.TrimSpace(d.Options["parent"])) {
+			if l.Name == d.Name {
+				out[d.Name] = &declaredLane{
+					name: l.Name, cage: l.Cage,
+					toAutoFor: func(mac string) func(context.Context, int) (map[string]any, error) { return cageToAutoFor(f, mac) },
+					goFn:      func(fn func()) { go fn() },
+				}
+			}
+		}
+	}
+	return out
+}
+
+// attached runs on the parent once the lane switch is attached at start:
+// the cage is owned from here, adopted or not, so its port goes to Auto in
+// the controller if it holds a forced lane speed -- off the start's path (a
+// start must not wait on the controller's API).
+func (d *declaredLane) attached(lg *log.Logger, parentMAC, mac string) {
+	d.mu.Lock()
+	d.bound, d.log, d.mac, d.toAuto = true, lg, mac, d.toAutoFor(parentMAC)
+	lg2, toAuto := d.log, d.toAuto
+	d.mu.Unlock()
+	d.goFn(func() { handOverCage(lg2, toAuto, d.cage) })
+}
+
+func (d *declaredLane) state() (bool, *log.Logger, string, func(context.Context, int) (map[string]any, error)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.bound, d.log, d.mac, d.toAuto
+}
+
+// adopted is the lane switch's OnConnected: the hand-over's controller step
+// again (an override saved since the start, or a start whose step could not
+// reach the controller). Nothing when the parent did not attach it.
+func (d *declaredLane) adopted() {
+	if bound, lg, _, toAuto := d.state(); bound {
+		handOverCage(lg, toAuto, d.cage)
+	}
+}
+
+// forgotten is the lane switch's OnUnadopted: it stays attached, and says so.
+func (d *declaredLane) forgotten() {
+	if bound, lg, mac, _ := d.state(); bound {
+		lg.Printf("lane switch %s (%s) was forgotten in the controller and stays attached to port %d: the config file declares it, so the lanes stay its own and nothing applies their settings until it is adopted again (remove its entry from the config file to give the lanes back to this device)", d.name, mac, d.cage)
 	}
 }
 
@@ -234,10 +331,6 @@ func autoLaneOptions(f *config.File, parent config.Device, c autoLane) options {
 		ReplyLog:     parent.ReplyLog,
 	})
 	o.onAdopted, o.onUnadopted = c.attach, c.detach
-	// A Forget while the bridge was down comes back as an adopted state
-	// file and a key the controller refuses: read as the Forget it was,
-	// the lanes go back to the cage (docs/drivers/breakout.md 16.11).
-	o.forgetOnRejectedKey = true
 	return o
 }
 
@@ -255,15 +348,8 @@ func newAutoLanes(f *config.File, parent config.Device, spawn func(options)) fun
 		taken[d.Name] = true
 	}
 	return func(lg *log.Logger, lp devicemodel.LaneProvider, parentMAC string) *autoLanes {
-		var toAuto func(context.Context, int) (map[string]any, error)
-		if key := f.Controller.APIKey(); f.Controller.APIURL != "" && key != "" {
-			api := unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true)
-			toAuto = func(ctx context.Context, cage int) (map[string]any, error) {
-				return api.CageToAuto(ctx, parentMAC, cage)
-			}
-		}
 		return &autoLanes{
-			cageToAuto: toAuto,
+			cageToAuto: cageToAutoFor(f, parentMAC),
 			log:        lg, parent: parent.Name, parentMAC: parentMAC, lp: lp, declared: declared, taken: taken,
 			adopted: func(name string) bool {
 				st, err := (&device.Store{Path: filepath.Join(f.StateDir, "state", name, "device.json")}).Load()

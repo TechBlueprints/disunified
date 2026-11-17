@@ -29,7 +29,7 @@ import (
 // recorded run (three informs over 2 min 28 s, until the state file was
 // removed by hand); the time keeps a restarted bridge's 10 s start-up
 // cadence from reaching the count in 20 s. Only a device whose loop is told
-// to (Config.ForgetOnRejectedKey: the automatic lane switches) acts on it;
+// to (Config.ForgetOnRejectedKey: the lane switches) acts on it;
 // every other device logs it once and keeps its key, because a wrong
 // "forgotten" would drop a real switch's adoption on one site's evidence.
 const (
@@ -66,7 +66,7 @@ func (l *Loop) noteRejectedKey(now time.Time, status, bodyLen int, sentAdopted b
 	}
 	if !l.rejectWarned {
 		l.rejectWarned = true
-		l.cfg.Logger.Printf("[%s] WARNING: the controller has refused this device's key %d times over %s (HTTP 400, empty body). That is how it answers a device it has forgotten, once its one setdefault has gone: if the device is gone from UniFi, stop the bridge, remove this device's device.json from its state directory and start it again to adopt it anew. The bridge keeps the key (only an automatic lane switch is released on this alone)", l.desc.MAC, l.rejectRun, run)
+		l.cfg.Logger.Printf("[%s] WARNING: the controller has refused this device's key %d times over %s (HTTP 400, empty body). That is how it answers a device it has forgotten, once its one setdefault has gone: if the device is gone from UniFi, stop the bridge, remove this device's device.json from its state directory and start it again to adopt it anew. The bridge keeps the key (only a lane switch is released on this alone)", l.desc.MAC, l.rejectRun, run)
 	}
 	return false
 }

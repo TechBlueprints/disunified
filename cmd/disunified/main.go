@@ -227,10 +227,10 @@ type options struct {
 	// are an automatic lane switch's own hand-over hooks.
 	autoLanes              func(*log.Logger, devicemodel.LaneProvider, string) *autoLanes
 	onAdopted, onUnadopted func()
-	// forgetOnRejectedKey: an automatic lane switch reads a sustained run
-	// of HTTP 400s on its adopted key as a Forget it missed
-	// (informloop.Config.ForgetOnRejectedKey).
-	forgetOnRejectedKey bool
+	// declared are the file's declared lane switches' hand-over hooks by
+	// name (lanes.go): a parent binds those it attaches, and a declared
+	// lane switch's onAdopted and onUnadopted are its own entry's.
+	declared map[string]*declaredLane
 }
 
 // runConfig runs every switch in the file concurrently; a switch that fails
@@ -246,12 +246,17 @@ func runConfig(ctx context.Context, f *config.File) {
 			}
 		}()
 	}
+	declared := declaredLanes(f)
 	for _, sw := range f.Devices {
 		o := configOptions(f, sw)
 		// A split cage of this device gets a lane switch by itself
 		// (lane_switches: auto, the default): started from its watcher,
 		// through the same runOne a declared entry uses.
 		o.autoLanes = newAutoLanes(f, sw, spawn)
+		o.declared = declared
+		if d := declared[sw.Name]; d != nil {
+			o.onAdopted, o.onUnadopted = d.adopted, d.forgotten
+		}
 		spawn(o)
 	}
 	wg.Wait()
@@ -323,8 +328,11 @@ func childrenOf(cs []config.Child) []informloop.Child {
 // attachLaneSwitches declares the config's lane switches on their parent's
 // cages (docs/drivers/breakout.md): each one's MAC is its options.mac or
 // derived from the parent's, and the lane switch reads it back from the
-// parent, so the two never disagree.
-func attachLaneSwitches(log *log.Logger, sw devicemodel.Device, snap *devicemodel.Snapshot, ls []config.LaneSwitch) {
+// parent, so the two never disagree. hooks are the declared lane switches'
+// hand-over hooks (nil for -collect-once): each one attached is bound to
+// this device, and its cage's port goes to Auto in the controller if it
+// holds a forced lane speed (declaredLane.attached).
+func attachLaneSwitches(log *log.Logger, sw devicemodel.Device, snap *devicemodel.Snapshot, ls []config.LaneSwitch, hooks map[string]*declaredLane) {
 	if len(ls) == 0 {
 		return
 	}
@@ -348,6 +356,9 @@ func attachLaneSwitches(log *log.Logger, sw devicemodel.Device, snap *devicemode
 			continue
 		}
 		log.Printf("lane switch %s attached to port %d as %s (reported in its MAC table and as its LLDP neighbour while the cage is split)", l.Name, l.Cage, mac)
+		if d := hooks[l.Name]; d != nil {
+			d.attached(log, snap.System.MAC, mac)
+		}
 	}
 }
 
@@ -507,7 +518,11 @@ func runOne(ctx context.Context, o options) error {
 		// Lane switches on this device's cages are attached before its loop
 		// starts, so its first apply already leaves their lanes to them; a
 		// lane switch finds this device by its name.
-		attachLaneSwitches(log, sw, snap, o.laneSwitches)
+		hooks := o.declared
+		if o.collectOnce {
+			hooks = nil // a probe changes nothing in the controller
+		}
+		attachLaneSwitches(log, sw, snap, o.laneSwitches, hooks)
 		if o.name != "" && !o.collectOnce {
 			devicemodel.RegisterOpened(o.name, sw)
 			defer devicemodel.UnregisterOpened(o.name, sw)
@@ -822,8 +837,10 @@ func runOne(ctx context.Context, o options) error {
 				provision(snap)
 			}
 		},
-		OnUnadopted:         o.onUnadopted,
-		ForgetOnRejectedKey: o.forgetOnRejectedKey,
+		OnUnadopted: o.onUnadopted,
+		// A lane switch reads a sustained run of HTTP 400s on its adopted
+		// key as the Forget it missed (docs/drivers/breakout.md 16.11).
+		ForgetOnRejectedKey: o.laneDriver,
 		OnHeld: func(snap *devicemodel.Snapshot) {
 			if provision != nil {
 				provision(snap)

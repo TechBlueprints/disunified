@@ -223,3 +223,45 @@ func (f *FixtureRunner) lldpcli(a []string) error {
 	f.UseSection("lldp_med", b.String())
 	return nil
 }
+
+// lldpForget models lldpd at a breakout: a port the breakout deletes takes
+// its custom TLVs with it, and a port of the same name made again starts
+// without them (DX010, 2026-11-16: after a 1x100G -> 4x25G[10G] split of
+// cage 3 the lldp_med read showed Ethernet8, the joined port's name and the
+// new lane 1's, with no LLDP-MED TLV, and the bridge wrote it on the next
+// plan that ran; docs/drivers/breakout.md 16.10). Only with an lldp_med
+// section (an older capture has none).
+func (f *FixtureRunner) lldpForget(gone map[string]bool, added []string) {
+	sec, ok := sections(f.Fixture)["lldp_med"]
+	if !ok {
+		return
+	}
+	fresh := map[string]bool{}
+	for _, a := range added {
+		fresh[a] = true
+	}
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, l := range strings.Split(sec, "\n") {
+		fs := strings.Fields(l)
+		if len(fs) < 2 {
+			continue
+		}
+		switch {
+		case fresh[fs[0]]:
+			seen[fs[0]] = true
+			b.WriteString(fs[0] + " - -\n")
+		case gone[fs[0]]:
+		default:
+			b.WriteString(l + "\n")
+		}
+	}
+	for _, a := range added {
+		if !seen[a] {
+			b.WriteString(a + " - -\n")
+		}
+	}
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	sort.Strings(lines)
+	f.UseSection("lldp_med", strings.Join(lines, "\n")+"\n")
+}
