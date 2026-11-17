@@ -257,6 +257,19 @@ func (s *swState) applyBreakout(parent string, pp platformPort, idx int, childre
 		delete(speeds, ch.name)
 	}
 	s.laneSpeeds = speeds
+	// lldpd forgets a deleted port's custom TLVs, and a port made again
+	// under the same name starts without them: the LLDP-MED plan after the
+	// breakout must see every new interface as bare, lane 1 included, which
+	// keeps the old port's name (DX010 2026-11-16, docs/drivers/breakout.md
+	// 16.10: a split wrote lanes 2-4 only). pf is the plan's own copy.
+	for _, name := range s.cagePorts(idx) {
+		delete(s.pf.med, name)
+		delete(s.pf.medPol, name)
+	}
+	for _, ch := range children {
+		delete(s.pf.med, ch.name)
+		delete(s.pf.medPol, ch.name)
+	}
 	// -f takes the old ports out of every ACL table's ports@ (a YANG
 	// leafref), the table stays; applyACL binds the children after the batch.
 	gone := setOf(s.cagePorts(idx))
@@ -403,6 +416,7 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).
 		pl.l2mcUnbind(d.Index, pl.sim.cagePorts(idx), write)
 		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
+		pl.layout[d.Index] = true
 		for _, h := range held {
 			if h.lane != "" && pl.sim.port[h.lane] == nil {
 				continue // a lane the breakout replaced; its children get theirs below

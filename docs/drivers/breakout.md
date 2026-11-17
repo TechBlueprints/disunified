@@ -57,6 +57,45 @@ leaves the lanes alone. The child's `Open` finds the parent by name
 (`devicemodel.OpenedDevice`) and fails with a reason until it is there;
 main's start retry (15 s doubling) brings it up.
 
+**A declared entry stays attached whether or not it is adopted, and a
+Forget does not detach it (decided 2026-11-16, register item 4).** The
+automatic path is gated by the adoption because nothing but UniFi gives
+its consent; a declared entry is the operator's consent in the file, and
+the file is still there after a Forget. Making it adoption-gated (the
+declaration fixing only the name, MAC and options) was the alternative.
+It was not taken because the smaller change leaves no state that UniFi
+cannot end: the one state in which nobody applies the lanes' settings is a
+declared lane switch that is pending (never adopted, or forgotten), and
+there the lane switch is pending in UniFi under the same MAC, so Adopt
+gives the lanes their settings again; removing the entry gives the lanes
+back to the parent. What it gained from the automatic path:
+
+- **The hand-over's reset to Auto.** A declared lane switch owns its cage
+  from the start, so the parent reports the cage as QSFP28 from then on,
+  and a forced lane speed with a FEC left on the parent's port (from the
+  cage's time as a fold) makes the controller refuse every save of the
+  parent (§16.10 item 1). `attachLaneSwitches` hands each attached entry
+  to its `declaredLane` hooks (`cmd/disunified/lanes.go`), which run
+  `unifiapi.CageToAuto` for the cage's port off the start's path (a start
+  must not wait on the controller's API) and again when the controller
+  adopts the lane switch (its `OnConnected`), with the same log lines as
+  the automatic path (`handOverCage`). Not run in `-collect-once`.
+- **A Forget is logged, not acted on**: `lane switch <name> (<MAC>) was
+  forgotten in the controller and stays attached to port <N>: the config
+  file declares it, so the lanes stay its own and nothing applies their
+  settings until it is adopted again (remove its entry from the config file
+  to give the lanes back to this device)`. The session drops the push as
+  for any device (§16.10 item 4), so the lane switch writes nothing.
+
+Fixture-tested only (`TestDeclaredLaneSwitchHandOver`,
+`TestDeclaredLaneSwitchWithoutAPI`, on the DX010's split-cage capture):
+the DX010's one split cage carries the adopted automatic `dx010-cage3`,
+and a live run needs a second split cage with a declared entry, its port
+forced to 25G with FC-FEC from the parent's drawer while it is a fold,
+then the bridge restarted with the entry: the `set to Auto` line at the
+start, a drawer save on another port of the parent passing, and a Forget
+of the lane switch logging the line above with the lanes left alone.
+
 **Identity.** The MAC is `options.mac`, else
 `devicemodel.LaneSwitchMAC(parent MAC, cage)`: the parent's MAC with the
 locally administered bit set and the multicast bit clear in the first
@@ -1205,8 +1244,9 @@ So the operator's consent is given in UniFi (Adopt, Forget), not in a file,
 and an upgrade changes nothing for a site that never adopts: a pending
 device is the whole visible difference. A parent's `lane_switches: off`
 (§16.4) turns even that off. A declared `driver: breakout` entry keeps
-working exactly as built (attached at start, adopted or not) and wins over
-the automatic one for its cage.
+working as built (attached at start, adopted or not; since 2026-11-16 with
+the hand-over's reset to Auto and a logged Forget, §0) and wins over the
+automatic one for its cage.
 
 ### 16.2 What "detected" means
 
@@ -1539,8 +1579,33 @@ switch before the reboot and printed the fixture's bytes (`sonic.md`
   is a minute of VLANs the port was not carrying.
 - **A missed `setdefault`** leaves a forgotten lane switch attached
   (item 3).
-- After the split in step 6 the parent logged once that port 3 "is new
-  since the controller's config and would be changed by it; not written";
-  its next cycles wrote nothing and said nothing more. Not looked into.
-- A declared `driver: breakout` entry gets neither the reset to Auto nor a
-  detach on a Forget (it is attached from the start by declaration).
+
+**Closed since (2026-11-16, the same night).**
+
+- **The split in step 6, and the note after it.** Two faults, one batch.
+  The module rule's split (Auto saved on port 3, 21:09) wrote the cage's
+  intent on all four lanes but LLDP-MED on lanes 2-4 only: lldpd forgets a
+  deleted port's custom TLVs, and the plan's copy of the switch kept the
+  joined `Ethernet8`'s TLV for the new lane 1 of that name. The next
+  collect saw the new layout; the split was the driver's own write, which
+  `PlanPorts` leaves out, so the loop took port 3 for a port the
+  controller knew nothing about. Its plan would indeed write one thing
+  (lane 1's TLV), so the note was true in what it said would change and
+  false in calling the port new. The port was then withheld every cycle
+  without another line, until the restart at 21:22 cleared that state and
+  the first reconcile wrote `lldpcli configure ports Ethernet8 ...` ("1 of
+  32 ports changed", the register's item 5). Fixed both ways: a breakout
+  forgets the TLVs of every interface it deletes or makes in the plan's
+  copy (`applyBreakout`), and a driver whose own rule can split or join
+  says so (`devicemodel.LayoutPlanner`, sonic's `PlanLayout`), so the loop
+  logs the layout as the controller's. The replay is
+  `TestReplaySonicDX010LaneCageResplit` (the parent's recorded join and
+  Auto, `replies-dx010-lane-handover.ndjson` records 3-4, over
+  `collect-split-dac.txt`), and `TestBreakoutPutsLLDPMEDOnEveryNewInterface`;
+  the FixtureRunner forgets the TLVs at a breakout as lldpd does. An owned
+  cage's LLDP-MED is the cage's, on every lane (the table in §0): that was
+  meant, and lane 1 was the one the stale copy hid. Fixture-tested; not run
+  live again (it needs a join and a split of cage 3, which would disturb
+  `dx010-cage3`).
+- **A declared entry's hand-over and Forget** (§0, the decision and what
+  was built). Fixture-tested only.

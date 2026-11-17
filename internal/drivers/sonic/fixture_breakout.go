@@ -239,6 +239,11 @@ func (f *FixtureRunner) breakout(args []string) error {
 	}); err != nil {
 		return err
 	}
+	var added []string
+	for _, a := range adds {
+		added = append(added, a.name)
+	}
+	f.lldpForget(gone, added)
 	// portmgrd: APPL_DB PORT_TABLE follows, every new port down at SONiC's
 	// default MTU until configured.
 	if err := f.update("appl_port", func(t table) error {
