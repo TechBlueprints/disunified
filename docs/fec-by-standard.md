@@ -141,18 +141,26 @@ each on purpose:
 
 - **40G copper lists FC second.** Section 1: FC is optional on CR4, by
   auto-negotiation. "none" is first, and every port here supports none, so
-  FC is never the choice; it is in the set so that a linked port found
-  running it is not corrected.
+  FC is never the choice.
 - **A 1e-12 active cable lists RS second.** Such a cable needs no FEC; RS
-  over it is still a 25GAUI or 100GAUI the standard defines. Same reason:
-  a link found up on RS is left alone.
+  over it is still a 25GAUI or 100GAUI the standard defines. It would be
+  the choice only on a port that cannot run without FEC.
 - **CA-25G-N lists all three**, none first (section 1's clause 110 table).
 
 What each driver does with the table is in `docs/drivers/sonic.md` §10.3
-and §11.37 and `docs/drivers/arista-eos.md` §13. Both keep a port that is
-up on a mode its row permits (a working link is not flapped for the
-preferred mode), and both write these modes as their own, outside what
-the first-push hold counts.
+and §11.37 and `docs/drivers/arista-eos.md` §13. Both write these modes
+as their own, outside what the first-push hold counts.
+
+**Auto always means the preferred mode** (Clint, 2026-11-17: "Rewrite it
+to the preferred mode."). A port found on another mode is rewritten to
+the row's first supported one, whether it has link or not and whether or
+not the mode it ran is further along its row. Both ends of a link must
+run one FEC, so such a rewrite drops a link whose far end stays on the
+other mode: a CA-25G-N cable linked on FC at both ends goes to none here
+and stays down until the far end follows. A mode set in UniFi overrides
+auto, and is the way to hold a link on a mode that is not the first. (The
+first build that day kept a linked port on any mode its row permits; that
+rule was removed the same day.)
 
 The controller's own rule (a FEC only at 25G on SFP28, at 40G and 100G on
 QSFP28, never at 10G or 50G; `breakout-lag.md` §7) lines up with section 1.

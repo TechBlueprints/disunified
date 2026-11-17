@@ -411,8 +411,10 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   xcvrd's compliance name; never add a FEC table here). An empty cage or
   an unknown module is left alone with a note; so is a module whose
   permitted modes the port lacks (CA-25G-L or a 25G optic on a lane:
-  "cannot link within the standard"). A port that is up on a permitted
-  mode is not rewritten. **After a breakout in the same plan the FEC
+  "cannot link within the standard"). Auto always means the preferred
+  mode: a port configured otherwise is rewritten, link or no link (Clint,
+  2026-11-17), which drops a link whose far end stays on the other mode;
+  a FEC set in UniFi overrides auto. **After a breakout in the same plan the FEC
   waits one cycle** (`swState.fecsStale`): the new interfaces' list is
   not read yet, and portconfig's refusal of a mode they lack would end
   the batch after the breakout. Those writes are `plan.own`, and

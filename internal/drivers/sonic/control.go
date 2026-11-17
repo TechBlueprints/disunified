@@ -1104,10 +1104,12 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 // (internal/fecpolicy), within STATE_DB's supported_fecs. Nil -- nothing
 // is written -- for an empty cage; for a module or speed the policy has
 // no answer for, or one whose allowed modes the port cannot run (a note
-// each); for a port that is up on a configured mode the standard permits,
-// whose working link is not flapped for the preferred mode; and for an
-// interface a breakout of this plan made, whose supported_fecs the next
-// collect reads (the FEC then follows one cycle later).
+// each); and for an interface a breakout of this plan made, whose
+// supported_fecs the next collect reads (the FEC then follows one cycle
+// later). Auto always means the preferred mode (Clint, 2026-11-17): a port
+// configured otherwise is rewritten, link or no link, which drops a link
+// whose far end stays on the other mode; a mode set in UniFi overrides
+// auto.
 func (pl *plan) moduleFEC(idx int, ln string) *devicemodel.FEC {
 	o := pl.ports[idx].Optic
 	if o == nil || pl.controllerOnly || pl.sim.fecsStale[ln] {
@@ -1123,9 +1125,6 @@ func (pl *plan) moduleFEC(idx int, ln string) *devicemodel.FEC {
 		} else {
 			pl.note("port %d: the module %q on %s: %s; FEC left as it is (%s supports %s)", idx, o.MediaType, ln, reason, ln, strings.Join(sortedSet(sup), ","))
 		}
-		return nil
-	}
-	if cur := fecOf(pl.sim.field(ln, "fec")); cur != f && pl.ports[idx].Up && fecpolicy.Permits(medium, speed, cur) {
 		return nil
 	}
 	return &f

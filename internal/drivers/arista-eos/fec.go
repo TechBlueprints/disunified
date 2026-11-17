@@ -29,7 +29,9 @@ import (
 // standard's for the module at the port's speed (internal/fecpolicy),
 // chosen within what the interface lists as available; the driver writes
 // only when the configuration and EOS's own default do not already give
-// it, and never to a port that is up on a mode the standard permits.
+// it. Auto always means the preferred mode (Clint, 2026-11-17): a port
+// on another mode is rewritten, link or no link, which drops a link whose
+// far end stays on the other mode; a mode set in UniFi overrides auto.
 
 // errCorr is one interface's row of `show interfaces error-correction`.
 type errCorr struct {
@@ -359,8 +361,6 @@ func fecPlan(in fecInputs, p devicemodel.Port, d devicemodel.PortDesired, cage i
 			continue // configured as chosen
 		case len(row.configured()) == 0 && running == choice:
 			continue // EOS's own default is the choice: nothing to write
-		case p.Up && fecpolicy.Permits(medium, speed, running):
-			continue // a working link on a mode the standard permits is not flapped
 		}
 		put(n, fecSetCommands(row, choice), choice)
 	}

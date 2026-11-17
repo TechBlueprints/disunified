@@ -10438,13 +10438,18 @@ which has an answer at 40G and 10G only, as before) and STATE_DB's
 | CA-25G-L (`100GBASE-CR4, 25GBASE-CR CA-25G-L ...`), 25G SR, a 5e-5 active cable on a 25G lane | RS asked, not supported: left alone, "calls for FEC rs, which ... does not support" | the same nothing, with the reason: "runs only with FEC rs by the standard and the port supports none, fc: the two cannot link within the standard" |
 | Every row the unit holds today: CA-25G-L at 100G (`rs`), CA-25G-S on 25G lanes (`fc`), CWDM4 at 100G (`rs`) | as now | unchanged |
 
-**Two changes to the mechanism**, both in the direction of writing less:
+**Auto always means the preferred mode** (Clint, 2026-11-17: "Rewrite it
+to the preferred mode."). Whenever the configured FEC differs from the
+choice it is written, link or no link, as the one-mode table did before.
+Both ends of a link must run one mode, so this drops a link whose far end
+stays on the other one (a CA-25G-N cable linked on `fc` at both ends is
+set to `none`). A FEC set in UniFi overrides auto and holds such a link.
+The first build of the day left a linked port on any mode the standard
+permits for its module; that rule was removed the same day, before any
+port had met it.
 
-- **A port that is up on a permitted mode keeps it.** Where the configured
-  FEC is not the preferred one but the standard permits it for the module
-  and the port has link, nothing is written: both ends of a link must run
-  one mode, so rewriting it would drop a working link and might not bring
-  it back. A mode outside the module's set is still corrected.
+**One change to the mechanism:**
+
 - **After a breakout in the same plan the FEC waits one cycle.** The
   breakout forgets `supported_fecs` for the cage (read for the old
   layout). The old code then wrote the module's FEC unchecked in the same
@@ -10463,8 +10468,9 @@ the names to the medium and the choice within a cage's and a lane's list;
 the split-DAC capture needing no write, for the device and for the lane
 switch's plan; a CA-25G-L cable and the 25G SR, LR and ER optics on that
 capture's lanes giving the note and no write; a "with BASE-R" cable on a
-2x50G cage getting RS the cycle after the split; a linked port kept on a
-permitted mode. The FixtureRunner gives a breakout's new interfaces the
+2x50G cage getting RS the cycle after the split; a linked port on a
+permitted but not preferred mode rewritten to the preferred one. The
+FixtureRunner gives a breakout's new interfaces the
 `supported_fecs` read from the DX010 for their layout
 ([`docs/fec-by-standard.md`](../fec-by-standard.md) §3), so the cycle
 after a split is tested against the real lists.
@@ -10476,7 +10482,8 @@ and no FEC note in the journal, cages 1 and 2 on `rs` with PortChannel1
 up, cage 3's lanes on `fc`. That is the unchanged rows only. **Not run
 live:** every changed row (they need the modules and far ends of
 [`docs/fec-by-standard.md`](../fec-by-standard.md) §6, which is still not
-run), the kept-while-linked rule, and the one-cycle wait after a breakout.
+run), the rewrite of a linked port to the preferred mode, and the
+one-cycle wait after a breakout.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
