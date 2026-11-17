@@ -3,7 +3,9 @@ package proxmox
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -154,6 +156,84 @@ type vmList struct {
 		Node string `json:"node"`
 		Type string `json:"type"`
 	} `json:"ids"`
+}
+
+// errPmxcfsUnmounted is a collect that found no /etc/pve/.vmlist. The file
+// exists on every mounted pmxcfs, with or without guests, so an empty
+// vmlist section means /etc/pve is not mounted (pve-cluster not running,
+// or restarting under the poll): its globs found no guest configs either,
+// and reading that as a cluster with no guests would free every guest port.
+var errPmxcfsUnmounted = errors.New("proxmox: /etc/pve/.vmlist is empty: pmxcfs is not mounted (is pve-cluster running?); no guest can be read")
+
+// configNodes lists the guests of one qemu/lxc section by the config
+// headers the script's glob printed: VMID -> the node in
+// /etc/pve/nodes/<node>/<dir>/<id>.conf. A guest with no NIC is listed too.
+func configNodes(body string) map[int]string {
+	names, _ := subsections(body)
+	out := map[int]string{}
+	for _, path := range names {
+		parts := strings.Split(path, "/")
+		if len(parts) < 3 {
+			continue
+		}
+		id, err := strconv.Atoi(strings.TrimSuffix(parts[len(parts)-1], ".conf"))
+		if err != nil {
+			continue
+		}
+		if prev, dup := out[id]; dup && prev != parts[len(parts)-3] {
+			out[id] = prev + "," + parts[len(parts)-3] // under two nodes: never matches .vmlist
+			continue
+		}
+		out[id] = parts[len(parts)-3]
+	}
+	return out
+}
+
+// crossCheckGuests holds .vmlist to the config files the globs read: the
+// same guests, of the same kind, on the same nodes, both ways. The two are
+// read moments apart, so a guest created, destroyed or migrated in between
+// fails one poll; a disagreement that lasts is a pmxcfs fault.
+func crossCheckGuests(vml vmList, qemuBody, lxcBody string) error {
+	confs := map[string]map[int]string{"qemu": configNodes(qemuBody), "lxc": configNodes(lxcBody)}
+	listed := map[string]map[int]string{"qemu": {}, "lxc": {}}
+	for idStr, e := range vml.IDs {
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return fmt.Errorf("proxmox: /etc/pve/.vmlist lists guest %q, not a VMID", idStr)
+		}
+		if _, ok := listed[e.Type]; !ok {
+			return fmt.Errorf("proxmox: /etc/pve/.vmlist lists guest %d as type %q", id, e.Type)
+		}
+		listed[e.Type][id] = e.Node
+	}
+	var bad []string
+	for _, kind := range []string{"qemu", "lxc"} {
+		for id, node := range listed[kind] {
+			if got, ok := confs[kind][id]; !ok {
+				bad = append(bad, fmt.Sprintf("%s %d is in .vmlist on %s but has no config", kind, id, node))
+			} else if got != node {
+				bad = append(bad, fmt.Sprintf("%s %d is in .vmlist on %s but its config is under %s", kind, id, node, got))
+			}
+		}
+		for id, node := range confs[kind] {
+			if _, ok := listed[kind][id]; !ok {
+				bad = append(bad, fmt.Sprintf("%s %d has a config under %s but is not in .vmlist", kind, id, node))
+			}
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	sort.Strings(bad)
+	return fmt.Errorf("proxmox: /etc/pve changed under the poll (or pmxcfs disagrees with itself): %s", strings.Join(bad, "; "))
+}
+
+// nodeName is the Proxmox node name in a hostname: its first label. The
+// script prints the kernel hostname, which may carry a domain; the node's
+// directory in /etc/pve/nodes never does.
+func nodeName(hostname string) string {
+	name, _, _ := strings.Cut(strings.TrimSpace(hostname), ".")
+	return name
 }
 
 // --- lldpcli -f json0 show neighbors details ---

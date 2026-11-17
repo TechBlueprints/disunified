@@ -186,6 +186,24 @@ falls back to `carrier_changes / 2`, as does a line from an older script
 `internal/drivers/proxmox/carrier_test.go`). An LXC guest's veth is
 recreated with the container, so its count starts again then.
 
+**An unmounted `/etc/pve` is a failed poll (2026-11-17,
+[`proxmox-on-node.md`](proxmox-on-node.md) §4.1).** With pmxcfs not
+mounted the script still runs to the end, with empty `vmlist`, `qemu` and
+`lxc` sections. The driver requires all three, and an empty `vmlist` (the
+file exists on every mounted pmxcfs, guests or none) fails the poll:
+`proxmox: /etc/pve/.vmlist is empty: pmxcfs is not mounted (is pve-cluster
+running?); no guest can be read`. `.vmlist` is also held to the config
+headers the globs printed: the same ids, of the same kind, under the same
+nodes, both ways, or the poll fails naming each guest that differs (`qemu
+100 is in .vmlist on proxmox-2 but has no config`). A guest created,
+destroyed or migrated between the two reads costs one poll. The node's own
+guests are those under `/etc/pve/nodes/<name>` where `<name>` is the first
+label of the `hostname` section (the kernel hostname may carry a domain);
+the reported hostname is the whole one. A failed poll leaves the last good
+snapshot in place, and the loop neither provisions nor applies from it
+(`internal/informloop/replay_proxmox_test.go`,
+`TestProxmoxFailedCollectAfterGoodOne`).
+
 Firewall-enabled guests (`firewall=1`) hang off `fwbr<id>i<n>`; their
 member of `vmbr0` is `fwpr<id>p<n>`, which is where VLANs and learned MACs
 live, while counters come from the tap. The driver knows both.

@@ -369,7 +369,10 @@ representation of breakout itself, LAG or not.
    25000: **the stored `speed` follows a forced override, not the
    inform** (50000 sent, 25000 stored; the port without an override
    stored 50000) -- the child must seed its lanes' speeds so overrides
-   never disagree with the hardware.
+   never disagree with the hardware. (That conclusion did not survive the
+   build: seeding a lane's speed would create the forced override the
+   quirk comes from, so the lane switch seeds none; `drivers/breakout.md`
+   §14.1.)
 4. **A UniFi aggregate on a cascaded switch's ports**, pushed to the
    stub as `opmode=aggregate` -- that the UI offers it on a Flex XG
    profile (the profile's own capability claims may gate the LAG editor;

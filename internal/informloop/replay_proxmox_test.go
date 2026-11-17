@@ -5,10 +5,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/TechBlueprints/disunified/internal/device"
+	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/proxmox"
 )
 
@@ -66,6 +68,95 @@ func TestReplayControllerRepliesProxmox(t *testing.T) {
 				if l.state != StateConnected {
 					t.Errorf("after the first system_cfg: state=%v", l.state)
 				}
+			}
+		},
+	})
+}
+
+// A collect that fails after a good one (docs/drivers/proxmox-on-node.md
+// §4.1: pmxcfs unmounted under a running bridge, a pve-cluster restart)
+// changes nothing: no provision callback runs, nothing is written to the
+// node, and the controller keeps being told the last good snapshot. The
+// replay above runs to CONNECTED with its pushes applied; then /etc/pve
+// goes away in the capture (its vmlist, qemu and lxc sections emptied, as
+// the script prints them with pmxcfs not mounted) for three cycles, and
+// comes back.
+func TestProxmoxFailedCollectAfterGoodOne(t *testing.T) {
+	fr, err := proxmox.NewFixtureRunner(filepath.Join("..", "..", "docs", "fixtures", "proxmox-9.1.6", "collect-node2.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coll := proxmox.NewCollector(fr)
+	coll.ManageLLDP = false
+	coll.Log = log.New(os.Stderr, "", 0)
+	snap, err := coll.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := len(fr.Commands)
+	written := func() string {
+		s := strings.Join(fr.Commands[seen:], "\n")
+		seen = len(fr.Commands)
+		return s
+	}
+	mounted := fr.Fixture
+	unmounted := mounted
+	for _, s := range []string{"vmlist", "qemu", "lxc"} {
+		re := regexp.MustCompile(`(?s)(@@@ ` + s + `\n).*?(@@@ )`)
+		if !re.MatchString(unmounted) {
+			t.Fatalf("capture has no %s section", s)
+		}
+		unmounted = re.ReplaceAllString(unmounted, "$1$2")
+	}
+	var loopLog strings.Builder
+	provisions := 0
+	count := func(*devicemodel.Snapshot) { provisions++ }
+	last := len(loadReplies(t, "replies-proxmox.ndjson")) - 1
+	runReplay(t, replayDriver{
+		Name: "proxmox", Replies: "replies-proxmox.ndjson", Collector: coll, Control: coll, Snapshot: snap,
+		GatewayIP: "192.0.2.2",
+		Written:   written,
+		// The provision callbacks as cmd/disunified wires them.
+		Loop: func(c *Config) {
+			c.OnConnected, c.OnLayoutChange, c.OnHeld = count, count, count
+			c.Logger = log.New(&loopLog, "", 0)
+		},
+		Check: func(t *testing.T, i int, rec replayRecord, sess *device.Session, l *Loop, logText string) {
+			if i != last {
+				return
+			}
+			if l.state != StateConnected {
+				t.Fatalf("before the failure: state=%v", l.state)
+			}
+			ctx := context.Background()
+			good, before := sess.Snapshot(), provisions
+			fr.Fixture = unmounted
+			for n := 0; n < 3; n++ {
+				l.informOnce(ctx)
+			}
+			if w := written(); w != "" {
+				t.Errorf("written to the node while /etc/pve was unmounted:\n%s", w)
+			}
+			if provisions != before {
+				t.Errorf("%d provision callbacks while /etc/pve was unmounted", provisions-before)
+			}
+			if sess.Snapshot() != good || l.collectFailures != 3 {
+				t.Errorf("the failed collects replaced the snapshot (failures counted: %d)", l.collectFailures)
+			}
+			if p := sess.Snapshot().Ports[0]; p.IfName != "vm100-net0" {
+				t.Errorf("port 1 after the failed collects = %q, want VM 100's", p.IfName)
+			}
+			if lt := loopLog.String(); !strings.Contains(lt, "pmxcfs is not mounted") {
+				t.Errorf("the failed collect's error is not logged:\n%s", lt)
+			}
+			// pmxcfs back: the same guests, nothing to provision or write.
+			fr.Fixture = mounted
+			l.informOnce(ctx)
+			if w := written(); w != "" {
+				t.Errorf("written to the node after /etc/pve came back:\n%s", w)
+			}
+			if provisions != before || l.collectFailures != 0 {
+				t.Errorf("after recovery: %d provision callbacks, %d failures", provisions-before, l.collectFailures)
 			}
 		},
 	})
