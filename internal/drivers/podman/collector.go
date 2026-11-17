@@ -4,7 +4,9 @@
 // endpoint is a port named after the container (its interface name is a
 // compact "ct<hash>", endpointIfName), and the NICs are the top ports with
 // the default route's NIC as the uplink. Read over one SSH exec
-// of collect.sh per poll (root on the host, key auth). Read-only.
+// of collect.sh per poll (root on the host, key auth). Ports are read-only;
+// the writes are the host's address (apply.go) and UniFi's client Block
+// (block.go).
 //
 // Two kinds of endpoint, told apart by the network's driver:
 //
@@ -68,6 +70,8 @@ type Collector struct {
 	last       *devicemodel.Snapshot
 	nm         nmState // NetworkManager's view of the uplink, from the last poll
 	uplinkNIC  string
+	nft        bool       // the host has nft
+	block      blockState // the client-Block table as the last collect listed it
 	warned     map[string]bool
 	knownNames map[int][]string
 }
@@ -393,9 +397,22 @@ func (c *Collector) build(ctx context.Context, out string, now time.Time) (*devi
 		}
 	}
 	sort.Slice(macs, func(i, j int) bool { return macs[i].MAC < macs[j].MAC })
+	// The client-Block table as the host lists it now; a capture from
+	// before the feature has no such section and keeps what the driver
+	// last wrote.
+	blockBody, blockListed := sec["macblock"]
+	block, err := parseBlock(blockBody, blockListed)
+	if err != nil {
+		c.warnOnce("macblock", "%v", err)
+		blockListed = false
+	}
 	c.mu.Lock()
 	c.nm = parseNM(sec["nmconn"], sec["nmipv4"])
 	c.uplinkNIC = uplinkName
+	c.nft = strings.TrimSpace(sec["nft"]) == "present"
+	if blockListed {
+		c.block = block
+	}
 	c.mu.Unlock()
 	return &devicemodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, UplinkHint: uplinkHint}, nil
 }

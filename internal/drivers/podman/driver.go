@@ -23,8 +23,8 @@ import (
 //	slots_file   where the host keeps endpoint -> port assignments
 //	             (default /var/lib/disunified/podman-slots.json)
 //
-// Verified on Podman 5.8 / AlmaLinux 10 (rootful, netavark). Read-only:
-// no port control yet.
+// Verified on Podman 5.8 / AlmaLinux 10 (rootful, netavark). No port
+// control; the controller's blocked clients are dropped on the uplink (nft).
 type Driver struct{}
 
 func init() { devicemodel.RegisterDriver(Driver{}) }

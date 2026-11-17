@@ -73,3 +73,12 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   the deployed bridge (on site the one macvlan container). Not claimed. No
   storm or DHCP-rate limiter either; `anomalies` stays 0
   (`docs/drivers/podman.md` §8).
+- **UniFi's client Block is an nft `netdev` table on the uplink NIC**
+  (`block.go`, 2026-11-17, `docs/drivers/podman.md` §9), not proxmox's
+  bridge table: the LAN side is a plain NIC with macvlan children, and a
+  bridge-family hook would see only the NAT'd containers. Ingress (before
+  the macvlan receive handler) and egress, `ether saddr` drop; the host's
+  own MAC is never written. Two macvlan containers on one parent still
+  talk (bridge mode). Fixture-tested and `nft -c`-checked on the host;
+  **never loaded**: the listing of a present table has no capture, so the
+  fixture runner does not model the write.

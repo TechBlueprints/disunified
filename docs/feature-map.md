@@ -197,7 +197,9 @@ and `replies-arista-block.ndjson`.
   ([`drivers/sonic.md`](drivers/sonic.md) §11.33); `arista-eos`: a static
   MAC drop entry per VLAN ([`drivers/arista-eos.md`](drivers/arista-eos.md)
   §9.9); `proxmox`: an nft bridge table ([`drivers/proxmox.md`](drivers/proxmox.md)
-  §4d). A client that is the device itself or its gateway is held with a
+  §4d); `podman`: an nft netdev table on the uplink NIC, ingress and egress
+  ([`drivers/podman.md`](drivers/podman.md) §9; fixture-tested, not loaded
+  on a host). A client that is the device itself or its gateway is held with a
   note.
 
 ### `setstate` (prior art; **not yet observed** on 10.6.106)
@@ -355,6 +357,7 @@ would do it inside the same commit-timer session, confirming once the lease is f
 | macvlan/ipvlan containers as the client behind their port | `mac_table` (`uptime` since the container started, `age` 0) | built (no macvlan container on site yet; the capture has none) |
 | Bridge-network containers | port only, no client | decided: reporting a NAT'd MAC would invent a client |
 | IP Settings → the host's NetworkManager profile | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip` → `nmcli con mod` + `device reapply` | built, tested: only an address the uplink already carries (make the lease static); DHCP refused |
+| UniFi's client Block | `blocked_sta` → `table netdev disunified_block` on the uplink NIC (ingress and egress, counted drops) | built 2026-11-17, fixture-tested; not loaded on a host. Stops a blocked LAN client reaching the host and its containers and a blocked LAN container reaching the LAN; not one macvlan container reaching another on the same parent ([`drivers/podman.md` §9](drivers/podman.md)) |
 | Port control (state/name) | -- | not built; `Capabilities{}` |
 | Switch-detected anomalies (storm 1/2/4, DHCP rate 32, rogue DHCP 64) | `port_table[].anomalies` | not built (2026-11-14): no single hook sees every reply a macvlan container sends (bridge mode delivers to the host's other macvlan containers inside the driver), and no limiter is applied on the host; `anomalies` 0 ([`drivers/podman.md` §8](drivers/podman.md)) |
 

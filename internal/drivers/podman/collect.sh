@@ -48,6 +48,10 @@ s nmipv4;     CON=$(nmcli -g GENERAL.CONNECTION device show "$UP" 2>/dev/null); 
 # carrier: "<name>=<carrier_changes> <up count> <down count> <carrier>";
 # "-" where the kernel has no such file or the interface is admin down.
 s carrier;    for d in /sys/class/net/*; do [ -e "$d/carrier_changes" ] && echo "$(basename "$d")=$(cat "$d/carrier_changes" 2>/dev/null) $(cat "$d/carrier_up_count" 2>/dev/null || echo -) $(cat "$d/carrier_down_count" 2>/dev/null || echo -) $(cat "$d/carrier" 2>/dev/null || echo -)"; done
+# UniFi's client Block (docs/drivers/podman.md §9): whether the host has
+# nft, and the driver's own table as it stands (empty when absent).
+s nft;        command -v nft >/dev/null 2>&1 && echo present
+s macblock;   nft -j list table netdev disunified_block 2>/dev/null
 
 # Podman's own view: networks (driver, interface, subnets), every
 # container (running or not) and the running ones' network endpoints.
