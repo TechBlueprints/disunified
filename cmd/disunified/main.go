@@ -733,6 +733,11 @@ func runOne(ctx context.Context, o options) error {
 	// a first push is held (a retry). Only controller-default names and
 	// ports the controller has no config for are touched.
 	var provision func(snap *devicemodel.Snapshot)
+	// layoutChanged provisions after a layout change. One that falls inside
+	// provision's 10 s spacing (the first collect of a run differing from
+	// the startup snapshot) waits for the spacing to end instead of being
+	// dropped: its ports are withheld until the controller is seeded.
+	var layoutChanged func(snap *devicemodel.Snapshot)
 	if o.provision && o.unifiURL != "" {
 		key := o.unifiKey
 		if key == "" {
@@ -815,6 +820,16 @@ func runOne(ctx context.Context, o options) error {
 					}
 				}
 			}
+			layoutChanged = func(snap *devicemodel.Snapshot) {
+				mu.Lock()
+				if wait := 10*time.Second - time.Since(last); wait > 0 && timer == nil && sess.Adopted() {
+					timer = time.AfterFunc(wait, func() { provision(sess.Snapshot()) })
+					mu.Unlock()
+					return
+				}
+				mu.Unlock()
+				provision(snap)
+			}
 			if snap != nil {
 				provision(snap)
 			}
@@ -837,8 +852,8 @@ func runOne(ctx context.Context, o options) error {
 		DeviceHost:    hostOf(o.deviceURL, o.deviceSSH),
 		GatewayIP:     o.controller,
 		OnLayoutChange: func(snap *devicemodel.Snapshot) {
-			if provision != nil {
-				provision(snap)
+			if layoutChanged != nil {
+				layoutChanged(snap)
 			}
 		},
 		OnConnected: func(snap *devicemodel.Snapshot) {

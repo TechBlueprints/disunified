@@ -156,7 +156,14 @@ Create `internal/drivers/<name>/` with:
   change, without writing). With it the loop holds a freshly adopted
   device's first push while it would change ports, and the bridge seeds the
   controller's port overrides from the device on adoption; without it the
-  first push applies as pushed. The hold plans before `EnsureVLANs` runs: a
+  first push applies as pushed. The same plan withholds a fresh port: one
+  whose interface name or the interfaces behind it (`Port.Interfaces`)
+  changed without the controller's config asking for it is not written
+  until the controller's config for it changes nothing. The loop compares
+  each collect with the one before, the first of a run with the previous
+  run's record (`layout.json` in the state directory) or else with the
+  startup snapshot, so a driver's `Start` and its first `Collect` must
+  report an unchanged port the same way. The hold plans before `EnsureVLANs` runs: a
   plan that reads the VLANs the device has (Allow All as its VLAN list, a
   membership of a missing VLAN skipped) must also implement
   `devicemodel.VLANPlanner`, planning with the push's VLANs as if they
