@@ -1544,3 +1544,62 @@ switch before the reboot and printed the fixture's bytes (`sonic.md`
   its next cycles wrote nothing and said nothing more. Not looked into.
 - A declared `driver: breakout` entry gets neither the reset to Auto nor a
   detach on a Forget (it is attached from the start by declaration).
+
+### 16.11 A Forget the bridge missed (2026-11-16)
+
+The controller sends a Forget's `setdefault` once (§16.10 item 3). A lane
+switch whose bridge is down at that moment (a restart, a package install)
+comes back with its adopted state file, is attached before its parent's
+loop starts (§16.5), and is refused on every inform from then on: the cage
+stayed the lane switch's, its own settings were not applied to the lanes,
+and nothing in UniFi could change that. The way out was removing
+`state/<name>/device.json` by hand.
+
+**What an HTTP 400 on a known key means.** Every reply log there is was
+read for it: the fixtures, and on their hosts (status lines only, nothing
+copied off whole) the deployed reply logs of nine bridges in the container
+(2026-09-20 to 2026-11-16) and the DX010's own two. About 500 000 informs
+on adopted keys, across controller restarts, the 10.6.109 and 11.0.99
+upgrades, and the four failed 11.0.97 migrations with their rollbacks
+(2026-11-12 and 11-13, 09:29 UTC each night):
+
+| Seen | When | Meaning |
+|---|---|---|
+| 400, empty body, on the **adopted** key | only after a Forget: the lane switch, three informs over 2 min 28 s after its `setdefault` (2026-11-16, until its state file was removed) | the controller no longer knows the key |
+| 400, empty body, on the **default** key | for 24 s to 100 s after a Forget, then 404 (the Arista 2026-09-20, proxmox-1 the same day, ups-1 2026-09-27: 2 to 10 informs) | a just-forgotten device, not yet pending |
+| connection refused, reset, EOF, deadline, 503 | every controller restart and upgrade (the PDU's 2026-10-01: four refusals over 4 min 39 s, one 503, then 200; the Arista across 11.0.97's install: one refusal, then 200) | the controller is down or starting; the adopted key is answered 200 again as soon as it is up |
+| 400 with a body, `invalid inform_ip` | never in a reply log (`protocol-connection-points.md` §2) | the inform is malformed; not a key |
+
+So no adopted key has ever been answered 400 except after a Forget. What
+is **not** captured: a controller restored from a backup older than the
+adoption, or a device moved to another site (both would refuse the key,
+and both mean the device is not adopted there either).
+
+**The rule** (`internal/informloop/rejectedkey.go`): three empty-body
+HTTP 400s in a row on informs sent on the adopted key, over at least two
+minutes from the first, are the Forget's `setdefault`. The loop applies
+`{"_type":"setdefault"}` through the session exactly as if the controller
+had sent it: the key and the stored push dropped, back to PENDING on the
+default key, `OnUnadopted` (the detach). The reply log marks the record
+`"inferred": "setdefault"`. Any other answer ends the run; an inform with
+no answer at all neither counts nor ends it. The count is the recorded
+run; the time keeps a restarted bridge's 10 s start-up cadence (it has no
+interval from the controller yet) from reaching three in 20 s.
+
+**Only automatic lane switches act on it** (`autoLaneOptions` sets
+`ForgetOnRejectedKey`). Every other device logs the run once as a
+WARNING, with the way out, and keeps its key. A wrong "forgotten" costs a
+lane switch one click (Adopt) and the cage's own settings back on its
+lanes for that time; on a real switch it drops the adoption, and the
+evidence is one site's controller. A declared `driver: breakout` entry is
+attached by declaration and does not act on it either (§16.10's last open
+item).
+
+**Tests** (`internal/informloop/replay_lane_rejected_key_test.go`): the
+recorded forget with its `setdefault` withheld (released on the third
+400, nothing written from then on, the next inform on the default key);
+the same 400s on a device without the rule (one warning, the key kept);
+two controller restarts from the deployed logs (status lines,
+`controller-10.6.109/statuses-*.ndjson`; whether the console ran 10.6.106
+or 10.6.109 on 2026-10-01 is not recorded: never released); the default
+key's 400s after the 10.6.106 Forget (nothing changes).
