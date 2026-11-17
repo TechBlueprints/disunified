@@ -213,6 +213,13 @@ now on the UniFi UI is the device's configuration: names, port state,
 speed, VLANs, FEC, storm control, STP, aggregation, mirroring, and on a power
 device the outlets (`control.outlets`).
 
+With `api_url` and an API key set, a device claimed as anything but the USW
+Leaf also takes the firmware updates the controller offers that model, with
+no click: the bridge asks for the offered version a minute after it connects
+and then checks hourly. Nothing is installed on your device. The update only
+changes the version the UI shows, and the update badge goes away. A
+`firmware:` you set in the config file switches this off for that device.
+
 The device's own management address follows the controller's **IP
 Settings** too, with no key, for every driver that can write it. A static
 setting is applied; DHCP only when it replaces a static setting you chose,
