@@ -135,6 +135,7 @@ CL91 = False` before and after.
 | 2. CONFIG_DB, past the CLI | `sonic-db-cli CONFIG_DB hset 'PORT\|Ethernet11' fec rs` | CONFIG_DB and APPL_DB took `rs`; orchagent logged `doPortTask: Unsupported port Ethernet11 FEC mode rs` and dropped the task (its own check of the same list, `isFecModeSupported`) | unchanged: ASIC_DB `SAI_PORT_FEC_MODE_FC`, `CL74 = True` |
 | 3. The SAI, past orchagent | `SAI_PORT_ATTR_FEC_MODE = SAI_PORT_FEC_MODE_RS` pushed into ASIC_DB's operation queue (`sonic.md` §11.9's method, op `Sset`) | **`SAI_STATUS_SUCCESS`**, and ASIC_DB's row then said `SAI_PORT_FEC_MODE_RS` | **`CL74 = False, CL91 = False`: no FEC at all.** The SAI turned FC off, did not turn RS on, and reported success |
 | 4. The chip's SDK shell, past the SAI | `phy control xe9 CL74=0`, then `phy control xe9 CL91=1` | FC off: accepted. RS on: **`Failed to execute the diagnostic command. Error: Operation failed.`** | `CL91 = False` |
+| 4 again, on lane 1 (`Ethernet8`, `xe6`): the lane a QSA uses | `phy control xe6 CL91=1`, with FC off first and then with FC still on | **`Operation failed`** both ways | `CL91 = False` |
 | Control | the same `phy control ce2 CL91=1` on an empty whole cage (100G) | accepted | `CL91 = True` (then restored) |
 
 So the answer to "can we set it anyway" is no, at the lowest layer there
@@ -154,6 +155,23 @@ Two things the run adds beyond the answer:
   read after every step and never changed; nothing restarted; orchagent
   discarded the probe's reply with its usual warning (`wait: got not
   expected response: SAI_STATUS_SUCCESS:getresponse`).
+
+**A QSA does not change this.** The adapter is passive: it wires an SFP or
+SFP28 to lane 1 of the cage, and the FEC is done by the chip's port
+behind that lane, which is the same single-lane 25G port as any split
+lane (tested on lane 1 for that reason). On a switch whose chip does
+single-lane RS, a QSA28 port runs RS; on this one it runs FC or none.
+
+**An active optical breakout cable** (expected; not yet in the switch):
+the EEPROM code decides. `100G AOC ... or 25GAUI C2M AOC` comes in two
+grades: code 01h (worst BER 5e-5) expects RS, code 18h (BER 1e-12 or
+better) needs no FEC. On a split lane here the 18h grade is within the
+standard with FEC off; the 01h grade can only be run with FC or none,
+outside what its budget assumes. Two more things to expect: the code
+does not say "breakout" (the driver's module rule lists both AOC grades
+as running whole or split, so Auto will not split the cage by itself),
+and the far ends must be set to the same FEC as the lanes, since optics
+do not negotiate it.
 
 Not answered, because it needs a far end: whether a 25G optic links on
 such a lane with FC or with no FEC. The standard does not provide for it
