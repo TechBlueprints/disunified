@@ -182,3 +182,44 @@ func TestUnreadableLayoutRecordFallsBackToTheSnapshot(t *testing.T) {
 		t.Errorf("fresh %v, wrote:\n%s", r.l.freshPorts, w)
 	}
 }
+
+// asTemplate marks guest id on node a template in the capture every later
+// collect reads, as `qm template` would. Neither capture holds a template,
+// so a captured guest is made one, as the driver's own tests do.
+func (r *layoutRun) asTemplate(node, id string) {
+	r.t.Helper()
+	head := "## /etc/pve/nodes/" + node + "/qemu-server/" + id + ".conf\n"
+	if !strings.Contains(r.fr.Fixture, head) {
+		r.t.Fatalf("no %s in the capture", head)
+	}
+	r.fr.Fixture = strings.Replace(r.fr.Fixture, head, head+"template: 1\n", 1)
+}
+
+// The log says what the layout change was. A guest made a template only
+// frees its ports: the line names them and withholds nothing (seen live
+// 2026-11-17 as "new, changed or arrived ports [] are not written until
+// ..."). A guest that arrives still gets the withholding line, with its port.
+func TestLayoutChangeLogSaysWhatChanged(t *testing.T) {
+	const withholds = "port layout changed: new, changed or arrived ports ["
+
+	r := startLayoutRun(t, guestHere, t.TempDir())
+	r.asTemplate("proxmox-2", "999")
+	r.cycle()
+	s := r.log.String()
+	if !strings.Contains(s, "port layout changed: ports [25(vm999-net0/tap999i0)") || !strings.Contains(s, "] released, none new, changed or arrived") {
+		t.Errorf("the freed port is not named as released:\n%s", s)
+	}
+	if strings.Contains(s, withholds) || strings.Contains(s, "not written until") || strings.Contains(s, "[]") {
+		t.Errorf("a released slot is logged as something withheld:\n%s", s)
+	}
+	if len(r.l.freshPorts) != 0 {
+		t.Errorf("a released slot made ports fresh: %v", r.l.freshPorts)
+	}
+
+	r = startLayoutRun(t, guestAway, t.TempDir())
+	r.now(guestHere)
+	r.cycle()
+	if s := r.log.String(); !strings.Contains(s, withholds) || !strings.Contains(s, "25(vm999-net0/tap999i0)") || !strings.Contains(s, "] are not written until the controller's config matches them") || strings.Contains(s, "released") {
+		t.Errorf("the arrived guest's port is not logged as withheld:\n%s", s)
+	}
+}

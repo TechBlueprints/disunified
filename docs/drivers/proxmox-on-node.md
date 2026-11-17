@@ -277,6 +277,12 @@ it like every later one:
   does (the seed, or the port set in the UI), or
   `control.allow_initial_changes: true`, or removing `layout.json` while
   the bridge is stopped.
+- **The log line says what changed.** Fresh ports are listed as
+  withheld (`new, changed or arrived ports [...] are not written until
+  ...`); a change that only frees ports (a guest made a template) names
+  them as released and withholds nothing (`ports [...] released, none
+  new, changed or arrived`; until 2026-11-17 it printed the withholding
+  line with an empty list). `TestLayoutChangeLogSaysWhatChanged`.
 - **A start whose first collect equals the baseline is as it was:** no
   seed call, no hold, no log line. Every driver's replay and contract test
   passes unchanged.
