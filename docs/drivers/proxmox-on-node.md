@@ -361,6 +361,13 @@ other bridge.
 Update afterwards: `dpkg -i` the new package on a node; postinst restarts
 that node's bridge only.
 
+Once the nodes have settled on their own bridges, remove the old bridge's
+public key from root's `authorized_keys`: nothing dials the nodes any more.
+On a cluster that file is one for every node
+(`/root/.ssh/authorized_keys` is a link to `/etc/pve/priv/authorized_keys`),
+so one edit on one node covers them all. The way back then starts with
+putting that key back.
+
 ## 8. What ran live (2026-11-17)
 
 A three-node Proxmox VE 9.1.6 cluster, each node adopted and bridged over
@@ -402,6 +409,12 @@ with all three local:
 | Live migration between two local bridges | The same, with the third bridge silent. |
 | Guest stopped and made a template | Its owner ran `qm set <id> --delete tags` on the next poll and the slot was released on every node. |
 | Guest destroyed | Port 29 back to `Open-29`, disabled. |
+
+An update ran the same day: `dpkg -i` of a newer package on one node at a
+time restarted that node's bridge alone (`resuming adopted state`, `0 of 54
+ports changed`, `inform: HTTP 200` within two seconds). The SSH bridge's
+key was then removed from the cluster's `authorized_keys` and is refused by
+every node.
 
 Not run: a node rebooting into its own bridge (the unit's ordering after
 `pve-cluster` and the guard cover it; to be read from the journal at each
