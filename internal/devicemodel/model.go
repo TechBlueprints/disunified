@@ -1244,3 +1244,16 @@ type Planner interface {
 type VLANPlanner interface {
 	PlanPortsWithVLANs(desired []PortDesired, ids []int) (changed []int)
 }
+
+// LayoutPlanner is an optional Controller capability beside Planner, for a
+// driver whose apply can change a port's layout (split or join a breakout
+// cage) by a rule of its own as well as by the controller's speed: a
+// module's native layout where the controller says auto. PlanPorts leaves
+// those writes out (no controller setting can match them), so the loop
+// cannot learn from it that the apply changes the layout. PlanLayout
+// reports the ports whose layout ApplyPorts(desired) would change, the
+// driver's own writes included. The loop does not take such a port for a
+// new one at the next collect: the controller's config asked for it.
+type LayoutPlanner interface {
+	PlanLayout(desired []PortDesired) []int
+}

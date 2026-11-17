@@ -40,7 +40,11 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   device.** A forced lane speed left on the cage's port from its time as a
   fold (SFP28) is invalid once the cage reports QSFP28, and blocks all the
   parent's saves (`api.err.InvalidFecMode`, the cage's `port_idx`); main
-  sets that port to Auto at the adoption (`unifiapi.CageToAuto`).
+  sets that port to Auto at the adoption (`unifiapi.CageToAuto`), and for
+  a declared entry also at the start, since it owns the cage from then.
+- **A declared entry is never detached**: a Forget of it is logged (the
+  file still declares it; Adopt or removing the entry ends it). The
+  decision and its reason are `breakout.md` §0.
 - **A Forget is `_type: setdefault`, sent once**; afterwards the old key
   gets HTTP 400 for good. A lane switch that missed it stays attached:
   remove its state file and restart (open, `breakout.md` §16.10).

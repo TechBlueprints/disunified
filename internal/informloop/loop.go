@@ -259,8 +259,10 @@ type Loop struct {
 	layoutByPort map[int]string
 	// wrotePorts are the ports a port apply wrote from the controller's
 	// config since the last collect: a layout change on one of them (a
-	// breakout the push asked for) is the controller's own doing, not a
-	// port it knows nothing about, so it does not make the port fresh.
+	// breakout the push asked for, or one the driver's own rule made for the
+	// push's auto speed: devicemodel.LayoutPlanner) is the controller's own
+	// doing, not a port it knows nothing about, so it does not make the
+	// port fresh.
 	wrotePorts map[int]bool
 	faultSig   string
 	childNoted map[int]string // per child's port, the condition last logged (children.go)
@@ -1555,14 +1557,26 @@ func (l *Loop) holdInitialOutletPush(ver string, desired []devicemodel.OutletDes
 // match; found live on the DX010, 2026-11-07, docs/drivers/sonic.md 11.11).
 // Recorded whether or not the apply succeeds: a batch that fails after the
 // breakout still changed the layout at the controller's request.
+//
+// The driver's own split or join for the push's auto speed (a module's
+// native layout) is the controller's doing too, but PlanPorts leaves it out;
+// a driver that can make one says so through LayoutPlanner. Without it the
+// DX010's cage 3, split by the module rule after Auto was saved on it, was
+// marked fresh and withheld until the next restart (2026-11-16,
+// docs/drivers/breakout.md 16.10).
 func (l *Loop) applyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
+	var wrote []int
 	if planner, ok := l.cfg.Controller.(devicemodel.Planner); ok {
-		for _, idx := range planner.PlanPorts(desired) {
-			if l.wrotePorts == nil {
-				l.wrotePorts = map[int]bool{}
-			}
-			l.wrotePorts[idx] = true
+		wrote = append(wrote, planner.PlanPorts(desired)...)
+	}
+	if lp, ok := l.cfg.Controller.(devicemodel.LayoutPlanner); ok {
+		wrote = append(wrote, lp.PlanLayout(desired)...)
+	}
+	for _, idx := range wrote {
+		if l.wrotePorts == nil {
+			l.wrotePorts = map[int]bool{}
 		}
+		l.wrotePorts[idx] = true
 	}
 	return l.cfg.Controller.ApplyPorts(ctx, desired)
 }

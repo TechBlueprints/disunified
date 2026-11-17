@@ -844,7 +844,14 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   is never seen by orchagent (probed); the plan collects those writes into
   one `python3 ... disunified-appl '<json>'` call at the end of the batch.
   The group, the FDB entries and the TLVs are lost on a swss or lldp
-  restart and come back with the next reconcile. **`learn_mode` is in no
+  restart and come back with the next reconcile. **lldpd also drops a
+  port's TLVs when a breakout deletes it, lane 1's included though it keeps
+  the name** (DX010, 2026-11-16): the breakout's effect forgets them in the
+  plan's copy, so the split's own batch writes them on every new lane
+  (`docs/drivers/breakout.md` §16.10). **A split or join the module rule
+  makes is reported to the loop through `PlanLayout`**
+  (`devicemodel.LayoutPlanner`): `PlanPorts` leaves it out, and the loop
+  took such a cage for a new port and withheld it until a restart. **`learn_mode` is in no
   YANG model**: a breakout's batch hdels every `learn_mode` before `config
   interface breakout` and sets it again after (the ASIC keeps dropping). A
   static FDB entry on a port without link is not reported in the MAC table

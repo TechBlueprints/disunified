@@ -86,6 +86,9 @@ type plan struct {
 	cageDown bool
 	owned    map[int]bool
 	attached map[int]bool // the device's plan: cages with a lane switch, split or not
+	// layout are the ports whose breakout this plan writes (a split or a
+	// join), by the controller's speed or the module's (PlanLayout).
+	layout map[int]bool
 }
 
 // pc is the PortChannel of the plan's aggregate lag.
@@ -202,7 +205,7 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	}
 	scopes := c.mtuScopes(cage)
 	c.mu.Unlock()
-	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, mtuScopes: scopes, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, mtuScopes: scopes, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}, layout: map[int]bool{}}
 	if pushed != nil {
 		// As EnsureVLANs would leave it: the list (the native stand-in
 		// out) and every VLAN in it on the switch -- in the plan's copy.
@@ -1492,6 +1495,21 @@ func nonNil(ids []int) []int {
 		return []int{}
 	}
 	return ids
+}
+
+// PlanLayout implements devicemodel.LayoutPlanner: the ports whose breakout
+// ApplyPorts(desired) would write, the module rule's included (§10.9).
+func (c *Collector) PlanLayout(desired []devicemodel.PortDesired) []int {
+	pl, err := c.newPlan(desired, false)
+	if err != nil {
+		return nil
+	}
+	out := make([]int, 0, len(pl.layout))
+	for idx := range pl.layout {
+		out = append(out, idx)
+	}
+	sort.Ints(out)
+	return out
 }
 
 // EnsureVLANs implements devicemodel.VLANController: it creates the
