@@ -177,6 +177,52 @@ Not answered, because it needs a far end: whether a 25G optic links on
 such a lane with FC or with no FEC. The standard does not provide for it
 (section 3).
 
+## 6. Combinations to try with real far ends (not run)
+
+Everything above is the standard, the modules' own word, and what the chip
+will accept. None of it shows a link. This is the matrix for a host whose
+25G lanes run FC or nothing (`25GBASE-CR-S`), to be run when the parts and
+far ends are on hand. Each row is one lane, on a split cage or behind a
+QSA (lane 1); the switch side can only be **none** or **FC**.
+
+For every row, record: the module's EEPROM code at both ends; the far
+end's device, port and the FEC modes it offers; auto-negotiation on or off
+at the far end (the lanes here run it off, and the standard resolves a
+DAC's FEC by auto-negotiation, so a far end left on auto may not link
+until it is forced); link up or not and how long it took; what the chip
+runs (`bcmcmd "phy control <xeN>"`); the FEC corrected and uncorrected
+counters and CRC errors after five minutes of traffic; link flaps.
+
+| Medium (code) | Switch | Far end | By the standard | What it shows |
+|---|---|---|---|---|
+| DAC, CA-25G-N (0Dh) | none | none | allowed | the no-FEC baseline |
+| DAC, CA-25G-N | FC | FC | allowed | FC on a cable that does not need it |
+| DAC, CA-25G-S (0Ch) | FC | FC | allowed: the CR-S case | the intended mode for these lanes |
+| DAC, CA-25G-S | none | none | not allowed (FC or RS) | whether a short S cable holds with nothing |
+| DAC, CA-25G-L (0Bh) | FC | FC | not allowed (RS only) | whether a short L cable holds on FC |
+| DAC, CA-25G-L | none | none | not allowed | the same with nothing |
+| any DAC | FC | RS | mismatch | the symptom of a FEC mismatch: no link, or link with errors |
+| any DAC | none | FC | mismatch | the same, the other way |
+| 25G SR optic (02h) | none | none | not allowed (RS required) | whether a short fibre holds without the FEC its budget assumes |
+| 25G SR optic | FC | FC | not defined for optics | whether both ends accept it and what the error rate is |
+| 25G SR optic | none or FC | RS | mismatch | the symptom, for the record |
+| 25G LR optic (03h) | none / FC / against RS | as SR | as SR | the same three, over single-mode |
+| AOC, BER 1e-12 grade (18h) | none | none | allowed | should be clean |
+| AOC, BER 5e-5 grade (01h) | none | none | not allowed (RS required) | whether it holds |
+| AOC, 01h | FC | FC | not defined | the same with FC |
+| 10G optic or DAC (lane at 10G) | none | none | the only mode there is | the 10G baseline on a 25G-capable lane |
+
+After the manual rows, the same media on "auto" (no FEC pushed), to see
+what the driver's module rule picks for each code and whether that is the
+row that worked: the rule's table has one known error (25G LR and ER map
+to "disabled" where the standard says RS, section 4), and on these lanes
+"disabled" or FC are the only choices anyway.
+
+What a result means for the code: a medium that links cleanly only with
+one of the two modes tells the module rule which to pick on this host; a
+medium that links with neither is to be reported to the operator as
+unsupported on a split lane, not left alone silently.
+
 ## Sources
 
 - Intel, *25 Gb Intel Ethernet Media Guide*, application note 630739 rev
