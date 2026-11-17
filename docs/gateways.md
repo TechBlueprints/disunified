@@ -103,4 +103,10 @@ issue #6 asks the same question of unifi-emu
   from an adopted gateway is a command answered, not a config applied.
   Whether a read-only bridge then sits in permanent provisioning is still
   open. This repo's `internal/device` has no notification reply path
-  (`inform_as_notif`), so a gateway here would need one.
+  (`inform_as_notif`), so a gateway here would need one. Until then the loop
+  makes such a stall loud: an unhandled command that comes again within ten
+  minutes is logged as a `WARNING` with its count, and every `UNHANDLED` line
+  names the reply's keys (`internal/informloop/unhandled.go`). In the
+  deployed bridges' reply logs (2026-09-20 to 2026-11-17, about 475 000
+  replies) no command carries a `request_id`, and each command the session
+  did not handle at the time came once or twice in all.

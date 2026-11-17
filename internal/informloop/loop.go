@@ -292,6 +292,9 @@ type Loop struct {
 	rejectRun    int
 	rejectSince  time.Time
 	rejectWarned bool
+	// unhandled follows each unhandled command's and reply type's run of
+	// repeats (unhandled.go). Touched by informOnce only.
+	unhandled map[string]*unhandledRun
 	// now is the loop's clock (time.Now; tests replay recorded times).
 	now func() time.Time
 
@@ -565,9 +568,9 @@ func (l *Loop) informOnce(ctx context.Context) {
 				lines = append(lines, fmt.Sprintf("mgmt_cfg: %q", maskAuthKey(e.Text)))
 			}
 		case inform.EffectUnknownCmd:
-			lines = append(lines, fmt.Sprintf("UNHANDLED cmd %q", e.Text))
+			lines = append(lines, l.noteUnhandled(now, "cmd", e.Text, payload))
 		case inform.EffectUnknownType:
-			lines = append(lines, fmt.Sprintf("UNHANDLED _type %q", e.Text))
+			lines = append(lines, l.noteUnhandled(now, "_type", e.Text, payload))
 		case inform.EffectDecodeError:
 			lines = append(lines, fmt.Sprintf("undecodable reply payload: %s", e.Text))
 		case device.EffectSystemCfg:
