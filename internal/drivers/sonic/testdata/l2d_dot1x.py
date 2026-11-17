@@ -372,6 +372,23 @@ pump(g)
 state("row", STORE["STATE_DB"].get(l2d.DOT1X_TABLE + "|Ethernet120"))
 state("chain", CHAINS.get(l2d.DOT1X_CHAIN))
 
+step("leftovers")
+# A SIGKILL left authenticators no l2d knows: one on a port no longer
+# controlled (its pid file there), a second on the watched port (no pid
+# file names it). The next l2d stops both and adopts the one its pid file names.
+for port, pid in (("Ethernet0", 4900), ("Ethernet120", 4901)):
+    os.makedirs("%s/%d" % (l2d.PROC, pid), exist_ok=True)
+    with open("%s/%d/cmdline" % (l2d.PROC, pid), "w") as f:
+        f.write("%s\0-B\0-P\0x\0%s/%s.conf\0" % (l2d.HOSTAPD, l2d.DOT1X_RUN, port))
+    HOSTAPDS[port + "-left"] = (pid, Hostapd("%s/ctrl/%s-left" % (l2d.DOT1X_RUN, port)))
+with open(l2d.DOT1X_RUN + "/Ethernet0.pid", "w") as f:
+    f.write("4900\n")
+g = l2d.Dot1xGuard(l2)
+g.sync(CONF)
+pump(g)
+state("hostapd", sorted(HOSTAPDS))
+state("pidfile Ethernet0", os.path.exists(l2d.DOT1X_RUN + "/Ethernet0.pid"))
+
 step("unwatched")
 g.sync({"dot1x": {}})
 state("chain", CHAINS.get(l2d.DOT1X_CHAIN))

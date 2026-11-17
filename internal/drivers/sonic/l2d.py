@@ -2543,6 +2543,7 @@ class Dot1xGuard(object):
         self.nas_ip = ""
         self.own = ""
         self.started = {}  # interface -> the hostapd config text it was started with
+        self.reaped = False  # leftover authenticators looked for (the first sync)
         self.last_start = {}  # interface -> time of the last start
         self.socks = {}  # interface -> event socket (attached)
         self.admitted = {}  # interface -> set of MACs
@@ -2686,6 +2687,9 @@ class Dot1xGuard(object):
         # A port leaving the config: its authenticator stops, its admissions go.
         for port in sorted(set(self.started) - {p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers}):
             self.stop(port)
+        if not self.reaped:  # once per l2d: what an l2d before this one left running
+            self.reaped = True
+            self.reap({p for p, m in want.items() if m in DOT1X_AUTH_MODES and servers})
         for port in sorted(set(self.admitted) - set(want)):
             self.revoke_all(port, "no longer controlled")
         self.want = want
@@ -3010,6 +3014,7 @@ class Dot1xGuard(object):
         if now - self.last_start.get(port, 0) < DOT1X_RESTART_EVERY:
             return
         self.last_start[port] = now
+        self.reap(self.auth_ports - {port})  # never a second authenticator on the port
         if not os.access(HOSTAPD, os.X_OK):
             return
         os.makedirs(DOT1X_RUN + "/ctrl", mode=0o700, exist_ok=True)
@@ -3022,6 +3027,48 @@ class Dot1xGuard(object):
             log("802.1X: authenticator started on %s (%s, %d RADIUS servers)" %
                 (port, self.want.get(port), len(self.servers)))
             self.attach(port)
+
+    def hostapds(self):
+        """Every hostapd of this daemon's running on the switch, from /proc
+        (not its pid files: a pid file can be gone or name another process):
+        [(pid, interface)], the interface from its config's name."""
+        out = []
+        try:
+            pids = [p for p in os.listdir(PROC) if p.isdigit()]
+        except OSError:
+            return out
+        for p in pids:
+            argv = rd("%s/%s/cmdline" % (PROC, p)).split("\0")
+            if not argv or argv[0] != HOSTAPD:
+                continue
+            conf = [a for a in argv if a.startswith(DOT1X_RUN + "/") and a.endswith(".conf")]
+            if conf:
+                out.append((int(p), os.path.basename(conf[-1])[:-len(".conf")]))
+        return sorted(out)
+
+    def reap(self, keep):
+        """Stop every authenticator but the one each port in keep has by its
+        pid file (11.26.14). After a SIGKILL or a crash l2d's hostapds run on
+        (KillMode=process); one on a port no longer controlled, or one its pid
+        file does not name (a second on the port), kept authorising hosts no
+        l2d watches. Its hosts are the row's, dropped as stale."""
+        for pid, port in self.hostapds():
+            named = self.pid(port) == pid
+            if port in keep and named:
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                continue
+            log("802.1X: leftover authenticator on %s (pid %d) stopped" % (port, pid), syslog.LOG_WARNING)
+            if named:
+                self.detach(port)
+                self.started.pop(port, None)
+                for path in (self.pidfile(port), "%s/%s.conf" % (DOT1X_RUN, port)):
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
 
     def stop(self, port):
         self.detach(port)
@@ -3342,6 +3389,7 @@ class Dot1xGuard(object):
             names = []
         for port in sorted(set(names) | set(self.started)):
             self.stop(port)
+        self.reap(set())
         self.admitted, self.want = {}, {}
         self.written = None
         self.write_chain([])
