@@ -5295,7 +5295,9 @@ and no `ACL_TABLE` row). It now writes a portless placeholder row first
 (`hset 'ACL_TABLE|<t>' type L3 stage ingress policy_desc 'disunified
 placeholder'`: orchagent makes a table bound to nothing), deletes the rules,
 then removes the table. Verified by hand on the DX010 (three orphans
-healed, no KeyError) and in `TestOrphanGuardRulesGoBehindAPlaceholder`,
+healed, no KeyError) and through the deployed bridge (aaa3342, 2026-11-17:
+a hand-made guard table and orphan guard rules, twice each, all removed,
+two behind the placeholder; caclmgrd NRestarts unchanged, no KeyError) and in `TestOrphanGuardRulesGoBehindAPlaceholder`,
 whose rows are the three hand-written ones from the log. The FixtureRunner
 records every rule write that would have met an absent table
 (`CaclmgrdKeyErrors`); the guard on/off test asserts none.
