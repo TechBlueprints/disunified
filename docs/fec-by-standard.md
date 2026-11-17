@@ -4,7 +4,8 @@ What forward error correction a link is supposed to run, in three layers:
 what the standards define per speed and medium, what a module's EEPROM
 says it needs, and what a switch says it can do. Written to judge the
 DX010's "25G lanes support only none and FC" before trying to override it.
-Nothing here was tested by changing a switch.
+Sections 1 to 4 are research; section 5 is a test run on the DX010 the
+same day.
 
 Names: **FC** = BASE-R FEC, "fire code", IEEE 802.3 Clause 74 (UniFi's
 `cl-74` / `fc-fec`). **RS** = Reed-Solomon RS(528,514): Clause 91 at 100G,
@@ -119,20 +120,44 @@ What a CR-S lane means in practice:
 The controller's own rule (a FEC only at 25G on SFP28, at 40G and 100G on
 QSFP28, never at 10G or 50G; `breakout-lag.md` §7) lines up with section 1.
 
-## 5. Setting RS on a 25G lane anyway (not done)
+## 5. Setting RS on a 25G lane anyway: tried, and the chip refuses (2026-11-16)
 
-The register's test stands: write `fec rs` into CONFIG_DB on a split lane
-past the CLI's check, read orchagent's and the SAI's answer, restore. What
-this research adds:
+Run on the DX010 (202511 image), on the fourth lane of the split cage
+(`Ethernet11`, the chip's `xe9`, no link), with the test lock held, each
+layer restored before the next. The chip's shell shows a port's two FEC
+switches directly (`bcmcmd "phy control <port>"`: `CL74` is FC, `CL91` is
+RS), which is the readback used throughout: the lane read `CL74 = True,
+CL91 = False` before and after.
 
-- The likely answer is no: the report is consistent with the chip's
-  generation, and a correct "no" would cost a failed SAI call, which on
-  this stack can restart swss (`sonic.md` §11.9) and drop the uplink
-  briefly.
-- A yes would matter only for CA-L DACs and for optics on lanes. For the
-  cables in the unit it changes nothing.
-- A link test needs a far end that runs Clause 108 RS at 25G; acceptance
-  by the chip alone proves the register write, not a link.
+| Layer | What was done | Answer | The chip afterwards |
+|---|---|---|---|
+| 1. SONiC's CLI | `config interface fec Ethernet11 rs` (known from before) | refused: `fec rs is not in ['none', 'fc']` | unchanged |
+| 2. CONFIG_DB, past the CLI | `sonic-db-cli CONFIG_DB hset 'PORT\|Ethernet11' fec rs` | CONFIG_DB and APPL_DB took `rs`; orchagent logged `doPortTask: Unsupported port Ethernet11 FEC mode rs` and dropped the task (its own check of the same list, `isFecModeSupported`) | unchanged: ASIC_DB `SAI_PORT_FEC_MODE_FC`, `CL74 = True` |
+| 3. The SAI, past orchagent | `SAI_PORT_ATTR_FEC_MODE = SAI_PORT_FEC_MODE_RS` pushed into ASIC_DB's operation queue (`sonic.md` §11.9's method, op `Sset`) | **`SAI_STATUS_SUCCESS`**, and ASIC_DB's row then said `SAI_PORT_FEC_MODE_RS` | **`CL74 = False, CL91 = False`: no FEC at all.** The SAI turned FC off, did not turn RS on, and reported success |
+| 4. The chip's SDK shell, past the SAI | `phy control xe9 CL74=0`, then `phy control xe9 CL91=1` | FC off: accepted. RS on: **`Failed to execute the diagnostic command. Error: Operation failed.`** | `CL91 = False` |
+| Control | the same `phy control ce2 CL91=1` on an empty whole cage (100G) | accepted | `CL91 = True` (then restored) |
+
+So the answer to "can we set it anyway" is no, at the lowest layer there
+is: the chip's own software development kit will not enable Clause 91/108
+RS on a single 25G lane of this switch, while the identical command works
+on a four-lane 100G port. The SAI's `none, fc` for a 25G lane is honest.
+What the standard calls a `25GBASE-CR-S` host is what the DX010's split
+lanes are.
+
+Two things the run adds beyond the answer:
+
+- **The SAI's "success" at layer 3 is the dangerous case.** A patched
+  orchagent that skipped the support check (the cure that worked for port
+  mirroring, `sonic.md` §11.10) would leave a lane that every database
+  says runs RS while the chip runs no FEC. The check must stay for FEC.
+- The neighbours on the same chip core (`xe6`-`xe8`) and the uplink were
+  read after every step and never changed; nothing restarted; orchagent
+  discarded the probe's reply with its usual warning (`wait: got not
+  expected response: SAI_STATUS_SUCCESS:getresponse`).
+
+Not answered, because it needs a far end: whether a 25G optic links on
+such a lane with FC or with no FEC. The standard does not provide for it
+(section 3).
 
 ## Sources
 

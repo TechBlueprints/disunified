@@ -391,6 +391,18 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   `cfg_storm` (`PORT_STORM_CONTROL`) and `platform_json`: `no`, or
   platform.json's `interfaces` block reduced to each parent's `index`,
   `lanes` and `breakout_modes` (older captures say `yes`).
+- **A 25G lane cannot run RS-FEC, and that is the chip, not a table
+  (tested 2026-11-16, `docs/fec-by-standard.md` §5).** The CLI, orchagent
+  (`isFecModeSupported`), and the chip's SDK shell (`phy control xe9
+  CL91=1`: "Operation failed", while the same command works on a 100G
+  port) all refuse it. The SAI is the one layer that says
+  `SAI_STATUS_SUCCESS` to `SAI_PORT_FEC_MODE_RS` on a lane, and it then
+  runs the lane with **no FEC** (`CL74 = False, CL91 = False`): never
+  bypass orchagent's FEC check. `bcmcmd "phy control <xeN>"` shows a
+  port's real FEC (`CL74` FC, `CL91` RS); `bcmcmd "show pmap"` maps SONiC's
+  lane numbers (the physical column) to the chip's port names. A split
+  lane is the standard's `25GBASE-CR-S` host: CA-N and CA-S DACs, no CA-L,
+  no standard 25G optic.
 - **FEC follows the module where UniFi says auto (§10.3, `optic.go`).** A
   push without `port.N.fec` gets the FEC the cage's module calls for at the
   interface's configured speed (`moduleFEC`, by xcvrd's compliance name),
