@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -249,5 +250,25 @@ func TestLaneSwitches(t *testing.T) {
 	}
 	if got := AutoLaneSwitchName("sw", 3); got != "sw-cage3" {
 		t.Errorf("name %q", got)
+	}
+}
+
+// A bridge on the device itself (options.transport: local) needs neither
+// url: nor ssh:; any other entry still needs one (docs/drivers/
+// proxmox-on-node.md §6).
+func TestLocalTransportNeedsNoURLOrSSH(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.yaml")
+	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: pve-1\n    driver: proxmox\n    ip: 192.0.2.11\n    options:\n      transport: local\n"), 0o644)
+	f, err := Load(p)
+	if err != nil {
+		t.Fatalf("transport local without url or ssh: %v", err)
+	}
+	if !LocalTransport(f.Devices[0].Options) {
+		t.Error("LocalTransport: false for transport local")
+	}
+	os.WriteFile(p, []byte("controller:\n  host: 192.0.2.1\ndevices:\n  - name: pve-1\n    driver: proxmox\n    ip: 192.0.2.11\n    options:\n      transport: ssh\n"), 0o644)
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "url or ssh is required") {
+		t.Errorf("transport ssh without ssh: %v", err)
 	}
 }

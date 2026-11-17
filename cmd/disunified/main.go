@@ -439,7 +439,7 @@ func runOne(ctx context.Context, o options) error {
 		sw   devicemodel.Device
 		snap *devicemodel.Snapshot
 	)
-	if o.deviceURL != "" || o.deviceSSH != "" || o.laneDriver {
+	if o.deviceURL != "" || o.deviceSSH != "" || o.laneDriver || config.LocalTransport(o.driverOptions) {
 		if o.driver == "" {
 			return errors.New("no driver named: set -driver / DUI_DRIVER, or driver: in the config file (see -list-drivers)")
 		}
@@ -540,7 +540,7 @@ func runOne(ctx context.Context, o options) error {
 
 	if o.collectOnce {
 		if snap == nil {
-			return errors.New("-collect-once needs -device-url or -device-ssh")
+			return errors.New("-collect-once needs -device-url or -device-ssh (or, in a config file, options.transport: local)")
 		}
 		out := map[string]any{"snapshot": snap, "layout": unifimodel.LayoutOf(snap)}
 		if o.name != "" {

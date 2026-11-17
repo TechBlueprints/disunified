@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the disunified .deb for linux/amd64 or linux/arm64 into dist/
-# (docs/drivers/sonic-on-switch.md §4, §6).
+# (docs/drivers/sonic-on-switch.md §4, §6; docs/drivers/proxmox-on-node.md §7).
 #
 #   scripts/build-deb.sh [amd64|arm64]     (default amd64)
 #
@@ -12,7 +12,7 @@
 #
 # Packing needs dpkg-deb (Linux). Without it -- on a Mac -- the tree is
 # staged and the script prints the dpkg-deb command to run on a host that
-# has it (the switch itself, or a Debian container).
+# has it (the switch or the Proxmox node itself, or a Debian container).
 set -eu
 
 arch=${1:-amd64}
@@ -71,12 +71,13 @@ deb="$root/dist/$name.deb"
 if command -v dpkg-deb >/dev/null 2>&1; then
     dpkg-deb --root-owner-group -b "$stage" "$deb"
     echo "built $deb"
-    echo "on the switch: install it, and make it the copy an image install carries forward:"
+    echo "on a SONiC switch: install it, and make it the copy an image install carries forward:"
     echo "  sudo dpkg -i $name.deb"
     echo "  rm -f /host/disunified/disunified_*.deb && cp $name.deb /host/disunified/"
+    echo "on a Proxmox node (as root): dpkg -i $name.deb"
 else
     echo "staged $stage"
     echo "dpkg-deb is not on this host; pack the staged tree (modes kept) where it is, e.g.:"
-    echo "  COPYFILE_DISABLE=1 tar -C $root/dist/deb -czf $name.tar.gz $name   # then, on a Debian host or the switch:"
+    echo "  COPYFILE_DISABLE=1 tar -C $root/dist/deb -czf $name.tar.gz $name   # then, on a Debian host, the switch or the node:"
     echo "  tar -xzf $name.tar.gz && dpkg-deb --root-owner-group -b $name $name.deb"
 fi

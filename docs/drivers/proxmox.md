@@ -521,7 +521,15 @@ neither another port nor the node's own address.
 
 ## 5. Setup
 
-Per node, once:
+The bridge can also run on each node itself, as a root systemd service from
+the `.deb` with `options.transport: local`: no SSH key to any node, one
+bridge per node, each config naming only its own node, the nodes sharing
+nothing but pmxcfs. Step 1 below is then not needed; steps 2 and 3 are.
+Install and config: [`docs/install.md`](../install.md) §7b; the design, the
+cluster's behaviour with three independent bridges and moving an adopted
+node: [`proxmox-on-node.md`](proxmox-on-node.md). Not yet verified live.
+
+Per node, once (over SSH):
 
 1. **Root SSH with a key.** Put the bridge's public key in
    `/root/.ssh/authorized_keys` on the node. The driver reads over SSH and

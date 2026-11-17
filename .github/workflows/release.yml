@@ -4,8 +4,8 @@
 #                        :1.2 and :latest (a prerelease, v1.2.3-rc1, gets only
 #                        its own tag), plus a GitHub release with the static
 #                        binaries, the .debs (linux/amd64, linux/arm64: the
-#                        bridge on a SONiC switch, docs/install.md §7) and
-#                        their checksums
+#                        bridge on a SONiC switch or a Proxmox node,
+#                        docs/install.md §7, §7b) and their checksums
 #   push to main      -> :edge and :edge-<sha>, for testing before a release
 #
 # Both platforms (linux/amd64, linux/arm64) come from one Go cross-compile per
@@ -138,6 +138,7 @@ jobs:
             echo "The binaries below are static; no runtime dependencies."
             echo
             echo "On a SONiC switch: the \`.deb\`, [docs/install.md §7](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/install.md#7-on-a-sonic-switch)."
+            echo "On a Proxmox VE node: the amd64 \`.deb\`, [docs/install.md §7b](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/install.md#7b-on-a-proxmox-node)."
             if [ -n "$prev" ]; then
               echo
               echo "Changes: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$VERSION"

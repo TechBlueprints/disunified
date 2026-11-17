@@ -2,18 +2,25 @@
 
 The version is the git tag; nothing in the tree records it. `.github/workflows/release.yml`
 does the work: a `v*` tag builds and pushes the multi-arch image to GHCR and
-creates the GitHub release with the static binaries; a push to `main` publishes
-`:edge` so a change can be tried on a real host before it is a release.
+creates the GitHub release with the static binaries and the `.deb`s; a push to
+`main` publishes `:edge` so a change can be tried on a real host before it is a
+release.
 
 | Trigger | Image tags | GitHub release |
 |---|---|---|
-| tag `v1.2.3` | `:v1.2.3`, `:1.2.3`, `:1.2`, `:latest` | yes, with binaries + `SHA256SUMS` |
+| tag `v1.2.3` | `:v1.2.3`, `:1.2.3`, `:1.2`, `:latest` | yes, with binaries, `.deb`s + `SHA256SUMS` |
 | tag `v1.2.3-rc1` | `:v1.2.3-rc1` only (never moves `:latest`) | yes, marked prerelease |
 | push to `main` | `:edge`, `:edge-<sha>` | no |
 
 Platforms: `linux/amd64` and `linux/arm64`, cross-compiled by Go inside one
 build stage, so there is no QEMU and the build takes about as long as two
 `go build`s. Binaries: those two plus `darwin/amd64` and `darwin/arm64`.
+Packages: `disunified_<version>_amd64.deb` and `_arm64.deb`
+(`scripts/build-deb.sh`), the bridge run on the device it presents -- a SONiC
+switch or a Proxmox VE node (`docs/install.md` §7, §7b). The version in the
+package is the tag without its `v`, a prerelease's `-` turned into `~` so it
+sorts below its release. CI builds the amd64 package on every push and lists
+its control file and contents, so a broken package fails there first.
 
 ## One-time setup on GitHub
 

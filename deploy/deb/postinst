@@ -1,7 +1,9 @@
 #!/bin/sh
 # disunified's postinst: runs on install and upgrade (and on a SONiC
 # image's first boot, when rc.local installs the deb carried into the new
-# image's platform directory: docs/drivers/sonic-on-switch.md §5).
+# image's platform directory: docs/drivers/sonic-on-switch.md §5). On a
+# Proxmox node it makes the config and state directories, root only
+# (docs/drivers/proxmox-on-node.md §2).
 set -e
 
 case "$1" in
@@ -25,6 +27,9 @@ if [ -f /host/machine.conf ]; then            # a SONiC host: persist in /host
             printf 'ExecStartPre=-+/usr/bin/timeout 30 /usr/bin/resolv-config.sh start\n'
         fi
     } > /etc/systemd/system/disunified.service.d/sonic.conf
+else                                          # elsewhere (a Proxmox node): root
+    [ -d /etc/disunified ] || install -d -m 0700 -o root -g root /etc/disunified
+    [ -d /var/lib/disunified ] || install -d -m 0700 -o root -g root /var/lib/disunified
 fi
 systemctl enable disunified >/dev/null 2>&1 || true
 if [ -d /run/systemd/system ]; then

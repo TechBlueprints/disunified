@@ -113,6 +113,16 @@ Tests, all from the existing captures in `docs/fixtures/proxmox-9.1.6/`
 
 ### 4.2 `options.transport`
 
+**Built 2026-11-17** (`internal/drivers/proxmox/driver.go`: `openTransport`,
+`openSSH`, `openLocal`; `driver_test.go`, `TestOpenTransport`). Not yet run
+on a node. The review of every `Run` call found nothing that assumes an SSH
+session; the `options.probe` and `options.state_dir` the bridge injects for
+every driver are not read. The config loader and `main` had required
+`url:` or `ssh:` of every device and, without either, ran it with no
+driver; both now take `options.transport: local` as a transport of its own
+(`config.LocalTransport`; `TestLocalTransportNeedsNoURLOrSSH`,
+`TestLocalTransportOpensTheDriver`).
+
 `ssh` (the default) or `local`; anything else is refused in `Open`. As in
 the `sonic` driver (`internal/drivers/sonic/driver.go`, `openLocal`):
 
@@ -135,6 +145,13 @@ SSH runner without dialling; `local` builds without `ssh:`; `local` with an
 `ssh:` naming another user is refused; an unknown value is refused.
 
 ### 4.3 The unit and the package
+
+**Built 2026-11-17** (`deploy/deb/*`, `deploy/config.example.yaml`,
+`docs/install.md` §7b). The package was staged with `scripts/build-deb.sh
+amd64` on a host without `dpkg-deb` and never installed on a node;
+`prerm` and `postrm` needed no change (purge removes only the SONiC
+drop-in directory (`disunified.service.d`) and a symlinked `/etc/disunified`, never the node's
+config or state).
 
 - `deploy/deb/disunified.service`: add `pve-cluster.service` to `After=`
   (a unit name that does not exist elsewhere is ignored, as the SONiC names
@@ -197,6 +214,9 @@ It is a second line behind §4.1, and it closes the same window for a device
 restart on any driver.
 
 ## 6. The on-node config (documentation values)
+
+**Documented 2026-11-17** in `docs/install.md` §7b and
+`deploy/config.example.yaml`.
 
 ```yaml
 controller:

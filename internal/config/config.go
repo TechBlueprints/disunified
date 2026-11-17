@@ -345,8 +345,8 @@ func Load(path string) (*File, error) {
 			return nil, fmt.Errorf("%s: device %q: driver is required", path, s.Name)
 		}
 		lane := s.Driver == LaneDriver
-		if s.URL == "" && s.SSH == "" && !lane {
-			return nil, fmt.Errorf("%s: device %q: url or ssh is required", path, s.Name)
+		if s.URL == "" && s.SSH == "" && !lane && !LocalTransport(s.Options) {
+			return nil, fmt.Errorf("%s: device %q: url or ssh is required (or options.transport: local, for a bridge on the device itself)", path, s.Name)
 		}
 		if lane && (s.URL != "" || s.SSH != "") {
 			return nil, fmt.Errorf("%s: device %q: driver %s has no transport of its own (it goes through options.parent); remove url/ssh", path, s.Name, LaneDriver)
@@ -433,3 +433,11 @@ func Load(path string) (*File, error) {
 
 // APIKey returns the controller API key from the environment ("" if unset).
 func (c Controller) APIKey() string { return os.Getenv(c.APIKeyEnv) }
+
+// LocalTransport reports whether a device's options say the bridge runs on
+// the device itself (options.transport: local): its driver runs commands on
+// this host and needs neither url: nor ssh: (docs/drivers/proxmox-on-node.md
+// §4.2; the sonic driver still wants ssh: for its login user).
+func LocalTransport(opts map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(opts["transport"]), "local")
+}

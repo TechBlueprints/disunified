@@ -27,7 +27,9 @@ Write-up: [`drivers/proxmox.md`](drivers/proxmox.md). Fixture: [`fixtures/proxmo
 ### Requirements on the node
 
 - Root SSH with a key (the driver reads with one `collect.sh` exec per poll
-  and writes with `qm set` / `pct set`; the Proxmox API cannot do the read side).
+  and writes with `qm set` / `pct set`; the Proxmox API cannot do the read side),
+  or the bridge on the node itself (the `.deb`, `options.transport: local`;
+  built, not yet run live: below).
 - `lldpd` installed (`apt-get install lldpd`); the driver writes its config
   unless `manage_lldpd: "false"`.
 - A VLAN-aware bridge (`bridge-vlan-aware yes`). A plain bridge is read, but
@@ -71,6 +73,7 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 |---|---|---|
 | **`numbering: node`** — per-node guest ports (48 per node) instead of 48 across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
 | **UniFi's client Block** (2026-11-15): the controller's blocked clients (`blocked_sta`, captured) as an nft bridge table of the driver's own, dropping their frames from every port at prerouting | `drivers/proxmox.md` §4d; fixture-tested only (the nodes are production) | the table loaded on a node, or first in a throwaway network namespace as `dhcpguard-netns-test.sh` does: a frame from a blocked source dropped and counted, another passing, the table gone on Unblock |
+| **The bridge on the node itself** (`options.transport: local`, the `.deb` as a root service, one bridge per node; built 2026-11-17) | `drivers/proxmox-on-node.md`; `docs/install.md` §7b; `driver_test.go` (`TestOpenTransport`), the runner's own test `internal/sshrun/local_test.go`; the package staged, never installed on a node | the package installed on a node, `-collect-once` there matching the SSH bridge's ports, an adopted node moved with its state file (`proxmox-on-node.md` §7) and its first push applied with nothing changed; the run recorded in `proxmox-on-node.md` §8 |
 | **LACP from the UniFi UI** converting a bond's mode through the Proxmox API | `drivers/proxmox.md` §3b | the round-trip on a node whose uplink you can afford to lose for a minute: aggregate in the UI → bond mode changes → un-aggregate → restored; the pushed `system_cfg` keys added to the replay fixture |
 
 ### Known limits (by design; a PR would be a design change, open an issue first)
