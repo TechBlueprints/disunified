@@ -18,6 +18,22 @@ that cost time on Clint's DCS-7160-48TC6-F.
   RS-FEC on 100G; a 25G lane offers RS and fire-code (cage 50's hardware
   table; RS accepted and operational on the empty cage's lanes,
   2026-11-15).
+- **`error-correction encoding` is additive** (captured 2026-11-17,
+  `fec-auto/`, `docs/drivers/arista-eos.md` §13): a second encoding joins
+  the first (both configured: the lane ran Reed-Solomon), `no
+  error-correction encoding <x>` takes one out, the bare `no` disables
+  and replaces all, `default error-correction encoding` returns to EOS's
+  choice. Use `fecSetCommands` to end on exactly one. **FEC on auto**
+  (no FEC in the push) is `internal/fecpolicy`'s choice within the
+  interface's available encodings (`fec.go`), written only when neither
+  the configuration nor EOS's default gives it and never to a linked
+  port on a permitted mode; `PlanPorts`/`PlanLanes` leave it out. The
+  module's class comes from `show interfaces transceiver eeprom` (the
+  SFF-8024 code; a read of its own, not a startup command): EOS's media
+  type says `100GBASE-CR4` for a CA-S and a CA-L assembly alike, and
+  `show interfaces transceiver` gives a DAC no media type at all (it is
+  `show interfaces status`'s `interfaceType`). Map no media-type string
+  without a capture.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.

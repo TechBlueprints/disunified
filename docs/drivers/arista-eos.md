@@ -1251,7 +1251,8 @@ a reply only in forms the switch printed after such a command:
 | `switchport mode`, `access vlan`, `trunk native vlan`, `trunk allowed vlan` | `show interfaces switchport` (`1-2,8-10,1000`; access keeps the trunk's settings) | `write-forms/` |
 | `storm-control <type> level` / `no` | `show storm-control` (hundredths; an interface with no type left is not listed) | `storm-control-all-types/`, `split-cage54/` |
 | `speed forced`, `speed auto` | `show interfaces transceiver properties` `adminSpeed` (`1Gbps`/`full` ... `auto`) | `write-forms/`, the poll capture |
-| `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `error-correction encoding ...`, `no error-correction encoding`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
+| `spanning-tree bpduguard enable`, `portfast`, `bpdufilter enable`, `ip access-group NAME in` | the running config's interface section | the poll capture, `write-forms/`, `show-running-config-dui-acl.json` |
+| `error-correction encoding reed-solomon\|fire-code` (additive), `no error-correction encoding <x>`, `no error-correction encoding`, `default error-correction encoding` | the running config's interface section, and the interface's row of `show interfaces error-correction` (its configuration flags; the operating mode where a capture shows it) | `fec-auto/` (§13), `write-forms/` |
 | `ip access-list` (`counters per-entry`, `<seq> <rule>`, `no <seq>`), `no ip access-list` | the running config; a port EOS names is shown by name (9 `discard`, 22 `ssh`, 67 `bootps`, 68 `bootpc`, 443 `https`; 1001 kept) | `session-dui-acl-test-ports.txt` -> `show-running-config-dui-acl.json`, `write-forms/` |
 | `ntp server`, `logging host` (shown with port 514), `monitor session ... both` (shown without `both`) | the running config | the poll capture, `write-forms/`, `split-cage54-lag/` |
 | `channel-group N mode active` (a port without a link) | `show port-channel summary` (`lacp`, `active`, link `down`; the member `lagMember` false, `linkDown` true, a cage lane's with `lacpState`), the member's `forwardingModel` `dataLink` and `Member of Port-ChannelN` in `show interfaces`, `in PoN` in the status table, its `channel-group` line; a new Port-Channel (from a plain trunk member) with `switchport mode trunk`, the member's switchport entry and address | `channel-group-po9/`, `empty-po-leftovers/` -> `empty-po-lag5/`, `split-cage54/` -> `split-cage54-flexxg/` |
@@ -1450,3 +1451,133 @@ Not run live: a VLAN kept because a port outside `control.ports` or a lane
 switch's lane names it (both fixture-tested), and a site network deleted
 from the controller (none was; the transit's push is the captured case).
 
+## 13. FEC on auto follows the standard (2026-11-17)
+
+Until 2026-11-17 the driver wrote a FEC only when the controller pushed
+one and left EOS's default otherwise. It now chooses on auto, from the
+table the `sonic` driver uses (`internal/fecpolicy`;
+[`docs/fec-by-standard.md`](../fec-by-standard.md) §4 prints it, §1 has
+its sources). Code: `fec.go`. Captures:
+`docs/fixtures/arista-eos-4.26.14M/fec-auto/` (its README says how each
+was taken).
+
+### 13.1 What EOS 4.26.14M reports and how the command behaves
+
+`show interfaces error-correction` has, per interface, the configured
+encodings, the available ones and the operating one (JSON:
+`fecEncodingConfig*`, `fecEncoding*Available`, `errCorrEncodingStatus`).
+On the 7160 a 25G lane with a cable lists Reed-Solomon and Fire-code, a
+100G cage Reed-Solomon; "disabled" is not in that list but `show
+interfaces hardware` gives it at every speed of a cage with a module.
+
+`error-correction encoding <reed-solomon|fire-code>` **is additive**
+(captured in a configuration session that was aborted, and on a linkless
+25G lane under a commit timer that was aborted):
+
+| Written | Running config after | Operating (the lane) |
+|---|---|---|
+| `error-correction encoding fire-code` | that line | Fire-code |
+| then `error-correction encoding reed-solomon` | both lines | Reed-Solomon |
+| `no error-correction encoding reed-solomon` | the other line stays; the last one out leaves nothing (the default) | -- |
+| `no error-correction encoding` | that line alone, whatever was there | Disabled |
+| an encoding over `no error-correction encoding` | the encoding alone | that encoding |
+| `default error-correction encoding` | nothing | EOS's default for the module and speed |
+
+So a second encoding does not replace the first. Before this change a
+pushed Fire-code on a port with Reed-Solomon configured left both lines
+(and the lane on Reed-Solomon), and the driver read the pair back as
+whichever line Go's map gave first. Now a pushed FEC ends with exactly
+that mode: the wanted encoding is added first and the other taken out
+with `no error-correction encoding <other>`, so the interface passes
+through no third mode; a pushed "disabled" is the bare `no`, as before
+(and still nothing when nothing is configured). With two lines the
+configured FEC reads as Reed-Solomon, what the lane ran.
+
+EOS's own defaults already follow the standard for every module in the
+switch (`show interfaces hardware`: a CA-25G-S cable's lane `fire-code(25G(default))`,
+a CWDM4's and a CR4's 100G `reed-solomon(...100G(default))`).
+
+### 13.2 Naming the module
+
+EOS's media type does not say a copper assembly's 25G class: it prints
+`100GBASE-CR4` for the CA-25G-S breakout cable in cage 50 and for the
+CA-25G-L cables in cages 51 to 53 alike. `show interfaces transceiver
+eeprom` does (it exists on 4.26.14M, with JSON): its `Compliance` field
+has the SFF-8636 Ethernet compliance byte and the SFF-8024 extended
+specification compliance code as numbers.
+
+| Source | Value | Medium | Evidence |
+|---|---|---|---|
+| EEPROM, extended code | 6 | 100G CWDM4 | captured, cage 49 (`100G CWDM4`) |
+| EEPROM, extended code | 12 | copper CA-25G-S | captured, cage 50 (`25GBASE-CR CA-S`) |
+| EEPROM, extended code | 11 | copper CA-25G-L / 100GBASE-CR4 | captured, cages 51-53 (`100GBASE-CR4 or 25GBASE-CR CA-L`) |
+| EEPROM, extended code | 1, 2, 3, 4, 7, 8, 13, 24, 25, 32, 33 | as SFF-8024 names them (`fecpolicy.FromSFF8024`) | the code numbers are the standard's (SFF-8024 Table 4-4; sonic-platform-common's `sff8024.py` lists the same); no module with one of them has been in this switch |
+| EEPROM, Ethernet byte without "Extended", bit 3 | 40GBASE-CR4 | 40G copper | the field's `possibleValues` in the capture gives the bit order; no such module has been in this switch |
+| EEPROM, Ethernet byte, any other bit | a 40G or 10G optic | a module with no 25G-a-lane rating | the same |
+| media type (when the EEPROM gave nothing) | `100GBASE-CWDM4` | 100G CWDM4 | every capture's cage 49 |
+| media type (when the EEPROM gave nothing) | `100GBASE-CR4` | 100GBASE-CR4 copper, 25G class not known: RS at 100G, no answer on a 25G or 50G lane | every capture's copper cages |
+| any other media type | | no opinion, with a note | not mapped: no capture shows another string |
+
+The EEPROM read is one command beside the startup commands (at start,
+every 30 polls, after a written speed, and at the collect after the
+modules seated change). It is **not** one of the commands `Start` fails
+on: the reply is 340 kB, the older capture sets have none, and losing it
+costs only the cable's class. A failure is logged once and the media type
+speaks alone. A module swapped between two reads is noticed by its serial
+and media type; until the next read only the media type is used.
+
+### 13.3 The rule on auto
+
+For a port the controller pushes no FEC for, with a module seated, per
+interface (a split cage's lanes each on their own):
+
+1. The medium (§13.2) and the port's speed give the permitted modes; the
+   choice is the first of them the interface lists as available (plus
+   "disabled"). No answer, or none available: nothing written, a note.
+2. Nothing is written when the configuration is exactly the choice, or
+   when nothing is configured and the interface already runs the choice
+   (EOS's default got there), or when the port is up on any mode the
+   standard permits for the module (a working link is not flapped).
+3. Otherwise the commands that leave exactly the choice configured. That
+   corrects a hand-set encoding that contradicts the module, a second
+   encoding left beside the first, and a port that is down on a setting
+   other than the choice.
+4. A port whose speed the same batch changes is left for the next cycle:
+   what the interface offers is read at the new speed.
+
+These writes are the driver's own. `PlanPorts` and `PlanLanes` plan
+without them (`planScope.controllerOnly`), so the first-push hold never
+waits on a write no controller setting can match. A lane switch's lanes
+take the same choice through the lane plan, from the cage's module.
+
+### 13.4 Tests
+
+`fec_test.go`, on `fec-auto/`: the switch as captured needs no FEC write
+and logs no note, for the device and for cage 50's lanes; each hand-set
+state of Ethernet50/4 (`none`, `rs`, both, `fc`) ends on Fire-code alone,
+written to that lane only, uncounted by `PlanPorts`, and a reconcile
+before and after the next collect writes nothing; the same through
+`ApplyLanes`; a pushed Fire-code over a configured Reed-Solomon takes the
+other out and is counted by `PlanLanes`; `fecPlan` by medium against the
+captured rows (CA-25G-L and a 25G LR optic on a lane get RS, which this
+switch's lanes offer; CA-25G-N none; a linked 1e-12 cable on RS kept; a
+linked LR4 on RS corrected; no codes and a CR4 on a lane, or an unknown
+media type, a note). The fixture transport models the command as captured
+(§11): additive lines, `no ... <x>`, the bare `no`, `default`, the status
+row's flags, and the operating mode where a capture shows it (any other
+case is recorded as unmodelled).
+
+### 13.5 Verified, and not
+
+**Live, read-only and by hand (2026-11-17):** the three reads, the
+command's semantics in an aborted session on the empty cage 54, and four
+committed states of the linkless Ethernet50/4 under a commit timer that
+was aborted (the lane back at its default, no session left, `show
+running-config diffs` empty).
+
+**Not run live:** the driver's own write on the Arista. Against the
+capture of the switch as it is, the rule writes nothing: every populated
+cage already runs the standard's choice. A link's behaviour with a far
+end after a correction, a module with any code but 6, 11 and 12, and the
+read over eAPI (the capture was taken over SSH with `| json`, which
+prints what eAPI returns) are fixture-tested or not exercised.

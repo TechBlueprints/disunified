@@ -26,10 +26,15 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   for a lane-speed change; everything else to all lanes; set `LanesDiverge`
   when lanes differ; claim the cage's speeds.
 - Never set an optical port to auto speed; only write FEC when asked --
-  or, where the platform reads the module, the FEC and the speed (or
-  breakout) the module calls for when UniFi pushes none (UniFi's own
-  "auto"; `sonic`, docs/drivers/sonic.md §10.3, §10.9), planned without by
-  the `Planner` so the first-push hold never waits on them.
+  or, where the platform reads the module, the FEC the standard gives the
+  module when UniFi pushes none (UniFi's own "auto"): chosen by
+  `internal/fecpolicy` (the one table, `docs/fec-by-standard.md` §4;
+  never a table of the driver's own) within what the port supports,
+  nothing written when no permitted mode is supported or when the port is
+  up on a permitted one (`sonic`, docs/drivers/sonic.md §10.3, §11.37;
+  `arista-eos`, docs/drivers/arista-eos.md §13). `sonic` also takes the
+  speed (or breakout) the module calls for (§10.9). All of it is planned
+  without by the `Planner`, so the first-push hold never waits on it.
 - Tests use a fixture transport (`aristaeos.FixtureTransport` for a
   command API; `proxmox`/`podman.FixtureRunner` for a script over SSH;
   `apcups.FixtureRunner` for a register map) over real captures — never
