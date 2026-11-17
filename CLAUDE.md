@@ -494,7 +494,9 @@ tables, its informs), read-only, and nothing copied off it is committed.
   A top-level reply, not a `cmd`. The device's first inform after the
   Forget gets it; every later inform on the old key gets HTTP 400 with an
   empty body. The session then drops the key and the stored push, and the
-  loop's `OnUnadopted` runs. A Forget made while the bridge is down still
+  loop's `OnUnadopted` runs. The Forget by API (`cmd/sitemgr
+  delete-device`) answers with the whole stored record, its `x_authkey`
+  included: print only `meta`. A Forget made while the bridge is down still
   reaches it: the first inform after a 44 s stop got the `setdefault`,
   though the record was gone (live, DX010 cage 3,
   `replies-lane-switch-dx010-cage3-missed-forget.ndjson`).

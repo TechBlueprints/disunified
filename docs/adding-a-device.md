@@ -156,7 +156,12 @@ Create `internal/drivers/<name>/` with:
   change, without writing). With it the loop holds a freshly adopted
   device's first push while it would change ports, and the bridge seeds the
   controller's port overrides from the device on adoption; without it the
-  first push applies as pushed.
+  first push applies as pushed. The hold plans before `EnsureVLANs` runs: a
+  plan that reads the VLANs the device has (Allow All as its VLAN list, a
+  membership of a missing VLAN skipped) must also implement
+  `devicemodel.VLANPlanner`, planning with the push's VLANs as if they
+  existed, or a first push that only tags VLANs the device lacks goes
+  through (`sonic`, `docs/drivers/breakout.md` §16.10).
 - Optionally `devicemodel.Capable`: the capability claims the controller
   gates its UI on (STP, storm control, FEC, LACP, mirroring, isolation,
   IGMP, jumbo…). Without it the Arista set is claimed; a driver that
