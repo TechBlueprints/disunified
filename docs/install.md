@@ -21,7 +21,8 @@ in the UniFi UI.
   enable mode without an enable password, and eAPI enabled
   (`management api http-commands` → `no shutdown`), or SSH with a key
   (then the FEC counters are not collected); for the
-  Proxmox driver, root SSH to each node with a key and `apt-get install
+  Proxmox driver, root SSH to each node with a key, or the `.deb` on each
+  node (§7b), and `apt-get install
   lldpd` on each node (the driver configures it); [`docs/drivers/proxmox.md`](drivers/proxmox.md) §5.
   Spanning tree on a node is optional (`mstpd`, [`docs/drivers/proxmox.md`](drivers/proxmox.md) §4b);
   without it the driver claims no STP and ignores the controller's STP
@@ -62,7 +63,8 @@ go build ./cmd/disunified
 The binaries from each release are attached to it on GitHub as well; they are
 static, so `tar xzf` and run. So is a `.deb` for running the bridge on a
 SONiC switch itself (§7; when to choose that over a container:
-[`docs/drivers/sonic-running.md`](drivers/sonic-running.md)).
+[`docs/drivers/sonic-running.md`](drivers/sonic-running.md)) or on a Proxmox
+VE node itself (§7b).
 
 Steps 2 and 4 below are written as `./disunified …`. With the image, that
 is `docker run --rm …  ghcr.io/techblueprints/disunified:latest …`
@@ -315,8 +317,9 @@ and state under `/host/disunified`, which survives an image install.
    started (there is no config yet). On SONiC (`/host/machine.conf`) its
    postinst also makes `/host/disunified` (owner `admin`, mode 0700), links
    `/etc/disunified` to it and adds a drop-in that runs the service as
-   `admin`. On another Debian the service runs as root and `/etc/disunified`
-   is a directory you create (not verified).
+   `admin`. Elsewhere (a Proxmox node, §7b) the service runs as root and
+   the postinst makes `/etc/disunified` and `/var/lib/disunified` (root,
+   0700).
 3. **Write the two files** in `/host/disunified`, as `admin`:
    `config.yaml` (the sonic entry below; `state_dir: /host/disunified`) and
    `env` (mode 0600) with `DUI_UNIFI_API_KEY=…` and nothing else.
@@ -371,6 +374,86 @@ directory on its first boot (`rc.local`), so an upgrade that copies
 bridge back with its config and state (`sonic-on-switch.md` §5). Keep
 exactly one deb in `/host/disunified`: the one installed. Updating the
 bridge is `sudo dpkg -i` of the new deb and replacing that file.
+
+## 7b. On a Proxmox node
+
+A Proxmox VE node can run its own bridge, as a root systemd service on the
+node, instead of being reached as `root@node` over SSH from a container
+elsewhere (the design:
+[`docs/drivers/proxmox-on-node.md`](drivers/proxmox-on-node.md)). Each node
+runs one bridge whose config names that node only; the bridges share
+nothing but pmxcfs (`/etc/pve`), where the guests' port numbers already
+live in their tags ([`docs/drivers/proxmox.md`](drivers/proxmox.md) §1c).
+The driver runs its commands on the node (`options.transport: local`), so
+no host holds a root key to the nodes. Not yet verified live.
+
+1. **Get the deb.** From a release: `disunified_<version>_amd64.deb`. Or
+   build it as in §7 step 1; Proxmox VE has `dpkg-deb`, so a tree staged on
+   a Mac can be packed on the node.
+2. **Install it** as root on the node:
+
+   ```sh
+   scp disunified_<version>_amd64.deb root@192.0.2.11:
+   ssh root@192.0.2.11 dpkg -i disunified_<version>_amd64.deb
+   ```
+
+   The package installs `/usr/sbin/disunified` and the unit, enabled but
+   not started (there is no config yet), and makes `/etc/disunified` and
+   `/var/lib/disunified` (root, mode 0700). The unit starts after
+   `pve-cluster.service`; a collect that runs before `/etc/pve` is mounted
+   fails and is retried, so nothing is provisioned from an empty guest list
+   (`proxmox-on-node.md` §4.1).
+3. **Write the two files** in `/etc/disunified`: `config.yaml` and `env`
+   (mode 0600) with `DUI_UNIFI_API_KEY=…` and nothing else.
+
+   ```yaml
+   controller:
+     host: 192.0.2.1                # the controller, an IP literal
+     api_url: https://192.0.2.1     # its host must resolve on the node
+     api_key_env: DUI_UNIFI_API_KEY
+     site: default
+
+   state_dir: /var/lib/disunified
+
+   devices:
+     - name: pve-1                  # as adopted; names the state directory
+       driver: proxmox
+       ip: 192.0.2.11               # this node's in-band address
+       model: UDC48X6
+       options:
+         transport: local           # exec on this node as root; no ssh:, no key
+         ports: "54"
+       reply_log: {max_size: 8MB, keep: 3}
+   ```
+
+   `ssh:` is not needed; if it is set, it must name `root`, the user the
+   service runs as, or the driver refuses to start. `ssh_key` and
+   `known_hosts` are ignored. `ports`, `numbering` and `model` (and
+   `guest_ports` where it is set) must be the same in every node's file:
+   the nodes number their guests from the same tags
+   (`proxmox-on-node.md` §3).
+4. **Check it before it informs:**
+   `disunified -config /etc/disunified/config.yaml -collect-once` prints
+   the node's snapshot and sends nothing to the controller. It runs the
+   driver's start, so on a node no other bridge serves it writes what the
+   service would (guest port tags, lldpd's file).
+5. **Start it:** `systemctl start disunified`, then
+   `journalctl -u disunified -f`.
+
+**Check:** `systemctl is-active disunified` says `active`, the log says
+`transport local: commands run on this node as root` and, for an adopted
+device, `resuming adopted state`; the controller shows the node connected.
+
+**A node that is already adopted** through another bridge moves with its
+state file and is not re-adopted, but only one bridge may hold its key at
+any moment. The order -- the checks on the node before the running bridge
+is touched, removing the node from that bridge, copying its state and reply
+log, the first start, and the way back -- is
+[`proxmox-on-node.md`](drivers/proxmox-on-node.md) §7.
+
+**Updates.** `dpkg -i` of the new deb on a node restarts that node's bridge
+only; update one node at a time. A Proxmox upgrade keeps the package,
+`/etc/disunified` and `/var/lib/disunified`.
 
 ## 8. What the bridge keeps on disk, and the controller's secrets
 

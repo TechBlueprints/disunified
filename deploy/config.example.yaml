@@ -67,6 +67,11 @@ devices:                             # "switches:" is still accepted (the pre-re
       # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
       # ssh_key: /etc/disunified/id_ed25519      # in a container
       # known_hosts: /etc/disunified/known_hosts
+      # transport: local             # the bridge runs on the node itself (the .deb, docs/install.md §7b): commands
+      #                              # run locally as root; ssh: is then optional (if set, its user must be root),
+      #                              # ssh_key/known_hosts are ignored, and state_dir is /var/lib/disunified.
+      #                              # One bridge per node, its config naming only that node; ports, numbering
+      #                              # and model the same on every node (docs/drivers/proxmox-on-node.md §6)
     control:
       ports: all                     # port state and VLANs -> qm/pct set; on adoption the controller is seeded from the guests' VLANs
       # allow_initial_changes: true  # let the first push after adoption change ports (default: held until it matches)

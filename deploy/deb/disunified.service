@@ -6,7 +6,13 @@ Documentation=https://github.com/TechBlueprints/disunified
 # ports and the VLAN interfaces exist, so the driver's Start waits for them
 # itself (internal/drivers/sonic/starting.go, docs/drivers/sonic.md
 # §6.4.2); a failed Start is retried with backoff (main.go).
-After=network-online.target database.service swss.service
+# On Proxmox VE: pve-cluster mounts /etc/pve, which every collect reads; the
+# driver refuses a collect without it (docs/drivers/proxmox-on-node.md
+# §4.1), so this ordering only narrows the boot race. A unit name that does
+# not exist on a host (the SONiC ones on a node, this one on a switch) is
+# ignored. No sandboxing directive: the Proxmox driver writes under /sys,
+# /etc/lldpd.d and /etc/chrony.
+After=network-online.target database.service swss.service pve-cluster.service
 Wants=network-online.target
 
 [Service]

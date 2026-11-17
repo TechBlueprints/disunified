@@ -7,4 +7,7 @@ Priority: optional
 Depends: systemd
 Description: presents a non-UniFi device to a UniFi Network controller as an adopted UniFi switch
  Independent project, not affiliated with or endorsed by Ubiquiti Inc.
- On a SONiC switch, run it on the switch itself: docs/install.md.
+ It runs on the device it presents: on a SONiC switch (as the admin user,
+ its config and state in /host/disunified) or on a Proxmox VE node (as
+ root, config in /etc/disunified, state in /var/lib/disunified). See
+ docs/install.md.
