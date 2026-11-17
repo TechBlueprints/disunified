@@ -151,6 +151,13 @@ replayed by [`internal/informloop/replay_test.go`](../internal/informloop/replay
   stored and echoed if it arrives, but has **not been observed** on 10.6.
   A `rest/device` PUT of `port_overrides` does not provision on its own;
   the UI's controls do.
+- The controller's REST API reads device records at `stat/device` (the
+  list, or `stat/device/<mac>`) and writes them with `PUT
+  rest/device/<id>`. `rest/device` takes no GET: on Network 11.0.99 it
+  answers HTTP 404 `api.err.NotFound` with or without an id, to an owner's
+  API key that lists every other `rest/` collection tried (read
+  2026-11-17). An unknown collection answers 400 `api.err.InvalidObject`
+  instead. Whether 10.x answered that GET is not captured.
 - **`cmd`**: `set-adopt`, `setdefault` (factory reset: back to the default
   key, `cfgversion` 0, CBC), `reboot`, `upgrade`/`upgrade2` (emulated:
   accepted, "rebooted", the requested version reported and persisted from

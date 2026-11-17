@@ -650,6 +650,25 @@ see the hostname note above, corrected 2026-09-29.) The alert log
 answer `data` plus `total_page_count`; scrub it with
 `sanitize-controller.py` as it comes.
 
+**`rest/device` has no GET; the device records are read at `stat/device`
+(11.0.99, read-only requests with the API key, 2026-11-17).** `GET
+rest/device`, with or without an id (the record's UUID, its MAC, a bare
+trailing slash), answers HTTP 404 `{"rc":"error","msg":"api.err.NotFound"}`,
+and so does `list/device`. `stat/device` (72 records), `stat/device/<mac>`
+(1) and `stat/device-basic` answer 200 `rc: ok`, as does the v2
+`/proxy/network/v2/api/site/<site>/device`. It is not the key: `self` shows
+it as the owner's (`is_owner`, `is_super`, `site_role: admin`), and the same
+key lists `rest/networkconf`, `portconf`, `user`, `setting`, `wlanconf`,
+`routing`, `firewallrule` and `usergroup` (all 200). It is not an unknown
+collection either: one of those (`rest/dnsrecord`, a made-up name) answers
+HTTP 400 `api.err.InvalidObject`. So `rest/device` is a route that takes
+writes only: `PUT rest/device/<id>` is how the bridge names devices and
+seeds overrides and has run on 11.0.99 since the upgrade; without an id it
+answers `api.err.IdRequired` (`docs/drivers/breakout.md` §16.11). Not
+captured: whether 10.x answered the GET (no note or capture here ever read
+`rest/device`; every read has been `stat/device`), and the same GET from a
+logged-in browser session instead of the key.
+
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; follows the controller, no flag since 2026-10-31).
 
