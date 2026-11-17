@@ -39,7 +39,7 @@ type Collector struct {
 
 	mu          sync.Mutex
 	pendingTags []retag // guests on this node whose tags the last build asked to rewrite
-	node        string  // this node's hostname
+	node        string  // this node's name: the first label of its hostname, as in /etc/pve/nodes/<name>
 	last        *devicemodel.Snapshot
 	prevCPU     cpuTimes
 	nics        map[string]guestNIC // key -> guest NIC, cluster-wide, at the last collect
@@ -131,10 +131,14 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	if _, ok := sec["end"]; !ok {
 		return nil, fmt.Errorf("proxmox: collector script did not run to completion (%d bytes)", len(out))
 	}
-	for _, need := range []string{"hostname", "links", "brlink", "vlan", "fdb", "bridge", "phys", "qemu"} {
+	for _, need := range []string{"hostname", "links", "brlink", "vlan", "fdb", "bridge", "phys", "vmlist", "qemu", "lxc"} {
 		if _, ok := sec[need]; !ok {
 			return nil, fmt.Errorf("proxmox: collector output lacks section %q", need)
 		}
+	}
+	// /etc/pve not mounted is not "no guests" (docs/drivers/proxmox-on-node.md §4.1).
+	if strings.TrimSpace(sec["vmlist"]) == "" {
+		return nil, errPmxcfsUnmounted
 	}
 	bridge := keyValues(sec["bridge"])
 	if bridge["address"] == "" {
@@ -162,6 +166,9 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		return nil, err
 	}
 	if err := decodeJSON("vmlist", sec["vmlist"], &vml); err != nil {
+		return nil, err
+	}
+	if err := crossCheckGuests(vml, sec["qemu"], sec["lxc"]); err != nil {
 		return nil, err
 	}
 	if err := decodeJSON("addr", sec["addr"], &addrs); err != nil {
@@ -219,6 +226,9 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	neighbors := neighborsByInterface(lldp)
 	hostname := strings.TrimSpace(sec["hostname"])
+	// node is this node's name as /etc/pve/nodes/<name> spells it, the one
+	// every guest's Node is compared with (here, tags.go, apply.go, lag.go).
+	node := nodeName(hostname)
 
 	// --- guest ports ---
 	var nics []guestNIC
@@ -226,7 +236,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		if n.Bridge != c.Bridge || n.Template {
 			continue
 		}
-		if c.NodeNumbering && n.Node != hostname {
+		if c.NodeNumbering && n.Node != node {
 			continue
 		}
 		nics = append(nics, n)
@@ -258,7 +268,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		return nil, fmt.Errorf("proxmox: bridge %s has %d physical ports but ports=%d", c.Bridge, len(phys), c.Ports)
 	}
 	vmSlots := c.Ports - len(phys)
-	slotOf, retags := c.assignPorts(nics, hostname, vmSlots)
+	slotOf, retags := c.assignPorts(nics, node, vmSlots)
 	keyOf := map[int]string{}
 	for k, idx := range slotOf {
 		keyOf[idx] = k
@@ -285,7 +295,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		for _, t := range n.Trunks {
 			vlanSet[t] = true
 		}
-		if n.Node == hostname {
+		if n.Node == node {
 			if l, ok := linkBy[n.HostIface()]; ok {
 				p.Interfaces = []string{n.HostIface()}
 				p.Up = !n.LinkDown && l.hasFlag("UP")
@@ -315,7 +325,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 				}
 			}
 		}
-		if n.Node == hostname {
+		if n.Node == node {
 			// Stopped guests too: their interfaces get these names when
 			// they start, and the rule is already there.
 			gp := guardPort{Index: idx, Members: []string{n.HostIface(), fmt.Sprintf("fwpr%dp%d", n.VMID, n.Index)}, VLAN: p.VLAN}
@@ -500,7 +510,7 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	}
 	snap := &devicemodel.Snapshot{TakenAt: now, System: sys, Ports: ports, MACTable: macs, VLANs: vlanIDs, UplinkHint: uplinkHint}
 	c.mu.Lock()
-	c.node = hostname
+	c.node = node
 	c.last = snap
 	c.nics = nicBy
 	c.keyOf = keyOf
