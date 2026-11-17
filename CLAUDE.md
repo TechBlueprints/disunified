@@ -120,6 +120,24 @@ the collect one (`control.apply_timeout`, or the driver's own through
 agent keys one at a time (a `.pub` selects one), the `_type: reboot`
 reply, and the reported address following an applied move
 (`devicemodel.AddressReporter`).
+**Since 2026-11-17 each Proxmox node runs its own bridge**
+(`options.transport: local`, the same `.deb` as a root service, config in
+`/etc/disunified`, state in `/var/lib/disunified`;
+`docs/drivers/proxmox-on-node.md`, §8 the live run): the three bridges
+coordinate guest port numbers only through the guests' tags in pmxcfs, and a
+collect of an unmounted `/etc/pve` fails instead of reading "no guests".
+The same work gave the loop a baseline for its fresh-port comparison
+(`internal/informloop/layout.go`, §5.5 there): `layout.json` in the device's
+state directory (layout signature, port identities, fresh ports), or the
+startup snapshot when there is none. A port whose occupant changed between
+the start and the first collect, or while the bridge was stopped, is fresh,
+and a port withheld at the stop stays withheld: a restart no longer releases
+one (the controller's config matching does, or
+`control.allow_initial_changes`, or removing `layout.json` while stopped).
+A driver's `Start` and first `Collect` must report an unchanged port's
+`IfName` and `Interfaces` the same way. A layout change inside provision's
+10 s spacing is provisioned when the spacing ends (`main.go`
+`layoutChanged`), not dropped.
 
 ## 2. Map
 
@@ -221,8 +239,11 @@ reply, and the reported address following an applied move
 - **No affiliation with Ubiquiti**: the README, LICENSE and any published
   page must say this is an independent fan/home-user project, not endorsed
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
-- The bridges run in the container on the Podman host (§4); nothing runs on
-  the Mac. Redeploy = ship `HEAD` with `git archive`, rebuild, recreate.
+- The bridges run in the container on the Podman host (§4), except the
+  ones that run on their own device (the DX010, and each Proxmox node since
+  2026-11-17: the `.deb`, updated with `dpkg -i`); nothing runs on the Mac.
+  Redeploy of the container = ship `HEAD` with `git archive`, rebuild,
+  recreate.
 
 ## 4. Running instance
 
@@ -233,9 +254,10 @@ key is still accepted) with secrets in the environment (`.env`, gitignored,
 symlinked from outside the repo); every `control` flag is on.
 `state/<name>/device.json` holds the adopted key: one instance per device,
 keep the file. Logs: `run.log`, `inform-log/<name>/`. Since 2026-09-27 every
-deployed bridge (Arista, three Proxmox nodes, PDU, UPS, the Podman host
-itself; the DX010's ran there until 2026-11-02 and now runs on the switch,
-§1) runs in **one** container on Clint's Podman host (`/opt/disunified`;
+deployed bridge (Arista, PDU, UPS, the Podman host itself; the DX010's ran
+there until 2026-11-02 and now runs on the switch, §1; the three Proxmox
+nodes' until 2026-11-17, each now a root service on its own node,
+`docs/drivers/proxmox-on-node.md`) runs in **one** container on Clint's Podman host (`/opt/disunified`;
 the UPS had its own stack for a day while its driver was new -- merged back,
 old dir kept as `/opt/disunified-ups.retired-20260927`, its volume as a
 backup). The container is on two networks: the podman bridge (to reach its

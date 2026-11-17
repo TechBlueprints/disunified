@@ -5,8 +5,8 @@ Rules for every driver are in `../CLAUDE.md`; the full write-up is
 driver (2026-09-19/20).
 
 `internal/drivers/proxmox` + `docs/drivers/proxmox.md`. Each node's `vmbr0` is a
-USW Leaf (`UDC48X6`, 54 ports) named after the node; guests are ports 1-48
-numbered cluster-wide, the port recorded in the guest's own Proxmox tags
+USW Leaf (`UDC48X6`, 54 ports) named after the node; guests are the ports below the node's NICs (1-51 on the captured nodes, or
+`options.guest_ports`), numbered cluster-wide, the port recorded in the guest's own Proxmox tags
 (`unifi.p25.c`, `unifi.p27.c.net1`; docs/drivers/proxmox.md §1c; the driver keeps
 no file, only the owner node writes tags) and named `VM-<id>` (`Open-<port>` when free),
 the physical NICs/bond slaves count down from 54 (`bond0-1`, `bond0-2`),
@@ -41,10 +41,9 @@ overrides from the switch's live VLAN state on the handshake (retrying
 while held); verified by re-adopting proxmox-1 with FusionHub's tagged
 NICs watched: held → seeded 2 ports → new push applied with 0 changes.
 Before this, a re-adoption with control on stripped VM 119's tags for 13 s.
-Deployed with the Arista in the one container (config.yaml has four
-switches; the container mounts a directory with the bridge's own ed25519
-key, installed on the nodes' root user, and a known_hosts — paths in
-`local-information/site.md`).
+Deployed with the Arista in the one container until 2026-11-17 (the
+container mounted the bridge's own ed25519 key, installed on the nodes'
+root user); since that day each node runs its own bridge (below).
 **Wire shapes (2026-11-13, `docs/wire-shapes.md` §8):** a fan with no hwmon
 `fanN_label` is `Fan1`..`Fan16`, the ECS's form. A chip's own label passes
 through unchanged at any length (with spaces, as `dell_smm`'s can be); no
@@ -123,3 +122,50 @@ there is nothing to prune; `bridge-vids` is the operator's). mstpd's
 ports are the bridge's ports, so a bond is one STP port, and the driver
 writes mstpd per-port settings to guest members only, never a bond or a
 leg. Held by `vlan_stp_test.go`.
+
+**On the node (built and cut over 2026-11-17; `docs/drivers/proxmox-on-node.md`,
+§8 is the live run).** `options.transport: local` runs every command under
+`bash -c` on the node itself as the service's user (root), through
+`sshrun.Local`; `ssh:` is optional (if set its user must be root),
+`ssh_key`/`known_hosts` are ignored with one log line, and there is no probe
+(`options.probe`/`state_dir`, injected by main for every driver, are unused
+here). The config loader and `main` accept a device with `transport: local`
+and neither `url:` nor `ssh:` (`config.LocalTransport`); before that such an
+entry was refused, and main would have run it with no driver. The `.deb`
+(`scripts/build-deb.sh amd64`, packed with `dpkg-deb` on a node) installs a
+root unit ordered after `pve-cluster.service` and makes `/etc/disunified` and
+`/var/lib/disunified` 0700; install steps are `docs/install.md` §7b, the move
+of an adopted node `proxmox-on-node.md` §7. One bridge per node, one device
+per config; an update is `dpkg -i` node by node. The three bridges share
+nothing but the guests' tags in pmxcfs, as the three collectors in one
+process did.
+
+**An unmounted `/etc/pve` fails the poll (2026-11-17,
+`proxmox-on-node.md` §4.1).** `build` requires the `vmlist`, `qemu` and `lxc`
+sections, and an empty `vmlist` fails with "pmxcfs is not mounted":
+`.vmlist` exists on every mounted pmxcfs, so empty means unmounted, never
+"no guests". `.vmlist` is held to the config headers the globs print (same
+id, kind and node, both ways; `crossCheckGuests`), so a guest moved between
+the two reads costs one poll. A guest is local when its
+`/etc/pve/nodes/<name>` equals `nodeName(hostname)`, the first label;
+`c.node` is that short name (also lag.go's `pvesh /nodes/<node>`), and the
+reported hostname stays whole. Without the guard the empty snapshot was a
+layout change, so the loop provisioned from it (every guest port's override
+stripped and disabled) at start and mid-run alike
+(`TestProxmoxFailedCollectAfterGoodOne`). Check it without touching a
+cluster: `-collect-once` inside `unshare -m` after `umount -l /etc/pve` there.
+
+**Three writers (2026-11-17, `proxmox-on-node.md` §5.1-§5.4).**
+`converge_test.go` runs one collector per node capture with tag writes
+replicated to both (`FixtureRunner.Peers`); `assignPorts` converged as it
+was (one round, then nothing; a forced duplicate rewritten once by the
+loser's owner), so no rule was added -- never add one that depends on a
+bridge's own memory. A tag ignored for range or numbering, and a resolved
+duplicate, are logged once (`warnOnce`); a failed tag write once until it
+succeeds (`tagFailing`); `ApplyPorts` goes on past a failed port and returns
+the first error. Templates lose this bridge's `unifi.` tags on their owner
+(`qm set <id> --delete tags` when nothing is left: run live). `qm set` on the
+source node right after a migration fails with "Configuration file … does
+not exist", exit 2. A stopped guest has no tap, so migrating one changes no
+port's identity on either node; only a running guest arrives as a fresh
+port. `FixtureRunner.Fail` makes a recorded command fail.

@@ -1,7 +1,7 @@
 # The bridge on the Proxmox node itself -- specification
 
-Status: specification (2026-11-17). Sections 3 to 6 are what is to be built;
-section 8 records what ran live once it has.
+Status: built and running (2026-11-17). Sections 3 to 6 are built; section 8
+is what ran live when a three-node cluster was moved.
 
 The `proxmox` driver was written to run somewhere else and reach each node
 as `root@node` over SSH ([`proxmox.md`](proxmox.md) §5). This document moves
@@ -62,10 +62,10 @@ collectors share no memory today either.
 `ports`, `numbering`, `guest_ports` and `model` must agree across the nodes'
 config files; §5.2 warns when a tag is ignored because they do not.
 
-Not captured (to be recorded in §8 from a throwaway guest): what `qm set
-<id> --tags` returns on the source node right after a migration, under
-`lock: migrate` or `lock: backup`, and on a node without quorum. The design
-needs only that it fails without changing another node's guest.
+`qm set <id> --tags` on the source node right after a migration fails
+without touching the guest (§8). Not captured: the same under `lock: migrate`
+or `lock: backup`, and on a node without quorum. The design needs only that
+it fails without changing another node's guest.
 
 ## 4. Required before a node runs its own bridge
 
@@ -355,6 +355,49 @@ other bridge.
 Update afterwards: `dpkg -i` the new package on a node; postinst restarts
 that node's bridge only.
 
-## 8. What ran live
+## 8. What ran live (2026-11-17)
 
-(To be written from the run.)
+A three-node Proxmox VE 9.1.6 cluster, each node adopted and bridged over
+SSH from one process elsewhere, was moved one node at a time (§7): a pilot
+node first, then the other two together. Package
+`disunified_0.0.0+20261117.2e52663_amd64.deb`, packed with `dpkg-deb` on a
+node from the tree `scripts/build-deb.sh` stages.
+
+Before the move, on each node:
+
+- A 100 KB POST to the inform URL came back with an HTTP status (400, the
+  body being noise); the bridge's MTU is 1500. `api_url`'s name resolved.
+- `-collect-once` under `transport: local` reported the node's 54 ports
+  with the same guests up as the SSH bridge, and wrote nothing (no
+  `qm set`, no lldpd write).
+- The guard: the same command inside `unshare -m` with `/etc/pve` lazily
+  unmounted in that namespace failed with `/etc/pve/.vmlist is empty:
+  pmxcfs is not mounted (is pve-cluster running?); no guest can be read`.
+  The node's own namespace kept its mount and its quorum.
+
+The move, per node: the entry removed from the other bridge's config and
+that bridge restarted (its log then named the node no more); `state/<name>/`
+and `inform-log/<name>/` streamed host to host; `systemctl start`. Each
+node logged `resuming adopted state`, `reconciled system_cfg …: 0 of 54
+ports changed` and `inform: HTTP 200` within two seconds of starting, and
+the controller showed the same MAC, uplink and up ports. No device was
+re-adopted. A device that hangs off a node's guest port kept its placement.
+
+Coordination, with a throwaway diskless guest (`qm create … --net0
+virtio,bridge=vmbr0`), first with one node local and two over SSH, then
+with all three local:
+
+| Step | Seen |
+|---|---|
+| Guest created on the local node | That node alone ran `qm set <id> --tags 'unifi.p29.c'`; the two SSH bridges showed port 29 for it on their next poll and wrote nothing. |
+| Port disabled, then enabled, in the controller | `qm set <id> --net0 '…,link_down=1'` one cycle later (`1 of 54 ports changed`), and the option removed again on enable. |
+| Offline migration to another node | Tags unchanged. `qm set <id> --tags …` on the source right after: `Configuration file 'nodes/<source>/qemu-server/<id>.conf' does not exist`, exit 2. A stopped guest has no tap, so neither switch's port changed identity and neither bridge logged anything. |
+| Guest started, live migration onto the local node | Same port, same tag. The destination logged the port as arrived (`29(vm<id>-net0/tap<id>i0)`, "not written until the controller's config matches") within one poll; the source logged it gone. |
+| Live migration between two local bridges | The same, with the third bridge silent. |
+| Guest stopped and made a template | Its owner ran `qm set <id> --delete tags` on the next poll and the slot was released on every node. |
+| Guest destroyed | Port 29 back to `Open-29`, disabled. |
+
+Not run: a node rebooting into its own bridge (the unit's ordering after
+`pve-cluster` and the guard cover it; to be read from the journal at each
+node's next reboot), a `pve-cluster` restart under a running bridge, and a
+node without quorum.
