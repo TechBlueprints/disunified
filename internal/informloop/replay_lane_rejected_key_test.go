@@ -246,15 +246,60 @@ func TestMissedForgetIsReadFromTheRefusedKey(t *testing.T) {
 	}
 }
 
-// The same 400s on a device that is not an automatic lane switch: logged
-// once, the key and the attachment kept.
-func TestRefusedKeyOnlyWarnsElsewhere(t *testing.T) {
-	var steps []replyStep
-	for _, s := range readSteps(t, "controller-11.0.99", "replies-lane-switch-dx010-cage3.ndjson") {
+// liveRefusals is the live run's 400s (2026-11-16 23:07:35 to 23:09:39,
+// replies-lane-switch-dx010-cage3-missed-forget.ndjson): the bridge
+// restarted on an adopted state file whose Forget it had already been
+// sent, and informed at its 10 s start-up cadence. The 13th is the one the
+// running bridge released the lane switch on ("inferred": "setdefault"),
+// and the 404 on the default key came next.
+func liveRefusals(t *testing.T) (refused []replyStep, after replyStep) {
+	t.Helper()
+	steps := readSteps(t, "controller-11.0.99", "replies-lane-switch-dx010-cage3-missed-forget.ndjson")
+	for i, s := range steps {
 		if s.Status == http.StatusBadRequest {
-			steps = append(steps, s)
+			refused = append(refused, s)
+			continue
+		}
+		if len(refused) > 0 {
+			return refused, steps[i]
 		}
 	}
+	t.Fatal("no run of 400s in the live record")
+	return nil, replyStep{}
+}
+
+// The live run replayed: the count is reached at the third 400 and the two
+// minutes at the 13th (2 min 3 s; the 12th was at 1 min 53 s), where the
+// bridge on the switch released the lane switch.
+func TestMissedForgetLiveRunReleasesOnTheThirteenth(t *testing.T) {
+	refused, after := liveRefusals(t)
+	if len(refused) != 13 || after.Status != http.StatusNotFound || after.SentAdopted {
+		t.Fatalf("the live record is not 400 x13 then 404 on the default key: %d, %+v", len(refused), after)
+	}
+	r := newLaneReplay(t, true, true, append(refused, after))
+	for i := 0; i < 12; i++ {
+		r.step()
+		if r.unadopted != 0 || !r.attached() {
+			t.Fatalf("released at 400 number %d, before two minutes\n%s", i+1, r.buf.String())
+		}
+	}
+	r.step()
+	if r.unadopted != 1 || r.attached() || r.sess.Adopted() || r.l.State() != StatePending {
+		t.Fatalf("not released at the 13th: unadopted %d, adopted %v, state %s\n%s", r.unadopted, r.sess.Adopted(), r.l.State(), r.buf.String())
+	}
+	r.step()
+	if got := r.keys[len(r.keys)-1]; got != "default" {
+		t.Errorf("the inform after the release went out on the %s key", got)
+	}
+	if !strings.Contains(r.buf.String(), "refused this device's key 13 times over 2m3s") {
+		t.Errorf("log:\n%s", r.buf.String())
+	}
+}
+
+// The live run's 400s on a device that is not a lane switch: logged once,
+// the key and the attachment kept.
+func TestRefusedKeyOnlyWarnsElsewhere(t *testing.T) {
+	steps, _ := liveRefusals(t)
 	r := newLaneReplay(t, true, false, steps)
 	for range steps {
 		r.step()

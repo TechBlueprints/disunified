@@ -110,7 +110,10 @@ command), which this bridge does not implement.
 1. The bridge informs with the default key, `state=1`, `default=true`.
    **HTTP 404 is the normal reply while pending**; keep informing. After a
    device is forgotten in the controller it answers HTTP 400 with an empty
-   body for about a minute, then 404 again.
+   body for about a minute, then 404 again. On the forgotten device's old
+   key it answers 400 for good, once its one `setdefault` has gone; no
+   restart or upgrade of the controller has ever answered an adopted key
+   with 400 ([`drivers/breakout.md`](drivers/breakout.md) §16.11).
 2. The operator clicks Adopt (or `cmd/devmgr adopt` on the console).
 3. The controller delivers the authkey in a `setparam` reply with
    `mgmt_cfg`, a **newline-separated `key=value` string**, not JSON:

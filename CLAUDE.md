@@ -494,7 +494,23 @@ tables, its informs), read-only, and nothing copied off it is committed.
   A top-level reply, not a `cmd`. The device's first inform after the
   Forget gets it; every later inform on the old key gets HTTP 400 with an
   empty body. The session then drops the key and the stored push, and the
-  loop's `OnUnadopted` runs.
+  loop's `OnUnadopted` runs. A Forget made while the bridge is down still
+  reaches it: the first inform after a 44 s stop got the `setdefault`,
+  though the record was gone (live, DX010 cage 3,
+  `replies-lane-switch-dx010-cage3-missed-forget.ndjson`).
+- **An empty-body HTTP 400 on an adopted key has only ever meant "forgotten"**
+  (every reply log there is, 2026-09-20 to 11-16, about 500 000 informs on
+  adopted keys: `docs/drivers/breakout.md` §16.11). Controller restarts and
+  upgrades (10.6.109, the failed and the successful 11.0.97 migrations,
+  11.0.99) refuse or reset the connection or answer 503, then 200 on the
+  same key (`controller-10.6.109/statuses-*.ndjson`); the default key gets
+  400s for 24-100 s right after a Forget, then 404. A lane switch, and
+  only a lane switch, reads three adopted-key 400s over at least two
+  minutes as the Forget it never saved (a crash, a restored state file;
+  verified live with a state file put back, 13 refusals at the 10 s
+  start-up cadence); every other device logs a WARNING and keeps its key
+  (`internal/informloop/rejectedkey.go`). Not captured: a controller
+  restored from an older backup.
 - **UniFi's client Block reaches a switch as `blocked_sta`, not
   `system_cfg` (11.0.99, captured 2026-11-15).** Every `setparam` carries
   the field: the blocked clients' MACs, `""` for none, two joined by a

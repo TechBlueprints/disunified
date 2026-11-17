@@ -1521,9 +1521,9 @@ was run again live.
    what `OnUnadopted` hangs on, as specified. The controller sends it
    **once**, to the first inform after the Forget; after that it answers
    the old key with HTTP 400 and an empty body, for good. A lane switch
-   that misses it (the bridge was down, or the build before this fix)
-   stays adopted and attached and gets 400s; the way out today is to
-   remove its `state/<name>/device.json` and restart (open, §16.9).
+   that misses it (the build before this fix) stays adopted and attached
+   and gets 400s; since §16.11 a run of those 400s is read as the Forget
+   it missed.
 4. **A `setdefault` has to drop the stored push** (every driver). The loop
    reconciles the applied push every cycle; a forgotten lane switch would
    have tried to write its old push to lanes it no longer owns and been
@@ -1607,9 +1607,10 @@ Ethernet8-11 throughout: no lane gained a VLAN. The window is closed. Port
 
 **Found and left open** (the register has each):
 
-- **A missed `setdefault`** leaves a forgotten lane switch attached
-  (item 3).
 **Closed since (2026-11-16, the same night).**
+
+- **A missed `setdefault`** left a forgotten lane switch attached (item
+  3): §16.11.
 
 - **The split in step 6, and the note after it.** Two faults, one batch.
   The module rule's split (Auto saved on port 3, 21:09) wrote the cage's
@@ -1693,8 +1694,31 @@ refused key, and no Adopt could reach it.
 **Tests** (`internal/informloop/replay_lane_rejected_key_test.go`): the
 recorded forget with its `setdefault` withheld (released on the third
 400, nothing written from then on, the next inform on the default key);
-the same 400s on a device without the rule (one warning, the key kept);
+the live run below (released on the 13th, at 2 min 3 s, not before); its
+400s on a device without the rule (one warning, the key kept);
 two controller restarts from the deployed logs (status lines,
 `controller-10.6.109/statuses-*.ndjson`; whether the console ran 10.6.106
 or 10.6.109 on 2026-10-01 is not recorded: never released); the default
 key's 400s after the 10.6.106 Forget (nothing changes).
+
+**The live run** (DX010 cage 3, 2026-11-16 23:04-23:15 MST, Network
+11.0.99, package 0.0.0+20261116.5f75290; the reply log's slice, scrubbed:
+`controller-11.0.99/replies-lane-switch-dx010-cage3-missed-forget.ndjson`;
+unscrubbed in `local-information/lane-forgotten-20261116/`):
+
+| Step | Seen |
+|---|---|
+| stop the service, Forget by exact MAC (`cmd/sitemgr delete-device`), start | the record gone from `stat/device` 15 s after the Forget; the bridge down 44 s. **The `setdefault` was not missed**: the first inform after the start got it (`setdefault received`, the detach line, 404 on the default key 10 s later), though the record had been deleted half a minute before |
+| stop, put back the adopted state file kept from before the Forget, start | the missed case as a bridge that never saved the reset leaves it (the build before §16.10's fix, a crash between the reply and the save, a restored state directory): attached from the state file, then `inform got 400` every 10 s, 13 of them, then `refused this device's key 13 times over 2m3s ... treated as that setdefault`, `forgotten (the setdefault missed) ... back to PENDING`, the detach line, and HTTP 404 on the default key at the next inform. The record pending (state 2), the parent's port 3 reported SFP28 (the fold) with its override on Auto, and the parent's next cycle pruned the ten VLANs only the lane switch's stale push had named |
+| adopt by exact MAC (`cmd/devmgr adopt`) | CONNECTED 11 s after the command, the attach line, the first push held as a first push (`would change 4 ports [1 2 3 4]`), the seeded push applied `0 of 5 ports changed`. End state as found: adopted, placed under port 3, the parent's port 3 QSFP28 on Auto, cage 3 `4x25G[10G]` |
+
+**What the run taught.** A Forget made while the bridge is down for under
+a minute still reaches it: the controller keeps the `setdefault` for the
+MAC's next inform after deleting the record. How long it keeps it is not
+captured (a longer stop takes the DX010's own bridge down with it), so the
+rule stays for the cases that do lose it. On a refused key the stale lane
+switch went on reconciling its old push for its two minutes (it made the
+ten VLANs its push named, which the parent then pruned), and its
+provisioner's lookup of a device the controller no longer lists asked
+`PUT rest/device/` with no id (`api.err.IdRequired`) and retried; neither
+wrote anything to a port.

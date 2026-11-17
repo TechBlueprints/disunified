@@ -46,8 +46,12 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.
 - **A Forget is `_type: setdefault`, sent once**; afterwards the old key
-  gets HTTP 400 for good. A lane switch that missed it stays attached:
-  remove its state file and restart (open, `breakout.md` §16.10).
+  gets HTTP 400 for good. A Forget made while the bridge is down still
+  reaches it at its next inform (seen after 44 s). One it never saved (a
+  crash, a restored state file) is read from the 400s: three over two
+  minutes on the adopted key release a lane switch, declared or automatic,
+  as its `setdefault` would (`informloop/rejectedkey.go`, `breakout.md`
+  §16.11). No other device acts on them: it logs a WARNING.
 - **The aggregate's id is the push's `lag`** (`lag=1` for the first aggregate,
   whatever its members), so the first lane aggregate of cage N is
   `PortChannel<100*N+1>` on SONiC.
