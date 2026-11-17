@@ -50,6 +50,13 @@ type FixtureRunner struct {
 	// did not have (no PORT or PORTCHANNEL row) at a `config save`, which
 	// writes them to config_db.json: a breakout leaves them (fixture_igmp.go).
 	SavedDangling []string
+	// CaclmgrdKeyErrors are the ACL_RULE writes caclmgrd would have died
+	// on: every ACL_RULE event (a set or a delete) makes it read its table's
+	// `type` from ACL_TABLE with no check, so a rule event while that table
+	// is absent is a KeyError and the daemon exits (caclmgrd line 1285 on
+	// 202511; reproduced on the DX010 2026-11-17, docs/drivers/sonic.md
+	// §11.7.10).
+	CaclmgrdKeyErrors []string
 	// BGPFiles are the files loaded into FRR (bgp.go), as sent. BGPRefuse,
 	// when set, is vtysh's complaint about a line: the load fails with it
 	// and changes nothing.

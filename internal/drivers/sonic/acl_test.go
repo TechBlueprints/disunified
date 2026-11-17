@@ -207,6 +207,9 @@ func TestDHCPGuardFromTheECSPush(t *testing.T) {
 		"sudo sonic-db-cli CONFIG_DB del 'ACL_TABLE_TYPE|DUI_DHCP_GUARD'",
 		save,
 	))
+	if len(r.fr.CaclmgrdKeyErrors) != 0 {
+		t.Errorf("a rule event met an absent table (caclmgrd dies): %q", r.fr.CaclmgrdKeyErrors)
+	}
 	if len(st.gc.types) != 0 || st.gc.flexACL != "enable" {
 		t.Errorf("the guard's type must go with its table, polling stays on: types %v, polling %q", st.gc.types, st.gc.flexACL)
 	}
@@ -625,5 +628,45 @@ func TestForeignACLTableFollowsTheAggregate(t *testing.T) {
 	}
 	if again, _ := r.apply(base); len(again) != 0 {
 		t.Errorf("apart, second apply wrote %q", again)
+	}
+}
+
+// Guard rules with no DUI_DHCP_GUARD table, as a hand test left them on
+// the DX010 on 2026-11-15 (the three rows it wrote with the bridge stopped,
+// from the switch's sudo log): caclmgrd died on each one and again at every
+// restart, since its subscriber replays existing keys. Snooping off must
+// delete them with a table in place for caclmgrd to find, and leave none
+// (docs/drivers/sonic.md §11.7.10).
+func TestOrphanGuardRulesGoBehindAPlaceholder(t *testing.T) {
+	orphans := map[string]map[string]string{
+		"ACL_RULE|DUI_DHCP_GUARD|V1_S1":             {"IP_PROTOCOL": "17", "L4_DST_PORT": "68", "L4_SRC_PORT": "67", "PACKET_ACTION": "FORWARD", "PRIORITY": "9000", "SRC_IP": "192.0.2.1/32", "VLAN_ID": "4094"},
+		"ACL_RULE|DUI_DHCP_GUARD|V1_IN_Ethernet120": {"IN_PORTS": "Ethernet120", "IP_PROTOCOL": "17", "L4_DST_PORT": "68", "L4_SRC_PORT": "67", "PACKET_ACTION": "DROP", "PRIORITY": "8500", "VLAN_ID": "4094"},
+		"ACL_RULE|DUI_DHCP_GUARD|V1_DROP":           {"IP_PROTOCOL": "17", "L4_DST_PORT": "68", "L4_SRC_PORT": "67", "PACKET_ACTION": "DROP", "PRIORITY": "8000", "VLAN_ID": "4094"},
+	}
+	r := newACLRig(t, func(fr *FixtureRunner) {
+		if err := fr.update("cfg_acl_rule", func(tb table) error {
+			for k, v := range orphans {
+				tb[k] = v
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	off := false
+	del := func(rule string) string {
+		return "sudo sonic-db-cli CONFIG_DB del 'ACL_RULE|DUI_DHCP_GUARD|" + rule + "'"
+	}
+	st := r.expectDevice("orphans", devicemodel.DeviceDesired{DHCPSnooping: &off}, []string{
+		"sudo sonic-db-cli CONFIG_DB hset 'ACL_TABLE|DUI_DHCP_GUARD' type L3 stage ingress policy_desc 'disunified placeholder'",
+		del("V1_DROP"), del("V1_IN_Ethernet120"), del("V1_S1"),
+		"sudo config acl remove table DUI_DHCP_GUARD",
+		save,
+	})
+	if len(r.fr.CaclmgrdKeyErrors) != 0 {
+		t.Errorf("caclmgrd would have died on %q", r.fr.CaclmgrdKeyErrors)
+	}
+	if len(st.aclTables) != 0 || len(st.aclRules) != 0 {
+		t.Errorf("left behind: tables %v rules %v", st.aclTables, st.aclRules)
 	}
 }

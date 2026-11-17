@@ -159,6 +159,19 @@ func (f *FixtureRunner) aclRemoveTable(args []string) error {
 // table's pending set.
 func (f *FixtureRunner) aclTablePorts(w []string) error {
 	key := w[3]
+	if w[2] == "hset" && len(w) == 10 && w[4] == "type" && w[6] == "stage" && w[8] == "policy_desc" {
+		// placeholderTable: a portless row for a table that is absent.
+		if err := f.update("cfg_acl_table", func(t table) error {
+			if t[key] != nil {
+				return fmt.Errorf("unmodelled: %s already present", key)
+			}
+			t[key] = map[string]string{"type": w[5], "stage": w[7], "policy_desc": w[9]}
+			return nil
+		}); err != nil {
+			return err
+		}
+		return f.orchACL()
+	}
 	set := w[2] == "hset" && len(w) == 6 && w[4] == "ports@"
 	del := w[2] == "hdel" && len(w) == 5 && w[4] == "ports@"
 	if !set && !del {
@@ -186,6 +199,9 @@ func (f *FixtureRunner) aclRuleWrite(w []string) error {
 	key := w[3]
 	if !strings.HasPrefix(key, "ACL_RULE|DUI_") || strings.Count(key, "|") != 2 {
 		return fmt.Errorf("unexpected ACL key %q", key)
+	}
+	if tbl := strings.Split(key, "|")[1]; f.table("cfg_acl_table")["ACL_TABLE|"+tbl] == nil {
+		f.CaclmgrdKeyErrors = append(f.CaclmgrdKeyErrors, strings.Join(w, " "))
 	}
 	err := f.update("cfg_acl_rule", func(t table) error {
 		switch {

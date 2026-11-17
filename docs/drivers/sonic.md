@@ -5260,6 +5260,51 @@ switch's address, port 68, as in §11.7.7 but unforged.
 - The controller's alert from this bit, which is the end-to-end check after
   the deploy.
 
+#### 11.7.10 caclmgrd dies on a rule whose table is absent (2026-11-17)
+
+**What happened.** On 2026-11-15 22:41:38-22:42:40 UTC caclmgrd exited
+three times (status 1, systemd restarting it) with `KeyError:
+'DUI_DHCP_GUARD'` at line 1285 of `/usr/local/bin/caclmgrd` (202511 build
+`igmp-202511.20261116-6c8eb1cf7`). For every `ACL_RULE` event, a set or a
+delete, it takes the table name from the key and reads
+`get_table(ACL_TABLE)[table]["type"]` with no check, to decide whether the
+rule is a control-plane one. A rule event whose table is absent at that
+moment kills the daemon. Its subscriber also replays every existing key at
+start, so a rule left without its table kills it again at each restart,
+every 30 s (`Restart=always`, `RestartSec=30s`; the start limit, 5 in 10 s,
+is never reached, so it crash-loops rather than staying down).
+
+**It was not the driver.** The switch's sudo log for the window shows the
+bridge stopped (`systemctl stop disunified`) and three
+`ACL_RULE|DUI_DHCP_GUARD|…` rows written by hand while no `DUI_DHCP_GUARD`
+table existed: the §11.7.9 hand tests, following the advice (in the sonic
+driver's CLAUDE.md until this day) that rules without a table reach no chip
+but are mirrored. Each `hset` was a crash; the bridge's start at 22:42:14
+recreated the table.
+
+**The driver's own order is safe** (reproduced 2026-11-17 with a portless
+`DUI_REPRO` table): rules deleted then the table removed, five times at the
+driver's pace and five times back to back in `redis-cli`, never crashed it.
+caclmgrd pops a rule's DEL within milliseconds, while the table still
+stands. A rule `hset` with no table crashed it at once, as did deleting
+that rule.
+
+**The fix.** The one path where the driver wrote a rule event with the table
+absent was its own cleanup of such orphans (a table it manages with rules
+and no `ACL_TABLE` row). It now writes a portless placeholder row first
+(`hset 'ACL_TABLE|<t>' type L3 stage ingress policy_desc 'disunified
+placeholder'`: orchagent makes a table bound to nothing), deletes the rules,
+then removes the table. Verified by hand on the DX010 (three orphans
+healed, no KeyError) and in `TestOrphanGuardRulesGoBehindAPlaceholder`,
+whose rows are the three hand-written ones from the log. The FixtureRunner
+records every rule write that would have met an absent table
+(`CaclmgrdKeyErrors`); the guard on/off test asserts none.
+
+**For hand tests**: write the `ACL_TABLE` row before any rule and remove it
+after them. A table with no `ports@` binds nothing in the chip and still
+satisfies caclmgrd. An image patch (`.get()` in caclmgrd's lookup) would be
+the upstream fix; it is not needed for the driver and was not made.
+
 ### 11.8 Full retest on the 202511 IGMP image (2026-11-02)
 
 The DX010 was reinstalled with the custom 202511 image (§8,

@@ -693,6 +693,13 @@ func hsetRule(table, rule string, f map[string]string) string {
 	return b.String()
 }
 
+// placeholderTable is a portless L3 row for an absent table: it binds
+// nothing (orchagent creates the table and no port group) and stands
+// there only while the orphan rules it names are deleted.
+func placeholderTable(table string) string {
+	return "sonic-db-cli CONFIG_DB hset " + sshrun.ShellQuote("ACL_TABLE|"+table) + " type L3 stage " + aclStage + " policy_desc " + sshrun.ShellQuote("disunified placeholder")
+}
+
 func delRule(table, rule string) string {
 	return "sonic-db-cli CONFIG_DB del " + sshrun.ShellQuote(ruleKey(table, rule))
 }
@@ -855,6 +862,16 @@ func (c *Collector) applyACLTables(ctx context.Context) (int, error) {
 		ours := exists && cur.typ == typ && cur.stage == aclStage && typeOK
 		if len(rules) == 0 || (exists && !ours) {
 			// The table goes (or is not the driver's shape): its rules first.
+			if !exists && len(have) > 0 {
+				// Rules with no table (a hand test's, or left by an older
+				// build): caclmgrd looks up the table of every ACL_RULE
+				// event and dies when it is absent, so the deletes need a
+				// table to find. A portless placeholder row, removed after
+				// them (§11.7.10).
+				name := t
+				add(placeholderTable(name), func(s *swState) { s.aclTables[name] = aclTable{typ: "L3", stage: aclStage} })
+				exists = true
+			}
 			dropRules(t, byPriority(have))
 			if exists {
 				name := t

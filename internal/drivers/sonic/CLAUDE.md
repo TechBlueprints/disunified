@@ -614,8 +614,12 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   a LAN host's raw socket can send from a documentation source address
   (Vlan4094's `rp_filter` is loose), so a rule needs no real host's
   address; dhclient holds `0.0.0.0:68` for eth0, so a 68 listener binds
-  the switch's own address with `SO_REUSEADDR`; `ACL_RULE|DUI_…` rows with
-  no `ACL_TABLE` reach no chip (orchagent waits) but are mirrored.
+  the switch's own address with `SO_REUSEADDR`. **Never write an
+  `ACL_RULE|DUI_…` row without its `ACL_TABLE` row**: caclmgrd dies on every
+  rule event whose table is absent, and again at each restart while the row
+  stays (§11.7.10). For a rule that reaches no chip, give it a portless
+  table (`type L3 stage ingress`, no `ports@`), and remove the table after
+  the rules. The driver deletes orphan rules behind such a placeholder.
   **A set that would block the bridge's own SSH to the switch is held**
   (`cutsManagement`): the rules bind to the uplink, and the DX010 has no
   other way in; `collect.py`'s `ssh` section is `SSH_CONNECTION`'s client
