@@ -47,13 +47,20 @@ func TestSpeedAutoJoinsASplitTheModuleCannotRun(t *testing.T) {
 	if got := r.c.PlanPorts(base); len(got) != 0 {
 		t.Errorf("PlanPorts(auto) = %v: the module's join is the driver's own", got)
 	}
-	snap := r.expect("auto", base, []string{
+	// The join's own batch writes no FEC: the rejoined port's
+	// supported_fecs is not known until the next collect (§11.37). The
+	// module's RS follows one cycle later, and then nothing.
+	got, _ := r.apply(base)
+	if want := []string{
 		"sudo config interface breakout -f -y Ethernet0 '1x100G[40G]' </dev/null",
 		"sudo config interface startup Ethernet0",
-		"sudo config interface fec Ethernet0 rs",
 		"sudo config vlan member add -u 4094 Ethernet0",
 		save,
-	})
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("auto: commands\n  got  %q\n  want %q", got, want)
+	}
+	r.system2()
+	snap := r.expect("the cycle after the join", base, []string{"sudo config interface fec Ethernet0 rs", save})
 	if p := port(snap, 1); len(p.Interfaces) != 1 || p.AdminSpeed != 100000 || p.FECConfig != devicemodel.FECRS {
 		t.Errorf("cage 1 after: interfaces %v speed %d FEC %q", p.Interfaces, p.AdminSpeed, p.FECConfig)
 	}
@@ -86,8 +93,9 @@ func TestSpeedAutoKeepsASplitTheModuleRuns(t *testing.T) {
 }
 
 // A 25G-only code in a QSFP28 cage is a breakout cable: auto splits the
-// cage for it (the driver's own write). Its lanes get CL74, which the old
-// 100G interface's supported_fecs (none,rs) no longer speaks for.
+// cage for it (the driver's own write). Its lanes get CL74 the cycle
+// after, once their own supported_fecs (none,fc) has been read: the old
+// 100G interface's (none,rs) no longer speaks for them (§11.37).
 func TestSpeedAutoSplitsForABreakoutCable(t *testing.T) {
 	r := newHardwareRig(t, withModule("25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R"))
 	base := r.baseline()
@@ -99,12 +107,20 @@ func TestSpeedAutoSplitsForABreakoutCable(t *testing.T) {
 		t.Fatalf("auto with a breakout cable (%d ports): %q", n, got)
 	}
 	for _, ln := range []string{"Ethernet0", "Ethernet1", "Ethernet2", "Ethernet3"} {
-		for _, c := range []string{"sudo config interface startup " + ln, "sudo config interface fec " + ln + " fc", "sudo config vlan member add -u 4094 " + ln} {
+		for _, c := range []string{"sudo config interface startup " + ln, "sudo config vlan member add -u 4094 " + ln} {
 			if !containsStr(got, c) {
 				t.Errorf("missing %q in %q", c, got)
 			}
 		}
+		if containsStr(got, "sudo config interface fec "+ln+" fc") {
+			t.Errorf("FEC written on %s before its supported_fecs was read: %q", ln, got)
+		}
 	}
+	r.system2()
+	r.expect("the cycle after the split", base, []string{
+		"sudo config interface fec Ethernet0 fc", "sudo config interface fec Ethernet1 fc",
+		"sudo config interface fec Ethernet2 fc", "sudo config interface fec Ethernet3 fc", save,
+	})
 }
 
 // The night's case as it was, an empty cage: no module, no opinion -- the

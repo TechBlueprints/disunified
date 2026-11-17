@@ -1,0 +1,71 @@
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,7 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   error-correction encoding reed-solomon
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,8 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   error-correction encoding reed-solomon
++   error-correction encoding fire-code
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,7 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   error-correction encoding fire-code
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,7 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   no error-correction encoding
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,7 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   error-correction encoding fire-code
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+--- system:/running-config
++++ session:/dui-fec-probe-session-config
+@@ -264,6 +264,7 @@
+ interface Ethernet54/1
+    mtu 1500
+    speed forced 100gfull
++   error-correction encoding fire-code
+    switchport mode trunk
+ !
+ interface Ethernet54/2
+
+> error-correction encoding ?
+
+% Invalid input at line 22
+Maximum number of completed sessions: 1
+Maximum number of pending sessions: 5
+
+  Name    State       User    Terminal 
+  ---- ----------- ---------- -------- 
+

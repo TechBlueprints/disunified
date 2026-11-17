@@ -109,6 +109,17 @@ type Collector struct {
 
 	stpHeld map[string]stpHold // per interface: holdSTPChanges
 
+	// FEC (fec.go): each interface's row of `show interfaces
+	// error-correction` from the last collect (and what was written
+	// since), the modules' EEPROM compliance codes by cage, the modules
+	// seated when those were read, and whether they have changed since.
+	fecRows     map[string]errCorr
+	ifTypes     map[string]string // `show interfaces status` interfaceType, by interface
+	eeprom      map[int]moduleCodes
+	opticSig    string
+	eepromFresh bool // read since the last collect
+	eepromStale bool
+
 	// Lane switches (lanes.go): the split cages' lanes as of the last
 	// collect (by cage, Index 1..N), the attached lane switches, the cages
 	// the controller has disabled, this switch's LLDP chassis id, and the
@@ -198,10 +209,13 @@ func (c *Collector) refreshStatic(ctx context.Context) error {
 	if err := decodeInto(out[6], startupCmds[6], &li); err != nil {
 		return err
 	}
+	codes := c.readEEPROM(ctx)
 	c.mu.Lock()
+	c.eeprom, c.eepromFresh = codes, true
 	c.chassisID = strings.ToLower(li.ChassisID)
 	c.hostname = hn.Hostname
 	c.static = staticFromStatus(ss)
+	c.ifTypes = interfaceTypes(ss)
 	c.inventory = inv
 	c.props = props
 	c.hardware = hardwareByInterface(hw)
@@ -314,6 +328,14 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 		return nil, err
 	}
 	c.mu.Lock()
+	c.fecRows = fecRowsFrom(fec, rc)
+	// The EEPROM codes are read with the startup commands; a module
+	// swapped since is noticed here and read at the next collect.
+	if sig := opticSignature(ports); c.eepromFresh {
+		c.opticSig, c.eepromStale, c.eepromFresh = sig, false, false
+	} else if sig != c.opticSig {
+		c.eepromStale, c.refresh = true, true
+	}
 	c.portChannels = portChannelVLANs(sp)
 	c.channelCfg = portChannelSections(rc)
 	c.macDrops = macDropsFrom(rc)

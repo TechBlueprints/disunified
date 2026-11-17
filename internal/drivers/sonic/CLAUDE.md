@@ -403,15 +403,23 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   lane numbers (the physical column) to the chip's port names. A split
   lane is the standard's `25GBASE-CR-S` host: CA-N and CA-S DACs, no CA-L,
   no standard 25G optic.
-- **FEC follows the module where UniFi says auto (§10.3, `optic.go`).** A
-  push without `port.N.fec` gets the FEC the cage's module calls for at the
-  interface's configured speed (`moduleFEC`, by xcvrd's compliance name),
-  within STATE_DB `supported_fecs`; an empty cage or an unknown module is
-  left alone with a note. Those writes are `plan.own`, and `PlanPorts`
-  plans without them (`plan.controllerOnly`), so the first-push hold and
-  fresh-port withholding never wait on something no controller setting can
-  match. Live fact: the DX010's 100G CWDM4 uplink stayed down until RS was
-  set by hand.
+- **FEC follows the standard where UniFi says auto (§10.3, §11.37,
+  `optic.go`, 2026-11-17).** A push without `port.N.fec` gets the first
+  mode the standard permits for the cage's module at the interface's
+  configured speed that STATE_DB `supported_fecs` lists
+  (`internal/fecpolicy`, shared with `arista-eos`; `moduleMedium` maps
+  xcvrd's compliance name; never add a FEC table here). An empty cage or
+  an unknown module is left alone with a note; so is a module whose
+  permitted modes the port lacks (CA-25G-L or a 25G optic on a lane:
+  "cannot link within the standard"). A port that is up on a permitted
+  mode is not rewritten. **After a breakout in the same plan the FEC
+  waits one cycle** (`swState.fecsStale`): the new interfaces' list is
+  not read yet, and portconfig's refusal of a mode they lack would end
+  the batch after the breakout. Those writes are `plan.own`, and
+  `PlanPorts` plans without them (`plan.controllerOnly`), so the
+  first-push hold and fresh-port withholding never wait on something no
+  controller setting can match. Live fact: the DX010's 100G CWDM4 uplink
+  stayed down until RS was set by hand.
 - **Speed "auto" follows the module too (§10.9, `moduleSpeed`,
   `moduleRuns`).** With no manual speed, a cage holding a known module
   keeps a configuration (ports x lane speed) the module runs and otherwise

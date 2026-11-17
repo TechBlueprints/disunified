@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/fecpolicy"
 )
 
 // The module in a cage (docs/drivers/sonic.md §10.3, §10.4): its name as
-// xcvrd prints it, and the FEC it calls for.
+// xcvrd prints it, and the medium the FEC policy knows it as.
 
 // complianceName names a module from TRANSCEIVER_INFO's
 // specification_compliance. For an SFF-8636 module xcvrd stores Python's
@@ -157,62 +158,58 @@ func (p *pyParser) str() (string, bool) {
 	return "", false
 }
 
-// moduleFEC is the FEC a module calls for at an interface speed (Mb/s), by
-// its compliance name (sonic-platform-common 202505: sff8024.py
-// EXT_SPEC_COMPLIANCE, sff8636.py ETHERNET_10_40G_COMPLIANCE) and what the
-// IEEE clause or MSA for it requires of the host. False when the table
-// does not know the pair: then nothing is written.
-func moduleFEC(name string, speed int) (devicemodel.FEC, bool) {
-	switch speed {
-	case 40000, 10000:
-		if name != "" {
-			return devicemodel.FECDisabled, true // no RS-FEC below 25G a lane
-		}
-		return "", false
-	case 100000:
-		switch name {
-		case "100G CWDM4", // verified live on the DX010 (2026-10-31)
-			"100GBASE-SR4 or 25GBASE-SR",
-			"100G PSM4 Parallel SMF",
-			"100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS",
-			"100G AOC (Active Optical Cable) or 25GAUI C2M AOC", // BER 5x10^-5
-			"100G ACC (Active Copper Cable) or 25GAUI C2M ACC",  // BER 5x10^-5
-			"100G SWDM4",
-			"100G PAM4 BiDi":
-			return devicemodel.FECRS, true
-		case "100GBASE-LR4 or 25GBASE-LR",
-			"100GBASE-ER4 or 25GBASE-ER",
-			"100G AOC or 25GAUI C2M AOC", // BER 10^-12
-			"100G ACC or 25GAUI C2M ACC": // BER 10^-12
-			return devicemodel.FECDisabled, true
-		}
-	case 25000:
-		switch name {
-		case "100GBASE-SR4 or 25GBASE-SR",
-			"100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS",
-			"100G AOC (Active Optical Cable) or 25GAUI C2M AOC",
-			"100G ACC (Active Copper Cable) or 25GAUI C2M ACC":
-			return devicemodel.FECRS, true
-		case "25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R":
-			return devicemodel.FECFC, true
-		case "25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC",
-			"100GBASE-LR4 or 25GBASE-LR",
-			"100GBASE-ER4 or 25GBASE-ER",
-			"100G AOC or 25GAUI C2M AOC",
-			"100G ACC or 25GAUI C2M ACC":
-			return devicemodel.FECDisabled, true
-		}
-	case 50000:
-		switch name {
-		case "100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS":
-			return devicemodel.FECRS, true
-		case "25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R":
-			return devicemodel.FECFC, true
-		case "25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC":
-			return devicemodel.FECDisabled, true
+// moduleMedium is the neutral medium (internal/fecpolicy) of a module, by
+// its compliance name as xcvrd and sfputil print it (sonic-platform-common
+// 202505: sff8024.py EXT_SPEC_COMPLIANCE, whose keys are the SFF-8024
+// codes, and sff8636.py ETHERNET_10_40G_COMPLIANCE). A name the table
+// does not list is a module all the same (fecpolicy.Other: an answer at
+// 40G and 10G only); no name is no module to speak for.
+func moduleMedium(name string) fecpolicy.Medium {
+	if name == "" {
+		return fecpolicy.Unknown
+	}
+	if code, ok := sff8024Codes[name]; ok {
+		return fecpolicy.FromSFF8024(code)
+	}
+	if name == "40GBASE-CR4" {
+		return fecpolicy.Copper40G
+	}
+	return fecpolicy.Other
+}
+
+// sff8024Codes: the names of the extended compliance codes the FEC table
+// speaks for, to their code (sff8024.py EXT_SPEC_COMPLIANCE).
+var sff8024Codes = map[string]int{
+	"100G AOC (Active Optical Cable) or 25GAUI C2M AOC":        0x01, // BER 5x10^-5
+	"100GBASE-SR4 or 25GBASE-SR":                               0x02,
+	"100GBASE-LR4 or 25GBASE-LR":                               0x03,
+	"100GBASE-ER4 or 25GBASE-ER":                               0x04,
+	"100G CWDM4":                                               0x06, // verified live on the DX010 (2026-10-31)
+	"100G PSM4 Parallel SMF":                                   0x07,
+	"100G ACC (Active Copper Cable) or 25GAUI C2M ACC":         0x08, // BER 5x10^-5
+	"100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS": 0x0B,
+	"25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R":           0x0C,
+	"25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC":           0x0D,
+	"100G AOC or 25GAUI C2M AOC":                               0x18, // BER 10^-12
+	"100G ACC or 25GAUI C2M ACC":                               0x19, // BER 10^-12
+	"100G SWDM4":                                               0x20,
+	"100G PAM4 BiDi":                                           0x21,
+}
+
+// fecList is STATE_DB's supported_fecs as the policy's modes; nil when the
+// platform lists none (the virtual switch), which the policy reads as "not
+// known".
+func fecList(sup map[string]bool) []devicemodel.FEC {
+	if len(sup) == 0 {
+		return nil
+	}
+	out := []devicemodel.FEC{}
+	for _, f := range []devicemodel.FEC{devicemodel.FECDisabled, devicemodel.FECFC, devicemodel.FECRS} {
+		if sup[fecKeyword(f)] {
+			out = append(out, f)
 		}
 	}
-	return "", false
+	return out
 }
 
 // laneCfg is one way to run a cage: split into ports interfaces of speed

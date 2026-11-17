@@ -47,9 +47,7 @@ type showInventory struct {
 }
 
 type showInterfacesErrorCorrection struct {
-	Statuses map[string]struct {
-		Status string `json:"errCorrEncodingStatus"` // disabled | reedSolomon | fireCode
-	} `json:"interfaceErrCorrStatuses"`
+	Statuses map[string]errCorr `json:"interfaceErrCorrStatuses"` // fec.go
 }
 
 type showInterfaceFlowControl struct {

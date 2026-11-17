@@ -4,8 +4,8 @@ What forward error correction a link is supposed to run, in three layers:
 what the standards define per speed and medium, what a module's EEPROM
 says it needs, and what a switch says it can do. Written to judge the
 DX010's "25G lanes support only none and FC" before trying to override it.
-Sections 1 to 4 are research; section 5 is a test run on the DX010 the
-same day.
+Sections 1 to 3 are research; section 4 is what the drivers do with it
+since 2026-11-17; section 5 is a test run on the DX010 on 2026-11-16.
 
 Names: **FC** = BASE-R FEC, "fire code", IEEE 802.3 Clause 74 (UniFi's
 `cl-74` / `fc-fec`). **RS** = Reed-Solomon RS(528,514): Clause 91 at 100G,
@@ -103,22 +103,62 @@ What a CR-S lane means in practice:
   without the FEC its budget assumes; short links often come up, none is
   guaranteed. That bears on any SFP28 optic behind a QSA.
 
-## 4. Against the driver's own table (`moduleFEC`, `optic.go`)
+## 4. The drivers' table follows the standard (since 2026-11-17)
 
-- **Wrong:** at 25G, `100GBASE-LR4 or 25GBASE-LR` and `100GBASE-ER4 or
-  25GBASE-ER` map to "disabled". The standard requires RS for 25GBASE-LR
-  and -ER. In a QSFP28 cage that code at 25G can only be an SFP28 optic
-  behind a QSA, so it matters exactly there.
-- **Too narrow:** the table gives one mode per cable, the standard a set
-  (CA-N: any; CA-S: FC or RS; CA-L: RS). Choosing from the set, within what
-  the port supports, would let a "with BASE-R" cable run RS on a 2x50G
-  cage instead of being left alone, and would say outright when a cable's
-  set and the port's list do not meet (CA-L on a 25G lane).
-- **Right:** 10G and 40G to "disabled", 100G CR4/SR4/CWDM4 to RS, LR4 to
-  none, CA-S to FC, CA-N to none, the 50G rows.
+Until 2026-11-17 the `sonic` driver kept a table of its own (`moduleFEC`,
+one mode per module and speed) and the `arista-eos` driver wrote nothing on
+auto. Measured against section 1 that table was wrong in one place (25G LR
+and ER optics mapped to "disabled"; the standard requires RS) and too
+narrow in another (one mode per cable where the standard gives a set).
+
+Both drivers now take the answer from one table, `internal/fecpolicy`,
+which is section 1 as code: per medium and speed, the modes the standard
+permits, the one the medium is specified for first.
+
+| Medium | 10G | 25G | 40G | 50G (two lanes) | 100G |
+|---|---|---|---|---|---|
+| copper CA-25G-N (0Dh) | none | none, FC, RS | none, FC | none, FC, RS | -- |
+| copper CA-25G-S (0Ch) | none | FC, RS | none, FC | FC, RS | -- |
+| copper CA-25G-L / 100GBASE-CR4 (0Bh) | none | RS | none, FC | RS | RS |
+| 100GBASE-CR4, 25G class not known | none | -- | none, FC | -- | RS |
+| 40GBASE-CR4 | none | -- | none, FC | -- | -- |
+| SR4 / 25G SR (02h) | none | RS | none | -- | RS |
+| LR4 / 25G LR (03h), ER4 / 25G ER (04h) | none | RS | none | -- | none |
+| active cable, BER 5e-5 (01h, 08h) | none | RS | none | -- | RS |
+| active cable, BER 1e-12 (18h, 19h) | none | none, RS | none | -- | none, RS |
+| CWDM4 (06h), PSM4 (07h), SWDM4 (20h), PAM4 BiDi (21h) | none | -- | none | -- | RS |
+| any other named module | none | -- | none | -- | -- |
+
+`--` is "no answer": nothing is written and a note says so. A driver
+chooses the first mode in the row that its port supports
+(`fecpolicy.Choose`). When the port supports none of them, nothing is
+written and the note says outright that the pair cannot link within the
+standard: on the DX010 that is a CA-25G-L cable or any standard 25G optic
+on a 25G lane (section 3).
+
+Three places where the table says a little more than section 1's rows,
+each on purpose:
+
+- **40G copper lists FC second.** Section 1: FC is optional on CR4, by
+  auto-negotiation. "none" is first, and every port here supports none, so
+  FC is never the choice; it is in the set so that a linked port found
+  running it is not corrected.
+- **A 1e-12 active cable lists RS second.** Such a cable needs no FEC; RS
+  over it is still a 25GAUI or 100GAUI the standard defines. Same reason:
+  a link found up on RS is left alone.
+- **CA-25G-N lists all three**, none first (section 1's clause 110 table).
+
+What each driver does with the table is in `docs/drivers/sonic.md` §10.3
+and §11.37 and `docs/drivers/arista-eos.md` §13. Both keep a port that is
+up on a mode its row permits (a working link is not flapped for the
+preferred mode), and both write these modes as their own, outside what
+the first-push hold counts.
 
 The controller's own rule (a FEC only at 25G on SFP28, at 40G and 100G on
 QSFP28, never at 10G or 50G; `breakout-lag.md` §7) lines up with section 1.
+
+Section 6's closing remark about the table's "one known error" describes
+the table before this change.
 
 ## 5. Setting RS on a 25G lane anyway: tried, and the chip refuses (2026-11-16)
 

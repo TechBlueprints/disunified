@@ -338,7 +338,7 @@ func laneMode(lanes []devicemodel.Port) string {
 }
 
 // lanePlan is the plan of ApplyPorts scoped to a cage's lanes.
-func (c *Collector) lanePlan(cage int, desired []devicemodel.PortDesired) (*devicemodel.Snapshot, planResult, error) {
+func (c *Collector) lanePlan(cage int, desired []devicemodel.PortDesired, controllerOnly bool) (*devicemodel.Snapshot, planResult, error) {
 	c.mu.Lock()
 	snap, lanes, down := c.last, c.lanes[cage], c.cageDown[cage]
 	c.mu.Unlock()
@@ -349,8 +349,18 @@ func (c *Collector) lanePlan(cage int, desired []devicemodel.PortDesired) (*devi
 		return nil, planResult{}, fmt.Errorf("arista-eos: cage %d is not split", cage)
 	}
 	scoped := *snap
-	scoped.Ports = lanes
-	return &scoped, c.plan(&scoped, desired, planScope{cage: cage, cageDown: down}), nil
+	// The module sits in the cage: its lanes take their FEC on auto from it
+	// (fec.go), though the lane switch reports it on its cable port.
+	scoped.Ports = slices.Clone(lanes)
+	for _, p := range snap.Ports {
+		if p.Index != cage {
+			continue
+		}
+		for i := range scoped.Ports {
+			scoped.Ports[i].Optic, scoped.Ports[i].Present = p.Optic, p.Present
+		}
+	}
+	return &scoped, c.plan(&scoped, desired, planScope{cage: cage, cageDown: down, controllerOnly: controllerOnly}), nil
 }
 
 // ApplyLanes implements devicemodel.LaneProvider: the plan of ApplyPorts,
@@ -361,7 +371,7 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		return 0, fmt.Errorf("eos apply (cage %d lanes): %w", cage, err)
 	}
 	defer unlock()
-	_, pr, err := c.lanePlan(cage, desired)
+	_, pr, err := c.lanePlan(cage, desired, false)
 	if err != nil {
 		return 0, err
 	}
@@ -384,13 +394,14 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 	}
 	c.markPortChannels(pr.pcVLAN)
 	c.forgetPortChannels(pr.removed)
+	c.markFEC(pr.fec)
 	c.mu.Unlock()
 	return pr.changed, nil
 }
 
 // PlanLanes implements devicemodel.LaneProvider (the first-push hold).
 func (c *Collector) PlanLanes(cage int, desired []devicemodel.PortDesired) []int {
-	_, pr, err := c.lanePlan(cage, desired)
+	_, pr, err := c.lanePlan(cage, desired, true)
 	if err != nil {
 		return nil
 	}

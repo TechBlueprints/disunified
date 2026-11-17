@@ -1,0 +1,1154 @@
+{
+  "interfaces": {
+    "Ethernet49": {
+      "fields": {
+        "Compliance": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                131,
+                132,
+                133,
+                134,
+                135,
+                136,
+                137,
+                138,
+                192
+              ]
+            }
+          },
+          "subfields": {
+            "Ethernet": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    131
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "Extended",
+                "possibleValues": [
+                  "40G active cable",
+                  "40GBASE-LR4",
+                  "40GBASE-SR4",
+                  "40GBASE-CR4",
+                  "10GBASE-SR",
+                  "10GBASE-LR",
+                  "10GBASE-LRM",
+                  "Extended"
+                ],
+                "raw": 128
+              }
+            },
+            "Extended": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    192
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "100G CWDM4",
+                "possibleValues": [],
+                "raw": 6
+              }
+            },
+            "Fibre Channel": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    135,
+                    136,
+                    137,
+                    138
+                  ]
+                }
+              },
+              "subfields": {
+                "Link length": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "medium distance (M)",
+                      "long distance (L)",
+                      "intermediate distance (I)",
+                      "short distance (S)",
+                      "very long distance (V)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Speed": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        138
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "100 MBytes/sec",
+                      "Extended",
+                      "200 MBytes/sec",
+                      "3200 MBytes/sec",
+                      "400 MBytes/sec",
+                      "1600 MBytes/sec",
+                      "800 MBytes/sec",
+                      "1200 MBytes/sec"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmission media": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        137
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "Single Mode (SM)",
+                      "Multi-mode 50um (OM3)",
+                      "Multimode, 50um (M5, M5E)",
+                      "Multimode, 62.5um (M6)",
+                      "Video Coax (TV)",
+                      "Miniture Coax (MI)",
+                      "Twisted Pair (TP)",
+                      "Twin Axial Pair (TW)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmitter technology": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135,
+                        136
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [],
+                    "raw": 0
+                  }
+                }
+              }
+            },
+            "Gigabit": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    134
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "None",
+                "possibleValues": [
+                  "1000BASE-SX",
+                  "1000BASE-LX",
+                  "1000BASE-CX",
+                  "1000BASE-T",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved"
+                ],
+                "raw": 0
+              }
+            }
+          },
+          "value": {
+            "raw": 2361183241434822606854
+          }
+        },
+        "Identifier": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                0,
+                128
+              ]
+            }
+          },
+          "subfields": {
+            "Lower": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    0
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "unknown or unspecified",
+                "possibleValues": [],
+                "raw": 0
+              }
+            },
+            "Upper": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    128
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "QSFP28 or later (SFF-8665 et al)",
+                "possibleValues": [],
+                "raw": 17
+              }
+            }
+          }
+        }
+      }
+    },
+    "Ethernet50": {
+      "fields": {
+        "Compliance": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                131,
+                132,
+                133,
+                134,
+                135,
+                136,
+                137,
+                138,
+                192
+              ]
+            }
+          },
+          "subfields": {
+            "Ethernet": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    131
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "Extended",
+                "possibleValues": [
+                  "40G active cable",
+                  "40GBASE-LR4",
+                  "40GBASE-SR4",
+                  "40GBASE-CR4",
+                  "10GBASE-SR",
+                  "10GBASE-LR",
+                  "10GBASE-LRM",
+                  "Extended"
+                ],
+                "raw": 128
+              }
+            },
+            "Extended": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    192
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "25GBASE-CR CA-S",
+                "possibleValues": [],
+                "raw": 12
+              }
+            },
+            "Fibre Channel": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    135,
+                    136,
+                    137,
+                    138
+                  ]
+                }
+              },
+              "subfields": {
+                "Link length": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "medium distance (M)",
+                      "long distance (L)",
+                      "intermediate distance (I)",
+                      "short distance (S)",
+                      "very long distance (V)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Speed": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        138
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "100 MBytes/sec",
+                      "Extended",
+                      "200 MBytes/sec",
+                      "3200 MBytes/sec",
+                      "400 MBytes/sec",
+                      "1600 MBytes/sec",
+                      "800 MBytes/sec",
+                      "1200 MBytes/sec"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmission media": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        137
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "Single Mode (SM)",
+                      "Multi-mode 50um (OM3)",
+                      "Multimode, 50um (M5, M5E)",
+                      "Multimode, 62.5um (M6)",
+                      "Video Coax (TV)",
+                      "Miniture Coax (MI)",
+                      "Twisted Pair (TP)",
+                      "Twin Axial Pair (TW)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmitter technology": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135,
+                        136
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [],
+                    "raw": 0
+                  }
+                }
+              }
+            },
+            "Gigabit": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    134
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "None",
+                "possibleValues": [
+                  "1000BASE-SX",
+                  "1000BASE-LX",
+                  "1000BASE-CX",
+                  "1000BASE-T",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved"
+                ],
+                "raw": 0
+              }
+            }
+          },
+          "value": {
+            "raw": 2361183241434822606860
+          }
+        },
+        "Identifier": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                0,
+                128
+              ]
+            }
+          },
+          "subfields": {
+            "Lower": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    0
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "unknown or unspecified",
+                "possibleValues": [],
+                "raw": 0
+              }
+            },
+            "Upper": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    128
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "QSFP28 or later (SFF-8665 et al)",
+                "possibleValues": [],
+                "raw": 17
+              }
+            }
+          }
+        }
+      }
+    },
+    "Ethernet51": {
+      "fields": {
+        "Compliance": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                131,
+                132,
+                133,
+                134,
+                135,
+                136,
+                137,
+                138,
+                192
+              ]
+            }
+          },
+          "subfields": {
+            "Ethernet": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    131
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "Extended",
+                "possibleValues": [
+                  "40G active cable",
+                  "40GBASE-LR4",
+                  "40GBASE-SR4",
+                  "40GBASE-CR4",
+                  "10GBASE-SR",
+                  "10GBASE-LR",
+                  "10GBASE-LRM",
+                  "Extended"
+                ],
+                "raw": 128
+              }
+            },
+            "Extended": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    192
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "100GBASE-CR4 or 25GBASE-CR CA-L",
+                "possibleValues": [],
+                "raw": 11
+              }
+            },
+            "Fibre Channel": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    135,
+                    136,
+                    137,
+                    138
+                  ]
+                }
+              },
+              "subfields": {
+                "Link length": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "medium distance (M)",
+                      "long distance (L)",
+                      "intermediate distance (I)",
+                      "short distance (S)",
+                      "very long distance (V)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Speed": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        138
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "100 MBytes/sec",
+                      "Extended",
+                      "200 MBytes/sec",
+                      "3200 MBytes/sec",
+                      "400 MBytes/sec",
+                      "1600 MBytes/sec",
+                      "800 MBytes/sec",
+                      "1200 MBytes/sec"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmission media": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        137
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "Twin Axial Pair (TW)",
+                    "possibleValues": [
+                      "Single Mode (SM)",
+                      "Multi-mode 50um (OM3)",
+                      "Multimode, 50um (M5, M5E)",
+                      "Multimode, 62.5um (M6)",
+                      "Video Coax (TV)",
+                      "Miniture Coax (MI)",
+                      "Twisted Pair (TP)",
+                      "Twin Axial Pair (TW)"
+                    ],
+                    "raw": 128
+                  }
+                },
+                "Transmitter technology": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135,
+                        136
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [],
+                    "raw": 0
+                  }
+                }
+              }
+            },
+            "Gigabit": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    134
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "None",
+                "possibleValues": [
+                  "1000BASE-SX",
+                  "1000BASE-LX",
+                  "1000BASE-CX",
+                  "1000BASE-T",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved"
+                ],
+                "raw": 0
+              }
+            }
+          },
+          "value": {
+            "raw": 2361183241434830995467
+          }
+        },
+        "Identifier": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                0,
+                128
+              ]
+            }
+          },
+          "subfields": {
+            "Lower": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    0
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "unknown or unspecified",
+                "possibleValues": [],
+                "raw": 0
+              }
+            },
+            "Upper": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    128
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "QSFP28 or later (SFF-8665 et al)",
+                "possibleValues": [],
+                "raw": 17
+              }
+            }
+          }
+        }
+      }
+    },
+    "Ethernet52": {
+      "fields": {
+        "Compliance": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                131,
+                132,
+                133,
+                134,
+                135,
+                136,
+                137,
+                138,
+                192
+              ]
+            }
+          },
+          "subfields": {
+            "Ethernet": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    131
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "Extended",
+                "possibleValues": [
+                  "40G active cable",
+                  "40GBASE-LR4",
+                  "40GBASE-SR4",
+                  "40GBASE-CR4",
+                  "10GBASE-SR",
+                  "10GBASE-LR",
+                  "10GBASE-LRM",
+                  "Extended"
+                ],
+                "raw": 128
+              }
+            },
+            "Extended": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    192
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "100GBASE-CR4 or 25GBASE-CR CA-L",
+                "possibleValues": [],
+                "raw": 11
+              }
+            },
+            "Fibre Channel": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    135,
+                    136,
+                    137,
+                    138
+                  ]
+                }
+              },
+              "subfields": {
+                "Link length": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "medium distance (M)",
+                      "long distance (L)",
+                      "intermediate distance (I)",
+                      "short distance (S)",
+                      "very long distance (V)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Speed": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        138
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "100 MBytes/sec",
+                      "Extended",
+                      "200 MBytes/sec",
+                      "3200 MBytes/sec",
+                      "400 MBytes/sec",
+                      "1600 MBytes/sec",
+                      "800 MBytes/sec",
+                      "1200 MBytes/sec"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmission media": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        137
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "Twin Axial Pair (TW)",
+                    "possibleValues": [
+                      "Single Mode (SM)",
+                      "Multi-mode 50um (OM3)",
+                      "Multimode, 50um (M5, M5E)",
+                      "Multimode, 62.5um (M6)",
+                      "Video Coax (TV)",
+                      "Miniture Coax (MI)",
+                      "Twisted Pair (TP)",
+                      "Twin Axial Pair (TW)"
+                    ],
+                    "raw": 128
+                  }
+                },
+                "Transmitter technology": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135,
+                        136
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [],
+                    "raw": 0
+                  }
+                }
+              }
+            },
+            "Gigabit": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    134
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "None",
+                "possibleValues": [
+                  "1000BASE-SX",
+                  "1000BASE-LX",
+                  "1000BASE-CX",
+                  "1000BASE-T",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved"
+                ],
+                "raw": 0
+              }
+            }
+          },
+          "value": {
+            "raw": 2361183241434830995467
+          }
+        },
+        "Identifier": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                0,
+                128
+              ]
+            }
+          },
+          "subfields": {
+            "Lower": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    0
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "unknown or unspecified",
+                "possibleValues": [],
+                "raw": 0
+              }
+            },
+            "Upper": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    128
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "QSFP28 or later (SFF-8665 et al)",
+                "possibleValues": [],
+                "raw": 17
+              }
+            }
+          }
+        }
+      }
+    },
+    "Ethernet53": {
+      "fields": {
+        "Compliance": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                131,
+                132,
+                133,
+                134,
+                135,
+                136,
+                137,
+                138,
+                192
+              ]
+            }
+          },
+          "subfields": {
+            "Ethernet": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    131
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "Extended",
+                "possibleValues": [
+                  "40G active cable",
+                  "40GBASE-LR4",
+                  "40GBASE-SR4",
+                  "40GBASE-CR4",
+                  "10GBASE-SR",
+                  "10GBASE-LR",
+                  "10GBASE-LRM",
+                  "Extended"
+                ],
+                "raw": 128
+              }
+            },
+            "Extended": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    192
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "100GBASE-CR4 or 25GBASE-CR CA-L",
+                "possibleValues": [],
+                "raw": 11
+              }
+            },
+            "Fibre Channel": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    135,
+                    136,
+                    137,
+                    138
+                  ]
+                }
+              },
+              "subfields": {
+                "Link length": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "medium distance (M)",
+                      "long distance (L)",
+                      "intermediate distance (I)",
+                      "short distance (S)",
+                      "very long distance (V)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Speed": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        138
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "100 MBytes/sec",
+                      "Extended",
+                      "200 MBytes/sec",
+                      "3200 MBytes/sec",
+                      "400 MBytes/sec",
+                      "1600 MBytes/sec",
+                      "800 MBytes/sec",
+                      "1200 MBytes/sec"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmission media": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        137
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [
+                      "Single Mode (SM)",
+                      "Multi-mode 50um (OM3)",
+                      "Multimode, 50um (M5, M5E)",
+                      "Multimode, 62.5um (M6)",
+                      "Video Coax (TV)",
+                      "Miniture Coax (MI)",
+                      "Twisted Pair (TP)",
+                      "Twin Axial Pair (TW)"
+                    ],
+                    "raw": 0
+                  }
+                },
+                "Transmitter technology": {
+                  "pages": {
+                    "0": {
+                      "byteOffsets": [
+                        135,
+                        136
+                      ]
+                    }
+                  },
+                  "subfields": {},
+                  "value": {
+                    "decoded": "None",
+                    "possibleValues": [],
+                    "raw": 0
+                  }
+                }
+              }
+            },
+            "Gigabit": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    134
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "None",
+                "possibleValues": [
+                  "1000BASE-SX",
+                  "1000BASE-LX",
+                  "1000BASE-CX",
+                  "1000BASE-T",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved",
+                  "Reserved"
+                ],
+                "raw": 0
+              }
+            }
+          },
+          "value": {
+            "raw": 2361183241434822606859
+          }
+        },
+        "Identifier": {
+          "pages": {
+            "0": {
+              "byteOffsets": [
+                0,
+                128
+              ]
+            }
+          },
+          "subfields": {
+            "Lower": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    0
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "unknown or unspecified",
+                "possibleValues": [],
+                "raw": 0
+              }
+            },
+            "Upper": {
+              "pages": {
+                "0": {
+                  "byteOffsets": [
+                    128
+                  ]
+                }
+              },
+              "subfields": {},
+              "value": {
+                "decoded": "QSFP28 or later (SFF-8665 et al)",
+                "possibleValues": [],
+                "raw": 17
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

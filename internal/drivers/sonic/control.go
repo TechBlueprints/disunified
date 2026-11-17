@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
+	"github.com/TechBlueprints/disunified/internal/fecpolicy"
 	"github.com/TechBlueprints/disunified/internal/sshrun"
 )
 
@@ -1098,22 +1099,33 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 	}
 }
 
-// moduleFEC is the FEC the module in idx's cage calls for at ln's
-// configured speed (§10.3), nil for an empty cage, a module or speed the
-// table does not know, or a mode STATE_DB's supported_fecs leaves out.
+// moduleFEC is the FEC for ln where UniFi says auto (§10.3, §11.37): the
+// standard's choice for the module in idx's cage at ln's configured speed
+// (internal/fecpolicy), within STATE_DB's supported_fecs. Nil -- nothing
+// is written -- for an empty cage; for a module or speed the policy has
+// no answer for, or one whose allowed modes the port cannot run (a note
+// each); for a port that is up on a configured mode the standard permits,
+// whose working link is not flapped for the preferred mode; and for an
+// interface a breakout of this plan made, whose supported_fecs the next
+// collect reads (the FEC then follows one cycle later).
 func (pl *plan) moduleFEC(idx int, ln string) *devicemodel.FEC {
 	o := pl.ports[idx].Optic
-	if o == nil || pl.controllerOnly {
+	if o == nil || pl.controllerOnly || pl.sim.fecsStale[ln] {
 		return nil
 	}
 	speed := atoi(pl.sim.field(ln, "speed"))
-	f, ok := moduleFEC(o.MediaType, speed)
+	medium := moduleMedium(o.MediaType)
+	sup := pl.sim.fecs[ln]
+	f, ok, reason := fecpolicy.Choose(medium, speed, fecList(sup))
 	if !ok {
-		pl.note("port %d: no FEC known for the module %q at %d Mb/s on %s; FEC left as it is (set it in the UI to choose one)", idx, o.MediaType, speed, ln)
+		if len(fecpolicy.Allowed(medium, speed)) == 0 {
+			pl.note("port %d: no FEC known for the module %q at %d Mb/s on %s; FEC left as it is (set it in the UI to choose one)", idx, o.MediaType, speed, ln)
+		} else {
+			pl.note("port %d: the module %q on %s: %s; FEC left as it is (%s supports %s)", idx, o.MediaType, ln, reason, ln, strings.Join(sortedSet(sup), ","))
+		}
 		return nil
 	}
-	if sup := pl.sim.fecs[ln]; len(sup) > 0 && !sup[fecKeyword(f)] {
-		pl.note("port %d: the module %q calls for FEC %s, which %s does not support (%s); FEC left as it is", idx, o.MediaType, fecKeyword(f), ln, strings.Join(sortedSet(sup), ","))
+	if cur := fecOf(pl.sim.field(ln, "fec")); cur != f && pl.ports[idx].Up && fecpolicy.Permits(medium, speed, cur) {
 		return nil
 	}
 	return &f

@@ -3546,13 +3546,17 @@ does the same:
 
 - When the push has no FEC for a port (`PortDesired.FEC == nil`) and its
   cage holds a module (`TRANSCEIVER_INFO|<first interface>`), each of the
-  cage's interfaces gets the FEC that module calls for at the interface's
-  configured speed (table below); an explicit `port.N.fec` always wins.
-- Only a mode in STATE_DB's `supported_fecs` when it lists any (the DX010:
-  `none,rs`); `none` against an absent CONFIG_DB `fec` is no change, as for
+  cage's interfaces gets the FEC the standard gives that module at the
+  interface's configured speed; an explicit `port.N.fec` always wins.
+- The mode is chosen within STATE_DB's `supported_fecs` when it lists any
+  (the DX010: `none,rs` on a whole cage and a 2x50G half, `none,fc` on a
+  25G lane): the first mode the standard permits that the interface
+  supports. `none` against an absent CONFIG_DB `fec` is no change, as for
   a pushed FEC.
-- An empty cage, or a module or speed the table does not know: nothing is
-  written (logged once), the port keeps what it has.
+- An empty cage, or a module or speed the table has no answer for: nothing
+  is written (logged once), the port keeps what it has. The same when the
+  interface supports none of the permitted modes, with a note that says
+  the pair cannot link within the standard.
 - Not counted by `PlanPorts`: the first-push hold and the fresh-port
   withholding ask whether the controller's config would change a port, and
   the module's FEC is the driver's reading of UniFi's "auto". (The hold
@@ -3560,19 +3564,14 @@ does the same:
 
 The module is named by its SFF-8024 compliance code as xcvrd prints it
 (sonic-platform-common 202505, `sff8024.py` `EXT_SPEC_COMPLIANCE`,
-`sff8636.py` `ETHERNET_10_40G_COMPLIANCE`); the FEC is what the IEEE
-clause or MSA for that module requires of the host:
-
-| Interface speed | Module | FEC |
-|---|---|---|
-| 100G | `100G CWDM4` (**verified live**), `100GBASE-SR4 or 25GBASE-SR`, `100G PSM4 Parallel SMF`, `100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS`, `100G AOC (Active Optical Cable) or 25GAUI C2M AOC` and `100G ACC (Active Copper Cable) or 25GAUI C2M ACC` (BER 5x10^-5), `100G SWDM4`, `100G PAM4 BiDi` | `rs` |
-| 100G | `100GBASE-LR4 or 25GBASE-LR`, `100GBASE-ER4 or 25GBASE-ER`, `100G AOC or 25GAUI C2M AOC` and `100G ACC or 25GAUI C2M ACC` (BER 10^-12) | `none` |
-| 40G, 10G | any | `none` |
-| 25G (a 4x25G child) | `100GBASE-SR4 or 25GBASE-SR`, CA-25G-L, the 5x10^-5 AOC/ACC | `rs` |
-| 25G | `25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R` | `fc` |
-| 25G | `25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC`, 25GBASE-LR/ER, the 10^-12 AOC/ACC | `none` |
-| 50G (a 2x50G child) | codes 11 / 12 / 13 (CR2 with RS / BASE-R / no FEC) | `rs` / `fc` / `none` |
-| anything else | | not written |
+`sff8636.py` `ETHERNET_10_40G_COMPLIANCE`; `sfputil`'s read of a module
+xcvrd missed, §11.36, yields the same names). `moduleMedium` (`optic.go`)
+maps the name to a neutral medium, and the table of permitted modes is
+`internal/fecpolicy`, shared with the Arista driver:
+[`docs/fec-by-standard.md`](../fec-by-standard.md) §4 prints it and §1 has
+its sources. Until 2026-11-17 the driver kept a one-mode table of its own
+here; what changed and why is §11.37. `100G CWDM4` at 100G -> `rs` is the
+row **verified live**.
 
 `internal/drivers/CLAUDE.md`'s "only write FEC when asked" gains this
 exception for drivers whose platform reads the module.
@@ -10411,6 +10410,73 @@ QSA with an SFP behind it has not been in the switch (`breakout.md` §16.9).
 reboot, and xcvrd reads every module at boot, so no cage was present and
 unread (`breakout.md` §16.10). Fixture-tested, with the read script's own
 output from the switch equal to the fixture.
+
+### 11.37 FEC on auto follows the standard (2026-11-17)
+
+§10.3's rule had a table of its own: one FEC per module name and speed.
+Held against the standards ([`docs/fec-by-standard.md`](../fec-by-standard.md)
+§1) it was wrong for 25G LR and ER optics ("disabled"; the standard
+requires RS) and gave one mode where the standard gives a set (a CA-25G-S
+cable runs FC or RS). Clint's decision, 2026-11-17: the table follows the
+standard, for this driver and the Arista's, from the same code.
+
+**What is shared.** `internal/fecpolicy`: a neutral medium, `Allowed(medium,
+speed)` (the permitted modes, the specified one first) and `Choose(medium,
+speed, supported)` (the first permitted mode the port supports, or no
+choice and the reason). Nothing in it knows SONiC, EOS or UniFi. This
+driver's part is `moduleMedium` (xcvrd's name to the SFF-8024 code to the
+medium; a name outside the table is "a module with no 25G-a-lane rating",
+which has an answer at 40G and 10G only, as before) and STATE_DB's
+`supported_fecs` as the port's list.
+
+**What changed for a port on auto.**
+
+| Case | Before | Now |
+|---|---|---|
+| `100GBASE-LR4 or 25GBASE-LR`, `...ER4 or 25GBASE-ER` at 25G | `none` | RS; on a DX010 lane (`none,fc`) nothing is written and the note says the pair cannot link within the standard |
+| `25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R` on a 2x50G half (`none,rs`) | FC asked, not supported: left alone | RS |
+| CA-25G-L (`100GBASE-CR4, 25GBASE-CR CA-25G-L ...`), 25G SR, a 5e-5 active cable on a 25G lane | RS asked, not supported: left alone, "calls for FEC rs, which ... does not support" | the same nothing, with the reason: "runs only with FEC rs by the standard and the port supports none, fc: the two cannot link within the standard" |
+| Every row the unit holds today: CA-25G-L at 100G (`rs`), CA-25G-S on 25G lanes (`fc`), CWDM4 at 100G (`rs`) | as now | unchanged |
+
+**Two changes to the mechanism**, both in the direction of writing less:
+
+- **A port that is up on a permitted mode keeps it.** Where the configured
+  FEC is not the preferred one but the standard permits it for the module
+  and the port has link, nothing is written: both ends of a link must run
+  one mode, so rewriting it would drop a working link and might not bring
+  it back. A mode outside the module's set is still corrected.
+- **After a breakout in the same plan the FEC waits one cycle.** The
+  breakout forgets `supported_fecs` for the cage (read for the old
+  layout). The old code then wrote the module's FEC unchecked in the same
+  batch; portconfig refuses a mode the new layout lacks (exit 1), and
+  under `set -e` that ends the batch after the breakout and before the
+  new ports' startup and VLANs. A CA-25G-L cable split to 4x25G was that
+  case (RS on lanes that list `none,fc`). Now the plan marks the new
+  interfaces (`swState.fecsStale`) on a platform that lists FECs, writes
+  no module FEC on them, and the next cycle chooses with the list the SAI
+  gave. A join of a CWDM4 cage therefore gets its RS one cycle (about a
+  minute) after the join. The virtual switch lists no FECs and is
+  unchanged.
+
+**Tests** (`fec_test.go`, `speed_test.go`, `breakout_lldpmed_test.go`):
+the names to the medium and the choice within a cage's and a lane's list;
+the split-DAC capture needing no write, for the device and for the lane
+switch's plan; a CA-25G-L cable and the 25G SR, LR and ER optics on that
+capture's lanes giving the note and no write; a "with BASE-R" cable on a
+2x50G cage getting RS the cycle after the split; a linked port kept on a
+permitted mode. The FixtureRunner gives a breakout's new interfaces the
+`supported_fecs` read from the DX010 for their layout
+([`docs/fec-by-standard.md`](../fec-by-standard.md) §3), so the cycle
+after a split is tested against the real lists.
+
+**Live, 2026-11-17** (`disunified_0.0.0+20261117.c98bab6`, 202511 image):
+installed on the DX010; both devices resumed adopted, `0 of 32 ports
+changed` and `0 of 5 ports changed` for the lane switch, no FEC command
+and no FEC note in the journal, cages 1 and 2 on `rs` with PortChannel1
+up, cage 3's lanes on `fc`. That is the unchanged rows only. **Not run
+live:** every changed row (they need the modules and far ends of
+[`docs/fec-by-standard.md`](../fec-by-standard.md) §6, which is still not
+run), the kept-while-linked rule, and the one-cycle wait after a breakout.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

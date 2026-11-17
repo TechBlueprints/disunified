@@ -1,0 +1,46 @@
+Ethernet1
+                              Current State     Changes            Last Change
+                              -------------     -------            -----------
+Current System Time: Tue Nov 17 03:42:42 2026
+  PHY state                   linkDown                5    1 day, 14:24:48 ago
+  Interface state             down                    3    1 day, 14:24:48 ago
+  HW resets                                           0                  never
+  Transceiver                 10GBASE-T               0                  never
+  Oper speed                  10Gbps                                          
+  Interrupt Count                                     4                       
+  Diags mode                  normalOperation
+  Model                       xp80 (A2)
+  Loopback                    none
+  PCS RX link status          down                    2    1 day, 14:24:48 ago
+  PCS block lock              no block lock           2    1 day, 14:24:44 ago
+  PCS high BER                ok                      0                  never
+  PCS err blocks              382445                       1 day, 14:24:44 ago
+  PCS BER                     16                      1    1 day, 14:24:44 ago
+  PCS BIP Errors              0                       0                  never
+  Forward Error Correction    None
+  Signal Lock                 not locked              2    1 day, 14:24:44 ago
+  Electrical Idle             idle                    3    1 day, 14:24:44 ago
+INTF   PCSLK RF LF BLKLK AMLK  LNKST LNKCH LNINT LKOVR
+Et1    N     N  Y  00000 00000 0xf50 0x0   0xee  0x0  
+LANE   REV  RATE SIGOK EI ATT POST PRE DC  LF HF BW GAIN STATE STATUS EYE TAPS
+0      2364 10   0     1  0   13   0   127 8  8  8  0    0x1   0x80   0   127.0 0 0 0 0 0 0 0 0 0 0 0 0 
+ AlaskaX 88X3240 system
+  PCS RX link status          down                    2    1 day, 14:24:48 ago
+  PCS RX fault                fault                   3    1 day, 14:24:48 ago
+  PCS TX fault                fault                   3    1 day, 14:24:48 ago
+  PCS block lock              no block lock           2    1 day, 14:24:48 ago
+  PCS high BER                ok                      0                  never
+  PCS err blocks              0                       0                  never
+  PCS BER                     0                       0                  never
+ AlaskaX 88X3240 line
+  PCS RX link status          down                    2    1 day, 14:24:48 ago
+  PCS RX fault                fault                   3    1 day, 14:24:48 ago
+  PCS TX fault                fault                   3    1 day, 14:24:47 ago
+  PCS block lock              no block lock           2    1 day, 14:24:48 ago
+  PCS high BER                ok                      2    1 day, 14:24:47 ago
+  PCS err blocks              255                     2    1 day, 14:24:48 ago
+  PCS BER                     24                     53    1 day, 14:24:48 ago
+  PMA/PMD RX link status      down                    2    1 day, 14:24:48 ago
+  PMA/PMD TX fault            ok                      0                  never
+  PMA/PMD RX fault            fault                   5    1 day, 14:24:47 ago
+  Link partner information    invalid                 2    1 day, 14:24:47 ago

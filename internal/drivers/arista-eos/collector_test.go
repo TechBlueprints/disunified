@@ -35,8 +35,10 @@ func TestStartRunsEveryCommandOnce(t *testing.T) {
 	if _, err := c.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(ft.Runs) != 2 {
-		t.Fatalf("Start made %d transport calls, want 2 (startup + first poll)", len(ft.Runs))
+	// The modules' EEPROM codes are a read of their own (fec.go): this
+	// capture set has none, and Start goes on without them.
+	if len(ft.Runs) != 3 || len(ft.Runs[1]) != 2 || ft.Runs[1][1] != eepromCmd {
+		t.Fatalf("Start made %d transport calls, want 3 (startup, the EEPROM codes, the first poll): %v", len(ft.Runs), ft.Runs)
 	}
 }
 
