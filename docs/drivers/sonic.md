@@ -9290,6 +9290,21 @@ and start of the unit, a clean restart included, and are not a fault.
   port leaving the config; a still-controlled port gets a new hostapd and
   its hosts must authenticate again. `TestL2dDot1X`'s `leftovers` step.
 
+**Live, 2026-11-17 (deb 2c57b77, under the test lock).** No hostapd was
+on the switch (the 2026-11-16 image install removed the on-switch build of
+§11.26, so none has run since), so two stand-ins with hostapd's argv
+(`exec -a /usr/local/sbin/hostapd`, configs `Ethernet116`/`Ethernet120`
+under `/run/disunified-dot1x`, one named by a pid file) were left running
+and l2d's main pid got `kill -9`. The l2d systemd started 3 s later logged
+`802.1X: leftover authenticator on Ethernet116 (pid ...) stopped` and the
+same for Ethernet120; neither was left, the pid file and config were gone,
+mstpd kept its pid, and PortChannel1 stayed forwarding (`brport/state` 3)
+throughout. systemd still logged `remains running` / `Found left-over
+process ... (mstpd)` / `unclean termination`: they are the price of mstpd
+outliving l2d, which only moving mstpd to a unit of its own would remove
+(not done). A real hostapd re-authenticating after the kill is §11.26.10's
+run, unchanged by this; it was not re-run here (no hostapd built).
+
 
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
