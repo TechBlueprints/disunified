@@ -1,8 +1,8 @@
 # A LAG on the far side of a breakout cable (design note, 2026-11-02)
 
 Status: **shape 2 (the lane switch, §6) built 2026-11-14** with `sonic` as
-the parent, fixture- and replay-tested, not yet adopted live
-([`docs/drivers/breakout.md`](drivers/breakout.md) §0, §15); §6.8 is what the build
+the parent, automatic and first adopted live on 2026-11-16
+([`docs/drivers/breakout.md`](drivers/breakout.md) §0, §16.10); §6.8 is what the build
 decided, and §7 (2026-11-16) is what the controller's FEC check means for
 both shapes. Shape 1 (§4-5) stays the record of the road not taken. Originally:
 **two shapes written up, neither chosen, nothing built.** Clint's

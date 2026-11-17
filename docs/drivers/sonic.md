@@ -10405,8 +10405,10 @@ lock.
 **Not covered.** DOM values (`sfputil show eeprom -d`) are not read: the
 cage reports the module without temperature or power until xcvrd has it. A
 QSA with an SFP behind it has not been in the switch (`breakout.md` §16.9).
-**Live:** fixture-tested only at the time of writing; see `breakout.md`
-§16.8 for what the live run saw.
+**Live:** not seen. The build was installed after an image install's
+reboot, and xcvrd reads every module at boot, so no cage was present and
+unread (`breakout.md` §16.10). Fixture-tested, with the read script's own
+output from the switch equal to the fixture.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

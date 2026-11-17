@@ -106,9 +106,14 @@ five-port switch of its own (`USFXG`, the "lane switch" of
 and `arista-eos` as the second since 2026-11-15 (its lane groups are
 `Port-Channel<1000+10*cage+lag>`: EOS stops at 2000; the lane batches run
 by hand on the 7160's empty test cage), read from the parent's snapshot and
-written through the parent's plan in the parent's process; fixture- and
-replay-tested, not yet adopted live (`docs/drivers/breakout.md` §0, §7b,
-§15 the first adoption).
+written through the parent's plan in the parent's process. Since
+2026-11-16 a split cage gets its lane switch by itself (`lane_switches:
+auto`, the default; a pending device until the operator adopts it, the
+lanes handed over at the adoption and back on a Forget), and the DX010's
+cage 3 is the first one adopted live (`docs/drivers/breakout.md` §0, §16;
+the Arista parent is fixture-tested only, §7b). It reports a link-local
+address of its own: one that shared its parent's made the controller
+refuse every save of the parent.
 The live runs also produced generic fixes: a write budget separate from
 the collect one (`control.apply_timeout`, or the driver's own through
 `devicemodel.ApplyBudget`; the collect budget otherwise), `sshrun` offering
@@ -474,6 +479,22 @@ tables, its informs), read-only, and nothing copied off it is committed.
   `{"_type":"cmd","cmd":"port-recovery","port":N}`. The session hands it to
   `devicemodel.PortRecoverer`. UniFi's text promises no recovery timer for
   BPDU guard: "requires manual re-enable" (`docs/drivers/sonic.md` §11.28).
+- **A save of a device is checked against all of it, and against the
+  other devices (11.0.99, live 2026-11-16, `docs/drivers/breakout.md`
+  §16.10).** Every stored `port_overrides` entry is validated on every
+  save of the device, a name-only one included: one entry that the port's
+  reported media no longer allows (a forced 25G with `fec_mode` on a port
+  now reporting QSFP28) refuses them all with `api.err.InvalidFecMode` and
+  that entry's `port_idx`. And a device with static IP Settings cannot be
+  saved while another adopted device reports its address
+  (`api.err.StaticIpAlreadyUsedByDevice`, `mac` the other device's): two
+  bridged devices never report one address.
+- **A Forget of a connected device is `{"_type":"setdefault"}`, sent once
+  (11.0.99, captured 2026-11-16, `controller-11.0.99/reply-setdefault.ndjson`).**
+  A top-level reply, not a `cmd`. The device's first inform after the
+  Forget gets it; every later inform on the old key gets HTTP 400 with an
+  empty body. The session then drops the key and the stored push, and the
+  loop's `OnUnadopted` runs.
 - **UniFi's client Block reaches a switch as `blocked_sta`, not
   `system_cfg` (11.0.99, captured 2026-11-15).** Every `setparam` carries
   the field: the blocked clients' MACs, `""` for none, two joined by a

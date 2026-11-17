@@ -133,8 +133,14 @@ adopt it**: the cage stays one port on its device, as before. Adopt it and
 the lanes are the lane switch's ports (state, name, VLANs, lane speed, FEC,
 aggregates), while the cage's port on the device keeps only its speed (the
 split itself) and its admin state; the log says `lane switch core-1-cage3
-(<MAC>) attached to port 3`. Forget it in the controller and the lanes go
-back to the cage's port. Join the cage (force its port to 100G or 40G on
+(<MAC>) attached to port 3`. If the cage's port on the device held a forced
+lane speed (25 GbE with a FEC, saved while the cage was one port), the
+bridge sets that port to Auto in the controller at the adoption and says so:
+the controller refuses that pair on the port once the lane switch has the
+lanes, and with it every other port save on the device. The lane switch
+shows a 169.254.x.y address; it has none of its own, and it must not share
+its parent's. Forget it in the controller and the lanes go back to the
+cage's port. Join the cage (force its port to 100G or 40G on
 the device) and the lane switch shows disconnected until the cage is split
 again or you forget it. The key on the device's entry:
 

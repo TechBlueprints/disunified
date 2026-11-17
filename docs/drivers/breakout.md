@@ -36,8 +36,10 @@ completes (`OnConnected`, before the seed and the first push) and
 `DetachLaneSwitch` on the controller's `setdefault` (`OnUnadopted`, new in
 `informloop`). An automatic child whose state file is adopted is attached
 and started before the parent's loop starts, for the reason given below
-for declared ones. What ran live, and the departures from the spec, are in
-§16.
+for declared ones. **Adopted live on the DX010's cage 3 on 2026-11-16**:
+§16.10 is the run, what it found (the controller refuses every save of the
+parent over a stale forced lane speed and over a shared address; a Forget
+arrives as `_type: setdefault`) and the departures from the spec.
 
 **Declared in the parent's file, attached by main.** A lane switch is a
 config entry with `driver: breakout`, `options.parent` (another entry of
@@ -68,10 +70,12 @@ child read its MAC back from the parent's attachment and did not answer
 without one; an automatic child has to answer before it is attached.) The serial is the MAC's digits like every bridged
 device's (`device.SerialFor`, `CLAUDE.md` §5). Hostname = the child's config
 name; model string "Lane switch", SKU the cage's mode (`4x25G[10G]`);
-version the parent's. Address: `AddressReporter` returns the parent's
-`CurrentAddress()` (the dial target, which follows an address move), and
-the snapshot carries one address on `eth0` with the parent's prefix length,
-exactly the shape the stub that was placed reported. **Why the controller
+version the parent's. Address: a link-local one of its own,
+`169.254.<1 + MAC octet 5 mod 254>.<MAC octet 6>`/16 on `eth0`
+(`breakout.Address`, returned by `AddressReporter` too). Until 2026-11-16
+it reported the parent's address, as the stub that was placed did; live,
+that made the controller refuse every save of a parent with static IP
+Settings (`api.err.StaticIpAlreadyUsedByDevice`, §16.10). **Why the controller
 places it:** the parent reports the child's MAC in the cage's MAC table and
 the child as the cage's LLDP neighbour (`Child` set, so never the parent's
 uplink), the two entries the 2026-11-02 run proved place a device with no
@@ -1413,6 +1417,8 @@ lanes; never the uplink):
 
 ### 16.9 Not in this build
 
+(§16.10, after this list, is what was built and what the live run showed.)
+
 - **The QSA half** (§16.2): needs a QSA with a module in a cage, read whole
   and split (`TRANSCEIVER_INFO`, `sfputil show eeprom`), then the table row
   and the one-lane lane switch. And a decision that is Clint's: a QSA has
@@ -1430,3 +1436,111 @@ lanes; never the uplink):
 - The Arista's live run (§11b), when a cage of it is free: the same steps;
   its split cages get automatic lane switches by the same watcher.
 
+### 16.10 As built, and the live run (2026-11-16)
+
+Built from §16.1-16.8 and run live the same day on the DX010's cage 3
+(image `igmp-202511.20261116-6c8eb1cf7`, Network 11.0.99, the bridge on the
+switch, a QSFP28-to-4xSFP28 DAC coded `CA-25G-S`, nothing on the far ends).
+**It works**: the lane switch appeared by itself, was adopted, forgotten and
+adopted again, and the cage was joined and split from the parent's port
+drawer. The run found four things the spec did not know; each is fixed and
+was run again live.
+
+**What the run found (and what was built for it).**
+
+1. **The override check (§16.7): saves are refused.** With the lane switch
+   adopted, port 3 reported QSFP28 while its override still held the fold's
+   `autoneg false, speed 25000, full_duplex true, fec_mode fc-fec`. A
+   rename of port 4 from the drawer answered "An error occurred while
+   changing your settings": HTTP 400 `{"rc":"error","port_idx":3,"msg":
+   "api.err.InvalidFecMode"}`. A REST save of the name alone was refused
+   the same way: the controller checks every stored override on every save
+   of the device. So the conditional reset was built: on the adoption's
+   attach the bridge sets that one port to Auto (`unifiapi.CageToAuto`:
+   `autoneg true`; `speed`, `full_duplex`, `fec_mode` removed; only for a
+   forced speed below 40G), logged as `port 3: set to Auto in UniFi (was
+   autoneg false, speed 25000, full_duplex true, fec_mode fc-fec)`; without
+   a controller API it says what to set. Seen live at the second adoption;
+   the parent's push that followed changed nothing on the switch. It runs
+   at the adoption only, not when an adopted lane switch is attached at
+   start (a start must not wait on the controller's API).
+2. **The lane switch must not report its parent's address.** With the FEC
+   refusal out of the way, the parent's save was refused again: HTTP 400
+   `api.err.StaticIpAlreadyUsedByDevice`, `mac` the lane switch's. The
+   DX010's IP Settings are static, and another adopted device reporting
+   that address blocks every save of it. (The 2026-11-02 stub shared its
+   parent's address and was placed; no save of the parent was tried then.)
+   The lane switch now reports a link-local address of its own,
+   `169.254.<1 + MAC octet 5 mod 254>.<MAC octet 6>`/16 on `eth0`
+   (`breakout.Address`; the gateway and gateway MAC stay the parent's).
+   Adoption, the connection and the placement under the cage were
+   unchanged with it, and the parent's saves pass.
+3. **A Forget arrives as `_type: setdefault`**, a top-level reply, not the
+   `setdefault` cmd the session knew (it logged `UNHANDLED _type` and
+   stayed adopted). Handled now as the cmd (`internal/device`), and that is
+   what `OnUnadopted` hangs on, as specified. The controller sends it
+   **once**, to the first inform after the Forget; after that it answers
+   the old key with HTTP 400 and an empty body, for good. A lane switch
+   that misses it (the bridge was down, or the build before this fix)
+   stays adopted and attached and gets 400s; the way out today is to
+   remove its `state/<name>/device.json` and restart (open, §16.9).
+4. **A `setdefault` has to drop the stored push** (every driver). The loop
+   reconciles the applied push every cycle; a forgotten lane switch would
+   have tried to write its old push to lanes it no longer owns and been
+   refused each cycle. The session now clears the applied and pending
+   push with the adoption, and the loop treats the next adoption's first
+   push as a first push again.
+
+**Other departures from the spec.**
+
+- The child's identity: `options.name` beside `options.mac` (main passes
+  the entry's name; unattached there is no attachment to read it from),
+  and `EnsureVLANs` refuses while unattached as apply and plan do.
+- The Arista's attach and detach replace its children map instead of
+  changing it: a collect reads it outside the lock, and an attach can now
+  come while the device runs.
+- The fixtures of the day went into the existing directory of the image
+  they were taken on (`sonic-igmp-202511.20261115-6c8eb1cf7/`), not a new
+  one; the live run was on the next day's image.
+- The `sfputil` read also runs every five minutes while no cage is present
+  and unread (`sonic.md` §11.36 says why).
+
+**The run, step by step** (§16.8's numbers; records, logs and screenshots
+unscrubbed in `local-information/auto-lane-switch-20261116/`; fixtures:
+`controller-11.0.99/replies-lane-switch-dx010-cage3.ndjson`, the parent's
+`replies-dx010-lane-handover.ndjson`, `stat-device-dx010-lane-handover.json`,
+`reply-setdefault.ndjson`):
+
+| Step | Seen |
+|---|---|
+| 2 install | `lane switch dx010-cage3 (<MAC>) started for split port 3: pending` on the first watch tick; the parent's cycle `0 of 32 ports changed`; its port 3 sent as SFP28 with `fec_mode fc-fec` (the down-port rule) |
+| 3 adopt by exact MAC (`cmd/devmgr adopt`) | CONNECTED about 20 s after the command; the attach line; placed under port 3 (`uplink_mac` the DX010, `uplink_remote_port` 3); the parent's port 3 QSFP28; the lanes SFP28 `fc-fec`; port 5 the uplink with the DAC as its module; 5 names and 4 ports seeded. **The first push was applied, not held** (below) |
+| 4 override check | refused, then fixed: item 1 above. Port 3 on Auto with the lane switch attached: push applied, `0 of 32 ports changed`, nothing written in the following cycles, the cage stayed `4x25G[10G]` |
+| 5 lane saves from the drawer | lane 1 at 25 GbE with FEC ticked and FC-FEC prefilled (from the reported mode): accepted, nothing to write. 10 GbE: accepted, `config interface speed Ethernet8 10000 ; config interface fec Ethernet8 none`, the other lanes untouched (one lane at 10G beside three at 25G configures; no link to prove it runs). Back to 25 GbE FC-FEC: accepted, `speed 25000 ; fec fc`. The push says `fec=cl-74` |
+| 6 join and split | forced 100 GbE with RS-FEC on the parent's port 3 from the drawer: accepted (QSFP28), `config interface breakout -f -y Ethernet8 '1x100G[40G]'`, `fec=cl-91`. The lane switch's collect failed "not split": five cycles of a logged reconcile error, then its informs were withheld (one line every ten collects) and the controller showed it disconnected with its placement kept. Auto on port 3: **the module rule's first live split**, `breakout ... '4x25G[10G]'` with `fec fc` on each lane, and the lane switch answered again after 390 failed collects, connected, with no new adoption. (The cage sat joined for six and a half hours between the two saves; the session was idle, not the test's design.) |
+| 7 forget and re-adopt | `cmd/sitemgr delete-device`: `setdefault received`, the detach line, the device pending on the default key about a minute later, the parent deleting the VLANs only the lane switch had listed. With the fold's forced 25G `fc-fec` put back on port 3 (REST, as the operator had it before), the re-adoption logged the attach and the reset to Auto (item 1) |
+| restart | an adopted lane switch is attached before the parent's loop starts (`attached to port 3: it is adopted (its state file)`); both loops' first reconcile left the lanes alone |
+
+**Not seen live.** The `sfputil` read (§16.6): the image install's reboot
+came before the build was installed, and xcvrd reads every module at boot,
+so no cage was present and unread. The read script itself was run on the
+switch before the reboot and printed the fixture's bytes (`sonic.md`
+§11.36). The Arista parent, and a lane with a far end.
+
+**Found and left open** (the register has each):
+
+- **The first push after an adoption is not held when it only adds VLANs
+  the parent has pruned.** The lane switch's first push is the
+  controller's default (Allow All). The hold's plan ran while those VLANs
+  did not exist on the switch (the parent deletes what its own push does
+  not name), so it saw nothing to change; `EnsureVLANs` then created them
+  and the apply tagged all ten on every lane. The seeded push took them off
+  again 18 to 60 s later. Nothing was connected; on a lane with a host that
+  is a minute of VLANs the port was not carrying.
+- **A missed `setdefault`** leaves a forgotten lane switch attached
+  (item 3).
+- After the split in step 6 the parent logged once that port 3 "is new
+  since the controller's config and would be changed by it; not written";
+  its next cycles wrote nothing and said nothing more. Not looked into.
+- A declared `driver: breakout` entry gets neither the reset to Auto nor a
+  detach on a Forget (it is attached from the start by declaration).

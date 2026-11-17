@@ -426,11 +426,16 @@ Live results: [`drivers/sonic.md`](drivers/sonic.md) §6.6 (2026-10-27, VS build
 A split cage presented as a five-port `USFXG` whose ports 1-4 are the
 lanes and port 5 the cable ([`drivers/breakout.md`](drivers/breakout.md); the
 design and the placement capture: [`breakout-lag.md`](breakout-lag.md) §6).
-Every row is built and fixture-tested; none has run live.
+Every row is built and fixture-tested. Live on the DX010's cage 3 since
+2026-11-16 ([`drivers/breakout.md`](drivers/breakout.md) §16.10): the automatic
+start, adoption and placement, lane speed and FEC, the join and split from
+the parent, Forget; the aggregate and mirror rows have not run live.
 
 | Feature | Wire | Status |
 |---|---|---|
-| Appears by itself for a split cage (`lane_switches: auto`, the default; [`drivers/breakout.md`](drivers/breakout.md) §16) | a pending `USFXG` named `<parent>-cage<N>`; the lanes are handed over on the adoption handshake and back on the controller's `setdefault` (Forget) | built 2026-11-16, `cmd/disunified/lanes_test.go`, both parents' `lanes_auto_test.go`; not yet run live |
+| Appears by itself for a split cage (`lane_switches: auto`, the default; [`drivers/breakout.md`](drivers/breakout.md) §16) | a pending `USFXG` named `<parent>-cage<N>`; the lanes are handed over on the adoption handshake and back on the controller's `setdefault` (Forget) | built 2026-11-16, `cmd/disunified/lanes_test.go`, both parents' `lanes_auto_test.go`; **live 2026-11-16** |
+| The hand-over at adoption: the cage's port on the parent set to Auto if it held a forced speed below 40G | REST `port_overrides` of the parent (`unifiapi.CageToAuto`): the controller refuses every save of the parent otherwise (`api.err.InvalidFecMode`, the cage's `port_idx`) | built and seen live 2026-11-16 |
+| The lane switch's address | `ip`, `connect_request_ip`, `if_table`: link-local `169.254.x.y` from its MAC, never the parent's (`api.err.StaticIpAlreadyUsedByDevice` on the parent's saves otherwise) | built and seen live 2026-11-16 |
 | Placement under the cage | the parent's `port_table[cage].mac_table` and `lldp_table` carry the child's MAC (the stub proved either places, §6.6.1) | built, `lanes_test.go`; the controller side verified with the stub 2026-11-02 |
 | The lanes' state, speed, counters, FEC counters, neighbour, MACs, LACP, STP state | the child's `port_table[1..4]` from the parent's per-lane ports | built, `breakout_test.go` |
 | The cable | `port_table[5]`, `is_uplink`, QSFP28 at the cage's native speed, the module, the parent as its LLDP neighbour | built, `TestLaneSwitchPayload` |

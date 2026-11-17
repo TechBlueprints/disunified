@@ -1224,7 +1224,7 @@ cage at 100G, its lanes' old sections, no session, no `Port-Channel1541`).
 Not shown, the cage being empty: a lane with a link, its LLDP neighbour or
 MACs, an LACP partner on a lane aggregate, negotiated FEC, traffic on a
 lane mirror, and whether the 7160 runs a lane mirror beside a session of
-the switch's own. No lane switch has been adopted (Clint's step,
+the switch's own. No lane switch has been adopted on the Arista (Clint's step,
 `breakout.md` §11b).
 
 ## 11. Tests: the fixture transport remembers what it wrote (2026-11-15)

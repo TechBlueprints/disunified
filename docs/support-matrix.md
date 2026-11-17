@@ -783,10 +783,26 @@ A split cage of a bridged switch presented as a five-port switch of its own
 (`USFXG`: ports 1-4 the lanes, 5 the cable), reading and writing through its
 parent driver ([`drivers/breakout.md`](drivers/breakout.md)). Built
 2026-11-14 with `sonic` as the parent; `arista-eos` became the second
-parent on 2026-11-15 (§7b). **No lane switch has been adopted**; the
-controller side it relies on was proven with the stub (above). On the
+parent on 2026-11-15 (§7b). Automatic since 2026-11-16, and **adopted
+live that day on a `sonic` parent** (the DX010's cage 3, §16.10; rows
+below); the Arista parent is fixture-tested only. On the
 Arista the lane batches themselves were run on the switch's empty test
 cage by hand (below).
+
+### Verified live (the DX010's cage 3, 2026-11-16, Network 11.0.99)
+
+[`drivers/breakout.md`](drivers/breakout.md) §16.10 has the journal lines.
+
+| What | How it was seen |
+|---|---|
+| A lane switch appears by itself for a split cage, pending, and nothing changes on the parent until it is adopted | the journal's `started for split port 3` line on the first watch tick; the parent's cycle `0 of 32 ports changed` |
+| Adoption by exact MAC, the attach on the handshake, placement under the cage, the seed | the child's record: `uplink_mac` the parent, `uplink_remote_port` 3; lanes SFP28 with `fc-fec`, port 5 the uplink with the DAC; the parent's port QSFP28 |
+| The hand-over: the cage's port set to Auto by the bridge when it held a forced lane speed (the controller otherwise refuses every save of the parent, `api.err.InvalidFecMode`) | the refusal from the drawer and over REST, then `port 3: set to Auto in UniFi (was ...)` at the next adoption and saves passing |
+| The lane switch on a link-local address of its own (sharing the parent's static address refused every save of the parent, `api.err.StaticIpAlreadyUsedByDevice`) | the record's `ip` 169.254.x.y, still connected and placed; the parent's saves passing |
+| Lane speed and FEC from the lane switch's port drawer: 25 GbE with FC-FEC, 10 GbE, back | each save accepted; `config interface speed/fec` on that lane alone in the journal |
+| The join from the parent's drawer (forced 100 GbE with RS-FEC) and the split again on Auto by the module rule (`CA-25G-S`) | the two breakout batches in the journal; the lane switch disconnected while joined and connected again after the split with no new adoption |
+| Forget (`_type: setdefault`): the detach, the fold again, pending under the same MAC; re-adoption | the journal's `setdefault received` and `detached from port 3` lines; the record pending, then adopted |
+| A restart with an adopted lane switch: attached before the parent's loop | `attached to port 3: it is adopted (its state file)` ahead of the parent's first reconcile, which left the lanes alone |
 
 ### Verified (fixtures and replay)
 
@@ -806,7 +822,11 @@ cage by hand (below).
 
 | Gap | What the PR needs |
 |---|---|
-| Adoption and placement of a real lane switch on a `sonic` parent | the steps of [`drivers/breakout.md`](drivers/breakout.md) §15 on a DX010 (or any SONiC switch with `platform.json` breakout modes): the child's record placed under the cage (`uplink_remote_port`), the parent's `downlink_lldp_macs`, both records scrubbed into `docs/fixtures/controller-<ver>/` |
+| A lane switch forgotten while the bridge is down, or whose `setdefault` is otherwise missed (the controller sends it once, then answers HTTP 400) | a rule for when an adopted automatic lane switch counts as forgotten (a run of 400s on its key), detaching it and returning it to pending; today its state file is removed by hand ([`drivers/breakout.md`](drivers/breakout.md) §16.10) |
+| The first push after a lane switch's adoption held when it would tag VLANs the parent has pruned | the hold's plan run against the VLANs the push names, not only those the switch has; a capture is in `controller-11.0.99/replies-lane-switch-dx010-cage3.ndjson` (the two pushes after each adoption) |
+| The `sfputil` read of a module xcvrd missed, live ([`drivers/sonic.md`](drivers/sonic.md) §11.36; fixture-tested, and the read script's own output captured) | a module put into a running DX010: the journal's `read through sfputil` line, the port's optic in the record, and Auto splitting a `CA-25G-S` or `CA-25G-N` cable from it |
+| A lane with a far end on an adopted lane switch (link, FEC, a host's MAC and LLDP entry on the lane switch's port, one lane at 10G beside 25G lanes) | a host or switch on a breakout lane of the DX010's cage 3 |
+| Adoption and placement of a real lane switch on a `sonic` parent (**done 2026-11-16**, §16.10; what is left of §15: the aggregate, the lane-only VLAN's MTU, a lane mirror) | the steps of [`drivers/breakout.md`](drivers/breakout.md) §15 on a DX010 (or any SONiC switch with `platform.json` breakout modes): the child's record placed under the cage (`uplink_remote_port`), the parent's `downlink_lldp_macs`, both records scrubbed into `docs/fixtures/controller-<ver>/` |
 | Adoption and placement of a lane switch on the `arista-eos` parent | [`drivers/breakout.md`](drivers/breakout.md) §11b: a child entry in the container's `config.yaml` on a split cage, adopted by exact MAC, placed under the cage; then the lane settings with a far end (the test cage has no module and no link, so no lane has come up, no LACP partner, no lane MAC or neighbour has been seen, and whether the 7160 runs a lane mirror beside the device's own session is not known) |
 | A lane-only VLAN's MTU on a `sonic` parent (creation, the netdev, the child's jumbo flip, the prune) | [`drivers/breakout.md`](drivers/breakout.md) §15 step 5: the journal lines and both halves read on the switch |
 | A lane aggregate to a real LACP partner | a breakout DAC to a bonded host: `teamdctl PortChannel<100*cage+1> state` (on the Arista `show port-channel 1541 detailed` / `show lacp neighbor` for `Port-Channel<1000+10*cage+1>`) with the partner, the child's `lacp_state`/`partner_system_id` in its stored record, traffic on the members; the push and the reply log scrubbed into fixtures |

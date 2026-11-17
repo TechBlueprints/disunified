@@ -2,8 +2,9 @@
 
 Read `internal/drivers/CLAUDE.md` first. Write-up: `docs/drivers/breakout.md`
 (§0 as built, §14 open, §15 the first live adoption, §16 automatic lane
-switches). Built 2026-11-14 with `sonic` as the parent; automatic since
-2026-11-16; nothing of it has run live.
+switches, §16.10 the live run). Built 2026-11-14 with `sonic` as the
+parent; automatic since 2026-11-16 and adopted live that day on the
+DX010's cage 3. The Arista parent is fixture-tested only.
 
 - **No device, no transport.** The child is a view over its parent's last
   snapshot (`devicemodel.LaneProvider.Lanes`) and a caller into the parent's
@@ -26,11 +27,23 @@ switches). Built 2026-11-14 with `sonic` as the parent; automatic since
   a forgotten device stops reconciling, and its next adoption's first push
   is held as a first push again. Without it a forgotten lane switch tried to
   apply its old push every cycle and was refused.
-- **The controller side is proven by the stub, not by this driver**
+- **The controller side was first proven by the stub**
   (`docs/breakout-lag.md` §6.6): placement by the parent's MAC-table or LLDP
-  entry, the shared address, the Flex XG profile (port 5 the uplink), the
-  aggregate push. The child reports the stub's shapes on purpose (one
-  address on `eth0`, the cable as port 5).
+  entry, the Flex XG profile (port 5 the uplink), the aggregate push. The
+  child reports the stub's shapes on purpose (one address on `eth0`, the
+  cable as port 5) -- except the address.
+- **Never the parent's address.** A second adopted device reporting a
+  statically addressed device's IP makes the controller refuse every save
+  of that device (`api.err.StaticIpAlreadyUsedByDevice`). The lane switch
+  reports `breakout.Address(mac)`, link-local.
+- **The controller checks every stored override on every save of a
+  device.** A forced lane speed left on the cage's port from its time as a
+  fold (SFP28) is invalid once the cage reports QSFP28, and blocks all the
+  parent's saves (`api.err.InvalidFecMode`, the cage's `port_idx`); main
+  sets that port to Auto at the adoption (`unifiapi.CageToAuto`).
+- **A Forget is `_type: setdefault`, sent once**; afterwards the old key
+  gets HTTP 400 for good. A lane switch that missed it stays attached:
+  remove its state file and restart (open, `breakout.md` §16.10).
 - **The aggregate's id is the push's `lag`** (`lag=1` for the first aggregate,
   whatever its members), so the first lane aggregate of cage N is
   `PortChannel<100*N+1>` on SONiC.
