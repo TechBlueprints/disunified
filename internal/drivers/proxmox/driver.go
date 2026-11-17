@@ -28,16 +28,22 @@ import (
 //	bridge        the bridge to present (default vmbr0)
 //	ports         total ports to present (default 54, the USW Leaf's); the
 //	              node's physical NICs take the top ones, guests the rest
+//	guest_ports   the number of guest ports, 1..guest_ports (default: ports
+//	              less the node's physical NICs, 51 on a node with three);
+//	              set it when the nodes' NIC counts differ, so every node
+//	              reads the same tags. Start fails when the node's NICs do
+//	              not fit above it
 //	ssh_key       private key file, or a .pub that selects that one ssh-agent
 //	              key (default: every agent key one at a time, then
 //	              ~/.ssh/id_ed25519, id_rsa)
 //	known_hosts   known_hosts file (default ~/.ssh/known_hosts)
 //	numbering     "cluster" (default: every guest in the cluster has the same
-//	              port on every node; 48 guest NICs cluster-wide) or "node"
-//	              (only this node's guests; 48 per node; a migrated guest takes
-//	              a free slot on the destination). Only "cluster" has been
-//	              run live. A NIC's port is recorded in the guest's own
-//	              Proxmox tags (tags.go); the bridge keeps no file.
+//	              port on every node; the guest ports are shared cluster-wide)
+//	              or "node" (only this node's guests; the guest ports per node;
+//	              a migrated guest takes a free slot on the destination).
+//	              Only "cluster" has been run live. A NIC's port is recorded
+//	              in the guest's own Proxmox tags (tags.go); the bridge keeps
+//	              no file.
 //	manage_lldpd  "false" leaves lldpd alone (default: the driver keeps
 //	              /etc/lldpd.d/disunified.conf current, docs/drivers/proxmox.md §4)
 type Driver struct{}
@@ -74,6 +80,13 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 			return nil, fmt.Errorf("proxmox: ports must be a number >= 2, got %q", v)
 		}
 		c.Ports = n
+	}
+	if v := cfg.Options["guest_ports"]; v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n >= c.Ports {
+			return nil, fmt.Errorf("proxmox: guest_ports must be a number from 1 to ports-1 (%d), got %q", c.Ports-1, v)
+		}
+		c.GuestPorts = n
 	}
 	if cfg.Options["manage_lldpd"] == "false" {
 		c.ManageLLDP = false

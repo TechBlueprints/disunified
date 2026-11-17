@@ -24,10 +24,15 @@ type Collector struct {
 
 	Bridge string // vmbr0
 	Ports  int    // total ports presented
-	// NodeNumbering: number only the guests on this node (48 per node, a
-	// migrated guest gets a free slot on the destination) instead of every
-	// guest in the cluster (48 cluster-wide, the same port number on every
-	// node). Default: cluster-wide.
+	// GuestPorts fixes the number of guest slots (ports 1..GuestPorts);
+	// 0 derives it as Ports less this node's physical ports. A cluster
+	// whose nodes have different NIC counts sets it, so every node takes
+	// the same tags (docs/drivers/proxmox-on-node.md §5.2).
+	GuestPorts int
+	// NodeNumbering: number only the guests on this node (the guest slots
+	// per node, a migrated guest gets a free slot on the destination)
+	// instead of every guest in the cluster (the guest slots cluster-wide,
+	// the same port number on every node). Default: cluster-wide.
 	NodeNumbering bool
 
 	cycleDelay time.Duration
@@ -66,6 +71,7 @@ type Collector struct {
 	stpPriority int
 	stpPorts    map[string]mstpPort // by bridge member
 	warned      map[string]bool
+	tagFailing  map[string]bool // "kind/vmid" whose tag write failed and has not yet succeeded (writeTags)
 }
 
 // NewCollector wraps a runner with the defaults (vmbr0, 54 ports, the top
@@ -221,9 +227,13 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 	hostname := strings.TrimSpace(sec["hostname"])
 
 	// --- guest ports ---
-	var nics []guestNIC
+	var nics, templates []guestNIC
 	for _, n := range append(qemu, lxc...) {
-		if n.Bridge != c.Bridge || n.Template {
+		if n.Template {
+			templates = append(templates, n) // not a port; its tags are cleaned (untagTemplates)
+			continue
+		}
+		if n.Bridge != c.Bridge {
 			continue
 		}
 		if c.NodeNumbering && n.Node != hostname {
@@ -258,7 +268,14 @@ func (c *Collector) build(out string, now time.Time) (*devicemodel.Snapshot, err
 		return nil, fmt.Errorf("proxmox: bridge %s has %d physical ports but ports=%d", c.Bridge, len(phys), c.Ports)
 	}
 	vmSlots := c.Ports - len(phys)
+	if c.GuestPorts > 0 {
+		if c.GuestPorts > vmSlots {
+			return nil, fmt.Errorf("proxmox: guest_ports=%d leaves no room for bridge %s's %d physical ports above it (ports=%d)", c.GuestPorts, c.Bridge, len(phys), c.Ports)
+		}
+		vmSlots = c.GuestPorts
+	}
 	slotOf, retags := c.assignPorts(nics, hostname, vmSlots)
+	retags = append(retags, c.untagTemplates(templates, hostname)...)
 	keyOf := map[int]string{}
 	for k, idx := range slotOf {
 		keyOf[idx] = k

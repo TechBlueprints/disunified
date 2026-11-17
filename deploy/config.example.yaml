@@ -62,7 +62,8 @@ devices:                             # "switches:" is still accepted (the pre-re
     options:
       bridge: vmbr0                  # default
       # ports: "54"                  # total ports; the node's NICs take the top ones, guests the rest
-      # numbering: node              # per-node guest ports (48 per node) instead of cluster-wide (48 total); UNTESTED live, PRs welcome
+      # guest_ports: "48"            # guest ports 1..48 (default: ports less the node's NICs); the same on every node when their NIC counts differ
+      # numbering: node              # guest ports per node instead of one set cluster-wide; UNTESTED live, PRs welcome
       # manage_lldpd: "false"        # the driver configures lldpd on the node unless told not to
       # ssh_key: /etc/disunified/id_ed25519      # in a container
       # known_hosts: /etc/disunified/known_hosts

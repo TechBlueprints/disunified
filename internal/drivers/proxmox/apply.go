@@ -24,6 +24,12 @@ import (
 //
 // Writes are diffs against the config as last read: a converged node costs
 // no command, and the loop's reconcile after every inform is free.
+//
+// A port whose write fails (no quorum, a guest under a backup or migrate
+// lock) does not stop the others: every port, the aggregate and the BPDU
+// guard settings are tried, and the first error is returned at the end, so
+// the loop still sees the push as not applied and tries again; the ports
+// that were written are already in the snapshot and are not written twice.
 func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDesired) (int, error) {
 	c.mu.Lock()
 	nics, node, keyOf := c.nics, c.node, c.keyOf
@@ -32,6 +38,14 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		return 0, fmt.Errorf("proxmox apply: no snapshot yet")
 	}
 	changed := 0
+	var firstErr error
+	failed := 0
+	fail := func(err error) {
+		failed++
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
 	for _, d := range desired {
 		// A forced speed has nothing to act on: a guest NIC's link has no
 		// speed to set. Said once per port and speed, as the other
@@ -50,7 +64,8 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		key := n.Key()
 		raw := renderNICOptions(n.Raw, want)
 		if err := c.setNIC(ctx, n, raw); err != nil {
-			return changed, err
+			fail(fmt.Errorf("port %d: %w", d.Index, err))
+			continue
 		}
 		want.Raw = raw
 		c.mu.Lock()
@@ -62,7 +77,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	n, err := c.applyLAG(ctx, desired)
 	changed += n
 	if err != nil {
-		return changed, err
+		fail(err)
 	}
 	// BPDU guard on guest ports, when the bridge runs under mstpd.
 	c.mu.Lock()
@@ -70,6 +85,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 	c.mu.Unlock()
 	if stpManaged {
 		var cmds []string
+		set := map[string]mstpPort{} // recorded once mstpd has taken them
 		for _, d := range desired {
 			key, ok := keyOf[d.Index]
 			if !ok {
@@ -91,18 +107,27 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 				}
 				cmds = append(cmds, fmt.Sprintf("setportbpduguard %s %s %s", c.Bridge, member, v))
 				sp.BPDUGuardPort = v
-				stpPorts[member] = sp
+				set[member] = sp
 			}
 		}
 		if len(cmds) > 0 {
 			c.Log.Printf("proxmox %s: mstpd: %s", node, strings.Join(cmds, "; "))
 			if _, err := c.r.Run(ctx, "mstpctl -s", strings.Join(cmds, "\n")+"\n"); err != nil {
-				return changed, err
+				fail(err)
+			} else {
+				c.mu.Lock()
+				for member, sp := range set {
+					stpPorts[member] = sp
+				}
+				c.mu.Unlock()
+				changed += len(cmds)
 			}
-			changed += len(cmds)
 		}
 	}
-	return changed, nil
+	if failed > 1 {
+		return changed, fmt.Errorf("%w (and %d more writes failed)", firstErr, failed-1)
+	}
+	return changed, firstErr
 }
 
 // planPort is the diff for one port: the guest NIC on this node the port

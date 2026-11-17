@@ -152,38 +152,63 @@ SSH runner without dialling; `local` builds without `ssh:`; `local` with an
 
 ### 5.1 A two-writer convergence test
 
-The two captures (`collect-node1.txt`, `collect-node2.txt`) hold the same
-guest set as seen from two nodes. Run one collector per capture and mirror
-each runner's `--tags` writes into the other capture (`fixture.go`,
-`applyTags`). Assert: no duplicate port after both read before either
-writes; a second poll that writes nothing; a forced duplicate rewritten
-once, and only by the owner of the guest that loses.
+Built 2026-11-17 (`converge_test.go`). The two captures
+(`collect-node1.txt`, `collect-node2.txt`) hold the same guest set as seen
+from two nodes. One collector runs per capture, and each runner's tag
+writes land in both captures (`FixtureRunner.Peers`, as pmxcfs replicates
+them); a round has both read before either writes. What it showed, with
+`assignPorts` unchanged: no duplicate port and the same port for every
+guest NIC on both nodes after the first round, each node writing only its
+own guests' tags; a second round that writes nothing on either side; and a
+forced duplicate (a higher VMID given a lower one's tag, once with the
+loser on each node) rewritten once, by the loser's owner only, the winner
+kept, and settled the round after. No divergence was found, so no rule was
+added; none depends on a process's own memory.
 
 ### 5.2 Drift between nodes is visible
 
+Built 2026-11-17 (`tags.go`, `collector.go`, `driver.go`;
+`hardening_test.go`).
+
 - A well-formed `unifi.` tag that is ignored for range (above this node's
-  guest slots) or scope is logged once per guest (`warnOnce`).
+  guest slots) or scope (the other numbering) is logged once per guest and
+  tag (`warnOnce`), on every node that reads it; its owner replaces it.
 - `options.guest_ports` fixes the number of guest slots (the count `n` that
   `assignPorts` takes) instead of deriving it as `ports` minus this node's
-  physical NICs. `Start` fails when the node's NICs do not fit above it.
-  Unset keeps today's derivation. It is the setting for a cluster whose
-  nodes have different NIC counts.
-- When a duplicate claim is resolved, one log line names both guests and
-  the port.
+  physical NICs; `Open` takes 1 to `ports`-1, and `Start` fails when the
+  node's NICs do not fit above it. Unset keeps today's derivation. It is
+  the setting for a cluster whose nodes have different NIC counts.
+- When a duplicate claim is resolved, one log line on each node names both
+  guests and the port (`port 1: VM 100 keeps it, VM 119's claim ... is
+  dropped and proxmox-1 renumbers it`).
 
 ### 5.3 Failures stay contained
 
-- A tag write that fails is logged once per guest until it succeeds (not
-  twice per poll).
-- `ApplyPorts` continues past a port whose write fails and returns the first
-  error at the end, so a node without quorum, or one guest under a backup or
-  migrate lock, does not block every later port.
+Built 2026-11-17 (`tags.go` `writeTags`, `apply.go`; `hardening_test.go`,
+with `FixtureRunner.Fail`).
+
+- A tag write that fails is tried every poll and logged once (the command
+  and the error) until it succeeds, which is logged once too.
+- `ApplyPorts` continues past a port whose write fails, runs the aggregate
+  and BPDU-guard steps as well, and returns the first error at the end
+  (with a count of the others), so a node without quorum, or one guest
+  under a backup or migrate lock, does not block every later port. The
+  loop still sees an error: the push is not marked applied and is applied
+  again on the next inform, and the diff then writes only what failed
+  (the snapshot already holds what succeeded; a BPDU-guard setting is
+  recorded only once mstpd has taken it).
 
 ### 5.4 Templates
 
-A template is not a port, but a `unifi.` tag left on one is inherited by
-every clone. The owner node removes this bridge's `unifi.` tags from its
-templates (operator tags and other bridges' tags kept, as for guests).
+Built 2026-11-17 (`tags.go` `untagTemplates`). A template is not a port,
+but a `unifi.` tag left on one is inherited by every clone. The owner node
+removes this bridge's `unifi.` tags from its templates (operator tags and
+other bridges' tags kept, in order); a template left with no tag gets `qm
+set <id> --delete tags`. Neither capture holds a template: the test makes
+captured guests templates (`template: 1`) the way other tests edit
+captures. Not run live: whether `qm set` on a template takes `--tags` and
+`--delete tags` (expected: tags are not a disk change). A template with no
+NIC is not seen, since the parser emits a guest through its NICs.
 
 ### 5.5 The loop: a snapshot that changes between start and the first cycle
 

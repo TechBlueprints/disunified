@@ -69,14 +69,15 @@ servers. It never edits `/etc/network/interfaces`; when the site's VLANs are out
 
 | Gap | Where it is marked | What the PR needs |
 |---|---|---|
-| **`numbering: node`** — per-node guest ports (48 per node) instead of 48 across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
+| **`numbering: node`** — per-node guest ports (`ports` less the node's NICs, or `guest_ports`, per node) instead of across the cluster | `drivers/proxmox.md` §1c; `deploy/config.example.yaml` | run it on a cluster with two nodes' guests numbered independently; confirm a migrated guest lands on a free slot on the destination; a fixture from each node |
 | **UniFi's client Block** (2026-11-15): the controller's blocked clients (`blocked_sta`, captured) as an nft bridge table of the driver's own, dropping their frames from every port at prerouting | `drivers/proxmox.md` §4d; fixture-tested only (the nodes are production) | the table loaded on a node, or first in a throwaway network namespace as `dhcpguard-netns-test.sh` does: a frame from a blocked source dropped and counted, another passing, the table gone on Unblock |
 | **LACP from the UniFi UI** converting a bond's mode through the Proxmox API | `drivers/proxmox.md` §3b | the round-trip on a node whose uplink you can afford to lose for a minute: aggregate in the UI → bond mode changes → un-aggregate → restored; the pushed `system_cfg` keys added to the replay fixture |
 
 ### Known limits (by design; a PR would be a design change, open an issue first)
 
-- **48 guest ports across the whole cluster** with the default numbering:
-  the 54-port model, minus the node's NICs. A bigger cluster needs
+- **One set of guest ports for the whole cluster** with the default
+  numbering: the 54-port model less the node's NICs (51 with three), or
+  `guest_ports` when set. A bigger cluster needs
   `numbering: node` (untested, above).
 - The node's own networking under the bridge (NICs, bond membership,
   address) is reported, never managed. The controller's IP Settings are not

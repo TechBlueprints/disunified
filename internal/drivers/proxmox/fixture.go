@@ -15,10 +15,19 @@ import (
 // A tag rewrite ("qm set 100 --tags '...'") is applied to the capture's
 // copy of that guest's config, as the cluster would, so the next poll
 // sees the tags the driver wrote and converges like a real node.
+//
+// Peers are the other nodes' runners in a multi-node test: /etc/pve is one
+// file system for the whole cluster, so a tag write lands in every peer's
+// capture too, and their next poll reads it (TestTwoWritersConverge).
 type FixtureRunner struct {
 	Fixture  string
 	Commands []string
 	Stdins   []string // what each recorded command received on stdin
+	Peers    []*FixtureRunner
+	// Fail, when set, is asked about every recorded command; a non-nil
+	// answer is returned as the command's error and the command has no
+	// effect (a node without quorum, a guest under a lock).
+	Fail func(command string) error
 }
 
 // NewFixtureRunner loads a capture file.
@@ -38,15 +47,33 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 	}
 	f.Commands = append(f.Commands, command)
 	f.Stdins = append(f.Stdins, stdin)
-	if m := tagWrite.FindStringSubmatch(command); m != nil {
+	if f.Fail != nil {
+		if err := f.Fail(command); err != nil {
+			return "", err
+		}
+	}
+	m := tagWrite.FindStringSubmatch(command)
+	if m == nil {
+		if d := tagDelete.FindStringSubmatch(command); d != nil {
+			m = []string{d[0], d[1], d[2], ""}
+		}
+	}
+	if m != nil {
 		f.applyTags(m[1], m[2], m[3])
+		for _, p := range f.Peers {
+			p.applyTags(m[1], m[2], m[3])
+		}
 	}
 	return "", nil
 }
 
-var tagWrite = regexp.MustCompile(`^(qm|pct) set (\d+) --tags '([^']*)'$`)
+var (
+	tagWrite  = regexp.MustCompile(`^(qm|pct) set (\d+) --tags '([^']*)'$`)
+	tagDelete = regexp.MustCompile(`^(qm|pct) set (\d+) --delete tags$`)
+)
 
-// applyTags rewrites the "tags:" line of guest id's config in the capture.
+// applyTags rewrites the "tags:" line of guest id's config in the capture;
+// empty tags remove it.
 func (f *FixtureRunner) applyTags(tool, id, tags string) {
 	dir := "qemu-server"
 	if tool == "pct" {
@@ -67,6 +94,9 @@ func (f *FixtureRunner) applyTags(tool, id, tags string) {
 	}
 	body := rest[:end]
 	line := "tags: " + tags + "\n"
+	if tags == "" {
+		line = ""
+	}
 	if tagLine := regexp.MustCompile(`(?m)^tags: .*\n`); tagLine.MatchString(body) {
 		body = tagLine.ReplaceAllLiteralString(body, line)
 	} else {

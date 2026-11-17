@@ -12,9 +12,10 @@ Scrubbed captures of the collector's output are in
 
 **Requirements** (§5 has the steps): root SSH with a key, `lldpd` installed,
 a VLAN-aware bridge. **Limits to know before you start:** with the default
-cluster-wide numbering there are **48 guest ports across the whole
-cluster** (the 54-port model minus the node's NICs); a bigger cluster needs
-`numbering: node`, which has not run live. The driver writes
+cluster-wide numbering the guest ports are shared by the whole cluster:
+`ports` (54) less the node's physical NICs, **51 on a node with three**, or
+`guest_ports` when it is set (§1c); a bigger cluster needs `numbering:
+node`, which has not run live. The driver writes
 `/etc/lldpd.d/disunified.conf` (unless `manage_lldpd: "false"`) and
 `/etc/chrony/sources.d/disunified.sources` (the controller's NTP servers),
 and comments out `chrony.conf`'s own `pool`/`server` lines; nothing else on
@@ -107,9 +108,33 @@ contain one).
   new port's controller config from the guest's own NIC settings.
 - **Duplicates.** Clones and restored backups copy tags, so two guests can
   claim one port: the lower VMID keeps it and the other is retagged by its
-  owner. Malformed, out-of-range or wrong-scope `unifi.` tags for this
-  bridge are replaced; the operator's own tags and another bridge's tags
-  are left in place, in order.
+  owner, once (every node logs the resolution once, naming both guests and
+  the port). The rule depends on the tags alone, never on what a bridge
+  remembers, so a restarted bridge agrees with the others; two bridges
+  that both read before either writes still converge in one round
+  (`converge_test.go`, from the two nodes' captures). Malformed,
+  out-of-range or wrong-scope `unifi.` tags for this bridge are replaced
+  by the owner; the operator's own tags and another bridge's tags are left
+  in place, in order. A well-formed tag ignored for its range or its
+  numbering is logged once per guest on every node: it means the nodes'
+  `ports`, `guest_ports` or `numbering` disagree.
+- **How many guest ports.** `ports` less the node's own physical NICs
+  (51 of 54 on a node with three), unless `guest_ports` fixes the number;
+  the NICs then take the top ports and the slots between are empty.
+  Under cluster numbering every node must count the same, so a cluster
+  whose nodes have different NIC counts sets `guest_ports` on each, and
+  `Start` fails on a node whose NICs do not fit above it.
+- **Failed writes.** A tag write that fails (no quorum, a guest under a
+  backup or migrate lock) is retried every poll and logged once, then once
+  more when it succeeds. A port write that fails in an apply does not stop
+  the other ports; the first error is returned, so the push is applied
+  again on the next inform and only what failed is written.
+- **Templates** are not ports, but a clone inherits a template's tags, so
+  the node that owns a template removes this bridge's `unifi.` tags from
+  it (`qm set <id> --delete tags` when nothing else is left), keeping the
+  operator's and other bridges' tags. No capture holds a template; the
+  test makes one of a captured guest. A template with no NIC at all is not
+  seen (the parser reads a guest through its NICs).
 - **Moves.** Under cluster numbering a migrated guest keeps its port.
   Under node numbering a guest carrying another node's name has migrated:
   the destination gives it a port, seeds it from the guest's config and
