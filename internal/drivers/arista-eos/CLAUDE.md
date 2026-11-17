@@ -34,6 +34,13 @@ that cost time on Clint's DCS-7160-48TC6-F.
   `show interfaces transceiver` gives a DAC no media type at all (it is
   `show interfaces status`'s `interfaceType`). Map no media-type string
   without a capture.
+- **The base capture set (`docs/fixtures/arista-eos-4.26.14M/*.json`) mixes
+  dates**: its running config has `error-correction encoding reed-solomon`
+  on cage 54 while its `show interfaces error-correction` has that cage
+  unconfigured, and cage 52 is "Not Present" in one file and cabled in
+  another. A feature that reads two commands against each other gets a
+  dated directory of the whole read set taken in one sitting (`fec-auto/`,
+  `lane-po-*/` are the pattern), not overrides on the base set.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
   every lane or the others errdisable ("speed-misconfigured").
 - `write memory` after every config batch.
