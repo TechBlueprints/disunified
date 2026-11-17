@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,9 +113,21 @@ func (c *Client) DeviceByMAC(ctx context.Context, mac string) (*Device, error) {
 	return nil, fmt.Errorf("device %s not found on site %s", mac, c.Site)
 }
 
+// ErrPending: the controller lists the device without a record id, which is
+// how it lists a device that is pending adoption (seen live 2026-11-16: a
+// lane switch whose state file said adopted while the controller had
+// forgotten it). There is no record to write to, and asking again changes
+// nothing until the device is adopted.
+var ErrPending = errors.New("the controller lists this device as pending (no record id): nothing written")
+
 // UpdateDevice PUTs fields onto the device record (rest/device/<id>); the
 // controller merges top-level fields but replaces port_overrides wholesale,
-// so callers pass the complete list.
+// so callers pass the complete list. A device with no record id is not
+// written at all (ErrPending): the PUT would go to rest/device/ and be
+// answered api.err.IdRequired.
 func (c *Client) UpdateDevice(ctx context.Context, id string, fields map[string]any) error {
+	if id == "" {
+		return ErrPending
+	}
 	return c.do(ctx, http.MethodPut, "/proxy/network/api/s/"+c.Site+"/rest/device/"+id, fields, nil)
 }

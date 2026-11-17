@@ -742,10 +742,13 @@ func runOne(ctx context.Context, o options) error {
 			api.PowerPath = desc.Type == "usp"
 			seed := !o.noSeed && o.controlPorts != ""
 			var (
-				mu    sync.Mutex // the loop's callbacks and the retry timer both call provision
-				last  time.Time
-				retry apiRetry
-				timer *time.Timer
+				mu sync.Mutex // the loop's callbacks and the retry timer both call provision
+				// pendingNoted: the "listed as pending" line was logged; cleared
+				// by the next provision that succeeds.
+				pendingNoted bool
+				last         time.Time
+				retry        apiRetry
+				timer        *time.Timer
 			)
 			provision = func(snap *devicemodel.Snapshot) {
 				mu.Lock()
@@ -772,6 +775,16 @@ func runOne(ctx context.Context, o options) error {
 					if ctx.Err() != nil {
 						return
 					}
+					// A device the controller lists as pending has no
+					// record to name: not an API outage, and asking on a
+					// timer changes nothing. The next adoption provisions.
+					if errors.Is(err, unifiapi.ErrPending) {
+						if !pendingNoted {
+							pendingNoted = true
+							log.Printf("provision: %v; the names and the seed follow its adoption", err)
+						}
+						return
+					}
 					wait, first := retry.failed()
 					if first {
 						log.Printf("provision: the controller's API cannot be reached yet: %v (asking again in %s, then at growing intervals)", err, wait)
@@ -779,6 +792,7 @@ func runOne(ctx context.Context, o options) error {
 					timer = time.AfterFunc(wait, func() { provision(sess.Snapshot()) })
 					return
 				}
+				pendingNoted = false
 				if retry.succeeded() {
 					log.Printf("provision: the controller's API answers again")
 				}
