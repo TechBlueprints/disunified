@@ -354,7 +354,7 @@ would do it inside the same commit-timer session, confirming once the lease is f
 |---|---|---|
 | The host as a USW Leaf: identity, uplink NIC at 54, reachability, health | `port_table`, `uplink`, `if_table`, `connect_request_ip`, `general_temperature`/`has_fan` false | built, fixture-tested, contract-tested; adoption pending the host's address decision |
 | Containers as ports, named after the container, slots kept on the host | `port_table[].name`, counters from the container's netns | built, tested (creation order, persistence, release) |
-| macvlan/ipvlan containers as the client behind their port | `mac_table` (`uptime` since the container started, `age` 0) | built (no macvlan container on site yet; the capture has none) |
+| macvlan/ipvlan containers as the client behind their port | `mac_table` (`uptime` since the container started, `age` 0) | built, fixture-tested (`collect-macvlan.txt`: the bridge's own container on the macvlan network) |
 | Bridge-network containers | port only, no client | decided: reporting a NAT'd MAC would invent a client |
 | IP Settings → the host's NetworkManager profile | `netconf.1.*`, `route.1.gateway`, `resolv.nameserver.N.ip` → `nmcli con mod` + `device reapply` | built, tested: only an address the uplink already carries (make the lease static); DHCP refused |
 | UniFi's client Block | `blocked_sta` → `table netdev disunified_block` on the uplink NIC (ingress and egress, counted drops) | built 2026-11-17, fixture-tested; not loaded on a host. Stops a blocked LAN client reaching the host and its containers and a blocked LAN container reaching the LAN; not one macvlan container reaching another on the same parent ([`drivers/podman.md` §9](drivers/podman.md)) |
