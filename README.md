@@ -67,8 +67,8 @@ What each driver does today:
   the host's NICs are the top ports with the default route's NIC as the
   uplink. A container on a macvlan network (its own LAN address) shows as
   the client behind its port; one on a Podman bridge network (NAT) is a
-  port that counts traffic and, honestly, no client. Read over SSH;
-  read-only ([`docs/drivers/podman.md`](docs/drivers/podman.md)).
+  port that counts traffic and, honestly, no client. Read over SSH; no
+  port control ([`docs/drivers/podman.md`](docs/drivers/podman.md)).
 - **`sonic`** — a community SONiC switch: its Redis databases read in one
   SSH exec per poll, and the controller's port, VLAN, LAG, mirror, storm,
   jumbo, NTP, SSH-key, reboot and address settings written through SONiC's

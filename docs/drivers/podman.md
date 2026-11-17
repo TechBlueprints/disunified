@@ -9,7 +9,9 @@ and a Podman host that is itself a VM hangs off its node's `VM-<id>` port
 with its containers under it.
 
 Verified on Podman 5.8.2 / AlmaLinux 10.2, rootful, netavark, on a host that
-is a QEMU guest of a Proxmox node (2026-09-27). Read-only: no port control.
+is a QEMU guest of a Proxmox node (2026-09-27). No port control; the writes
+are the host's address (§7) and UniFi's client Block (§9, built 2026-11-17,
+not yet loaded on a host).
 
 ## 0. Requirements, and what has not been tried
 
@@ -19,7 +21,8 @@ invisible to root's `podman ps`); **`python3`** (`collect.sh` reduces
 the box -- a host without it, Fedora CoreOS for one, reports no containers);
 the **netavark** backend (CNI's `inspect` shape has not been seen);
 `iproute2`, `ethtool`, `nsenter`. NetworkManager is needed only for the
-address (§7); reading works without it.
+address (§7); reading works without it. The client Block (§9) needs `nft`
+1.0.1 or later and a kernel with the netdev egress hook (5.16 or later).
 
 Only that one host has run it. Other distributions with `python3`, a
 bare-metal host, ipvlan networks, several NICs, and the hosts that are
@@ -190,6 +193,9 @@ the capture with a client behind a port, used for the MAC learn time
 `collect-address.txt` (2026-11-15) is the host with its uplink static from
 the controller's IP Settings, taken while the bridge on it dials it over a
 podman bridge network: the reported address (§7).
+`collect-block.txt` (2026-11-17) is the first whose script lists `nft` and
+the client-Block table (absent: nothing has been written on the host), for
+`internal/drivers/podman/block_test.go` (§9).
 `internal/drivers/podman/collector_test.go` drives the driver against the first;
 `internal/device/contract_podman_test.go` holds its payload to the wire
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
@@ -264,7 +270,7 @@ once it moves. Tests: `collect-address.txt` (the host dialled over
   controller stops pushing, [`sonic.md`](sonic.md) §11.29; STP ports made
   for an aggregate's members after a restart): neither can happen here.
   The driver writes no VLAN and no port setting (`Capabilities{}`; its
-  only write is the address, §7), and it runs no spanning tree: every
+  writes are the address, §7, and the client-Block table, §9), and it runs no spanning tree: every
   port is reported native 1, Allow All, STP disabled. Read on the host
   that day: one virtio NIC, no bond (no bonding driver loaded), no VLAN
   device, no `mstpctl`; every Podman bridge has `stp_state` 0 and
@@ -277,3 +283,77 @@ once it moves. Tests: `collect-address.txt` (the host dialled over
   something (they have addresses on the host's private subnets) without
   inventing LAN clients has not been found; the port with its counters is
   the honest limit.
+
+## 9. UniFi's client Block (2026-11-17)
+
+The controller's blocked clients (`blocked_sta` and the `block-sta` cmd,
+`docs/feature-map.md` §3) are dropped by source MAC on the host's uplink
+NIC, in both directions. No capability is claimed and no setting asked:
+the list rides every `setparam` to a bridged switch.
+
+**Where, and why not the proxmox table.** A Proxmox node drops at its
+bridge's prerouting ([`proxmox.md`](proxmox.md) §4d). This host's LAN side
+is no bridge: the uplink is a plain NIC with the host's own stack on it,
+and a LAN container is a macvlan child of it (read on the host 2026-11-17:
+one macvlan network in bridge mode on the NIC itself; the Podman bridges
+are private subnets behind NAT, and no MAC behind them is ever a client,
+§1). A bridge-family table would see only the NAT'd containers, the frames
+that are never blocked. So the table is of the **netdev** family, on the
+NIC:
+
+| Frame | Hook | Result |
+|---|---|---|
+| from a blocked client on the LAN, to the host, to a published port of a NAT'd container, or to a LAN container | ingress on the uplink; it runs before the kernel's macvlan receive handler | dropped, counted |
+| from a blocked LAN container to the LAN | egress on the uplink (a macvlan child transmits through its parent's queue) | dropped, counted |
+| between a blocked LAN container and another LAN container on the same parent | none: in macvlan's bridge mode (netavark's default) the kernel hands the frame over inside the macvlan driver, never through the NIC (§8) | **not stopped** |
+| from a blocked LAN container to the host itself | none needed: a macvlan child and its parent's stack cannot reach each other (§4b) | never delivered anyway |
+
+So on this host a Block stops a LAN client from reaching the host and
+every container, and stops a blocked container from reaching the LAN; it
+cannot stop a blocked container from reaching the host's other macvlan
+containers. A host with one LAN container (the site's) has no such pair.
+An **ipvlan** container sends with the host's own MAC, so it cannot be
+blocked apart from the host, and the host's own MAC is never written (on
+the egress hook it is the source of everything the host and its NAT'd
+containers send; a note in the log, once).
+
+**Built (`block.go`).** `table netdev disunified_block`, the driver's own,
+apart from netavark's and firewalld's tables: a chain hooked at `ingress`
+and one at `egress` on the uplink (`options.uplink`, or the default
+route's NIC), each with one rule, `ether saddr { <macs> } counter drop`,
+and the table comment `dui:<fingerprint>`. Replaced whole in one `nft -f -`
+transaction when the list or the uplink changes, deleted when none is
+blocked; before the controller has said, the table is left as it is.
+`collect.sh` prints whether the host has `nft` and lists the table
+(`macblock`) on every poll. nft tables do not outlive a reboot: a table
+the listing no longer shows is written again on the next apply. A host
+without `nft` is left alone, with a note. The driver is a
+`devicemodel.DeviceController` for this alone: nothing else in the push
+(NTP, syslog, SNMP, the hostname) is applied to the host.
+
+**Tests.** `block_test.go`: the two clients of the bridged switches'
+captured `setparam` against `collect-block.txt`: the transaction's exact
+text, both hooks on the capture's uplink, a second apply writing nothing,
+one Unblock replacing the table, the last deleting it once, a lost table
+written again, the host's own MAC and a non-MAC never written, a host
+without `nft` left alone.
+
+**Checked on the host, read-only (2026-11-17).** Kernel 6.12, nftables
+1.1.5; the host's tables are `inet netavark` and `inet firewalld`; the
+transaction above, with two documentation MACs and the real uplink, passes
+`nft -c -f -` (check only: nothing is loaded, and no `disunified_block`
+table existed after).
+
+**Not verified live.** No table has been loaded: the host is production
+and runs every deployed bridge. Three things have no capture and wait for
+that: the listing of a *present* table (`nft -j list table netdev
+disunified_block`; the driver reads the table's `name` and `comment` from
+it, and the fixture runner does not model the write, so if the comment
+were not listed the driver would rewrite the table, counters and all,
+every cycle); a frame from a blocked source dropped and counted at each
+hook while another passes; and the table gone on Unblock. A throwaway
+network namespace with a dummy NIC and a macvlan child shows all three
+without touching the host's own network, as `dhcpguard-netns-test.sh`
+did for the Proxmox guard; on the host itself, the first apply after a
+deploy writes the site's blocked client, and `nft list table netdev
+disunified_block` there shows the rule and its counters.

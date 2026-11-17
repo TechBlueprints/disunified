@@ -129,6 +129,7 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 | **Other Fedora / RHEL / Debian / Ubuntu hosts** with `python3` and netavark | nothing distro-specific is read except `/etc/os-release` | a capture (`scripts/sanitize-podman.py`) as `docs/fixtures/podman-<version>/`, the collector test over it, `-collect-once` in the PR |
 | **A bare-metal host** (a NIC with a real `ethtool` speed and media) | the code path exists (`drivers/podman.md` §2); only virtio has run | a capture from such a host; the uplink's speed/media rows in the contract test |
 | **ipvlan networks** | handled on the macvlan path | a capture with an ipvlan network |
+| **UniFi's client Block** (2026-11-17): the controller's blocked clients (`blocked_sta`, captured) as an nft netdev table of the driver's own on the uplink NIC, dropping their frames at ingress and egress | [`drivers/podman.md`](drivers/podman.md) §9; fixture-tested (`block_test.go` over `collect-block.txt`), and the transaction passes `nft -c` on the host; never loaded (the host is production). Needs `nft` ≥ 1.0.1 and kernel ≥ 5.16 | the table loaded on a host, or first in a throwaway network namespace (a dummy NIC with a macvlan child): the listing of the present table captured (`nft -j list table netdev disunified_block`) and a second cycle writing nothing; a frame from a blocked source dropped and counted at ingress and at egress while another passes; the table gone on Unblock |
 | **A host with several NICs / a bond** | top-port layout copied from the proxmox driver | a capture; confirm the uplink pick (`options.uplink` overrides the default-route NIC) |
 
 ### Expected **not** to work — PRs welcome, and they are real work
@@ -139,13 +140,7 @@ The driver keeps one file on the host: `/var/lib/disunified/podman-slots.json`
 | **Rootless Podman** | containers belong to another user's `podman` | decide whether to run `collect.sh` as that user (`ssh <user>@host`, no `nsenter` without root) or to aggregate several users; open an issue first |
 | **CNI backend** (Podman ≤ 3, or 4 upgraded in place) | different `inspect` shape; `InterfaceName` semantics differ | a capture from a CNI host and the parser cases for it |
 
-### Not done (read-only by design today) — PRs welcome, open an issue first
-
-- **UniFi's client Block** (`blocked_sta`, `docs/feature-map.md` §3) is not
-  applied: no driver capability is built for a Podman host. A PR would drop
-  the blocked sources on the host's container bridges as the `proxmox`
-  driver's nft table does (`drivers/proxmox.md` §4d), with a capture of the
-  table read back.
+### Not done — PRs welcome, open an issue first
 
 - **Port control**: port state → `ip link set … down` inside the netns, or
   `podman network disconnect`; VLANs have no meaning on a Podman network.
