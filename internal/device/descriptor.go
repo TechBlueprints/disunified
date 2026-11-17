@@ -116,6 +116,11 @@ func reportedVersion(v, model string) string {
 // An operator's -version / firmware: still overrides either.
 func reportsOwnVersion(model string) bool { return model == "UDC48X6" }
 
+// ReportsOwnVersion is reportsOwnVersion for the command: a model that
+// reports UniFi firmware numbers takes the updates the controller offers
+// it without an operator's click (cmd/disunified, upgradeAsker).
+func ReportsOwnVersion(model string) bool { return reportsOwnVersion(model) }
+
 func isASCIIDigit(r rune) bool  { return r >= '0' && r <= '9' }
 func isASCIILetter(r rune) bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
 

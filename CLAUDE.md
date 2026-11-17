@@ -691,6 +691,20 @@ captured: whether 10.x answered the GET (no note or capture here ever read
 `rest/device`; every read has been `stat/device`), and the same GET from a
 logged-in browser session instead of the key.
 
+**The UI's Update is `cmd/devmgr {"cmd": "upgrade", "mac"}`, and a bridged
+device asks for it itself (11.0.99, live 2026-11-17).** A connected device
+the controller has a newer firmware for carries `upgradable: true` and
+`upgrade_to_firmware` in its record (`stat/device/<mac>`); after the POST
+its next inform is answered with `{"_type": "upgrade", "version", "url",
+"md5sum"}`, the record shows state 4 until the new version is reported
+(about 90 s) and state 5 for another minute. Every device that is not
+claimed as the Leaf (and has no `-version`) reads its record a minute after
+a connect and then hourly, and requests what is offered
+(`cmd/disunified/upgrade.go`, `unifiapi.OfferedUpgrade`): the update is
+emulated, so a badge waiting for a click says nothing true. A lane switch
+and its parent are different UniFi products and so report different
+versions (`USFXG` 7.6.11.17272 beside `USWF07D` 4.0.1.995).
+
 SNMP: Settings → CyberSecure → Traffic Logging (captured 2026-09-19;
 `switch.snmp.*`; follows the controller, no flag since 2026-10-31).
 

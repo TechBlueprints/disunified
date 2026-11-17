@@ -740,6 +740,8 @@ func runOne(ctx context.Context, o options) error {
 	// the startup snapshot) waits for the spacing to end instead of being
 	// dropped: its ports are withheld until the controller is seeded.
 	var layoutChanged func(snap *devicemodel.Snapshot)
+	// upgradeConnected tells the upgrade asker (upgrade.go) of a connect.
+	var upgradeConnected func()
 	if o.provision && o.unifiURL != "" {
 		key := o.unifiKey
 		if key == "" {
@@ -817,6 +819,22 @@ func runOne(ctx context.Context, o options) error {
 			if snap != nil {
 				provision(snap)
 			}
+			// A model on a UniFi product's firmware line takes the updates
+			// the controller offers it by itself: they change the reported
+			// version and nothing else, and an update badge that waits for
+			// a click says nothing true. Not the Leaf, which reports the
+			// device's own version, and not under an operator's -version,
+			// which an update would not replace.
+			if !device.ReportsOwnVersion(profile.Model) && !versionPinned {
+				asker := newUpgradeAsker(sess.Adopted,
+					func(c context.Context) (string, error) { return api.OfferedUpgrade(c, macStr) },
+					func(c context.Context) error { return api.RequestUpgrade(c, macStr) },
+					log.Printf)
+				uctx, ucancel := context.WithCancel(ctx)
+				defer ucancel() // the asker ends with the run
+				go asker.run(uctx)
+				upgradeConnected = asker.connected
+			}
 		}
 	}
 
@@ -848,6 +866,9 @@ func runOne(ctx context.Context, o options) error {
 			}
 			if provision != nil {
 				provision(snap)
+			}
+			if upgradeConnected != nil {
+				upgradeConnected()
 			}
 		},
 		OnUnadopted: o.onUnadopted,
