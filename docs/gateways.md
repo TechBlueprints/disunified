@@ -110,3 +110,13 @@ issue #6 asks the same question of unifi-emu
   deployed bridges' reply logs (2026-09-20 to 2026-11-17, about 475 000
   replies) no command carries a `request_id`, and each command the session
   did not handle at the time came once or twice in all.
+
+- **2026-11-17: the answer is now on #15 (not verified here).** A 13th
+  commit on unifi-emu #15 answers the cmd: the gateway replies on its next
+  inform with a notification echoing the request id and a fresh clamped
+  Curve25519 keypair, sent once. It comes with a test and a `PROTOCOL.md`
+  entry that links to the #6 comment above. That is the pattern the third
+  party's finding describes, written as code upstream; nothing in this
+  repo runs it, and no capture here shows a controller accepting it. A
+  gateway bridge here would still need the notification reply path in
+  `internal/device` and its own capture first.
