@@ -60,6 +60,13 @@ type LaneVLANController interface {
 	EnsureLaneVLANs(ctx context.Context, cage int, ids []int) (created int, err error)
 }
 
+// LaneVLANPlanner is an optional LaneProvider capability, VLANPlanner for
+// a lane switch: PlanLanesWithVLANs is PlanLanes as ApplyLanes will plan
+// it once LaneVLANController.EnsureLaneVLANs(cage, ids) has run.
+type LaneVLANPlanner interface {
+	PlanLanesWithVLANs(cage int, desired []PortDesired, ids []int) (changed []int)
+}
+
 // Attachment is a declared lane switch.
 type Attachment struct {
 	MAC  string // lower-case colon form

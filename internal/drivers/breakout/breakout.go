@@ -305,6 +305,23 @@ func (d *Device) PlanPorts(desired []devicemodel.PortDesired) []int {
 	return d.lp.PlanLanes(d.opt.Cage, d.split(desired))
 }
 
+// PlanPortsWithVLANs implements devicemodel.VLANPlanner through the
+// parent: the lanes planned as if the push's VLANs (what EnsureVLANs hands
+// the parent) existed, where the parent can plan that
+// (devicemodel.LaneVLANPlanner); PlanPorts otherwise -- a parent whose
+// plan does not depend on the VLANs it has.
+func (d *Device) PlanPortsWithVLANs(desired []devicemodel.PortDesired, ids []int) []int {
+	lp, ok := d.lp.(devicemodel.LaneVLANPlanner)
+	if !ok {
+		return d.PlanPorts(desired)
+	}
+	if err := d.attached(); err != nil {
+		d.noteOnce(fmt.Sprintf("a push is not planned: %v", err))
+		return nil
+	}
+	return lp.PlanLanesWithVLANs(d.opt.Cage, d.split(desired), ids)
+}
+
 // EnsureVLANs implements devicemodel.VLANController: the VLANs are the
 // parent's to create. The lane switch's push names only what its lanes
 // carry, which can differ from the parent's own push, so a parent that
@@ -432,3 +449,5 @@ var (
 	_ devicemodel.Namer           = (*Device)(nil)
 	_ devicemodel.ApplyBudget     = (*Device)(nil)
 )
+
+var _ devicemodel.VLANPlanner = (*Device)(nil)

@@ -244,7 +244,7 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		return 0, fmt.Errorf("sonic apply (cage %d lanes): %w", cage, err)
 	}
 	defer unlock()
-	pl, err := c.planFor(cage, desired, false)
+	pl, err := c.planFor(cage, desired, false, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -284,16 +284,13 @@ func (c *Collector) l2Refresh(ctx context.Context) error {
 
 // PlanLanes implements devicemodel.LaneProvider (the first-push hold).
 func (c *Collector) PlanLanes(cage int, desired []devicemodel.PortDesired) []int {
-	pl, err := c.planFor(cage, desired, true)
-	if err != nil {
-		return nil
-	}
-	out := make([]int, 0, len(pl.changed))
-	for idx := range pl.changed {
-		out = append(out, idx)
-	}
-	sort.Ints(out)
-	return out
+	return changedPorts(c.planFor(cage, desired, true, nil))
+}
+
+// PlanLanesWithVLANs implements devicemodel.LaneVLANPlanner: PlanLanes as
+// ApplyLanes will plan it once EnsureLaneVLANs(cage, ids) has run.
+func (c *Collector) PlanLanesWithVLANs(cage int, desired []devicemodel.PortDesired, ids []int) []int {
+	return changedPorts(c.planFor(cage, desired, true, nonNil(ids)))
 }
 
 // noteCageDown records, from this device's own push, which cages with a
@@ -397,3 +394,8 @@ func (pl *plan) dissolveLanes(idx, cage int, write func(int, string, func(*swSta
 }
 
 var _ devicemodel.LaneProvider = (*Collector)(nil)
+
+var (
+	_ devicemodel.VLANPlanner     = (*Collector)(nil)
+	_ devicemodel.LaneVLANPlanner = (*Collector)(nil)
+)

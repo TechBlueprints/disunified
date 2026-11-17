@@ -87,7 +87,7 @@ func TestFreshPortIsWithheldUntilTheControllerAgrees(t *testing.T) {
 	l, _, buf := newPendingLoop(t, ctl, false, true) // an established device: later pushes apply
 	l.freshPorts = map[int]string{30: "vm998-net0"}
 	desired := []devicemodel.PortDesired{{Index: 1, Enabled: true}, {Index: 30, Enabled: true}}
-	got := l.withholdFreshPorts(desired)
+	got := l.withholdFreshPorts("", desired)
 	if len(got) != 1 || got[0].Index != 1 {
 		t.Errorf("fresh port not withheld: %+v", got)
 	}
@@ -100,7 +100,7 @@ func TestFreshPortIsWithheldUntilTheControllerAgrees(t *testing.T) {
 	l2.freshPorts = map[int]string{30: "vm998-net0"}
 	agree := &planningNothing{}
 	l2.cfg.Controller = agree
-	got = l2.withholdFreshPorts(desired)
+	got = l2.withholdFreshPorts("", desired)
 	if len(got) != 2 || len(l2.freshPorts) != 0 {
 		t.Errorf("agreeing port still withheld: %+v fresh=%v", got, l2.freshPorts)
 	}

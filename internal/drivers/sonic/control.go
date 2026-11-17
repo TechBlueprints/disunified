@@ -154,12 +154,20 @@ func lanesOf(p devicemodel.Port) []string {
 // newPlan diffs desired against the collector's state without writing;
 // controllerOnly leaves out the module-driven writes (plan.controllerOnly).
 func (c *Collector) newPlan(desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
-	return c.planFor(0, desired, controllerOnly)
+	return c.planFor(0, desired, controllerOnly, nil)
 }
 
 // planFor is newPlan for the device's own ports (cage 0) or, for a lane
-// switch, for one split cage's lanes (lanes.go).
-func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, controllerOnly bool) (*plan, error) {
+// switch, for one split cage's lanes (lanes.go). pushed, when not nil, is
+// the VLAN list of the push being planned (UniFi's ids), planned as if
+// EnsureVLANs (EnsureLaneVLANs) had run with it: each VLAN exists and the
+// list is what Allow All tags. The first-push hold plans before EnsureVLANs
+// runs (PlanPortsWithVLANs, PlanLanesWithVLANs); without it the plan saw
+// only the VLANs already on the switch, so a push whose only change was
+// tagging VLANs the switch did not have yet planned as no change and went
+// through (breakout.md §16.10: a lane switch's first push, Allow All over
+// the VLANs its parent had pruned, tagged ten VLANs on every lane).
+func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, controllerOnly bool, pushed []int) (*plan, error) {
 	caps := c.Capabilities()
 	c.mu.Lock()
 	snap, st, site := c.last, c.state, append([]int(nil), c.siteVLANs...)
@@ -175,6 +183,7 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 			site = append([]int{}, l...)
 		}
 	}
+	native := c.NativeVLAN
 	lanes := c.lanes[cage]
 	down := c.cageDown[cage]
 	var attached []int
@@ -194,6 +203,27 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	scopes := c.mtuScopes(cage)
 	c.mu.Unlock()
 	pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, native: c.NativeVLAN, site: site, routed: routed, mtuScopes: scopes, changed: map[int]bool{}, own: map[int]bool{}, controllerOnly: controllerOnly, owned: map[int]bool{}}
+	if pushed != nil {
+		// As EnsureVLANs would leave it: the list (the native stand-in
+		// out) and every VLAN in it on the switch -- in the plan's copy.
+		pl.site = []int{}
+		seen := map[int]bool{}
+		for _, id := range pushed {
+			sid := id
+			if id == 1 {
+				sid = native
+			}
+			if sid < 2 || sid > 4094 || seen[sid] {
+				continue
+			}
+			seen[sid] = true
+			pl.sim.vlans[sid] = true
+			if sid != native {
+				pl.site = append(pl.site, sid)
+			}
+		}
+		sort.Ints(pl.site)
+	}
 	pl.bridgeWait = st.l2mcKnown && st.l2mcFeature == "enabled" && !fixed
 	if cage == 0 {
 		for _, p := range snap.Ports {
@@ -1433,7 +1463,17 @@ func (c *Collector) runPlan(ctx context.Context, pl *plan, what string) (int, er
 // speed a module calls for where UniFi says auto (plan.controllerOnly),
 // which no controller setting can match.
 func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
-	pl, err := c.newPlan(desired, true)
+	return changedPorts(c.planFor(0, desired, true, nil))
+}
+
+// PlanPortsWithVLANs implements devicemodel.VLANPlanner: PlanPorts as the
+// apply will plan it once EnsureVLANs(ids) has run (planFor's pushed).
+func (c *Collector) PlanPortsWithVLANs(desired []devicemodel.PortDesired, ids []int) []int {
+	return changedPorts(c.planFor(0, desired, true, nonNil(ids)))
+}
+
+// changedPorts is a plan's changed ports, ascending; none for no plan.
+func changedPorts(pl *plan, err error) []int {
 	if err != nil {
 		return nil
 	}
@@ -1443,6 +1483,15 @@ func (c *Collector) PlanPorts(desired []devicemodel.PortDesired) []int {
 	}
 	sort.Ints(out)
 	return out
+}
+
+// nonNil: a push that names no VLAN but 1 is still a list (planFor's
+// pushed: nil means none was given).
+func nonNil(ids []int) []int {
+	if ids == nil {
+		return []int{}
+	}
+	return ids
 }
 
 // EnsureVLANs implements devicemodel.VLANController: it creates the
