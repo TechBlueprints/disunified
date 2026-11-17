@@ -50,6 +50,11 @@ func TestBreakoutPutsLLDPMEDOnEveryNewInterface(t *testing.T) {
 	got, _ = r.apply(base)
 	check("split", got, "Ethernet8", "Ethernet9", "Ethernet10", "Ethernet11")
 	r.collect()
+	// The lanes' FEC follows once their supported_fecs is read (§11.37).
+	if fec, _ := r.apply(base); len(fec) != 5 || fec[0] != "sudo config interface fec Ethernet8 fc" {
+		t.Errorf("split: the cycle after wrote %q, want the four lanes' fc", fec)
+	}
+	r.collect()
 	if again, n := r.apply(base); len(again) != 0 || n != 0 {
 		t.Errorf("split: the next apply wrote %q (%d ports)", again, n)
 	}

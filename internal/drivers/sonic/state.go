@@ -80,6 +80,9 @@ type swState struct {
 	// fecs is STATE_DB's supported_fecs per interface ("none,rs" on the
 	// DX010; absent on the VS); read-only, shared by clones.
 	fecs map[string]map[string]bool
+	// fecsStale names the interfaces a planned breakout made, whose
+	// supported_fecs the next collect reads (applyBreakout).
+	fecsStale map[string]bool
 	// laneSpeeds is STATE_DB's supported_speeds per interface, the SAI's
 	// answer for the lane at its current breakout ("1000,10000,25000" on a
 	// DX010 lane in 4x25G): what `config interface speed` checks; read-only,
@@ -460,7 +463,7 @@ func (s *swState) clone() *swState {
 		lags: map[string]map[string]bool{}, mirrors: map[string]map[string]string{},
 		storm: map[string]map[string]int{}, stp: map[string]map[string]string{},
 		stpFeature: s.stpFeature, psample: s.psample, platformJSON: s.platformJSON, platform: s.platform,
-		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
+		meta: copyFields(s.meta), kernelHost: s.kernelHost, rsyslogHosts: s.rsyslogHosts, brkout: map[string]string{}, fecs: s.fecs, fecsStale: s.fecsStale, laneSpeeds: s.laneSpeeds, switchCap: s.switchCap, mgmtPortMissing: s.mgmtPortMissing, mgmtNoGateway: s.mgmtNoGateway,
 		l2:       s.l2,
 		aclKnown: s.aclKnown, aclTables: map[string]aclTable{}, aclRules: map[string]map[string]string{},
 		aclStatus: s.aclStatus, aclCRM: s.aclCRM, aclCPU: s.aclCPU, aclCPUKnown: s.aclCPUKnown, macBlock: s.macBlock, macBlockKnown: s.macBlockKnown, gc: s.gc.clone(),

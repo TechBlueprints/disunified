@@ -241,10 +241,21 @@ func (s *swState) applyBreakout(parent string, pp platformPort, idx int, childre
 	for _, name := range s.cagePorts(idx) {
 		delete(fecs, name)
 	}
+	// On a platform that lists them (the DX010; the virtual switch lists
+	// none), the new interfaces' list is not known until then: the module's
+	// FEC waits for it (plan.moduleFEC) rather than be written blind, where
+	// portconfig would refuse a mode the new layout lacks and fail the batch.
+	stale := map[string]bool{}
+	for name := range s.fecsStale {
+		stale[name] = true
+	}
 	for _, ch := range children {
 		delete(fecs, ch.name)
+		if len(s.fecs) > 0 {
+			stale[ch.name] = true
+		}
 	}
-	s.fecs = fecs
+	s.fecs, s.fecsStale = fecs, stale
 	// supported_speeds likewise: the SAI answers per lane at the new mode.
 	speeds := map[string][]int{}
 	for name, sp := range s.laneSpeeds {

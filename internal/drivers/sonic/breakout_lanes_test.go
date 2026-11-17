@@ -18,11 +18,14 @@ const (
 	fixture20261106Split = "../../../docs/fixtures/sonic-igmp-202511.20261106-f2e25f54c/collect-4x25g.txt"
 )
 
-func rig20261106(t *testing.T, path string) *controlRig {
+func rig20261106(t *testing.T, path string, edits ...func(*FixtureRunner)) *controlRig {
 	t.Helper()
 	fr, err := NewFixtureRunner(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, edit := range edits {
+		edit(fr)
 	}
 	var buf strings.Builder
 	c := NewCollector(fr)

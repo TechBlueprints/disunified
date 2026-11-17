@@ -261,14 +261,26 @@ func (f *FixtureRunner) breakout(args []string) error {
 		return err
 	}
 	// STATE_DB PORT_TABLE: the old interfaces' rows go (their
-	// supported_fecs spoke for the old speed); the new ones' arrive with
-	// the SAI's answers later, after the next collect at the earliest.
+	// supported_fecs spoke for the old speed). On a capture whose ports
+	// list supported_fecs (the DX010's), the new ones get the SAI's answer
+	// for their layout as read from that switch (docs/fec-by-standard.md
+	// §3; collect-split-dac.txt for the lanes): a whole cage and a 2x50G
+	// half none,rs, a 25G lane none,fc.
 	if err := f.update("state_port", func(t table) error {
+		listed := false
 		for n := range gone {
+			listed = listed || t["PORT_TABLE|"+n]["supported_fecs"] != ""
 			delete(t, "PORT_TABLE|"+n)
 		}
 		for _, a := range adds {
 			delete(t, "PORT_TABLE|"+a.name)
+			if listed {
+				fecs := "none,rs"
+				if len(adds) == 4 {
+					fecs = "none,fc"
+				}
+				t["PORT_TABLE|"+a.name] = map[string]string{"supported_fecs": fecs}
+			}
 		}
 		return nil
 	}); err != nil {
