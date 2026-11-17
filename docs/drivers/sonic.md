@@ -3052,7 +3052,9 @@ changes with LACP, not with a push. It needs no change. On an image without
 0005, any LACP change on an aggregate with snooped groups can strand those
 groups. The uplink's next member flap is the likely one.
 
-**What the next image's install must prove** (the register's install check):
+**What the next image's install must prove** (the register's install check; shown on
+`igmp-202511.20261116-6c8eb1cf7`, with the test LAG run again 2026-11-17:
+[`sonic-running.md`](sonic-running.md) §3.3):
 
 - orchagent carries 0005: `docker exec swss grep -c -a -F "made again for
   its LAG members" /usr/bin/orchagent` is 1.

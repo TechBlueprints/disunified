@@ -288,11 +288,22 @@ the CPLD watchdog, the trace that found it) is §8.14.
     cage (1 of 32 ports); CONFIG_DB then differed only in the order of an
     ACL table's port list and in `dhcp_rate_limit` missing from the
     re-created port (a field the image's start adds, on 29 of 35 ports).
-  - **Not exercised: sonic-swss 0005's own path.** Both uplink members were
-    distributing before the groups were made at this boot, so nothing was
-    made again. The patch is in the binary (its notice string, once) and
-    its mock tests pass; the test LAG of `sonic.md` §8.16 was not re-run,
-    and the uplink's next member change is the first real use.
+  - **sonic-swss 0005** (the test LAG of `sonic.md` §8.16 run again,
+    2026-11-17 04:25 UTC, under the lock with the bridge stopped: two empty
+    cages as a PortChannel in a test VLAN, the members' APPL_DB status
+    written by hand). At the boot both uplink members were distributing
+    before the groups were made, so nothing was made again there. On the
+    rig: a group made with one member distributing sat on that port alone;
+    when the second member started, orchagent logged `1 l2mc group members
+    of PortChannel8 made again for its LAG members` and the chip listed
+    both ports; the removal was clean. The case that failed on the image
+    before (ITEM_NOT_FOUND, retried about five times a second) is gone.
+    Made with both, then one stopped, brought back, and the other stopped:
+    the chip's group followed the distributing set each time, and the
+    removal with one member stopped was clean. No `mcast egress remove
+    failed` or `rv:-7` in the run. After the teardown CONFIG_DB was
+    identical (39 tables) and APPL_DB's and ASIC_DB's L2MC keys were equal;
+    the bridge's restart changed 0 of 32 ports.
   - With the MAC loopback, `bcmcmd` port names shift when a cage is split:
     with cage 3 at 4x25G, `ce4` is Ethernet20 (cage 6), not Ethernet16.
 - Before it, 2026-11-15 (installed 02:59 UTC, confirmed 03:07 with bridge
