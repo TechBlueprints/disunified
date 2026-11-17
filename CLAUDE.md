@@ -494,7 +494,9 @@ tables, its informs), read-only, and nothing copied off it is committed.
   A top-level reply, not a `cmd`. The device's first inform after the
   Forget gets it; every later inform on the old key gets HTTP 400 with an
   empty body. The session then drops the key and the stored push, and the
-  loop's `OnUnadopted` runs.
+  loop's `OnUnadopted` runs. The Forget by API (`cmd/sitemgr
+  delete-device`) answers with the whole stored record, its `x_authkey`
+  included: print only `meta`.
 - **UniFi's client Block reaches a switch as `blocked_sta`, not
   `system_cfg` (11.0.99, captured 2026-11-15).** Every `setparam` carries
   the field: the blocked clients' MACs, `""` for none, two joined by a
