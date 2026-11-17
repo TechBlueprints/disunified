@@ -732,6 +732,8 @@ func runOne(ctx context.Context, o options) error {
 	// on the adoption handshake, on a layout change (a new guest) and while
 	// a first push is held (a retry). Only controller-default names and
 	// ports the controller has no config for are touched.
+	// The spacing between provisions, the retry timer and a layout change
+	// that waits for the spacing are provisionSpacer's (provision.go).
 	var provision func(snap *devicemodel.Snapshot)
 	// layoutChanged provisions after a layout change. One that falls inside
 	// provision's 10 s spacing (the first collect of a run differing from
@@ -747,30 +749,18 @@ func runOne(ctx context.Context, o options) error {
 			api.PowerPath = desc.Type == "usp"
 			seed := !o.noSeed && o.controlPorts != ""
 			var (
-				mu sync.Mutex // the loop's callbacks and the retry timer both call provision
 				// pendingNoted: the "listed as pending" line was logged; cleared
-				// by the next provision that succeeds.
+				// by the next provision that succeeds. It and retry are
+				// touched only inside the action, under the spacer's lock.
 				pendingNoted bool
-				last         time.Time
 				retry        apiRetry
-				timer        *time.Timer
 			)
-			provision = func(snap *devicemodel.Snapshot) {
-				mu.Lock()
-				defer mu.Unlock()
-				if !sess.Adopted() || snap == nil || time.Since(last) < 10*time.Second {
-					return
-				}
-				last = time.Now()
+			spacer := newProvisionSpacer(sess.Adopted, sess.Snapshot, func(snap *devicemodel.Snapshot) time.Duration {
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
 				r, err := api.Provision(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortNameIn(defaultPortNames(desc.Ports, snap, namer)), seed)
 				pcancel()
 				for _, note := range r.Notes {
 					log.Printf("provision: seed: %s", note)
-				}
-				if timer != nil {
-					timer.Stop()
-					timer = nil
 				}
 				if err != nil {
 					// Not only on the next layout change or held push: a
@@ -778,7 +768,7 @@ func runOne(ctx context.Context, o options) error {
 					// starts (no DNS yet early in a boot, the network
 					// late) is asked again on a timer until it answers.
 					if ctx.Err() != nil {
-						return
+						return 0
 					}
 					// A device the controller lists as pending has no
 					// record to name: not an API outage, and asking on a
@@ -788,14 +778,13 @@ func runOne(ctx context.Context, o options) error {
 							pendingNoted = true
 							log.Printf("provision: %v; the names and the seed follow its adoption", err)
 						}
-						return
+						return 0
 					}
 					wait, first := retry.failed()
 					if first {
 						log.Printf("provision: the controller's API cannot be reached yet: %v (asking again in %s, then at growing intervals)", err, wait)
 					}
-					timer = time.AfterFunc(wait, func() { provision(sess.Snapshot()) })
-					return
+					return wait
 				}
 				pendingNoted = false
 				if retry.succeeded() {
@@ -819,17 +808,12 @@ func runOne(ctx context.Context, o options) error {
 						log.Printf("provision: %d outlet slots the device does not have set off in the controller (of %v)", n, ph)
 					}
 				}
-			}
-			layoutChanged = func(snap *devicemodel.Snapshot) {
-				mu.Lock()
-				if wait := 10*time.Second - time.Since(last); wait > 0 && timer == nil && sess.Adopted() {
-					timer = time.AfterFunc(wait, func() { provision(sess.Snapshot()) })
-					mu.Unlock()
-					return
-				}
-				mu.Unlock()
-				provision(snap)
-			}
+				return 0
+			})
+			// The run ends with runOne, the context not always: a retry
+			// timer must not outlive it.
+			defer spacer.stop()
+			provision, layoutChanged = spacer.provision, spacer.layoutChanged
 			if snap != nil {
 				provision(snap)
 			}
