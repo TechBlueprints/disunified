@@ -1424,7 +1424,7 @@ cage and none for a declared cage or `off`; `OnUnadopted` from the recorded
 `sfputil` read on its capture. `go vet ./... && go test ./...` and
 `scripts/check-site-info.sh --staged` before every commit.
 
-Live, on the DX010 (free to test on; its lock is `/tmp/dui-dx010.lock`,
+Live, on the DX010 (free to test on; its lock is `/tmp/dui-dx010.lock` on the switch,
 `internal/drivers/sonic/CLAUDE.md`; cage 3 only, nothing is cabled to its
 lanes; never the uplink):
 

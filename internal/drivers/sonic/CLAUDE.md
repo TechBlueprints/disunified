@@ -1405,8 +1405,11 @@ was restarted.
   `02:00:00:00:00:01`): seed a reply log's clients with
   `sanitize-controller.py --mac` or the driver holds them as the switch.
 - **Hand tests on a switch that several sessions share take a lock on the
-  switch**: write `/tmp/dui-dx010.lock` with your session's name and what
-  you are doing, wait while another session holds it, remove it when done.
+  switch**: write `/tmp/dui-dx010.lock` **on the switch** (over its SSH,
+  not in the Mac's `/tmp`) with your session's name and what you are
+  doing, wait while another session holds it, remove it when done. On
+  2026-11-16 one session took it on the Mac, saw no lock, and installed a
+  package in the minute a sibling held the switch's.
   It covers anything the deployed bridge or another session's test would
   see: a stopped or replaced bridge, a split cage, a hand-made CONFIG_DB
   row, an l2d run by hand. Read-only commands need no lock. **Take it
