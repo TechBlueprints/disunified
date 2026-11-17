@@ -17,6 +17,8 @@ import (
 // This is the one place the bridge changes an override an operator
 // configured: the cage's entry goes to Auto, which on a cage with a lane
 // switch keeps the cage as it is (the module's layout, or the mode it has).
+// It runs when an automatic lane switch is adopted, and for a declared one
+// at the start and at its adoption (cmd/disunified/lanes.go).
 
 // laneSpeedFloor is the lowest speed (Mb/s) the controller takes on a
 // QSFP28 port together with a FEC: a forced speed below it is a lane speed.

@@ -202,3 +202,98 @@ func TestHandOverSetsTheCageToAuto(t *testing.T) {
 		t.Errorf("a cage already on Auto was logged: %q", buf.String())
 	}
 }
+
+// A declared lane switch (docs/drivers/breakout.md 0) is attached at start,
+// adopted or not, so it owns the cage from then: the hand-over's controller
+// step runs at the attach and again at its adoption, and a Forget leaves it
+// attached, said once in the parent's log.
+func TestDeclaredLaneSwitchHandOver(t *testing.T) {
+	c, snap, plan := laneParent(t)
+	f := &config.File{Devices: []config.Device{
+		{Name: "sw", Driver: "sonic"},
+		{Name: "rack-lanes", Driver: config.LaneDriver, Options: map[string]string{"parent": "sw", "cage": "3"}},
+	}}
+	hooks := declaredLanes(f)
+	d := hooks["rack-lanes"]
+	if len(hooks) != 1 || d == nil || d.cage != 3 {
+		t.Fatalf("declared hooks %v", hooks)
+	}
+	var asked []string
+	d.toAutoFor = func(parentMAC string) func(context.Context, int) (map[string]any, error) {
+		return func(_ context.Context, cage int) (map[string]any, error) {
+			asked = append(asked, parentMAC+"/"+itoa(cage))
+			if len(asked) > 1 {
+				return nil, nil // already Auto
+			}
+			return map[string]any{"autoneg": false, "speed": float64(25000), "full_duplex": true, "fec_mode": "fc-fec"}, nil
+		}
+	}
+	d.goFn = func(fn func()) { fn() }
+
+	// Before the start nothing is bound: the hooks do nothing.
+	d.adopted()
+	d.forgotten()
+	if len(asked) != 0 {
+		t.Fatalf("unbound hooks asked the controller: %v", asked)
+	}
+
+	buf := &strings.Builder{}
+	attachLaneSwitches(log.New(buf, "", 0), c, snap, f.LaneSwitchesOf("sw"), hooks)
+	wantMAC, _ := devicemodel.LaneSwitchMAC(snap.System.MAC, 3)
+	if v, _ := c.Lanes(3); v.Child.MAC != wantMAC || v.Child.Name != "rack-lanes" {
+		t.Fatalf("not attached at start: %+v", v.Child)
+	}
+	if got := plan(); len(got) != 0 {
+		t.Errorf("declared: the parent's first plan changes %v, want nothing", got)
+	}
+	want := snap.System.MAC + "/3"
+	if !reflect.DeepEqual(asked, []string{want}) {
+		t.Errorf("start: asked %v, want [%s] (the parent's port 3)", asked, want)
+	}
+	if !strings.Contains(buf.String(), "port 3: set to Auto in UniFi (was autoneg false, speed 25000, full_duplex true, fec_mode fc-fec)") {
+		t.Errorf("start log: %q", buf.String())
+	}
+
+	// The adoption runs the step again; already Auto, nothing is said.
+	n := strings.Count(buf.String(), "Auto")
+	d.adopted()
+	if len(asked) != 2 || strings.Count(buf.String(), "Auto") != n {
+		t.Errorf("adoption: asked %v, log %q", asked, buf.String())
+	}
+
+	// A Forget: still attached, the lanes still the lane switch's.
+	d.forgotten()
+	if v, _ := c.Lanes(3); v.Child.MAC != wantMAC {
+		t.Errorf("a Forget detached a declared lane switch: %+v", v.Child)
+	}
+	if got := plan(); len(got) != 0 {
+		t.Errorf("forgotten: the parent's plan changes %v, want nothing (the file still declares it)", got)
+	}
+	if !strings.Contains(buf.String(), "lane switch rack-lanes ("+wantMAC+") was forgotten in the controller and stays attached to port 3") {
+		t.Errorf("forget log: %q", buf.String())
+	}
+}
+
+// Without a controller API the start says what to set by hand; -collect-once
+// (no hooks) says nothing and asks nothing.
+func TestDeclaredLaneSwitchWithoutAPI(t *testing.T) {
+	c, snap, _ := laneParent(t)
+	f := &config.File{Devices: []config.Device{
+		{Name: "sw", Driver: "sonic"},
+		{Name: "rack-lanes", Driver: config.LaneDriver, Options: map[string]string{"parent": "sw", "cage": "3"}},
+	}}
+	hooks := declaredLanes(f)
+	hooks["rack-lanes"].goFn = func(fn func()) { fn() }
+	buf := &strings.Builder{}
+	attachLaneSwitches(log.New(buf, "", 0), c, snap, f.LaneSwitchesOf("sw"), hooks)
+	if !strings.Contains(buf.String(), "port 3: a lane switch has the lanes now") || !strings.Contains(buf.String(), "no controller API is configured") {
+		t.Errorf("log: %q", buf.String())
+	}
+
+	c2, snap2, _ := laneParent(t)
+	buf.Reset()
+	attachLaneSwitches(log.New(buf, "", 0), c2, snap2, f.LaneSwitchesOf("sw"), nil)
+	if strings.Contains(buf.String(), "Auto") {
+		t.Errorf("-collect-once ran the hand-over: %q", buf.String())
+	}
+}
