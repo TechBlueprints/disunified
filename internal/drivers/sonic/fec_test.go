@@ -226,22 +226,42 @@ func TestBaseRCableOnTwoLanePortsGetsRS(t *testing.T) {
 	r.expect("the cycle after", ds, []string{"sudo config interface fec Ethernet0 rs", "sudo config interface fec Ethernet2 rs", save})
 }
 
-// A port that is up on a mode the standard permits for its module is not
-// flapped for the preferred one: cage 1 of the capture, a linked CA-L DAC
-// on rs, read as a BER 1e-12 active cable (none preferred, RS permitted).
-func TestLinkedPortKeepsAPermittedFEC(t *testing.T) {
-	r, base, _ := settled(t, func(fr *FixtureRunner) {
+// Auto always means the preferred mode: a port that is up on a mode the
+// standard permits for its module but does not prefer is rewritten. Cage 1
+// of the capture, a linked CA-L DAC on rs, read as a BER 1e-12 active cable
+// (none preferred, RS permitted): none is written, once.
+func TestLinkedPortIsRewrittenToThePreferredFEC(t *testing.T) {
+	r := rig20261106(t, fixtureSplitDAC, func(fr *FixtureRunner) {
 		_ = fr.update("xcvr", func(t table) error {
 			x := t["TRANSCEIVER_INFO|Ethernet0"]
 			x["specification_compliance"] = strings.Replace(x["specification_compliance"], "100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS", "100G AOC or 25GAUI C2M AOC", 1)
 			return nil
 		})
 	})
+	base := r.baseline()
 	if p := port(r.system2(), 1); !p.Up || p.FECConfig != devicemodel.FECRS || p.Optic == nil || p.Optic.MediaType != "100G AOC or 25GAUI C2M AOC" {
-		t.Fatalf("cage 1: up %v FEC %q optic %+v", p.Up, p.FECConfig, p.Optic)
+		t.Fatalf("cage 1 before: up %v FEC %q optic %+v", p.Up, p.FECConfig, p.Optic)
 	}
-	if got, _ := r.apply(base); len(got) != 0 {
-		t.Errorf("wrote %q", got)
+	// The baseline also takes the capture's test aggregate apart; the FEC
+	// write is among its commands, once.
+	got, _ := r.apply(base)
+	n := 0
+	for _, c := range got {
+		if strings.Contains(c, " fec ") {
+			n++
+			if c != "sudo config interface fec Ethernet0 none" {
+				t.Errorf("wrote %q", c)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d FEC writes in %q, want the one on Ethernet0", n, got)
+	}
+	if p := port(r.system2(), 1); p.FECConfig != devicemodel.FECDisabled {
+		t.Errorf("cage 1 after: FEC config %q", p.FECConfig)
+	}
+	if again, _ := r.apply(base); len(again) != 0 {
+		t.Errorf("a second apply wrote %q", again)
 	}
 }
 

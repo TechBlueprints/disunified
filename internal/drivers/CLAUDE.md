@@ -30,8 +30,10 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   module when UniFi pushes none (UniFi's own "auto"): chosen by
   `internal/fecpolicy` (the one table, `docs/fec-by-standard.md` §4;
   never a table of the driver's own) within what the port supports,
-  nothing written when no permitted mode is supported or when the port is
-  up on a permitted one (`sonic`, docs/drivers/sonic.md §10.3, §11.37;
+  nothing written when no permitted mode is supported. Auto always means
+  the preferred mode (Clint, 2026-11-17): a port on another mode is
+  rewritten, link or no link, which drops a link whose far end stays on
+  the other mode; a FEC set in UniFi overrides auto (`sonic`, docs/drivers/sonic.md §10.3, §11.37;
   `arista-eos`, docs/drivers/arista-eos.md §13). `sonic` also takes the
   speed (or breakout) the module calls for (§10.9). All of it is planned
   without by the `Planner`, so the first-push hold never waits on it.

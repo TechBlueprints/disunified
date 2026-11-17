@@ -1536,12 +1536,16 @@ interface (a split cage's lanes each on their own):
    "disabled"). No answer, or none available: nothing written, a note.
 2. Nothing is written when the configuration is exactly the choice, or
    when nothing is configured and the interface already runs the choice
-   (EOS's default got there), or when the port is up on any mode the
-   standard permits for the module (a working link is not flapped).
-3. Otherwise the commands that leave exactly the choice configured. That
-   corrects a hand-set encoding that contradicts the module, a second
-   encoding left beside the first, and a port that is down on a setting
-   other than the choice.
+   (EOS's default got there: the port is on the preferred mode).
+3. Otherwise the commands that leave exactly the choice configured,
+   whether the port has link or not: auto always means the preferred mode
+   (Clint, 2026-11-17: "Rewrite it to the preferred mode."). That corrects
+   a hand-set encoding other than the choice, a second encoding left
+   beside the first, and a port whose EOS default is another mode. Both
+   ends of a link must run one FEC, so a rewrite drops a link whose far
+   end stays on the other mode; a FEC set in UniFi overrides auto and
+   holds such a link. (The first build of the day left a linked port on
+   any mode the standard permits; removed the same day.)
 4. A port whose speed the same batch changes is left for the next cycle:
    what the interface offers is read at the new speed.
 
@@ -1560,8 +1564,9 @@ before and after the next collect writes nothing; the same through
 `ApplyLanes`; a pushed Fire-code over a configured Reed-Solomon takes the
 other out and is counted by `PlanLanes`; `fecPlan` by medium against the
 captured rows (CA-25G-L and a 25G LR optic on a lane get RS, which this
-switch's lanes offer; CA-25G-N none; a linked 1e-12 cable on RS kept; a
-linked LR4 on RS corrected; no codes and a CR4 on a lane, or an unknown
+switch's lanes offer; CA-25G-N none; a linked 1e-12 cable on the
+default's RS rewritten to none; a linked CA-25G-L cable on the default's
+RS left, being on the preferred mode; a linked LR4 on RS corrected; no codes and a CR4 on a lane, or an unknown
 media type, a note). The fixture transport models the command as captured
 (§11): additive lines, `no ... <x>`, the bare `no`, `default`, the status
 row's flags, and the operating mode where a capture shows it (any other
@@ -1575,9 +1580,11 @@ committed states of the linkless Ethernet50/4 under a commit timer that
 was aborted (the lane back at its default, no session left, `show
 running-config diffs` empty).
 
+**Live through the deployed bridge (2026-11-17, the first build):** the
+EEPROM read over eAPI, and no FEC command on the switch as it is.
+
 **Not run live:** the driver's own write on the Arista. Against the
 capture of the switch as it is, the rule writes nothing: every populated
-cage already runs the standard's choice. A link's behaviour with a far
-end after a correction, a module with any code but 6, 11 and 12, and the
-read over eAPI (the capture was taken over SSH with `| json`, which
-prints what eAPI returns) are fixture-tested or not exercised.
+cage already runs the preferred mode. A link's behaviour with a far end
+after a rewrite and a module with any code but 6, 11 and 12 are
+fixture-tested or not exercised.

@@ -124,7 +124,8 @@ func (m Medium) copper() bool {
 //     runs with none, FC or RS; CA-S with FC or RS; CA-L with RS only.
 //   - 25G SR, LR, ER and an active cable at BER 5e-5: RS required, no FC
 //     is defined for optics. An active cable at 1e-12 needs none (RS over
-//     it is still a 25GAUI the standard defines, so it is allowed second).
+//     it is still a 25GAUI the standard defines: second, for a port that
+//     cannot run without FEC).
 //   - 50G on two 25G lanes (25G/50G Consortium): by the cable, as at 25G.
 //   - 100G on four 25G lanes: RS for CR4, SR4, CWDM4, PSM4, SWDM4, PAM4
 //     BiDi and a 5e-5 active cable; none for LR4 and ER4; FC is not
@@ -172,11 +173,6 @@ func Allowed(m Medium, speedMbps int) []devicemodel.FEC {
 		}
 	}
 	return nil
-}
-
-// Permits reports whether the standard lets m run f at the speed.
-func Permits(m Medium, speedMbps int, f devicemodel.FEC) bool {
-	return slices.Contains(Allowed(m, speedMbps), f)
 }
 
 // Choose picks the FEC for m at the speed on a port that can run the

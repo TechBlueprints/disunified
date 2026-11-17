@@ -94,12 +94,6 @@ func TestChoose(t *testing.T) {
 	}
 }
 
-func TestPermits(t *testing.T) {
-	if !Permits(CopperCAS, 25000, rs) || Permits(CopperCAS, 25000, none) || Permits(Unknown, 25000, none) {
-		t.Error("Permits disagrees with Allowed")
-	}
-}
-
 // The SFF-8024 extended compliance codes docs/fec-by-standard.md names.
 func TestFromSFF8024(t *testing.T) {
 	for code, want := range map[int]Medium{
