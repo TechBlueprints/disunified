@@ -79,6 +79,7 @@ Built 2026-09-27 on the proxmox driver's pattern; shares its SSH transport
   bridge-family hook would see only the NAT'd containers. Ingress (before
   the macvlan receive handler) and egress, `ether saddr` drop; the host's
   own MAC is never written. Two macvlan containers on one parent still
-  talk (bridge mode). Fixture-tested and `nft -c`-checked on the host;
-  **never loaded**: the listing of a present table has no capture, so the
-  fixture runner does not model the write.
+  talk (bridge mode). Fixture-tested, and loaded by the deployed
+  driver 2026-11-17 (written once, read back by its comment); a dropped
+  frame is not yet seen, and the listing of a present table is not yet a
+  fixture, so the fixture runner does not model the write.

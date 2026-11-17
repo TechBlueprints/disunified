@@ -344,16 +344,19 @@ transaction above, with two documentation MACs and the real uplink, passes
 `nft -c -f -` (check only: nothing is loaded, and no `disunified_block`
 table existed after).
 
-**Not verified live.** No table has been loaded: the host is production
-and runs every deployed bridge. Three things have no capture and wait for
-that: the listing of a *present* table (`nft -j list table netdev
-disunified_block`; the driver reads the table's `name` and `comment` from
-it, and the fixture runner does not model the write, so if the comment
-were not listed the driver would rewrite the table, counters and all,
-every cycle); a frame from a blocked source dropped and counted at each
-hook while another passes; and the table gone on Unblock. A throwaway
-network namespace with a dummy NIC and a macvlan child shows all three
-without touching the host's own network, as `dhcpguard-netns-test.sh`
-did for the Proxmox guard; on the host itself, the first apply after a
-deploy writes the site's blocked client, and `nft list table netdev
-disunified_block` there shows the rule and its counters.
+**Loaded live 2026-11-17 (deployed driver, the production host).** The
+first apply after the deploy wrote the site's one blocked client: `nft list
+table netdev disunified_block` shows the comment and both chains on the
+uplink NIC, each with the one counted `ether saddr` drop. `nft -j list`
+gives the table's `comment`, the driver read it back, and the following
+cycles wrote nothing (one "applied 1" line in the log). The host's own
+tables (`inet netavark`, `inet firewalld`) are as they were and every
+bridge in the container reconnected.
+
+**Still not seen:** a frame from a blocked source dropped and counted at
+each hook while another passes (both counters read 0: the blocked client
+sent nothing to this host), and the table gone on Unblock. The listing of
+the present table is not yet a fixture, so the fixture runner still does
+not model the write. A throwaway network namespace with a dummy NIC and a
+macvlan child shows the frame test without touching the host's own
+network, as `dhcpguard-netns-test.sh` did for the Proxmox guard.
