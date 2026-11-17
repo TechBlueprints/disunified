@@ -1,0 +1,822 @@
+{
+  "data": [
+    {
+      "mac": "02:00:00:00:00:01",
+      "model": "UDC48X6",
+      "port_overrides": [
+        {
+          "forward": "all",
+          "name": "device-1",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 1
+        },
+        {
+          "forward": "all",
+          "name": "device-2",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 2
+        },
+        {
+          "forward": "all",
+          "name": "device-3",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 3
+        },
+        {
+          "forward": "all",
+          "name": "device-4",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 4
+        },
+        {
+          "forward": "all",
+          "name": "device-5",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 5
+        },
+        {
+          "forward": "all",
+          "name": "device-6",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 6
+        },
+        {
+          "forward": "all",
+          "name": "device-7",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 7
+        },
+        {
+          "forward": "all",
+          "name": "device-8",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 8
+        },
+        {
+          "forward": "all",
+          "name": "device-9",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 9
+        },
+        {
+          "forward": "all",
+          "name": "device-10",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 10
+        },
+        {
+          "forward": "all",
+          "name": "device-11",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 11
+        },
+        {
+          "forward": "all",
+          "name": "device-12",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 12
+        },
+        {
+          "forward": "all",
+          "name": "device-13",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 13
+        },
+        {
+          "forward": "all",
+          "name": "device-14",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 14
+        },
+        {
+          "forward": "all",
+          "name": "device-15",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 15
+        },
+        {
+          "forward": "all",
+          "name": "device-16",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 16
+        },
+        {
+          "forward": "all",
+          "name": "device-17",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 17
+        },
+        {
+          "forward": "native",
+          "name": "device-18",
+          "native_networkconf_id": "00000000000000000000000000000004",
+          "port_idx": 18,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "native",
+          "name": "device-19",
+          "native_networkconf_id": "00000000000000000000000000000006",
+          "port_idx": 19,
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-20",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 20
+        },
+        {
+          "forward": "all",
+          "name": "device-21",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 21
+        },
+        {
+          "forward": "all",
+          "name": "device-22",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 22
+        },
+        {
+          "forward": "all",
+          "name": "device-23",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 23
+        },
+        {
+          "forward": "all",
+          "name": "device-24",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 24
+        },
+        {
+          "forward": "disabled",
+          "name": "device-25",
+          "native_networkconf_id": "",
+          "port_idx": 25,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-26",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 26,
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-27",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 27,
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-28",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 28,
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-29",
+          "native_networkconf_id": "",
+          "port_idx": 29,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-30",
+          "native_networkconf_id": "",
+          "port_idx": 30,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-31",
+          "native_networkconf_id": "",
+          "port_idx": 31,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-32",
+          "native_networkconf_id": "",
+          "port_idx": 32,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-33",
+          "native_networkconf_id": "",
+          "port_idx": 33,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-34",
+          "native_networkconf_id": "",
+          "port_idx": 34,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-35",
+          "native_networkconf_id": "",
+          "port_idx": 35,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-36",
+          "native_networkconf_id": "",
+          "port_idx": 36,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-37",
+          "native_networkconf_id": "",
+          "port_idx": 37,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-38",
+          "native_networkconf_id": "",
+          "port_idx": 38,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-39",
+          "native_networkconf_id": "",
+          "port_idx": 39,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-40",
+          "native_networkconf_id": "",
+          "port_idx": 40,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-41",
+          "native_networkconf_id": "",
+          "port_idx": 41,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-42",
+          "native_networkconf_id": "",
+          "port_idx": 42,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-43",
+          "native_networkconf_id": "",
+          "port_idx": 43,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-44",
+          "native_networkconf_id": "",
+          "port_idx": 44,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-45",
+          "native_networkconf_id": "",
+          "port_idx": 45,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-46",
+          "native_networkconf_id": "",
+          "port_idx": 46,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-47",
+          "native_networkconf_id": "",
+          "port_idx": 47,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-48",
+          "native_networkconf_id": "",
+          "port_idx": 48,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-49",
+          "native_networkconf_id": "",
+          "port_idx": 49,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-50",
+          "native_networkconf_id": "",
+          "port_idx": 50,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "disabled",
+          "name": "device-51",
+          "native_networkconf_id": "",
+          "port_idx": 51,
+          "port_security_enabled": true,
+          "port_security_mac_address": [],
+          "tagged_vlan_mgmt": "block_all",
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-52",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 52,
+          "voice_networkconf_id": ""
+        },
+        {
+          "forward": "all",
+          "name": "device-53",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 53
+        },
+        {
+          "forward": "all",
+          "name": "device-54",
+          "native_networkconf_id": "00000000000000000000000000000002",
+          "port_idx": 54
+        }
+      ],
+      "port_table": [
+        {
+          "enable": true,
+          "ifname": "vm100-net0",
+          "name": "device-1",
+          "port_idx": 1,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm101-net0",
+          "name": "device-2",
+          "port_idx": 2,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm102-net0",
+          "name": "device-3",
+          "port_idx": 3,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm103-net0",
+          "name": "device-4",
+          "port_idx": 4,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm104-net0",
+          "name": "device-5",
+          "port_idx": 5,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm105-net0",
+          "name": "device-6",
+          "port_idx": 6,
+          "up": true
+        },
+        {
+          "enable": true,
+          "ifname": "vm106-net0",
+          "name": "device-7",
+          "port_idx": 7,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm107-net0",
+          "name": "device-8",
+          "port_idx": 8,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm108-net0",
+          "name": "device-9",
+          "port_idx": 9,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm109-net0",
+          "name": "device-10",
+          "port_idx": 10,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm110-net0",
+          "name": "device-11",
+          "port_idx": 11,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm111-net0",
+          "name": "device-12",
+          "port_idx": 12,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm112-net0",
+          "name": "device-13",
+          "port_idx": 13,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm113-net0",
+          "name": "device-14",
+          "port_idx": 14,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm114-net0",
+          "name": "device-15",
+          "port_idx": 15,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm115-net0",
+          "name": "device-16",
+          "port_idx": 16,
+          "up": true
+        },
+        {
+          "enable": true,
+          "ifname": "vm117-net0",
+          "name": "device-17",
+          "port_idx": 17,
+          "up": true
+        },
+        {
+          "enable": true,
+          "ifname": "vm119-net0",
+          "name": "device-18",
+          "port_idx": 18,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm119-net1",
+          "name": "device-19",
+          "port_idx": 19,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm120-net0",
+          "name": "device-20",
+          "port_idx": 20,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm122-net0",
+          "name": "device-21",
+          "port_idx": 21,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm123-net0",
+          "name": "device-22",
+          "port_idx": 22,
+          "up": true
+        },
+        {
+          "enable": true,
+          "ifname": "vm125-net0",
+          "name": "device-23",
+          "port_idx": 23,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm126-net0",
+          "name": "device-24",
+          "port_idx": 24,
+          "up": true
+        },
+        {
+          "enable": false,
+          "ifname": "vm999-net0",
+          "name": "device-25",
+          "port_idx": 25,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm999-net1",
+          "name": "device-26",
+          "port_idx": 26,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm116-net0",
+          "name": "device-27",
+          "port_idx": 27,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "vm118-net0",
+          "name": "device-28",
+          "port_idx": 28,
+          "up": true
+        },
+        {
+          "enable": false,
+          "ifname": "eth28",
+          "name": "device-29",
+          "port_idx": 29,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth29",
+          "name": "device-30",
+          "port_idx": 30,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth30",
+          "name": "device-31",
+          "port_idx": 31,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth31",
+          "name": "device-32",
+          "port_idx": 32,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth32",
+          "name": "device-33",
+          "port_idx": 33,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth33",
+          "name": "device-34",
+          "port_idx": 34,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth34",
+          "name": "device-35",
+          "port_idx": 35,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth35",
+          "name": "device-36",
+          "port_idx": 36,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth36",
+          "name": "device-37",
+          "port_idx": 37,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth37",
+          "name": "device-38",
+          "port_idx": 38,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth38",
+          "name": "device-39",
+          "port_idx": 39,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth39",
+          "name": "device-40",
+          "port_idx": 40,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth40",
+          "name": "device-41",
+          "port_idx": 41,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth41",
+          "name": "device-42",
+          "port_idx": 42,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth42",
+          "name": "device-43",
+          "port_idx": 43,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth43",
+          "name": "device-44",
+          "port_idx": 44,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth44",
+          "name": "device-45",
+          "port_idx": 45,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth45",
+          "name": "device-46",
+          "port_idx": 46,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth46",
+          "name": "device-47",
+          "port_idx": 47,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth47",
+          "name": "device-48",
+          "port_idx": 48,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth48",
+          "name": "device-49",
+          "port_idx": 49,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth49",
+          "name": "device-50",
+          "port_idx": 50,
+          "up": false
+        },
+        {
+          "enable": false,
+          "ifname": "eth50",
+          "name": "device-51",
+          "port_idx": 51,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "eno1",
+          "name": "device-52",
+          "port_idx": 52,
+          "up": false
+        },
+        {
+          "enable": true,
+          "ifname": "bond0-2",
+          "name": "device-53",
+          "port_idx": 53,
+          "up": true
+        },
+        {
+          "enable": true,
+          "ifname": "bond0-1",
+          "name": "device-54",
+          "port_idx": 54,
+          "up": true
+        }
+      ],
+      "version": "9.1.6"
+    }
+  ],
+  "meta": {
+    "rc": "ok"
+  }
+}

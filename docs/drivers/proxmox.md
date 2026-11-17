@@ -647,8 +647,15 @@ the adopted key.
   Port State the UI writes), with any config its last guest left stripped;
   when a guest takes a slot whose override is that free-slot seed and whose
   name is one the driver gave, the guest's own state replaces it, so a new
-  guest is never left switched off by the slot's previous life. A disabled
-  port with an operator's own name is left alone.
+  guest is never left switched off by the slot's previous life. A guest
+  NIC switched off on the node (`link_down=1`) is seeded with that same
+  combination under a name the driver gave, so it looks like a free-slot
+  seed; when the override already holds what the port's own state would
+  seed, nothing is written and nothing is counted. Until 2026-11-17 it was
+  rewritten on every start, the same on every node (the guest's port is
+  cluster-wide): `1 ports seeded from the switch's own config` with nothing
+  changed (`controller-11.0.99/stat-device-proxmox-port-overrides.json`,
+  port 25). A disabled port with an operator's own name is left alone.
 - **Disabling a port through the REST API** needs the whole combination the
   UI writes, or the controller silently normalises `forward` back to
   `all`: `{"forward":"disabled","port_security_enabled":true,

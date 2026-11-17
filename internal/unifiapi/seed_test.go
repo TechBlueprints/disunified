@@ -1,6 +1,9 @@
 package unifiapi
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -155,5 +158,67 @@ func TestSeedFreeSlotsDisabledAndReseedTheirNextGuest(t *testing.T) {
 	}
 	if _, seeded, _ = seedOverrides(&devicemodel.Snapshot{Ports: []devicemodel.Port{guest}}, nets, theirs, isDefault); seeded != 0 {
 		t.Errorf("operator-disabled port was reseeded")
+	}
+}
+
+// A guest NIC switched off on the node (link_down=1) is reported disabled
+// under a name the driver gave, and its stored override is the free-slot
+// combination: the controller's record of a Proxmox node, read on
+// 2026-11-17 after a start that logged "1 ports seeded" with nothing
+// changed (port 25 is VM 999's net0; ports 29-51 are free slots). Nothing
+// in it needs seeding.
+func TestSeedLeavesADisabledGuestAlone(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "fixtures", "controller-11.0.99", "stat-device-proxmox-port-overrides.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		Data []struct {
+			PortOverrides []map[string]any `json:"port_overrides"`
+			PortTable     []struct {
+				PortIdx int    `json:"port_idx"`
+				Name    string `json:"name"`
+				IfName  string `json:"ifname"`
+				Enable  bool   `json:"enable"`
+			} `json:"port_table"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(b, &rec); err != nil || len(rec.Data) != 1 {
+		t.Fatalf("decode: %v (%d records)", err, len(rec.Data))
+	}
+	d := rec.Data[0]
+	reported := map[int]string{}
+	snap := &devicemodel.Snapshot{}
+	for _, p := range d.PortTable {
+		reported[p.PortIdx] = p.Name
+		switch {
+		case p.PortIdx == 25:
+			if p.IfName != "vm999-net0" || p.Enable {
+				t.Fatalf("port 25 = %+v, want vm999-net0 disabled", p)
+			}
+			snap.Ports = append(snap.Ports, devicemodel.Port{Index: 25, IfName: p.IfName, Present: true, Enabled: false})
+		case p.PortIdx >= 29 && p.PortIdx <= 51:
+			snap.Ports = append(snap.Ports, devicemodel.Port{Index: p.PortIdx}) // free slot
+		}
+	}
+	// The name the bridge reports is the one the driver gave.
+	isDefault := func(idx int, name string) bool { return name == reported[idx] }
+	before, _ := json.Marshal(d.PortOverrides)
+	got, seeded, notes := seedOverrides(snap, nil, d.PortOverrides, isDefault)
+	if seeded != 0 || len(notes) != 0 {
+		t.Errorf("seeded = %d, notes %v; want 0", seeded, notes)
+	}
+	if after, _ := json.Marshal(got); string(after) != string(before) {
+		t.Errorf("overrides changed:\n%s\nwant\n%s", after, before)
+	}
+	// The same guest's port on a slot that still holds an enabled guest's
+	// config is seeded disabled: once, then not again.
+	o := map[string]any{"port_idx": float64(25), "name": reported[25], "forward": "all", "native_networkconf_id": "d"}
+	got, seeded, _ = seedOverrides(&devicemodel.Snapshot{Ports: snap.Ports[:1]}, nil, []map[string]any{o}, isDefault)
+	if seeded != 1 || !isDisabledOverride(got[0]) {
+		t.Fatalf("link_down guest over an enabled override: seeded=%d %v", seeded, got)
+	}
+	if _, seeded, _ = seedOverrides(&devicemodel.Snapshot{Ports: snap.Ports[:1]}, nil, got, isDefault); seeded != 0 {
+		t.Errorf("second pass seeded %d", seeded)
 	}
 }

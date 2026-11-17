@@ -133,6 +133,16 @@ func configured(o map[string]any) bool {
 	return false
 }
 
+// holds reports whether o already carries every key of seed with its value.
+func holds(o, seed map[string]any) bool {
+	for k, v := range seed {
+		if !sameJSON(o[k], v) {
+			return false
+		}
+	}
+	return true
+}
+
 // disabledOverride is the combination the UI writes for Port State:
 // Disabled (Network 10.6); a bare forward:disabled is normalised back.
 func disabledOverride() map[string]any {
@@ -145,12 +155,7 @@ func disabledOverride() map[string]any {
 // isDisabledOverride reports whether an override carries the whole
 // disabled combination (however the values were decoded).
 func isDisabledOverride(o map[string]any) bool {
-	for k, v := range disabledOverride() {
-		if !sameJSON(o[k], v) {
-			return false
-		}
-	}
-	return true
+	return holds(o, disabledOverride())
 }
 
 func sameJSON(a, b any) bool {
@@ -204,7 +209,8 @@ func emptyValue(v any) bool {
 // override is that free-slot seed — recognised by the disabled combination
 // plus a name the driver gave (isDefaultName) — is seeded from its own
 // state as if the controller had nothing for it, so a new guest is never
-// left switched off by the slot's previous life.
+// left switched off by the slot's previous life. A port whose override
+// already holds what its own state would seed is not seeded again.
 func seedOverrides(snap *devicemodel.Snapshot, nets []Network, existing []map[string]any, isDefaultName func(idx int, name string) bool) (overrides []map[string]any, seeded int, notes []string) {
 	byVLAN := map[int]string{}
 	var defaultID string
@@ -251,6 +257,15 @@ func seedOverrides(snap *devicemodel.Snapshot, nets []Network, existing []map[st
 		seed, note := overrideFor(p, byVLAN, defaultID)
 		if note != "" {
 			notes = append(notes, fmt.Sprintf("port %d (%s): %s", p.Index, p.IfName, note))
+		}
+		if wasFree && seed != nil && holds(o, seed) {
+			// A port disabled on the device itself (a guest NIC with
+			// link_down=1) is seeded with the free slot's combination
+			// under a name the driver gave: indistinguishable from a
+			// free-slot seed, and already what its own state says.
+			// Rewriting it changed nothing and counted a seed on every
+			// start (2026-11-17, docs/drivers/proxmox.md §6).
+			continue
 		}
 		if seed == nil {
 			if wasFree {
