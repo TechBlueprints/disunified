@@ -1444,7 +1444,10 @@ was restarted.
   a poll that reads the file and writes later misses the gap, and a loop
   under a background `ssh` outlives a dropped session -- check `pgrep` for
   a second one before you release, or it takes the lock again after you
-  (2026-11-15). (The
+  (2026-11-15). **Once you hold it, read `dpkg -l disunified` before any
+  `dpkg -i`**: a sibling may have deployed its own branch while you waited,
+  and your deb would replace it (2026-11-17: a main-based deb went over a
+  sibling's unmerged build; put back by hand). (The
   convention lived only in session briefs until 2026-11-15; one session
   used a different file name.)
 - **A cage left up as a non-edge port (looped, or facing a switch) for more
