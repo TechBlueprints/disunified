@@ -9295,6 +9295,62 @@ that A is never removed or written again. It fails with main's l2d (C is
 not removed by the switch's time) and without the grace or the write on a
 frame.
 
+#### 11.26.14 The SIGKILLs of 2026-11-15, and what an l2d start does with its children (2026-11-17)
+
+**Who killed l2d.** The journal's eight `Main process exited, code=killed,
+status=9/KILL` between 22:44:54 and 22:50:47 UTC on 2026-11-15 are the eight
+`L2D kill -9` lines of §11.26.13's rig (`mab-kill-live.txt`, base and fix runs,
+four each): a test's deliberate kills, matched to the second. Not systemd's
+stop timeout, not a watchdog (the unit has none), not the OOM killer (no
+`oom-kill` line). The `Unit process ... (mstpd|hostapd) remains running`,
+`Found left-over process ... Ignoring` and `This usually indicates unclean
+termination of a previous run` lines that followed are systemd describing
+`KillMode=process` doing what it was chosen for; they come with every stop
+and start of the unit, a clean restart included, and are not a fault.
+
+**Per child, deliberately:**
+
+- **mstpd is adopted, never killed** (§11.5): `KillMode=process` exists so
+  that an l2d restart or upgrade never runs the LAN without spanning tree or
+  reconverges it. The next l2d finds it running and the kernel already in
+  user-space STP, writes nothing to it and re-asserts each port's state from
+  mstpd's report. `KillMode=mixed`, an `ExecStartPre` kill or
+  `PR_SET_PDEATHSIG` would each turn every l2d crash into an STP restart
+  (every port blocking ~30 s on the uplink): not done.
+- **hostapd is adopted only when it is provably this port's**: its pid file
+  names it, `/proc/<pid>/cmdline` is l2d's hostapd with that port's config,
+  and the config text is what this l2d would write (§11.26.10); a changed
+  config restarts it. Keeping it keeps every authorised host through a
+  restart without a closed-then-open window. **Every other hostapd is
+  stopped** (`Dot1xGuard.reap`, new): at the first sync, every l2d-owned
+  hostapd in `/proc` (argv[0] l2d's hostapd, a config under
+  `/run/disunified-dot1x`) on a port the config no longer controls or that
+  no pid file names; before every start, any other hostapd on that port, so
+  there is never a second; and in `--teardown`. Before this the stop path
+  knew only the hostapds its own process had started or adopted, so a
+  hostapd left by a killed l2d on a port that stopped being controlled
+  while no l2d ran kept authorising hosts nobody watched. Fail-closed: the
+  reaped port's hosts are the STATE_DB row's stale admissions, dropped
+  (FDB entries, RETURN, an open Credentials port's learning) as for any
+  port leaving the config; a still-controlled port gets a new hostapd and
+  its hosts must authenticate again. `TestL2dDot1X`'s `leftovers` step.
+
+**Live, 2026-11-17 (deb 2c57b77, under the test lock).** No hostapd was
+on the switch (the 2026-11-16 image install removed the on-switch build of
+§11.26, so none has run since), so two stand-ins with hostapd's argv
+(`exec -a /usr/local/sbin/hostapd`, configs `Ethernet116`/`Ethernet120`
+under `/run/disunified-dot1x`, one named by a pid file) were left running
+and l2d's main pid got `kill -9`. The l2d systemd started 3 s later logged
+`802.1X: leftover authenticator on Ethernet116 (pid ...) stopped` and the
+same for Ethernet120; neither was left, the pid file and config were gone,
+mstpd kept its pid, and PortChannel1 stayed forwarding (`brport/state` 3)
+throughout. systemd still logged `remains running` / `Found left-over
+process ... (mstpd)` / `unclean termination`: they are the price of mstpd
+outliving l2d, which only moving mstpd to a unit of its own would remove
+(not done). A real hostapd re-authenticating after the kill is §11.26.10's
+run, unchanged by this; it was not re-run here (no hostapd built).
+
+
 ### 11.28 BPDU guard takes the chip's port down; the UI's Re-enable (2026-11-15)
 
 §11.23.3 left one difference from a UniFi switch: mstpd's BPDU guard shut

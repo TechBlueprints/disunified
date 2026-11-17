@@ -133,6 +133,13 @@ func TestL2dDot1X(t *testing.T) {
 		t.Errorf("logoff: the admission goes, from the ASIC, the kernel and STATE_DB:\n%s", show("logoff"))
 	}
 
+	// leftovers: a SIGKILL's authenticators no l2d knows are stopped, the
+	// adopted one kept (docs/drivers/sonic.md §11.26.14).
+	if !has("leftovers", "KILL hostapd Ethernet0-left") || !has("leftovers", "KILL hostapd Ethernet120-left") ||
+		index("leftovers", "KILL hostapd Ethernet120\n") >= 0 || !has("leftovers", `STATE hostapd ["Ethernet120"]`) ||
+		!has("leftovers", "STATE pidfile Ethernet0 false") {
+		t.Errorf("leftovers: both strays stopped, the adopted authenticator kept:\n%s", show("leftovers"))
+	}
 	u := "unwatched"
 	if !has(u, "KILL hostapd Ethernet120") || !has(u, "STATE chain null") || !has(u, "STATE input []") ||
 		!has(u, "STATE copp null") || !has(u, "STATE hostapd []") ||
