@@ -1,0 +1,212 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Clint Goudie-Nice <clint-goudie-nice@example.net>
+Date: Tue, 17 Nov 2026 17:30:00 -0700
+Subject: [PATCH] seastone: xcvrd misses every module put in after boot
+
+On a DX010 a module inserted or removed while the switch runs never
+reaches xcvrd: STATE_DB gets no TRANSCEIVER_INFO for it until xcvrd
+restarts, the switch reboots or a breakout re-adds the cage's ports
+(202511, and the same code since 202305). Two faults in
+sonic_platform/event.py, either of them enough:
+
+1. Every wake raises. get_sfp_event() names a cage by sfp.port_num, but
+   since #13972 (2023) the chassis builds SfpOptoe objects, which have
+   only _port_num. The AttributeError is caught, logged as "Failed to
+   detect SfpEvent" and returned as (False, {}), which xcvrd skips.
+
+2. Wakes are lost. The sysfs file that slx_gpio_ich notifies on is
+   opened anew on every call and closed after it. kernfs drops a notify
+   made while no descriptor is open, and xcvrd spends about one second
+   of every six outside the call (its CONFIG_DB select). The CPLD clears
+   its interrupt source only when qsfp_modprs_irq is read, which happens
+   only after a wake, so if its output stays asserted until then (a
+   hypothesis: the CPLD is not documented) one lost wake ends hot-plug
+   for the rest of the boot: GPIO SUS6 triggers on a falling edge only.
+
+This keeps one SfpEvent for the life of the chassis, with the SUS6
+descriptor open between calls (poll on POLLPRI|POLLERR; the old epoll
+mask, EPOLLIN & EPOLLET, was 0), and makes the presence register the
+record: each call reads qsfp_modprs_irq (clearing the CPLD's latch),
+compares qsfp_modprs with the presence it last reported, and waits on
+the interrupt for at most a second before reading again. A change is
+found within a second even when no interrupt arrives. A timeout stays
+(False, {}), so xcvrd keeps its 5 s cadence.
+
+DRAFT: not built, not installed. Tested only against fake sysfs files
+on a workstation (no change, an insert, two cages at once, an unreadable
+register); the interrupt path has not run.
+---
+ .../sonic_platform/chassis.py                 |  14 ++-
+ .../sonic_platform/event.py                   | 107 +++++++++++++-----
+ 2 files changed, 91 insertions(+), 30 deletions(-)
+
+diff --git a/device/celestica/x86_64-cel_seastone-r0/sonic_platform/chassis.py b/device/celestica/x86_64-cel_seastone-r0/sonic_platform/chassis.py
+index ad24b06..9915567 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/sonic_platform/chassis.py
++++ b/device/celestica/x86_64-cel_seastone-r0/sonic_platform/chassis.py
+@@ -36,6 +36,7 @@ class Chassis(ChassisBase):
+         ChassisBase.__init__(self)
+         self._api_helper = APIHelper()
+         self.sfp_module_initialized = False
++        self._sfp_event = None
+         self.__initialize_eeprom()
+         self.is_host = self._api_helper.is_host()
+ 
+@@ -182,10 +183,21 @@ class Chassis(ChassisBase):
+         if not self.sfp_module_initialized:
+             self.__initialize_sfp()
+ 
+-        sfp_event = SfpEvent(self._sfp_list).get_sfp_event(timeout)
++        # One SfpEvent for the life of the chassis: it keeps the interrupt's
++        # descriptor open between calls and the presence it last reported.
++        if self._sfp_event is None:
++            try:
++                self._sfp_event = SfpEvent(self._sfp_list)
++            except Exception:
++                return False, {'sfp': {}}
++
++        sfp_event = self._sfp_event.get_sfp_event(timeout)
+         if sfp_event:
+             return True, {'sfp': sfp_event}
+ 
++        # A timeout stays (False, {}) as before: xcvrd skips an empty result
++        # and stays on its 5 s wait, which bounds how long a CONFIG_DB port
++        # change (a breakout) waits for it.
+         return False, {'sfp': {}}
+ 
+     ##############################################################
+diff --git a/device/celestica/x86_64-cel_seastone-r0/sonic_platform/event.py b/device/celestica/x86_64-cel_seastone-r0/sonic_platform/event.py
+index 351b2a5..cc50ec7 100644
+--- a/device/celestica/x86_64-cel_seastone-r0/sonic_platform/event.py
++++ b/device/celestica/x86_64-cel_seastone-r0/sonic_platform/event.py
+@@ -1,14 +1,21 @@
+ try:
++    import os
+     import select
++    import time
+     from .helper import APIHelper
+     from sonic_py_common.logger import Logger
+ except ImportError as e:
+     raise ImportError(repr(e) + " - required module not found")
+ 
++# The longest wait on the interrupt before presence is read again. The
++# interrupt only shortens the wait: the presence register is the record.
++PRESENCE_POLL_SECS = 1.0
++
+ 
+ class SfpEvent:
+     ''' Listen to insert/remove sfp events '''
+ 
++    QSFP_MODPRS = '/sys/devices/platform/dx010_cpld/qsfp_modprs'
+     QSFP_MODPRS_IRQ = '/sys/devices/platform/dx010_cpld/qsfp_modprs_irq'
+     GPIO_SUS6 = "/sys/devices/platform/slx-ich.0/sci_int_gpio_sus6"
+ 
+@@ -16,37 +23,79 @@ class SfpEvent:
+         self._api_helper = APIHelper()
+         self._sfp_list = sfp_list
+         self._logger = Logger()
++        self._sus6_fd = None
++        self._poller = None
++        self._irq_failed = False
++        # Presence as of the last call; xcvrd has just read every cage.
++        self._present = self._read_present()
+ 
+-    def get_sfp_event(self, timeout):
+-        epoll = select.epoll()
+-        port_dict = {}
+-        timeout_sec = timeout/1000
++    def _read_present(self):
++        # qsfp_modprs: one bit per cage, bit i for sfp_list[i], 0 = present
++        raw = self._api_helper.read_one_line_file(self.QSFP_MODPRS)
++        if raw is None:
++            raise IOError("cannot read " + self.QSFP_MODPRS)
++        return ~int(raw, 16) & ((1 << len(self._sfp_list)) - 1)
+ 
++    def _arm(self):
++        # One descriptor for the life of this object. kernfs drops a
++        # sysfs_notify made while no descriptor is open, and the CPLD then
++        # keeps its interrupt asserted, so SUS6 sees no further edge.
++        if self._irq_failed:
++            return
+         try:
+-            # We get notified when there is an SCI interrupt from GPIO SUS6
+-            fd = open(self.GPIO_SUS6, "r")
+-            fd.read()
+-
+-            epoll.register(fd.fileno(), select.EPOLLIN & select.EPOLLET)
+-            events = epoll.poll(timeout=timeout_sec if timeout != 0 else -1)
+-            if events:
+-                # Read the QSFP ABS interrupt & status registers
+-                port_changes = self._api_helper.read_one_line_file(
+-                    self.QSFP_MODPRS_IRQ)
+-                changes = int(port_changes, 16)
+-                for sfp in self._sfp_list:
+-                    change = (changes >> sfp.port_num-1) & 1
+-                    if change == 1:
+-                        port_dict[str(sfp.port_num)] = str(
+-                            int(sfp.get_presence()))
+-
+-                return port_dict
+-        except Exception as e:
+-            self._logger.log_error("Failed to detect SfpEvent - " + repr(e))
+-            return False
++            if self._sus6_fd is None:
++                self._sus6_fd = os.open(self.GPIO_SUS6, os.O_RDONLY)
++                self._poller = select.poll()
++                self._poller.register(self._sus6_fd,
++                                      select.POLLPRI | select.POLLERR)
++            # A read re-arms the notification.
++            os.lseek(self._sus6_fd, 0, os.SEEK_SET)
++            os.read(self._sus6_fd, 64)
++        except OSError as e:
++            self._irq_failed = True
++            self._poller = None
++            self._logger.log_warning(
++                "SfpEvent: no SUS6 interrupt, polling presence only - " + repr(e))
++
++    def _clear_irq(self):
++        # Reading the register clears the CPLD's interrupt source, which
++        # releases SUS6 for the next edge. Its bits are not used: presence
++        # is compared below.
++        self._api_helper.read_one_line_file(self.QSFP_MODPRS_IRQ)
+ 
+-        finally:
+-            fd.close()
+-            epoll.close()
++    def _wait(self, secs):
++        if self._poller is None:
++            time.sleep(secs)
++        else:
++            self._poller.poll(secs * 1000)
+ 
+-        return False
++    def get_sfp_event(self, timeout):
++        """
++        Waits up to timeout ms (0: until a change) for a module to be
++        inserted or removed. Returns {'<port>': '1'|'0'} for the cages that
++        changed, {} on timeout, or None if presence cannot be read.
++        """
++        deadline = None if timeout == 0 else time.monotonic() + timeout / 1000.0
++        try:
++            while True:
++                self._arm()
++                self._clear_irq()
++                present = self._read_present()
++                changed = present ^ self._present
++                if changed:
++                    self._present = present
++                    port_dict = {}
++                    for i in range(len(self._sfp_list)):
++                        if (changed >> i) & 1:
++                            port_dict[str(i + 1)] = str((present >> i) & 1)
++                    return port_dict
++                wait = PRESENCE_POLL_SECS
++                if deadline is not None:
++                    left = deadline - time.monotonic()
++                    if left <= 0:
++                        return {}
++                    wait = min(wait, left)
++                self._wait(wait)
++        except Exception as e:
++            self._logger.log_error("Failed to detect SfpEvent - " + repr(e))
++            return None

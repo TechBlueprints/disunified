@@ -50,9 +50,11 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		// A forced speed has nothing to act on: a guest NIC's link has no
 		// speed to set. Said once per port and speed, as the other
 		// settings a bridge port cannot take are; nothing is written.
+		// Auto (0) and the port's own speed (the one its picker offers,
+		// so the usual forced choice) ask for no change and say nothing.
 		if d.SpeedMbps != 0 {
 			if key, ok := keyOf[d.Index]; ok {
-				if g, ok := nics[key]; ok && g.Node == node {
+				if g, ok := nics[key]; ok && g.Node == node && d.SpeedMbps != guestSpeed(g) {
 					c.warnOnce(fmt.Sprintf("speed-guest-%d-%d", d.Index, d.SpeedMbps), "NOTE: port %d: the controller forces %d Mb/s; a guest port has no link speed to set — ignored", d.Index, d.SpeedMbps)
 				}
 			}

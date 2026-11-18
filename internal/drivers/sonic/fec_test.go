@@ -304,3 +304,55 @@ func TestPushedFECTheCageCannotRun(t *testing.T) {
 		t.Errorf("no note: %s", r.log.String())
 	}
 }
+
+// A FEC the controller pushes for a cage the same plan splits waits for
+// the lanes' supported_fecs, as the module's own does (§11.37): written
+// blind, portconfig's refusal would end the batch after the breakout. The
+// cycle after, it is written where the lanes list it (FC) and refused with
+// the usual note where they do not (RS on a 25G lane).
+func TestPushedFECAfterABreakoutWaitsACycle(t *testing.T) {
+	split := []string{
+		"sudo config interface breakout -f -y Ethernet0 '4x25G[10G]' </dev/null",
+		"sudo config interface startup Ethernet0", "sudo config interface startup Ethernet1",
+		"sudo config interface startup Ethernet2", "sudo config interface startup Ethernet3",
+		"sudo config vlan member add -u 4094 Ethernet0", "sudo config vlan member add -u 4094 Ethernet1",
+		"sudo config vlan member add -u 4094 Ethernet2", "sudo config vlan member add -u 4094 Ethernet3",
+		save,
+	}
+	for _, tc := range []struct {
+		fec  devicemodel.FEC
+		next []string
+		note string
+	}{
+		{devicemodel.FECFC, []string{
+			"sudo config interface fec Ethernet0 fc", "sudo config interface fec Ethernet1 fc",
+			"sudo config interface fec Ethernet2 fc", "sudo config interface fec Ethernet3 fc", save,
+		}, ""},
+		{devicemodel.FECRS, nil, "port 1: the controller asks for FEC rs, which Ethernet0 does not support (fc,none); FEC left as it is"},
+	} {
+		r := newHardwareRig(t, nil)
+		f := tc.fec
+		ds := edit(speedOf(r.baseline(), 1, 25000), 1, func(d *devicemodel.PortDesired) { d.FEC = &f })
+		if got := r.c.PlanPorts(ds); len(got) == 0 {
+			t.Errorf("FEC %s: PlanPorts sees no change", f)
+		}
+		if got, _ := r.apply(ds); !reflect.DeepEqual(got, split) {
+			t.Errorf("FEC %s: split\n  got  %q\n  want %q", f, got, split)
+		}
+		if strings.Contains(r.log.String(), "asks for FEC") {
+			t.Errorf("FEC %s: judged against an unread list: %s", f, r.log.String())
+		}
+		// The port has not converged: the next cycle plans the FEC.
+		r.system2()
+		if tc.next != nil {
+			if got := r.c.PlanPorts(ds); len(got) != 1 || got[0] != 1 {
+				t.Errorf("FEC %s: PlanPorts after the split = %v, want port 1", f, got)
+			}
+		}
+		// expect also collects and checks that a further apply writes nothing.
+		r.expect("the cycle after, FEC "+string(f), ds, tc.next)
+		if tc.note != "" && !strings.Contains(r.log.String(), tc.note) {
+			t.Errorf("FEC %s: no note %q in: %s", f, tc.note, r.log.String())
+		}
+	}
+}

@@ -668,13 +668,7 @@ func emptyPort(idx int) devicemodel.Port {
 // are shown as 100G ports on a 100G switch; emulated NICs get their
 // nominal speed.
 func guestPort(idx int, n guestNIC, multi bool) devicemodel.Port {
-	speed := 100000
-	switch n.Model {
-	case "e1000", "e1000e":
-		speed = 1000
-	case "rtl8139", "ne2k_pci", "pcnet":
-		speed = 100
-	}
+	speed := guestSpeed(n)
 	ifname := fmt.Sprintf("vm%d-net%d", n.VMID, n.Index)
 	if n.Kind == "lxc" {
 		ifname = fmt.Sprintf("ct%d-net%d", n.VMID, n.Index)
@@ -690,6 +684,17 @@ func guestPort(idx int, n guestNIC, multi bool) devicemodel.Port {
 		p.MTU = 1500
 	}
 	return p
+}
+
+// guestSpeed is the one speed a guest NIC's port offers (guestPort).
+func guestSpeed(n guestNIC) int {
+	switch n.Model {
+	case "e1000", "e1000e":
+		return 1000
+	case "rtl8139", "ne2k_pci", "pcnet":
+		return 100
+	}
+	return 100000
 }
 
 // vlanFromConfig is the 802.1Q state a NIC's tag/trunks options mean on a

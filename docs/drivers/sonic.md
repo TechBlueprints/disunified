@@ -3634,7 +3634,8 @@ drawer. Three things showed:
   The bridge then reports no module and this rule has nothing to read. The
   breakout fixed it: xcvrd reads the module when it adds the new logical
   ports. A module in a cage that is never split stays unseen until xcvrd
-  restarts or the switch reboots. Root cause not found.
+  restarts or the switch reboots. The cause is the platform's event code
+  (§11.39).
 - **The rule ran.** The split ran from the push. Then, on the next cycle, the
   driver wrote `config interface fec Ethernet<n> fc` on all four lanes, which
   is within the lanes' `supported_fecs none,fc`. This was the rule's first
@@ -10468,8 +10469,7 @@ xcvrd on the DX010 misses a module put in after boot (found 2026-11-16,
 image `igmp-202511.20261115-6c8eb1cf7`): the platform says the cage is
 present and `sfputil show eeprom` reads the module, but STATE_DB has no
 `TRANSCEIVER_INFO` for it until xcvrd restarts, the switch reboots or a
-breakout re-adds the cage's ports. Why xcvrd misses it is not found (the
-register has it). The driver saw an empty cage: no optic in the port's
+breakout re-adds the cage's ports. Why xcvrd misses it is §11.39. The driver saw an empty cage: no optic in the port's
 record, and none of the module rules (§10.3 the FEC, §10.9 the layout a
 module calls for) could run, so Auto did nothing for a breakout cable put
 in while the switch ran. `docs/drivers/breakout.md` §16.2 is why that
@@ -10606,6 +10606,230 @@ live:** every changed row (they need the modules and far ends of
 [`docs/fec-by-standard.md`](../fec-by-standard.md) §6, which is still not
 run), the rewrite of a linked port to the preferred mode, and the
 one-cycle wait after a breakout.
+
+**A pushed FEC after a breakout waits too (2026-11-17).** The wait above
+covered the module's FEC only. A FEC the controller pushes for a cage
+that the same plan splits was still written in the breakout's batch,
+against a list nobody had read; RS on the new 25G lanes (`none,fc`) is
+portconfig's refusal, and the batch ended after the breakout. The pushed
+FEC now takes the same path: on an interface in `swState.fecsStale` it is
+not written. The port's FEC still differs from the push, so the next
+cycle's reconcile plans it (`PlanPorts` names the port) against the list
+the SAI gave: written where the lanes list it (FC on each lane), refused
+with the usual "the controller asks for FEC ..., which ... does not
+support" note where they do not (RS). A join pushed from the parent's
+drawer (forced 100G with RS-FEC) therefore gets its RS one cycle after the
+join too, as the module's does. Tests:
+`TestPushedFECAfterABreakoutWaitsACycle` (`fec_test.go`, the DX010 rig),
+which fails the RS case's batch with portconfig's refusal without the
+change, and `TestReplaySonicDX010LaneCageResplit` (the recorded join's RS
+the cycle after). Fixture-tested only.
+
+### 11.39 Why xcvrd misses a module put in after boot (2026-11-17)
+
+§11.36 reads around it; this is the cause, from source and read-only reads
+on the switch (nothing restarted, no register written). In short: on the
+DX010, an inserted module reaches xcvrd only through the platform's
+interrupt-driven `get_change_event`, and that code cannot deliver one.
+Every wake raises an AttributeError (§11.39.2, established). Wakes can also
+be lost outright. Whether the CPLD raises the interrupt at all on this unit
+is still open, and only the rack-day test (§11.39.6) can settle it.
+
+#### 11.39.1 The path, from source
+
+Sources: sonic-platform-daemons `591f872` (the image's pin), sonic-buildimage
+202511 at the kit's base (`device/celestica/x86_64-cel_seastone-r0/sonic_platform/`,
+`platform/broadcom/sonic-platform-modules-cel/dx010/modules/`), and the
+kernel's `drivers/acpi/acpica/ev{gpe,sci}.c` and `fs/kernfs/file.c` at
+v6.12 (the image runs 6.12.41) and v6.1.
+
+- **xcvrd** reads every cage once at start
+  (`_post_port_sfp_info_and_dom_thr_to_db_once`: one "Transceiver not present
+  in port X" per empty cage). After that, a module gets `TRANSCEIVER_INFO` in
+  only three ways: a `NORMAL_EVENT` from `get_change_event`, a port added in
+  CONFIG_DB (`on_add_logical_port`, which is why a breakout reads it), or the
+  retry set, which holds only modules that were present but unreadable at
+  the scan. Nothing polls presence. Each pass of the loop is a 1 s CONFIG_DB
+  select, then `get_change_event(timeout)`.
+- **The DX010 returns `(False, {'sfp': {}})` on every timeout.** xcvrd
+  `continue`s on an empty result before its state machine runs. So it never
+  leaves INIT, and its timeout stays at INIT's 5 000 ms for the whole run.
+  The register's 2 s call that returned `(False, {})` with both modules
+  present is what any call returns when nothing changes during it. That is
+  expected and proves nothing.
+- **`event.py`** opens `slx-ich.0/sci_int_gpio_sus6`, reads it, and waits in
+  `epoll` until the timeout. On a wake it reads `dx010_cpld/qsfp_modprs_irq`
+  and reports each set bit's cage as `str(int(sfp.get_presence()))`, keyed
+  `sfp.port_num`. It closes the file on return. The epoll mask is
+  `EPOLLIN & EPOLLET`, which is 0. It works anyway, because epoll always
+  reports `EPOLLERR` and a notified sysfs file reports it.
+- **`slx_gpio_ich`** sets up GPIO SUS6 as an input that triggers on a
+  falling edge only (`GPIO_SUS_TNE` bit 6, `TPE` clear). It enables GPE0a
+  bit 22, routes SUS6 to SCI (`GPIO_ROUT` bits 12-13 = 2), and installs an
+  SCI handler. On each SCI, the handler checks GPE0a_STS bit 22. If it is
+  set, the handler clears it, adds one to `sci_int_gpio_sus6`, and calls
+  `sysfs_notify` on that file. ACPICA's own GPE scan skips any GPE register
+  in which ACPICA has enabled nothing, and it has enabled nothing in
+  0x10-0x17. So it leaves bit 22 to the handler. That code is byte-identical
+  in 6.1 and 6.12.
+- **`dx010_cpld`**'s `qsfp_modprs_irq` first reads `CPLD4_INT0` ("Clear
+  interrupt source"), then the six per-cage `ABS_INT` registers. Nothing in
+  SONiC writes the CPLD's interrupt masks (`qsfp_modprs_msk`,
+  `cpld4_int0_msk`). They keep the values the hardware or BIOS left.
+- **202505 against 202511:** `event.py`, `chassis.py` and `sfp_optoe.py`
+  are identical. Only `eeprom.py` and `thermal.py` changed, to the
+  `/sys/bus/i2c/devices` path. The kernel modules differ only by
+  b597061f7's port to 6.12 (the signatures of `remove()`, `I2C_CLASS_SPD`).
+  The kit's DX010 patches (0007 the wheels, 0011 `setreg`'s VLA) do not
+  touch this path. The `event.py` installed in pmon has the same md5 as the
+  source. Neither the 202511 kernel nor the kit changed the path: the
+  202505 image runs the same code.
+
+#### 11.39.2 The two faults (established from source)
+
+1. **Every wake raises.** `event.py` was written (sonic-buildimage#5896,
+   2020) against `sfp.py`'s `Sfp`, which set `self.port_num`. Since
+   sonic-buildimage#13972 (2023-03, "switch to sfp-refactor based sfp
+   impl") the chassis has built `SfpOptoe` objects. They have only
+   `_port_num`, and neither `SfpOptoeBase` nor `SfpBase` defines
+   `port_num` (checked at sonic-platform-common `f932828`, the image's pin).
+   In pmon on the switch, `hasattr(SfpOptoe(0, ...), 'port_num')` is
+   `False`. So a wake reads (and clears) `qsfp_modprs_irq`, then raises
+   AttributeError on the first port. The error is caught, logged as
+   "Failed to detect SfpEvent - AttributeError(...)" and returned as
+   `(False, {'sfp': {}})`, which xcvrd skips. Even a working interrupt
+   gives xcvrd no module. This has been broken on every DX010 image since
+   202305.
+2. **Wakes can be lost.** kernfs counts notifications in an open-node
+   object that exists only while some process holds the file open. It is
+   freed at the last close and created again, from zero, at the next open
+   (`kernfs_get_open_node`), and `kernfs_notify` without one does nothing.
+   `event.py` closes its file on every return, and xcvrd then spends about
+   1 s of every 6 s in its select. An SCI in that window is dropped. The
+   handler's counter still goes up, but nothing wakes. The CPLD clears its
+   source only when `qsfp_modprs_irq` is read, which happens only after a
+   wake. If its output stays asserted until then, SUS6 stays low and,
+   since it triggers on falling edges only, no later insertion or removal
+   raises anything for the rest of the boot. That the CPLD latches is a
+   **hypothesis**: the driver's comment implies it, but the CPLD has no
+   public documentation.
+
+#### 11.39.3 What the switch shows (read-only, 2026-11-17)
+
+Image `igmp-202511.20261116-6c8eb1cf7`, up 27 h since the image install's
+reboot. The capture is
+`docs/fixtures/sonic-igmp-202511.20261116-6c8eb1cf7/sfp-event-path.txt`.
+`qsfp_modprs_irq`, `cpld4_int0`, `qsfp_modirq` and `getreg` were not read:
+the first two clear the CPLD's source, and `getreg` writes an address.
+
+| Read | Value | Meaning |
+|---|---|---|
+| `sci_int_gpio_sus6` | 0 | the handler has never seen SUS6 this boot |
+| ACPI `sci` / `ff_rt_clk` / `gpe16` | 858 / 858 / 0 `invalid` | every SCI was the RTC's; GPE 0x16 is the driver's, not ACPICA's |
+| `sus_use_sel`, `sus_io_sel` bit 6 | 1, 1 | SUS6 is a GPIO input |
+| `sus_gp_tne` / `tpe` bit 6 | 1 / 0 | falling edge only |
+| `sus_gp_lvl` bit 6, `sus_gp_ts` | 1, 0 | line high (not asserted), no edge pending |
+| `gpe0a_en` / `gpe0a_sts` | `0x00400004` / 0 | bit 22 enabled (bit 2 is ACPICA's GPE 02), nothing pending |
+| `gpio_rout` | `0x00002000` | SUS6 routed to SCI |
+| `qsfp_modprs` | `0xfffffff8` | cages 1-3 present (active low) |
+| `qsfp_modprs_msk` / `cpld4_int0_msk` | 0 / `0xf8` | unmasked if 1 means masked; the polarity is not documented |
+
+`dmesg` has `slx_ich`'s probe lines and no failure. Each cage that
+`sfputil show presence` calls Present (1, 2 and cage 3's four lanes) has
+`TRANSCEIVER_INFO` and `TRANSCEIVER_STATUS_SW` 1: all were seated at this
+boot, so the start-up scan read them. No module has moved since, so a SUS6
+count of 0 is what a working path would show too.
+
+The logs on the switch (syslog from 2026-11-01 to 11-17: the 202505 days,
+then every 202511 image) contain no "Got SFP inserted/removed event" and no
+"Failed to detect SfpEvent". The 2026-11-15 13:25 boot was a power-on reset.
+At that boot xcvrd logged `Ethernet4` and `Ethernet8` "not present", which
+was true: the register's "not present at boot" lines were accurate. Cage
+2's DAC linked at 13:48:02, about 23 minutes later, and cage 3's breakout
+DAC went in before 11-16. Neither produced an xcvrd line.
+
+#### 11.39.4 Established, and open
+
+Established: xcvrd learns of a module only from the event. The DX010's
+event fails on any wake (fault 1). Wakes can be lost (fault 2). The
+(False, {}) result and the boot-time "not present" lines are both correct
+behaviour. On this boot the interrupt chain is armed exactly as the driver
+programs it. The 202511 kernel and kit changed none of it.
+
+Open: **does the CPLD raise SUS6 on this unit at all?** Because of fault 1,
+any wake on 11-15 would have logged "Failed to detect SfpEvent". None was
+logged across at least two insertions. So no notification reached
+`event.py` while its file was open. Two explanations fit:
+
+- **H1, no interrupt.** The CPLD does not pull SUS6 for a presence change
+  (the mask values mean the opposite of what is assumed, or the line is
+  wired differently).
+- **H2, lost and latched.** The first insertion's SCI fell in fault 2's
+  window (about 1 in 6), and the CPLD then kept SUS6 low, so the second
+  insertion raised nothing.
+
+The SUS6 count and line level from that boot died with the reboot. Fault 1
+needs the fix under either explanation, and the fix below does not depend
+on which one is true.
+
+#### 11.39.5 The fix (draft)
+
+`contrib/sonic-image/drafts/sonic-buildimage/0015-seastone-xcvrd-misses-every-module-put-in-after-boot.patch`
+(`event.py`, `chassis.py`). It is not in any `series` file, so `build.sh`
+does not apply it. It has not been built or installed. The chassis keeps
+one `SfpEvent` for its whole life, with the SUS6 file open between calls
+(`poll` on `POLLPRI|POLLERR`), so a notification is never dropped. The
+presence register becomes the record. Each call reads `qsfp_modprs_irq`,
+which clears the CPLD's latch and so frees SUS6 for the next edge. It then
+compares `qsfp_modprs` with the presence it last reported, and waits on the
+interrupt for at most a second before reading again. Cages are numbered by
+list index, not `port_num`.
+
+So an insertion or removal reaches xcvrd within about a second even if no
+interrupt ever comes (H1), and a latched line clears itself within a second
+(H2). The cost in pmon is one presence read (six port reads in the CPLD)
+per second. A timeout still returns `(False, {})`, so xcvrd keeps its 5 s
+cadence and does not handle a breakout's port change any later. Returning
+`True` would move it to NORMAL's 60 s wait. The alternative, polling
+presence in xcvrd itself, would change a daemon every platform shares to
+work around one platform's API. Tested only on the Mac against fake
+sysfs files: no change, one insert, two cages in one call, an unreadable
+register. `git apply --check` passes on the kit's work clone and on
+202505. Fault 1 affects every DX010 since 202305, so the patch is also an
+upstream candidate. Nothing goes upstream without Clint. The driver's
+`sfputil` read (§11.36) stays until an image with the fix has been seen
+working live.
+
+#### 11.39.6 The rack-day test
+
+This needs hands, a cage with no traffic and a module. Use a free cage, or
+cage 3's breakout DAC while its legs have no far ends, never cages 1-2.
+Never restart xcvrd or pmon. On the switch, in one window, run
+`sudo tail -F /var/log/syslog | grep -a -E "xcvrd|SfpEvent"`. In another,
+take this snapshot before each step and 10 s after it:
+
+```bash
+S=/sys/devices/platform/slx-ich.0; for f in sci_int_gpio_sus6 sus_gp_lvl sus_gp_ts gpe0a_sts; do echo "$f $(sudo cat $S/$f)"; done
+cat /sys/devices/platform/dx010_cpld/qsfp_modprs /sys/firmware/acpi/interrupts/sci /sys/firmware/acpi/interrupts/ff_rt_clk
+sonic-db-cli STATE_DB hget 'TRANSCEIVER_INFO|<interface>' type
+```
+
+The steps: insert, then remove, then insert again, 30 s apart. Read SUS6 as
+`sus_gp_lvl` bit 6 (0x40) and the SCIs the cage raised as `sci` less
+`ff_rt_clk`. What each explanation predicts at each step:
+
+| | `sci_int_gpio_sus6` | SUS6 after | syslog | `TRANSCEIVER_INFO` |
+|---|---|---|---|---|
+| fault 1, interrupt works | +1 (a bounce may add more) | high | "Failed to detect SfpEvent - AttributeError(... 'port_num')" each step | none (the bridge's `sfputil` line instead) |
+| H1, no interrupt | unchanged, SCIs unchanged | high | nothing | none |
+| H2, lost and latched | +1 at the first step, then unchanged | **low** from then on | nothing | none |
+
+If SUS6 stays low (H2), `sudo cat /sys/devices/platform/dx010_cpld/qsfp_modprs_irq`
+once is the deliberate step that clears it. Expect SUS6 to go high, then
+repeat the steps. If the line instead sits low before any step, the latch
+is older than the test: record that and clear it the same way. Then build
+an image with the draft patch, install it, and repeat: expect "Got SFP
+inserted event" and `TRANSCEIVER_INFO` within about 2 s in all three cases.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 

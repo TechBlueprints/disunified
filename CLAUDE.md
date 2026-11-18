@@ -912,7 +912,7 @@ VM exists for it.
 
 **What has gone upstream, and the fact that none of it has been reviewed, is
 `docs/prior-art.md` §6** (issues #2 and #6–#9; PRs #3–#5, the stacked series
-#10–#13, #14 and #15; unifi-emu unpushed since 2026-09-14; the only response
+#10–#13, #14 and #15; unifi-emu reviewed nothing as of 2026-11-17, though pushed again 10-27 to 11-01; the only response
 is that third party's, on #6 and #15). **Never wait on an upstream merge** —
 the corrections live in the `internal/device` fork and the dependency stays
 pinned at v0.5.5.

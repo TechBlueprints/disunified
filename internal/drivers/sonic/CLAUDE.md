@@ -415,7 +415,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   mode: a port configured otherwise is rewritten, link or no link (Clint,
   2026-11-17), which drops a link whose far end stays on the other mode;
   a FEC set in UniFi overrides auto. **After a breakout in the same plan the FEC
-  waits one cycle** (`swState.fecsStale`): the new interfaces' list is
+  waits one cycle** (`swState.fecsStale`), the module's and a pushed one
+  alike: the new interfaces' list is
   not read yet, and portconfig's refusal of a mode they lack would end
   the batch after the breakout. Those writes are `plan.own`, and
   `PlanPorts` plans without them (`plan.controllerOnly`), so the
