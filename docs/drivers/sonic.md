@@ -10612,6 +10612,24 @@ live:** every changed row (they need the modules and far ends of
 run), the rewrite of a linked port to the preferred mode, and the
 one-cycle wait after a breakout.
 
+**A pushed FEC after a breakout waits too (2026-11-17).** The wait above
+covered the module's FEC only. A FEC the controller pushes for a cage
+that the same plan splits was still written in the breakout's batch,
+against a list nobody had read; RS on the new 25G lanes (`none,fc`) is
+portconfig's refusal, and the batch ended after the breakout. The pushed
+FEC now takes the same path: on an interface in `swState.fecsStale` it is
+not written. The port's FEC still differs from the push, so the next
+cycle's reconcile plans it (`PlanPorts` names the port) against the list
+the SAI gave: written where the lanes list it (FC on each lane), refused
+with the usual "the controller asks for FEC ..., which ... does not
+support" note where they do not (RS). A join pushed from the parent's
+drawer (forced 100G with RS-FEC) therefore gets its RS one cycle after the
+join too, as the module's does. Tests:
+`TestPushedFECAfterABreakoutWaitsACycle` (`fec_test.go`, the DX010 rig),
+which fails the RS case's batch with portconfig's refusal without the
+change, and `TestReplaySonicDX010LaneCageResplit` (the recorded join's RS
+the cycle after). Fixture-tested only.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH
