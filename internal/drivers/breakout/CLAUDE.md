@@ -66,6 +66,10 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   `unifimodel.ControllerDisplayNames`; before that the provision took it
   for an operator's name and named nothing). `DeviceName` here is the
   fallback form and counts as a default.
+- **A Forget sent to see what the controller answers is a Forget**
+  (2026-11-18: two such probes forgot cage 26's lane switch, each costing a
+  re-adoption or the bridge's own Forget). To see whether it is busy, read
+  the record in `stat/device`; let the bridge's retire make the call.
 - **A declared entry is never detached**: a Forget of it is logged (the
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.
