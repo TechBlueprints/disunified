@@ -10588,6 +10588,118 @@ live:** every changed row (they need the modules and far ends of
 run), the rewrite of a linked port to the preferred mode, and the
 one-cycle wait after a breakout.
 
+### 11.38 A breakout and the port features: egress limit, isolation and what the plan remembers (2026-11-17)
+
+**The question** ([`breakout.md`](breakout.md) §16.10): a breakout's `-f`
+removes per-interface config and lldpd forgets a deleted port's TLVs, and
+the plan's copy of the switch (`swState`) had kept lane 1's LLDP-MED TLV
+under the old port's name, so a split wrote it on lanes 2-4 only. Did the
+same copy hold other per-interface writes a breakout ends? The candidates
+were the egress limit (`PORT_QOS_MAP`) and isolation (`DUI_ISOLATION`).
+
+**The answer, live on the DX010's empty cage 26** (image
+`igmp-202511.20261116-6c8eb1cf7`, Network 11.0.99): a 100 Mb/s egress limit
+and isolation set on the port through the controller (REST
+`port_overrides`), then a forced 25G (split) and a forced 100G (join). The
+pushes are `docs/fixtures/controller-11.0.99/replies-dx010-cage26-breakout-portfeat.ndjson`
+(the nine `setparam`s; `TestReplaySonicDX010Cage26BreakoutPortFeatures`
+replays them over `collect-split-dac.txt`). Three faults, two of them
+worse than the one asked about:
+
+1. **A breakout was refused while any egress limit existed on the switch.**
+   `config interface breakout` validates the whole CONFIG_DB with
+   sonic-yang first (§11.8), and `sonic-scheduler.yang` requires a `cir`
+   above 0 beside a `pir` ("pir can't be configured without cir."). The
+   driver's shaper (`SCHEDULER|DUI_EGRESS_<kbps>`, §11.12) has only `pir`.
+   The batch failed every cycle at the breakout, after its first lines had
+   taken the cage's IGMP static members out, which the device-wide apply
+   put back the next cycle. Every cage was affected, not only the shaped
+   one, and so was a lane switch's re-split. **A `cir` is no way out**:
+   with one written by hand, Broadcom's SAI refused the set ("Scheduler ...
+   contains minimum bandwidth attributes. This is not supported at the
+   port level", `SAI_STATUS_ATTR_NOT_SUPPORTED`). It kept the minimum in
+   the object, so every later set of that profile failed too, until the
+   row was deleted and made again. That set also left orchagent flagged
+   unhealthy (`gOrchUnhealthy`: ERR "Encountered failure in set operation,
+   SAI API: SAI_API_SCHEDULER" on every busy loop until orchagent
+   restarts). That is the flag only, and nothing reads it but the log.
+   **Fix:** the breakout's batch holds the shapers out as it holds
+   `learn_mode` (§11.12). It hdels every `PORT_QOS_MAP` `scheduler` field,
+   then deletes every `SCHEDULER|DUI_EGRESS_*` row. After the breakout it
+   writes them again (`schedulerSet`), for every port the breakout left,
+   and the egress plan writes the new interfaces'. The other shaped ports
+   are unshaped for the seconds the breakout takes. The CLI leaves no
+   other way. Fixing `sonic-scheduler.yang` in the image kit would end that
+   window. It needs a new image, and it would be an upstream issue (a port
+   shaper that the Broadcom SAI requires without a `cir`).
+2. **An isolated port could not be broken out, and the failure was half
+   done.** With the shaper held out, the breakout ran and failed: syncd
+   logged `brcm_sai_remove_bridge_port: ... still in use by isolation
+   group` (`SAI_STATUS_OBJECT_IN_USE`), orchagent kept the port ("Cannot
+   remove port as bridge port OID is present"), and after a minute the CLI
+   gave up ("Critical Failure, Ports are not Deleted from ASIC DB, Bail
+   Out"). It left CONFIG_DB with neither the old `PORT|Ethernet100` nor
+   the four new ones, and `BREAKOUT_CFG` at the old mode. orchagent's
+   isolation group keeps a removed port's name as a pending member, but
+   only once the port is removed, and the SAI refuses that while the port
+   is in the group. Restored by hand: the speed back to Auto in the
+   controller, the whole cage's `PORT` row written again as its neighbours
+   hold theirs, and the bridge stopped with `layout.json` set aside (the
+   loop had withheld the re-made port as new, as it should). **Fix:**
+   before the breakout the batch writes the group without the cage's ports
+   at once (ProducerStateTable, not with the batch's other APPL_DB writes
+   at its end), or deletes it when no other port is isolated. It then
+   waits, at most 10 s, for ASIC_DB to show each port out of the group
+   (`isolationWait`; the batch fails before the breakout otherwise). The
+   isolation plan after the breakout puts the new interfaces in. Other
+   isolated ports stay isolated throughout.
+3. **Lane 1's `PORT_QOS_MAP` was left out of the split**, as LLDP-MED had
+   been: the failed batch of fault 1 shows `hset 'PORT_QOS_MAP|Ethernet101'`
+   to `103` and nothing for `Ethernet100`. The isolation group was right:
+   the plan writes the whole group whenever the set of names differs, and
+   orchagent re-adds a member of the same name. **Fix:** one `forget`
+   (`portFeat.forget`, called by `applyBreakout`) drops what the plan
+   remembers writing to every interface a breakout deletes or makes: the
+   LLDP-MED TLVs (lldpd forgets them) and the shaper map (held out by fault
+   1's fix and given back only to the ports the breakout leaves).
+
+**The rest of the plan's per-interface state, read from the code:**
+
+| `swState` | After a breakout | Why |
+|---|---|---|
+| `port`, `members`, `storm`, `stp`, the LAG memberships, ACL `ports@` | dropped by `applyBreakout`, as `-f` does | YANG leafrefs (built before) |
+| `pf.med`, `pf.medPol`, `pf.qos` | dropped (`forget`) | above |
+| `pf.iso` | kept; the cage leaves the group first (fault 2) | APPL_DB only, and orchagent re-adds a name |
+| `pf.fdb` (the MAC filter's static entries) | kept | APPL_DB, keyed by VLAN and MAC; `-f` does not touch APPL_DB. A breakout with a MAC filter on the cage has not run live |
+| `learn_mode`, the IGMP rows, the guard's counted rules | held out and put back, or unbound first (§11.12, §8.10, §11.7.9) | built before |
+| `fecs`, `laneSpeeds` | forgotten; read again next collect (§11.37) | built before |
+| `ifaddrs` (a routed port's address) | not touched | a routed port on a split cage is never written (`syncVLANs`' note), and the L3 plan reads the switch afresh |
+
+**Live after the fixes** (deb `0.0.0+20261117.e9f74a5`). The split's batch
+was: the hdel and the delete; the group deleted (no other isolated port)
+and the four waits; the IGMP unbind; `config interface breakout -f -y
+Ethernet100 '4x25G[10G]'`; the scheduler made again; the four lanes' state,
+MTU and VLAN; `PORT_QOS_MAP` on all four; LLDP-MED on all four; and the
+group with all four. Read back in ASIC_DB: each lane's
+`SAI_PORT_ATTR_QOS_SCHEDULER_PROFILE_ID` on the new profile (max 12 500 000
+bytes/s, no minimum) and its `SAI_PORT_ATTR_ISOLATION_GROUP` on the new
+group, with four members. The loop logged the layout as the controller's,
+and nine minutes of cycles wrote nothing. The join ran the same way back
+to one port with its map and group, and the removal (the override as it
+was) took the map, the profile and the group out. CONFIG_DB, the saved
+`config_db.json` and ASIC_DB then held nothing of it, and Ethernet0-4
+stayed up throughout. A pending lane switch `dx010-cage26` appeared while
+the cage was split, as designed (`breakout.md` §16), and its loop runs
+until the bridge restarts (the open "bridge forgetting a retired lane
+switch" item).
+
+**Not run live:** a second isolated port keeping its place in the group
+through another cage's breakout (`TestBreakoutKeepsShapersAndIsolationOnEveryLane`
+has it, port 5); a breakout with a MAC filter or 802.1X on the cage (the
+static FDB entries name the bridge port, and nothing here says whether the
+SAI then refuses the bridge port's removal as it does for isolation); and
+a lane switch's own cage under any of it.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH

@@ -1636,7 +1636,13 @@ Ethernet8-11 throughout: no lane gained a VLAN. The window is closed. Port
   cage's LLDP-MED is the cage's, on every lane (the table in §0): that was
   meant, and lane 1 was the one the stale copy hid. Fixture-tested; not run
   live again (it needs a join and a split of cage 3, which would disturb
-  `dx010-cage3`).
+  `dx010-cage3`). **The rest of that copy** (2026-11-17,
+  [`sonic.md`](sonic.md) §11.38, live on cage 26): the egress limit's
+  `PORT_QOS_MAP` had the same fault on lane 1, and a breakout on a switch
+  with any egress limit, or of an isolated port, did not run at all. One
+  `forget` now drops every remembered per-interface write a breakout ends;
+  the shapers are held out of CONFIG_DB across it, and the cage leaves the
+  isolation group first.
 - **A declared entry's hand-over and Forget** (§0, the decision and what
   was built). Fixture-tested only.
 

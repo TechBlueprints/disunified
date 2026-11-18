@@ -874,7 +874,19 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   port's TLVs when a breakout deletes it, lane 1's included though it keeps
   the name** (DX010, 2026-11-16): the breakout's effect forgets them in the
   plan's copy, so the split's own batch writes them on every new lane
-  (`docs/drivers/breakout.md` §16.10). **A split or join the module rule
+  (`docs/drivers/breakout.md` §16.10). **A breakout ends every remembered
+  per-interface write of the cage (`portFeat.forget`, `docs/drivers/sonic.md`
+  §11.38, live 2026-11-17)**: the TLVs and the shaper map; a new one goes
+  there too. **The shaper's `SCHEDULER` row fails the breakout's YANG check**
+  (`pir` without `cir`), and **never write a `cir`**: Broadcom's SAI refuses
+  a minimum rate on a port scheduler, keeps it in the object (every later
+  set of the profile fails until the row is re-made) and leaves orchagent's
+  `gOrchUnhealthy` set until it restarts. So the batch holds every shaper
+  out and puts back the ports it leaves. **An isolated port cannot be
+  broken out** (the SAI keeps its bridge port, `OBJECT_IN_USE`); the CLI
+  then bails out after a minute with CONFIG_DB holding no port of the cage.
+  So the cage leaves the group first and the batch waits for ASIC_DB
+  (`isolationWait`). **A split or join the module rule
   makes is reported to the loop through `PlanLayout`**
   (`devicemodel.LayoutPlanner`): `PlanPorts` leaves it out, and the loop
   took such a cage for a new port and withheld it until a restart. **`learn_mode` is in no
