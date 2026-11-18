@@ -10844,7 +10844,7 @@ the first two clear the CPLD's source, and `getreg` writes an address.
 | `gpe0a_en` / `gpe0a_sts` | `0x00400004` / 0 | bit 22 enabled (bit 2 is ACPICA's GPE 02), nothing pending |
 | `gpio_rout` | `0x00002000` | SUS6 routed to SCI |
 | `qsfp_modprs` | `0xfffffff8` | cages 1-3 present (active low) |
-| `qsfp_modprs_msk` / `cpld4_int0_msk` | 0 / `0xf8` | unmasked if 1 means masked; the polarity is not documented |
+| `qsfp_modprs_msk` / `cpld4_int0_msk` | 0 / `0xf8` | unmasked, if the DX010 follows Celestica's E1031 (§11.39.5) |
 
 `dmesg` has `slx_ich`'s probe lines and no failure. Each cage that
 `sfputil show presence` calls Present (1, 2 and cage 3's four lanes) has
@@ -10927,10 +10927,20 @@ stays until an image with the fix has been seen working live.
 exposes `qsfp_modprs_msk` and `cpld4_int0_msk` (read and write), and
 neither the driver's probe nor any platform script in the tree writes
 them, so they hold the CPLD's power-on values: `0x00000000` and `0xf8` on
-this unit (§11.39.3). Which sense a mask bit has is not documented.
-If the rack-day test shows no interrupt, the next read is whether one of
-those two values is what holds it off, before concluding the line is not
-wired: that would keep the interrupt route and need only a write at start.
+this unit (§11.39.3). The DX010's CPLD has no public documentation, but
+the nearest precedent has the same design. Celestica's E1031
+(Haliburton, `x86_64-cel_e1031-r0`) uses an LPC CPLD, an SCI on a SUS
+GPIO (`hlx-ich.0/sci_int_gpio_sus7`), and an `event.py` that is the
+DX010's almost line for line. Its `smc.c` documents the mask register
+as "1: mask, 0: not mask". Its init script turns the interrupt on at boot
+(`modabs_trig` `both`, `modabs_mask` 0), and its `SfpEvent.__init__`
+reads the interrupt register once to clear it. If the DX010's CPLD
+follows the same convention, its 0 and the low three bits of `0xf8` are
+already unmasked, which makes H2 (or a fault further in) likelier than a
+mask. That is not established: it is a different part. If the rack-day
+test shows no interrupt, the next read is still whether one of those two
+values is what holds it off, before concluding the line is not wired:
+that would keep the interrupt route and need only a write at start.
 
 #### 11.39.6 The rack-day test
 
