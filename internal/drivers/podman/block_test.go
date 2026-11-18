@@ -132,9 +132,9 @@ func TestBlockedClientsOnTheUplink(t *testing.T) {
 }
 
 // nft tables do not outlive a reboot. The capture lists the table as
-// absent (the fixture runner does not model the write: no listing of a
-// present table has been captured), which is what a host says after one:
-// the next apply writes it again. With none blocked and none listed,
+// absent (the fixture runner does not model the write: only a one-MAC
+// listing of a present table has been captured, collect-block-present.txt),
+// which is what a host says after one: the next apply writes it again. With none blocked and none listed,
 // nothing is written.
 func TestBlockTableLostIsWrittenAgain(t *testing.T) {
 	ctx := context.Background()
@@ -194,5 +194,117 @@ func TestBlockCaptureReadsAsTheHost(t *testing.T) {
 	}
 	if len(snap.MACTable) == 0 || !strings.Contains(fr.Section("networks"), `"driver": "macvlan"`) {
 		t.Errorf("want a macvlan network with a client; MAC table %v", snap.MACTable)
+	}
+}
+
+// The table as the deployed driver left it on the host (2026-11-17, one
+// client blocked, both counters 0), scrubbed: the MAC by the scrub script,
+// the comment's fingerprint recomputed by it for the scrubbed MAC
+// (scripts/sanitize-podman.py block_mark; on the raw capture it gives the
+// live comment). The driver reads its own write back: the controller's list
+// as that listing names it writes nothing, cycle after cycle; another list
+// replaces it; none deletes it, and the next collect lists it absent.
+const blockPresentFixture = "../../../docs/fixtures/podman-5.8.2/collect-block-present.txt"
+
+// listedBlock is what the capture's listing says: the uplink of its chains,
+// the MACs of its rules, its counters.
+func listedBlock(t *testing.T, body string) (dev string, macs []string, counters []int) {
+	t.Helper()
+	var l struct {
+		Nftables []struct {
+			Chain *struct {
+				Dev  string `json:"dev"`
+				Hook string `json:"hook"`
+			} `json:"chain"`
+			Rule *struct {
+				Expr []struct {
+					Match *struct {
+						Right json.RawMessage `json:"right"`
+					} `json:"match"`
+					Counter *struct {
+						Packets int `json:"packets"`
+					} `json:"counter"`
+				} `json:"expr"`
+			} `json:"rule"`
+		} `json:"nftables"`
+	}
+	if err := json.Unmarshal([]byte(body), &l); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, o := range l.Nftables {
+		if o.Chain != nil {
+			dev = o.Chain.Dev
+		}
+		if o.Rule == nil {
+			continue
+		}
+		for _, e := range o.Rule.Expr {
+			if e.Counter != nil {
+				counters = append(counters, e.Counter.Packets)
+			}
+			if e.Match == nil {
+				continue
+			}
+			// One MAC is a plain value (nft folds a one-element set);
+			// more would be {"set": [...]}, not captured.
+			var one string
+			if json.Unmarshal(e.Match.Right, &one) != nil {
+				t.Fatalf("capture changed: match right %s is not one MAC", e.Match.Right)
+			}
+			if !seen[one] {
+				seen[one] = true
+				macs = append(macs, one)
+			}
+		}
+	}
+	return dev, macs, counters
+}
+
+func TestBlockPresentTableReadBack(t *testing.T) {
+	ctx := context.Background()
+	c, fr, _ := startBlockFixture(t, blockPresentFixture)
+	dev, macs, counters := listedBlock(t, fr.Section("macblock"))
+	uplink := strings.TrimSpace(fr.Section("uplink"))
+	if dev == "" || dev != uplink || len(macs) != 1 || len(counters) != 2 {
+		t.Fatalf("capture: chains on %q (uplink %q), MACs %v, counters %v; want both chains on the uplink, one MAC", dev, uplink, macs, counters)
+	}
+	_, mark := blockRuleset(uplink, macs)
+	if !c.block.Known || !c.block.Present || c.block.Mark != mark {
+		t.Fatalf("read back %+v; want present with mark %s", c.block, mark)
+	}
+	d := devicemodel.DeviceDesired{BlockedSet: true, BlockedClients: []string{strings.ToUpper(macs[0])}}
+	for i := 0; i < 3; i++ {
+		if n, err := c.ApplyDevice(ctx, d); n != 0 || err != nil {
+			t.Fatalf("cycle %d: apply = %d, %v; want nothing (the listed table is the controller's)", i, n, err)
+		}
+		if _, err := c.Collect(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if cmds, _ := nftCommands(fr); len(cmds) != 0 {
+		t.Fatalf("rewrote a table that stands: %q", cmds)
+	}
+	// Another client blocked beside it: replaced whole.
+	more := append([]string{"02:00:00:ff:ff:01"}, macs...)
+	if n, err := c.ApplyDevice(ctx, devicemodel.DeviceDesired{BlockedSet: true, BlockedClients: more}); n != 1 || err != nil {
+		t.Fatalf("second client: apply = %d, %v; want 1", n, err)
+	}
+	// Unblocked: deleted once, then listed absent.
+	if n, err := c.ApplyDevice(ctx, devicemodel.DeviceDesired{BlockedSet: true}); n != 1 || err != nil {
+		t.Fatalf("unblock: apply = %d, %v; want 1", n, err)
+	}
+	if _, err := c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if c.block.Present || !c.block.Known {
+		t.Errorf("after the delete the listing reads %+v; want known, absent", c.block)
+	}
+	if n, _ := c.ApplyDevice(ctx, devicemodel.DeviceDesired{BlockedSet: true}); n != 0 {
+		t.Errorf("unblock again: %d changes", n)
+	}
+	cmds, _ := nftCommands(fr)
+	if len(cmds) != 2 || cmds[0] != "nft -f -" || !strings.HasPrefix(cmds[1], "nft delete table netdev "+blockTable) {
+		t.Errorf("commands %q, want one write and one delete", cmds)
 	}
 }
