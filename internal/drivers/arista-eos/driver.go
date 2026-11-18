@@ -13,7 +13,10 @@ import (
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 )
 
-// Driver is the Arista EOS driver: eAPI (JSON-RPC over HTTPS) or SSH.
+// Driver is the Arista EOS driver: eAPI (JSON-RPC over HTTPS) or SSH, or
+// eAPI over the switch's unix socket when the bridge runs on the switch
+// (options.transport: local, with options.socket, options.address and
+// options.probe: docs/drivers/arista-on-switch.md).
 //
 // Config: URL = https://<switch>/command-api with Username/Password (eAPI,
 // preferred), or SSH = user@host[:port] (key auth via ssh-agent or
@@ -62,7 +65,7 @@ func (c *Collector) Capabilities() devicemodel.Capabilities {
 var _ devicemodel.Capable = (*Collector)(nil)
 
 func (Driver) Describe() string {
-	return "Arista EOS over eAPI (URL + username/password) or SSH (user@host, key auth); verified on 4.26.14M"
+	return "Arista EOS over eAPI (URL + username/password) , SSH (user@host, key auth) or, on the switch itself, eAPI's unix socket (options.transport: local); verified on 4.26.14M"
 }
 
 // Open builds the transport, then runs every command once via Start so a
@@ -73,7 +76,37 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 		host   string
 		redial func(string) Transport
 	)
+	local := false
+	switch tr := strings.ToLower(strings.TrimSpace(cfg.Options["transport"])); tr {
+	case "", "eapi", "ssh":
+	case "local":
+		local = true
+	default:
+		return nil, fmt.Errorf("arista-eos: options.transport %q: want local, or leave it unset for url:/ssh:", tr)
+	}
+	var probeAddr string
 	switch {
+	case local:
+		// The bridge runs on the switch: eAPI over its unix socket, and
+		// nothing to dial (docs/drivers/arista-on-switch.md).
+		if cfg.URL != "" || cfg.SSH != "" {
+			return nil, errors.New("arista-eos: options.transport: local runs on the switch itself; remove url:/ssh:")
+		}
+		probeAddr = strings.TrimSpace(cfg.Options["probe"])
+		host = strings.TrimSpace(cfg.Options["address"])
+		if host == "" {
+			if probeAddr == "" {
+				return nil, errors.New("arista-eos: transport local: the switch's own address is unknown; set options.address (or options.probe, an address the switch must keep reaching)")
+			}
+			a, err := sourceAddr(probeAddr)
+			if err != nil {
+				return nil, fmt.Errorf("arista-eos: transport local: no route from this switch to %s (%v); set options.address", probeAddr, err)
+			}
+			host = a
+		} else if net.ParseIP(host) == nil {
+			return nil, fmt.Errorf("arista-eos: options.address %q is not an IP address", host)
+		}
+		t = NewEAPIUnix(cfg.Options["socket"], 20*time.Second)
 	case cfg.URL != "":
 		if cfg.Username == "" || cfg.Password == "" {
 			return nil, errors.New("arista-eos: eAPI needs a username and password")
@@ -101,6 +134,9 @@ func (Driver) Open(ctx context.Context, cfg devicemodel.DriverConfig) (devicemod
 	c := NewCollector(t)
 	c.host, c.redial = host, redial
 	c.mgmtPort = mgmtPort(cfg)
+	if local {
+		c.local, c.probeAddr, c.probe = true, probeAddr, tcpProbe
+	}
 	if cfg.Username != "" {
 		c.SetSSHKeyUser(cfg.Username) // controller SSH keys land on the bridge's own user
 	} else if cfg.SSH != "" {
@@ -182,6 +218,56 @@ func replaceHost(rawURL, host string) string {
 	return u.String()
 }
 
+// sourceAddr is the address this host sends from towards addr (host:port):
+// on the switch itself, the switch's own address on the interface that
+// reaches the controller. A UDP "connect" picks the route and sends nothing.
+var sourceAddr = func(addr string) (string, error) {
+	conn, err := net.Dial("udp", addr)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	ua, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || ua.IP == nil || ua.IP.IsUnspecified() {
+		return "", errors.New("no source address")
+	}
+	return ua.IP.String(), nil
+}
+
+// probeTimeout bounds one probe's connect.
+const probeTimeout = 5 * time.Second
+
+// tcpProbe connects to addr (host:port), bound to fromIP when set, and
+// closes again: what an on-switch bridge has in place of a fresh dial to
+// prove the switch still reaches the network (the sonic driver's probe,
+// docs/drivers/sonic-on-switch.md §3).
+func tcpProbe(ctx context.Context, addr, fromIP string) error {
+	d := net.Dialer{Timeout: probeTimeout}
+	if fromIP != "" {
+		ip := net.ParseIP(fromIP)
+		if ip == nil {
+			return fmt.Errorf("probe source %q is not an IP address", fromIP)
+		}
+		d.LocalAddr = &net.TCPAddr{IP: ip}
+	}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+// CurrentAddress implements devicemodel.AddressReporter: the switch's own
+// address as the driver knows it -- the dial target, the address a move
+// adopted, or, on the switch itself, the address it reaches the controller
+// from.
+func (c *Collector) CurrentAddress() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.host
+}
+
+var _ devicemodel.AddressReporter = (*Collector)(nil)
 var _ devicemodel.AddressController = (*Collector)(nil)
 var _ devicemodel.ApplyBudget = (*Collector)(nil)
 var _ devicemodel.Planner = (*Collector)(nil)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ type EAPI struct {
 	URL      string // https://<switch>/command-api
 	Username string
 	Password string
+	socket   string // the unix socket dialled instead of URL's host; "" over HTTPS
 	client   *http.Client
 	nextID   int
 }
@@ -56,6 +58,37 @@ func NewEAPI(url, username, password string, insecure bool, timeout time.Duratio
 		Username: username,
 		Password: password,
 		client:   &http.Client{Transport: tr, Timeout: timeout},
+	}
+}
+
+// DefaultSocket is where EOS puts eAPI's unix socket (`protocol unix-socket`
+// under `management api http-commands`; seen on 4.26.14M).
+const DefaultSocket = "/var/run/command-api.sock"
+
+// NewEAPIUnix builds an eAPI transport over the switch's own unix socket,
+// for a bridge that runs on the switch (options.transport: local). The
+// socket takes no credentials: whoever can open it runs commands, and
+// `enable` reaches privilege 15 (4.26.14M, docs/drivers/arista-on-switch.md
+// §1). The envelope and every reply are the HTTPS server's.
+func NewEAPIUnix(socket string, timeout time.Duration) *EAPI {
+	if socket == "" {
+		socket = DefaultSocket
+	}
+	if timeout <= 0 {
+		timeout = 20 * time.Second
+	}
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", socket)
+		},
+		MaxIdleConns:    2,
+		IdleConnTimeout: 30 * time.Second,
+	}
+	return &EAPI{
+		URL:    "http://localhost/command-api",
+		socket: socket,
+		client: &http.Client{Transport: tr, Timeout: timeout},
 	}
 }
 
@@ -142,10 +175,15 @@ func (t *EAPI) run(ctx context.Context, cmds []string, format string) ([]json.Ra
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(t.Username, t.Password)
+	if t.Username != "" {
+		req.SetBasicAuth(t.Username, t.Password)
+	}
 
 	resp, err := t.client.Do(req)
 	if err != nil {
+		if t.socket != "" {
+			return nil, fmt.Errorf("eAPI POST over %s: %w (is `protocol unix-socket` set under `management api http-commands`?)", t.socket, err)
+		}
 		return nil, fmt.Errorf("eAPI POST %s: %w", t.URL, err)
 	}
 	defer resp.Body.Close()

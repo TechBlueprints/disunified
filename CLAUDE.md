@@ -149,6 +149,13 @@ A driver's `Start` and first `Collect` must report an unchanged port's
 `IfName` and `Interfaces` the same way. A layout change inside provision's
 10 s spacing is provisioned when the spacing ends (`main.go`
 `layoutChanged`), not dropped.
+**Since 2026-11-18 the Arista runs its own bridge too**
+(`options.transport: local`: eAPI over the switch's unix socket, a static
+binary on `/mnt/flash/disunified` run by EOS's `daemon` block, the reply
+log on tmpfs through `log_dir:`; `docs/drivers/arista-on-switch.md`, §7
+the live move). An address or ACL change is confirmed there by a TCP probe
+to the controller. The bridge came back by itself from a reboot of the
+switch the same day (§8 there).
 
 ## 2. Map
 
@@ -252,7 +259,9 @@ A driver's `Start` and first `Collect` must report an unchanged port's
   by or affiliated with Ubiquiti Inc.; "UniFi"/"Ubiquiti" are their marks.
 - The bridges run in the container on the Podman host (§4), except the
   ones that run on their own device (the DX010, and each Proxmox node since
-  2026-11-17: the `.deb`, updated with `dpkg -i`); nothing runs on the Mac.
+  2026-11-17: the `.deb`, updated with `dpkg -i`; the Arista since
+  2026-11-18: `scripts/build-eos.sh`, `docs/drivers/arista-on-switch.md`
+  §4); nothing runs on the Mac.
   Redeploy of the container = ship `HEAD` with `git archive`, rebuild,
   recreate.
 
@@ -265,16 +274,17 @@ key is still accepted) with secrets in the environment (`.env`, gitignored,
 symlinked from outside the repo); every `control` flag is on.
 `state/<name>/device.json` holds the adopted key: one instance per device,
 keep the file. Logs: `run.log`, `inform-log/<name>/`. Since 2026-09-27 every
-deployed bridge (Arista, PDU, UPS, the Podman host itself; the DX010's ran
+deployed bridge (PDU, UPS, the Podman host itself; the DX010's ran
 there until 2026-11-02 and now runs on the switch, §1; the three Proxmox
 nodes' until 2026-11-17, each now a root service on its own node,
-`docs/drivers/proxmox-on-node.md`) runs in **one** container on Clint's Podman host (`/opt/disunified`;
+`docs/drivers/proxmox-on-node.md`; the Arista's until 2026-11-18, now a
+daemon on the switch, `docs/drivers/arista-on-switch.md`) runs in **one** container on Clint's Podman host (`/opt/disunified`;
 the UPS had its own stack for a day while its driver was new -- merged back,
 old dir kept as `/opt/disunified-ups.retired-20260927`, its volume as a
 backup). The container is on two networks: the podman bridge (to reach its
 own host: a macvlan container cannot) and the `lan` macvlan (its own LAN
 address and MAC, a client behind its port on the podman switch, the NUT
-server's address). A rebuild bounces all six for about a minute; they
+server's address). A rebuild bounces all four for about a minute; they
 resume from the state volume. **Every Mac instance is stopped and must
 stay stopped** (one bridge per adopted key).
 

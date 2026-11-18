@@ -54,10 +54,12 @@ mode and end with `write memory`.
   appended; any `% ...` line fails the batch. Needs nothing enabled on the
   switch. The fixtures were captured this way.
 
-For an eventual on-switch deployment, eAPI over the unix socket
-(`protocol unix-socket`, `/var/run/command-api.sock`, no authentication) is
-the on-box path (<https://arista.my.site.com/AristaCommunity/s/article/arista-eapi-101>);
-it has not been tried.
+- **eAPI over the unix socket** (`options.transport: local`), for a bridge
+  that runs on the switch itself: `protocol unix-socket`,
+  `/var/run/command-api.sock`, no authentication, the same replies as
+  HTTPS. Built and tried on 4.26.14M 2026-11-18; the write-up, what is
+  verified and what is not are in
+  [`arista-on-switch.md`](arista-on-switch.md).
 
 ## 3. Prior art for the API
 

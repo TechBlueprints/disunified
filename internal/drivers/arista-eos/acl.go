@@ -234,7 +234,9 @@ func (c *Collector) holdIfCutsManagement(d devicemodel.DeviceDesired, w *aclWant
 // host, resolved when it is a name. Empty when it cannot be resolved; the
 // commit timer is then the only guard.
 func (c *Collector) dialAddrs() []string {
-	if c.host == "" {
+	if c.host == "" || c.local {
+		// local: no connection to the switch crosses its ports; the probe
+		// before the commit is the guard.
 		return nil
 	}
 	if a, err := netip.ParseAddr(c.host); err == nil {
@@ -774,6 +776,16 @@ func (c *Collector) commitACL(ctx context.Context, body []string) (held string, 
 	if c.redial != nil && c.host != "" {
 		check = c.redial(c.host)
 		defer check.Close()
+	}
+	if c.local && c.probe != nil && c.probeAddr != "" {
+		// On the switch itself the socket answers whatever the lists do:
+		// the proof is that the switch still reaches the controller.
+		if err := c.probe(ctx, c.probeAddr, ""); err != nil {
+			if ctx.Err() != nil {
+				return "", fmt.Errorf("arista-eos: ACL change in session %s not confirmed (%v); the switch reverts it in %s", session, ctx.Err(), commitTimer)
+			}
+			return "the switch did not reach the controller after it", fmt.Errorf("arista-eos: the switch does not reach %s after the ACL change (%v); leaving session %s to revert in %s", c.probeAddr, err, session, commitTimer)
+		}
 	}
 	if _, err := check.Run(ctx, []string{"enable", "show version"}); err != nil {
 		if ctx.Err() != nil {
