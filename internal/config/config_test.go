@@ -227,13 +227,13 @@ func TestFirmware(t *testing.T) {
 	}
 }
 
-// lane_switches: auto (the default) or off, per device
+// lane_switches: auto (the default), manual or off, per device
 // (docs/drivers/breakout.md 16).
 func TestLaneSwitches(t *testing.T) {
 	for _, tc := range []struct {
 		v, want string
 		ok      bool
-	}{{"", "auto", true}, {"auto", "auto", true}, {"off", "off", true}, {"on", "", false}} {
+	}{{"", "auto", true}, {"auto", "auto", true}, {"manual", "manual", true}, {"off", "off", true}, {"on", "", false}} {
 		p := filepath.Join(t.TempDir(), "c.yaml")
 		body := "controller:\n  host: 192.0.2.1\ndevices:\n  - name: sw\n    driver: sonic\n    ssh: admin@192.0.2.2\n    lane_switches: " + tc.v + "\n"
 		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {

@@ -2,17 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TechBlueprints/disunified/internal/config"
 	"github.com/TechBlueprints/disunified/internal/device"
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/drivers/sonic"
+	"github.com/TechBlueprints/disunified/internal/unifiapi"
 )
 
 // Automatic lane switches (docs/drivers/breakout.md 16), against the DX010
@@ -300,5 +304,220 @@ func TestDeclaredLaneSwitchWithoutAPI(t *testing.T) {
 	attachLaneSwitches(log.New(buf, "", 0), c2, snap2, f.LaneSwitchesOf("sw"), nil)
 	if strings.Contains(buf.String(), "Auto") {
 		t.Errorf("-collect-once ran the hand-over: %q", buf.String())
+	}
+}
+
+// The automatic adoption (docs/drivers/breakout.md 16.12): a pending lane
+// switch whose parent is adopted is adopted through the controller's API by
+// its exact MAC, with nobody clicking Adopt.
+
+// adopter is a watcher with a recording adopt call and a clock the test
+// moves; step is one watch tick a watch interval later.
+func adopter(t *testing.T, parent config.Device) (al *autoLanes, started *[]options, buf *strings.Builder, f *config.File, asked *[]string, fail *error, step func()) {
+	t.Helper()
+	c, snap, _ := laneParent(t)
+	al, started, buf, f = watcher(t, c, snap, parent)
+	asked, fail = new([]string), new(error)
+	al.adopt = func(_ context.Context, mac string) error {
+		*asked = append(*asked, mac)
+		return *fail
+	}
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	al.now = func() time.Time { return now }
+	step = func() {
+		now = now.Add(laneWatchInterval)
+		al.tick()
+	}
+	return
+}
+
+func TestPendingLaneSwitchOfAnAdoptedParentIsAdoptedByItsExactMAC(t *testing.T) {
+	al, started, buf, f, asked, _, step := adopter(t, config.Device{})
+	adopt(t, f, "sw")
+	al.tick() // starts it; no request in the tick that starts it
+	if len(*started) != 1 || len(*asked) != 0 {
+		t.Fatalf("first tick: %d started, asked %v", len(*started), *asked)
+	}
+	step()
+	want := (*started)[0].driverOptions["mac"]
+	if !reflect.DeepEqual(*asked, []string{want}) {
+		t.Fatalf("asked %v, want the lane switch's MAC %s alone", *asked, want)
+	}
+	if !strings.Contains(buf.String(), "asked the controller to adopt it, by its exact MAC") {
+		t.Errorf("log: %q", buf.String())
+	}
+	// Not asked again every tick while the handshake runs; again after two
+	// minutes if it is still pending.
+	for i := 0; i < 7; i++ {
+		step()
+	}
+	if len(*asked) != 1 {
+		t.Errorf("asked %d times within two minutes, want 1", len(*asked))
+	}
+	step()
+	if len(*asked) != 2 {
+		t.Errorf("asked %d times after two minutes pending, want 2", len(*asked))
+	}
+	// Adopted (the handshake wrote its state file): nothing more is asked,
+	// and the hand-over is the adoption hook's, unchanged.
+	adopt(t, f, "sw-cage3")
+	for i := 0; i < 50; i++ {
+		step()
+	}
+	if len(*asked) != 2 {
+		t.Errorf("an adopted lane switch was asked for again (%d)", len(*asked))
+	}
+	(*started)[0].onAdopted()
+	if !strings.Contains(buf.String(), "attached to port 3: the controller adopted it") {
+		t.Errorf("no attach on the adoption: %q", buf.String())
+	}
+}
+
+func TestLaneSwitchOfAPendingParentIsNotAdopted(t *testing.T) {
+	al, _, buf, f, asked, _, step := adopter(t, config.Device{})
+	al.tick()
+	for i := 0; i < 10; i++ {
+		step()
+	}
+	if len(*asked) != 0 {
+		t.Fatalf("the parent is pending, yet the controller was asked for %v", *asked)
+	}
+	if strings.Count(buf.String(), "stays pending while this device is not adopted itself") != 1 {
+		t.Errorf("the reason is not said once: %q", buf.String())
+	}
+	// It follows once the parent is adopted.
+	adopt(t, f, "sw")
+	step()
+	if len(*asked) != 1 {
+		t.Errorf("after the parent's adoption: asked %v", *asked)
+	}
+}
+
+func TestLaneSwitchStaysPendingWithoutAControllerAPI(t *testing.T) {
+	al, started, buf, f, asked, _, step := adopter(t, config.Device{})
+	al.adopt = nil // no api_url or key: what newAutoLanes builds for such a file
+	if adoptFor(f) != nil {
+		t.Fatal("a file without a controller API got an adopt call")
+	}
+	adopt(t, f, "sw")
+	al.tick()
+	for i := 0; i < 10; i++ {
+		step()
+	}
+	if len(*started) != 1 || len(*asked) != 0 {
+		t.Fatalf("%d started, asked %v", len(*started), *asked)
+	}
+	if strings.Count(buf.String(), "no controller API is configured") != 1 || !strings.Contains(buf.String(), "controller.api_url") || !strings.Contains(buf.String(), "DUI_UNIFI_API_KEY") {
+		t.Errorf("log: %q", buf.String())
+	}
+}
+
+// A Forget is remembered in the lane switch's state directory: it stays
+// pending until the operator adopts it, which clears the mark.
+func TestForgottenLaneSwitchStaysPendingUntilAdoptedByHand(t *testing.T) {
+	al, started, buf, f, asked, _, step := adopter(t, config.Device{})
+	adopt(t, f, "sw")
+	al.tick()
+	step()
+	o := (*started)[0]
+	o.onAdopted()
+	adopt(t, f, "sw-cage3")
+	step()
+	n := len(*asked)
+
+	// The Forget: the session's state is unadopted, then the hook runs.
+	if err := (&device.Store{Path: filepath.Join(f.StateDir, "state", "sw-cage3", "device.json")}).Save(device.State{}); err != nil {
+		t.Fatal(err)
+	}
+	o.onUnadopted()
+	mark := filepath.Join(f.StateDir, "state", "sw-cage3", "forgotten")
+	if _, err := os.Stat(mark); err != nil {
+		t.Fatalf("no forgotten mark: %v", err)
+	}
+	for i := 0; i < 50; i++ {
+		step()
+	}
+	if len(*asked) != n {
+		t.Fatalf("a forgotten lane switch was asked for again (%d requests after the Forget)", len(*asked)-n)
+	}
+	if !strings.Contains(buf.String(), "It stays pending until it is adopted in UniFi by hand") || strings.Count(buf.String(), "stays pending: it was forgotten in the controller") != 1 {
+		t.Errorf("log: %q", buf.String())
+	}
+
+	// A restart keeps it: a new watcher over the same state directory.
+	c2, snap2, _ := laneParent(t)
+	mk := newAutoLanes(f, f.Devices[0], func(options) {})
+	al2 := mk(log.New(io.Discard, "", 0), c2, snap2.System.MAC)
+	al2.adopt = al.adopt
+	al2.startAdopted()
+	for i := 0; i < 5; i++ {
+		al2.tick()
+	}
+	if len(*asked) != n {
+		t.Errorf("a restart asked for a forgotten lane switch (%d)", len(*asked)-n)
+	}
+
+	// The operator's Adopt: the hook clears the mark, and a later Forget
+	// is a new Forget.
+	o.onAdopted()
+	if _, err := os.Stat(mark); !os.IsNotExist(err) {
+		t.Errorf("the mark outlived an adoption: %v", err)
+	}
+}
+
+// lane_switches: manual is the rule before 2026-11-17: started, pending,
+// never asked for.
+func TestManualLaneSwitchesAreLeftToTheOperator(t *testing.T) {
+	al, started, buf, f, asked, _, step := adopter(t, config.Device{LaneSwitches: config.LaneSwitchesManual})
+	adopt(t, f, "sw")
+	al.tick()
+	for i := 0; i < 20; i++ {
+		step()
+	}
+	if len(*started) != 1 || len(*asked) != 0 {
+		t.Fatalf("%d started, asked %v; want one pending lane switch and no request", len(*started), *asked)
+	}
+	if !strings.Contains(buf.String(), "lane_switches: manual") {
+		t.Errorf("log: %q", buf.String())
+	}
+	// The operator's own adoption hands the lanes over as before.
+	(*started)[0].onAdopted()
+	if !strings.Contains(buf.String(), "attached to port 3") {
+		t.Errorf("log: %q", buf.String())
+	}
+}
+
+// A failing request is retried with a growing pause and logged once per
+// reason, not every tick.
+func TestFailedAdoptRequestIsRetriedWithoutFlooding(t *testing.T) {
+	al, _, buf, f, asked, fail, step := adopter(t, config.Device{})
+	adopt(t, f, "sw")
+	*fail = errors.New("POST /proxy/network/api/s/default/cmd/devmgr: HTTP 503: starting")
+	al.tick()
+	for i := 0; i < 240; i++ { // an hour of ticks
+		step()
+	}
+	// 30 s, 1, 2, 4, 8 min, then every 10: about ten requests in an hour.
+	if n := len(*asked); n < 8 || n > 12 {
+		t.Errorf("%d requests in an hour of failures, want about 10", n)
+	}
+	if n := strings.Count(buf.String(), "was not asked to adopt it"); n != 1 {
+		t.Errorf("the failure was logged %d times, want once: %q", n, buf.String())
+	}
+	// A different reason is said; a success after it too.
+	*fail = unifiapi.ErrNotListed
+	for i := 0; i < 45; i++ {
+		step()
+	}
+	if n := strings.Count(buf.String(), "was not asked to adopt it"); n != 2 {
+		t.Errorf("a new reason: logged %d times, want 2", n)
+	}
+	*fail = nil
+	n := len(*asked)
+	for i := 0; i < 45; i++ {
+		step()
+	}
+	if len(*asked) == n || !strings.Contains(buf.String(), "asked the controller to adopt it") {
+		t.Errorf("no request after the failures ended: %q", buf.String())
 	}
 }

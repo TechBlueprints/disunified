@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +22,13 @@ import (
 // not declared in the file. It informs as a pending device and writes
 // nothing; the lanes become its own when the controller adopts it (the
 // attach) and the cage's again when the controller forgets it (the detach).
+//
+// Since 2026-11-17 the bridge asks for that adoption itself (16.12): a lane
+// switch whose parent is adopted needs no Adopt click. It asks for the one
+// MAC it made, never for anything else on the controller's pending list. A
+// lane switch the operator forgot stays pending until it is adopted by
+// hand (the forgotten mark), and `lane_switches: manual` leaves every one
+// of a parent's pending.
 
 // laneWatchInterval is how often a parent's split cages are looked at.
 const laneWatchInterval = 15 * time.Second
@@ -48,10 +57,80 @@ type autoLanes struct {
 	// controller when it holds a forced lane speed (the hand-over,
 	// docs/drivers/breakout.md 16.7); nil without a controller API.
 	cageToAuto func(ctx context.Context, cage int) (before map[string]any, err error)
+	// manual is the parent's `lane_switches: manual`: lane switches are
+	// started and stay pending until the operator adopts them.
+	manual bool
+	// adopt asks the controller to adopt the pending device with exactly
+	// this MAC (unifiapi.AdoptPending); nil without a controller API.
+	adopt func(ctx context.Context, mac string) error
+	// markPath is where a lane switch's Forget is remembered (a file in its
+	// state directory); now is the clock (nil: time.Now).
+	markPath func(name string) string
+	now      func() time.Time
 
 	mu      sync.Mutex
-	running map[int]bool
+	running map[int]*laneRun
 	noted   map[string]bool
+}
+
+// laneRun is one started lane switch and where its adoption stands.
+type laneRun struct {
+	c autoLane
+	// since is when it was first seen unadopted (zero while adopted); next
+	// is the earliest time of the next adopt request, wait the pause it
+	// came from, lastErr the last failure logged.
+	since, next time.Time
+	wait        time.Duration
+	lastErr     string
+}
+
+// Adopt requests: the first no sooner than one watch interval after the
+// lane switch was seen unadopted (it has to inform before the controller
+// lists it, and a Forget's mark is written in that time); a request the
+// controller took is repeated after adoptAskAgain if the lane switch is
+// still unadopted, a failed one after adoptRetry, each pause doubling up
+// to adoptMaxWait.
+const (
+	adoptRetry    = 30 * time.Second
+	adoptAskAgain = 2 * time.Minute
+	adoptMaxWait  = 10 * time.Minute
+)
+
+func (a *autoLanes) clock() time.Time {
+	if a.now != nil {
+		return a.now()
+	}
+	return time.Now()
+}
+
+// forgotten reports whether the lane switch's Forget is remembered.
+func (a *autoLanes) forgotten(name string) bool {
+	if a.markPath == nil {
+		return false
+	}
+	_, err := os.Stat(a.markPath(name))
+	return err == nil
+}
+
+// markForgotten writes or removes the lane switch's forgotten mark.
+func (a *autoLanes) markForgotten(name string, on bool) {
+	if a.markPath == nil {
+		return
+	}
+	p := a.markPath(name)
+	if !on {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			a.log.Printf("lane switch %s: its forgotten mark %s could not be removed: %v", name, p, err)
+		}
+		return
+	}
+	err := os.MkdirAll(filepath.Dir(p), 0o700)
+	if err == nil {
+		err = os.WriteFile(p, []byte("forgotten in the controller "+a.clock().UTC().Format(time.RFC3339)+": this lane switch stays pending until it is adopted there by hand (docs/drivers/breakout.md 16.12)\n"), 0o600)
+	}
+	if err != nil {
+		a.log.Printf("WARNING: lane switch %s: its Forget could not be recorded in %s (%v): this device will ask the controller to adopt it again", name, p, err)
+	}
 }
 
 // autoLane is one automatic lane switch as it is started.
@@ -89,7 +168,7 @@ func (a *autoLanes) noteOnce(key, format string, args ...any) {
 func (a *autoLanes) child(cage int) (autoLane, bool) {
 	name := config.AutoLaneSwitchName(a.parent, cage)
 	a.mu.Lock()
-	running := a.running[cage]
+	running := a.running[cage] != nil
 	a.mu.Unlock()
 	switch {
 	case running || a.declared[cage]:
@@ -116,14 +195,21 @@ func (a *autoLanes) child(cage int) (autoLane, bool) {
 		return true
 	}
 	c.attach = func() {
+		a.markForgotten(name, false) // adopted again, by this device's request or by hand
 		if attach("the controller adopted it") {
 			a.handOver(cage)
 		}
 	}
-	c.resume = func() { attach("it is adopted (its state file)") }
+	c.resume = func() {
+		a.markForgotten(name, false)
+		attach("it is adopted (its state file)")
+	}
 	c.detach = func() {
+		// The mark first: the watcher must not ask for the adoption the
+		// operator has just ended.
+		a.markForgotten(name, true)
 		a.lp.DetachLaneSwitch(cage)
-		a.log.Printf("lane switch %s (%s) detached from port %d: the controller forgot it, so the lanes are this device's again (the cage's own settings go back on them)", name, mac, cage)
+		a.log.Printf("lane switch %s (%s) detached from port %d: the controller forgot it, so the lanes are this device's again (the cage's own settings go back on them). It stays pending until it is adopted in UniFi by hand: this device does not ask for a forgotten lane switch's adoption", name, mac, cage)
 	}
 	return c, true
 }
@@ -153,6 +239,16 @@ func handOverCage(lg *log.Logger, toAuto func(context.Context, int) (map[string]
 	case before != nil:
 		lg.Printf("port %d: set to Auto in UniFi (was %s): a lane switch has the lanes now, and the controller refuses a forced lane speed on the cage's port, with it every port save on this device. Auto keeps the cage split as it is", cage, overrideText(before))
 	}
+}
+
+// adoptFor is the adoption request (unifiapi.AdoptPending), nil without a
+// controller API URL and key.
+func adoptFor(f *config.File) func(context.Context, string) error {
+	key := f.Controller.APIKey()
+	if f.Controller.APIURL == "" || key == "" {
+		return nil
+	}
+	return unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true).AdoptPending
 }
 
 // cageToAutoFor is the hand-over's controller step for one parent, nil
@@ -261,9 +357,9 @@ func overrideText(o map[string]any) string {
 func (a *autoLanes) run(c autoLane) {
 	a.mu.Lock()
 	if a.running == nil {
-		a.running = map[int]bool{}
+		a.running = map[int]*laneRun{}
 	}
-	a.running[c.Cage] = true
+	a.running[c.Cage] = &laneRun{c: c}
 	a.mu.Unlock()
 	a.start(c)
 }
@@ -288,21 +384,87 @@ func (a *autoLanes) startAdopted() {
 	}
 }
 
-// tick starts a lane switch for every split cage that has none: pending,
-// unattached, the cage still the parent's fold.
+// tick starts a lane switch for every split cage that has none (pending,
+// unattached, the cage still the parent's fold) and asks the controller to
+// adopt the pending ones that need no operator (adoptPending).
 func (a *autoLanes) tick() {
 	for _, cage := range a.lp.SplitCages() {
-		c, ok := a.child(cage)
-		if !ok {
-			continue
+		if c, ok := a.child(cage); ok {
+			switch {
+			case a.adopted(c.Name):
+				c.resume() // adopted since the start (its state file came back): as startAdopted
+			case a.manual:
+				a.log.Printf("lane switch %s (%s) started for split port %d: pending in the controller; nothing changes on this device until it is adopted there (lane_switches: manual; auto has this device ask for the adoption, off stops lane switches)", c.Name, c.MAC, cage)
+			default:
+				a.log.Printf("lane switch %s (%s) started for split port %d: pending in the controller; nothing changes on this device until it is adopted there, which this device asks for by itself once it is adopted (lane_switches: manual leaves it to the operator, off stops lane switches)", c.Name, c.MAC, cage)
+			}
+			a.run(c)
 		}
-		if a.adopted(c.Name) {
-			c.resume() // adopted since the start (its state file came back): as startAdopted
-		} else {
-			a.log.Printf("lane switch %s (%s) started for split port %d: pending in the controller; nothing changes on this device until it is adopted there (lane_switches: off stops this)", c.Name, c.MAC, cage)
-		}
-		a.run(c)
+		a.adoptPending(cage)
 	}
+}
+
+// adoptPending asks the controller to adopt the cage's lane switch when it
+// is pending and nothing stands against it: the parent is adopted (an
+// adopted switch's split cage is all the consent a lane switch needs,
+// Clint 2026-11-17), the operator has not forgotten it, the parent's entry
+// does not say manual, and a controller API is configured. Each reason it
+// does not ask is said once.
+func (a *autoLanes) adoptPending(cage int) {
+	a.mu.Lock()
+	r := a.running[cage]
+	a.mu.Unlock()
+	if r == nil {
+		return
+	}
+	name, mac := r.c.Name, r.c.MAC
+	if a.adopted(name) {
+		r.since, r.next, r.wait, r.lastErr = time.Time{}, time.Time{}, 0, ""
+		return
+	}
+	now := a.clock()
+	if r.since.IsZero() {
+		r.since = now
+		return
+	}
+	switch {
+	case a.manual:
+		return
+	case a.forgotten(name):
+		a.noteOnce("forgotten:"+name, "lane switch %s (%s) stays pending: it was forgotten in the controller (%s). Adopt it in UniFi to hand port %d's lanes over again; that removes the mark", name, mac, a.markPath(name), cage)
+		return
+	case a.adopt == nil:
+		a.noteOnce("noapi:"+name, "lane switch %s (%s) stays pending until it is adopted in UniFi by hand: no controller API is configured, so this device cannot ask for it (set controller.api_url and the API key, DUI_UNIFI_API_KEY)", name, mac)
+		return
+	case !a.adopted(a.parent):
+		a.noteOnce("parent:"+name, "lane switch %s (%s) stays pending while this device is not adopted itself; its adoption is asked for once this device is adopted", name, mac)
+		return
+	case now.Before(r.next):
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	err := a.adopt(ctx, mac)
+	floor := adoptAskAgain
+	if err != nil {
+		floor = adoptRetry
+		if msg := err.Error(); msg != r.lastErr {
+			r.lastErr = msg
+			a.log.Printf("lane switch %s (%s): the controller was not asked to adopt it: %v; asked again later (this line is not repeated while the reason stays)", name, mac, err)
+		}
+	} else {
+		r.lastErr = ""
+		a.log.Printf("lane switch %s (%s) of split port %d: asked the controller to adopt it, by its exact MAC: this device is adopted, so its lane switch needs no Adopt click (lane_switches: manual leaves it to the operator)", name, mac, cage)
+	}
+	switch {
+	case r.wait < floor:
+		r.wait = floor
+	case r.wait*2 > adoptMaxWait:
+		r.wait = adoptMaxWait
+	default:
+		r.wait *= 2
+	}
+	r.next = now.Add(r.wait)
 }
 
 // watch ticks until ctx ends.
@@ -350,6 +512,9 @@ func newAutoLanes(f *config.File, parent config.Device, spawn func(options)) fun
 	return func(lg *log.Logger, lp devicemodel.LaneProvider, parentMAC string) *autoLanes {
 		return &autoLanes{
 			cageToAuto: cageToAutoFor(f, parentMAC),
+			manual:     parent.LaneSwitches == config.LaneSwitchesManual,
+			adopt:      adoptFor(f),
+			markPath:   func(name string) string { return filepath.Join(f.StateDir, "state", name, "forgotten") },
 			log:        lg, parent: parent.Name, parentMAC: parentMAC, lp: lp, declared: declared, taken: taken,
 			adopted: func(name string) bool {
 				st, err := (&device.Store{Path: filepath.Join(f.StateDir, "state", name, "device.json")}).Load()

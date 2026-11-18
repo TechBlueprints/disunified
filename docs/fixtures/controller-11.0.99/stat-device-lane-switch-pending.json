@@ -1,0 +1,53 @@
+{
+  "data": [
+    {
+      "_id": "00000000000000000000000000000001",
+      "adopted": true,
+      "default": true,
+      "ip": "192.0.2.1",
+      "mac": "02:00:00:00:00:01",
+      "model": "UDC48X6",
+      "name": "device-1",
+      "site_id": "00000000000000000000000000000002",
+      "state": 1,
+      "type": "usw",
+      "version": "4.26.14"
+    },
+    {
+      "adopt_ip": "192.0.2.2",
+      "adopt_status": 0,
+      "adopt_url": "http://192.0.2.4:8080/inform",
+      "adoptable_when_upgraded": false,
+      "adopted": false,
+      "credential_caps": 0,
+      "default": true,
+      "discovered_via": "inform",
+      "hostname": "device-2",
+      "inform_discovery_source_ip": "192.0.2.3",
+      "ip": "192.0.2.2",
+      "last_seen": 1794972999,
+      "locating": false,
+      "mac": "02:00:00:00:00:02",
+      "model": "USFXG",
+      "model_in_eol": false,
+      "model_in_lts": false,
+      "name": "device-3",
+      "serial": "020000000002",
+      "shortname": "USFXG",
+      "site_id": "00000000000000000000000000000003",
+      "start_disconnected_millis": 1794910804675,
+      "startup_timestamp": 1794080740,
+      "state": 2,
+      "sysid": 60736,
+      "type": "usw",
+      "unsupported": false,
+      "unsupported_reason": 0,
+      "upgrade_state": 0,
+      "uptime": 892463,
+      "version": "7.4.1.16850"
+    }
+  ],
+  "meta": {
+    "rc": "ok"
+  }
+}

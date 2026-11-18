@@ -42,6 +42,12 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   parent's saves (`api.err.InvalidFecMode`, the cage's `port_idx`); main
   sets that port to Auto at the adoption (`unifiapi.CageToAuto`), and for
   a declared entry also at the start, since it owns the cage from then.
+- **An automatic lane switch is adopted by the bridge** (2026-11-17,
+  `breakout.md` §16.12): main's watcher asks the controller, by the exact
+  MAC, once the parent is adopted. A test or a live run that wants one to
+  stay pending needs `lane_switches: manual` on the parent, or a Forget
+  (the mark `state/<name>/forgotten` keeps it pending; remove the file, or
+  adopt by hand, to end that). A declared entry is still adopted by hand.
 - **A declared entry is never detached**: a Forget of it is logged (the
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.

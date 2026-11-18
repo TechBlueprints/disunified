@@ -44,8 +44,9 @@ devices:                             # "switches:" is still accepted (the pre-re
     #                                # and a fresh one starts. "512KB", "1GB", bytes, or "off" (no cap)
     #   keep: 3                      # rotated files kept (default 3); the oldest is dropped
     # lane_switches: "off"           # default auto: each split cage of a sonic or arista-eos device gets a
-    #                                # lane switch by itself (<name>-cage<N>, a pending Flex XG); nothing
-    #                                # changes on the switch until it is adopted in the controller (install.md §3)
+    #                                # lane switch by itself (<name>-cage<N>, a Flex XG), and once this device
+    #                                # is adopted the bridge has the controller adopt it too (needs api_url);
+    #                                # "manual": it stays pending until you adopt it; "off": none (install.md §3)
     # children:                      # devices reported below a port: the MAC in its MAC table and, while
     #   - {port: 54, mac: "02:00:00:00:00:a5", name: lane-switch}   # it has no LLDP neighbour, as the
     #                                # neighbour -- so the controller places them there (docs/install.md §3)

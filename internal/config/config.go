@@ -94,20 +94,24 @@ type Device struct {
 	// nothing is written to the device.
 	Children []Child `yaml:"children"`
 
-	// LaneSwitches is "auto" (the default) or "off": whether the bridge
-	// starts a lane switch by itself for each split cage of this device
-	// (docs/drivers/breakout.md 16). An automatic one is named
+	// LaneSwitches is "auto" (the default), "manual" or "off": whether the
+	// bridge starts a lane switch by itself for each split cage of this
+	// device (docs/drivers/breakout.md 16). An automatic one is named
 	// "<name>-cage<N>" and informs as a pending device; nothing on this
-	// device changes until the operator adopts it in the controller. Only a
-	// driver that can present lanes starts any; a declared `driver:
-	// breakout` entry for a cage wins over the automatic one.
+	// device changes until the controller adopts it. With "auto" the bridge
+	// asks the controller for that adoption itself once this device is
+	// adopted (16.12; it needs the controller API); with "manual" the lane
+	// switch stays pending until the operator adopts it. Only a driver that
+	// can present lanes starts any; a declared `driver: breakout` entry for
+	// a cage wins over the automatic one.
 	LaneSwitches string `yaml:"lane_switches"`
 }
 
 // LaneSwitches values.
 const (
-	LaneSwitchesAuto = "auto"
-	LaneSwitchesOff  = "off"
+	LaneSwitchesAuto   = "auto"
+	LaneSwitchesManual = "manual"
+	LaneSwitchesOff    = "off"
 )
 
 // AutoLaneSwitchName is the name of the automatic lane switch on a cage of
@@ -368,9 +372,9 @@ func Load(path string) (*File, error) {
 		switch s.LaneSwitches {
 		case "":
 			s.LaneSwitches = LaneSwitchesAuto
-		case LaneSwitchesAuto, LaneSwitchesOff:
+		case LaneSwitchesAuto, LaneSwitchesManual, LaneSwitchesOff:
 		default:
-			return nil, fmt.Errorf("%s: device %q: lane_switches %q: must be \"auto\" or \"off\"", path, s.Name, s.LaneSwitches)
+			return nil, fmt.Errorf("%s: device %q: lane_switches %q: must be \"auto\", \"manual\" or \"off\"", path, s.Name, s.LaneSwitches)
 		}
 		if s.Control.ApplyTimeout != "" {
 			if d, err := time.ParseDuration(s.Control.ApplyTimeout); err != nil || d <= 0 {

@@ -36,7 +36,12 @@ completes (`OnConnected`, before the seed and the first push) and
 `DetachLaneSwitch` on the controller's `setdefault` (`OnUnadopted`, new in
 `informloop`). An automatic child whose state file is adopted is attached
 and started before the parent's loop starts, for the reason given below
-for declared ones. **Adopted live on the DX010's cage 3 on 2026-11-16**:
+for declared ones. **Since 2026-11-17 the bridge asks for that adoption
+itself** (§16.12): a pending automatic lane switch whose parent is adopted
+is adopted through the controller's API by its exact MAC, so a split cage
+ends as an adopted lane switch with nobody clicking Adopt. A Forget is
+remembered and keeps it pending; `lane_switches: manual` is the old rule.
+**Adopted live on the DX010's cage 3 on 2026-11-16**:
 §16.10 is the run, what it found (the controller refuses every save of the
 parent over a stale forced lane speed and over a shared address; a Forget
 arrives as `_type: setdefault`) and the departures from the spec.
@@ -988,7 +993,8 @@ installed as that document says.
    zero-change reconcile.
 2. Split the cage from the parent's port drawer (25G). The parent's log
    shows the breakout; the child starts, goes pending; adopt it by exact
-   MAC (`cmd/devmgr adopt`), never Adopt All. Placed under the cage within
+   MAC (`cmd/devmgr adopt`), never Adopt All (a declared child is adopted
+   by hand; an automatic one adopts itself, §16.12). Placed under the cage within
    a minute; the parent's record gains the downlink entries. The
    first-push hold seeds the lanes. Record both devices' records and the
    child's first inform (scrubbed).
@@ -1168,7 +1174,8 @@ package is rebuilt from a commit that has this change.
 2. **Split cage 2 from the DX010's port drawer** (25G). The parent's log
    shows the breakout; within one retry the child logs `breakout: dx010
    cage 2 (4x25G[10G]) as <MAC>` and informs as `USFXG`, PENDING. Adopt it
-   by exact MAC (`cmd/devmgr adopt`, never Adopt All). Expect CONNECTED
+   by exact MAC (`cmd/devmgr adopt`, never Adopt All; this was a declared
+   child, which is still adopted by hand, §16.12). Expect CONNECTED
    within ~10 s and placement under the DX010's port 2 within a minute
    (`uplink_mac` the DX010, `uplink_remote_port` 2); the DX010's record
    gains the child in `downlink_lldp_macs`/`downlink_table`. With an
@@ -1241,16 +1248,28 @@ are used).
 Every split cage of a parent that can present lanes (`LaneProvider`) gets a
 lane switch, started by the bridge itself. It informs as a pending `USFXG`
 like any unadopted device. **Nothing about the parent changes until the
-operator adopts it**: the cage stays the fold it is today (one port, its
+controller adopts it**: the cage stays the fold it is today (one port, its
 lanes' form, its settings on every lane). Adoption is the hand-over: from
 then on the lanes are the lane switch's (§0's "owned" table) and the cage on
 the parent keeps only its mode and admin state. Forgetting the lane switch
 in the controller hands the lanes back.
 
-So the operator's consent is given in UniFi (Adopt, Forget), not in a file,
-and an upgrade changes nothing for a site that never adopts: a pending
-device is the whole visible difference. A parent's `lane_switches: off`
-(§16.4) turns even that off. A declared `driver: breakout` entry keeps
+**The adoption needs no operator (since 2026-11-17, §16.12).** As specified
+and built on 2026-11-16 the operator's Adopt was the consent: a lane switch
+stayed pending until someone adopted it. Clint withdrew that rule on
+2026-11-17: "this should be automatic for lane switches that are connected
+to an already adopted switch", and "it doesn't need permission when a
+breakout dac is inserted". The parent's own adoption is the consent, and it
+covers the parent's cages. So a pending automatic lane switch whose parent
+is adopted is adopted by the bridge, through the controller's API, by its
+exact MAC. A parent that is pending itself adopts nothing; its lane
+switches follow once it is adopted.
+
+What stays the operator's: a **Forget** in UniFi hands the lanes back and is
+remembered, so the lane switch then stays pending until it is adopted by
+hand (§16.12); a parent's **`lane_switches: manual`** leaves every one of
+its lane switches pending until adopted by hand (the rule of 2026-11-16);
+and `lane_switches: off` (§16.4) starts none. A declared `driver: breakout` entry keeps
 working as built (attached at start, adopted or not; since 2026-11-16 with
 the hand-over's reset to Auto and a logged Forget, §0) and wins over the
 automatic one for its cage.
@@ -1289,9 +1308,9 @@ automatic one for its cage.
 
 | Event | The bridge | The parent's cage | The controller |
 |---|---|---|---|
-| a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval | fold, unchanged | a pending `USFXG` |
-| the operator adopts it | attaches it (`AttachLaneSwitch`) when the adoption handshake completes | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
-| the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending | fold again; the cage's own settings go back on the lanes at the next plan | pending again (same MAC) |
+| a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval; one interval later, if the parent is adopted, asks the controller to adopt it by its exact MAC (§16.12; not with `lane_switches: manual`, without a controller API, or after a Forget) | fold, unchanged, until the adoption | a pending `USFXG`, adopted within about a minute |
+| the controller adopts it (the bridge's request, or the operator's Adopt) | attaches it (`AttachLaneSwitch`) when the adoption handshake completes; removes a Forget's mark | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
+| the operator forgets it | records the Forget (`state/<name>/forgotten`), then detaches it (`DetachLaneSwitch`) when the session falls back to pending; asks for no adoption from then on | fold again; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), until the operator adopts it |
 | the cage is joined | nothing: the child's collect fails "not split", its informs stop | whole, the parent's | disconnected, placement kept, until forgotten |
 | the cage is split again | the same child resumes (its state file kept) | owned again if the child is still adopted | connected again |
 | the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes); a pending one is started by the watcher | as before the restart | no change |
@@ -1302,9 +1321,14 @@ controller by itself (§16.9).
 
 ### 16.4 Config, names, identity
 
-- Device key **`lane_switches: auto | off`** on the parent's entry
+- Device key **`lane_switches: auto | manual | off`** on the parent's entry
   (`internal/config`), default `auto`. Only with a config file: the flag
-  form runs one device and starts none.
+  form runs one device and starts none. `auto`: a lane switch per split
+  cage, adopted by the bridge's own request once the parent is adopted
+  (§16.12; it needs `controller.api_url` and the API key, and without them
+  behaves as `manual` and says so once). `manual` (since 2026-11-17, the
+  meaning `auto` had on 2026-11-16): a lane switch per split cage, pending
+  until the operator adopts it. `off`: none.
 - Name: `<parent's name>-cage<N>`; hostname the same. If another entry of
   the file already has that name and is not that cage's declared lane
   switch, the automatic one is not started (one log line).
@@ -1439,7 +1463,9 @@ lanes; never the uplink):
 2. Install the build. Expect `dx010-cage3` started and pending, the DX010's
    own cycle writing nothing and its port 3 still stored as SFP28 with
    `fec_mode` now `fc-fec` (the down-port rule).
-3. Adopt `dx010-cage3` by exact MAC. Expect the attach line, placement
+3. Adopt `dx010-cage3` by exact MAC (the run of 2026-11-16; since
+   2026-11-17 the bridge asks for this itself, §16.12, and the step is to
+   wait for it). Expect the attach line, placement
    under port 3 within a minute, port 3 stored as QSFP28, the child's four
    lanes SFP28 with `fc-fec`, port 5 the uplink with the DAC as its module,
    the first push applied or held as §15 step 2 describes, then a
@@ -1458,6 +1484,8 @@ lanes; never the uplink):
    without a new adoption.
 7. Forget the child: the detach line, port 3 the fold again (SFP28), the
    device pending. Adopt it again and leave it adopted, port 3 on Auto.
+   (Since 2026-11-17 a forgotten lane switch stays pending until it is
+   adopted by hand, as this step does: §16.12.)
 8. Record: both records at each step, the pushes and the override entry as
    fixtures (scrubbed), the journal lines; §0 and this section updated with
    what ran and anything that departed, with the reason.
@@ -1736,3 +1764,78 @@ ten VLANs its push named, which the parent then pruned), and its
 provisioner's lookup of a device the controller no longer lists asked
 `PUT rest/device/` with no id (`api.err.IdRequired`) and retried; neither
 wrote anything to a port.
+
+### 16.12 The bridge adopts its own lane switches (2026-11-17)
+
+**The rule.** §16.1: Clint withdrew the consent rule on 2026-11-17 ("this
+should be automatic for lane switches that are connected to an already
+adopted switch"; "it doesn't need permission when a breakout dac is
+inserted"). The parent is adopted, the cage is the parent's, and the lane
+switch is the bridge's own device with a MAC the bridge made: nothing is
+left for an Adopt click to say.
+
+**What the watcher does** (`cmd/disunified/lanes.go`, `adoptPending`, on the
+15 s tick that starts lane switches). For each split cage's lane switch
+whose state file is not adopted, one watch interval after it was first seen
+so (it has to inform before the controller lists it), it asks the
+controller to adopt it when all of these hold; each reason it does not ask
+is logged once:
+
+| Condition | Otherwise |
+|---|---|
+| the parent's entry is `lane_switches: auto` | `manual`: pending until the operator adopts it |
+| the lane switch has no forgotten mark | pending until the operator adopts it (below) |
+| a controller API is configured (`controller.api_url` and the key, `DUI_UNIFI_API_KEY`) | pending, as before 2026-11-17; the log names what to set |
+| the parent's own state file is adopted | pending; asked for once the parent is adopted |
+
+**The request** is `unifiapi.AdoptPending`: `stat/device` is read, and only
+if the controller lists **that MAC** as pending (no `_id`, `adopted:
+false`; `controller-11.0.99/stat-device-lane-switch-pending.json`, an
+automatic lane switch beside its adopted parent) it posts `cmd/devmgr
+{"cmd":"adopt","mac":<that MAC>}`, the command the runbooks above used by
+hand. The MAC is the one main derived for the cage
+(`devicemodel.LaneSwitchMAC`). The bridge has no call that adopts anything
+else, and must never get one: a site's pending list also holds devices that
+are not the site's. A device the controller holds a record for is not asked
+for (`ErrNotPending`: a lane switch whose state file was lost while the
+controller still has it adopted; forget it in UniFi, and it is pending and
+then adopted again), nor one it does not list (`ErrNotListed`, retried).
+
+**Pace.** A request the controller took is repeated after 2 minutes if the
+lane switch is still unadopted (the handshake takes 10 to 25 s), a failed
+one after 30 s; each pause doubles, up to 10 minutes. A failure is logged
+when its reason changes, not on every try. The hand-over is unchanged: the
+adoption handshake calls `AttachLaneSwitch` and `handOverCage` as it did
+for an operator's Adopt.
+
+**A Forget does not loop.** A Forget hands the lanes back and leaves the
+lane switch pending; without more, the watcher would have it adopted again
+a tick later, and the operator could never be rid of one. So the Forget is
+remembered: the detach hook writes `state/<name>/forgotten` (a text file in
+the lane switch's state directory, written before the detach) and the
+watcher asks for nothing while it is there. It lasts through restarts. An
+adoption removes it (the operator's Adopt in UniFi, or the file removed by
+hand while the cage is split, after which the bridge asks again), so the
+next Forget is a new one. A Forget the bridge missed and inferred from
+refused keys (§16.11) is recorded the same way. For every cage of a parent
+at once, `lane_switches: manual` restores the rule of 2026-11-16, and
+`off` starts none. This is the shape the task proposed; nothing in the
+code argued for another. The alternative, forgetting in the controller
+meaning "off for this cage" in the config, would have put a UniFi action's
+memory in a file the operator edits.
+
+**Declared lane switches are not adopted by the bridge.** The rule does not
+fall out for them: a declared entry is started by `runConfig`, not by the
+watcher, and it is attached at start whether adopted or not (§0), so its
+adoption decides only who applies the lanes' settings. It is still adopted
+by hand, by exact MAC. Not built; nothing was asked for it.
+
+**Tests.** `internal/unifiapi/adopt_test.go` (the captured list: one
+command for the pending MAC and nothing else; none for the adopted parent
+or an unlisted MAC; a refused command is an error) and
+`cmd/disunified/lanes_test.go` (a pending lane switch of an adopted parent
+is asked for by its exact MAC, once, and again after two minutes; a pending
+parent's is not, and is once the parent is adopted; no API; a forgotten one
+stays pending through a restart until an adoption clears the mark;
+`manual`; a failing request is retried about ten times an hour and logged
+once per reason).

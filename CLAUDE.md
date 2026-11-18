@@ -108,8 +108,13 @@ and `arista-eos` as the second since 2026-11-15 (its lane groups are
 by hand on the 7160's empty test cage), read from the parent's snapshot and
 written through the parent's plan in the parent's process. Since
 2026-11-16 a split cage gets its lane switch by itself (`lane_switches:
-auto`, the default; a pending device until the operator adopts it, the
-lanes handed over at the adoption and back on a Forget), and the DX010's
+auto`, the default; the lanes handed over at the adoption and back on a
+Forget), and since 2026-11-17 the bridge asks the controller for that
+adoption itself, by the lane switch's exact MAC, once its parent is adopted
+(Clint withdrew the operator's-consent rule: "it doesn't need permission
+when a breakout dac is inserted"; a forgotten one stays pending until
+adopted by hand, `lane_switches: manual` leaves them all to the operator,
+`docs/drivers/breakout.md` §16.12), and the DX010's
 cage 3 is the first one adopted live (`docs/drivers/breakout.md` §0, §16;
 the Arista parent is fixture-tested only, §7b). It reports a link-local
 address of its own: one that shared its parent's made the controller

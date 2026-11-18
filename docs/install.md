@@ -130,8 +130,12 @@ switch of its own ([`docs/drivers/breakout.md`](drivers/breakout.md)): ports
 is split (a breakout cable on a port left on Auto, a forced lane speed, or
 by hand), the bridge starts a lane switch for it within about 15 seconds,
 named `<device>-cage<N>` (`core-1-cage3`), and it shows up in the
-controller as a pending Flex XG. **Nothing changes on the switch until you
-adopt it**: the cage stays one port on its device, as before. Adopt it and
+controller as a pending Flex XG. **Nothing changes on the switch until it
+is adopted**: the cage stays one port on its device, as before. **You do
+not have to adopt it**: once its device is adopted, the bridge asks the
+controller to adopt the lane switch too, about 15 seconds after it appears
+(by its exact MAC; this needs `controller.api_url` and the API key, and
+without them it stays pending for you to adopt). Once adopted,
 the lanes are the lane switch's ports (state, name, VLANs, lane speed, FEC,
 aggregates), while the cage's port on the device keeps only its speed (the
 split itself) and its admin state; the log says `lane switch core-1-cage3
@@ -142,12 +146,15 @@ the controller refuses that pair on the port once the lane switch has the
 lanes, and with it every other port save on the device. The lane switch
 shows a 169.254.x.y address; it has none of its own, and it must not share
 its parent's. Forget it in the controller and the lanes go back to the
-cage's port. Join the cage (force its port to 100G or 40G on
+cage's port; a forgotten lane switch stays pending until you adopt it
+yourself (the bridge remembers the Forget in
+`state/<device>-cage<N>/forgotten` and does not undo it). Join the cage (force its port to 100G or 40G on
 the device) and the lane switch shows disconnected until the cage is split
 again or you forget it. The key on the device's entry:
 
 ```yaml
-    lane_switches: "off"    # default auto: a pending lane switch per split cage
+    lane_switches: "off"    # default auto: a lane switch per split cage, adopted by the bridge;
+                            # "manual": it stays pending until you adopt it; "off": none
 ```
 
 Its state is kept under `state/<device>-cage<N>/` like any device's. It
