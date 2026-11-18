@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -264,4 +265,32 @@ func (f *FixtureRunner) lldpForget(gone map[string]bool, added []string) {
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	sort.Strings(lines)
 	f.UseSection("lldp_med", strings.Join(lines, "\n")+"\n")
+}
+
+// isolationWaitPort is the port of an isolationWait line, "" for another.
+func isolationWaitPort(w []string) string {
+	if len(w) == 6 && w[0] == "python3" && w[1] == "-c" && w[5] == "</dev/null" && strings.Contains(w[2], "SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER") && w[4] == strconv.Itoa(isolationWaitLimit) {
+		return w[3]
+	}
+	return ""
+}
+
+// isolationMember: the isolation group (APPL_DB, which orchagent follows at
+// once here) lists port.
+func (f *FixtureRunner) isolationMember(port string) bool {
+	for _, p := range splitList(f.table("appl_iso")[isoKey]["MEMBERS"]) {
+		if p == port {
+			return true
+		}
+	}
+	return false
+}
+
+// isolationWaited is the batch's isolationWait: orchagent has taken the
+// port out once the group no longer lists it.
+func (f *FixtureRunner) isolationWaited(port string) error {
+	if f.isolationMember(port) {
+		return fmt.Errorf("exit status 1: %s: orchagent has not taken the port out of the isolation group in %d s", port, isolationWaitLimit)
+	}
+	return nil
 }

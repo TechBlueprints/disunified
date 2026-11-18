@@ -552,6 +552,8 @@ func (f *FixtureRunner) apply(line string) error {
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
 		return f.applyDevice(w)
 
+	case isolationWaitPort(w) != "":
+		return f.isolationWaited(isolationWaitPort(w))
 	case bridgeWaitPort(w) != "":
 		return f.bridgeWaited(bridgeWaitPort(w))
 	case len(w) == 4 && w[0] == "sonic-db-cli" && w[1] == "CONFIG_DB" && w[2] == "del" && strings.HasPrefix(w[3], "L2MC"):

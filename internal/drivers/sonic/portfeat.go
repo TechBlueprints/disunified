@@ -233,6 +233,82 @@ func (f *portFeat) forget(names []string) {
 	}
 }
 
+// isolationLeave takes ports out of the isolation group ahead of a
+// breakout and waits for the chip to let them go: Broadcom's SAI refuses
+// to remove the bridge port of an isolated port ("still in use by isolation
+// group", SAI_STATUS_OBJECT_IN_USE), orchagent then keeps the port, and the
+// breakout's CLI gives up after a minute with CONFIG_DB holding neither the
+// old port nor the new ones (DX010, 2026-11-17, docs/drivers/sonic.md
+// 11.38). The other isolated ports stay in the group throughout; the
+// isolation plan after the breakout puts the new interfaces in. Written at
+// once, not with the batch's other APPL_DB writes at its end.
+func (pl *plan) isolationLeave(idx int, ports []string, write func(int, string, func(*swState))) {
+	if !pl.sim.pf.known {
+		return
+	}
+	var leave []string
+	keep := map[string]bool{}
+	for k := range pl.sim.pf.iso {
+		keep[k] = true
+	}
+	for _, p := range ports {
+		if keep[p] {
+			leave = append(leave, p)
+			delete(keep, p)
+		}
+	}
+	if len(leave) == 0 {
+		return
+	}
+	op := applOp{Op: "del", Table: "ISOLATION_GROUP_TABLE", Key: isoGroup}
+	if len(keep) > 0 {
+		list := strings.Join(sortedSet(keep), ",")
+		op = applOp{Op: "set", Table: "ISOLATION_GROUP_TABLE", Key: isoGroup, FV: []string{"TYPE", "port", "PORTS", list, "MEMBERS", list}}
+	}
+	b, _ := json.Marshal([]applOp{op})
+	write(idx, strings.TrimPrefix(applCommand, "sudo ")+" "+sshrun.ShellQuote(string(b)), func(s *swState) { s.pf.iso = keep })
+	for _, p := range leave {
+		write(idx, isolationWait(p), nil)
+	}
+}
+
+// isolationWaitLimit bounds isolationWait: orchagent takes a port out of
+// the group within a second when nothing is wrong.
+const isolationWaitLimit = 10
+
+// isolationWaitScript waits until the chip has no isolation group member
+// for sys.argv[1] and the port is bound to no group (ASIC_DB, the port's
+// oid from COUNTERS_DB), exiting 1 with the reason after sys.argv[2]
+// seconds. Read-only; stdin is not read.
+const isolationWaitScript = `import sys, time
+from swsscommon.swsscommon import SonicV2Connector
+port, limit = sys.argv[1], float(sys.argv[2])
+db = SonicV2Connector(use_unix_socket_path=True)
+db.connect(db.COUNTERS_DB)
+db.connect(db.ASIC_DB)
+oid = db.get(db.COUNTERS_DB, "COUNTERS_PORT_NAME_MAP", port)
+if not oid:
+    sys.exit(0)
+end = time.time() + limit
+while True:
+    left = [k for k in (db.keys(db.ASIC_DB, "ASIC_STATE:SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER:*") or [])
+            if db.get(db.ASIC_DB, k, "SAI_ISOLATION_GROUP_MEMBER_ATTR_ISOLATION_OBJECT") == oid]
+    bound = db.get(db.ASIC_DB, "ASIC_STATE:SAI_OBJECT_TYPE_PORT:" + oid, "SAI_PORT_ATTR_ISOLATION_GROUP") or "oid:0x0"
+    if not left and bound == "oid:0x0":
+        sys.exit(0)
+    if time.time() > end:
+        print("%s: orchagent has not taken the port out of the isolation group in %d s; not broken out (a bridge port in an isolation group cannot be removed, docs/drivers/sonic.md 11.38)" % (port, limit))
+        sys.exit(1)
+    time.sleep(0.2)
+`
+
+// isolationWait is the batch line that runs isolationWaitScript for port,
+// in bridgePortWait's form.
+func isolationWait(port string) string {
+	lit, _ := json.Marshal(isolationWaitScript)
+	return fmt.Sprintf("python3 -c %s %s %d </dev/null", sshrun.ShellQuote("exec("+string(lit)+")"), port, isolationWaitLimit)
+}
+
 // heldShapers are the egress shapers a breakout takes out of CONFIG_DB and
 // puts back: its YANG check refuses a SCHEDULER pir without a cir.
 type heldShapers struct {

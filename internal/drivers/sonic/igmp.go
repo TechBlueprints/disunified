@@ -496,6 +496,9 @@ func loggedCmds(cmds []string) []string {
 	out := make([]string, len(cmds))
 	for i, c := range cmds {
 		out[i] = c
+		if w := strings.Fields(c); strings.Contains(c, "SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER") && len(w) >= 4 {
+			out[i] = "python3 <isolation wait> " + w[len(w)-3]
+		}
 		if raw, ok := l2mcArgJSON(c); ok {
 			var ops []l2mcOp
 			if json.Unmarshal([]byte(raw), &ops) == nil {

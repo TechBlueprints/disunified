@@ -428,6 +428,8 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		for _, h := range shaped.scheds {
 			write(d.Index, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote("SCHEDULER|"+h.name), nil)
 		}
+		// An isolated port's bridge port cannot be removed (§11.38).
+		pl.isolationLeave(d.Index, pl.sim.cagePorts(idx), write)
 		// The guard's counted rules name the lanes that go (acl_count.go).
 		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
 		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).

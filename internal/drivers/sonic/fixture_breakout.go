@@ -149,6 +149,15 @@ func (f *FixtureRunner) breakout(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Broadcom's SAI refuses to remove an isolated port's bridge port, so
+	// orchagent keeps the port and the CLI gives up after a minute (DX010,
+	// 2026-11-17, docs/drivers/sonic.md 11.38). Live it left CONFIG_DB with
+	// neither the old port nor the new ones; refused here before anything.
+	for _, d := range dels {
+		if f.isolationMember(d.name) {
+			return fmt.Errorf("!!!  Critical Failure, Ports                     are not Deleted from ASIC DB, Bail Out  !!!\n[ERROR] Port breakout Failed!!! Opting Out")
+		}
+	}
 	ports := f.table("cfg_port")
 	gone := map[string]bool{}
 	for _, d := range dels {

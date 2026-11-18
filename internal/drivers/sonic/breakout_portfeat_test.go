@@ -16,9 +16,11 @@ import (
 // for the breakout and puts back those of the ports it leaves. And the
 // batch the plan made wrote PORT_QOS_MAP on lanes 2-4 only: its copy kept
 // the joined Ethernet100's row for lane 1, which keeps that name, as it had
-// kept lane 1's LLDP-MED TLV (16.10 of breakout.md). Isolation was right:
-// the group is rewritten with every lane's name. Over the DX010's capture,
-// a split and a join, each followed by a reconcile that writes nothing.
+// kept lane 1's LLDP-MED TLV (16.10 of breakout.md). And a breakout of an
+// isolated port failed half done: the SAI keeps an isolated port's bridge
+// port, so the cage now leaves the group first (port 5 stays in it). Over
+// the DX010's capture, a split and a join, each followed by a reconcile
+// that writes nothing.
 func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 	r := rig20261106(t, fixtureSplitDAC)
 	base := r.baseline()
@@ -30,7 +32,10 @@ func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 	feat := edit(edit(base, 26, func(d *devicemodel.PortDesired) {
 		d.EgressKbps = 100000
 		d.Isolation = true
-	}), 5, func(d *devicemodel.PortDesired) { d.EgressKbps = 100000 })
+	}), 5, func(d *devicemodel.PortDesired) {
+		d.EgressKbps = 100000
+		d.Isolation = true
+	})
 	got, _ := r.apply(feat)
 	if !containsStr(got, "sudo sonic-db-cli CONFIG_DB hset 'PORT_QOS_MAP|Ethernet100' scheduler DUI_EGRESS_100000") {
 		t.Fatalf("the limit on port 26 was not written: %q", got)
@@ -51,6 +56,9 @@ func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 		if !strings.Contains(all[:br], "sudo sonic-db-cli CONFIG_DB del 'SCHEDULER|DUI_EGRESS_100000'") {
 			t.Errorf("%s: the shaper is not held out before the breakout: %q", name, got)
 		}
+		if !strings.Contains(all[:br], `"MEMBERS","Ethernet16"`) || !strings.Contains(all[:br], "SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER") {
+			t.Errorf("%s: the cage does not leave the isolation group (port 5 staying) before the breakout: %q", name, got)
+		}
 		after := all[br:]
 		if !strings.Contains(after, "sudo sonic-db-cli CONFIG_DB hset 'PORT_QOS_MAP|Ethernet16' scheduler DUI_EGRESS_100000") {
 			t.Errorf("%s: port 5's limit is not put back: %q", name, got)
@@ -60,7 +68,7 @@ func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 				t.Errorf("%s: no limit on %s in %q", name, ln, got)
 			}
 		}
-		iso := strings.Join(lanes, ",")
+		iso := strings.Join(append(append([]string{}, lanes...), "Ethernet16"), ",")
 		if !strings.Contains(after, `"MEMBERS","`+iso+`"`) {
 			t.Errorf("%s: isolation is not %s: %q", name, iso, got)
 		}
@@ -75,7 +83,7 @@ func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 		if p := port(snap, 26); p.EgressKbps != 100000 || !p.Isolated {
 			t.Errorf("%s: port 26 reads back %d kbps, isolated %v", name, p.EgressKbps, p.Isolated)
 		}
-		if p := port(snap, 5); p.EgressKbps != 100000 {
+		if p := port(snap, 5); p.EgressKbps != 100000 || !p.Isolated {
 			t.Errorf("%s: port 5 reads back %d kbps", name, p.EgressKbps)
 		}
 	}
