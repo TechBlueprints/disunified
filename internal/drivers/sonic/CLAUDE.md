@@ -891,7 +891,13 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   broken out** (the SAI keeps its bridge port, `OBJECT_IN_USE`); the CLI
   then bails out after a minute with CONFIG_DB holding no port of the cage.
   So the cage leaves the group first and the batch waits for ASIC_DB
-  (`isolationWait`). **A split or join the module rule
+  (`isolationWait`). **Nor can a port that a static FDB entry names**
+  (the MAC filter's, 802.1X's admitted hosts; sairedis counts each entry
+  as a reference: §11.40, live 2026-11-17), so the cage's entries leave
+  APPL_DB and the chip first (`fdbLeave`, `fdbWait`) and come back on lane
+  1: a MAC is one bridge port's per VLAN. If a breakout ever leaves a cage
+  with no `PORT` row, stop the bridge, write the row back as the saved
+  `config_db.json` holds it, set `layout.json` aside, and start the bridge. **A split or join the module rule
   makes is reported to the loop through `PlanLayout`**
   (`devicemodel.LayoutPlanner`): `PlanPorts` leaves it out, and the loop
   took such a cage for a new port and withheld it until a restart. **`learn_mode` is in no

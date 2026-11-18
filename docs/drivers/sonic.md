@@ -10707,7 +10707,7 @@ worse than the one asked about:
 | `port`, `members`, `storm`, `stp`, the LAG memberships, ACL `ports@` | dropped by `applyBreakout`, as `-f` does | YANG leafrefs (built before) |
 | `pf.med`, `pf.medPol`, `pf.qos` | dropped (`forget`) | above |
 | `pf.iso` | kept; the cage leaves the group first (fault 2) | APPL_DB only, and orchagent re-adds a name |
-| `pf.fdb` (the MAC filter's static entries) | kept | APPL_DB, keyed by VLAN and MAC; `-f` does not touch APPL_DB. A breakout with a MAC filter on the cage has not run live |
+| `pf.fdb` (the MAC filter's static entries, 802.1X's admitted hosts) | the cage's leave APPL_DB and the chip before the breakout (§11.40) and come back on lane 1 | each entry is a reference to the bridge port, which sairedis then refuses to remove |
 | `learn_mode`, the IGMP rows, the guard's counted rules | held out and put back, or unbound first (§11.12, §8.10, §11.7.9) | built before |
 | `fecs`, `laneSpeeds` | forgotten; read again next collect (§11.37) | built before |
 | `ifaddrs` (a routed port's address) | not touched | a routed port on a split cage is never written (`syncVLANs`' note), and the L3 plan reads the switch afresh |
@@ -10730,12 +10730,10 @@ the cage was split, as designed (`breakout.md` §16), and its loop runs
 until the bridge restarts (the open "bridge forgetting a retired lane
 switch" item).
 
-**Not run live:** a second isolated port keeping its place in the group
-through another cage's breakout (`TestBreakoutKeepsShapersAndIsolationOnEveryLane`
-has it, port 5); a breakout with a MAC filter or 802.1X on the cage (the
-static FDB entries name the bridge port, and nothing here says whether the
-SAI then refuses the bridge port's removal as it does for isolation); and
-a lane switch's own cage under any of it.
+**Not run live:** a lane switch's own cage under any of it. (A second
+isolated cage through another cage's breakout, and a breakout with a MAC
+filter or 802.1X on the cage, ran live on 2026-11-17: §11.40. The MAC
+filter's static FDB entries hold the bridge port as isolation does.)
 
 ### 11.39 Why xcvrd misses a module put in after boot (2026-11-17)
 
@@ -10964,6 +10962,127 @@ an image with the draft patch, install it, and repeat: expect "Got SFP
 inserted event" and `TRANSCEIVER_INFO` within about 2 s where the interrupt
 works, and within about 7 s with the patch's "no SUS6 interrupt" warning
 where it does not.
+
+### 11.40 A breakout with a MAC filter or 802.1X on the cage, and beside another isolated cage (2026-11-17)
+
+**The question** (§11.38's "Not run live"): an isolated port could not be
+broken out because its bridge port could not be removed. A MAC filter's
+static FDB entries name the bridge port too, and 802.1X closes the port
+the same way (`learn_mode drop`, a static entry per admitted host, l2d's
+`DUI_DOT1X` chain and a hostapd per port, §11.26). Does the breakout fail
+for them as it did for isolation, and does a breakout of one cage disturb
+another isolated cage?
+
+**The run**, live on the DX010's empty cages 26 (`Ethernet100`) and 27
+(`Ethernet104`), image `igmp-202511.20261116-6c8eb1cf7`, Network 11.0.99.
+Each setting went through the controller: the MAC filter (two made-up
+MACs, `02:00:00:00:26:01` and `:02`), the forced speeds (25G splits, 100G
+joins) and isolation as REST `port_overrides`; 802.1X as §11.26.7 did it,
+on the device in the UI (Global Switch Settings unticked, 802.1X Control on,
+RADIUS Server UniFi Integrated, no Unauthorized VLAN: a device setting; the
+site's `global_switch.dot1x_portctrl_enabled` stayed off), then the cage's
+`dot1x_ctrl auto` (Credentials) by REST. No host was on either cage, so
+hostapd's RADIUS server (the gateway) was never asked anything. The 17
+pushes are `docs/fixtures/controller-11.0.99/replies-dx010-cage26-breakout-secured.ndjson`;
+`TestReplaySonicDX010Cage26BreakoutSecured` replays them over
+`collect-split-dac.txt` with l2d modelled.
+
+**1. A MAC-filtered cage could not be broken out, and the failure was half
+done, as for isolation.** The split's batch (deb `0.0.0+20261117.56b0c5d`)
+took `learn_mode` out (§11.12) and ran the breakout. orchagent removed the
+VLAN member and then could not remove the bridge port: `meta_generic_validation_remove:
+object 0x3a... reference count is 2, can't remove`, `removeBridgePort:
+Failed to remove bridge port Ethernet100 from default 1Q bridge, rv:-17`
+(`SAI_STATUS_OBJECT_IN_USE`), then `Cannot remove port as bridge port OID
+is present`, 498 times in the minute. The two references are the filter's
+two static entries. The refusal is sairedis's own reference count, before
+the call reaches Broadcom's SAI; for isolation it was the SAI. orchagent set
+the bridge port admin down first (as in §11.18.2's note). After 60 s the CLI
+gave up ("Ports are present in ASIC DB after 60 secs ... Bail Out"), and
+CONFIG_DB held no `PORT|Ethernet100` and no lane, with `BREAKOUT_CFG` at
+`1x100G[40G]`. The saved `config_db.json` still had the port (the batch's
+`config save` never ran).
+
+What followed: the controller re-sent the same cfgversion two minutes
+later, now without the forced speed, because port 26 reported nothing. The
+bridge logged "ports [26(Ethernet100/Ethernet100)] released", deleted the
+FDB entries, which named no port it knew, and reported the push applied
+("0 of 32 ports changed"). With the references gone, orchagent finished
+deleting the port from ASIC_DB and the kernel. The restore (by hand): the
+bridge stopped; the cage's `PORT` row written back as the saved config held
+it (`hmset 'PORT|Ethernet100' admin_status up alias Eth26 index 26 lanes
+21,22,23,24 mtu 1500 speed 100000 subport 0`), which made the port again
+with a new bridge port, admin up; `layout.json` set aside (it no longer
+listed port 26); the bridge started. Its start-up reconcile put back the
+VLAN member, `learn_mode drop`, the TLV and the entries. In the controller,
+an override whose only change was the forced speed's removal made no push
+(the stored config already matched the re-sent one); a name change made
+one, and the name went back after.
+
+**Fix** (`portFeat.fdbLeave`, called by the breakout after
+`isolationLeave`): before the breakout the batch deletes every static FDB
+entry that names one of the cage's interfaces, at once (ProducerStateTable,
+not with the batch's other APPL_DB writes at its end), and waits, at most
+10 s, for ASIC_DB to show no static entry on each interface's bridge port
+(`fdbWait`; the batch fails before the breakout otherwise). The port stays
+closed meanwhile: the chip keeps `drop` (portmgrd passes only fields that
+remain), so an allowed host is refused for the seconds the breakout takes.
+The port security plan after the breakout writes the entries again. The
+FixtureRunner refuses a breakout of a port that an `appl_fdb` entry names,
+as live (`TestBreakoutTakesTheMACFilterOutFirst`, and the replay; both
+fail without the fix).
+
+**A MAC is one bridge port's per VLAN.** On a split cage without a lane
+switch, the plan used to write each allowed MAC on every lane in turn, so
+the last lane kept it (`Ethernet103`, live). The first lane now keeps it:
+the lane that keeps the port's name. In the chip an allowed host is then
+admitted on lane 1 only. l2d's MAC-locking chain lists the allowed sources
+on every lane. Not run with a host on another lane.
+
+**Live after the fix** (deb `0.0.0+20261117.093c2d5`): the split's batch
+was the `learn_mode` hdel first, then the two FDB deletes, the wait, the
+IGMP unbind, the breakout, `learn_mode drop` on every lane, the VLAN, the
+TLVs and the two entries on `Ethernet100`. It took 22 s. syslog showed no
+reference-count refusal (two "Cannot remove port as bridge port OID is
+present" warnings are orchagent's usual retry while the VLAN member goes).
+ASIC_DB held both entries on the new lane 1's bridge port. The next cycle
+told l2d the four lanes ("MAC locking 4 ports") and nothing was written
+after. The join ran the same way back to one port with its filter, and
+the filter's removal took the entries out. A pending lane switch
+`dx010-cage26` appeared while the cage was split (`breakout.md` §16), and
+its loop ran on after the join until the bridge restarted.
+
+**2. 802.1X on the cage: the breakout ran the first time.** With no
+admitted host there is no static entry, and `learn_mode` is held out as
+§11.12 does. What l2d did (its syslog): when the breakout deleted
+`Ethernet100`, l2d stopped its authenticator, and with no controlled port
+left it removed the whole `DUI_DOT1X` chain and the EAPOL trap. Two seconds
+later it trapped EAPOL again and started hostapd on the new `Ethernet100`.
+Lanes 2-4 stayed `learn_mode drop` with no authenticator and no chain
+until the next cycle wrote l2.json with the lanes (85 s): closed, which is
+the safe side. Then four hostapd, twelve chain rules (EAPOL accepted,
+untagged and 802.1Q, the rest dropped, per lane) and four STATE_DB rows,
+`mode auto`. The join stopped the four and started one on `Ethernet100` two
+seconds later; nothing was left of lanes 2-4 but their STATE_DB rows with
+an empty mode (§11.26.7's way of un-publishing a port; nothing reads them).
+Force-authorised again, the port opened (`learn_mode hardware`, then the
+field removed), and 802.1X off removed the chain. hostapd was built on the
+switch again first (46 s, as §11.26.7): the 2026-11-16 image install had
+taken `/usr/local/sbin/hostapd`. The controller's record of the DX010 was
+read back afterwards and matched the copy taken before the run
+(`dot1x_portctrl_enabled` false, the device on the global switch settings).
+
+**3. An isolated cage beside a breakout.** Cage 27 isolated, then cage 26
+split and joined. A watcher read ASIC_DB every 0.2 s from before the split
+to after the join: cage 27's group member and its port's
+`SAI_PORT_ATTR_ISOLATION_GROUP` never changed. The batches did not touch
+`ISOLATION_GROUP_TABLE` (the cage being broken out was not in the group).
+
+**Not run live:** an 802.1X host admitted (or MAC-authenticated) on the
+cage when it is broken out: `fdbLeave` takes its entry out too (it is in
+`pf.fdb`), and l2d does not write it again (it writes an entry only when it
+admits a host), but its hostapd session ends with the netdev; a MAC filter
+with a host cabled on a lane other than lane 1; a lane switch's own cage.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
