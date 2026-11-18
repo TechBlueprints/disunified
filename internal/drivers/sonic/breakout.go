@@ -430,6 +430,8 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		}
 		// An isolated port's bridge port cannot be removed (§11.38).
 		pl.isolationLeave(d.Index, pl.sim.cagePorts(idx), write)
+		// ... nor one that a static FDB entry names (§11.40).
+		pl.fdbLeave(d.Index, pl.sim.cagePorts(idx), write)
 		// The guard's counted rules name the lanes that go (acl_count.go).
 		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
 		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).

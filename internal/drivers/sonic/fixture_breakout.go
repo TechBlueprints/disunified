@@ -153,6 +153,14 @@ func (f *FixtureRunner) breakout(args []string) error {
 	// orchagent keeps the port and the CLI gives up after a minute (DX010,
 	// 2026-11-17, docs/drivers/sonic.md 11.38). Live it left CONFIG_DB with
 	// neither the old port nor the new ones; refused here before anything.
+	// The same for a port that a static FDB entry names (the MAC filter's,
+	// 802.1X's admitted hosts): sairedis refuses the bridge port's removal
+	// while an entry references it (DX010, 2026-11-17, 11.40).
+	for _, d := range dels {
+		if f.fdbOn(d.name) {
+			return fmt.Errorf("Ports are present in ASIC DB after 60 secs\n!!!  Critical Failure, Ports                     are not Deleted from ASIC DB, Bail Out  !!!\n[ERROR] Port breakout Failed!!! Opting Out")
+		}
+	}
 	for _, d := range dels {
 		if f.isolationMember(d.name) {
 			return fmt.Errorf("!!!  Critical Failure, Ports                     are not Deleted from ASIC DB, Bail Out  !!!\n[ERROR] Port breakout Failed!!! Opting Out")

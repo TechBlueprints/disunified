@@ -294,3 +294,31 @@ func (f *FixtureRunner) isolationWaited(port string) error {
 	}
 	return nil
 }
+
+// fdbWaitPort is the port of an fdbWait line, "" for another.
+func fdbWaitPort(w []string) string {
+	if len(w) == 6 && w[0] == "python3" && w[1] == "-c" && w[5] == "</dev/null" && strings.Contains(w[2], "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID") && w[4] == strconv.Itoa(fdbWaitLimit) {
+		return w[3]
+	}
+	return ""
+}
+
+// fdbOn: a static FDB entry (APPL_DB, which fdborch follows at once here)
+// names port.
+func (f *FixtureRunner) fdbOn(port string) bool {
+	for _, v := range f.table("appl_fdb") {
+		if v["port"] == port {
+			return true
+		}
+	}
+	return false
+}
+
+// fdbWaited is the batch's fdbWait: the chip has let the entries go once
+// APPL_DB names the port in none.
+func (f *FixtureRunner) fdbWaited(port string) error {
+	if f.fdbOn(port) {
+		return fmt.Errorf("exit status 1: %s: static FDB entries still name the port's bridge port after %d s", port, fdbWaitLimit)
+	}
+	return nil
+}

@@ -91,3 +91,80 @@ func TestBreakoutKeepsShapersAndIsolationOnEveryLane(t *testing.T) {
 	check("split", split, "Ethernet100", "Ethernet101", "Ethernet102", "Ethernet103")
 	check("join", speedOf(feat, 26, 100000), "Ethernet100")
 }
+
+// A breakout with a MAC filter on the cage, and one on port 5, as live on
+// the DX010's empty cage 26 (2026-11-17, docs/drivers/sonic.md 11.40). Live,
+// the split failed half done: the filter's static FDB entries are
+// references to the port's bridge port, sairedis refused its removal, and
+// the CLI bailed out after a minute with CONFIG_DB holding no port for the
+// cage. The batch now takes the cage's entries out of APPL_DB and waits for
+// the chip before the breakout (port 5's stay), and the plan after it puts
+// them on the cage's first lane, the one that keeps the port's name.
+func TestBreakoutTakesTheMACFilterOutFirst(t *testing.T) {
+	r := rig20261106(t, fixtureSplitDAC)
+	base := r.baseline()
+	r.apply(base)
+	r.collect()
+	if got, _ := r.apply(base); len(got) != 0 {
+		t.Fatalf("the baseline does not settle: %q", got)
+	}
+	macs := []string{"02:00:00:00:26:01", "02:00:00:00:26:02"}
+	feat := edit(edit(base, 26, func(d *devicemodel.PortDesired) {
+		d.PortSecurity = true
+		d.AllowedMACs = macs
+	}), 5, func(d *devicemodel.PortDesired) {
+		d.PortSecurity = true
+		d.AllowedMACs = []string{"02:00:00:00:05:01"}
+	})
+	got, _ := r.apply(feat)
+	if !containsStr(got, "sudo sonic-db-cli CONFIG_DB hset 'PORT|Ethernet100' learn_mode drop") {
+		t.Fatalf("the filter on port 26 was not written: %q", got)
+	}
+	r.collect()
+	if again, _ := r.apply(feat); len(again) != 0 {
+		t.Fatalf("the filter does not settle: %q", again)
+	}
+
+	check := func(name string, ds []devicemodel.PortDesired, lanes ...string) {
+		t.Helper()
+		got, _ := r.apply(ds)
+		all := strings.Join(got, "\n")
+		br := strings.Index(all, "config interface breakout")
+		if br < 0 {
+			t.Fatalf("%s: no breakout in %q", name, got)
+		}
+		before, after := all[:br], all[br:]
+		for _, m := range macs {
+			if !strings.Contains(before, `{"op":"del","table":"FDB_TABLE","key":"Vlan4094:`+m+`"}`) {
+				t.Errorf("%s: %s is not taken out before the breakout: %q", name, m, got)
+			}
+			if !strings.Contains(after, `"key":"Vlan4094:`+m+`","fv":["port","`+lanes[0]+`","type","static"]`) {
+				t.Errorf("%s: %s is not put back on %s: %q", name, m, lanes[0], got)
+			}
+		}
+		if !strings.Contains(before, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID") {
+			t.Errorf("%s: no wait for the chip before the breakout: %q", name, got)
+		}
+		if strings.Contains(all, "02:00:00:00:05:01") {
+			t.Errorf("%s: port 5's entry was touched: %q", name, got)
+		}
+		for _, ln := range lanes {
+			if !strings.Contains(after, "sudo sonic-db-cli CONFIG_DB hset 'PORT|"+ln+"' learn_mode drop") {
+				t.Errorf("%s: %s is not closed after the breakout: %q", name, ln, got)
+			}
+		}
+		r.collect()
+		if again, n := r.apply(ds); len(again) != 0 || n != 0 {
+			t.Errorf("%s: the next apply wrote %q (%d ports)", name, again, n)
+		}
+		snap, err := r.c.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p := port(snap, 26); !p.PortSecurity || strings.Join(p.AllowedMACs, ",") != strings.Join(macs, ",") {
+			t.Errorf("%s: port 26 reads back filter %v %v", name, p.PortSecurity, p.AllowedMACs)
+		}
+	}
+	check("split", speedOf(feat, 26, 25000), "Ethernet100", "Ethernet101", "Ethernet102", "Ethernet103")
+	check("join", speedOf(feat, 26, 100000), "Ethernet100")
+}

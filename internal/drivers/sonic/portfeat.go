@@ -309,6 +309,89 @@ func isolationWait(port string) string {
 	return fmt.Sprintf("python3 -c %s %s %d </dev/null", sshrun.ShellQuote("exec("+string(lit)+")"), port, isolationWaitLimit)
 }
 
+// fdbLeave takes the static FDB entries that name ports out of APPL_DB
+// ahead of a breakout and waits for the chip to drop them: each entry is a
+// reference to the port's bridge port, which sairedis then refuses to
+// remove ("reference count is 2, can't remove", SAI_STATUS_OBJECT_IN_USE),
+// orchagent keeps the port, and the breakout's CLI gives up after a minute
+// with CONFIG_DB holding neither the old port nor the new ones -- as for an
+// isolated port (DX010, 2026-11-17, docs/drivers/sonic.md 11.40). The MAC
+// filter's entries and 802.1X's admitted hosts alike; the port security
+// plan after the breakout writes the new interfaces' entries. The port
+// stays closed meanwhile: its learn mode is still drop in the chip, so an
+// allowed host is refused for the seconds the breakout takes (fail closed).
+// Written at once, not with the batch's other APPL_DB writes at its end.
+func (pl *plan) fdbLeave(idx int, ports []string, write func(int, string, func(*swState))) {
+	if !pl.sim.pf.known {
+		return
+	}
+	on := map[string]bool{}
+	for _, p := range ports {
+		on[p] = true
+	}
+	var ops []applOp
+	var keys []string
+	waits := map[string]bool{}
+	for _, k := range keysOf(pl.sim.pf.fdb) {
+		if p := pl.sim.pf.fdb[k]; on[p] {
+			ops = append(ops, applOp{Op: "del", Table: "FDB_TABLE", Key: fdbKey(k)})
+			keys = append(keys, k)
+			waits[p] = true
+		}
+	}
+	if len(ops) == 0 {
+		return
+	}
+	b, _ := json.Marshal(ops)
+	write(idx, strings.TrimPrefix(applCommand, "sudo ")+" "+sshrun.ShellQuote(string(b)), func(s *swState) {
+		for _, k := range keys {
+			delete(s.pf.fdb, k)
+		}
+	})
+	for _, p := range sortedSet(waits) {
+		write(idx, fdbWait(p), nil)
+	}
+}
+
+// fdbWaitLimit bounds fdbWait: fdborch removes a static entry within a
+// second when nothing is wrong.
+const fdbWaitLimit = 10
+
+// fdbWaitScript waits until the chip has no static FDB entry on
+// sys.argv[1]'s bridge port (ASIC_DB, the port's oid from COUNTERS_DB),
+// exiting 1 with the reason after sys.argv[2] seconds. Read-only; stdin is
+// not read.
+const fdbWaitScript = `import sys, time
+from swsscommon.swsscommon import SonicV2Connector
+port, limit = sys.argv[1], float(sys.argv[2])
+db = SonicV2Connector(use_unix_socket_path=True)
+db.connect(db.COUNTERS_DB)
+db.connect(db.ASIC_DB)
+oid = db.get(db.COUNTERS_DB, "COUNTERS_PORT_NAME_MAP", port)
+if not oid:
+    sys.exit(0)
+bps = set(k.split(":", 2)[2] for k in (db.keys(db.ASIC_DB, "ASIC_STATE:SAI_OBJECT_TYPE_BRIDGE_PORT:*") or [])
+          if db.get(db.ASIC_DB, k, "SAI_BRIDGE_PORT_ATTR_PORT_ID") == oid)
+end = time.time() + limit
+while True:
+    left = [k for k in (db.keys(db.ASIC_DB, "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:*") or [])
+            if db.get(db.ASIC_DB, k, "SAI_FDB_ENTRY_ATTR_TYPE") == "SAI_FDB_ENTRY_TYPE_STATIC"
+            and db.get(db.ASIC_DB, k, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID") in bps]
+    if not left:
+        sys.exit(0)
+    if time.time() > end:
+        print("%s: %d static FDB entries still name the port's bridge port after %d s; not broken out (a bridge port that a static FDB entry names cannot be removed, docs/drivers/sonic.md 11.40)" % (port, len(left), limit))
+        sys.exit(1)
+    time.sleep(0.2)
+`
+
+// fdbWait is the batch line that runs fdbWaitScript for port, in
+// isolationWait's form.
+func fdbWait(port string) string {
+	lit, _ := json.Marshal(fdbWaitScript)
+	return fmt.Sprintf("python3 -c %s %s %d </dev/null", sshrun.ShellQuote("exec("+string(lit)+")"), port, fdbWaitLimit)
+}
+
 // heldShapers are the egress shapers a breakout takes out of CONFIG_DB and
 // puts back: its YANG check refuses a SCHEDULER pir without a cir.
 type heldShapers struct {
@@ -477,7 +560,12 @@ func (pl *plan) portSecurity(ds []devicemodel.PortDesired, dot1x bool) {
 			}
 			for _, mac := range d.AllowedMACs {
 				for v := range pl.sim.members[t] {
-					wantFDB[fmt.Sprintf("vlan%d:%s", v, strings.ToLower(mac))] = t
+					// A MAC is one bridge port's per VLAN: on a split cage
+					// the first lane keeps it (11.40).
+					k := fmt.Sprintf("vlan%d:%s", v, strings.ToLower(mac))
+					if _, ok := wantFDB[k]; !ok {
+						wantFDB[k] = t
+					}
 				}
 			}
 		}

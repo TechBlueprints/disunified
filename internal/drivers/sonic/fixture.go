@@ -552,6 +552,8 @@ func (f *FixtureRunner) apply(line string) error {
 		(len(w) >= 3 && w[0] == "config" && w[1] == "spanning-tree" && w[2] != "interface"):
 		return f.applyDevice(w)
 
+	case fdbWaitPort(w) != "":
+		return f.fdbWaited(fdbWaitPort(w))
 	case isolationWaitPort(w) != "":
 		return f.isolationWaited(isolationWaitPort(w))
 	case bridgeWaitPort(w) != "":
