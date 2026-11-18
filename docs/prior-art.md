@@ -80,13 +80,15 @@ switch.
 ## 6. What went back upstream, and where it stands
 
 unifi-emu is the dependency, pinned at v0.5.5, and everything learned here
-that it gets wrong or omits was offered back. **As of 2026-10-19 the
-maintainer has reviewed none of it** — the repo has not been pushed since
-2026-09-14. The only response so far is a third party's (below). The PRs come
+that it gets wrong or omits was offered back. **As of 2026-11-17 the
+maintainer has reviewed none of it.** The repo is not idle: its `main` was
+force-pushed on 2026-10-27 and got three CI and Renovate commits up to
+2026-11-01, none touching the PRs, and every PR was rebased onto that
+`main` on 2026-11-17. The only response so far is a third party's (below). The PRs come
 from the fork `cgoudie/unifi-emu`; #10–#13 are a stacked series and merge in
 order, #15 follows #13, #14 is independent.
 
-| Ref | What | State (2026-10-19) |
+| Ref | What | State (2026-11-17) |
 |---|---|---|
 | [#2](https://github.com/jamesbraid/unifi-emu/issues/2) | FYI plus the 10.6.106 findings: `uplink` as a string, capability claims gated on `udapi_version`, `setparam.system_cfg` as the control channel, the real locate command names, `build-ssh-session`, the support bundle as reference | open, no reply |
 | [#3](https://github.com/jamesbraid/unifi-emu/pull/3) | `inform`: handle `set-locate`/`unset-locate`, report `locating` | open, no review |
@@ -124,7 +126,7 @@ What that means for work here:
   stay pinned. A catalogue refresh means running unifi-emu's `modelgen`
   against Clint's controller, not expecting a release
   ([`unifi-models.md`](unifi-models.md)).
-- **Check those fourteen before filing anything new upstream**, and read the
+- **Check those fifteen before filing anything new upstream**, and read the
   comment on #7: it corrects two errors in its own issue body.
 - Where this repo's notes contradict unifi-emu's docs — `uplink` as a string,
   power devices as a payload shape — **ours are the verified ones**, taken from
