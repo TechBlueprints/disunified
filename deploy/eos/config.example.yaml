@@ -1,0 +1,20 @@
+# disunified on an Arista EOS switch itself (docs/drivers/arista-on-switch.md).
+# Lives at /mnt/flash/disunified/config.yaml beside the binary and run.sh.
+controller:
+  host: 192.0.2.1                      # the controller's IPv4 address (inform needs an IP literal)
+  api_url: https://192.0.2.1           # optional: names the device and its ports
+  api_key_env: DUI_UNIFI_API_KEY       # set in /mnt/flash/disunified/env
+state_dir: /mnt/flash/disunified       # state/<name>/device.json: the adopted key, kept across reboots
+log_dir: /var/log/disunified           # the reply log, written every inform: tmpfs, not the flash
+devices:
+  - name: arista
+    driver: arista-eos
+    model: auto
+    options:
+      transport: local                 # eAPI over /var/run/command-api.sock; no url:, no credentials
+      ssh_key_user: admin              # the EOS user that receives the controller's SSH keys
+      # address: 192.0.2.3             # the switch's own in-band address; default: the address it
+      #                                # reaches the controller from
+      # probe: 192.0.2.1:8080          # what an address or ACL change must still reach before it is
+      #                                # confirmed; default: the controller's inform host:port
+      # socket: /var/run/command-api.sock

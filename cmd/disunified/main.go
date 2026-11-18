@@ -283,7 +283,7 @@ func configOptions(f *config.File, sw config.Device) options {
 	return options{
 		controller: f.Controller.Host, informURL: f.Controller.InformURL,
 		model: sw.Model, udapiVersion: sw.UDAPIVersion, interval: 10 * time.Second,
-		recordDir: filepath.Join(f.StateDir, "inform-log", sw.Name),
+		recordDir: filepath.Join(f.LogRoot(), "inform-log", sw.Name),
 		stateFile: filepath.Join(f.StateDir, "state", sw.Name, "device.json"),
 		ip:        sw.IP, hostname: sw.Hostname, uplink: sw.UplinkPort,
 		version: sw.Firmware, // the config file's -version; config.Load has checked its form

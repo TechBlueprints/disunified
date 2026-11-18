@@ -8,6 +8,17 @@ that cost time on Clint's DCS-7160-48TC6-F.
   against that version (fixtures in `docs/fixtures/arista-eos-4.26.14M/`); eAPI
   batches start with `enable`; eAPI does not expand abbreviations; TLS 1.2
   RSA-kex only.
+- **The bridge can run on the switch** (`options.transport: local`,
+  2026-11-18, `docs/drivers/arista-on-switch.md`): eAPI's unix socket
+  (`protocol unix-socket`, off by default, no credentials, privilege 15
+  after `enable`), a static `linux/amd64` binary (64-bit kernel under the
+  i686 userland), EOS's `daemon` block as the supervisor. `/mnt/flash` is
+  FAT mounted `dirsync`: no symlinks, no file modes, so the reply log goes
+  to tmpfs (`log_dir:`). An address or ACL change is confirmed there by a
+  TCP probe to the controller, not a redial. `scp` to the switch as
+  `admin` fails ("only available in privileged mode"): have the switch
+  fetch files with `bash curl`. One collect verified live; the daemon
+  holding an adoption is not yet run.
 - **A capture by hand over SSH**: a command string runs at privilege 1
   (`show running-config` answers "privileged mode required"), so pipe
   `enable` and the command on stdin: `printf 'enable\nshow vlan | json\n'
