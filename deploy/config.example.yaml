@@ -14,6 +14,7 @@ controller:
   site: default
 
 state_dir: /var/lib/disunified  # state/<name>/device.json (the adopted key) and inform-log/<name>/
+# log_dir: /var/log/disunified  # inform-log/<name>/ elsewhere (a tmpfs, where state_dir is a switch's flash)
 
 devices:                             # "switches:" is still accepted (the pre-rename spelling)
   - name: arista                     # unique; used for state and log paths

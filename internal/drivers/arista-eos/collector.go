@@ -67,6 +67,14 @@ type Collector struct {
 	// mgmtPort is the TCP port the bridge connects on (eAPI's or SSH's);
 	// 0 = eAPI's default, 443.
 	mgmtPort int
+	// local: the bridge runs on the switch (eAPI's unix socket). Nothing
+	// is dialled, so a change that could cut the switch off is proven by
+	// probe -- a TCP connect to probeAddr (the controller's inform
+	// host:port), bound to a candidate address when one is given -- before
+	// its session is confirmed.
+	local     bool
+	probeAddr string
+	probe     func(ctx context.Context, addr, fromIP string) error
 
 	mu        sync.Mutex
 	hostname  string

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -57,6 +58,20 @@ func TestConfigFirmwareIsTheVersion(t *testing.T) {
 	}
 	if got := configOptions(f, config.Device{Name: "sw"}).version; got != "" {
 		t.Errorf("no firmware: gave version %q, want none (the model's rule decides)", got)
+	}
+}
+
+// log_dir moves the reply log off the state directory (a switch's flash);
+// the state stays where state_dir says.
+func TestConfigLogDir(t *testing.T) {
+	state, logs := t.TempDir(), t.TempDir()
+	o := configOptions(&config.File{StateDir: state}, config.Device{Name: "sw"})
+	if o.recordDir != filepath.Join(state, "inform-log", "sw") {
+		t.Errorf("no log_dir: record dir %q, want it under the state directory", o.recordDir)
+	}
+	o = configOptions(&config.File{StateDir: state, LogDir: logs}, config.Device{Name: "sw"})
+	if o.recordDir != filepath.Join(logs, "inform-log", "sw") || o.stateFile != filepath.Join(state, "state", "sw", "device.json") {
+		t.Errorf("log_dir: record dir %q, state file %q", o.recordDir, o.stateFile)
 	}
 }
 

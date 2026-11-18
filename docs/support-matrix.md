@@ -174,6 +174,17 @@ round-trip on one unused port (state, VLAN, speed). Different port layouts
 (a 7050, a 7280) also need the model choice checked against
 [`unifi-models.md`](unifi-models.md).
 
+**The bridge on the switch itself (2026-11-18):** `options.transport:
+local`, eAPI over the switch's unix socket, run by EOS's `daemon`
+([`drivers/arista-on-switch.md`](drivers/arista-on-switch.md)). Verified
+live on 4.26.14M: the socket, the static build, and an adopted switch
+moved from a container with its state files (nothing re-adopted, a first
+reconcile of 0 ports, its lane switch in the same process, a killed
+process restarted by EOS; §7 there). Not yet run: a reboot with the daemon
+configured, a UI port change through it, and a probe-confirmed address or
+ACL change on a real switch (fixture-tested). A PR needs the daemon's log
+across a reboot.
+
 **Built, untested live (2026-11-01):** an aggregate member's LACP bundling
 (`lacp_state[].active`) from `show port-channel summary`'s `lagMember`,
 fixture-tested on the captured Po1 (members down, not bundled). The

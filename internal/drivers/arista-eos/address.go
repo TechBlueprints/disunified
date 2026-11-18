@@ -123,7 +123,17 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	// change. Same address: the current one. New address: a fresh dial that
 	// must answer first, or the switch reverts on its own.
 	confirmVia := c.t
-	if d.IP != cur.IP {
+	if c.local {
+		// On the switch itself the socket never moves: the proof is that
+		// the switch reaches the controller from the new address (and over
+		// the new gateway), or the timer puts the old one back.
+		if c.probe == nil || c.probeAddr == "" {
+			return false, fmt.Errorf("arista-eos: address changed to %s in session %s, but there is no probe address to confirm it against (options.probe); the switch will revert in %s", d.IP, session, commitTimer)
+		}
+		if err := c.probe(ctx, c.probeAddr, d.IP); err != nil {
+			return false, fmt.Errorf("arista-eos: the switch does not reach %s from %s (%v); leaving session %s to revert in %s", c.probeAddr, d.IP, err, session, commitTimer)
+		}
+	} else if d.IP != cur.IP {
 		if c.redial == nil {
 			return false, fmt.Errorf("arista-eos: address changed to %s in session %s, but this transport cannot be re-dialled to confirm it; the switch will revert in %s", d.IP, session, commitTimer)
 		}
@@ -146,6 +156,9 @@ func (c *Collector) ApplyAddress(ctx context.Context, d devicemodel.AddressDesir
 	if confirmVia != c.t {
 		_ = c.t.Close()
 		c.t, c.host = confirmVia, d.IP
+	}
+	if c.local {
+		c.host = d.IP
 	}
 	if d.Gateway != "" {
 		last.System.Gateway = d.Gateway

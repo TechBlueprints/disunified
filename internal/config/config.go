@@ -30,6 +30,11 @@ type File struct {
 	Switches []Device `yaml:"switches"`
 	// StateDir holds state/<name>/device.json and inform-log/<name>/.
 	StateDir string `yaml:"state_dir"`
+	// LogDir holds inform-log/<name>/ (the reply log and payload-last.json,
+	// written every inform) when it should not sit beside the state: on a
+	// switch whose only persistent store is flash, a tmpfs
+	// (docs/drivers/arista-on-switch.md §3). Unset = StateDir.
+	LogDir string `yaml:"log_dir"`
 }
 
 // Controller is where informs go and, optionally, the REST API for naming.
@@ -433,6 +438,15 @@ func Load(path string) (*File, error) {
 		return nil, err
 	}
 	return &f, nil
+}
+
+// LogRoot is the directory that holds inform-log/<name>/: log_dir, or the
+// state directory when it is unset.
+func (f *File) LogRoot() string {
+	if f.LogDir != "" {
+		return f.LogDir
+	}
+	return f.StateDir
 }
 
 // APIKey returns the controller API key from the environment ("" if unset).
