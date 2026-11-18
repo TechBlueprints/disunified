@@ -59,6 +59,13 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   read it cannot vouch for (starting, the fold disagreeing with its lanes):
   a 1 retires. A live test that wants a joined cage's lane switch kept
   needs it declared, or `lane_switches: manual`.
+- **Its UniFi name is `<parent's UniFi name>-cage<N>`** (2026-11-18,
+  `breakout.md` §16.14): main's provision reads the parent's record by
+  `ParentMAC()` and names the lane switch over a default name only
+  ("USW Flex XG" is the controller's default for a `USFXG`, now in
+  `unifimodel.ControllerDisplayNames`; before that the provision took it
+  for an operator's name and named nothing). `DeviceName` here is the
+  fallback form and counts as a default.
 - **A declared entry is never detached**: a Forget of it is logged (the
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.

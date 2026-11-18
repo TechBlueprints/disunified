@@ -2034,3 +2034,57 @@ minutes after. What the controller is busy with is not captured; the
 retry pace covers it either way. A Forget of a record the bridge has
 stopped is not a missed `setdefault`: the lane switch never informs again,
 so nothing reads it.
+
+### 16.14 A lane switch's name in UniFi (2026-11-18)
+
+**The rule.** Clint, 2026-11-18: "when these auto adopt, they really need
+a better name than Flex XG. Can we immediately rename it to {switch
+name}-{cage}", then, of the DX010's lane switch, that it should be
+`<parent name>-cage3`. So a lane switch's name in UniFi is
+`<the parent's name as UniFi shows it>-cage<N>`.
+
+**Why it stayed "USW Flex XG".** The bridge names every device at its first
+provision (the adoption handshake, every start of an adopted one, a
+layout change; `unifiapi.Provision`), but only over a name it recognises
+as a controller default, and the controller's default for a `USFXG`
+("USW Flex XG", read from the adopted record: `controller-11.0.99/
+stat-device-lane-switch-adopted.json`) was not on the list
+(`unifimodel.ControllerDisplayNames`). So every lane switch's provision
+took that name for an operator's and wrote none.
+
+**As built.** The name joins the list. For a lane switch (a device with a
+parent, `breakout.Device.ParentMAC`/`Cage`), the provision reads the
+parent's record by its MAC in the same call and names the lane switch
+`<parent's name>-cage<N>` (`cmd/disunified/lane_naming.go`); without the
+parent's record it names no device that time. One mechanism, the
+provision every device runs. Only over a default ("USW Flex XG", the
+model, the driver's own `<parent hostname> <cage label>`, which no lane
+switch was ever given): an operator's name stays, and once named the lane
+switch is not renamed when the parent is. The `-cage<N>` form matches the
+bridge's own name for it (`config.AutoLaneSwitchName`), which is unchanged:
+state directory, log prefix, options. **A declared lane switch** takes the
+same rule (it runs the same provision with the same namer). **The
+hostname** a lane switch reports stays its config name: it is sent from the
+first pending inform, before the parent's record is read, and the
+controller keeps the adoption inform's hostname for good; real UniFi
+switches send none, and no UI or DNS name comes from it (CLAUDE.md §7), so
+it was left.
+
+**Tests.** `cmd/disunified/lane_naming_test.go` (the captured adopted
+record: "USW Flex XG" named `device-1-cage26`; the driver's own form
+replaced; an operator's name and an earlier given name kept; no parent
+record, no name; without the default-name entry the test reads today's
+"USW Flex XG" again) and `internal/drivers/breakout`'s
+`TestParentMACAndCage`.
+
+**Live (DX010, 2026-11-18 10:09-10:20 MST, package
+`0.0.0+20261118.13d0650`).** At the bridge's start `dx010-cage3`, still
+"USW Flex XG", was renamed by its provision (`device renamed=true`) to
+`<parent>-cage3`, `0 of 5 ports changed`. Cage 26 split: started pending
+10:12:28, asked for 10:12:44, CONNECTED 10:12:59, provision `device
+renamed=true`; `stat/device` at 10:13:04 showed `<parent>-cage26`. Joined:
+stopped 10:19:13 (4 collects over 4m15s), forgotten by the bridge (HTTP 200,
+`rc ok`, no DeviceBusy 6 minutes after the adoption), state removed; port
+26's override put back as found. **`arista-cage50`** takes its name at its
+next start on a build with this: look for `provision: device renamed=true`
+on its line and `<the Arista's UniFi name>-cage50` in `stat/device`.

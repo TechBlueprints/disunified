@@ -120,7 +120,11 @@ reads as one port on four collects in a row over two minutes retires its
 automatic lane switch: stopped, detached, its record forgotten by its exact
 MAC and its state directory removed, so a breakout put back is adopted
 afresh with UniFi's defaults; a manual parent's, one without a controller
-API and a declared one are stopped only, §16.13), and the DX010's
+API and a declared one are stopped only, §16.13; and since the same day
+an automatic or declared lane switch is named `<parent's UniFi name>-cage<N>`
+in UniFi by the provision of its adoption, over the controller's default
+"USW Flex XG" only, its config name and state directory unchanged, §16.14),
+and the DX010's
 cage 3 is the first one adopted live (`docs/drivers/breakout.md` §0, §16;
 the Arista parent is fixture-tested only, §7b). It reports a link-local
 address of its own: one that shared its parent's made the controller

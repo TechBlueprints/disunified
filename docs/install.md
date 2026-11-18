@@ -129,8 +129,12 @@ switch of its own ([`docs/drivers/breakout.md`](drivers/breakout.md)): ports
 **It appears by itself.** When a cage of a `sonic` or `arista-eos` device
 is split (a breakout cable on a port left on Auto, a forced lane speed, or
 by hand), the bridge starts a lane switch for it within about 15 seconds,
-named `<device>-cage<N>` (`core-1-cage3`), and it shows up in the
-controller as a pending Flex XG. **Nothing changes on the switch until it
+named `<device>-cage<N>` (`core-1-cage3`) in the bridge's log and state,
+and it shows up in the controller as a pending Flex XG. At its adoption
+the bridge names it in UniFi after its device as UniFi shows that device,
+`<device's UniFi name>-cage<N>` (`Core Switch-cage3`), with the API key, and
+only over the controller's default "USW Flex XG": a name you give it stays,
+and renaming the device later does not rename it. **Nothing changes on the switch until it
 is adopted**: the cage stays one port on its device, as before. **You do
 not have to adopt it**: once its device is adopted, the bridge asks the
 controller to adopt the lane switch too, about 15 seconds after it appears
@@ -148,11 +152,14 @@ shows a 169.254.x.y address; it has none of its own, and it must not share
 its parent's. Forget it in the controller and the lanes go back to the
 cage's port, and while the cage is split the bridge adopts it again
 within a minute or two. To be rid of a lane switch, unplug the breakout
-cable (or join the cage), then forget its disconnected record; or set
-`lane_switches: "manual"` on the device, and you adopt each one yourself.
-Join the cage (force its port to 100G or 40G on
-the device) and the lane switch shows disconnected until the cage is split
-again or you forget it. The key on the device's entry:
+cable or join the cage (force its port to 100G or 40G on the device): a
+few minutes later the bridge stops the lane switch, forgets it in the
+controller and removes its state, so its names, VLANs and profiles there
+go with it, and a breakout put back later is a new lane switch with
+UniFi's defaults. With `lane_switches: "manual"` you adopt each one
+yourself, and on a join the bridge only stops it (forget the
+disconnected record yourself); a declared one (below) is only stopped
+too. The key on the device's entry:
 
 ```yaml
     lane_switches: "off"    # default auto: a lane switch per split cage, adopted by the bridge;
