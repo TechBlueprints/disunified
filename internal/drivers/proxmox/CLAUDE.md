@@ -73,7 +73,7 @@ switches send the same for a port with something in it and no module
 identity (59 SFP28 ports in the committed informs). A forced speed pushed
 for a guest port has nothing to act on (a guest NIC's link has no speed to
 set): `ApplyPorts` ignores it with one `NOTE:` line per port and speed and
-writes nothing. `sys_stats.mem_buffer` stays Buffers plus Cached.
+writes nothing; Auto or the port's own speed logs nothing (2026-11-17). `sys_stats.mem_buffer` stays Buffers plus Cached.
 **Fan names (looked into 2026-11-13).** Proper names are not to be had from
 the node: on the hardware seen so far `dell_smm` exposes `fanN_label` but
 reading it fails (EINVAL: the BIOS answers no fan type), and SMBIOS type 27

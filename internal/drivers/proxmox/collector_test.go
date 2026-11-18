@@ -744,7 +744,8 @@ func TestModuleComplianceText(t *testing.T) {
 
 // A forced speed pushed for a guest port has nothing to act on: a guest
 // NIC's link has no speed to set. It is ignored with one log line per port
-// and speed, and no command; a port left on auto says nothing.
+// and speed, and no command; a port left on auto, or forced to the speed
+// it already reports, says nothing.
 func TestForcedSpeedOnGuestPortIsLogged(t *testing.T) {
 	c, r := newTestCollector(t, "collect-node2.txt")
 	var buf strings.Builder
@@ -773,6 +774,18 @@ func TestForcedSpeedOnGuestPortIsLogged(t *testing.T) {
 	buf.Reset()
 	if n, err := c.ApplyPorts(context.Background(), want(0)); err != nil || n != 0 || len(r.Commands) != 0 || buf.Len() != 0 {
 		t.Fatalf("auto speed: n=%d err=%v cmds=%v log=%q", n, err, r.Commands, buf.String())
+	}
+	// The port's own speed, the one forced choice its picker offers: the
+	// port already runs at it, so nothing is refused and nothing is said.
+	if len(guest.SpeedCaps) != 1 {
+		t.Fatalf("guest port offers speeds %v, want one", guest.SpeedCaps)
+	}
+	own := guest.SpeedCaps[0]
+	if own == 1000 {
+		t.Fatal("the capture's guest runs at 1000 Mb/s; the forced case below needs another speed")
+	}
+	if n, err := c.ApplyPorts(context.Background(), want(own)); err != nil || n != 0 || len(r.Commands) != 0 || buf.Len() != 0 {
+		t.Fatalf("own speed %d: n=%d err=%v cmds=%v log=%q", own, n, err, r.Commands, buf.String())
 	}
 	for i := 0; i < 2; i++ { // twice: the reconcile runs every inform
 		if n, err := c.ApplyPorts(context.Background(), want(1000)); err != nil || n != 0 || len(r.Commands) != 0 {
