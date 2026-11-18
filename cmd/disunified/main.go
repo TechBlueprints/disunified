@@ -793,7 +793,7 @@ func runOne(ctx context.Context, o options) error {
 			)
 			spacer := newProvisionSpacer(sess.Adopted, sess.Snapshot, func(snap *devicemodel.Snapshot) time.Duration {
 				pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
-				r, err := api.Provision(pctx, macStr, snap, namer, append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortNameIn(defaultPortNames(desc.Ports, snap, namer)), seed)
+				r, err := api.Provision(pctx, macStr, snap, namerForProvision(pctx, sw, namer, api.DeviceByMAC), append([]string{profile.ModelDisplay, "USW Leaf", profile.Model}, unifimodel.ControllerDisplayNames(profile.Model)...), isDefaultPortNameIn(defaultPortNames(desc.Ports, snap, namer)), seed)
 				pcancel()
 				for _, note := range r.Notes {
 					log.Printf("provision: seed: %s", note)

@@ -181,6 +181,8 @@ func ControllerDisplayNames(model string) []string {
 		return []string{"ECSAGG", "ECS Aggregation"}
 	case "UDC48X6":
 		return []string{"USW Leaf"}
+	case "USFXG": // a lane switch's record on 11.0.99 (stat-device-lane-switch-adopted.json)
+		return []string{"USW Flex XG"}
 	case "USPPDUP":
 		return []string{"USP PDU Pro", "PDU Pro"}
 	case "USWDA25", "USWDA26":

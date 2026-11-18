@@ -396,6 +396,18 @@ func (d *Device) DeviceName(devicemodel.System) string {
 	return strings.TrimSpace(d.view.System.Hostname + " " + cage)
 }
 
+// ParentMAC is the parent's own MAC as of the last view ("" before one),
+// and Cage the cage: what main needs to name the lane switch after the
+// parent as the controller knows it (cmd/disunified, lane_naming.go).
+func (d *Device) ParentMAC() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.view.System.MAC
+}
+
+// Cage is the parent's port this lane switch presents.
+func (d *Device) Cage() int { return d.opt.Cage }
+
 // DefaultDeviceNames: the generic "<Vendor> <Model>" form.
 func (d *Device) DefaultDeviceNames(sys devicemodel.System) []string {
 	return []string{devicemodel.DefaultNamer{}.DeviceName(sys)}

@@ -307,3 +307,24 @@ type notLanes struct{}
 func (notLanes) Collect(context.Context) (*devicemodel.Snapshot, error) { return nil, nil }
 func (notLanes) Start(context.Context) (*devicemodel.Snapshot, error)   { return nil, nil }
 func (notLanes) Close() error                                           { return nil }
+
+// The parent's MAC and the cage, which main names the lane switch by in
+// UniFi (docs/drivers/breakout.md 16.14): the parent's own MAC from the
+// view, not the lane switch's.
+func TestParentMACAndCage(t *testing.T) {
+	r := newRig(t)
+	if got := New(r.d.opt, r.c, r.c).ParentMAC(); got != "" {
+		t.Errorf("before a collect: %q", got)
+	}
+	s := r.snap()
+	parent, err := r.c.Lanes(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.d.ParentMAC(); got == "" || got != parent.System.MAC || got == s.System.MAC {
+		t.Errorf("ParentMAC %q: want the parent's %q, not the lane switch's %q", got, parent.System.MAC, s.System.MAC)
+	}
+	if r.d.Cage() != 2 {
+		t.Errorf("Cage %d", r.d.Cage())
+	}
+}
