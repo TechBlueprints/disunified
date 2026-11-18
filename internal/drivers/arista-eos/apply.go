@@ -65,6 +65,7 @@ func (c *Collector) ApplyPorts(ctx context.Context, desired []devicemodel.PortDe
 		updated.Ports = append([]devicemodel.Port(nil), snap.Ports...)
 		children := c.childCages(snap)
 		markApplied(updated.Ports, desired, 0, children)
+		markOwnSpeed(updated.Ports, pr.ownSpeed)
 		c.last = &updated
 		// A lane switch's cage took its admin state on every lane.
 		for _, d := range desired {
@@ -154,6 +155,19 @@ func markApplied(ports []devicemodel.Port, desired []devicemodel.PortDesired, ba
 	}
 }
 
+// markOwnSpeed records the module rule's speeds on the cages it set them
+// on (layout.go), as the next collect reads them: the lane count the speed
+// gives at that speed on every lane. The interfaces stay until the collect.
+func markOwnSpeed(ports []devicemodel.Port, own map[int]int) {
+	for i := range ports {
+		if sp, ok := own[ports[i].Index]; ok {
+			ports[i].AdminSpeed = sp
+			ports[i].Lanes = laneCountAt(sp)
+			ports[i].LanesDiverge = false
+		}
+	}
+}
+
 // markFEC records the FEC a batch set on its interfaces (c.mu held), so a
 // second apply before the next collect writes nothing.
 func (c *Collector) markFEC(written map[string]devicemodel.FEC) {
@@ -201,8 +215,9 @@ func (c *Collector) childCages(snap *devicemodel.Snapshot) map[int]bool {
 type planScope struct {
 	cage     int
 	cageDown bool // the device's own push has the cage disabled: no lane comes up
-	// controllerOnly plans without the driver's own writes -- the FEC a
-	// module calls for where the controller says auto (fec.go) -- for
+	// controllerOnly plans without the driver's own writes -- the FEC and
+	// the layout a module calls for where the controller says auto
+	// (fec.go, layout.go) -- for
 	// PlanPorts and PlanLanes: the first-push hold must never wait on a
 	// write no controller setting can match.
 	controllerOnly bool
@@ -212,14 +227,16 @@ type planScope struct {
 // ports they change, the change count ApplyPorts reports, what the plan
 // would not write and why, and the cages a join hands back whole.
 type planResult struct {
-	cmds    []string
-	ports   []int
-	changed int
-	notes   []string
-	joins   map[int]bool
-	pcVLAN  map[string]devicemodel.PortVLAN // the Port-Channels written, as the batch leaves them
-	fec     map[string]devicemodel.FEC      // the interfaces whose FEC the batch sets, and to what (fec.go)
-	removed []string                        // the Port-Channels the batch removes (portchannel.go)
+	cmds     []string
+	ports    []int
+	changed  int
+	notes    []string
+	joins    map[int]bool
+	pcVLAN   map[string]devicemodel.PortVLAN // the Port-Channels written, as the batch leaves them
+	fec      map[string]devicemodel.FEC      // the interfaces whose FEC the batch sets, and to what (fec.go)
+	removed  []string                        // the Port-Channels the batch removes (portchannel.go)
+	layout   map[int]bool                    // the ports whose lane count the batch changes (PlanLayout)
+	ownSpeed map[int]int                     // the cages the module rule sets a speed on, and to what (layout.go)
 }
 
 // plan computes the batch for desired against snap. PlanPorts and
@@ -237,6 +254,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 	c.mu.Lock()
 	fecIn := fecInputs{rows: c.fecRows, types: c.ifTypes, codes: c.eeprom, stale: c.eepromStale}
 	channels := c.channelCfg
+	speeds := laneSpeeds(c.props)
 	child := map[int]bool{}
 	childLanes := map[int][]devicemodel.Port{}
 	attached := map[int]bool{} // cages with a lane switch, split or not
@@ -260,6 +278,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		live[p.Index] = p
 	}
 	touched := map[int]bool{}
+	mirrored := mirrorPorts(snap.Ports, desired)
 	mirror := mirrorCommands(snap.Ports, desired, base, child, note)
 	if len(mirror) > 0 {
 		pr.cmds = append(pr.cmds, mirror...)
@@ -343,6 +362,18 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		case lag > 0:
 			members["Port-Channel"+strconv.Itoa(base+lag)] = true
 		}
+		// The module's layout where the controller says auto (layout.go):
+		// the driver's own write, never in a controller-only plan. dSpeed
+		// is d with the speed the batch sets, so the FEC rule waits a
+		// cycle on a cage whose speed changes, as for a pushed one.
+		ruleSpeed := 0
+		if !inLanes && !sc.controllerOnly {
+			ruleSpeed = moduleSpeed(fecIn, speeds[d.Index], p, d, owned, mirrored[d.Index], note)
+		}
+		dSpeed := d
+		if ruleSpeed > 0 {
+			dSpeed.SpeedMbps = ruleSpeed
+		}
 		if !owned {
 			cage := d.Index
 			if inLanes {
@@ -350,7 +381,7 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 			}
 			var fecWant map[string]devicemodel.FEC
 			fecAt = len(portCmds)
-			fecCmds, fecWant = fecPlan(fecIn, p, d, cage, sc.controllerOnly, note)
+			fecCmds, fecWant = fecPlan(fecIn, p, dSpeed, cage, sc.controllerOnly, note)
 			for n, f := range fecWant {
 				if pr.fec == nil {
 					pr.fec = map[string]devicemodel.FEC{}
@@ -381,10 +412,10 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 				note("lane %d of cage %d: %d Mb/s asked; on EOS every lane of a cage runs one speed (%v), set on the switch's own port %d; not written", d.Index, sc.cage, d.SpeedMbps, p.SpeedCaps, sc.cage)
 			}
 		} else {
-			speedCmds = speedCommands(p, d)
+			speedCmds = speedCommands(p, dSpeed)
 		}
 		var dissolve []string
-		if owned && len(speedCmds) > 0 && d.SpeedMbps >= 40000 {
+		if owned && len(speedCmds) > 0 && dSpeed.SpeedMbps >= 40000 {
 			var gone []string
 			dissolve, gone = dissolveLanes(d.Index, childLanes[d.Index])
 			pr.removed = append(pr.removed, gone...)
@@ -404,6 +435,22 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		pr.cmds = append(pr.cmds, dissolve...)
 		lanes := laneNames(p)
 		speedEveryLane := d.SpeedMbps > 0 && d.SpeedMbps < 40000
+		if len(speedCmds) > 0 {
+			if laneCountAt(dSpeed.SpeedMbps) != max(p.Lanes, 1) {
+				if pr.layout == nil {
+					pr.layout = map[int]bool{}
+				}
+				pr.layout[d.Index] = true
+			}
+			if ruleSpeed > 0 {
+				// A split or join goes to lane 1, a lane speed to every lane.
+				speedEveryLane = laneCountAt(ruleSpeed) == max(p.Lanes, 1)
+				if pr.ownSpeed == nil {
+					pr.ownSpeed = map[int]int{}
+				}
+				pr.ownSpeed[d.Index] = ruleSpeed
+			}
+		}
 		for i, ifname := range lanes {
 			laneCmds := portCmds
 			if i == 0 || speedEveryLane {
