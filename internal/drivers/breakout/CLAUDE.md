@@ -49,6 +49,16 @@ DX010's cage 3. The Arista parent is fixture-tested only.
   followed by a re-adoption while the cage is split (unplug or join the
   cage first, then forget the disconnected record). A declared entry is
   still adopted by hand.
+- **A joined cage retires its lane switch** (2026-11-18, `breakout.md`
+  §16.13; `cmd/disunified/lanes_retire.go`): four joined reads of the
+  parent (`LaneProvider.CageLanes`, a new snapshot each) over two minutes
+  stop the child; an automatic one is detached, forgotten by its exact MAC
+  (`unifiapi.ForgetLaneSwitch`, `api.err.DeviceBusy` retried) and its
+  state directory removed. `manual`, no API and declared: stopped only. A
+  new parent implementing `LaneProvider` must answer `CageLanes` 0 for any
+  read it cannot vouch for (starting, the fold disagreeing with its lanes):
+  a 1 retires. A live test that wants a joined cage's lane switch kept
+  needs it declared, or `lane_switches: manual`.
 - **A declared entry is never detached**: a Forget of it is logged (the
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.

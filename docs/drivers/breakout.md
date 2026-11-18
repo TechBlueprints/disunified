@@ -23,6 +23,12 @@ the scoped `plan()` in `apply.go` (the second parent, §7b),
 `internal/config` (the entry's rules),
 `cmd/disunified/main.go` (the attachment and the registry).
 
+**Retired on a join since 2026-11-18 (§16.13).** A cage the parent reads
+as one port on four collects in a row over two minutes stops its lane
+switch; an automatic one is detached, forgotten in the controller by its
+exact MAC and its state directory removed (a manual parent's, or one with
+no controller API, and a declared one are stopped only).
+
 **Automatic since 2026-11-16 (§16).** Every split cage of a parent gets a
 lane switch by itself, named `<parent>-cage<N>`, unless the parent's entry
 says `lane_switches: off` or the file declares one for that cage (below; a
@@ -207,7 +213,8 @@ cage) take the cage's whole intent from that plan, as on any breakout, and
 the next cycle hands them to the child again if they are still split. The
 child of a joined cage stops answering, and the controller shows it
 disconnected and keeps its placement (a placement outlives the report,
-§6.6.1 of the note) until it is forgotten. A split of a cage whose child is
+§6.6.1 of the note) until it is forgotten: since 2026-11-18 by the bridge
+itself for an automatic one, a few minutes after the join (§16.13). A split of a cage whose child is
 attached gives the lanes the cage's intent; the child then seeds the
 controller from them at adoption.
 
@@ -1050,10 +1057,9 @@ entry, its adoption (Clint's) and a far end. The entry, in the container's
 
 ## 12. Later
 
-- **Automatic lane switches**: built 2026-11-16 (§16). A child is started
-  at run time and never stopped (a joined cage's simply does not answer);
-  the bridge forgetting a retired child in the controller is still not
-  built (§16.9).
+- **Automatic lane switches**: built 2026-11-16 (§16). A joined cage's
+  is retired since 2026-11-18 (stopped, forgotten in the controller, its
+  state removed: §16.13).
 - A `PortCycler` on the child (bounce one lane).
 - `docs/breakout-lag.md` §4-5 (shape 1) stay as the record of the road
   not taken; nothing there is built.
@@ -1137,7 +1143,8 @@ entry, its adoption (Clint's) and a far end. The entry, in the container's
 6. The lane switch claims no STP, isolation, port security, egress limit
    or LLDP-MED (§0's table); moving them to the child needs the switch-wide
    computations to take both loops' intent.
-7. Automatic lane switches (§12) and the bridge forgetting a retired child.
+7. Automatic lane switches (§12, built 2026-11-16) and the bridge
+   forgetting a retired child (built 2026-11-18, §16.13).
 
 ## 15. The first live adoption (DX010, cage 2)
 
@@ -1315,13 +1322,13 @@ automatic one for its cage.
 | a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval; one interval later, if the parent is adopted, asks the controller to adopt it by its exact MAC (§16.12; not with `lane_switches: manual`, without a controller API, or after a Forget) | fold, unchanged, until the adoption | a pending `USFXG`, adopted within about a minute |
 | the controller adopts it (the bridge's request, or the operator's Adopt) | attaches it (`AttachLaneSwitch`) when the adoption handshake completes; removes a Forget's mark | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
 | the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending, then asks for its adoption again at the watcher's pace (`manual`: does not) | fold again until the re-adoption; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), adopted again within a minute or two; to be rid of it, unplug the breakout first |
-| the cage is joined | nothing: the child's collect fails "not split", its informs stop | whole, the parent's | disconnected, placement kept, until forgotten |
-| the cage is split again | the same child resumes (its state file kept) | owned again if the child is still adopted | connected again |
-| the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes); a pending one is started by the watcher | as before the restart | no change |
+| the cage is joined | since 2026-11-18 (§16.13): after four joined reads of the parent over two minutes, stops the child, detaches it, forgets its record by its exact MAC (`api.err.DeviceBusy` retried) and removes its state directory; `manual`, no API, or a declared one: stopped (and an automatic one detached) only. Before: nothing, its collect failed "not split" for good | whole, the parent's | the record gone (automatic); disconnected, placement kept (the others) |
+| the cage is split again | a retired one: a fresh lane switch, pending, then adopted with defaults; a stopped one (`manual`, no API, declared) starts again from its state file | owned again once adopted (a stopped adopted one at once) | a new pending `USFXG` (retired), or connected again |
+| the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes), unless the first snapshot reads its cage as one port: then it is not attached, and retired by the same count (§16.13); a pending one is started by the watcher | as before the restart | no change |
 
-A lane switch, once started, is never stopped while the process runs; a
-whole cage simply does not answer. The bridge forgets nothing in the
-controller by itself (§16.9).
+Until 2026-11-18 a lane switch, once started, was never stopped while the
+process ran, and the bridge forgot nothing in the controller by itself;
+§16.13 is the retire on a join.
 
 ### 16.4 Config, names, identity
 
@@ -1503,9 +1510,8 @@ lanes; never the uplink):
   one far end, and the fold already serves it (one port, SFP28 form, FEC
   and 10G from the parent's drawer, verified 2026-11-16), so a five-port
   device with one used lane may be more than it needs.
-- **Forgetting a retired lane switch** in the controller (a joined cage's
-  child stays disconnected until the operator forgets it, as an unplugged
-  switch does).
+- ~~Forgetting a retired lane switch~~: built 2026-11-18, §16.13 (a
+  joined cage's automatic lane switch is stopped, forgotten and cleared).
 - **xcvrd's root cause** (the register's entry); §16.6 reads around it.
 - **Auto on an empty split cage**: stays split, as today (the register's
   open decision for the fold). With a lane switch adopted the join is a
@@ -1886,3 +1892,143 @@ later, and adopted again.
 Untouched throughout: the neighbour's pending access point (`state` 2,
 `adopted: false` before and after; no command named its MAC).
 `dx010-cage3`, the DX010 and the Arista stayed adopted and connected.
+
+### 16.13 A joined cage retires its lane switch (2026-11-18)
+
+**The rule.** Clint, asked on 2026-11-18 whether a lane switch whose cage
+is no longer split should forget itself from UniFi too: "build it" (the
+shape below, automatic lane switches only). Until then a joined cage's
+lane switch ran on: on the DX010 cage 26's ran for 11 hours, 490 failed
+collects ("cage 26 of <switch> is not split"), its informs
+withheld, its record forgotten and its state cleared by hand. §16.11's
+rule for a refused key never fired, because it sent no inform.
+
+- **The trigger is the cage, not the cable.** The parent's snapshot reads
+  the cage as one port: joined by the operator's forced speed on the
+  parent's port, or by the module rule when a module that cannot run split
+  is seated. A cable that runs whole or split keeps a split made for it,
+  and an empty split cage stays split (§16.9), so neither fires anything.
+- **Only on a positive read, four collects in a row over two minutes.**
+  `devicemodel.LaneProvider.CageLanes(cage)` (both parents) answers the
+  cage's port count as the last collect read it, with that snapshot's
+  time, and 0 when it cannot say: no snapshot, no such port, the fold and
+  its lanes disagreeing (the read right after this device's own plan split
+  or joined the cage, before the next collect: the Arista drops a joined
+  cage's lanes at the apply), or, on SONiC, a collect taken while the
+  switch was still starting (`starting.go`, `docs/drivers/sonic.md`
+  §6.4.2). The watcher (`cmd/disunified/lanes_retire.go`) counts a read
+  only from a snapshot newer than the last one it looked at, so a failed
+  collect, a parent that is not answering and a tick with nothing new count
+  nothing. Four joined reads, spanning at least two minutes by the
+  watcher's clock and no two more than three minutes apart, retire; any
+  other new read (split, 0) starts the count again. **Why these:** a
+  parent's own split or join runs in one batch under its write lock, so no
+  collect sees it half done; what one read cannot rule out is a breakout
+  made by hand, whose CLI can take a minute (a refused one bails after
+  60 s, `docs/drivers/sonic.md` §11.38). Two minutes is past that and is
+  the span §16.11's rule takes for the same reason; four reads keep a
+  quickly collecting parent (10 s at start) from reaching it on one long
+  read's worth of time; three minutes is the lane switch's own `max_age`
+  (the parent was not answering). A restart or a reboot starts the count
+  from nothing.
+- **The retire of an automatic lane switch** (`lane_switches: auto` and a
+  controller API): its loop is stopped (`options.halt`, the run's context
+  cancelled; the loop has returned before anything else happens), the
+  lanes are handed back by `DetachLaneSwitch`, the path a Forget takes
+  (§16.10-16.11), its record is forgotten in the controller, and once the
+  controller holds no record for it its state directory
+  (`state/<name>/`: `device.json`, `layout.json`, the driver's files) is
+  **removed**, not set aside: the key in it is dead after the Forget, and a
+  file left behind is exactly what a later start or split would resume
+  from. Its reply log (`inform-log/<name>/`) stays, as every device's does.
+- **The Forget** is `unifiapi.ForgetLaneSwitch`: `stat/device`, and only
+  for a record with exactly that MAC, a record id and the model `USFXG`,
+  `cmd/sitemgr {"cmd":"delete-device","mac"}`. Only `meta` is read from
+  the answer (it carries the whole stored record, `x_authkey` included);
+  the log line has the HTTP status and `meta`. `api.err.DeviceBusy` (the
+  emulated update after an adoption, §16.12) is retried after 30 s, each
+  pause doubling to 10 minutes, the reason logged once; the state is kept
+  until a Forget is taken or the controller lists no record (one forgotten
+  by hand, or only pending), so a bridge restart in between finds the
+  adopted state file and retires it again. A record of another model with
+  that MAC is never forgotten (logged, asked again after 10 minutes).
+- **After the Forget** the cage asks for no adoption while it stays joined
+  (the watcher asks only for split cages' lane switches, §16.12), and the
+  lane switch, never informing again, never gets the Forget's
+  `setdefault`. A later split is a fresh lane switch: no state file,
+  pending, adopted by the bridge's own request, a new key, the controller's
+  defaults. **What the Forget costs:** the lane switch's names, VLANs and
+  port profiles in UniFi go with its record; a breakout cable put back is
+  adopted with defaults and seeded from what the lanes then run.
+- **`lane_switches: manual`, and an automatic one without a controller
+  API: stopped and handed back only.** Decided here from §16.12: `manual`
+  is the rule that the operator adopts, so the operator forgets too; the
+  bridge has no say over a record it did not ask for. Its state file and
+  its record (disconnected) are kept; a split starts it again from the
+  state file, attached as at any start. Without an API the bridge cannot
+  forget, so it does the same and says to forget the record by hand.
+- **A declared lane switch (`driver: breakout`) is stopped only**: no more
+  failing collects, one line, and it stays attached (the file declares
+  it, §0), its state and its record left alone; a split starts it again
+  (`declaredLane.respawn`, the same `runOne` options). The watcher exists
+  for a parent with declared lane switches even under `lane_switches:
+  off`, for this alone.
+- **At a start** (`startAdopted`), an adopted automatic lane switch whose
+  cage the parent's first snapshot reads as one port is not attached and
+  not started; that snapshot is its first joined read, and three more over
+  two minutes retire it as above. A split before then starts it from its
+  state file, attached. (Until this build every adopted state file was
+  attached and started, split or not, which is how cage 26's ran for 11
+  hours.)
+
+**Tests** (real captures only). Parents:
+`internal/drivers/sonic/lanes_retire_test.go` (the DX010 with cage 3 split,
+`collect-split-dac.txt`: split 4, whole 1, no port 0; the join through the
+parent's plan reads as the old collect until the next collect, then 1;
+a collect while the switch is still starting reads 0) and
+`internal/drivers/arista-eos/lanes_retire_test.go` (the 7160's cage 50,
+`module-layout-20261117/` split-by-rule then joined: 4, not 1 after the
+join's batch, 1 after the collect). Watcher,
+`cmd/disunified/lanes_retire_test.go`, on the DX010 capture joined and
+split again through the parent's own plan: the whole sequence (stopped at
+the fourth read, forgotten once by its exact MAC, `device.json` and
+`layout.json` gone, the parent's reconcile writing nothing, no adoption
+asked while joined, a later split a fresh pending lane switch that is then
+asked for); the count reset by a split and by a gap without collects, and
+ten minutes without a collect retiring nothing; a split cage never; both
+halves of the count deciding (13 reads at 10 s, 4 at 70 s); DeviceBusy
+twice then taken, the state removed only then, the reason logged once; no
+record; `manual` and no API (stopped, state kept, resumed attached on a
+split); declared (stopped, attached, nothing forgotten, started again on a
+split); the start-up case (not started, retired after the count; split
+before the count: started attached); the Arista parent end to end.
+`internal/unifiapi/forget_test.go` against the live run's reduced
+`stat/device` (`controller-11.0.99/stat-device-lane-switch-adopted.json`)
+and its recorded answers (`forget-lane-switch.json`): exactly one POST for
+the lane switch's MAC, none for the parent (another model) or an unlisted
+or pending MAC, DeviceBusy as `ErrDeviceBusy`, and no error or log text
+that quotes the answer's record.
+
+**Live (the DX010's empty cage 26, 2026-11-18 08:57-09:51 MST, Network
+11.0.99, package `0.0.0+20261118.21b2cb7`).** Unscrubbed records in
+`local-information/lane-retire-20261118/`.
+
+| Step | Seen |
+|---|---|
+| install | both devices resumed adopted, `0 of 32` / `0 of 5 ports changed`; no record or state for cage 26's lane switch (the old one forgotten and set aside by hand that morning) |
+| split (a forced 25G on port 26 by REST, no `fec_mode`) | 09:00:43 started pending, 09:00:58 asked for, 09:01:13 CONNECTED and attached, port 26 set to Auto, seeded, `0 of 5 ports changed` |
+| a Forget by hand 26 s after the adoption (meant as a probe for the busy answer) | taken: HTTP 200, `rc ok`, one record in `data` (not kept); the `setdefault` reached the bridge at 09:02:48 (the detach line), the re-adoption followed by the §16.12 rule (asked 09:04:43, CONNECTED 09:06:30, seeded, the first push held then applied) |
+| a name (`retire-test`) and VLAN 4000 untagged on lane 1 in the controller | the lane plan wrote the description and moved `Ethernet100` from Vlan4094 to Vlan4000, `1 of 5 ports changed` |
+| join (a forced 100G on port 26 by REST) at 09:09:30 | the parent's breakout to `1x100G[40G]` at 09:10:31 (`1 of 32 ports changed`); the lane switch's collects "not split"; **09:16:13 stopped** ("4 collects in a row over 4m0s"), its loop returned, detached; its Forget answered **HTTP 400, `rc error`, `api.err.DeviceBusy`** (9 min 43 s after its adoption; the record in state 5, version 7.4.1.16850, no update requested); the retries at 30 s, 1, 2 and 4 min after were refused the same way (logged once) |
+| the record, disconnected (state 0) | a Forget by hand at 09:26:38 (a probe that turned out to be a Forget): taken, HTTP 200. The bridge's next retry (09:32:43): `UniFi holds no record for it`, `state directory removed`. The parent wrote nothing after the join's batch (its last write l2d's config at 09:12:09); CONFIG_DB, APPL_DB, STATE_DB and ASIC_DB's host interfaces held `Ethernet100` alone for the cage, no `PortChannel26xx`, no mirror, no description; the VLAN list is `dx010-cage3`'s |
+| split again at 09:33:16 | a fresh lane switch: 09:36:28 started pending, 09:36:43 asked for, 09:36:58 CONNECTED, port 26 set to Auto, seeded, `0 of 5 ports changed`; the controller's record with UniFi's defaults (lane 1 `Eth26/1` on Default, no VLAN 4000) |
+| join at 09:37:45, then a bridge restart at 09:46:15 (before the count) | (the Arista, the DX010's uplink, was reloaded by another session at 09:37:28 and the DX010 was unreachable 09:37:36-09:43:00, so the join's push came at 09:44:38.) At the start: `its state file is adopted, but port 26 reads as one port (the cage is joined), so it is not attached or started`; `dx010-cage3` resumed, `0 of 32` / `0 of 5`. **09:49:26 retired** ("4 collects in a row over 2m45s"), **forgotten by the bridge, HTTP 200, `rc ok`** (12 min 28 s after that adoption), state directory removed |
+| clean-up | port 26's override put back as found (the whole list equal to the morning's), its push `0 of 32 ports changed`, `switch.port.26.stp.edge=auto`, cage 26 `1x100G[40G]`; no record for the lane switch in `stat/device` |
+
+**What the run taught.** `api.err.DeviceBusy` is not "about two minutes"
+(§16.12): one record was refused for at least 7 minutes, 10 to 17 minutes
+after its adoption, with no update requested; the other was taken 12
+minutes after. What the controller is busy with is not captured; the
+retry pace covers it either way. A Forget of a record the bridge has
+stopped is not a missed `setdefault`: the lane switch never informs again,
+so nothing reads it.

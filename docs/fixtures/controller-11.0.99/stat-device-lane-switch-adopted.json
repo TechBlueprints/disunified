@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "_id": "00000000000000000000000000000001",
+      "adopted": true,
+      "mac": "02:00:00:00:00:01",
+      "model": "USWF07D",
+      "name": "device-1",
+      "state": 1,
+      "type": "usw",
+      "version": "4.0.1.995"
+    },
+    {
+      "_id": "00000000000000000000000000000002",
+      "adopted": true,
+      "mac": "02:00:00:00:00:1a",
+      "model": "USFXG",
+      "name": "device-2",
+      "state": 5,
+      "type": "usw",
+      "version": "7.4.1.16850"
+    }
+  ],
+  "meta": {
+    "rc": "ok"
+  }
+}

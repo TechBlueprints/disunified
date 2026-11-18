@@ -1,0 +1,8 @@
+{
+  "about": "The controller's answers to a Forget of an automatic lane switch (POST cmd/sitemgr {\"cmd\": \"delete-device\", \"mac\": <its MAC>}), Network 11.0.99, the DX010's cage 26, 2026-11-18 (docs/drivers/breakout.md 16.13). Status and meta only: the answer's data holds the whole stored record, x_authkey included, and was never kept. data_records is how many records data held. state is the record's state in stat/device when it was asked.",
+  "answers": [
+    {"when": "16:01:39Z", "by": "hand, 26 s after the adoption completed", "state": 5, "status": 200, "meta": {"rc": "ok"}, "data_records": 1},
+    {"when": "16:16:13Z", "by": "the bridge's retire, 9 min 43 s after the second adoption completed (its log line)", "state": null, "status": 400, "meta": {"rc": "error", "msg": "api.err.DeviceBusy"}, "data_records": 0, "note": "state not read at that moment (5 at 16:09:17, 0 at 16:26:28); data not counted (the bridge reads meta only); the bridge's retries at 30 s, 1, 2 and 4 min after it were refused the same way (logged once), and the record was taken by hand at 16:26:38"},
+    {"when": "16:26:38Z", "by": "hand, the same record after it showed disconnected", "state": 0, "status": 200, "meta": {"rc": "ok"}, "data_records": 1}
+  ]
+}

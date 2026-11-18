@@ -115,7 +115,12 @@ adoption itself, by the lane switch's exact MAC, once its parent is adopted
 when a breakout dac is inserted"; a Forget is followed by a re-adoption --
 Clint: "if you want to really forget it unplug it" -- and
 `lane_switches: manual` leaves them all to the operator,
-`docs/drivers/breakout.md` §16.12), and the DX010's
+`docs/drivers/breakout.md` §16.12; since 2026-11-18 a cage the parent
+reads as one port on four collects in a row over two minutes retires its
+automatic lane switch: stopped, detached, its record forgotten by its exact
+MAC and its state directory removed, so a breakout put back is adopted
+afresh with UniFi's defaults; a manual parent's, one without a controller
+API and a declared one are stopped only, §16.13), and the DX010's
 cage 3 is the first one adopted live (`docs/drivers/breakout.md` §0, §16;
 the Arista parent is fixture-tested only, §7b). It reports a link-local
 address of its own: one that shared its parent's made the controller
