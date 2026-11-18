@@ -10769,36 +10769,56 @@ logged across at least two insertions. So no notification reached
   insertion raised nothing.
 
 The SUS6 count and line level from that boot died with the reboot. Fault 1
-needs the fix under either explanation, and the fix below does not depend
-on which one is true.
+needs the fix under either explanation. The fix below keeps the interrupt
+as the route and reports a change within 5 s under either.
 
 #### 11.39.5 The fix (draft)
 
 `contrib/sonic-image/drafts/sonic-buildimage/0015-seastone-xcvrd-misses-every-module-put-in-after-boot.patch`
 (`event.py`, `chassis.py`). It is not in any `series` file, so `build.sh`
-does not apply it. It has not been built or installed. The chassis keeps
-one `SfpEvent` for its whole life, with the SUS6 file open between calls
-(`poll` on `POLLPRI|POLLERR`), so a notification is never dropped. The
-presence register becomes the record. Each call reads `qsfp_modprs_irq`,
-which clears the CPLD's latch and so frees SUS6 for the next edge. It then
-compares `qsfp_modprs` with the presence it last reported, and waits on the
-interrupt for at most a second before reading again. Cages are numbered by
-list index, not `port_num`.
+does not apply it. It has not been built or installed.
 
-So an insertion or removal reaches xcvrd within about a second even if no
-interrupt ever comes (H1), and a latched line clears itself within a second
-(H2). The cost in pmon is one presence read (six port reads in the CPLD)
-per second. A timeout still returns `(False, {})`, so xcvrd keeps its 5 s
-cadence and does not handle a breakout's port change any later. Returning
-`True` would move it to NORMAL's 60 s wait. The alternative, polling
-presence in xcvrd itself, would change a daemon every platform shares to
-work around one platform's API. Tested only on the Mac against fake
-sysfs files: no change, one insert, two cages in one call, an unreadable
-register. `git apply --check` passes on the kit's work clone and on
-202505. Fault 1 affects every DX010 since 202305, so the patch is also an
-upstream candidate. Nothing goes upstream without Clint. The driver's
-`sfputil` read (§11.36) stays until an image with the fix has been seen
-working live.
+**The interrupt stays the route** (rewritten 2026-11-17; the first draft
+read presence every second and used the interrupt only to shorten that
+wait). The chassis keeps one `SfpEvent` for its whole life, with the SUS6
+file open between calls (`poll` on `POLLPRI|POLLERR`), so a notification
+made between two calls is seen by the next one. A latch left from before
+the start is cleared once. On a wake the file is read, then
+`qsfp_modprs_irq` (which clears the CPLD's interrupt source and frees SUS6
+for the next edge), then `qsfp_modprs`: the cages that changed are those
+whose bit differs from the presence last reported, numbered by list index,
+not `port_num`. That order loses nothing: a change after the clear raises a
+new edge, and one before it is in the presence read.
+
+Presence is also compared when the caller's wait times out, a wait xcvrd
+already makes every 5 s, so it costs no extra wake-up. A change found there
+had no interrupt: it is reported, the latch is cleared, and one warning is
+logged ("presence changed with no SUS6 interrupt"). So with a working
+interrupt an insertion or removal reaches xcvrd at once; with a missed edge
+(H2) or a CPLD that raises none (H1) it reaches xcvrd within 5 s, and the
+warning says which unit behaves that way. No change still returns
+`(False, {})`, so xcvrd keeps its 5 s cadence and does not handle a
+breakout's port change any later. Returning `True` would move it to
+NORMAL's 60 s wait.
+
+The alternative, polling presence in xcvrd itself, would change a daemon
+every platform shares to work around one platform's API. Tested only on
+the Mac against fake sysfs files with the wait replaced: a wake with an
+insert, with three cages in one call and with nothing new; a change with
+no wake; no timeout; an unreadable register; no SUS6 file. `git apply
+--check` passes on the kit's work clone and on 202505. Fault 1 affects
+every DX010 since 202305, so the patch is also an upstream candidate.
+Nothing goes upstream without Clint. The driver's `sfputil` read (§11.36)
+stays until an image with the fix has been seen working live.
+
+**A lead for H1: nothing sets the CPLD's interrupt masks.** `dx010_cpld`
+exposes `qsfp_modprs_msk` and `cpld4_int0_msk` (read and write), and
+neither the driver's probe nor any platform script in the tree writes
+them, so they hold the CPLD's power-on values: `0x00000000` and `0xf8` on
+this unit (§11.39.3). Which sense a mask bit has is not documented.
+If the rack-day test shows no interrupt, the next read is whether one of
+those two values is what holds it off, before concluding the line is not
+wired: that would keep the interrupt route and need only a write at start.
 
 #### 11.39.6 The rack-day test
 
@@ -10829,7 +10849,9 @@ once is the deliberate step that clears it. Expect SUS6 to go high, then
 repeat the steps. If the line instead sits low before any step, the latch
 is older than the test: record that and clear it the same way. Then build
 an image with the draft patch, install it, and repeat: expect "Got SFP
-inserted event" and `TRANSCEIVER_INFO` within about 2 s in all three cases.
+inserted event" and `TRANSCEIVER_INFO` within about 2 s where the interrupt
+works, and within about 7 s with the patch's "no SUS6 interrupt" warning
+where it does not.
 
 ## 12. The bridge on the switch itself (2026-11-02)
 
