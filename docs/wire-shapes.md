@@ -576,7 +576,12 @@ next day):
   identity field was wrong on the wire, though no column shows it: the
   Arista sent `sfp_rev` empty for every module. It is now `show inventory`'s
   `hardwareRev` (`1`, `A`; empty for Arista's own cable, as EOS has none),
-  held by the 4.26.14M fixture in `extras_test.go`.
+  held by the 4.26.14M fixture in `extras_test.go`. **The controller keeps
+  it (checked 2026-11-17, Network 11.0.99, after the container's rebuild
+  from a main that has 94b2d3d):** `stat/device/<mac>` holds each module's
+  `sfp_rev` exactly as `payload-last.json` sent it, all five modules alike:
+  `1` on port 49, `A` on 51, 52 and 53, and empty on 50 (Arista's own
+  breakout cable). Read with the API key, GET only.
 
 ## 9. Network 11 (2026-11-13)
 

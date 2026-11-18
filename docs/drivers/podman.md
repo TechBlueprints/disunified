@@ -200,6 +200,8 @@ podman bridge network: the reported address (§7).
 `collect-block.txt` (2026-11-17) is the first whose script lists `nft` and
 the client-Block table (absent: nothing has been written on the host), for
 `internal/drivers/podman/block_test.go` (§9).
+`collect-block-present.txt` (2026-11-17, later the same day) is the host
+with the table the deployed driver wrote for one blocked client (§9).
 `internal/drivers/podman/collector_test.go` drives the driver against the first;
 `internal/device/contract_podman_test.go` holds its payload to the wire
 contract (omissions: PSU, root switch, FDB capacity, fans, temperature, STP
@@ -357,10 +359,29 @@ cycles wrote nothing (one "applied 1" line in the log). The host's own
 tables (`inet netavark`, `inet firewalld`) are as they were and every
 bridge in the container reconnected.
 
+**The present table as a fixture (2026-11-17).** `collect-block-present.txt`
+is a whole collect of the host with the table loaded (the driver's own
+`collect.sh`, read-only), scrubbed. What `nft -j list` printed: the
+`metainfo` object, the table with its `comment`, the two chains (`dev` the
+uplink, `prio` 0, `policy` accept) and one rule each whose match `right` is
+the MAC as a plain string, not a one-element `set` (nft folds it), followed
+by `counter` (`packets`/`bytes`, both 0) and `drop`. The driver reads only the
+table's name and comment, so nothing in it was a parse miss: the
+fingerprint read back is the one it computes, and the cycles write nothing.
+The comment's fingerprint is 48 bits of a hash over the real MAC, short
+enough to search, so `scripts/sanitize-podman.py` writes the fingerprint of
+the scrubbed MAC in its place (on the raw capture its computation gives the
+live comment: the script and `blockRuleset` agree).
+`TestBlockPresentTableReadBack` holds the driver to it: the controller's
+list as the listing names it writes nothing over three cycles, a second
+client replaces the table, none deletes it once, and the next collect reads
+it absent (the fixture runner now models the delete as the empty listing
+`collect-block.txt` shows; a write is still not modelled).
+
 **Still not seen:** a frame from a blocked source dropped and counted at
 each hook while another passes (both counters read 0: the blocked client
-sent nothing to this host), and the table gone on Unblock. The listing of
-the present table is not yet a fixture, so the fixture runner still does
-not model the write. A throwaway network namespace with a dummy NIC and a
+sent nothing to this host), the table gone on a real Unblock (the delete
+is fixture-tested only), and a listing of two or more blocked MACs (the
+`set` form). A throwaway network namespace with a dummy NIC and a
 macvlan child shows the frame test without touching the host's own
 network, as `dhcpguard-netns-test.sh` did for the Proxmox guard.

@@ -19,7 +19,11 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   `02:00:00:xx:xx:xx`, `SSJ00000000`). Captures go through
   `scripts/sanitize-*.py` first; `scripts/check-site-info.sh --staged`
   must pass before every commit. The real values live in
-  `local-information/` (gitignored).
+  `local-information/` (gitignored). A short hash over a real value (the
+  `dui:<fingerprint>` comment of a driver's nft table: 48 bits over the
+  blocked MACs) can be searched back to it and the checker cannot see it:
+  the scrub recomputes it from the scrubbed values
+  (`sanitize-podman.py` `block_mark`).
 - Writes are diffs against the last snapshot and idempotent; the loop
   re-applies after every inform.
 - Breakout cages: fold lanes; speed to lane 1 to split/join, to all lanes
@@ -34,9 +38,13 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   the preferred mode (Clint, 2026-11-17): a port on another mode is
   rewritten, link or no link, which drops a link whose far end stays on
   the other mode; a FEC set in UniFi overrides auto (`sonic`, docs/drivers/sonic.md §10.3, §11.37;
-  `arista-eos`, docs/drivers/arista-eos.md §13). `sonic` also takes the
-  speed (or breakout) the module calls for (§10.9). All of it is planned
-  without by the `Planner`, so the first-push hold never waits on it.
+  `arista-eos`, docs/drivers/arista-eos.md §13). Both also take the speed
+  (or breakout) the module calls for on auto, from `internal/modulelayout`
+  (the one table, `docs/module-layout.md` §1, keyed by the module's
+  SFF-8024/8636 codes; never a table of the driver's own): `sonic` §10.9,
+  `arista-eos` §14. All of it is planned without by the `Planner`, so the
+  first-push hold never waits on it; a driver whose rule can split or join
+  implements `LayoutPlanner`.
 - Tests use a fixture transport (`aristaeos.FixtureTransport` for a
   command API; `proxmox`/`podman.FixtureRunner` for a script over SSH;
   `apcups.FixtureRunner` for a register map) over real captures — never

@@ -1588,3 +1588,115 @@ capture of the switch as it is, the rule writes nothing: every populated
 cage already runs the preferred mode. A link's behaviour with a far end
 after a rewrite and a module with any code but 6, 11 and 12 are
 fixture-tested or not exercised.
+
+## 14. Speed "auto" follows the module (2026-11-17)
+
+Until 2026-11-17 the driver wrote no speed on an optical port the
+controller left on auto. It now takes the layout the module calls for,
+from the table the `sonic` driver uses (`internal/modulelayout`;
+[`docs/module-layout.md`](../module-layout.md) §1 is the table, keyed by
+the module's SFF-8636 codes). Code: `layout.go`, wired into `plan` in
+`apply.go`. Captures:
+`docs/fixtures/arista-eos-4.26.14M/module-layout-20261117/` (its README
+says how each state was reached).
+
+### 14.1 What EOS 4.26.14M does with a cage's speed
+
+Captured on cage 50 (a CA-25G-S breakout cable, no far end) in one sitting
+per state:
+
+| Written on the cage | What EOS then shows |
+|---|---|
+| `speed forced 100gfull` on lane 1 of a 4x25G split | one interface, Ethernet50/1, adminSpeed `100Gbps` |
+| `no speed` on that lane | still one interface; the speed line gone, adminSpeed **`100Gbps`** (not `auto`) |
+| `speed forced 25gfull` on lane 1 of the joined cage | four lanes at 25G |
+| `speed forced 10gfull` on every lane | four lanes at 10G |
+| `speed forced 50gfull` on lane 1 of a 4x25G split | /2 goes; /3 and /4 stay at 25G and are **errdisabled `speed-misconfigured`** |
+| then `speed forced 50gfull` on /3 | two interfaces, /1 and /3, at 50G (the hidden /2 and /4 keep their `speed forced 25gfull` lines in the running config) |
+
+So a 2x50G cage needs 50G on /1 **and** /3, and the fold reads it as two
+ports at 50G. A QSFP28 cage with no speed line is one port at 100G.
+
+### 14.2 The rule on auto
+
+For a QSFP28 cage the controller pushes no speed for, with a module seated
+that the table knows:
+
+- the current layout is the cage's lane count at its lanes' admin speed,
+  read from `show interfaces transceiver properties` per lane (lanes at
+  different speeds match nothing). The fold's `LanesDiverge` is not used:
+  lanes whose VLANs differ set it too, and the base capture's split cage 50
+  has exactly that;
+- a layout the module runs stays: nothing is written;
+- otherwise the cage takes the module's native layout as a forced speed: a
+  different port count is a split or join on lane 1, the same port count a
+  lane speed on every lane. The batch sets `c.refresh`, so the next collect
+  re-reads the admin speeds and the EEPROM codes, as after any written
+  speed;
+- a cage with a lane switch attached: the module decides the port count
+  only (the lanes' speeds are not the module rule's to change); a join
+  dissolves the lane switch's aggregates and mirror sessions first
+  (`dissolveLanes`);
+- refused with a note: a cage in an aggregate (now or in the push) or in a
+  mirror session as source or destination;
+- no module, or one the table does not know (noted once): nothing, as
+  before. An optical port is never set to auto speed.
+
+The module is its EEPROM codes (`show interfaces transceiver eeprom`, read
+for the FEC rule, §13.2). Stale or unread codes fall back to the media
+type: `100GBASE-CWDM4` is code 6, `100GBASE-CR4` code 11 (the class that
+runs every copper layout, so a stale read never splits or joins a copper
+cage).
+
+These are the driver's own writes: `PlanPorts` and `PlanLanes` plan
+without them entirely, so the first-push hold and the fresh-port
+withholding never wait on them. `PlanLayout` (`devicemodel.LayoutPlanner`)
+reports the cages whose lane count a batch changes, the rule's and a pushed
+speed's alike, so the loop does not take a cage the apply split for a new
+port. The FEC rule (§13.3) sees the module's speed as a pushed one: on a
+cage whose speed the batch changes it writes nothing that cycle.
+
+### 14.3 Tests
+
+`layout_test.go`, over the six states and `fec-auto/`: the switch as
+`fec-auto/` captured it writes no speed (device plan, lane plan,
+`PlanLayout`, no note); the joined cage is split on lane 1 with nothing
+else written, `PlanPorts` empty and `PlanLayout` [50], a second apply
+writes nothing and, against the capture after the split, neither does the
+next cycle, and the cage is among `SplitCages` (the automatic lane switch's
+watcher); no speed line splits the same way; 10G lanes take 25G on every
+lane with the read-back modelled and a reconcile writing nothing; 2x50G
+stays; 50G on lane 1 alone goes back to 25G on lane 1; the aggregate and
+both mirror refusals; the owned cage keeping its four lanes; stale codes
+keeping the joined copper cage joined; a pushed split counted by both
+`PlanLayout` and `PlanPorts`. The package's own test holds the table
+(`internal/modulelayout`), and the `sonic` driver reads the same table
+with its tests unchanged.
+
+### 14.4 Verified, and not
+
+**Live (2026-11-17, under the Arista test lock, cage 50 only):** a test
+build of the driver from the Mac over SSH (a harness in the package, not
+committed: `Start`, `Collect`, the plans, then `ApplyPorts` for port 50
+alone), against the production bridge's own push for port 50 (no speed).
+On the switch as found the plans were empty. Joined by hand: `PlanPorts`
+empty, `PlanLayout` [50], the plan `speed forced 25gfull` on Ethernet50/1;
+applied, the cage came back as four 25G lanes and the next plan was empty.
+Every lane at 10G by hand: the rule wrote 25G to all four, and the next
+plan was empty. 2x50G: nothing planned. The cage was left as found
+(running config of its four interfaces identical, `write memory`, `show
+running-config diffs` empty, nothing errdisabled).
+
+What the deployed bridge did meanwhile: two of its collects timed out
+while the harness was reading (recovered at the next); while the cage was
+joined, the automatic lane switch `arista-cage50` (pending in the
+controller, never adopted) failed its collects ("cage 50 is not split")
+and withheld its informs, and it answered again after the rule's split.
+Its controller record stayed pending throughout.
+
+**Not run live:** the rule through the deployed bridge (the deploy comes
+after this merge); a join by the rule (no module on the switch needs one:
+the only seated modules run their cages' layouts); the owned-cage join and
+its dissolve; a split from 2x50G to 4x25G for an SR4/PSM4/AOC module
+(lane 1 alone is written: what EOS does with /3 then is not captured); a
+module with any code but 6, 11 and 12.

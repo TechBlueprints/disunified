@@ -10,6 +10,7 @@ other byte so the parser sees real output.
 
 Usage: scripts/sanitize-podman.py <in> <out>
 """
+import hashlib
 import ipaddress
 import json
 import re
@@ -76,6 +77,36 @@ def section(text, name):
     return m.group(1) if m else ''
 
 
+def block_mark(listing):
+    """The client-Block table's fingerprint (internal/drivers/podman/block.go
+    blockRuleset) recomputed from a listing: the sha256 of the chains' text,
+    first 6 bytes. The real one is a hash over the real MACs, short enough to
+    search, so a scrubbed listing carries the mark of its scrubbed MACs (what
+    the driver would write for them). None when the listing has no table."""
+    try:
+        objs = json.loads(listing).get('nftables') or []
+    except json.JSONDecodeError:
+        return None
+    dev, macs = None, None
+    for o in objs:
+        if 'chain' in o:
+            dev = dev or o['chain'].get('dev')
+        if 'rule' in o and macs is None:
+            for e in o['rule'].get('expr') or []:
+                r = e.get('match', {}).get('right')
+                if isinstance(r, str):
+                    macs = [r]
+                elif isinstance(r, dict) and 'set' in r:
+                    macs = [m for m in r['set'] if isinstance(m, str)]
+    if not dev or not macs:
+        return None
+    body = ''
+    for hook in ('ingress', 'egress'):
+        body += f'\tchain {hook} {{\n\t\ttype filter hook {hook} device {json.dumps(dev)} priority filter; policy accept;\n'
+        body += f'\t\tether saddr {{ {", ".join(sorted(macs))} }} counter drop\n\t}}\n'
+    return hashlib.sha256(body.encode()).hexdigest()[:12]
+
+
 def main(src, dst):
     text = open(src).read()
 
@@ -131,6 +162,12 @@ def main(src, dst):
     # An empty one stays empty: a VM has none, and the collector then falls
     # back to the DMI UUID (36 characters, more than the controller keeps).
     out = re.sub(r'^(product_serial|board_serial)=(.+)$', lambda m: m.group(1) + '=' + placeholder_serial(m.group(2)), out, flags=re.M)
+    block = section(out, 'macblock').strip()
+    if block:
+        mark = block_mark(block)
+        if mark is None:
+            sys.exit(f'{src}: macblock listing not understood; its dui: mark would keep the real MACs\' hash')
+        out = re.sub(r'"comment": "dui:[0-9a-f]+"', f'"comment": "dui:{mark}"', out)
     mid = section(out, 'machineid').strip()
     if mid:
         out = out.replace(mid, '0' * 32)

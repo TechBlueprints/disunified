@@ -260,6 +260,15 @@ the table is [`fec-by-standard.md`](fec-by-standard.md) §4, shared with
 | FEC on auto: the standard's mode for the module within the interface's available encodings; nothing written on the switch as it is; a stale or doubled encoding on a linkless lane corrected; the same through a lane switch's plan; never counted by the first-push hold | fixture-tested on captures of the switch and of four hand-set states of one lane. **Untested live:** the driver's own write (the switch needs none today), a link with a far end after a correction, any module but a CWDM4 optic and CA-25G-S / CA-25G-L cables. A PR needs the bridge's log line with the commands, `show interfaces error-correction` before and after, and the link's state |
 | A media type other than `100GBASE-CWDM4` and `100GBASE-CR4` when the EEPROM read gives no code | **not mapped** (no capture shows another string): the port is left alone with a note. A PR needs `show interfaces status` and `show interfaces transceiver eeprom` for the module |
 
+**Speed on auto follows the module** (2026-11-17, [`drivers/arista-eos.md`](drivers/arista-eos.md) §14;
+the table is [`module-layout.md`](module-layout.md) §1, shared with `sonic`):
+
+| What | Status |
+|---|---|
+| What EOS 4.26.14M does with a cage's speed: a join, no speed line (one port, adminSpeed 100Gbps), 10G lanes, 2x50G (`50gfull` on /1 and /3; on /1 alone /3-/4 errdisable) | **live**, by hand on the empty-ended cage 50, 2026-11-17 (`module-layout-20261117/`) |
+| The rule: a joined CA-25G-S cage split on lane 1, 10G lanes set to 25G on every lane, 2x50G kept; nothing written on the switch as it is; never counted by `PlanPorts`; `PlanLayout` naming a split or join | **live** through a test build from the Mac (`ApplyPorts` for port 50 alone), each write followed by an empty plan; fixture-tested on the six captured states. **Untested live:** the rule through the deployed bridge |
+| A join by the rule, the owned cage's join and its dissolve, a 2x50G cage re-split for an SR4/PSM4/AOC module, the aggregate and mirror refusals, any module but CWDM4 / CA-25G-S / CA-25G-L | fixture-tested only, or not exercised (no module on the switch calls for them). A PR needs the module's `show interfaces transceiver eeprom` codes, the read set before and after in one sitting, and the bridge's log line with the commands |
+
 Not claimed: **MAC ACL rules** (no MAC ACL binds to a switchport on the 7160), and
 **the DHCP rate limit** (anomaly bit 32: EOS 4.26.14M has no per-port DHCP
 rate limit; a QoS policer is in bits per second and counts only conforming

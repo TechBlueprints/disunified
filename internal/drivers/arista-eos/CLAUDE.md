@@ -11,7 +11,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - **A capture by hand over SSH**: a command string runs at privilege 1
   (`show running-config` answers "privileged mode required"), so pipe
   `enable` and the command on stdin: `printf 'enable\nshow vlan | json\n'
-  | ssh admin@<switch>` prints the JSON eAPI returns. Then
+  | ssh admin@<switch>` prints the JSON eAPI returns. A test build's own
+  `SSH` transport from the Mac fails `knownhosts: key mismatch` though the
+  `ssh` CLI works: the Go client takes the switch's ECDSA host key, and
+  `known_hosts` holds only its ed25519 one. Point `SSH.KnownHosts` at a
+  scratch file of `ssh-keyscan <switch>` whose ed25519 line matches the
+  existing entry (2026-11-17). Then
   `scripts/sanitize-arista-eos.py` over every file of the related states
   in one run (it scrubs the `phy detail` .txt files too).
 - 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
@@ -44,7 +49,16 @@ that cost time on Clint's DCS-7160-48TC6-F.
   dated directory of the whole read set taken in one sitting (`fec-auto/`,
   `lane-po-*/` are the pattern), not overrides on the base set.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
-  every lane or the others errdisable ("speed-misconfigured").
+  every lane or the others errdisable ("speed-misconfigured"). 2x50G is
+  `50gfull` on /1 **and** /3 (on /1 alone, /2 goes and /3-/4 errdisable);
+  a QSFP28 cage with no speed line is one port, adminSpeed `100Gbps`
+  (captured 2026-11-17, `module-layout-20261117/`).
+- **Speed on auto follows the module** (`layout.go`, `docs/drivers/arista-eos.md`
+  §14, the shared table `internal/modulelayout`): a cage keeps a layout its
+  module runs, else takes the native one as a forced speed; never in
+  `PlanPorts`/`PlanLanes`; `PlanLayout` reports the cages a batch splits or
+  joins. The current layout comes from the lanes' admin speeds, **not**
+  `LanesDiverge`, which differing lane VLANs set too.
 - `write memory` after every config batch.
 - `ip domain-name` is deprecated on 4.26 ("This command is deprecated by
   'dns domain'"): the DNS domain is `dns domain <name>`; `hostname <name>`

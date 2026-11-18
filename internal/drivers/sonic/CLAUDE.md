@@ -415,7 +415,8 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   mode: a port configured otherwise is rewritten, link or no link (Clint,
   2026-11-17), which drops a link whose far end stays on the other mode;
   a FEC set in UniFi overrides auto. **After a breakout in the same plan the FEC
-  waits one cycle** (`swState.fecsStale`): the new interfaces' list is
+  waits one cycle** (`swState.fecsStale`), the module's and a pushed one
+  alike: the new interfaces' list is
   not read yet, and portconfig's refusal of a mode they lack would end
   the batch after the breakout. Those writes are `plan.own`, and
   `PlanPorts` plans without them (`plan.controllerOnly`), so the
@@ -423,7 +424,11 @@ DX010 rig borrows the VS's `config-help.txt`/`zones.txt`).
   controller setting can match. Live fact: the DX010's 100G CWDM4 uplink
   stayed down until RS was set by hand.
 - **Speed "auto" follows the module too (§10.9, `moduleSpeed`,
-  `moduleRuns`).** With no manual speed, a cage holding a known module
+  `moduleRuns`).** The table is `internal/modulelayout`, shared with the
+  Arista parent since 2026-11-17 and keyed by SFF-8024/8636 codes:
+  `moduleCode` turns xcvrd's compliance name into them (a new name goes
+  there, a new layout row in the shared table, `docs/module-layout.md`).
+  With no manual speed, a cage holding a known module
   keeps a configuration (ports x lane speed) the module runs and otherwise
   takes its native one: a breakout to the mode with that many ports that
   runs that speed (`breakoutSpeed` now takes a `laneCfg` and a writer), else

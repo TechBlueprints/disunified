@@ -700,7 +700,14 @@ spec of 2026-11-02 (kept below, marked):
   own LAG and mirror are skipped with a note (logged once), and
   `PlanPorts` counts none of them. A disabled cage holds every lane down
   (`LaneView.CageDisabled`; the lane plan never brings one up).
-- **The join** (a cage speed of 40G or more on an owned split cage) puts
+- **The module rule** (since 2026-11-17, `layout.go`,
+  [`arista-eos.md`](arista-eos.md) §14, the table of
+  [`module-layout.md`](../module-layout.md)): on Auto an owned cage keeps
+  any port count its module runs, so a lane switch's lanes are never
+  re-speeded by it; a join it asks for takes the path below. The parent
+  implements `devicemodel.LayoutPlanner` (`PlanLayout`) as sonic does.
+- **The join** (a cage speed of 40G or more on an owned split cage, the
+  controller's or the module rule's) puts
   `no monitor session` for each lane session the lanes report and `no
   channel-group` on each lane in a lane group ahead of the speed, in the
   same batch, and the cage's lanes are dropped from the view until the next
@@ -1627,7 +1634,8 @@ Ethernet8-11 throughout: no lane gained a VLAN. The window is closed. Port
   32 ports changed", the register's item 5). Fixed both ways: a breakout
   forgets the TLVs of every interface it deletes or makes in the plan's
   copy (`applyBreakout`), and a driver whose own rule can split or join
-  says so (`devicemodel.LayoutPlanner`, sonic's `PlanLayout`), so the loop
+  says so (`devicemodel.LayoutPlanner`: sonic's `PlanLayout`, and the
+  Arista's since 2026-11-17), so the loop
   logs the layout as the controller's. The replay is
   `TestReplaySonicDX010LaneCageResplit` (the parent's recorded join and
   Auto, `replies-dx010-lane-handover.ndjson` records 3-4, over

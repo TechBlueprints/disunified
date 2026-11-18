@@ -227,6 +227,13 @@ mtu, rate…) is preserved. Writes are diffs against the config as last read;
 a guest on another node is left to that node's bridge. Port cycle =
 `link_down=1`, 3 s, restore.
 
+Refused with a log, nothing written: a **forced speed** on a guest port.
+A guest NIC's link has no speed to set; the port reports one speed (100G
+for virtio and vmxnet3, the nominal speed for an emulated NIC) and offers
+only that and Auto. A push of any other speed is ignored with one `NOTE:`
+line per port and speed; Auto, or the port's own speed, asks for no change
+and logs nothing (`ApplyPorts`, `TestForcedSpeedOnGuestPortIsLogged`).
+
 ### 3b. Link aggregation (LACP) — UNTESTED LIVE, PRs welcome
 
 The controller's aggregate on the node's physical ports

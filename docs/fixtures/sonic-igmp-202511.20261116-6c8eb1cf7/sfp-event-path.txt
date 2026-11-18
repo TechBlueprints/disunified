@@ -1,0 +1,48 @@
+# read-only reads, 2026-11-17, image igmp-202511.20261116-6c8eb1cf7, kernel 6.12.41+deb13-sonic-amd64, up 1 day, 3 hours, 46 minutes
+# qsfp_modprs_irq, cpld4_int0, qsfp_modirq and getreg are not read: the first two clear the CPLD interrupt source, getreg writes an address
+slx-ich.0/sci_int_gpio_sus6 0x00000000
+slx-ich.0/sus_use_sel 0x04fe0df6
+slx-ich.0/sus_io_sel 0x00040046
+slx-ich.0/sus_gp_lvl 0x00040044
+slx-ich.0/sus_gp_tpe 0x00000000
+slx-ich.0/sus_gp_tne 0x00000040
+slx-ich.0/sus_gp_ts 0x00000000
+slx-ich.0/gpe0a_sts 0x00000000
+slx-ich.0/gpe0a_en 0x00400004
+slx-ich.0/gpio_rout 0x00002000
+dx010_cpld/qsfp_modprs 0xfffffff8
+dx010_cpld/qsfp_modprs_msk 0x00000000
+dx010_cpld/cpld4_int0_msk 0xf8
+acpi/interrupts/sci  858
+acpi/interrupts/sci_not  0
+acpi/interrupts/error  0
+acpi/interrupts/gpe_all  0
+acpi/interrupts/gpe02  0 enabled unmasked
+acpi/interrupts/gpe09  0 enabled unmasked
+acpi/interrupts/gpe0D  0 disabled unmasked
+acpi/interrupts/gpe16  0 invalid unmasked
+acpi/interrupts/ff_rt_clk  858 disabled unmasked
+acpi/interrupts/ff_pwr_btn  0 EN enabled unmasked
+acpi/interrupts/ff_gbl_lock  0 EN enabled unmasked
+/proc/interrupts acpi:  9: 0 858 0 0 IO-APIC 9-fasteoi acpi
+# dmesg, platform interrupt lines
+ACPI: Enabled 3 GPEs in block 00 to 1F
+slx_gpio_ich: slx_ich base_addr_cfg fed03002 base_addr fed03000
+slx_gpio_ich: slx_ich pmc res_start:end fed03058:fed0305b
+# pmon: the installed event.py and the SfpOptoe attribute
+md5 of /usr/local/lib/python3.11/dist-packages/sonic_platform/event.py: equal to the md5 of the 202511 source's device/celestica/x86_64-cel_seastone-r0/sonic_platform/event.py (hash left out: the site checker reads 32 hex digits as an authkey)
+hasattr(SfpOptoe, port_num): False
+# sfputil show presence (present only)
+Ethernet0    Present
+Ethernet4    Present
+Ethernet8    Present
+Ethernet9    Present
+Ethernet10   Present
+Ethernet11   Present
+# TRANSCEIVER_INFO keys
+TRANSCEIVER_INFO|Ethernet0
+TRANSCEIVER_INFO|Ethernet4
+TRANSCEIVER_INFO|Ethernet8
+TRANSCEIVER_INFO|Ethernet9
+TRANSCEIVER_INFO|Ethernet10
+TRANSCEIVER_INFO|Ethernet11

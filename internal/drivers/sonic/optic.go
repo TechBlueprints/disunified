@@ -6,6 +6,7 @@ import (
 
 	"github.com/TechBlueprints/disunified/internal/devicemodel"
 	"github.com/TechBlueprints/disunified/internal/fecpolicy"
+	"github.com/TechBlueprints/disunified/internal/modulelayout"
 )
 
 // The module in a cage (docs/drivers/sonic.md §10.3, §10.4): its name as
@@ -177,8 +178,10 @@ func moduleMedium(name string) fecpolicy.Medium {
 	return fecpolicy.Other
 }
 
-// sff8024Codes: the names of the extended compliance codes the FEC table
-// speaks for, to their code (sff8024.py EXT_SPEC_COMPLIANCE).
+// sff8024Codes: the names of the extended compliance codes the FEC and
+// layout tables speak for, to their code (sff8024.py EXT_SPEC_COMPLIANCE).
+// A code the FEC table does not list is fecpolicy.Other, as an unlisted
+// name was before the layout codes joined.
 var sff8024Codes = map[string]int{
 	"100G AOC (Active Optical Cable) or 25GAUI C2M AOC":        0x01, // BER 5x10^-5
 	"100GBASE-SR4 or 25GBASE-SR":                               0x02,
@@ -194,6 +197,14 @@ var sff8024Codes = map[string]int{
 	"100G ACC or 25GAUI C2M ACC":                               0x19, // BER 10^-12
 	"100G SWDM4":                                               0x20,
 	"100G PAM4 BiDi":                                           0x21,
+	"40GBASE-ER4":                                              0x10,
+	"4 x 10GBASE-SR":                                           0x11,
+	"40G PSM4 Parallel SMF":                                    0x12,
+	"100G CLR4":                                                0x17,
+	"40G SWDM4":                                                0x1F,
+	"100GBASE-DR":                                              0x25,
+	"100G-FR or 100GBASE-FR1":                                  0x26,
+	"100G-LR or 100GBASE-LR1":                                  0x27,
 }
 
 // fecList is STATE_DB's supported_fecs as the policy's modes; nil when the
@@ -213,7 +224,9 @@ func fecList(sup map[string]bool) []devicemodel.FEC {
 }
 
 // laneCfg is one way to run a cage: split into ports interfaces of speed
-// Mb/s each (1 x 100000 unsplit, 4 x 25000 a 4x25G breakout).
+// Mb/s each (1 x 100000 unsplit, 4 x 25000 a 4x25G breakout); the
+// driver's form of a modulelayout.Layout, whose ports may also be 0
+// ("any count", breakoutSpeed).
 type laneCfg struct{ ports, speed int }
 
 func (l laneCfg) String() string { return fmt.Sprintf("%dx%dG", l.ports, l.speed/1000) }
@@ -227,30 +240,43 @@ var (
 )
 
 // moduleRuns is what a module runs in a cage, its native configuration
-// first (docs/drivers/sonic.md §10.9), by its compliance name. xcvrd's
-// SFF-8636 info has no "far end broken out" field, so a code that fits both
-// a straight cable and a breakout (CR4 / CA-25G-L, the AOC/ACC codes,
-// SR4-or-25GBASE-SR) runs both; the 25G/50G-only codes in a QSFP28 cage are
-// breakout cables. False for a module the table does not know.
+// first: internal/modulelayout's table (docs/module-layout.md §1), the
+// module named by its compliance name as xcvrd prints it (moduleCode).
+// False for a module the table does not know.
 func moduleRuns(name string) ([]laneCfg, bool) {
-	switch name {
-	case "100G CWDM4", "100GBASE-LR4 or 25GBASE-LR", "100GBASE-ER4 or 25GBASE-ER", "100G SWDM4",
-		"100G PAM4 BiDi", "100G CLR4", "100GBASE-DR", "100G-FR or 100GBASE-FR1", "100G-LR or 100GBASE-LR1":
-		return []laneCfg{cfg1x100}, true
-	case "100GBASE-SR4 or 25GBASE-SR", "100G PSM4 Parallel SMF",
-		"100G AOC (Active Optical Cable) or 25GAUI C2M AOC", "100G ACC (Active Copper Cable) or 25GAUI C2M ACC",
-		"100G AOC or 25GAUI C2M AOC", "100G ACC or 25GAUI C2M ACC":
-		return []laneCfg{cfg1x100, cfg4x25}, true
-	case "100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS":
-		return []laneCfg{cfg1x100, cfg4x25, cfg2x50}, true
-	case "25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R", "25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC":
-		return []laneCfg{cfg4x25, cfg2x50}, true
-	case "40GBASE-LR4", "40GBASE-ER4", "40G SWDM4":
-		return []laneCfg{cfg1x40}, true
-	case "40GBASE-SR4", "40GBASE-CR4", "40G Active Cable (XLPPI)", "40G PSM4 Parallel SMF":
-		return []laneCfg{cfg1x40, cfg4x10}, true
-	case "4 x 10GBASE-SR":
-		return []laneCfg{cfg4x10}, true
+	m, ok := moduleCode(name)
+	if !ok {
+		return nil, false
 	}
-	return nil, false
+	runs, ok := modulelayout.Runs(m)
+	if !ok {
+		return nil, false
+	}
+	out := make([]laneCfg, len(runs))
+	for i, r := range runs {
+		out[i] = laneCfg{r.Ports, r.SpeedMbps}
+	}
+	return out, true
+}
+
+// moduleCode is the module's two SFF-8636 codes from its compliance name:
+// an extended name (sff8024Codes) with byte 131's Extended bit, a 10/40G
+// name (ethernet1040Bits) by its bit.
+func moduleCode(name string) (modulelayout.Module, bool) {
+	if code, ok := sff8024Codes[name]; ok {
+		return modulelayout.Extended(code), true
+	}
+	if bit, ok := ethernet1040Bits[name]; ok {
+		return modulelayout.Module{Ethernet: bit}, true
+	}
+	return modulelayout.Module{}, false
+}
+
+// ethernet1040Bits: the names of SFF-8636 byte 131's 10/40G bits the
+// layout table speaks for (sff8636.py ETHERNET_10_40G_COMPLIANCE).
+var ethernet1040Bits = map[string]int{
+	"40G Active Cable (XLPPI)": modulelayout.Eth40GActiveCable,
+	"40GBASE-LR4":              modulelayout.Eth40GBASELR4,
+	"40GBASE-SR4":              modulelayout.Eth40GBASESR4,
+	"40GBASE-CR4":              modulelayout.Eth40GBASECR4,
 }
