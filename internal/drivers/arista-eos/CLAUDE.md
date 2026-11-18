@@ -11,7 +11,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
 - **A capture by hand over SSH**: a command string runs at privilege 1
   (`show running-config` answers "privileged mode required"), so pipe
   `enable` and the command on stdin: `printf 'enable\nshow vlan | json\n'
-  | ssh admin@<switch>` prints the JSON eAPI returns. Then
+  | ssh admin@<switch>` prints the JSON eAPI returns. A test build's own
+  `SSH` transport from the Mac fails `knownhosts: key mismatch` though the
+  `ssh` CLI works: the Go client takes the switch's ECDSA host key, and
+  `known_hosts` holds only its ed25519 one. Point `SSH.KnownHosts` at a
+  scratch file of `ssh-keyscan <switch>` whose ed25519 line matches the
+  existing entry (2026-11-17). Then
   `scripts/sanitize-arista-eos.py` over every file of the related states
   in one run (it scrubs the `phy detail` .txt files too).
 - 10GBASE-T ports: 1G and 10G only. QSFP28 cages: 10/25/40/50/100G,
