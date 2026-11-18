@@ -19,7 +19,11 @@ contract is `internal/devicemodel/driver.go` + `model.go`.
   `02:00:00:xx:xx:xx`, `SSJ00000000`). Captures go through
   `scripts/sanitize-*.py` first; `scripts/check-site-info.sh --staged`
   must pass before every commit. The real values live in
-  `local-information/` (gitignored).
+  `local-information/` (gitignored). A short hash over a real value (the
+  `dui:<fingerprint>` comment of a driver's nft table: 48 bits over the
+  blocked MACs) can be searched back to it and the checker cannot see it:
+  the scrub recomputes it from the scrubbed values
+  (`sanitize-podman.py` `block_mark`).
 - Writes are diffs against the last snapshot and idempotent; the loop
   re-applies after every inform.
 - Breakout cages: fold lanes; speed to lane 1 to split/join, to all lanes
