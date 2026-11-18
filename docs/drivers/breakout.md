@@ -1839,3 +1839,21 @@ parent's is not, and is once the parent is adopted; no API; a forgotten one
 stays pending through a restart until an adoption clears the mark;
 `manual`; a failing request is retried about ten times an hour and logged
 once per reason).
+
+**Live (2026-11-17 20:43-21:05 MST, Network 11.0.99; the DX010 on package
+`0.0.0+20261117.fabc176`, the container rebuilt from the same commit).**
+Records unscrubbed in `local-information/auto-adopt-20261117/`.
+
+| Step | Seen |
+|---|---|
+| install on the DX010 | `dx010-cage3` resumed adopted and attached from its state file; both loops `0 of 32` / `0 of 5 ports changed` |
+| split the DX010's empty cage 26 (a forced 25G on its port by REST, no `fec_mode`) | 20:47:10 `lane switch dx010-cage26 ... started ... pending`; 20:47:25 `asked the controller to adopt it, by its exact MAC`; 20:47:30 `authkey adopted from mgmt_cfg`; 20:47:40 CONNECTED, the attach line, `port 26: set to Auto in UniFi (was autoneg false, speed 25000, full_duplex true)`, the first push held, the seeded one applied `0 of 5 ports changed`; placed under port 26 by 20:51 (after the controller's offered update, which it took by itself) |
+| a save of each parent | the DX010's port 27 renamed and back: `rc ok`; the Arista's whole `port_overrides` saved unchanged: `rc ok` |
+| the container rebuild (the Arista's `arista-cage50`, pending since the cage was split) | 03:50:16 UTC started pending, 03:50:31 asked for, 03:50:46 CONNECTED and attached to port 50, `0 of 5 ports changed`; placed under port 50 (`uplink_remote_port` 50). **The first adoption of an Arista lane switch**: the Arista logged no apply and no write after the attach (its last line `0 of 54 ports changed` at the start). The test cage has no module, so no lane is up and the hand-over found no forced speed to reset |
+| Forget `dx010-cage26` (`cmd/sitemgr delete-device`, exact MAC; `api.err.DeviceBusy` while the update ran, then ok) | `setdefault received`, the detach line with its "stays pending" sentence, the mark `state/dx010-cage26/forgotten` written; 23 s later `stays pending: it was forgotten in the controller` once; still pending 3 minutes on, no request |
+| adopt it by hand | the attach line, the mark gone |
+| clean-up | forgotten again, port 26 forced to 100G (the join, `1x100G[40G]`), its override put back as found, the mark removed: the cage is a free test cage again, its old lane switch a pending record that no longer informs |
+
+Untouched throughout: the neighbour's pending access point (`state` 2,
+`adopted: false` before and after; no command named its MAC).
+`dx010-cage3`, the DX010 and the Arista stayed adopted and connected.
