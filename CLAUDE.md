@@ -112,8 +112,9 @@ auto`, the default; the lanes handed over at the adoption and back on a
 Forget), and since 2026-11-17 the bridge asks the controller for that
 adoption itself, by the lane switch's exact MAC, once its parent is adopted
 (Clint withdrew the operator's-consent rule: "it doesn't need permission
-when a breakout dac is inserted"; a forgotten one stays pending until
-adopted by hand, `lane_switches: manual` leaves them all to the operator,
+when a breakout dac is inserted"; a Forget is followed by a re-adoption --
+Clint: "if you want to really forget it unplug it" -- and
+`lane_switches: manual` leaves them all to the operator,
 `docs/drivers/breakout.md` §16.12), and the DX010's
 cage 3 is the first one adopted live (`docs/drivers/breakout.md` §0, §16;
 the Arista parent is fixture-tested only, §7b). It reports a link-local

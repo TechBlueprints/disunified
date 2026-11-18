@@ -45,9 +45,10 @@ DX010's cage 3. The Arista parent is fixture-tested only.
 - **An automatic lane switch is adopted by the bridge** (2026-11-17,
   `breakout.md` §16.12): main's watcher asks the controller, by the exact
   MAC, once the parent is adopted. A test or a live run that wants one to
-  stay pending needs `lane_switches: manual` on the parent, or a Forget
-  (the mark `state/<name>/forgotten` keeps it pending; remove the file, or
-  adopt by hand, to end that). A declared entry is still adopted by hand.
+  stay pending needs `lane_switches: manual` on the parent; a Forget is
+  followed by a re-adoption while the cage is split (unplug or join the
+  cage first, then forget the disconnected record). A declared entry is
+  still adopted by hand.
 - **A declared entry is never detached**: a Forget of it is logged (the
   file still declares it; Adopt or removing the entry ends it). The
   decision and its reason are `breakout.md` §0.

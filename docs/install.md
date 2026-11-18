@@ -146,9 +146,11 @@ the controller refuses that pair on the port once the lane switch has the
 lanes, and with it every other port save on the device. The lane switch
 shows a 169.254.x.y address; it has none of its own, and it must not share
 its parent's. Forget it in the controller and the lanes go back to the
-cage's port; a forgotten lane switch stays pending until you adopt it
-yourself (the bridge remembers the Forget in
-`state/<device>-cage<N>/forgotten` and does not undo it). Join the cage (force its port to 100G or 40G on
+cage's port, and while the cage is split the bridge adopts it again
+within a minute or two. To be rid of a lane switch, unplug the breakout
+cable (or join the cage), then forget its disconnected record; or set
+`lane_switches: "manual"` on the device, and you adopt each one yourself.
+Join the cage (force its port to 100G or 40G on
 the device) and the lane switch shows disconnected until the cage is split
 again or you forget it. The key on the device's entry:
 

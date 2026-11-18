@@ -1265,11 +1265,15 @@ is adopted is adopted by the bridge, through the controller's API, by its
 exact MAC. A parent that is pending itself adopts nothing; its lane
 switches follow once it is adopted.
 
-What stays the operator's: a **Forget** in UniFi hands the lanes back and is
-remembered, so the lane switch then stays pending until it is adopted by
-hand (§16.12); a parent's **`lane_switches: manual`** leaves every one of
-its lane switches pending until adopted by hand (the rule of 2026-11-16);
-and `lane_switches: off` (§16.4) starts none. A declared `driver: breakout` entry keeps
+A **Forget** in UniFi hands the lanes back, and the lane switch is then
+adopted again by the same rule while its cage is split and its parent is
+adopted (§16.12). Clint, asked on 2026-11-17 whether that was right: "yup, that sounds correct tbh. if you want to really forget it unplug it".
+There are three ways not to have a lane switch adopted: **unplug the
+breakout** (the cage is whole again, the lane switch stops informing and
+shows disconnected; then forget its record), a parent's **`lane_switches:
+manual`** (every one of its lane switches pending until adopted by hand,
+the rule of 2026-11-16), and **`lane_switches: off`** (§16.4: none
+started). A declared `driver: breakout` entry keeps
 working as built (attached at start, adopted or not; since 2026-11-16 with
 the hand-over's reset to Auto and a logged Forget, §0) and wins over the
 automatic one for its cage.
@@ -1310,7 +1314,7 @@ automatic one for its cage.
 |---|---|---|---|
 | a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval; one interval later, if the parent is adopted, asks the controller to adopt it by its exact MAC (§16.12; not with `lane_switches: manual`, without a controller API, or after a Forget) | fold, unchanged, until the adoption | a pending `USFXG`, adopted within about a minute |
 | the controller adopts it (the bridge's request, or the operator's Adopt) | attaches it (`AttachLaneSwitch`) when the adoption handshake completes; removes a Forget's mark | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
-| the operator forgets it | records the Forget (`state/<name>/forgotten`), then detaches it (`DetachLaneSwitch`) when the session falls back to pending; asks for no adoption from then on | fold again; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), until the operator adopts it |
+| the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending, then asks for its adoption again at the watcher's pace (`manual`: does not) | fold again until the re-adoption; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), adopted again within a minute or two; to be rid of it, unplug the breakout first |
 | the cage is joined | nothing: the child's collect fails "not split", its informs stop | whole, the parent's | disconnected, placement kept, until forgotten |
 | the cage is split again | the same child resumes (its state file kept) | owned again if the child is still adopted | connected again |
 | the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes); a pending one is started by the watcher | as before the restart | no change |
@@ -1484,8 +1488,7 @@ lanes; never the uplink):
    without a new adoption.
 7. Forget the child: the detach line, port 3 the fold again (SFP28), the
    device pending. Adopt it again and leave it adopted, port 3 on Auto.
-   (Since 2026-11-17 a forgotten lane switch stays pending until it is
-   adopted by hand, as this step does: §16.12.)
+   (Since 2026-11-17 the bridge adopts it again by itself: §16.12.)
 8. Record: both records at each step, the pushes and the override entry as
    fixtures (scrubbed), the journal lines; §0 and this section updated with
    what ran and anything that departed, with the reason.
@@ -1784,7 +1787,6 @@ is logged once:
 | Condition | Otherwise |
 |---|---|
 | the parent's entry is `lane_switches: auto` | `manual`: pending until the operator adopts it |
-| the lane switch has no forgotten mark | pending until the operator adopts it (below) |
 | a controller API is configured (`controller.api_url` and the key, `DUI_UNIFI_API_KEY`) | pending, as before 2026-11-17; the log names what to set |
 | the parent's own state file is adopted | pending; asked for once the parent is adopted |
 
@@ -1808,21 +1810,25 @@ when its reason changes, not on every try. The hand-over is unchanged: the
 adoption handshake calls `AttachLaneSwitch` and `handOverCage` as it did
 for an operator's Adopt.
 
-**A Forget does not loop.** A Forget hands the lanes back and leaves the
-lane switch pending; without more, the watcher would have it adopted again
-a tick later, and the operator could never be rid of one. So the Forget is
-remembered: the detach hook writes `state/<name>/forgotten` (a text file in
-the lane switch's state directory, written before the detach) and the
-watcher asks for nothing while it is there. It lasts through restarts. An
-adoption removes it (the operator's Adopt in UniFi, or the file removed by
-hand while the cage is split, after which the bridge asks again), so the
-next Forget is a new one. A Forget the bridge missed and inferred from
-refused keys (§16.11) is recorded the same way. For every cage of a parent
-at once, `lane_switches: manual` restores the rule of 2026-11-16, and
-`off` starts none. This is the shape the task proposed; nothing in the
-code argued for another. The alternative, forgetting in the controller
-meaning "off for this cage" in the config, would have put a UniFi action's
-memory in a file the operator edits.
+**A Forget is followed by a re-adoption.** A Forget hands the lanes back
+and leaves the lane switch pending; the watcher sees it unadopted on its
+next tick and asks for it on the one after, then at the pace above. For a
+minute or so after a Forget the controller answers the default key with
+HTTP 400 and does not list the device as pending (§16.11's table), so the
+first requests are logged as not listed and retried at 30 s and 1 min; it
+cannot spin. Clint chose this on 2026-11-17, asked whether a lane switch
+that is forgotten should simply be adopted again: "yup, that sounds correct tbh. if you want to really forget it unplug it". So **to be rid
+of a lane switch, unplug the breakout** (or join the cage from the
+parent's port): the cage is whole, the lane switch's collect fails "not
+split", it stops informing, and its record shows disconnected; then forget
+that record, and nothing adopts it again, since a whole cage asks for no
+adoption. `lane_switches: manual` keeps every lane switch of a parent for
+the operator to adopt, `off` starts none. The build of fabc176 kept a
+Forget in a mark file, `state/<name>/forgotten`, and held the lane switch
+pending while it was there; that was withdrawn the same evening, and a
+file left by that build is ignored. A Forget is refused with
+`api.err.DeviceBusy` while the emulated firmware update the lane switch
+asks for after its adoption runs (about two minutes, below).
 
 **Declared lane switches are not adopted by the bridge.** The rule does not
 fall out for them: a declared entry is started by `runConfig`, not by the
@@ -1836,12 +1842,15 @@ or an unlisted MAC; a refused command is an error) and
 `cmd/disunified/lanes_test.go` (a pending lane switch of an adopted parent
 is asked for by its exact MAC, once, and again after two minutes; a pending
 parent's is not, and is once the parent is adopted; no API; a forgotten one
-stays pending through a restart until an adoption clears the mark;
+is asked for again one tick after the detach, then paced while the
+controller does not list it; a stale mark file holds nothing back;
 `manual`; a failing request is retried about ten times an hour and logged
 once per reason).
 
 **Live (2026-11-17 20:43-21:05 MST, Network 11.0.99; the DX010 on package
-`0.0.0+20261117.fabc176`, the container rebuilt from the same commit).**
+`0.0.0+20261117.fabc176`, the container rebuilt from the same commit; that
+build still kept a Forget's mark, so the Forget rows below are of the
+withdrawn rule).**
 Records unscrubbed in `local-information/auto-adopt-20261117/`.
 
 | Step | Seen |

@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,9 +24,9 @@ import (
 // Since 2026-11-17 the bridge asks for that adoption itself (16.12): a lane
 // switch whose parent is adopted needs no Adopt click. It asks for the one
 // MAC it made, never for anything else on the controller's pending list. A
-// lane switch the operator forgot stays pending until it is adopted by
-// hand (the forgotten mark), and `lane_switches: manual` leaves every one
-// of a parent's pending.
+// Forget detaches it and the same rule adopts it again (Clint, 2026-11-17:
+// "if you want to really forget it unplug it"); `lane_switches: manual`
+// leaves every one of a parent's pending, `off` starts none.
 
 // laneWatchInterval is how often a parent's split cages are looked at.
 const laneWatchInterval = 15 * time.Second
@@ -63,10 +61,8 @@ type autoLanes struct {
 	// adopt asks the controller to adopt the pending device with exactly
 	// this MAC (unifiapi.AdoptPending); nil without a controller API.
 	adopt func(ctx context.Context, mac string) error
-	// markPath is where a lane switch's Forget is remembered (a file in its
-	// state directory); now is the clock (nil: time.Now).
-	markPath func(name string) string
-	now      func() time.Time
+	// now is the clock (nil: time.Now).
+	now func() time.Time
 
 	mu      sync.Mutex
 	running map[int]*laneRun
@@ -101,36 +97,6 @@ func (a *autoLanes) clock() time.Time {
 		return a.now()
 	}
 	return time.Now()
-}
-
-// forgotten reports whether the lane switch's Forget is remembered.
-func (a *autoLanes) forgotten(name string) bool {
-	if a.markPath == nil {
-		return false
-	}
-	_, err := os.Stat(a.markPath(name))
-	return err == nil
-}
-
-// markForgotten writes or removes the lane switch's forgotten mark.
-func (a *autoLanes) markForgotten(name string, on bool) {
-	if a.markPath == nil {
-		return
-	}
-	p := a.markPath(name)
-	if !on {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-			a.log.Printf("lane switch %s: its forgotten mark %s could not be removed: %v", name, p, err)
-		}
-		return
-	}
-	err := os.MkdirAll(filepath.Dir(p), 0o700)
-	if err == nil {
-		err = os.WriteFile(p, []byte("forgotten in the controller "+a.clock().UTC().Format(time.RFC3339)+": this lane switch stays pending until it is adopted there by hand (docs/drivers/breakout.md 16.12)\n"), 0o600)
-	}
-	if err != nil {
-		a.log.Printf("WARNING: lane switch %s: its Forget could not be recorded in %s (%v): this device will ask the controller to adopt it again", name, p, err)
-	}
 }
 
 // autoLane is one automatic lane switch as it is started.
@@ -195,21 +161,18 @@ func (a *autoLanes) child(cage int) (autoLane, bool) {
 		return true
 	}
 	c.attach = func() {
-		a.markForgotten(name, false) // adopted again, by this device's request or by hand
 		if attach("the controller adopted it") {
 			a.handOver(cage)
 		}
 	}
-	c.resume = func() {
-		a.markForgotten(name, false)
-		attach("it is adopted (its state file)")
-	}
+	c.resume = func() { attach("it is adopted (its state file)") }
 	c.detach = func() {
-		// The mark first: the watcher must not ask for the adoption the
-		// operator has just ended.
-		a.markForgotten(name, true)
 		a.lp.DetachLaneSwitch(cage)
-		a.log.Printf("lane switch %s (%s) detached from port %d: the controller forgot it, so the lanes are this device's again (the cage's own settings go back on them). It stays pending until it is adopted in UniFi by hand: this device does not ask for a forgotten lane switch's adoption", name, mac, cage)
+		again := "it is adopted again by the same rule while the cage is split (unplug the breakout to be rid of it, or set lane_switches: manual)"
+		if a.manual {
+			again = "it stays pending until it is adopted in UniFi (lane_switches: manual)"
+		}
+		a.log.Printf("lane switch %s (%s) detached from port %d: the controller forgot it, so the lanes are this device's again (the cage's own settings go back on them); %s", name, mac, cage, again)
 	}
 	return c, true
 }
@@ -407,7 +370,7 @@ func (a *autoLanes) tick() {
 // adoptPending asks the controller to adopt the cage's lane switch when it
 // is pending and nothing stands against it: the parent is adopted (an
 // adopted switch's split cage is all the consent a lane switch needs,
-// Clint 2026-11-17), the operator has not forgotten it, the parent's entry
+// Clint 2026-11-17), the parent's entry
 // does not say manual, and a controller API is configured. Each reason it
 // does not ask is said once.
 func (a *autoLanes) adoptPending(cage int) {
@@ -429,9 +392,6 @@ func (a *autoLanes) adoptPending(cage int) {
 	}
 	switch {
 	case a.manual:
-		return
-	case a.forgotten(name):
-		a.noteOnce("forgotten:"+name, "lane switch %s (%s) stays pending: it was forgotten in the controller (%s). Adopt it in UniFi to hand port %d's lanes over again; that removes the mark", name, mac, a.markPath(name), cage)
 		return
 	case a.adopt == nil:
 		a.noteOnce("noapi:"+name, "lane switch %s (%s) stays pending until it is adopted in UniFi by hand: no controller API is configured, so this device cannot ask for it (set controller.api_url and the API key, DUI_UNIFI_API_KEY)", name, mac)
@@ -514,7 +474,6 @@ func newAutoLanes(f *config.File, parent config.Device, spawn func(options)) fun
 			cageToAuto: cageToAutoFor(f, parentMAC),
 			manual:     parent.LaneSwitches == config.LaneSwitchesManual,
 			adopt:      adoptFor(f),
-			markPath:   func(name string) string { return filepath.Join(f.StateDir, "state", name, "forgotten") },
 			log:        lg, parent: parent.Name, parentMAC: parentMAC, lp: lp, declared: declared, taken: taken,
 			adopted: func(name string) bool {
 				st, err := (&device.Store{Path: filepath.Join(f.StateDir, "state", name, "device.json")}).Load()

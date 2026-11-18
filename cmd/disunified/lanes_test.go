@@ -412,10 +412,12 @@ func TestLaneSwitchStaysPendingWithoutAControllerAPI(t *testing.T) {
 	}
 }
 
-// A Forget is remembered in the lane switch's state directory: it stays
-// pending until the operator adopts it, which clears the mark.
-func TestForgottenLaneSwitchStaysPendingUntilAdoptedByHand(t *testing.T) {
-	al, started, buf, f, asked, _, step := adopter(t, config.Device{})
+// A Forget detaches the lane switch, and the same rule adopts it again
+// (Clint, 2026-11-17: "if you want to really forget it unplug it"), at the
+// watcher's pace: one tick to see it unadopted, then the request, then the
+// paced retries while the controller does not list it as pending yet.
+func TestForgottenLaneSwitchIsAdoptedAgainPaced(t *testing.T) {
+	al, started, buf, f, asked, fail, step := adopter(t, config.Device{})
 	adopt(t, f, "sw")
 	al.tick()
 	step()
@@ -430,38 +432,53 @@ func TestForgottenLaneSwitchStaysPendingUntilAdoptedByHand(t *testing.T) {
 		t.Fatal(err)
 	}
 	o.onUnadopted()
-	mark := filepath.Join(f.StateDir, "state", "sw-cage3", "forgotten")
-	if _, err := os.Stat(mark); err != nil {
-		t.Fatalf("no forgotten mark: %v", err)
+	if !strings.Contains(buf.String(), "it is adopted again by the same rule while the cage is split (unplug the breakout") {
+		t.Errorf("detach log: %q", buf.String())
 	}
-	for i := 0; i < 50; i++ {
+	// For a minute or so after a Forget the controller answers the default
+	// key with 400s and does not list the device as pending.
+	*fail = unifiapi.ErrNotListed
+	step() // sees it unadopted
+	if len(*asked) != n {
+		t.Fatalf("asked in the tick that saw the Forget (%d)", len(*asked)-n)
+	}
+	step()
+	if len(*asked) != n+1 {
+		t.Fatalf("not asked again one tick after the Forget (%d)", len(*asked)-n)
+	}
+	for i := 0; i < 8; i++ { // two minutes: 30 s, then 1 min
 		step()
 	}
-	if len(*asked) != n {
-		t.Fatalf("a forgotten lane switch was asked for again (%d requests after the Forget)", len(*asked)-n)
+	if got := len(*asked) - n; got < 2 || got > 4 {
+		t.Errorf("%d requests in the two minutes after a Forget, want 2 to 4 (paced)", got)
 	}
-	if !strings.Contains(buf.String(), "It stays pending until it is adopted in UniFi by hand") || strings.Count(buf.String(), "stays pending: it was forgotten in the controller") != 1 {
-		t.Errorf("log: %q", buf.String())
+	*fail = nil
+	for i := 0; i < 20; i++ {
+		step()
 	}
+	if !strings.Contains(buf.String()[strings.Index(buf.String(), "detached"):], "asked the controller to adopt it") {
+		t.Errorf("not asked for again once it was listed: %q", buf.String())
+	}
+	// A mark file a fabc176 build left holds nothing back.
+	if _, err := os.Stat(filepath.Join(f.StateDir, "state", "sw-cage3", "forgotten")); !os.IsNotExist(err) {
+		t.Errorf("a forgotten mark was written: %v", err)
+	}
+}
 
-	// A restart keeps it: a new watcher over the same state directory.
-	c2, snap2, _ := laneParent(t)
-	mk := newAutoLanes(f, f.Devices[0], func(options) {})
-	al2 := mk(log.New(io.Discard, "", 0), c2, snap2.System.MAC)
-	al2.adopt = al.adopt
-	al2.startAdopted()
-	for i := 0; i < 5; i++ {
-		al2.tick()
+func TestAStaleForgottenMarkIsIgnored(t *testing.T) {
+	al, _, _, f, asked, _, step := adopter(t, config.Device{})
+	adopt(t, f, "sw")
+	p := filepath.Join(f.StateDir, "state", "sw-cage3", "forgotten")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if len(*asked) != n {
-		t.Errorf("a restart asked for a forgotten lane switch (%d)", len(*asked)-n)
+	if err := os.WriteFile(p, []byte("forgotten in the controller\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-
-	// The operator's Adopt: the hook clears the mark, and a later Forget
-	// is a new Forget.
-	o.onAdopted()
-	if _, err := os.Stat(mark); !os.IsNotExist(err) {
-		t.Errorf("the mark outlived an adoption: %v", err)
+	al.tick()
+	step()
+	if len(*asked) != 1 {
+		t.Errorf("a stale mark held the lane switch pending (%d requests)", len(*asked))
 	}
 }
 
