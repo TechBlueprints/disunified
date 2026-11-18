@@ -226,7 +226,7 @@ func (a *autoLanes) forgetStep(cage int, r *laneRun) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	res, err := a.forget(ctx, mac)
+	res, answer, err := a.forget(ctx, mac)
 	if err != nil {
 		if msg := err.Error(); msg != r.forgetErr {
 			r.forgetErr = msg
@@ -248,7 +248,7 @@ func (a *autoLanes) forgetStep(cage int, r *laneRun) {
 	}
 	switch res {
 	case unifiapi.Forgotten:
-		a.log.Printf("lane switch %s (%s): forgotten in UniFi by its exact MAC (port %d is joined); a breakout put back in it later is a new lane switch", name, mac, cage)
+		a.log.Printf("lane switch %s (%s): forgotten in UniFi by its exact MAC (port %d is joined; the controller answered %s); a breakout put back in it later is a new lane switch", name, mac, cage, answer)
 	default:
 		a.log.Printf("lane switch %s (%s): UniFi holds no record for it (port %d is joined)", name, mac, cage)
 	}

@@ -29,6 +29,8 @@ type Client struct {
 	// api.err.Invalid (2026-09-26), so Provision names the device only.
 	PowerPath bool
 	http      *http.Client
+	// lastForget is the answer to the last Forget taken (forget.go).
+	lastForget ForgetAnswer
 }
 
 // New builds a client. insecure skips TLS verification (self-signed).

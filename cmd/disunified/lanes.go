@@ -66,7 +66,7 @@ type autoLanes struct {
 	// forget forgets the lane switch with exactly this MAC in the
 	// controller (unifiapi.ForgetLaneSwitch); nil without a controller API.
 	// stateDir is a lane switch's state directory by name.
-	forget   func(ctx context.Context, mac string) (unifiapi.ForgetResult, error)
+	forget   func(ctx context.Context, mac string) (res unifiapi.ForgetResult, answer string, err error)
 	stateDir func(name string) string
 	// declaredBy are this parent's declared lane switches by cage, bound at
 	// its start (bindDeclared): stopped while their cage is joined.
@@ -240,12 +240,19 @@ func adoptFor(f *config.File) func(context.Context, string) error {
 
 // forgetFor is the retire's Forget (unifiapi.ForgetLaneSwitch), nil
 // without a controller API URL and key.
-func forgetFor(f *config.File) func(context.Context, string) (unifiapi.ForgetResult, error) {
+func forgetFor(f *config.File) func(context.Context, string) (unifiapi.ForgetResult, string, error) {
 	key := f.Controller.APIKey()
 	if f.Controller.APIURL == "" || key == "" {
 		return nil
 	}
-	return unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true).ForgetLaneSwitch
+	api := unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true)
+	return func(ctx context.Context, mac string) (unifiapi.ForgetResult, string, error) {
+		res, err := api.ForgetLaneSwitch(ctx, mac)
+		if err != nil || res != unifiapi.Forgotten {
+			return res, "", err
+		}
+		return res, api.LastForget().String(), nil
+	}
 }
 
 // cageToAutoFor is the hand-over's controller step for one parent, nil

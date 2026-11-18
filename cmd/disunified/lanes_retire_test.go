@@ -52,13 +52,13 @@ func newRetireRig(t *testing.T, parent config.Device, extra ...config.Device) *r
 	r.al, r.started, r.log, r.f = watcher(t, c, snap, parent, extra...)
 	r.answers = []forgetAnswer{{res: unifiapi.Forgotten}}
 	r.al.now = func() time.Time { return r.now }
-	r.al.forget = func(_ context.Context, mac string) (unifiapi.ForgetResult, error) {
+	r.al.forget = func(_ context.Context, mac string) (unifiapi.ForgetResult, string, error) {
 		r.forgets = append(r.forgets, mac)
 		a := r.answers[0]
 		if len(r.answers) > 1 {
 			r.answers = r.answers[1:]
 		}
-		return a.res, a.err
+		return a.res, "HTTP 200, rc ok", a.err
 	}
 	return r
 }
@@ -484,9 +484,9 @@ func TestRetireOnJoinArista(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	al.now = func() time.Time { return now }
 	var forgets []string
-	al.forget = func(_ context.Context, mac string) (unifiapi.ForgetResult, error) {
+	al.forget = func(_ context.Context, mac string) (unifiapi.ForgetResult, string, error) {
 		forgets = append(forgets, mac)
-		return unifiapi.Forgotten, nil
+		return unifiapi.Forgotten, "HTTP 200, rc ok", nil
 	}
 	adopt(t, f, "sw-cage50")
 	al.startAdopted()

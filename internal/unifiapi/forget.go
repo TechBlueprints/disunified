@@ -42,6 +42,21 @@ var ErrNotLaneSwitch = errors.New("the controller's record with this MAC is not 
 // ForgetResult is what ForgetLaneSwitch found and did.
 type ForgetResult int
 
+// ForgetAnswer is the controller's answer to the Forget, as logged: the
+// HTTP status and meta, never the record.
+type ForgetAnswer struct {
+	Status  int
+	RC, Msg string
+}
+
+func (a ForgetAnswer) String() string {
+	s := fmt.Sprintf("HTTP %d, rc %s", a.Status, a.RC)
+	if a.Msg != "" {
+		s += " " + a.Msg
+	}
+	return s
+}
+
 const (
 	// Forgotten: the controller took the Forget.
 	Forgotten ForgetResult = iota + 1
@@ -75,28 +90,36 @@ func (c *Client) ForgetLaneSwitch(ctx context.Context, mac string) (ForgetResult
 		if d.Model != LaneSwitchModel {
 			return 0, fmt.Errorf("%w (model %q)", ErrNotLaneSwitch, d.Model)
 		}
-		return Forgotten, c.deleteDevice(ctx, mac)
+		ans, err := c.deleteDevice(ctx, mac)
+		if err == nil {
+			c.lastForget = ans
+		}
+		return Forgotten, err
 	}
 	return NoRecord, nil
 }
 
+// LastForget is the answer to the last Forget the controller took (for the
+// log line; zero before one).
+func (c *Client) LastForget() ForgetAnswer { return c.lastForget }
+
 // deleteDevice posts the Forget and reads only the answer's meta.
-func (c *Client) deleteDevice(ctx context.Context, mac string) error {
+func (c *Client) deleteDevice(ctx context.Context, mac string) (ForgetAnswer, error) {
 	b, err := json.Marshal(map[string]any{"cmd": "delete-device", "mac": mac})
 	if err != nil {
-		return err
+		return ForgetAnswer{}, err
 	}
 	path := "/proxy/network/api/s/" + c.Site + "/cmd/sitemgr"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(b))
 	if err != nil {
-		return err
+		return ForgetAnswer{}, err
 	}
 	req.Header.Set("X-API-KEY", c.APIKey)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return ForgetAnswer{}, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -107,12 +130,12 @@ func (c *Client) deleteDevice(ctx context.Context, mac string) error {
 		} `json:"meta"`
 	}
 	_ = json.Unmarshal(raw, &a) // the record in data is never read
-	raw = nil
+	ans := ForgetAnswer{Status: resp.StatusCode, RC: a.Meta.RC, Msg: a.Meta.Msg}
 	if a.Meta.Msg == "api.err.DeviceBusy" {
-		return ErrDeviceBusy
+		return ans, fmt.Errorf("%w: %s", ErrDeviceBusy, ans)
 	}
 	if resp.StatusCode/100 != 2 || (a.Meta.RC != "" && a.Meta.RC != "ok") {
-		return fmt.Errorf("cmd/sitemgr delete-device: HTTP %d, %s %s", resp.StatusCode, a.Meta.RC, a.Meta.Msg)
+		return ans, fmt.Errorf("cmd/sitemgr delete-device: %s", ans)
 	}
-	return nil
+	return ans, nil
 }
