@@ -106,6 +106,16 @@ func (f *FixtureRunner) breakout(args []string) error {
 	// so everything that references the port dangles: learn_mode is in
 	// neither sonic-port.yang nor sonic-portchannel.yang on 202511. Modelled
 	// from that source, not from an observed refusal (§11.12).
+	// ... and sonic-scheduler.yang's pir needs a cir > 0 ("pir can't be
+	// configured without cir."), which the driver's egress shapers never
+	// carry (the SAI refuses a port's minimum rate): live on the DX010,
+	// 2026-11-17, the breakout refused every cycle while one shaper existed
+	// (docs/drivers/sonic.md 11.38).
+	for k, fv := range f.table("cfg_qos") {
+		if strings.HasPrefix(k, "SCHEDULER|") && fv["pir"] != "" && atoi(fv["cir"]) <= 0 {
+			return fmt.Errorf("Data Loading Failed\npir can't be configured without cir.\nConfigMgmt Class creation failed")
+		}
+	}
 	for k, fv := range f.table("cfg_port") {
 		if fv["learn_mode"] != "" {
 			return fmt.Errorf("sonic_yang: %s: learn_mode is not in the YANG model; the entry is not translated", k)

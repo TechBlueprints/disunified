@@ -206,6 +206,55 @@ func egressPBS(kbps int) string {
 	return strconv.Itoa(max(kbps*125/100, 2*9216))
 }
 
+// schedulerSet writes an egress shaper profile from its pir (bytes/s).
+// Never with a cir: sonic-scheduler.yang wants one beside a pir, but
+// Broadcom's SAI refuses a minimum rate on a port scheduler and keeps it in
+// the object, so every later set of that profile fails too (DX010,
+// 2026-11-17, docs/drivers/sonic.md 11.38).
+func schedulerSet(name, pir string) string {
+	return fmt.Sprintf("sonic-db-cli CONFIG_DB hset %s meter_type bytes pir %s pbs %s", sshrun.ShellQuote("SCHEDULER|"+name), pir, egressPBS(atoi(pir)/125))
+}
+
+// forget drops what the plan remembers having written to interfaces a
+// breakout deletes or makes (docs/drivers/sonic.md 11.38). lldpd forgets a
+// deleted port's custom TLVs, and a port made again under the same name
+// starts without them (2026-11-16); a PORT_QOS_MAP row is held out of
+// CONFIG_DB for the breakout and given back only to the ports it leaves
+// (shapersHeld). Kept: the isolation group, which lives in APPL_DB and
+// orchagent's isolationgrouporch, which keeps a removed port's name as a
+// pending member and adds the port of that name when it comes back (the
+// plan rewrites the group whenever the set of names differs); the static
+// FDB entries, keyed by name in APPL_DB, which no breakout touches.
+func (f *portFeat) forget(names []string) {
+	for _, n := range names {
+		delete(f.med, n)
+		delete(f.medPol, n)
+		delete(f.qos, n)
+	}
+}
+
+// heldShapers are the egress shapers a breakout takes out of CONFIG_DB and
+// puts back: its YANG check refuses a SCHEDULER pir without a cir.
+type heldShapers struct {
+	ports  []struct{ lane, sched string }
+	scheds []struct{ name, pir string }
+}
+
+func (pl *plan) shapersHeld() heldShapers {
+	var h heldShapers
+	for _, ln := range keysOf(pl.sim.pf.qos) {
+		if s := pl.sim.pf.qos[ln]; strings.HasPrefix(s, egressPrefix) {
+			h.ports = append(h.ports, struct{ lane, sched string }{ln, s})
+		}
+	}
+	for _, n := range keysOf(pl.sim.pf.sched) {
+		if strings.HasPrefix(n, egressPrefix) {
+			h.scheds = append(h.scheds, struct{ name, pir string }{n, pl.sim.pf.sched[n]})
+		}
+	}
+	return h
+}
+
 // learnTarget is where a port's learn mode lives: its PortChannel when it
 // is a member (teammgrd hands PORTCHANNEL learn_mode to the LAG), else
 // each lane.
@@ -459,7 +508,7 @@ func (pl *plan) egress(ds []devicemodel.PortDesired) {
 				used[want] = true
 				if pl.sim.pf.sched[want] != egressPIR(d.EgressKbps) {
 					name, pir := want, egressPIR(d.EgressKbps)
-					pl.add(d.Index, fmt.Sprintf("sonic-db-cli CONFIG_DB hset %s meter_type bytes pir %s pbs %s", sshrun.ShellQuote("SCHEDULER|"+name), pir, egressPBS(d.EgressKbps)), func(s *swState) { s.pf.sched[name] = pir })
+					pl.add(d.Index, schedulerSet(name, pir), func(s *swState) { s.pf.sched[name] = pir })
 				}
 			}
 			have := pl.sim.pf.qos[ln]

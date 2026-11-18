@@ -268,19 +268,15 @@ func (s *swState) applyBreakout(parent string, pp platformPort, idx int, childre
 		delete(speeds, ch.name)
 	}
 	s.laneSpeeds = speeds
-	// lldpd forgets a deleted port's custom TLVs, and a port made again
-	// under the same name starts without them: the LLDP-MED plan after the
-	// breakout must see every new interface as bare, lane 1 included, which
-	// keeps the old port's name (DX010 2026-11-16, docs/drivers/breakout.md
-	// 16.10: a split wrote lanes 2-4 only). pf is the plan's own copy.
-	for _, name := range s.cagePorts(idx) {
-		delete(s.pf.med, name)
-		delete(s.pf.medPol, name)
-	}
+	// The remembered per-interface writes the breakout ends, for the old
+	// interfaces and the new ones alike: lane 1 keeps the old port's name,
+	// so a copy kept under that name hides it from the rest of the plan
+	// (docs/drivers/sonic.md 11.38).
+	forget := s.cagePorts(idx)
 	for _, ch := range children {
-		delete(s.pf.med, ch.name)
-		delete(s.pf.medPol, ch.name)
+		forget = append(forget, ch.name)
 	}
+	s.pf.forget(forget)
 	// -f takes the old ports out of every ACL table's ports@ (a YANG
 	// leafref), the table stays; applyACL binds the children after the batch.
 	gone := setOf(s.cagePorts(idx))
@@ -422,6 +418,16 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		for _, h := range held {
 			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote(h.key)+" learn_mode", nil)
 		}
+		// The egress shapers' SCHEDULER rows fail the same check (pir
+		// without cir, which Broadcom's SAI refuses on a port: §11.38), so
+		// they leave CONFIG_DB too, every port's, and come back after it.
+		shaped := pl.shapersHeld()
+		for _, h := range shaped.ports {
+			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler", nil)
+		}
+		for _, h := range shaped.scheds {
+			write(d.Index, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote("SCHEDULER|"+h.name), nil)
+		}
 		// The guard's counted rules name the lanes that go (acl_count.go).
 		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
 		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).
@@ -433,6 +439,15 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 				continue // a lane the breakout replaced; its children get theirs below
 			}
 			write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote(h.key)+" learn_mode "+h.mode, nil)
+		}
+		for _, h := range shaped.scheds {
+			write(d.Index, schedulerSet(h.name, h.pir), nil)
+		}
+		for _, h := range shaped.ports {
+			if pl.sim.pf.qos[h.lane] != h.sched {
+				continue // a lane the breakout replaced; the egress plan writes its children's
+			}
+			write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler "+h.sched, nil)
 		}
 		port := pl.ports[d.Index]
 		port.Interfaces = pl.sim.cagePorts(idx)
