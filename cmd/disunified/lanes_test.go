@@ -47,7 +47,7 @@ func laneParent(t *testing.T) (*sonic.Collector, *devicemodel.Snapshot, func() [
 
 // watcher is newAutoLanes over a file with one parent entry "sw" and the
 // extra entries given, its starts recorded instead of run.
-func watcher(t *testing.T, c *sonic.Collector, snap *devicemodel.Snapshot, parent config.Device, extra ...config.Device) (*autoLanes, *[]options, *strings.Builder, *config.File) {
+func watcher(t *testing.T, c devicemodel.LaneProvider, snap *devicemodel.Snapshot, parent config.Device, extra ...config.Device) (*autoLanes, *[]options, *strings.Builder, *config.File) {
 	t.Helper()
 	parent.Name, parent.Driver = "sw", "sonic"
 	if parent.LaneSwitches == "" {
@@ -55,7 +55,12 @@ func watcher(t *testing.T, c *sonic.Collector, snap *devicemodel.Snapshot, paren
 	}
 	f := &config.File{StateDir: t.TempDir(), Devices: append([]config.Device{parent}, extra...)}
 	var started []options
-	mk := newAutoLanes(f, parent, func(o options) { started = append(started, o) })
+	mk := newAutoLanes(f, parent, func(o options) {
+		started = append(started, o)
+		if o.halt != nil { // the loop returns when a retire halts it
+			go func() { <-o.halt; close(o.exited) }()
+		}
+	})
 	if mk == nil {
 		return nil, &started, nil, f
 	}
@@ -136,18 +141,27 @@ func TestWatcherStartsOnePendingLaneSwitchPerSplitCage(t *testing.T) {
 // parent's first plan leaves the lanes alone.
 func TestAdoptedLaneSwitchIsAttachedBeforeTheParentsFirstPlan(t *testing.T) {
 	c, snap, plan := laneParent(t)
-	al, started, _, f := watcher(t, c, snap, config.Device{})
+	al, started, buf, f := watcher(t, c, snap, config.Device{})
 	adopt(t, f, "sw-cage3")
-	adopt(t, f, "sw-cage7") // a whole cage's: attached too, it answers when the cage is split again
+	// A whole cage's (cage 7 is one port in the capture): since 2026-11-18
+	// not attached or started, and retired if it stays so
+	// (docs/drivers/breakout.md 16.13).
+	adopt(t, f, "sw-cage7")
 	al.startAdopted()
-	if len(*started) != 2 || (*started)[0].name != "sw-cage3" || (*started)[1].name != "sw-cage7" {
-		t.Fatalf("started %d, want sw-cage3 and sw-cage7", len(*started))
+	if len(*started) != 1 || (*started)[0].name != "sw-cage3" {
+		t.Fatalf("started %d, want sw-cage3 alone", len(*started))
+	}
+	if v, err := c.Lanes(3); err != nil || v.Child.Name != "sw-cage3" {
+		t.Errorf("cage 3: child %+v, %v", v.Child, err)
+	}
+	if !strings.Contains(buf.String(), "sw-cage7") || !strings.Contains(buf.String(), "not attached or started") {
+		t.Errorf("log: %q", buf.String())
 	}
 	if got := plan(); len(got) != 0 {
 		t.Errorf("the parent's first plan changes %v, want nothing (the lanes are the adopted lane switch's)", got)
 	}
 	al.tick()
-	if len(*started) != 2 {
+	if len(*started) != 1 {
 		t.Errorf("the watcher started cage 3 a second time (%d running)", len(*started))
 	}
 }

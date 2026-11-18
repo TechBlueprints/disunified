@@ -290,6 +290,31 @@ func (c *Collector) SplitCages() []int {
 	return out
 }
 
+// CageLanes implements devicemodel.LaneProvider: the cage's port count as
+// the last collect read it, 0 when the fold and the lanes disagree (after
+// this device's own plan split or joined the cage: apply.go drops a joined
+// cage's lanes before the next collect re-reads the fold).
+func (c *Collector) CageLanes(cage int) (int, time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.last == nil {
+		return 0, time.Time{}
+	}
+	at := c.last.TakenAt
+	i := slices.IndexFunc(c.last.Ports, func(p devicemodel.Port) bool { return p.Index == cage })
+	if i < 0 {
+		return 0, at
+	}
+	fold, kept := c.last.Ports[i].Lanes, len(c.lanes[cage])
+	switch {
+	case fold == 1 && kept <= 1:
+		return 1, at
+	case fold > 1 && kept == fold:
+		return fold, at
+	}
+	return 0, at
+}
+
 // LocalChassisID is what the switch sends as its own LLDP chassis id (`show
 // lldp local-info`, read at start).
 func (c *Collector) LocalChassisID() string {

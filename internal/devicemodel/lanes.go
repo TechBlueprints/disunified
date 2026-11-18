@@ -47,6 +47,15 @@ type LaneProvider interface {
 	// split, ascending; nil before the first snapshot. Each can be presented
 	// as a lane switch (Lanes answers for it).
 	SplitCages() []int
+	// CageLanes is the cage as the device's last good snapshot shows it:
+	// the number of ports it runs as (1 = whole, more = split) and that
+	// snapshot's time. 0 when the device cannot say: no snapshot yet, no
+	// such port, a read that does not agree with itself (a cage the
+	// device's own plan has just split or joined, before the next collect),
+	// or a device that was still starting when it was read. A whole answer
+	// is what retires a lane switch (docs/drivers/breakout.md 16.13), so it
+	// is given only on a positive read.
+	CageLanes(cage int) (lanes int, at time.Time)
 }
 
 // LaneVLANController is an optional LaneProvider capability: the VLANs a

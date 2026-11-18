@@ -63,6 +63,17 @@ type autoLanes struct {
 	adopt func(ctx context.Context, mac string) error
 	// now is the clock (nil: time.Now).
 	now func() time.Time
+	// forget forgets the lane switch with exactly this MAC in the
+	// controller (unifiapi.ForgetLaneSwitch); nil without a controller API.
+	// stateDir is a lane switch's state directory by name.
+	forget   func(ctx context.Context, mac string) (unifiapi.ForgetResult, error)
+	stateDir func(name string) string
+	// declaredBy are this parent's declared lane switches by cage, bound at
+	// its start (bindDeclared): stopped while their cage is joined.
+	declaredBy map[int]*declaredLane
+	// off is the parent's `lane_switches: off`: the watcher only stops and
+	// starts its declared lane switches.
+	off bool
 
 	mu      sync.Mutex
 	running map[int]*laneRun
@@ -78,6 +89,16 @@ type laneRun struct {
 	since, next time.Time
 	wait        time.Duration
 	lastErr     string
+	// The retire (lanes_retire.go): the cage's joined reads; stopped once
+	// they reach the count, exitedSeen once the loop has returned; the
+	// Forget's pace and its last failure logged.
+	joined     joinCount
+	stopped    bool
+	awaitCount bool // stopped at the start, the count not yet reached
+	exitedSeen bool
+	forgetNext time.Time
+	forgetWait time.Duration
+	forgetErr  string
 }
 
 // Adopt requests: the first no sooner than one watch interval after the
@@ -113,6 +134,9 @@ type autoLane struct {
 	// (its state file says so): the hand-over's controller step was done at
 	// its adoption, and a start must not wait on the controller's API.
 	resume func()
+	// halt ends the lane switch's loop (closed by a retire); exited is
+	// closed when it has returned (lanes_retire.go).
+	halt, exited chan struct{}
 }
 
 func (a *autoLanes) noteOnce(key, format string, args ...any) {
@@ -214,6 +238,16 @@ func adoptFor(f *config.File) func(context.Context, string) error {
 	return unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true).AdoptPending
 }
 
+// forgetFor is the retire's Forget (unifiapi.ForgetLaneSwitch), nil
+// without a controller API URL and key.
+func forgetFor(f *config.File) func(context.Context, string) (unifiapi.ForgetResult, error) {
+	key := f.Controller.APIKey()
+	if f.Controller.APIURL == "" || key == "" {
+		return nil
+	}
+	return unifiapi.New(f.Controller.APIURL, key, f.Controller.Site, true).ForgetLaneSwitch
+}
+
 // cageToAutoFor is the hand-over's controller step for one parent, nil
 // without a controller API URL and key.
 func cageToAutoFor(f *config.File, parentMAC string) func(context.Context, int) (map[string]any, error) {
@@ -250,6 +284,34 @@ type declaredLane struct {
 	log    *log.Logger // the parent's
 	mac    string
 	toAuto func(context.Context, int) (map[string]any, error)
+	// The retire (lanes_retire.go): the cage's joined reads, whether the
+	// lane switch is stopped, its loop's halt and exit, and how to start it
+	// again (runConfig's spawn of its entry).
+	joined       joinCount
+	stopped      bool
+	halt, exited chan struct{}
+	respawn      func()
+}
+
+// arm gives the declared lane switch's next run a halt and an exit signal.
+func (d *declaredLane) arm() (halt, exited chan struct{}) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.halt, d.exited = make(chan struct{}), make(chan struct{})
+	return d.halt, d.exited
+}
+
+// bindDeclared hands the watcher the parent's declared lane switches, by
+// cage, for the retire's stop and start.
+func (a *autoLanes) bindDeclared(ls []config.LaneSwitch, hooks map[string]*declaredLane) {
+	for _, l := range ls {
+		if d := hooks[l.Name]; d != nil {
+			if a.declaredBy == nil {
+				a.declaredBy = map[int]*declaredLane{}
+			}
+			a.declaredBy[l.Cage] = d
+		}
+	}
 }
 
 // declaredLanes are the file's declared lane switches by name.
@@ -318,6 +380,7 @@ func overrideText(o map[string]any) string {
 }
 
 func (a *autoLanes) run(c autoLane) {
+	c.halt, c.exited = make(chan struct{}), make(chan struct{})
 	a.mu.Lock()
 	if a.running == nil {
 		a.running = map[int]*laneRun{}
@@ -328,11 +391,17 @@ func (a *autoLanes) run(c autoLane) {
 }
 
 // startAdopted attaches and starts every automatic lane switch whose state
-// file is adopted, split or not (a whole cage's comes back when the cage is
-// split again). It runs before the parent's loop starts: the parent's first
-// apply would otherwise write the cage's intent over the lanes on every
-// restart.
+// file is adopted and whose cage is not positively whole in the parent's
+// first snapshot. It runs before the parent's loop starts: the parent's
+// first apply would otherwise write the cage's intent over the lanes on
+// every restart. A lane switch whose cage the first snapshot reads as one
+// port is not attached: it is retired as on a join (lanes_retire.go), the
+// first snapshot its first joined read, or (manual, no API) left stopped;
+// either way it starts again if the cage is split.
 func (a *autoLanes) startAdopted() {
+	if a.off {
+		return
+	}
 	for cage := 1; cage <= maxLaneCage; cage++ {
 		name := config.AutoLaneSwitchName(a.parent, cage)
 		if a.declared[cage] || a.taken[name] || !a.adopted(name) {
@@ -340,6 +409,18 @@ func (a *autoLanes) startAdopted() {
 		}
 		c, ok := a.child(cage)
 		if !ok {
+			continue
+		}
+		if lanes, at := a.lp.CageLanes(cage); lanes == 1 {
+			r := &laneRun{c: c, stopped: true, exitedSeen: true, awaitCount: true}
+			r.joined.read(lanes, at, a.clock())
+			a.mu.Lock()
+			if a.running == nil {
+				a.running = map[int]*laneRun{}
+			}
+			a.running[cage] = r
+			a.mu.Unlock()
+			a.log.Printf("lane switch %s (%s): its state file is adopted, but port %d reads as one port (the cage is joined), so it is not attached or started; it is retired if the cage stays joined, and started if it is split", c.Name, c.MAC, cage)
 			continue
 		}
 		c.resume()
@@ -351,6 +432,10 @@ func (a *autoLanes) startAdopted() {
 // unattached, the cage still the parent's fold) and asks the controller to
 // adopt the pending ones that need no operator (adoptPending).
 func (a *autoLanes) tick() {
+	a.retire()
+	if a.off {
+		return
+	}
 	for _, cage := range a.lp.SplitCages() {
 		if c, ok := a.child(cage); ok {
 			switch {
@@ -453,18 +538,25 @@ func autoLaneOptions(f *config.File, parent config.Device, c autoLane) options {
 		ReplyLog:     parent.ReplyLog,
 	})
 	o.onAdopted, o.onUnadopted = c.attach, c.detach
+	o.halt, o.exited = c.halt, c.exited
 	return o
 }
 
 // newAutoLanes is the parent's watcher, nil when the file turns it off for
 // this device or the device is a lane switch itself. spawn runs a child.
 func newAutoLanes(f *config.File, parent config.Device, spawn func(options)) func(*log.Logger, devicemodel.LaneProvider, string) *autoLanes {
-	if parent.LaneSwitches == config.LaneSwitchesOff || parent.Driver == config.LaneDriver {
+	if parent.Driver == config.LaneDriver {
 		return nil
 	}
 	declared, taken := map[int]bool{}, map[string]bool{}
 	for _, l := range f.LaneSwitchesOf(parent.Name) {
 		declared[l.Cage] = true
+	}
+	// off starts no lane switch; a watcher is still needed to stop and
+	// start the declared ones with their cages.
+	off := parent.LaneSwitches == config.LaneSwitchesOff
+	if off && len(declared) == 0 {
+		return nil
 	}
 	for _, d := range f.Devices {
 		taken[d.Name] = true
@@ -474,6 +566,9 @@ func newAutoLanes(f *config.File, parent config.Device, spawn func(options)) fun
 			cageToAuto: cageToAutoFor(f, parentMAC),
 			manual:     parent.LaneSwitches == config.LaneSwitchesManual,
 			adopt:      adoptFor(f),
+			forget:     forgetFor(f),
+			stateDir:   func(name string) string { return filepath.Join(f.StateDir, "state", name) },
+			off:        off,
 			log:        lg, parent: parent.Name, parentMAC: parentMAC, lp: lp, declared: declared, taken: taken,
 			adopted: func(name string) bool {
 				st, err := (&device.Store{Path: filepath.Join(f.StateDir, "state", name, "device.json")}).Load()

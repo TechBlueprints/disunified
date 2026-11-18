@@ -183,6 +183,37 @@ func (c *Collector) SplitCages() []int {
 	return out
 }
 
+// CageLanes implements devicemodel.LaneProvider: the cage's port count as
+// the last collect read it from CONFIG_DB's PORT table (every PORT entry
+// with the cage's index), 0 while the switch was still starting at that
+// collect (starting.go, docs/drivers/sonic.md 6.4.2) or when the fold and
+// the lanes disagree.
+func (c *Collector) CageLanes(cage int) (int, time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.last == nil {
+		return 0, time.Time{}
+	}
+	at := c.last.TakenAt
+	i := slices.IndexFunc(c.last.Ports, func(p devicemodel.Port) bool { return p.Index == cage })
+	if c.starting != "" || i < 0 {
+		return 0, at
+	}
+	return cageLanes(c.last.Ports[i].Lanes, len(c.lanes[cage])), at
+}
+
+// cageLanes is a cage's port count from the fold's Lanes and the lanes kept
+// beside it, 0 when the two disagree.
+func cageLanes(fold, kept int) int {
+	switch {
+	case fold == 1 && kept <= 1:
+		return 1
+	case fold > 1 && kept == fold:
+		return fold
+	}
+	return 0
+}
+
 // Lanes implements devicemodel.LaneProvider: the cage's lanes as of the
 // last collect, a lane aggregate's id as the lane switch's own (its lowest
 // member's lane number), any other PortChannel by name only.

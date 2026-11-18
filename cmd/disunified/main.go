@@ -227,6 +227,9 @@ type options struct {
 	// are an automatic lane switch's own hand-over hooks.
 	autoLanes              func(*log.Logger, devicemodel.LaneProvider, string) *autoLanes
 	onAdopted, onUnadopted func()
+	// halt ends a lane switch's run (a retire, lanes_retire.go); exited is
+	// closed when runOne has returned.
+	halt, exited chan struct{}
 	// declared are the file's declared lane switches' hand-over hooks by
 	// name (lanes.go): a parent binds those it attaches, and a declared
 	// lane switch's onAdopted and onUnadopted are its own entry's.
@@ -241,8 +244,29 @@ func runConfig(ctx context.Context, f *config.File) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := runOne(ctx, o); err != nil {
+			rctx := ctx
+			if o.halt != nil {
+				var cancel context.CancelFunc
+				rctx, cancel = context.WithCancel(ctx)
+				defer cancel()
+				go func() {
+					select {
+					case <-o.halt:
+						cancel()
+					case <-rctx.Done():
+					}
+				}()
+			}
+			err := runOne(rctx, o)
+			halted := o.halt != nil && rctx.Err() != nil && ctx.Err() == nil
+			switch {
+			case halted:
+				o.logger.Printf("stopped: retired (its cage is joined)")
+			case err != nil:
 				o.logger.Printf("FAILED: %v", err)
+			}
+			if o.exited != nil {
+				close(o.exited)
 			}
 		}()
 	}
@@ -256,6 +280,15 @@ func runConfig(ctx context.Context, f *config.File) {
 		o.declared = declared
 		if d := declared[sw.Name]; d != nil {
 			o.onAdopted, o.onUnadopted = d.adopted, d.forgotten
+			o.halt, o.exited = d.arm()
+			base := o
+			d.mu.Lock()
+			d.respawn = func() {
+				next := base
+				next.halt, next.exited = d.arm()
+				spawn(next)
+			}
+			d.mu.Unlock()
 		}
 		spawn(o)
 	}
@@ -533,6 +566,7 @@ func runOne(ctx context.Context, o options) error {
 		// watcher. Both find this device by its name, registered above.
 		if lp, ok := sw.(devicemodel.LaneProvider); ok && o.autoLanes != nil && o.name != "" && !o.collectOnce {
 			al := o.autoLanes(log, lp, snap.System.MAC)
+			al.bindDeclared(o.laneSwitches, o.declared)
 			al.startAdopted()
 			go al.watch(ctx)
 		}
