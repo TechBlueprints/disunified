@@ -33,6 +33,7 @@ The why, the validation plan and the hard unknowns are in
 |---|---|
 | `build.sh` | the unattended build (preflight, prepare, fail-fast packages, vs image, broadcom images, manifest and checksums) |
 | `series/` | the patches, one directory per repository, each with a `series` file; `series/BASES` pins the commit each applies to; `series/CONFLICTS.md` is the rebase record |
+| `drafts/` | patches written but not yet in a `series` file, so `build.sh` never applies them: `sonic-buildimage/0015` (the DX010's module insert and remove events, `docs/drivers/sonic.md` §11.39), not built |
 | `dry-run.sh` | (in the Claude desktop app's Terminal panel, run it as `env -u GIT_CONFIG_PARAMETERS ./dry-run.sh`: the panel sets `safe.bareRepository=explicit`, which refuses the script's bare object stores) every check that does not need the build host (the series applies, templates render, YANG parses, rules resolve, CLI compiles); it passed on 2026-11-01 (`dry-run.log`) and again on 2026-11-07 with sonic-buildimage 0013 (the Mac's work clones of sonic-swss and sonic-l2mcd lag the series, so that run fetched those two from upstream; it needs bash 4+, e.g. Homebrew's) |
 
 ## The series in one table
