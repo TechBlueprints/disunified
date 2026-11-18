@@ -10975,6 +10975,49 @@ inserted event" and `TRANSCEIVER_INFO` within about 2 s where the interrupt
 works, and within about 7 s with the patch's "no SUS6 interrupt" warning
 where it does not.
 
+**If no SCI comes (H1), find the link that stops it.** Do this after an
+insert, before giving up on the interrupt, and stop at the first link that
+fails:
+
+1. **Did the CPLD see the change?** Run `sudo cat .../dx010_cpld/qsfp_modprs_irq`
+   once on purpose (it clears the latch). Is the cage's bit (bit `N-1` for
+   cage N) set?
+2. **Do the masks pass it on?** Write `qsfp_modprs_msk` and `cpld4_int0_msk`
+   with the opposite sense (all 1s), insert again, then write them back.
+3. **Does the line move?** Does `sus_gp_lvl` bit 6 go to 0, and does
+   `sus_gp_ts` bit 6 get set?
+4. **Does the chipset raise it?** Does `gpe0a_sts` bit 22 rise, and does
+   `sci` rise without `ff_rt_clk`?
+5. **Does the kernel pass it on?** Does `sci_int_gpio_sus6` rise?
+
+#### 11.39.7 What full support takes, by result
+
+Every branch needs fault 1's fix: cages numbered by index, not `port_num`.
+Every branch also needs the SUS6 file held open between calls. Both are in
+draft 0015. What else each result asks for:
+
+| Rack-day result | Cause | What proper support takes |
+|---|---|---|
+| SCI +1, "Failed to detect SfpEvent ... port_num" each step | fault 1 only; the interrupt works | 0015 as it is. Its 5 s presence compare stays as the net for a missed edge, which logs a warning when it catches one. |
+| SCI +1 once, SUS6 low after; one `qsfp_modprs_irq` read frees it | H2, a lost wake and a latched line | 0015 as it is: the held-open file stops the loss, and the clear at start and on each wake stops the latch. Then repeat the test; it should give an SCI at every step. |
+| no SCI; step 2's mask write brings one | H1, the CPLD masks | 0015 plus a mask write at boot: in `platform-modules-dx010.init`, the way the E1031's init writes `modabs_mask` (§11.39.5), or in `dx010_cpld`'s probe. A new patch in the kit. |
+| no SCI; the irq bit is set, the masks change nothing, the line does not move | the CPLD's output or its wiring to SUS6 | No software fix reaches it. 0015's 5 s compare becomes the route; its warning is then expected on every change, and could go quiet after the first. |
+| no SCI; the line moves, GPE0a bit 22 does not | the chipset's GPIO setup in `slx_gpio_ich` | A patch to its edge, routing or enable setup, checked against the register values in §11.39.3. |
+| no SCI; GPE0a bit 22 rises, the counter does not | the SCI handler (ACPICA ordering, the handler's install) | A patch to `slx_gpio_ich`; the 6.12 ACPICA source in §11.39.1 is the reference. |
+| no SCI; the irq bit never set | inside the CPLD | No software fix; 0015's compare is the route, as in the wiring row. |
+
+After any branch: build an image with 0015 (and the branch's extra patch),
+install it, and run §11.39.6 again. The result to see is "Got SFP inserted
+event" and `TRANSCEIVER_INFO` at every step: within about 2 s if the
+interrupt works, within about 7 s with the warning if it does not.
+
+Then retire the driver's `sfputil` read (§11.36). Keep reading on link-up,
+if that is built, as a cheap extra trigger. It cannot replace either path:
+an unsplit breakout cable has no link until its module has been read
+(§10.9), and a lane that linked before the read can be dropped by auto's
+FEC rewrite (§11.37). Fault 1 and, if it was needed, the mask write are
+upstream candidates for every DX010; nothing goes upstream without Clint.
+
 ## 12. The bridge on the switch itself (2026-11-02)
 
 Once the SONiC switch is the LAN's core, a bridge that reaches it over SSH
