@@ -58,8 +58,11 @@ func laneSpeeds(props showInterfacesTransceiverProperties) map[int]map[int]int {
 // currentLayout is the cage's layout: its lane count at its lanes' admin
 // speed. ok is false for lanes at different speeds, which match nothing.
 // The fold's LanesDiverge is not the test: VLANs that differ between the
-// lanes set it too. A whole cage with no speed line (admin speed auto, 0)
-// is one port at EOS's own speed: it satisfies any one-port layout.
+// lanes set it too. A QSFP28 cage with no speed line is one port whose
+// admin speed EOS reports as 100Gbps (module-layout-20261117/nospeed/), so
+// it reads as 1x100G; an admin speed of auto (0), never seen on a QSFP28
+// cage, would be one port at EOS's own speed and satisfy any one-port
+// layout.
 func currentLayout(p devicemodel.Port, speeds map[int]int) (l modulelayout.Layout, ok bool) {
 	l = modulelayout.Layout{Ports: max(p.Lanes, 1), SpeedMbps: p.AdminSpeed}
 	for _, n := range laneNames(p) {
