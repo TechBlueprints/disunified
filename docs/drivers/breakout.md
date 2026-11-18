@@ -1276,8 +1276,9 @@ A **Forget** in UniFi hands the lanes back, and the lane switch is then
 adopted again by the same rule while its cage is split and its parent is
 adopted (§16.12). Clint, asked on 2026-11-17 whether that was right: "yup, that sounds correct tbh. if you want to really forget it unplug it".
 There are three ways not to have a lane switch adopted: **unplug the
-breakout** (the cage is whole again, the lane switch stops informing and
-shows disconnected; then forget its record), a parent's **`lane_switches:
+breakout** (the cage is whole again; since 2026-11-18 the bridge then
+stops the lane switch, forgets its record and removes its state by itself,
+§16.13), a parent's **`lane_switches:
 manual`** (every one of its lane switches pending until adopted by hand,
 the rule of 2026-11-16), and **`lane_switches: off`** (§16.4: none
 started). A declared `driver: breakout` entry keeps
@@ -1321,7 +1322,7 @@ automatic one for its cage.
 |---|---|---|---|
 | a cage is split (by the module rule, a push, or by hand) | starts a lane switch for it within one watch interval; one interval later, if the parent is adopted, asks the controller to adopt it by its exact MAC (§16.12; not with `lane_switches: manual`, without a controller API, or after a Forget) | fold, unchanged, until the adoption | a pending `USFXG`, adopted within about a minute |
 | the controller adopts it (the bridge's request, or the operator's Adopt) | attaches it (`AttachLaneSwitch`) when the adoption handshake completes; removes a Forget's mark | owned: QSFP28 form, the child's MAC and LLDP entry, only mode and admin state applied | placed under the cage; seeded from the lanes; the first push held as for any device |
-| the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending, then asks for its adoption again at the watcher's pace (`manual`: does not) | fold again until the re-adoption; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), adopted again within a minute or two; to be rid of it, unplug the breakout first |
+| the operator forgets it | detaches it (`DetachLaneSwitch`) when the session falls back to pending, then asks for its adoption again at the watcher's pace (`manual`: does not) | fold again until the re-adoption; the cage's own settings go back on the lanes at the next plan | pending again (same MAC), adopted again within a minute or two; to be rid of it, unplug the breakout (or join the cage): the bridge then retires it (§16.13) |
 | the cage is joined | since 2026-11-18 (§16.13): after four joined reads of the parent over two minutes, stops the child, detaches it, forgets its record by its exact MAC (`api.err.DeviceBusy` retried) and removes its state directory; `manual`, no API, or a declared one: stopped (and an automatic one detached) only. Before: nothing, its collect failed "not split" for good | whole, the parent's | the record gone (automatic); disconnected, placement kept (the others) |
 | the cage is split again | a retired one: a fresh lane switch, pending, then adopted with defaults; a stopped one (`manual`, no API, declared) starts again from its state file | owned again once adopted (a stopped adopted one at once) | a new pending `USFXG` (retired), or connected again |
 | the bridge restarts | an adopted child is attached **before the parent's loop starts** (the race §0 describes), unless the first snapshot reads its cage as one port: then it is not attached, and retired by the same count (§16.13); a pending one is started by the watcher | as before the restart | no change |
@@ -1828,7 +1829,8 @@ of a lane switch, unplug the breakout** (or join the cage from the
 parent's port): the cage is whole, the lane switch's collect fails "not
 split", it stops informing, and its record shows disconnected; then forget
 that record, and nothing adopts it again, since a whole cage asks for no
-adoption. `lane_switches: manual` keeps every lane switch of a parent for
+adoption. (Since 2026-11-18 the bridge does that Forget itself, a few
+minutes after the join, §16.13.) `lane_switches: manual` keeps every lane switch of a parent for
 the operator to adopt, `off` starts none. The build of fabc176 kept a
 Forget in a mark file, `state/<name>/forgotten`, and held the lane switch
 pending while it was there; that was withdrawn the same evening, and a
