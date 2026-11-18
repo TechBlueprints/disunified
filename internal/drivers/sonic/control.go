@@ -1050,6 +1050,13 @@ func (pl *plan) portState(d devicemodel.PortDesired) {
 		fec, write := d.FEC, pl.add
 		if fec == nil {
 			fec, write = pl.moduleFEC(d.Index, ln), pl.addOwn
+		} else if pl.sim.fecsStale[ln] {
+			// A breakout of this plan made ln and its supported_fecs is
+			// read by the next collect (§11.37): written blind, a mode the
+			// new layout lacks would end the batch after the breakout. The
+			// FEC still differs then, so the next cycle's reconcile plans
+			// it against the list the SAI gave.
+			fec = nil
 		} else if sup := pl.sim.fecs[ln]; len(sup) > 0 && !sup[fecKeyword(*fec)] {
 			// portconfig refuses a mode outside supported_fecs ("fec fc is
 			// not in ['none', 'rs']", exit 1), which under set -e would fail

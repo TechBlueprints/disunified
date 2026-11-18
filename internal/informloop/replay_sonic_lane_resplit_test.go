@@ -129,8 +129,19 @@ func TestReplaySonicDX010LaneCageResplit(t *testing.T) {
 	writes()
 	cycle("the first reconcile")
 
-	has("join", push(3), "sudo config interface breakout -f -y Ethernet8 '1x100G[40G]' </dev/null", med("Ethernet8"))
-	cycle("the join")
+	join := push(3)
+	has("join", join, "sudo config interface breakout -f -y Ethernet8 '1x100G[40G]' </dev/null", med("Ethernet8"))
+	// The push's RS waits for the joined port's supported_fecs (sonic.md
+	// §11.37): written the cycle after the join, then nothing.
+	for _, c := range join {
+		if strings.Contains(c, " fec ") {
+			t.Errorf("join: FEC written before the joined port's list was read: %q", c)
+		}
+	}
+	l.collect(context.Background())
+	l.reconcile(context.Background())
+	has("the cycle after the join", writes(), "sudo config interface fec Ethernet8 rs")
+	cycle("the join's FEC")
 
 	has("split", push(4), "sudo config interface breakout -f -y Ethernet8 '4x25G[10G]' </dev/null",
 		med("Ethernet8"), med("Ethernet9"), med("Ethernet10"), med("Ethernet11"))
