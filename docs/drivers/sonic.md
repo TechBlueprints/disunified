@@ -10213,6 +10213,30 @@ for the one restart of the fixed l2d, which a timed revert covered (below).
   reboot: no bridge port in ASIC_DB for a port that is not in
   `Bridge/brif`, and `bcmcmd "stg show"` with every PortChannel member
   forwarding in each STG whose VLAN the PortChannel carries.
+- **The check after the reboot passed** (read-only, 2026-11-17 17:05
+  local; the switch booted at 13:33 local on 2026-11-16 for the 20261116
+  image). The bridge installed at the boot was `0.0.0+20261116.6dbeab6`,
+  which has the fix (a7386d4); its l2d ran from the boot until the deb
+  updates of 2026-11-17 (`0.0.0+20261117.369a068` at the read, the same
+  `l2d.py` fix). Read:
+  - ASIC_DB: 34 bridge ports, all of type PORT, one for each interface in
+    `Bridge/brif` but `dummy` (no orchagent port); none for an interface
+    outside it. Ethernet0 and Ethernet4 (PortChannel1's members in
+    CONFIG_DB) have no bridge port and no STP port. PortChannel1 has 11 STP
+    ports, all `SAI_STP_PORT_STATE_FORWARDING`. No STP port belongs to an
+    interface outside `Bridge`, and APPL_DB holds no `STP_PORT_STATE_TABLE`
+    key for one.
+  - `bcmcmd "stg show"`: STGs 2-12 (VLANs 4094, 2, 4000, 10, 1000, 2000,
+    3000, 4010, 69, 8, 9) each show `Forward: ce0-ce1`. PortChannel1 is a
+    member of Vlan4094 only (CONFIG_DB and APPL_DB), and its members forward
+    in that STG and in every other.
+  - l2d's journal since the boot: `started`, then
+    `Ethernet20: disabled -> blocking` and `blocking -> disabled` 15 s
+    apart at 13:37 (a link coming up and dropping at boot; Ethernet20 stayed
+    in `Bridge`, so not a leaving port), then only the `started` lines of
+    the 2026-11-17 deb updates. No leaving port's state was written, no
+    stray was repaired, and syncd and orchagent logged no
+    `_brcm_sai_stp_lag_member_check` or `Failed to add STP port`.
 
 ### 11.35 STP instances of deleted VLANs left in the chip (2026-11-15)
 
