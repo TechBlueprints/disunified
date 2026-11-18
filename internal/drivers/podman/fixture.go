@@ -41,6 +41,12 @@ func (f *FixtureRunner) Run(_ context.Context, command, stdin string) (string, e
 	if slotsWrite.MatchString(command) {
 		f.setSection("slots", stdin)
 	}
+	// The client-Block table deleted: the listing prints nothing, as the
+	// host's did before the table was first written (collect-block.txt).
+	// A write is not modelled: only a one-MAC listing has been captured.
+	if strings.HasPrefix(command, "nft delete table netdev "+blockTable) {
+		f.setSection("macblock", "")
+	}
 	// NetworkManager, as the host would answer: a profile modification is
 	// kept in the nmipv4 section and read back by the method query.
 	if m := nmMod.FindStringSubmatch(command); m != nil {
