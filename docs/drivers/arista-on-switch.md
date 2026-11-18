@@ -9,10 +9,10 @@ that stays adopted and controllable with no other machine up.
 
 Status (2026-11-18): built and run live on a DCS-7160-48TC6-F on EOS
 4.26.14M, which has run its own bridge since that day, moved from a
-container with its state files and nothing re-adopted (§1, §6, §7). **Not
-yet run:** a reboot of the switch with the daemon configured, a port
-change made in the controller's UI through the on-switch bridge, and an
-address or ACL change confirmed by the probe on a real switch (both are
+container with its state files and nothing re-adopted, and has come back
+by itself from a reboot (§1, §6, §7, §8). **Not yet run:** a port change
+made in the controller's UI through the on-switch bridge, and an address
+or ACL change confirmed by the probe on a real switch (both are
 fixture-tested, §5).
 
 ## 1. What the switch offers (read on 4.26.14M, 2026-11-18)
@@ -197,3 +197,20 @@ readable by root only; on the flash only `mac-learned.json` was rewritten,
 once per start. The process holds about 20 MB. A config write went through
 the socket on each start (the controller's SSH keys on
 `options.ssh_key_user`).
+
+## 8. A reboot (2026-11-18, the same switch)
+
+`reload now` with the daemon and the socket in the startup configuration:
+
+| Time | What |
+|---|---|
+| 09:37:32 | the switch stops answering |
+| 09:42:16 | EOS starts the daemon; the socket is up, the routes are not |
+| 09:42:17, :32, 09:43:02 | three starts fail, "no route from this switch to" the controller (the bridge's own retry: 15 s, 30 s, 60 s) |
+| 09:43:20 | the switch answers SSH again |
+| 09:44:19 | the fourth start: both devices resume from the flash, `0 of 54` and `0 of 5` ports changed, HTTP 200 |
+
+So the bridge was informing again 6 min 47 s after the switch went down,
+about a minute of it the retry's own spacing after the network was back.
+The same four links were up before and after, and the controller showed
+both devices connected under the same uplinks. Nothing was done by hand.

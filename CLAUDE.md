@@ -149,8 +149,8 @@ A driver's `Start` and first `Collect` must report an unchanged port's
 binary on `/mnt/flash/disunified` run by EOS's `daemon` block, the reply
 log on tmpfs through `log_dir:`; `docs/drivers/arista-on-switch.md`, §7
 the live move). An address or ACL change is confirmed there by a TCP probe
-to the controller. A reboot of the switch with the daemon configured is
-not yet run.
+to the controller. The bridge came back by itself from a reboot of the
+switch the same day (§8 there).
 
 ## 2. Map
 

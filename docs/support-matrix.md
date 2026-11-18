@@ -180,10 +180,9 @@ local`, eAPI over the switch's unix socket, run by EOS's `daemon`
 live on 4.26.14M: the socket, the static build, and an adopted switch
 moved from a container with its state files (nothing re-adopted, a first
 reconcile of 0 ports, its lane switch in the same process, a killed
-process restarted by EOS; §7 there). Not yet run: a reboot with the daemon
-configured, a UI port change through it, and a probe-confirmed address or
-ACL change on a real switch (fixture-tested). A PR needs the daemon's log
-across a reboot.
+process restarted by EOS, and a reboot the bridge came back from by
+itself; §7, §8 there). Not yet run: a UI port change through it, and a
+probe-confirmed address or ACL change on a real switch (fixture-tested).
 
 **Built, untested live (2026-11-01):** an aggregate member's LACP bundling
 (`lacp_state[].active`) from `show port-channel summary`'s `lagMember`,
