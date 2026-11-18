@@ -17,8 +17,12 @@ that cost time on Clint's DCS-7160-48TC6-F.
   to tmpfs (`log_dir:`). An address or ACL change is confirmed there by a
   TCP probe to the controller, not a redial. `scp` to the switch as
   `admin` fails ("only available in privileged mode"): have the switch
-  fetch files with `bash curl`. One collect verified live; the daemon
-  holding an adoption is not yet run.
+  fetch files with `bash curl`. Clint's 7160 runs its own bridge this way
+  since 2026-11-18 (§7 there): its log is `/var/log/agents/disunified-<pid>`
+  on the switch, the reply log `/var/log/disunified/inform-log/` (root
+  only: `bash sudo ...`), and an update is a new binary plus `daemon
+  disunified` / `shutdown` / `no shutdown`. A reboot with the daemon
+  configured has not been run.
 - **A capture by hand over SSH**: a command string runs at privilege 1
   (`show running-config` answers "privileged mode required"), so pipe
   `enable` and the command on stdin: `printf 'enable\nshow vlan | json\n'

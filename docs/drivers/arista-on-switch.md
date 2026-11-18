@@ -7,11 +7,13 @@ the same move as [`sonic-on-switch.md`](sonic-on-switch.md) and
 [`proxmox-on-node.md`](proxmox-on-node.md), for the same reason: a switch
 that stays adopted and controllable with no other machine up.
 
-Status (2026-11-18): the transport, the build and one full collect are
-verified on a DCS-7160-48TC6-F on EOS 4.26.14M (§1, §6). **Not yet run:**
-the bridge as an EOS daemon holding an adoption, a reboot of the switch
-with it configured, and an address or ACL change confirmed by the probe on
-a real switch (both are fixture-tested, §5).
+Status (2026-11-18): built and run live on a DCS-7160-48TC6-F on EOS
+4.26.14M, which has run its own bridge since that day, moved from a
+container with its state files and nothing re-adopted (§1, §6, §7). **Not
+yet run:** a reboot of the switch with the daemon configured, a port
+change made in the controller's UI through the on-switch bridge, and an
+address or ACL change confirmed by the probe on a real switch (both are
+fixture-tested, §5).
 
 ## 1. What the switch offers (read on 4.26.14M, 2026-11-18)
 
@@ -165,4 +167,33 @@ confirmed and left to revert; the probe's source binding).
 - A throwaway `daemon` block: started as root, logged to
   `/var/log/agents/`, removed with `no daemon`.
 
-The switch was left as it was: no socket, no daemon, nothing on the flash.
+The switch was left as it was after these: no socket, no daemon, nothing
+on the flash.
+
+## 7. The move (2026-11-18, the same switch)
+
+The switch's bridge ran in a container on another host, with a lane
+switch for one split cage (`breakout.md`) in the same process. In order:
+
+1. The package and `config.yaml` fetched to `/mnt/flash/disunified/`, the
+   socket turned on, `-collect-once` run from the flash (54 ports).
+2. The switch's entry removed from the container's config and the
+   container recreated; its other bridges resumed.
+3. `state/<switch>/` and `state/<switch>-cage<N>/` copied to the flash
+   (`device.json`, `layout.json`, `mac-learned.json`), with `env`.
+4. The `daemon` block configured. Fifteen seconds later (the start-up
+   read set) both devices resumed from their state files, the first
+   reconcile was `0 of 54 ports changed` and `0 of 5`, and each inform got
+   HTTP 200. The controller's records: both connected, the switch at its
+   own in-band address (found from its route to the controller, none
+   configured), the same uplink and the lane switch under its cage's port.
+   `write memory`; `show running-config diffs` empty after it.
+5. The process killed: EOS started a new one within two seconds, which
+   resumed the same way (a second log file under `/var/log/agents/`).
+
+About 45 s passed between the container's stop and the first inform from
+the switch. The reply log and `payload-last.json` are on the tmpfs,
+readable by root only; on the flash only `mac-learned.json` was rewritten,
+once per start. The process holds about 20 MB. A config write went through
+the socket on each start (the controller's SSH keys on
+`options.ssh_key_user`).
