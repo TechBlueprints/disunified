@@ -44,7 +44,16 @@ that cost time on Clint's DCS-7160-48TC6-F.
   dated directory of the whole read set taken in one sitting (`fec-auto/`,
   `lane-po-*/` are the pattern), not overrides on the base set.
 - Breakout: speed on lane 1 splits/joins; a lane-speed change must reach
-  every lane or the others errdisable ("speed-misconfigured").
+  every lane or the others errdisable ("speed-misconfigured"). 2x50G is
+  `50gfull` on /1 **and** /3 (on /1 alone, /2 goes and /3-/4 errdisable);
+  a QSFP28 cage with no speed line is one port, adminSpeed `100Gbps`
+  (captured 2026-11-17, `module-layout-20261117/`).
+- **Speed on auto follows the module** (`layout.go`, `docs/drivers/arista-eos.md`
+  §14, the shared table `internal/modulelayout`): a cage keeps a layout its
+  module runs, else takes the native one as a forced speed; never in
+  `PlanPorts`/`PlanLanes`; `PlanLayout` reports the cages a batch splits or
+  joins. The current layout comes from the lanes' admin speeds, **not**
+  `LanesDiverge`, which differing lane VLANs set too.
 - `write memory` after every config batch.
 - `ip domain-name` is deprecated on 4.26 ("This command is deprecated by
   'dns domain'"): the DNS domain is `dns domain <name>`; `hostname <name>`

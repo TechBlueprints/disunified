@@ -1,13 +1,17 @@
-# What a module runs: one table for every driver (spec, 2026-11-17)
+# What a module runs: one table for every driver (2026-11-17)
 
-Status: **spec, not built.** Today only `sonic` takes the speed or breakout
-a module calls for when UniFi says "auto" (`moduleRuns` in
-`internal/drivers/sonic/optic.go`, [`drivers/sonic.md`](drivers/sonic.md)
-§10.9), from a table keyed by xcvrd's compliance *name*. `arista-eos` has no
-such rule: on auto it writes no speed on an optical port at all. The FEC half
-is already shared (`internal/fecpolicy`, [`fec-by-standard.md`](fec-by-standard.md)).
-This is the speed half: one table, keyed by the module's own EEPROM codes,
-used by both parents.
+Status: **built 2026-11-17**, and this page is the table's home. Both
+parents take the speed or breakout a module calls for when UniFi says
+"auto" from one table, `internal/modulelayout`, keyed by the module's own
+EEPROM codes: `sonic` names the module from xcvrd's compliance name
+(`moduleCode`, `internal/drivers/sonic/optic.go`; its behaviour unchanged,
+[`drivers/sonic.md`](drivers/sonic.md) §10.9) and `arista-eos` from `show
+interfaces transceiver eeprom` (`layout.go`,
+[`drivers/arista-eos.md`](drivers/arista-eos.md) §14: the rule, the
+captures and what ran live). The FEC half is the same shape
+(`internal/fecpolicy`, [`fec-by-standard.md`](fec-by-standard.md)). §2-§4
+below are the build's spec as it was written; where the build departs from
+it, the departure is marked.
 
 ## 1. The shared package: `internal/modulelayout`
 
@@ -33,6 +37,8 @@ The table is §10.9's, unchanged in content, re-keyed. The code numbers are
 SFF-8024 Table 4-4 as sonic-platform-common's `sff8024.py`
 (`EXT_SPEC_COMPLIANCE`) and `sff8636.py` (`ETHERNET_10_40G_COMPLIANCE`) list
 them; the build takes them from those files, not from this page.
+(Checked at the build against sonic-platform-common `2c5fd51`,
+`sonic_xcvr/codes/public/`: every number below matches.)
 
 When `Ethernet` has bit 7 (Extended), by `Extended`:
 
@@ -90,14 +96,13 @@ All already used by the driver and captured (`apply.go`, the driver's
   writes `speed forced <native>`; it never writes `speed auto` or `default
   speed`, and never touches a cage whose configuration the module runs.
 
-Not known, to capture before it is relied on: how the fold reads a cage run
-as 2x50G (`speed forced 50gfull`; EOS names the interfaces `/1` and `/3`),
-and what `show interfaces transceiver properties` gives as `adminSpeed` for
-a QSFP28 cage with no speed line. Until captured: a 2x50G cage is a layout
-the rule recognises and keeps if the fold can already represent it, and
-never one it writes (no native layout is 2x50G); a cage with no speed line
-is read as "one port, speed EOS's own" and satisfies any module that runs
-one port.
+Captured at the build (`docs/fixtures/arista-eos-4.26.14M/module-layout-20261117/`,
+[`drivers/arista-eos.md`](drivers/arista-eos.md) §14.1): a 2x50G cage is
+`speed forced 50gfull` on `/1` **and** `/3` (on `/1` alone, `/2` goes and
+`/3`-`/4` errdisable "speed-misconfigured"); the fold reads it as two ports
+at 50G, a layout the rule keeps and never writes (no native layout is
+2x50G). A QSFP28 cage with no speed line is one port whose `adminSpeed` is
+`100Gbps`, not `auto`: it reads as 1x100G.
 
 ### 3.2 The module
 
@@ -116,7 +121,10 @@ For a QSFP28 cage the controller pushes no speed for (`SpeedMbps == 0`),
 not copper RJ45, with a module seated and known to §1:
 
 1. Current layout = the number of lanes the fold shows, by their admin
-   speed (all lanes alike; lanes apart, or `LanesDiverge`, match nothing).
+   speed (all lanes alike; lanes apart match nothing). *Built otherwise:*
+   the lanes' admin speeds are read per lane, not from `LanesDiverge`,
+   which VLANs that differ between the lanes set too (the base capture's
+   split cage 50 has it set).
 2. A layout the module runs stays. Nothing is written.
 3. Otherwise the cage takes the module's native layout as a forced speed:
    a different port count is a split or join on lane 1; the same port count
@@ -173,6 +181,11 @@ new is needed there, but the test covers it.
   cage as found (`write memory`, `show running-config diffs` empty). The
   pending automatic lane switch for the cage goes away and comes back with
   the split; say so in the report.
+  *As it ran* (2026-11-17, [`drivers/arista-eos.md`](drivers/arista-eos.md)
+  §14.4): the lane-switch bridge for the cage stayed, failing its collects
+  ("cage 50 is not split") and withholding its informs while the cage was
+  joined, and answered again after the rule's split; the controller's record
+  stayed pending throughout.
 
 ## 5. Docs the build updates
 

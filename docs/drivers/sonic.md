@@ -3833,18 +3833,13 @@ The rule, the companion of the FEC rule (§10.3):
   aggregate or a mirror session, as every breakout is (§7.5).
 
 xcvrd's SFF-8636 info carries no "far end broken out" field, so the
-compliance code is all there is to go on. Ports x lane speed, the native
-configuration first:
-
-| Module (xcvrd compliance name) | Runs | Native |
-|---|---|---|
-| `100G CWDM4`, `100GBASE-LR4 or 25GBASE-LR`, `100GBASE-ER4 or 25GBASE-ER`, `100G SWDM4`, `100G PAM4 BiDi`, `100G CLR4`, `100GBASE-DR`, `100G-FR or 100GBASE-FR1`, `100G-LR or 100GBASE-LR1` | 1x100G | 1x100G |
-| `100GBASE-SR4 or 25GBASE-SR`, `100G PSM4 Parallel SMF` (parallel optics break out over a fan-out), `100G AOC …` and `100G ACC …` (both BER grades) | 1x100G, 4x25G | 1x100G |
-| `100GBASE-CR4, 25GBASE-CR CA-25G-L or 50GBASE-CR2 with RS` | 1x100G, 4x25G, 2x50G | 1x100G |
-| `25GBASE-CR CA-25G-S or 50GBASE-CR2 with BASE-R`, `25GBASE-CR CA-25G-N or 50GBASE-CR2 with no FEC` (25G/50G-only codes: in a QSFP28 cage, a breakout cable) | 4x25G, 2x50G | 4x25G |
-| `40GBASE-LR4`, `40GBASE-ER4`, `40G SWDM4` | 1x40G | 1x40G |
-| `40GBASE-SR4`, `40GBASE-CR4`, `40G Active Cable (XLPPI)`, `40G PSM4 Parallel SMF` | 1x40G, 4x10G | 1x40G |
-| `4 x 10GBASE-SR` | 4x10G | 4x10G |
+compliance code is all there is to go on. The table (ports x lane speed,
+the native configuration first) is shared with the Arista parent since
+2026-11-17: `internal/modulelayout`, keyed by the module's SFF-8024 /
+SFF-8636 codes, printed in [`module-layout.md`](../module-layout.md) §1.
+The driver turns xcvrd's compliance name into those codes (`moduleCode`,
+`optic.go`: the names of sonic-platform-common's `sff8024.py` and
+`sff8636.py`); its behaviour and tests did not change with the move.
 
 On the DX010 that is `1x100G[40G]` at 100000 or 40000, `4x25G[10G]` at
 25000 or 10000, `2x50G` at 50000. Tests: the capture's CWDM4 in cage 1
