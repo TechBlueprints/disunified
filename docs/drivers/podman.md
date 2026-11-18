@@ -145,7 +145,11 @@ switch it is bridging. Facts that cost time doing that (2026-09-27):
   rule: children and the parent's IP stack are isolated), so the container
   keeps a leg on a Podman bridge network and the device entry targets the
   host's address on *that* network (`ssh: root@10.89.x.1`; the bridge
-  network's gateway address is the host). The macvlan leg gives it a LAN
+  network's gateway address is the host). Pin that network's subnet in
+  the compose file (`ipam: config: - subnet, gateway`): a recreate makes
+  an unpinned network again on whichever subnet is free, and the device
+  entry then dials an address nobody holds (2026-11-17: four minutes of
+  dial timeouts after an update). The macvlan leg gives it a LAN
   address of its own, which is what makes it a client behind its port and
   what a NUT server (`docs/drivers/apc-ups.md` §12) answers on.
 - **`mac_address` applies to the first network in the list** -- put the
