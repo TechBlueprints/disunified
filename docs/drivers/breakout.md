@@ -1863,6 +1863,26 @@ Records unscrubbed in `local-information/auto-adopt-20261117/`.
 | adopt it by hand | the attach line, the mark gone |
 | clean-up | forgotten again, port 26 forced to 100G (the join, `1x100G[40G]`), its override put back as found, the mark removed: the cage is a free test cage again, its old lane switch a pending record that no longer informs |
 
+**The re-adoption, live (2026-11-17 21:10-21:27 MST, the DX010 on
+`0.0.0+20261117.2273088`, the container on the same commit).** Cage 26
+split again by a forced 25G at 21:11:13: started pending 21:11:54, asked
+for 21:12:09, attached 21:12:24 (port 26 reset to Auto). Forget at 21:12:32
+answered `api.err.DeviceBusy` (the update), at 21:12:47 ok. 21:13:49
+`setdefault received` and the detach line ending "it is adopted again by
+the same rule while the cage is split"; 21:14:09 "the controller does not
+list this device" (the default key's 400s after a Forget), logged once;
+21:14:54 asked again; 21:17:01 CONNECTED and attached to port 26 again, the
+first push held and seeded as at any adoption. No `forgotten` file
+anywhere. Then the way to be rid of one: port 26 forced to 100G (the join)
+at 21:17:16, the lane switch's collect "not split", informs withheld after
+five failures (21:25:35), the record disconnected (state 0) by 21:26:06,
+and a Forget of that record removed it from `stat/device` outright, with no
+pending entry left (the earlier run, which forgot a connected lane switch
+before joining the cage, left one pending until its informs stopped). Its
+state file on the switch still says adopted: if the cage is split again it
+is attached from it, refused, released by §16.11's rule about two minutes
+later, and adopted again.
+
 Untouched throughout: the neighbour's pending access point (`state` 2,
 `adopted: false` before and after; no command named its MAC).
 `dx010-cage3`, the DX010 and the Arista stayed adopted and connected.
