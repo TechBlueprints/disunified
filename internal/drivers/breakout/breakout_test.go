@@ -428,3 +428,41 @@ func TestParentMACAndCage(t *testing.T) {
 		t.Errorf("Cage %d", r.d.Cage())
 	}
 }
+
+// A cage disabled on the parent takes the cable down with its lanes; its
+// drops are the cable's own count, a lane's never (breakout.md 16.15).
+func TestUplinkFollowsTheCagesAdminState(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	if u := r.snap().Ports[UplinkPort-1]; !u.Up || !u.Enabled || u.Health.LinkChanges != 1 {
+		t.Fatalf("attached: up %v enabled %v changes %d", u.Up, u.Enabled, u.Health.LinkChanges)
+	}
+	ps, err := r.c.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := func(enabled bool) []devicemodel.PortDesired {
+		var ds []devicemodel.PortDesired
+		for _, p := range ps.Ports {
+			d := devicemodel.PortDesired{Index: p.Index, Enabled: p.Enabled, VLANSet: true, NativeVLAN: 1}
+			if p.Index == 2 {
+				d.Enabled = enabled
+			}
+			ds = append(ds, d)
+		}
+		return ds
+	}
+	if _, err := r.c.ApplyPorts(ctx, own(false)); err != nil {
+		t.Fatal(err)
+	}
+	u := r.snap().Ports[UplinkPort-1]
+	if u.Up || u.Enabled || u.SpeedMbps != 0 || u.Health.LinkChanges != 2 {
+		t.Errorf("the cage disabled: up %v enabled %v %d Mb/s changes %d, want down, disabled, one drop", u.Up, u.Enabled, u.SpeedMbps, u.Health.LinkChanges)
+	}
+	if _, err := r.c.ApplyPorts(ctx, own(true)); err != nil {
+		t.Fatal(err)
+	}
+	if u := r.snap().Ports[UplinkPort-1]; !u.Up || !u.Enabled || u.Health.LinkChanges != 3 {
+		t.Errorf("enabled again: up %v enabled %v changes %d, want up and 3", u.Up, u.Enabled, u.Health.LinkChanges)
+	}
+}

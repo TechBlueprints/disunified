@@ -210,6 +210,14 @@ that cost time on Clint's DCS-7160-48TC6-F.
   switch applies from its own loop). An `interface A-B` range stops at the
   first warning (an empty cage's "transceiver not present"): write one
   `interface` per lane.
+- **A lane switch moves its cage between 4x25G and 2x50G** (`laneResplit`,
+  `docs/drivers/breakout.md` §16.15; fixture-tested over
+  `module-layout-20261117/`, never sent live): `speed forced 50gfull` on
+  /1 and /3, `25gfull` on /1 and /3 back, the batch alone; the lane plan
+  then waits for the next collect (`laneLayouts`), and the speeds are
+  re-read (`c.refresh`). Lanes claim 25G and 50G where the cage runs them,
+  SFP28. The hidden /2 and /4 keep their own speed lines through a 2x50G.
+  The device's own split speed on a split owned cage writes nothing.
 - **EOS keeps an emptied Port-Channel** (2026-11-15, `docs/drivers/arista-eos.md`
   §4, Aggregates): `no channel-group` on the last member leaves `interface
   Port-Channel<n>` with its settings. `no interface Port-Channel<n>` removes

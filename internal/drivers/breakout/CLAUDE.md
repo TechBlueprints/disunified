@@ -83,10 +83,27 @@ DX010's cage 3. The Arista parent is fixture-tested only.
 - **The aggregate's id is the push's `lag`** (`lag=1` for the first aggregate,
   whatever its members), so the first lane aggregate of cage N is
   `PortChannel<100*N+1>` on SONiC.
-- **Speed auto on a lane = what it runs.** Forced speeds the lane cannot run
-  are refused with a note; a lane never splits or joins its cage. The
-  controller's stored speed follows a forced override, not the inform
-  (§6.6.3): after a re-split under an aggregate the record can show the old
-  forced speed until the lane is set to auto (open, §14.1).
+- **Speed auto on a lane = what it runs.** A lane claims the speeds it
+  runs plus the cage's other split modes' lane speeds, and a forced one of
+  another mode re-splits the cage through the parent (4x25G to 2x50G and
+  back, `breakout.md` §16.15); speeds of two modes at once change nothing
+  (a note); a lane never joins its cage. **Every lane is SFP28**, whatever
+  it runs: the controller takes 50G only without `fec_mode` and a 25G FEC
+  only from an SFP28, and the drawer sends a FEC with 25G and none with
+  50G (captured 2026-11-18); as a QSFP28 a 2x50G lane could not be set back
+  to 25G from the drawer. The split hands the parent all four lane slots
+  (a 2x50G cage's 3-4 too: a re-split back writes their intent in the same
+  batch), and its empty slots are `Reserved` (the provision keeps their
+  overrides). The controller's stored speed follows a forced override, not
+  the inform (§6.6.3).
+- **The cable (port 5) is up while attached**, the cage enabled on the
+  parent, lanes with link or not; its link changes are its own drops
+  (`Uplink`, counted across collects), never a lane's: summed lane flaps
+  could raise a link-flap alert on the uplink (§16.15).
+- **A re-split is not a new port to either loop**: the parent counts its
+  lane switches' re-splits and names the cage in `Snapshot.LayoutWritten`
+  at its next collect; the child sees `LaneView.LaneLayouts` change and
+  names every lane slot. The lane plan writes nothing until the parent has
+  read the switch again.
 - **Stale parent = no answer.** Older than `options.max_age` (3 min), the
   child's collect fails and the loop withholds its informs as for any device.

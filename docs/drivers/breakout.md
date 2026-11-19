@@ -142,7 +142,9 @@ STATE_DB `supported_speeds` (the DX010's 25G lanes: 1000,10000,25000 --
 what portconfig checks), else the mode's speeds; its media is SFP28 for a
 lane whose fastest speed is 25G (at 10G too: the controller takes a FEC at
 25G only from an SFP28, `docs/breakout-lag.md` §7), QSFP28 at 50G (the
-Flex XG drew a 50G lane as a QSFP tile, §6.6.3 of the note). `Lanes(cage)` hands the child those ports, the folded
+Flex XG drew a 50G lane as a QSFP tile, §6.6.3 of the note). Since
+2026-11-18 a lane switch's lane is SFP28 at 50G too and claims the other
+split modes' lane speeds (§16.15). `Lanes(cage)` hands the child those ports, the folded
 cage, the parent's `System`, `VLANs`, its LLDP chassis id
 (`LLDP_LOC_CHASSIS`), the mode, the cage's admin state and the attachment.
 The child's `Collect` is that view, no device read; it errors while the
@@ -151,8 +153,10 @@ snapshot is older than `options.max_age` (default 3 min: the parent is not
 answering, and its last snapshot would be frozen numbers).
 
 **The child's snapshot** (`breakout.Snapshot`): ports 1..N the lanes; N+1..4
-empty slots (a 2x50G cage) with no interface, not present; port 5 the
-cable: up when any lane is, at the cage's native speed (the highest of its
+empty slots (a 2x50G cage) with no interface, not present, reserved for
+the lanes' return (§16.15); port 5 the cable: up while the lane switch is
+attached and the cage enabled on the parent (since 2026-11-18, §16.15;
+before, when any lane was), at the cage's native speed (the highest of its
 `SpeedCaps`, 100G on the DX010) and claiming only that, counters and FEC
 counters summed, the cage's module, the parent as its LLDP neighbour
 (chassis id the parent's own, system name its hostname, port id the cage's
@@ -175,7 +179,8 @@ storm control, the aggregate (create, MTU, fast rate, min links, the VLAN
 move, the ACL unbind) and a lane mirror run through the same routines as a
 cage's; the batch is followed by the ACL rebind and the IGMP reserved
 groups, as `ApplyPorts`' is. A lane speed is forced on that lane only and
-must be one it runs; auto leaves it at what it runs. The plan refuses a
+must be one it runs, or one of another split mode, which re-splits the
+cage (§16.15); auto leaves it at what it runs. The plan refuses a
 lane plan whose interfaces no longer match CONFIG_DB (the cage changed
 since the collect).
 
@@ -184,7 +189,7 @@ since the collect).
 | | the lane switch (child) | the cage on the parent |
 |---|---|---|
 | admin state | each lane | disabled = every lane down; while it is, the child cannot bring a lane up (`LaneView.CageDisabled`) |
-| speed | a lane speed on its lane | **the mode only** (split, re-split, join; the module rule of sonic §10.9 too, kept while the module runs that many ports): a cage speed the current mode runs writes nothing, so it never undoes a lane speed |
+| speed | a lane speed on its lane; a lane speed of another split mode re-splits the cage (4x25G to 2x50G and back, §16.15) | **split and join only** (and the module rule of sonic §10.9, kept while the module runs that many ports): a cage speed the current mode runs writes nothing, so it never undoes a lane speed; since 2026-11-18 a cage speed of another split mode writes nothing either, with a note (between split modes the lane switch decides) |
 | name, VLANs, FEC, MTU, storm control | each lane | not applied (one note per push) |
 | aggregate, mirror | between its lanes | the cage's own not applied; a join removes the child's first |
 | STP port settings (edge, BPDU guard, loop protection), isolation, port security, egress limit, LLDP-MED | -- | **the cage's, on every lane, as before**; for STP on every bridge port the lanes make, a lane aggregate included (§14.4) |
@@ -337,9 +342,9 @@ a device read of its own:
 
 | Port | What | Fields |
 |---|---|---|
-| 1..N (N = 4 for a 4-lane mode, 2 for a 2-lane mode) | the lanes, in SONiC interface order | every per-lane field the parent collects: `Up`, `Enabled`, `SpeedMbps`, `FullDuplex`, `MTU`, `Counters`, `Health` (link changes, FEC counters), `FEC`/`FECConfig`, `FECCapable`, `AutoNeg`/`AdminSpeed`, `VLAN`, `STPState`/`STPRole`/`STPPathCost`/`BPDUGuard`/`STPEdge`/`STPOperEdge`, `StormCtrl`, `Neighbor` (the host on that lane), `MACs` (the FDB entries on that lane), `LAG`/`LAGID`/`LACP` (§5.2), `MirrorFrom` (a lane mirrored onto this lane), `Media` SFP28 (QSFP28 for a 2x50G lane), `SpeedCaps` = the lane speeds the parent can set **per lane** (SONiC: the mode's speeds, `4x25G[10G]`: 10000, 25000; `2x50G`: 50000; EOS: the one speed the cage's lanes run, §7b -- the UI then offers no other, as the Flex XG's own note says its SFP28 ports cannot mix speeds), `Present` = the cage's module present, `Optic` = nil (the module sits in the cage: reported on port 5), `IfName` = the SONiC interface name (`Ethernet5`), `Interfaces` = that one name, `Lanes` 1 |
-| N+1..4 (a 2-lane mode) | empty slots | `Present` false, `Up` false, `Enabled` true, Media SFP28, `SpeedCaps` nil, nothing else. The Flex XG draws them "Not Connected" (the §6.6 capture) |
-| 5 | the cable: the cage | `Up` = any lane up, `Enabled` = any lane enabled, `SpeedMbps` = the cage's native speed (the highest speed in the parent cage's `SpeedCaps`: 100000 on the DX010), `FullDuplex` true, `Counters` = the lanes summed, `Health` summed, `Media` QSFP28, `Optic` = the cage's module, `Present` = the module present, `Neighbor` = the parent (§4), `MACs` none, `IfName` = the parent cage's `IfName`, `STPState` "forwarding", no VLAN config, no LAG |
+| 1..N (N = 4 for a 4-lane mode, 2 for a 2-lane mode) | the lanes, in SONiC interface order | every per-lane field the parent collects: `Up`, `Enabled`, `SpeedMbps`, `FullDuplex`, `MTU`, `Counters`, `Health` (link changes, FEC counters), `FEC`/`FECConfig`, `FECCapable`, `AutoNeg`/`AdminSpeed`, `VLAN`, `STPState`/`STPRole`/`STPPathCost`/`BPDUGuard`/`STPEdge`/`STPOperEdge`, `StormCtrl`, `Neighbor` (the host on that lane), `MACs` (the FDB entries on that lane), `LAG`/`LAGID`/`LACP` (§5.2), `MirrorFrom` (a lane mirrored onto this lane), `Media` SFP28 whatever the lane runs (since 2026-11-18; a 2x50G lane was QSFP28 before, §16.15), `SpeedCaps` = the speeds the lane runs (SONiC: STATE_DB `supported_speeds`, else the mode's; EOS: the one speed the cage's lanes run, §7b) **and** the lane speeds of the cage's other split modes, which a forced one re-splits the cage to (§16.15; on the DX010 a 4x25G lane claims 1000, 10000, 25000, 50000 and a 2x50G lane 10000, 25000, 40000, 50000; on the 7160 25000 and 50000), `Present` = the cage's module present, `Optic` = nil (the module sits in the cage: reported on port 5), `IfName` = the SONiC interface name (`Ethernet5`), `Interfaces` = that one name, `Lanes` 1 |
+| N+1..4 (a 2-lane mode) | empty slots | `Present` false, `Up` false, `Enabled` true, Media SFP28, `SpeedCaps` nil, `Reserved` true (the provision keeps their overrides for when the lanes come back, §16.15), nothing else. The Flex XG drew them "Not Connected" (the §6.6 capture); on 11.0.99 the Port Manager filters them as Disabled |
+| 5 | the cable: the cage | `Up` while the lane switch is attached and the parent has the cage enabled, lanes with link or not (any lane up until 2026-11-18, §16.15), `Enabled` = the cage enabled on the parent, `Health.LinkChanges` = the cable's own drops, never a lane's, `SpeedMbps` = the cage's native speed (the highest speed in the parent cage's `SpeedCaps`: 100000 on the DX010), `FullDuplex` true, `Counters` = the lanes summed, `Health` summed, `Media` QSFP28, `Optic` = the cage's module, `Present` = the module present, `Neighbor` = the parent (§4), `MACs` none, `IfName` = the parent cage's `IfName`, `STPState` "forwarding", no VLAN config, no LAG |
 
 `Snapshot.System`: `Vendor` "disunified", `Model` "Lane switch", `SKU` the
 mode (`4x25G[10G]`), `Hostname` = the child's config name, `Serial` = the
@@ -351,7 +356,7 @@ the parent's, `Uptime` = the parent's, `CPU`/`Memory`/temperatures/fans/PSUs
 parent's twice), `OOBInterfaces` none, `MACTable` = the lanes' entries,
 `VLANs` = the parent's. `UplinkHint` 5. `Snapshot.UplinkPort()` finds port 5
 by itself: its neighbour is a bridge that is not a `Child` and the port is
-up when any lane is.
+up while the lane switch is attached (§16.15).
 
 Names (`devicemodel.Namer`, the driver's own): a lane is named by its SONiC
 alias when the parent has one (`Eth2/1`), else its interface name; port 5
@@ -1145,6 +1150,18 @@ entry, its adoption (Clint's) and a far end. The entry, in the container's
    computations to take both loops' intent.
 7. Automatic lane switches (§12, built 2026-11-16) and the bridge
    forgetting a retired child (built 2026-11-18, §16.13).
+8. **A lane at 50G with a far end** (§16.15): the re-split, its batches and
+   the controller's side are live on an empty cage; no lane has linked at
+   50G, and the module rule's FEC on a 2x50G half has not met a far end.
+   Rack day.
+9. **The Arista's re-split is fixture-tested only** (§16.15): `50gfull` and
+   `25gfull` on /1 and /3 are the captured commands, but no lane switch has
+   sent them, and a 2x50G cage brought back to 4x25G takes the hidden /2
+   and /4's own speed lines from before the 2x50G, unread.
+10. **Two lanes asking for two modes change nothing** (§16.15): a 25G save
+   on lane 2 beside lane 1's forced 50G is accepted by the controller and
+   written by no one, with a note; the way back is the lane that holds the
+   50G (or Auto on it first).
 
 ## 15. The first live adoption (DX010, cage 2)
 
@@ -2088,3 +2105,169 @@ stopped 10:19:13 (4 collects over 4m15s), forgotten by the bridge (HTTP 200,
 26's override put back as found. **`arista-cage50`** takes its name at its
 next start on a build with this: look for `provision: device renamed=true`
 on its line and `<the Arista's UniFi name>-cage50` in `stat/device`.
+
+### 16.15 The uplink is lit, and the lanes run 50G (2026-11-18)
+
+**The asks.** Clint, 2026-11-18, of the DX010's cage-3 lane switch (a
+breakout cable with no far ends): "The uplink port isn't lit", and "it
+also probably should report 50g in the list of speeds as well".
+
+**The uplink.** Port 5 was up only while a lane had link, so a lane switch
+whose lanes have no far end showed five dark ports while online through
+port 5. It is now up whenever the lane switch is attached to the split
+cage and the parent has the cage enabled, at the cage's native speed,
+full duplex, forwarding/root as before (`breakout.Snapshot`, `Uplink`).
+What follows from it, decided:
+
+- **Link changes.** The cable's `Health.LinkChanges` is its own: one rise
+  while up, two per drop, the drops counted by the lane switch across
+  collects (the cage disabled on the parent, a detach). Until now it was
+  the lanes' drops together, so a lane's flaps were the uplink's too and
+  could raise the link-flap alert on port 5 (`CLAUDE.md` §5: a rate of
+  `link_down_count`). A lane's flaps stay on the lane's port.
+- **Counters and FEC counters** are still the lanes' summed: the cable
+  carries exactly the lanes' traffic.
+- **Satisfaction.** Live, port 5 reads `satisfaction` 100 (reason 0),
+  `link_down_count` 0, no anomaly, on both lane switches.
+- **`Enabled`** is the cage's admin state on the parent (it was "any lane
+  enabled"). **A cage disabled on the parent** takes the cable down too:
+  every lane is held down there whatever the lane switch asks
+  (`LaneView.CageDisabled`), so nothing passes the cable; the drop counts
+  once (`TestUplinkFollowsTheCagesAdminState`). An unattached (pending)
+  lane switch's cable is down: nothing of its push is written.
+- **The two ends disagree, and that is left.** The parent still reports the
+  cage's own port as the physical cage: down while no lane has link
+  (`reportChildren` raises its speed to the native one only when a lane is
+  up), and the controller's `downlink_table` entry for the child says
+  speed 0. The controller's line to the lane switch comes from the child's
+  own uplink: its record's `uplink` became `{up: true, speed: 100000,
+  media: QSFP28, port_idx: 5}`, the device list's Uplink column "QSFP28
+  (100 GbE)" where it showed "-", the device panel "Experience 100 GbE",
+  and the Port Manager lists port 5 In Use, connected to the parent's port.
+  Placement never needed the parent's port up (§6.6: placed on a down
+  port), no save was refused, and lighting the parent's port would report
+  a link the cage does not have.
+
+**50G.** A lane claimed only the speeds it runs (on the DX010 1G, 10G, 25G
+at 4x25G), so the drawer had no 50 GbE though the cage runs 2x50G. A claim
+is something the bridge must then do: the controller validates a save
+against `speed_caps`, and a pushed speed the bridge refuses leaves the UI
+saying something false.
+
+*Captured first* (Network 11.0.99, the DX010's empty cage 26 split and its
+lane switch adopted; a test build that added 50G to the lanes' claims and
+set their media, nothing else; every override restored after; records in
+`local-information/lane-50g-20261118/`). `rest/device` saves of lane 1:
+
+| Reported media (caps 1/10/25/50G) | accepted | `api.err.InvalidFecMode` |
+|---|---|---|
+| SFP28 | 50G, 25G and 10G without `fec_mode`; 25G with `rs-fec`, `fc-fec` or `disabled` | 50G and 10G with any `fec_mode` |
+| QSFP28 | 50G, 25G and 10G without `fec_mode` | 50G, 25G and 10G with any `fec_mode` |
+
+(40G and 100G, not claimed: `InvalidInterfaceSpeedDuplex` without a FEC,
+`InvalidFecMode` with one.) The drawer, on an SFP28 lane claiming 50G:
+the speed list is 50, 25, 10 and 1 GbE (with Auto unticked); **50 GbE shows
+no FEC box and sends no `fec_mode`** (`{speed: 50000, autoneg: false,
+full_duplex: true}`), and is saved; the push is `switch.port.1.speed=50000`,
+`autoneg=disabled`, `duplex=enabled`, no FEC key. 25 GbE sends `fc-fec` and
+is saved (`fec=cl-74`), as §10.3 of `sonic.md` found. So the report that
+lets the drawer save both directions is **SFP28 for every lane, whatever
+it runs**: as a QSFP28 (the 2x50G form until now), a 2x50G lane could take
+50G but never be set back to 25G from the drawer, whose 25G save carries a
+FEC.
+
+*As built.* A lane of a lane switch claims the speeds it runs plus the
+lane speeds of the cage's other split modes (`sonic` `laneClaims`: every
+platform.json mode of more than one port; `arista-eos`: 25G and 50G where
+the cage runs them), and reports SFP28. On the DX010 that is 1/10/25/50G
+at 4x25G and 10/25/40/50G at 2x50G (a 2x50G lane's STATE_DB
+`supported_speeds` is `20000,40000,50000`; 20G has no UniFi bit). The
+uplink keeps claiming the cage's top speed only. A lane's forced speed
+moves the cage between split modes (`sonic` `laneLayout`, `arista-eos`
+`laneResplit`):
+
+- forced 50G on a 4x25G lane: 2x50G; forced 25G or 10G on a 2x50G lane:
+  4x25G[10G] (then the lane speed, 10G in the same batch); 1G, which no
+  mode names but a 25G lane runs, to the split mode with the most ports
+  (the lane speed waits a cycle for the new lanes' `supported_speeds`);
+- lane speeds no one mode runs together (lane 1 50G, lane 2 25G) change
+  nothing, one note; auto on every lane changes nothing (the module rule
+  stays the parent's); a join stays the parent's port, as before;
+- refused with a note: a lane in an aggregate or a mirror, a cage isolated
+  or secured on the parent (MAC filter, 802.1X: the parent's plan rebuilds
+  those, and a re-split without it would leave the new lanes outside the
+  group or learning, fail open), a module that does not run the mode;
+- on the 7160 the captured commands (`module-layout-20261117/`): `speed
+  forced 50gfull` on /1 then /3, and `25gfull` on /1 and /3 back; 10G is
+  not claimed there (every lane of a cage runs one speed);
+- the parent's own forced speed of another split mode on a split cage with
+  a lane switch writes nothing, with a note: between split modes the lane
+  switch decides, else a forced 25G left on the cage would undo its 2x50G
+  every cycle.
+
+`sonic.lanes.go`'s refusal ("a lane does not split or join its cage") is
+narrowed to joins.
+
+*The re-split is a breakout* (`breakoutTo`, the parent's own breakout path
+cut out of `breakoutSpeed`): the YANG holds, the shapers, the IGMP rows,
+the guard's counted rules, the static FDB entries and isolation leaving
+first (`sonic.md` §11.38, §11.40), `PlanLayout`-style accounting. The new
+lanes take the lane switch's push in the same batch, the slots the new
+mode has (lanes 3-4 included on the way back: the lane switch now hands
+the parent all four lane slots and the parent drops those the mode lacks);
+the FEC follows a cycle later (§11.37). What the parent computes
+switch-wide (LLDP-MED's TLVs, isolation, the MAC filter's entries) follows
+at the parent's next reconcile: one `sonic apply (1 ports)` of TLVs live.
+**Neither loop takes the re-split for new ports**: the parent counts each
+lane switch's re-split (`laneLayouts`) and its next snapshot names the cage
+in `Snapshot.LayoutWritten`, which the loop treats as a port its own push
+wrote; the lane switch sees the count change in its view
+(`LaneView.LaneLayouts`) and names every lane slot the same way. Until the
+parent has read the switch again the lane plan writes nothing (its lanes
+no longer match CONFIG_DB). **The lane switch stays attached and adopted**:
+`CageLanes` reads 2 or 4, never 1 (the retire rule of §16.13 waits for 1),
+and `SplitCages` keeps the cage (the adoption watcher sees no new split).
+
+*Found live and fixed:* the empty slots of a 2x50G cage were seeded as free
+slots (disabled, port security on) at the layout change, so the way back
+brought lanes 3-4 up admin down. `devicemodel.Port.Reserved` marks a slot
+the device brings back as the same port; the provision neither releases
+nor disables its override (`unifiapi`, `TestSeedKeepsReservedSlots`).
+
+*How the UI gets back from 2x50G.* Set the lane that holds the forced 50G
+(lane 1 when it was set there) to 25 GbE in its drawer, which saves it with
+FC-FEC: the cage goes to 4x25G. A 25G save on the other lane while lane 1
+still holds 50G is the two-modes case: accepted by the controller,
+written by nobody, noted (seen live).
+
+**Tests.** `breakout`: `TestSnapshotFourLanes` (the dark lanes' cable up),
+`TestUnattached` (down until attached), `TestUplinkFollowsTheCagesAdminState`,
+`TestLaneResplit` (both ways through the parent, the wait for the parent's
+read, the parent's own forced 25G refused, two modes). `sonic`:
+`TestLanesFromTheSplitCapture`, `TestLaneSettings` (40G on a lane: no
+mode). `arista-eos`: `TestLaneResplitBetweenSplitModes` over
+`module-layout-20261117/` (split-by-rule to split-2x50 and back).
+`informloop`: `TestReplayLaneSwitchSplitModes` replays the live run's five
+pushes (`controller-11.0.99/replies-lane-switch-dx010-cage26-50g.ndjson`)
+over the switch's capture of cage 26 split
+(`sonic-igmp-202511.20261116-6c8eb1cf7/collect-cage26-4x25g.txt`, with that
+image's `config --help`): each re-split one batch, no fresh ports, the
+cycles after writing only the pushed FEC. `unifiapi`:
+`TestSeedKeepsReservedSlots`.
+
+**Live (DX010, 2026-11-18 21:28-22:35 MST, Network 11.0.99).** The REST
+matrix and the drawer above on a test build (21:28-21:41). Then
+`0.0.0+20261118.4665cdf`: both lane switches' uplinks up at 100G at the
+first inform, `0 of 5 ports changed` each; 50 GbE saved from lane 1's
+drawer, `sonic apply (cage 26 lanes, 4 changed)`: the IGMP rows out,
+`config interface breakout -f -y Ethernet100 '2x50G'`, the two lanes up,
+MTU, VLAN; the parent then `port layout changed as the controller's config
+asked: [26(...)]`, the lane switch the same for port 2; no write in the
+seven minutes after. A 25G drawer save on lane 2 beside lane 1's 50G: the
+two-modes note. 25G on lane 1 from its drawer: 4x25G, lanes 3-4 admin down
+(the free-slot seed, fixed in `bec743d`); on `bec743d` the same both ways
+through REST, lanes 3-4 enabled, FC-FEC a cycle later, nothing after. Then
+joined (port 26 forced 100G through REST, no `fec_mode`), retired and
+forgotten by the bridge at 22:35 (4 collects over 4m0s, HTTP 200), state
+removed, port 26's override put back as found. Cage 3's adopted lane
+switch: its uplink up at 100G, its mode untouched.

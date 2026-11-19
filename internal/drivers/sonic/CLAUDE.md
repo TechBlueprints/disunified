@@ -1315,6 +1315,18 @@ was restarted.
   `supported_speeds` is 1000,10000,25000 and its `supported_fecs` none,fc
   (so the Flex XG aggregate push's `cl-91` is refused); the controller's
   aggregate is `lag=1`, so the first lane aggregate is `PortChannel<100*cage+1>`.
+  **A lane's forced speed of another split mode re-splits the cage**
+  (`laneLayout`, `breakoutTo`, `docs/drivers/breakout.md` §16.15, live on
+  cage 26 2026-11-18): the same breakout path as the cage's own
+  (`breakoutTo` was cut out of `breakoutSpeed`), refused for an isolated
+  or secured cage (the parent's plan rebuilds those; fail closed), lanes
+  in an aggregate or mirror, and a module that does not run the mode; the
+  parent's own split speed on a split owned cage writes nothing (only a
+  join). A 2x50G lane's STATE_DB `supported_speeds` is
+  `20000,40000,50000`. After the batch, `planFor`'s lane scope waits for
+  the next collect (`laneLayouts` vs `laneLayoutsLast`); the parent's
+  switch-wide features (LLDP-MED TLVs, isolation, the MAC filter) follow
+  at its own next reconcile.
   STP port settings stay the cage's (the lane switch claims no STP):
   `l2SetPorts` (l2.go) names every bridge port a cage's interfaces make --
   a lane aggregate without lane 1 included -- with the cage's settings, and
