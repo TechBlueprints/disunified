@@ -1040,6 +1040,31 @@ target". No collect from a booting switch was ever captured. The tests
 `sonic-igmp-202511.20261115-6c8eb1cf7/collect.txt`, a running switch's
 capture.
 
+**A runtime swss restart, read 2026-11-18** (`systemctl restart swss` on the
+DX010 with the bridge left running, to clear orchagent's unhealthy flag of
+§11.38; the scheduler ERR line stopped with it). The collects of a running
+bridge are not gated as Start is, and this run gives no reason to gate
+them: the bridge wrote nothing into the half-started switch.
+
+```
+22:59:36  swss stops (syncd, teamd, bgp, l2mcd, dhcp_relay, radv with it)
+23:00:30  both informs time out (the uplink is down 22:59:48 - 23:01:07)
+23:00:55  a collect of the half-started switch: "BGP: bgpd could not be
+          read (vtysh); BGP not written"; nothing else, no write
+23:01:06  disunified-l2d puts the VLANs back in their STP instances; the
+          uplink aggregate is forwarding at 23:01:07
+23:02:22  the first complete collect: one apply, 11 `ip link set dev
+          Vlan<N> mtu`, 35 LLDP port settings, `config save`
+          ("32 of 32 ports changed")
+23:03:41  management IPv6: `accept_ra`, then the `INTF_TABLE` row a cycle
+          later (§11.22)
+23:05 on  quiet: no apply, both bridges inform
+```
+
+What the bridge puts back is what a restart drops and CONFIG_DB does not
+hold (the VLAN netdevs' MTU, lldpd's per-port settings, the APPL_DB
+address row). One run, with no controller push pending during it.
+
 ### 6.5 Verification plan (what "done" means for A4)
 
 1. Unit tests per apply sequence against the fixture, each verifying the
