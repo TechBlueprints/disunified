@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -176,11 +177,17 @@ type Collector struct {
 	// lanes as of the last collect, the lane switches attached to cages,
 	// the cages the parent's own config has disabled, and the switch's own
 	// LLDP chassis id (what a lane switch sees as its uplink's neighbour).
-	lanes     map[int][]cagePort
-	children  map[int]devicemodel.Attachment
-	cageDown  map[int]bool
-	sfp       sfpState // the driver's own reads of modules xcvrd has not read (xcvr_read.go)
-	chassisID string
+	lanes    map[int][]cagePort
+	children map[int]devicemodel.Attachment
+	cageDown map[int]bool
+	// laneLayouts counts the re-splits each cage's lane switch made
+	// (ApplyLanes, laneLayout); laneLayoutsLast is the count as of c.last
+	// (the collect after them), which Lanes hands the lane switch, and
+	// laneLayoutsTold the count the last snapshot returned to this
+	// device's loop reported in Snapshot.LayoutWritten.
+	laneLayouts, laneLayoutsLast, laneLayoutsTold map[int]int
+	sfp                                           sfpState // the driver's own reads of modules xcvrd has not read (xcvr_read.go)
+	chassisID                                     string
 	// applySem serialises the writes and the collect: a lane switch's apply
 	// runs from its own loop, beside this device's (lockApply).
 	applySem  chan struct{}
@@ -332,6 +339,19 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	c.mu.Lock()
 	c.last = snap
 	st := c.state
+	for cage, n := range c.laneLayouts {
+		if c.laneLayoutsLast == nil {
+			c.laneLayoutsLast, c.laneLayoutsTold = map[int]int{}, map[int]int{}
+		}
+		c.laneLayoutsLast[cage] = n
+		if c.laneLayoutsTold[cage] != n {
+			// A lane switch's push re-split this cage since the last
+			// snapshot: the loop must not take it for a new port.
+			c.laneLayoutsTold[cage] = n
+			snap.LayoutWritten = append(snap.LayoutWritten, cage)
+		}
+	}
+	sort.Ints(snap.LayoutWritten)
 	c.mu.Unlock()
 	c.verifyACL(st)
 	return snap, nil

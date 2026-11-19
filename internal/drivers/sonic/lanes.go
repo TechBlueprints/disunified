@@ -235,17 +235,20 @@ func (c *Collector) Lanes(cage int) (devicemodel.LaneView, error) {
 	v := devicemodel.LaneView{
 		TakenAt: snap.TakenAt, System: snap.System, Cage: snap.Ports[i], CageAlias: c.aliases[cage],
 		ChassisID: c.chassisID, VLANs: slices.Clone(snap.VLANs), CageDisabled: c.cageDown[cage], Child: c.children[cage],
+		LaneLayouts: c.laneLayoutsLast[cage],
 	}
 	// The lane switch's uplink is the cable in the cage, so the view keeps
 	// the cage's own form: the device's port reports its lanes' (model.go).
 	v.Cage.Media = cageForm(v.Cage.SpeedCaps)
 	var modeSpeeds []int
-	if parent, _, ok := st.platformCage(cage); ok {
+	var modes []brkMode
+	if parent, pp, ok := st.platformCage(cage); ok {
 		v.Mode = st.brkout[parent]
 		if m, ok := parseMode(v.Mode); ok {
 			modeSpeeds = m.speeds
 			sort.Ints(modeSpeeds)
 		}
+		modes = splitModes(pp)
 	}
 	base := lanePCBase(cage)
 	for _, l := range lanes {
@@ -258,6 +261,17 @@ func (c *Collector) Lanes(cage int) (devicemodel.LaneView, error) {
 		}
 		if len(p.SpeedCaps) == 0 {
 			p.SpeedCaps = modeSpeeds
+		}
+		// The lane switch's lane claims the other split modes' speeds too
+		// (a forced one re-splits the cage, laneLayout), and is an SFP28
+		// whatever it runs: the controller takes a FEC at 25G only from an
+		// SFP28 and a 50G save without one from either form, and the
+		// drawer sends a FEC with a forced 25G and none with 50G (live,
+		// 11.0.99, docs/drivers/breakout.md 16.15). As a QSFP28 a 2x50G
+		// lane could not be set back to 25G from the drawer.
+		p.SpeedCaps = laneClaims(p.SpeedCaps, modes)
+		if slices.ContainsFunc(p.SpeedCaps, func(s int) bool { return s == 25000 || s == 50000 }) {
+			p.Media = devicemodel.MediaSFP28
 		}
 		v.Lanes = append(v.Lanes, p)
 		v.LaneAliases = append(v.LaneAliases, l.alias)
@@ -280,6 +294,17 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 		return 0, err
 	}
 	n, err := c.runPlan(ctx, pl, fmt.Sprintf("cage %d lanes", cage))
+	if pl.resplit && len(pl.ops) > 0 {
+		// Counted whether or not the batch got past the breakout: the
+		// next collect shows what the switch did (Lanes, the loops' fresh
+		// ports, planFor waiting for that collect).
+		c.mu.Lock()
+		if c.laneLayouts == nil {
+			c.laneLayouts = map[int]int{}
+		}
+		c.laneLayouts[cage]++
+		c.mu.Unlock()
+	}
 	if err != nil || n == 0 {
 		return n, err
 	}
@@ -342,16 +367,17 @@ func (c *Collector) noteCageDown(desired []devicemodel.PortDesired) {
 }
 
 // laneSpeed is a lane's speed: forced, on that lane only, within the
-// speeds the lane runs; auto (0) leaves the lane at what it runs. A lane
-// never splits or joins its cage: that is the cage's speed on the parent.
+// speeds the lane runs; auto (0) leaves the lane at what it runs. A speed
+// of another split mode is laneLayout's (a re-split, before this runs); a
+// join is the cage's speed on the parent.
 func (pl *plan) laneSpeed(p devicemodel.Port, d devicemodel.PortDesired) {
 	want := d.SpeedMbps
-	if want == 0 {
+	if want == 0 || pl.laneSpeedsHeld {
 		return
 	}
 	ln := lanesOf(p)[0]
 	if !containsInt(p.SpeedCaps, want) {
-		pl.note("lane %d (%s) of cage %d: %d Mb/s is not among the lane's speeds %v; a lane does not split or join its cage (that is the cage's speed on the switch itself); speed not written", d.Index, ln, pl.laneCage, want, p.SpeedCaps)
+		pl.note("lane %d (%s) of cage %d: %d Mb/s is not among the lane's speeds %v; a lane does not join its cage (that is the cage's speed on the switch itself); speed not written", d.Index, ln, pl.laneCage, want, p.SpeedCaps)
 		return
 	}
 	if isTrue(pl.sim.field(ln, "autoneg")) {
@@ -422,6 +448,169 @@ func (pl *plan) dissolveLanes(idx, cage int, write func(int, string, func(*swSta
 	if len(pcs) > 0 || len(names) > 0 {
 		pl.note("port %d: joining the cage removes its lane switch's aggregates %v and mirror sessions %v first", idx, pcs, names)
 	}
+}
+
+// splitModes are the cage's breakout modes of more than one port (the
+// modes a lane switch's lanes can move the cage between), fewest ports
+// first; nil for a cage without platform.json modes.
+func splitModes(pp platformPort) []brkMode {
+	var out []brkMode
+	for _, m := range pp.modes() {
+		if m.ports > 1 {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// laneClaims is what a lane of a lane switch claims: the speeds it runs
+// (STATE_DB, else its mode's) and every lane speed of the cage's other
+// split modes, which a forced lane speed moves the cage to (laneLayout):
+// 50G on a 4x25G lane of a cage that has 2x50G, 25G and 10G on a 2x50G
+// lane (docs/drivers/breakout.md 16.15).
+func laneClaims(own []int, modes []brkMode) []int {
+	out := slices.Clone(own)
+	for _, m := range modes {
+		out = mergeSpeeds(out, m.speeds)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// laneLayout moves a lane switch's cage between its split modes by its
+// lanes' forced speeds (the lane scope only; docs/drivers/breakout.md
+// 16.15): a speed the current mode runs is a lane speed (laneSpeed); one
+// only another split mode runs re-splits the cage to that mode -- forced
+// 50G on a 4x25G cage to 2x50G, 25G or 10G on a 2x50G cage to 4x25G[10G],
+// 1G (which no mode names, but a 25G lane runs) to the split mode with the
+// most ports. Lane speeds that no one mode runs together change nothing
+// (one note), nor does auto on every lane: the module's rule is the
+// parent's. A join stays the parent's (the cage's speed there).
+//
+// The re-split is a breakout like the parent's own (breakoutTo: the YANG
+// holds, the shapers, the ACL counters, the IGMP rows), refused with a note
+// for a cage whose lanes are in an aggregate or a mirror, are isolated or
+// secured (the parent's plan rebuilds those, and a re-split without it
+// would leave the new lanes open: fail closed), or whose module does not
+// run the mode. It returns the push without the lanes the new mode does
+// not have, and the plan's ports are the new lanes from then on.
+func (pl *plan) laneLayout(ds []devicemodel.PortDesired) []devicemodel.PortDesired {
+	cage := pl.laneCage
+	parent, pp, ok := pl.sim.platformCage(cage)
+	if !ok {
+		return ds
+	}
+	modes := splitModes(pp)
+	cur, ok := parseMode(pl.sim.brkout[parent])
+	if !ok || len(modes) < 2 {
+		return ds
+	}
+	// For each forced lane, the split modes that would run its speed.
+	var forced []devicemodel.PortDesired
+	fits := map[string]int{} // mode -> how many forced lanes it runs
+	for _, d := range ds {
+		if d.SpeedMbps == 0 {
+			continue
+		}
+		forced = append(forced, d)
+		runs := func(m brkMode) bool {
+			if containsInt(m.speeds, d.SpeedMbps) {
+				return true
+			}
+			if m.name == cur.name {
+				return containsInt(pl.ports[d.Index].SpeedCaps, d.SpeedMbps) // 1G on a 25G lane
+			}
+			return false
+		}
+		any := false
+		for _, m := range modes {
+			if runs(m) {
+				fits[m.name]++
+				any = true
+			}
+		}
+		if !any && d.SpeedMbps < modes[len(modes)-1].def {
+			// No mode names it, but the most-port mode's lanes may run it
+			// (1G on a DX010 25G lane): that mode, then the lane speed once
+			// the switch has read the new lanes.
+			fits[modes[len(modes)-1].name]++
+		}
+	}
+	if len(forced) == 0 || fits[cur.name] == len(forced) {
+		return ds // auto everywhere, or every forced speed is the current mode's
+	}
+	var target *brkMode
+	for _, m := range modes {
+		if fits[m.name] != len(forced) {
+			continue
+		}
+		mm := m
+		if target == nil || m.def == forced[0].SpeedMbps {
+			target = &mm
+		}
+	}
+	var asked []string
+	for _, d := range forced {
+		asked = append(asked, fmt.Sprintf("lane %d %d Mb/s", d.Index, d.SpeedMbps))
+	}
+	first := forced[0]
+	if target == nil {
+		pl.note("cage %d: the lane switch asks for %s, which no one breakout mode of the cage (%s now) runs together; the cage's mode and the lane speeds are left as they are", cage, strings.Join(asked, ", "), cur.name)
+		pl.laneSpeedsHeld = true
+		return ds
+	}
+	hold := func(why string) []devicemodel.PortDesired {
+		pl.note("cage %d: %s needs breakout mode %s (now %s), but %s; the cage's mode and the lane speeds are left as they are", cage, strings.Join(asked, ", "), target.name, cur.name, why)
+		pl.laneSpeedsHeld = true
+		return ds
+	}
+	for _, d := range ds {
+		if d.LAG > 0 || d.MirrorSource > 0 {
+			return hold("a lane is in an aggregate or a mirror session; take it out first")
+		}
+	}
+	lanes := pl.sim.cagePorts(cage)
+	for _, ln := range lanes {
+		if pl.sim.pf.iso[ln] {
+			return hold("the cage is isolated on the switch itself (Port Isolation); a re-split would leave the new lanes outside the group until the switch's own push")
+		}
+		if pl.sim.port[ln]["learn_mode"] != "" {
+			return hold("the cage is secured on the switch itself (MAC filter or 802.1X); a re-split would leave the new lanes learning until the switch's own push")
+		}
+	}
+	if o := pl.ports[first.Index].Optic; o != nil {
+		if runs, ok := moduleRuns(o.MediaType); ok && !slices.ContainsFunc(runs, func(r laneCfg) bool { return r.ports == target.ports }) {
+			return hold(fmt.Sprintf("the module %q runs %v, and the switch's own speed rule would put it back", o.MediaType, runs))
+		}
+	}
+	before := len(lanes)
+	if !pl.breakoutTo(devicemodel.PortDesired{Index: first.Index}, cage, first.SpeedMbps, *target, parent, pp, pl.add) {
+		pl.laneSpeedsHeld = true
+		return ds
+	}
+	pl.resplit = true
+	// The new lanes are the plan's ports from here: lane i is the mode's
+	// i-th port, with the old lane i's reading where it had one (its
+	// counters and module do not matter to a plan) and the mode's speeds
+	// until the switch has read the new interfaces.
+	after := pl.sim.cagePorts(cage)
+	template := pl.ports[1]
+	ports := map[int]devicemodel.Port{}
+	for i, name := range after {
+		p, ok := pl.ports[i+1]
+		if !ok {
+			p = template
+		}
+		p.Index, p.IfName, p.Interfaces = i+1, name, []string{name}
+		p.SpeedCaps = slices.Clone(target.speeds)
+		p.LAG, p.LAGID, p.MirrorFrom = "", 0, 0
+		ports[i+1] = p
+	}
+	pl.ports = ports
+	for i := 1; i <= max(before, len(after)); i++ {
+		pl.changed[i] = true // every lane slot's occupant changed
+	}
+	return ds // the caller drops the slots the new mode lacks
 }
 
 var _ devicemodel.LaneProvider = (*Collector)(nil)

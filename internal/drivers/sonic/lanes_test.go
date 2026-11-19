@@ -82,8 +82,9 @@ func TestLanesFromTheSplitCapture(t *testing.T) {
 		if l.Index != i+1 || l.IfName != name || !reflect.DeepEqual(l.Interfaces, []string{name}) || v.LaneAliases[i] != "Eth2/"+string(rune('1'+i)) {
 			t.Errorf("lane %d: %d %s %v %q", i+1, l.Index, l.IfName, l.Interfaces, v.LaneAliases[i])
 		}
-		// The SAI's supported_speeds for a 25G lane, and its form.
-		if !reflect.DeepEqual(l.SpeedCaps, []int{1000, 10000, 25000}) || l.Media != devicemodel.MediaSFP28 || l.AdminSpeed != 25000 || l.MTU != 1500 {
+		// The SAI's supported_speeds for a 25G lane, the 2x50G mode's 50G
+		// (a forced one re-splits the cage, breakout.md 16.15), and its form.
+		if !reflect.DeepEqual(l.SpeedCaps, []int{1000, 10000, 25000, 50000}) || l.Media != devicemodel.MediaSFP28 || l.AdminSpeed != 25000 || l.MTU != 1500 {
 			t.Errorf("lane %d: caps %v media %s admin %d mtu %d", i+1, l.SpeedCaps, l.Media, l.AdminSpeed, l.MTU)
 		}
 		if l.VLAN.NativeVLAN != 1 {
@@ -151,9 +152,9 @@ func TestLaneSettings(t *testing.T) {
 		"sudo config vlan member del 2 Ethernet6",
 		save,
 	})
-	// A lane never splits or joins its cage.
+	// A lane never joins its cage: 40G is no split mode's.
 	r.applyLanes("40G on a lane", edit(base, 2, func(d *devicemodel.PortDesired) { d.SpeedMbps = 40000 }), nil)
-	if !strings.Contains(r.log.String(), "lane 2 (Ethernet5) of cage 2: 40000 Mb/s is not among the lane's speeds [1000 10000 25000]") {
+	if !strings.Contains(r.log.String(), "cage 2: the lane switch asks for lane 2 40000 Mb/s, which no one breakout mode of the cage (4x25G[10G] now) runs together") {
 		t.Errorf("no note: %s", r.log.String())
 	}
 	// Jumbo on the lane switch: the lanes' MTU. No VLAN's: this lane switch

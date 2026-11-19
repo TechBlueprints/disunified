@@ -1747,6 +1747,14 @@ func (l *Loop) collect(ctx context.Context) {
 	}
 	wrote := l.wrotePorts
 	l.wrotePorts = nil // a write shows in the collect right after it, or not at all
+	for _, idx := range snap.LayoutWritten {
+		// Written through another loop at the controller's request (a lane
+		// switch's re-split of its parent's cage): not a new port either.
+		if wrote == nil {
+			wrote = map[int]bool{}
+		}
+		wrote[idx] = true
+	}
 	if sig := layoutSignature(snap); sig != l.layoutSig {
 		// "" only for a loop built without a snapshot: its first collect
 		// is the baseline. Every other run was seeded (seedLayout), so a

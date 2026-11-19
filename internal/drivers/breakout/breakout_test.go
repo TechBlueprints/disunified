@@ -6,6 +6,7 @@ import (
 	"log"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -78,7 +79,7 @@ func TestSnapshotFourLanes(t *testing.T) {
 		t.Errorf("addresses %+v, want the lane switch's own link-local 169.254.1.170/16 (from its MAC), never the parent's", sys.Addresses)
 	}
 	for i, p := range s.Ports[:4] {
-		if p.Index != i+1 || p.Media != devicemodel.MediaSFP28 || p.Optic != nil || !reflect.DeepEqual(p.SpeedCaps, []int{1000, 10000, 25000}) || p.IfName == "" {
+		if p.Index != i+1 || p.Media != devicemodel.MediaSFP28 || p.Optic != nil || !reflect.DeepEqual(p.SpeedCaps, []int{1000, 10000, 25000, 50000}) || p.IfName == "" {
 			t.Errorf("lane %d: %+v", i+1, p)
 		}
 	}
@@ -86,8 +87,10 @@ func TestSnapshotFourLanes(t *testing.T) {
 	if u.Index != 5 || u.Media != devicemodel.MediaQSFP28 || !reflect.DeepEqual(u.SpeedCaps, []int{100000}) || u.Neighbor == nil || !u.Neighbor.IsBridge || u.Neighbor.Child || u.Neighbor.ChassisID != "02:00:00:00:00:01" {
 		t.Errorf("uplink %+v neighbour %+v", u, u.Neighbor)
 	}
-	if u.Up {
-		t.Errorf("the capture's lanes have no link, the cable reads up")
+	// The capture's lanes have no link; the cable is up all the same: the
+	// lane switch is attached to the split cage (breakout.md 16.15).
+	if !u.Up || !u.Enabled || u.SpeedMbps != 100000 || !u.FullDuplex || u.STPState != "forwarding" || u.STPRole != "root" || u.Health.LinkChanges != 1 {
+		t.Errorf("uplink up %v enabled %v %d Mb/s fd %v stp %s/%s link changes %d", u.Up, u.Enabled, u.SpeedMbps, u.FullDuplex, u.STPState, u.STPRole, u.Health.LinkChanges)
 	}
 	if n := r.d.PortName(s.Ports[0]); n != "Eth2/1" {
 		t.Errorf("lane 1 named %q", n)
@@ -107,33 +110,68 @@ func TestSnapshotFourLanes(t *testing.T) {
 	}
 }
 
-// 2x50G: the parent re-splits the cage (its own speed control), the lane
-// switch then has two lanes at 50G, drawn as QSFP tiles, and two empty
-// slots.
-func TestSnapshotTwoLanes(t *testing.T) {
-	r := newRig(t)
-	snap, _ := r.c.Collect(context.Background())
+// lanePush is the lane switch's push as the controller sends it, for all
+// five ports whatever the cage's mode: enabled, VLAN 1 untagged, speeds by
+// lane (0 = auto).
+func (r *rig) lanePush(speeds map[int]int) []devicemodel.PortDesired {
+	r.t.Helper()
 	var ds []devicemodel.PortDesired
-	for _, p := range snap.Ports {
-		d := devicemodel.PortDesired{Index: p.Index, Enabled: p.Enabled, VLANSet: true, NativeVLAN: 1}
-		if p.Index == 2 {
-			d.SpeedMbps = 50000
-		}
-		ds = append(ds, d)
+	for i := 1; i <= Ports; i++ {
+		ds = append(ds, devicemodel.PortDesired{Index: i, Enabled: true, VLANSet: true, NativeVLAN: 1, SpeedMbps: speeds[i]})
 	}
-	if _, err := r.c.ApplyPorts(context.Background(), ds); err != nil {
+	return ds
+}
+
+// apply is the lane switch's ApplyPorts; it returns the commands the
+// parent ran for it.
+func (r *rig) apply(ds []devicemodel.PortDesired) string {
+	r.t.Helper()
+	before := len(r.fr.Recorded())
+	if _, err := r.d.ApplyPorts(context.Background(), ds); err != nil {
+		r.t.Fatal(err)
+	}
+	return strings.Join(r.fr.Recorded()[before:], "\n")
+}
+
+// 2x50G from the lane switch (breakout.md 16.15): a forced 50G on a lane
+// re-splits the cage; the lane switch then has two lanes, still SFP28 and
+// still claiming 25G (so the drawer can set one back), and two empty
+// slots; a forced 25G on one of them re-splits it to 4x25G again. Neither
+// loop takes the new lanes for new ports, and the cycles after write
+// nothing.
+func TestLaneResplit(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.snap() // the lane switch's Start
+	got := r.apply(r.lanePush(map[int]int{1: 50000}))
+	t.Logf("re-split batch:\n%s", got)
+	if !strings.Contains(got, "breakout -f -y Ethernet4 '2x50G'") {
+		t.Fatalf("no 2x50G breakout: %s", got)
+	}
+	// Before the parent has read the switch again the lane plan waits.
+	if got := r.apply(r.lanePush(map[int]int{1: 50000})); got != "" {
+		t.Errorf("planned before the switch was read again: %s", got)
+	}
+	ps, err := r.c.Collect(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(r.fr.Recorded(), "\n"), "breakout -f -y Ethernet4 '2x50G'") {
-		t.Fatalf("no 2x50G breakout: %q", r.fr.Recorded())
+	if !reflect.DeepEqual(ps.LayoutWritten, []int{2}) {
+		t.Errorf("the parent's snapshot says the cage's layout was written by %v, want [2]", ps.LayoutWritten)
 	}
-	if _, err := r.c.Collect(context.Background()); err != nil {
-		t.Fatal(err)
+	if ps2, _ := r.c.Collect(ctx); len(ps2.LayoutWritten) != 0 {
+		t.Errorf("reported again: %v", ps2.LayoutWritten)
 	}
 	s := r.snap()
+	if !reflect.DeepEqual(s.LayoutWritten, []int{1, 2, 3, 4}) {
+		t.Errorf("the lane switch's snapshot names %v as written, want every lane slot", s.LayoutWritten)
+	}
+	if s.System.SKU != "2x50G" {
+		t.Errorf("mode %q", s.System.SKU)
+	}
 	for _, p := range s.Ports[:2] {
-		if p.Media != devicemodel.MediaQSFP28 || p.AdminSpeed != 50000 || p.IfName == "" {
-			t.Errorf("lane %d: media %s admin %d %q", p.Index, p.Media, p.AdminSpeed, p.IfName)
+		if p.Media != devicemodel.MediaSFP28 || p.AdminSpeed != 50000 || p.IfName == "" || !slices.Contains(p.SpeedCaps, 25000) || !slices.Contains(p.SpeedCaps, 50000) {
+			t.Errorf("lane %d: media %s admin %d %q caps %v", p.Index, p.Media, p.AdminSpeed, p.IfName, p.SpeedCaps)
 		}
 	}
 	for _, p := range s.Ports[2:4] {
@@ -141,8 +179,64 @@ func TestSnapshotTwoLanes(t *testing.T) {
 			t.Errorf("slot %d is not empty: %+v", p.Index, p)
 		}
 	}
-	if s.System.SKU != "2x50G" {
-		t.Errorf("mode %q", s.System.SKU)
+	if u := s.Ports[4]; !u.Up || u.SpeedMbps != 100000 {
+		t.Errorf("uplink through the re-split: up %v %d Mb/s", u.Up, u.SpeedMbps)
+	}
+	if s2 := r.snap(); s2.LayoutWritten != nil {
+		t.Errorf("reported again: %v", s2.LayoutWritten)
+	}
+	// The next cycles: the lane switch's push and the parent's own write
+	// nothing, the parent's forced 25G on the cage included (between split
+	// modes the lane switch decides).
+	if got := r.apply(r.lanePush(map[int]int{1: 50000})); got != "" {
+		t.Errorf("the next cycle wrote %s", got)
+	}
+	var own []devicemodel.PortDesired
+	for _, p := range ps.Ports {
+		d := devicemodel.PortDesired{Index: p.Index, Enabled: p.Enabled, VLANSet: true, NativeVLAN: 1}
+		if p.Index == 2 {
+			d.SpeedMbps = 25000
+		}
+		own = append(own, d)
+	}
+	before := len(r.fr.Recorded())
+	if _, err := r.c.ApplyPorts(ctx, own); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(r.fr.Recorded()[before:], "\n"); strings.Contains(got, "Ethernet4") || strings.Contains(got, "Ethernet6") {
+		t.Errorf("the parent's push touched the cage: %s", got)
+	}
+	if !strings.Contains(r.log.String(), "only a join is taken from the cage's speed") {
+		t.Errorf("no note for the cage's 25G: %s", r.log.String())
+	}
+
+	// Back: 25G on lane 2 (lane 1 back on auto).
+	got = r.apply(r.lanePush(map[int]int{2: 25000}))
+	t.Logf("back batch:\n%s", got)
+	if !strings.Contains(got, "breakout -f -y Ethernet4 '4x25G[10G]'") {
+		t.Fatalf("no 4x25G breakout: %s", got)
+	}
+	if _, err := r.c.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s = r.snap()
+	if s.System.SKU != "4x25G[10G]" || len(s.LayoutWritten) != 4 {
+		t.Errorf("mode %q, written %v", s.System.SKU, s.LayoutWritten)
+	}
+	for _, p := range s.Ports[:4] {
+		if p.IfName == "" || p.AdminSpeed != 25000 {
+			t.Errorf("lane %d: %q at %d", p.Index, p.IfName, p.AdminSpeed)
+		}
+	}
+	if got := r.apply(r.lanePush(map[int]int{2: 25000})); got != "" {
+		t.Errorf("the next cycle wrote %s", got)
+	}
+	// Speeds of two modes at once: nothing, one note.
+	if got := r.apply(r.lanePush(map[int]int{1: 50000, 2: 10000})); got != "" {
+		t.Errorf("speeds of two modes wrote %s", got)
+	}
+	if !strings.Contains(r.log.String(), "lane 1 50000 Mb/s, lane 2 10000 Mb/s, which no one breakout mode") {
+		t.Errorf("no note for two modes: %s", r.log.String())
 	}
 }
 
@@ -196,6 +290,12 @@ func TestUnattached(t *testing.T) {
 	snap.TakenAt, attached.TakenAt = time.Time{}, time.Time{}
 	snap.System.Uptime, attached.System.Uptime = 0, 0
 	snap.System.CPUPercent, attached.System.CPUPercent = 0, 0
+	// The one difference: the cable is down until the lane switch is
+	// attached (adopted).
+	if u := snap.Ports[UplinkPort-1]; u.Up || u.SpeedMbps != 0 || u.Health.LinkChanges != 0 {
+		t.Errorf("unattached, the uplink reads up %v %d Mb/s", u.Up, u.SpeedMbps)
+	}
+	snap.Ports[UplinkPort-1] = attached.Ports[UplinkPort-1]
 	a, _ := json.Marshal(attached)
 	b, _ := json.Marshal(snap)
 	if string(a) != string(b) {

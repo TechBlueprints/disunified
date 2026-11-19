@@ -221,6 +221,13 @@ type planScope struct {
 	// PlanPorts and PlanLanes: the first-push hold must never wait on a
 	// write no controller setting can match.
 	controllerOnly bool
+	// The cage of a lane scope as the device reports it: its interface and
+	// its speeds (which split modes it has), and the module in it, for the
+	// lanes' re-split (laneResplit, lanes.go).
+	cageIf    string
+	cageCaps  []int
+	cageOptic *devicemodel.Optic
+	cagePort  devicemodel.Port
 }
 
 // planResult is a plan: the commands between `configure` and `end`, the
@@ -236,6 +243,7 @@ type planResult struct {
 	fec      map[string]devicemodel.FEC      // the interfaces whose FEC the batch sets, and to what (fec.go)
 	removed  []string                        // the Port-Channels the batch removes (portchannel.go)
 	layout   map[int]bool                    // the ports whose lane count the batch changes (PlanLayout)
+	resplit  bool                            // a lane scope's batch moves the cage to another split mode (laneResplit)
 	ownSpeed map[int]int                     // the cages the module rule sets a speed on, and to what (layout.go)
 }
 
@@ -299,6 +307,19 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 	for _, p := range snap.Ports {
 		if !pushed[p.Index] && p.LAG != "" {
 			members[p.LAG] = true
+		}
+	}
+	if inLanes {
+		if cmds, ok := c.laneResplit(snap.Ports, desired, sc, note); ok {
+			// The batch is the re-split alone: the lanes it leaves are
+			// written once the switch has been read again (lanePlan waits).
+			pr.cmds = append(pr.cmds, cmds...)
+			pr.changed = 1
+			pr.resplit = true
+			for i := 1; i <= 4; i++ {
+				pr.ports = append(pr.ports, i)
+			}
+			return pr
 		}
 	}
 	for _, d := range desired {
@@ -408,11 +429,19 @@ func (c *Collector) plan(snap *devicemodel.Snapshot, desired []devicemodel.PortD
 		// one, the cage's on this switch.
 		var speedCmds []string
 		if inLanes {
-			if d.SpeedMbps > 0 && !slices.Contains(p.SpeedCaps, d.SpeedMbps) {
+			if d.SpeedMbps > 0 && !slices.Contains(p.SpeedCaps, d.SpeedMbps) && splitPorts(d.SpeedMbps) == 0 {
 				note("lane %d of cage %d: %d Mb/s asked; on EOS every lane of a cage runs one speed (%v), set on the switch's own port %d; not written", d.Index, sc.cage, d.SpeedMbps, p.SpeedCaps, sc.cage)
 			}
 		} else {
 			speedCmds = speedCommands(p, dSpeed)
+			if owned && d.SpeedMbps > 0 && p.Lanes > 1 && laneCountAt(d.SpeedMbps) > 1 && len(speedCmds) > 0 {
+				// Between split modes the lane switch decides, by its
+				// lanes' speeds (laneResplit); the cage's speed here splits
+				// and joins. Followed, a forced 25G left on the cage would
+				// undo the lane switch's 2x50G every cycle.
+				note("port %d: %d Mb/s on the cage asks for another split mode; the cage is split and its lane switch sets the split mode by its lanes' speeds, so only a join is taken from the cage's speed; not written", d.Index, d.SpeedMbps)
+				speedCmds = nil
+			}
 		}
 		var dissolve []string
 		if owned && len(speedCmds) > 0 && dSpeed.SpeedMbps >= 40000 {

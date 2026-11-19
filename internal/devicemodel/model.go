@@ -704,6 +704,14 @@ type Snapshot struct {
 	// UplinkHint is the driver's own idea of the uplink port when LLDP is
 	// silent (a virtual switch knows which physical NIC carries it); 0 = none.
 	UplinkHint int
+
+	// LayoutWritten are the ports whose layout (split, re-split, join)
+	// changed since the device's previous snapshot by a write made at the
+	// controller's request through another loop than this device's own: a
+	// lane switch re-splitting its parent's cage from a lane's speed
+	// (docs/drivers/breakout.md 16.15). The loop treats them as ports its
+	// own push wrote (not fresh), as it does Planner/LayoutPlanner's.
+	LayoutWritten []int
 }
 
 // UplinkPort returns the port carrying the LLDP neighbour that looks like

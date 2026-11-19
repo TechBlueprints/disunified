@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -132,11 +133,16 @@ type Collector struct {
 	// collect (by cage, Index 1..N), the attached lane switches, the cages
 	// the controller has disabled, this switch's LLDP chassis id, and the
 	// plan notes already logged.
-	lanes     map[int][]devicemodel.Port
-	children  map[int]devicemodel.Attachment
-	cageDown  map[int]bool
-	chassisID string
-	noted     map[string]bool
+	lanes    map[int][]devicemodel.Port
+	children map[int]devicemodel.Attachment
+	cageDown map[int]bool
+	// laneLayouts counts the re-splits each cage's lane switch made
+	// (laneResplit); laneLayoutsLast is the count as of c.last, which
+	// Lanes hands the lane switch, laneLayoutsTold the count the loop was
+	// told of in Snapshot.LayoutWritten.
+	laneLayouts, laneLayoutsLast, laneLayoutsTold map[int]int
+	chassisID                                     string
+	noted                                         map[string]bool
 
 	// The VLAN prune (vlan_prune.go): the device's own push's VLANs, set
 	// by an EnsureVLANs of this run (siteKnown), each attached lane
@@ -426,6 +432,19 @@ func (c *Collector) Collect(ctx context.Context) (*devicemodel.Snapshot, error) 
 	}
 	c.mu.Lock()
 	c.last, c.lanes = snap, lanes
+	for cage, n := range c.laneLayouts {
+		if c.laneLayoutsLast == nil {
+			c.laneLayoutsLast, c.laneLayoutsTold = map[int]int{}, map[int]int{}
+		}
+		c.laneLayoutsLast[cage] = n
+		if c.laneLayoutsTold[cage] != n {
+			// A lane switch's push re-split this cage since the last
+			// snapshot: the loop must not take it for a new port.
+			c.laneLayoutsTold[cage] = n
+			snap.LayoutWritten = append(snap.LayoutWritten, cage)
+		}
+	}
+	slices.Sort(snap.LayoutWritten)
 	c.mu.Unlock()
 	return snap, nil
 }

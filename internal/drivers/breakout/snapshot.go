@@ -18,8 +18,10 @@ import (
 //     port 5 only;
 //   - N+1..4 (a 2-lane mode): empty slots, which the Flex XG draws "Not
 //     Connected" (docs/breakout-lag.md 6.6);
-//   - port 5: the cable -- up when any lane is, at the cage's native speed,
-//     counters summed, the cage's module, the parent as its LLDP neighbour.
+//   - port 5: the cable -- up while the lane switch is attached to the
+//     split cage and the parent has the cage enabled (Uplink), lanes with
+//     link or not, at the cage's native speed; counters summed, the
+//     cage's module, the parent as its LLDP neighbour.
 //
 // The identity is the attachment's MAC. The address is the lane switch's
 // own link-local one (Address): it has no interface, and reporting the
@@ -27,7 +29,7 @@ import (
 // IP Settings (api.err.StaticIpAlreadyUsedByDevice, naming the lane switch;
 // Network 11.0.99, 2026-11-16, docs/drivers/breakout.md 16.10). The
 // gateway and its MAC stay the parent's: the segment the device sits on.
-func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
+func Snapshot(v devicemodel.LaneView, up Uplink) *devicemodel.Snapshot {
 	snap := &devicemodel.Snapshot{TakenAt: v.TakenAt, VLANs: slices.Clone(v.VLANs), UplinkHint: UplinkPort}
 	ps := v.System
 	sys := devicemodel.System{
@@ -71,7 +73,6 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		uplink.Neighbor.ManagementIP = ps.Addresses[0].IP
 	}
 
-	var drops uint64
 	for i, l := range v.Lanes {
 		p := l
 		p.Index = i + 1
@@ -96,10 +97,7 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		}
 		snap.Ports = append(snap.Ports, p)
 
-		uplink.Up = uplink.Up || p.Up
-		uplink.Enabled = uplink.Enabled || p.Enabled
 		uplink.Counters.Add(p.Counters)
-		drops += p.Health.LinkChanges / 2 // transitions from down: half are drops
 		uplink.Health.FECCorrected += p.Health.FECCorrected
 		uplink.Health.FECUncorrected += p.Health.FECUncorrected
 		uplink.Health.HasFECCounters = uplink.Health.HasFECCounters || p.Health.HasFECCounters
@@ -111,9 +109,16 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 			STPState: "disabled", STPRole: "disabled",
 		})
 	}
-	// The cable's drops are its lanes' together; summing the lanes'
-	// transitions would count each up lane's rise.
-	uplink.Health.LinkChanges = 2 * drops
+	// The cable is the lane switch's link to its parent: it is up while
+	// the lane switch is attached to the split cage and the parent has the
+	// cage enabled, whatever the lanes' far ends do (a lane switch whose
+	// lanes have no far end is online through it, and five dark ports said
+	// otherwise). Its drops are its own (Uplink.Drops: the cage disabled on
+	// the parent, a detach), never a lane's: a lane's flaps are the lane's
+	// port's, and counting them here raised a link-flap alert for the
+	// uplink (CLAUDE.md 5).
+	uplink.Up, uplink.Enabled = up.Up, !v.CageDisabled
+	uplink.Health.LinkChanges = 2 * up.Drops
 	if uplink.Up {
 		uplink.Health.LinkChanges++
 	}
@@ -133,6 +138,15 @@ func Snapshot(v devicemodel.LaneView) *devicemodel.Snapshot {
 		return a.VLAN - b.VLAN
 	})
 	return snap
+}
+
+// Uplink is the cable's own state, which the lane switch keeps across
+// collects (Device.Collect): Up while attached to the split cage and the
+// cage is enabled on the parent, Drops the times it went down since the
+// bridge started.
+type Uplink struct {
+	Up    bool
+	Drops uint64
 }
 
 // normMAC is a MAC in lower-case colon form.

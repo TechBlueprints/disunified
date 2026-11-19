@@ -368,6 +368,14 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 		// the mode (split, re-split, join).
 		return
 	}
+	if target != nil && pl.owned[p.Index] && target.ports > 1 && cur.ports > 1 {
+		// Between split modes the lane switch decides, by its lanes'
+		// speeds (laneLayout, docs/drivers/breakout.md 16.15); the cage's
+		// speed here splits and joins. Followed, a forced 25G left on the
+		// cage would undo the lane switch's 2x50G every cycle.
+		pl.note("port %d: %d Mb/s on the cage asks for breakout mode %s; the cage is split (%s) and its lane switch sets the split mode by its lanes' speeds, so only a join is taken from the cage's speed; not written", d.Index, want.speed, target.name, cur.name)
+		return
+	}
 	if target != nil {
 		if pl.owned[p.Index] {
 			// A lane switch's aggregates and mirrors go with its lanes; the
@@ -375,84 +383,10 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			pl.dissolveLanes(d.Index, p.Index, write)
 			delete(pl.owned, p.Index)
 		}
-		if why := pl.breakoutBlocked(d, p.Index); why != "" {
-			pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, want.speed, target.name, why)
+		if !pl.breakoutTo(d, p.Index, want.speed, *target, parent, pp, write) {
 			return
 		}
-		if len(pl.sim.mgmtNoGateway) > 0 {
-			// The breakout validates the whole CONFIG_DB with sonic-yang,
-			// which requires a gateway on every MGMT_INTERFACE row (§11.8).
-			// A gateway is not the driver's to add: interfaces.j2 turns it
-			// into a default route on eth0 in the management table, where
-			// the syslog servers' forced rules would then send their traffic.
-			pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC checks the whole config against its YANG model before a breakout; eth0's address %s (MGMT_INTERFACE) has no gateway, which the model requires, and the driver does not change eth0; speed not written (give the row a gateway or remove it: docs/drivers/sonic.md 11.8)", d.Index, want.speed, target.name, strings.Join(pl.sim.mgmtNoGateway, ", "))
-			return
-		}
-		if v := pl.sim.ntpGlobal["src_intf"]; strings.HasPrefix(v, "Vlan") {
-			// The same check refuses a VLAN as NTP's source interface; the
-			// NTP apply, which runs before the ports, clears it whenever
-			// the controller's NTP servers are applied (§11.8).
-			pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC's YANG check before a breakout refuses NTP|global src_intf %s (no VLAN is allowed there); it is cleared with the controller's NTP settings; speed not written", d.Index, want.speed, target.name, v)
-			return
-		}
-		children, err := pp.children(parent, *target)
-		if err != nil {
-			pl.note("port %d: breakout %s of %s: %v; speed not written", d.Index, target.name, parent, err)
-			return
-		}
-		idx, mode, par := p.Index, target.name, parent
-		if pl.sim.mgmtPortMissing {
-			// `config interface breakout` validates the whole CONFIG_DB
-			// with sonic-yang and fails on MGMT_INTERFACE|eth0's leafref to
-			// a MGMT_PORT row that §10.6's hand fix never made (§11.8). The
-			// row only names the port: interfaces.j2 and hostcfgd do not
-			// read it, so nothing changes on eth0.
-			pl.note("port %d: eth0 has an address (MGMT_INTERFACE) and no MGMT_PORT row, which the breakout's config validation needs; adding the row", d.Index)
-			write(d.Index, "sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0 admin_status up", func(s *swState) { s.mgmtPortMissing = false })
-		}
-		// learn_mode is not in sonic-port.yang or sonic-portchannel.yang, so
-		// port security's rows would fail the same whole-config check: they
-		// leave CONFIG_DB for the breakout and come back after it. The ASIC
-		// keeps dropping meanwhile (portmgrd passes only fields that remain).
-		held := pl.learnModesHeld()
-		for _, h := range held {
-			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote(h.key)+" learn_mode", nil)
-		}
-		// The egress shapers' SCHEDULER rows fail the same check (pir
-		// without cir, which Broadcom's SAI refuses on a port: §11.38), so
-		// they leave CONFIG_DB too, every port's, and come back after it.
-		shaped := pl.shapersHeld()
-		for _, h := range shaped.ports {
-			write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler", nil)
-		}
-		for _, h := range shaped.scheds {
-			write(d.Index, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote("SCHEDULER|"+h.name), nil)
-		}
-		// An isolated port's bridge port cannot be removed (§11.38).
-		pl.isolationLeave(d.Index, pl.sim.cagePorts(idx), write)
-		// ... nor one that a static FDB entry names (§11.40).
-		pl.fdbLeave(d.Index, pl.sim.cagePorts(idx), write)
-		// The guard's counted rules name the lanes that go (acl_count.go).
-		pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
-		// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).
-		pl.l2mcUnbind(d.Index, pl.sim.cagePorts(idx), write)
-		write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
-		pl.layout[d.Index] = true
-		for _, h := range held {
-			if h.lane != "" && pl.sim.port[h.lane] == nil {
-				continue // a lane the breakout replaced; its children get theirs below
-			}
-			write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote(h.key)+" learn_mode "+h.mode, nil)
-		}
-		for _, h := range shaped.scheds {
-			write(d.Index, schedulerSet(h.name, h.pir), nil)
-		}
-		for _, h := range shaped.ports {
-			if pl.sim.pf.qos[h.lane] != h.sched {
-				continue // a lane the breakout replaced; the egress plan writes its children's
-			}
-			write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler "+h.sched, nil)
-		}
+		idx := p.Index
 		port := pl.ports[d.Index]
 		port.Interfaces = pl.sim.cagePorts(idx)
 		port.IfName = port.Interfaces[0]
@@ -470,6 +404,92 @@ func (pl *plan) breakoutSpeed(p devicemodel.Port, d devicemodel.PortDesired, wan
 			write(d.Index, fmt.Sprintf("config interface speed %s %s", lane, v), func(s *swState) { s.setField(lane, "speed", v) })
 		}
 	}
+}
+
+// breakoutTo writes the breakout of cage idx to mode target, with what has
+// to leave CONFIG_DB and the chip around it (§11.8, §11.38, §11.40) --
+// accounted to d.Index, for speed (notes only). False, with a note, when
+// the cage cannot be broken out now; nothing is written then.
+func (pl *plan) breakoutTo(d devicemodel.PortDesired, idx, speed int, target brkMode, parent string, pp platformPort, write func(int, string, func(*swState))) bool {
+	if why := pl.breakoutBlocked(d, idx); why != "" {
+		pl.note("port %d: %d Mb/s needs breakout mode %s, but the cage %s; take it out first; speed not written", d.Index, speed, target.name, why)
+		return false
+	}
+	if len(pl.sim.mgmtNoGateway) > 0 {
+		// The breakout validates the whole CONFIG_DB with sonic-yang,
+		// which requires a gateway on every MGMT_INTERFACE row (§11.8).
+		// A gateway is not the driver's to add: interfaces.j2 turns it
+		// into a default route on eth0 in the management table, where
+		// the syslog servers' forced rules would then send their traffic.
+		pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC checks the whole config against its YANG model before a breakout; eth0's address %s (MGMT_INTERFACE) has no gateway, which the model requires, and the driver does not change eth0; speed not written (give the row a gateway or remove it: docs/drivers/sonic.md 11.8)", d.Index, speed, target.name, strings.Join(pl.sim.mgmtNoGateway, ", "))
+		return false
+	}
+	if v := pl.sim.ntpGlobal["src_intf"]; strings.HasPrefix(v, "Vlan") {
+		// The same check refuses a VLAN as NTP's source interface; the
+		// NTP apply, which runs before the ports, clears it whenever
+		// the controller's NTP servers are applied (§11.8).
+		pl.note("port %d: %d Mb/s needs breakout mode %s, and SONiC's YANG check before a breakout refuses NTP|global src_intf %s (no VLAN is allowed there); it is cleared with the controller's NTP settings; speed not written", d.Index, speed, target.name, v)
+		return false
+	}
+	children, err := pp.children(parent, target)
+	if err != nil {
+		pl.note("port %d: breakout %s of %s: %v; speed not written", d.Index, target.name, parent, err)
+		return false
+	}
+	mode, par := target.name, parent
+	if pl.sim.mgmtPortMissing {
+		// `config interface breakout` validates the whole CONFIG_DB
+		// with sonic-yang and fails on MGMT_INTERFACE|eth0's leafref to
+		// a MGMT_PORT row that §10.6's hand fix never made (§11.8). The
+		// row only names the port: interfaces.j2 and hostcfgd do not
+		// read it, so nothing changes on eth0.
+		pl.note("port %d: eth0 has an address (MGMT_INTERFACE) and no MGMT_PORT row, which the breakout's config validation needs; adding the row", d.Index)
+		write(d.Index, "sonic-db-cli CONFIG_DB hset 'MGMT_PORT|eth0' alias eth0 admin_status up", func(s *swState) { s.mgmtPortMissing = false })
+	}
+	// learn_mode is not in sonic-port.yang or sonic-portchannel.yang, so
+	// port security's rows would fail the same whole-config check: they
+	// leave CONFIG_DB for the breakout and come back after it. The ASIC
+	// keeps dropping meanwhile (portmgrd passes only fields that remain).
+	held := pl.learnModesHeld()
+	for _, h := range held {
+		write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote(h.key)+" learn_mode", nil)
+	}
+	// The egress shapers' SCHEDULER rows fail the same check (pir
+	// without cir, which Broadcom's SAI refuses on a port: §11.38), so
+	// they leave CONFIG_DB too, every port's, and come back after it.
+	shaped := pl.shapersHeld()
+	for _, h := range shaped.ports {
+		write(d.Index, "sonic-db-cli CONFIG_DB hdel "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler", nil)
+	}
+	for _, h := range shaped.scheds {
+		write(d.Index, "sonic-db-cli CONFIG_DB del "+sshrun.ShellQuote("SCHEDULER|"+h.name), nil)
+	}
+	// An isolated port's bridge port cannot be removed (§11.38).
+	pl.isolationLeave(d.Index, pl.sim.cagePorts(idx), write)
+	// ... nor one that a static FDB entry names (§11.40).
+	pl.fdbLeave(d.Index, pl.sim.cagePorts(idx), write)
+	// The guard's counted rules name the lanes that go (acl_count.go).
+	pl.dropInPortRules(d.Index, pl.sim.cagePorts(idx), write)
+	// ... and so do the IGMP tables' rows (strings in YANG: -f leaves them).
+	pl.l2mcUnbind(d.Index, pl.sim.cagePorts(idx), write)
+	write(d.Index, breakoutCommand(parent, mode), func(s *swState) { s.applyBreakout(par, pp, idx, children, mode) })
+	pl.layout[d.Index] = true
+	for _, h := range held {
+		if h.lane != "" && pl.sim.port[h.lane] == nil {
+			continue // a lane the breakout replaced; its children get theirs below
+		}
+		write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote(h.key)+" learn_mode "+h.mode, nil)
+	}
+	for _, h := range shaped.scheds {
+		write(d.Index, schedulerSet(h.name, h.pir), nil)
+	}
+	for _, h := range shaped.ports {
+		if pl.sim.pf.qos[h.lane] != h.sched {
+			continue // a lane the breakout replaced; the egress plan writes its children's
+		}
+		write(d.Index, "sonic-db-cli CONFIG_DB hset "+sshrun.ShellQuote("PORT_QOS_MAP|"+h.lane)+" scheduler "+h.sched, nil)
+	}
+	return true
 }
 
 // lanesRun: the cage's current lanes all run speed by STATE_DB's

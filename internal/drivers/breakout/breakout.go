@@ -117,7 +117,7 @@ func (Driver) Open(_ context.Context, cfg devicemodel.DriverConfig) (devicemodel
 
 // New is the lane switch over a parent (tests pass their own).
 func New(o Options, parent devicemodel.Device, lp devicemodel.LaneProvider) *Device {
-	return &Device{opt: o, parent: parent, lp: lp, Log: log.Default(), noted: map[string]bool{}}
+	return &Device{opt: o, parent: parent, lp: lp, Log: log.Default(), noted: map[string]bool{}, layouts: -1}
 }
 
 // Device is an open lane switch.
@@ -132,6 +132,12 @@ type Device struct {
 	mu    sync.Mutex
 	view  devicemodel.LaneView // the last one Collect saw
 	noted map[string]bool
+	// The cable's state across collects (Snapshot's Uplink), and the
+	// parent's count of this lane switch's re-splits as of the last view
+	// (LaneView.LaneLayouts; -1 before the first).
+	up      Uplink
+	upSeen  bool
+	layouts int
 }
 
 func (d *Device) now() time.Time {
@@ -186,11 +192,29 @@ func (d *Device) Collect(context.Context) (*devicemodel.Snapshot, error) {
 	// Unattached, the snapshot still carries this lane switch's own identity
 	// (Snapshot reads it from the view's Child); d.view keeps the parent's
 	// answer, which is how attached() tells the two apart.
+	attached := v.Child.MAC == self.MAC
 	d.mu.Lock()
 	d.view = v
+	up := attached && !v.CageDisabled
+	if d.upSeen && d.up.Up && !up {
+		d.up.Drops++
+	}
+	d.up.Up, d.upSeen = up, true
+	cable := d.up
+	resplit := d.layouts >= 0 && v.LaneLayouts != d.layouts
+	d.layouts = v.LaneLayouts
 	d.mu.Unlock()
 	v.Child = self
-	return Snapshot(v), nil
+	snap := Snapshot(v, cable)
+	if resplit {
+		// This lane switch's own push moved the cage between split modes
+		// (a lane's speed): every lane slot's occupant changed at the
+		// controller's request, so none of them is a new port to the loop.
+		for i := 1; i <= maxLanes; i++ {
+			snap.LayoutWritten = append(snap.LayoutWritten, i)
+		}
+	}
+	return snap, nil
 }
 
 // identity is this lane switch's MAC and name: options.mac, or the MAC
@@ -250,8 +274,11 @@ func (d *Device) split(desired []devicemodel.PortDesired) []devicemodel.PortDesi
 	var out []devicemodel.PortDesired
 	for _, p := range desired {
 		switch {
-		case p.Index >= 1 && p.Index <= n:
-			if p.MirrorSource > 0 && (p.MirrorSource > n || p.MirrorSource == p.Index) {
+		case p.Index >= 1 && p.Index <= maxLanes:
+			// A slot the cage lacks now (3-4 at 2x50G) goes too: a lane's
+			// speed may re-split the cage to four lanes, and the parent
+			// then writes their intent in the same batch.
+			if p.MirrorSource > 0 && (p.MirrorSource > n || p.MirrorSource == p.Index || p.Index > n) {
 				d.noteOnce(fmt.Sprintf("lane %d: mirror source port %d is not another lane of this cage; not mirrored", p.Index, p.MirrorSource))
 				p.MirrorSource = 0
 			}

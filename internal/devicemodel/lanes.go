@@ -105,6 +105,11 @@ type LaneView struct {
 	// Child is the lane switch attached to the cage (AttachLaneSwitch);
 	// zero when none is.
 	Child Attachment
+	// LaneLayouts counts the re-splits the lane switch's own pushes made
+	// of the cage (ApplyLanes moving it between split modes), as of the
+	// snapshot the view is taken from: a lane switch that sees it change
+	// knows its lanes' new layout is its push's doing, not new ports.
+	LaneLayouts int
 }
 
 // LaneSwitchMAC is the MAC a lane switch reports when none is configured:

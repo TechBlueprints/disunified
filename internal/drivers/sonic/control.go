@@ -90,6 +90,11 @@ type plan struct {
 	// layout are the ports whose breakout this plan writes (a split or a
 	// join), by the controller's speed or the module's (PlanLayout).
 	layout map[int]bool
+	// The lane scope's re-split (laneLayout): resplit when this plan moves
+	// the cage to another split mode; laneSpeedsHeld when the lanes' forced
+	// speeds are left alone (they ask for modes that do not agree, or the
+	// re-split they ask for is refused).
+	resplit, laneSpeedsHeld bool
 }
 
 // pc is the PortChannel of the plan's aggregate lag.
@@ -190,6 +195,7 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	native := c.NativeVLAN
 	lanes := c.lanes[cage]
 	down := c.cageDown[cage]
+	unread := cage > 0 && c.laneLayouts[cage] != c.laneLayoutsLast[cage]
 	var attached []int
 	for idx := range c.children {
 		attached = append(attached, idx)
@@ -245,6 +251,13 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 		for _, l := range lanes {
 			names = append(names, l.Interfaces[0])
 		}
+		if now := st.cagePorts(cage); len(names) >= 2 && len(now) >= 2 && !slices.Equal(names, now) && unread {
+			// This lane switch's own push re-split the cage (laneLayout)
+			// and the switch has not been read since: the lanes are
+			// planned once it has, a cycle later.
+			pl := &plan{sim: st.clone(), ports: map[int]devicemodel.Port{}, changed: map[int]bool{}, own: map[int]bool{}, owned: map[int]bool{}, layout: map[int]bool{}, laneCage: cage, pcBase: lanePCBase(cage)}
+			return pl, nil
+		}
 		if len(names) < 2 || !slices.Equal(names, st.cagePorts(cage)) {
 			return nil, fmt.Errorf("sonic apply: cage %d is not split as the last collect saw it (lanes %v, CONFIG_DB %v)", cage, names, st.cagePorts(cage))
 		}
@@ -281,7 +294,7 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 	// Ports the switch has, minus the ones the native-id collision refuses.
 	var ds []devicemodel.PortDesired
 	for _, d := range desired {
-		if _, ok := pl.ports[d.Index]; !ok {
+		if _, ok := pl.ports[d.Index]; !ok && (pl.laneCage == 0 || d.Index < 1 || d.Index > 4) {
 			continue // the claimed model has more ports than the switch
 		}
 		if bad := pl.collides(d); bad != 0 {
@@ -308,6 +321,16 @@ func (c *Collector) planFor(cage int, desired []devicemodel.PortDesired, control
 		ds = append(ds, d)
 	}
 
+	if pl.laneCage > 0 {
+		// A lane slot the cage lacks now (3 and 4 of a 2x50G cage) is
+		// kept for laneLayout: a re-split back to four lanes writes the
+		// push's intent on them in the same batch.
+		ds = pl.laneLayout(ds)
+		ds = slices.DeleteFunc(ds, func(d devicemodel.PortDesired) bool {
+			_, ok := pl.ports[d.Index]
+			return !ok
+		})
+	}
 	pl.mirrorRemovals(ds)
 	pl.lagLeaves(ds)
 	for _, d := range ds {

@@ -3,6 +3,7 @@ package aristaeos
 import (
 	"context"
 	"fmt"
+	"github.com/TechBlueprints/disunified/internal/modulelayout"
 	"slices"
 	"sort"
 	"strings"
@@ -343,11 +344,27 @@ func (c *Collector) Lanes(cage int) (devicemodel.LaneView, error) {
 	v := devicemodel.LaneView{
 		TakenAt: snap.TakenAt, System: snap.System, Cage: snap.Ports[i],
 		ChassisID: c.chassisID, VLANs: slices.Clone(snap.VLANs), CageDisabled: c.cageDown[cage], Child: c.children[cage],
-		Mode: laneMode(lanes),
+		Mode: laneMode(lanes), LaneLayouts: c.laneLayoutsLast[cage],
 	}
 	for _, l := range lanes {
 		p := l
 		p.MACs = slices.Clone(l.MACs)
+		p.SpeedCaps = slices.Clone(l.SpeedCaps)
+		// The lane claims the other split mode's lane speed too, where the
+		// cage runs it (a forced one re-splits the cage, laneResplit): 50G
+		// on a 4x25G lane, 25G on a 2x50G lane. SFP28 whatever it runs:
+		// the controller takes a FEC at 25G only from an SFP28, and a 50G
+		// save without one from either form (docs/drivers/breakout.md
+		// 16.15).
+		for _, sp := range []int{25000, 50000} {
+			if slices.Contains(snap.Ports[i].SpeedCaps, sp) && !slices.Contains(p.SpeedCaps, sp) {
+				p.SpeedCaps = append(p.SpeedCaps, sp)
+			}
+		}
+		slices.Sort(p.SpeedCaps)
+		if slices.Contains(p.SpeedCaps, 25000) || slices.Contains(p.SpeedCaps, 50000) {
+			p.Media = devicemodel.MediaSFP28
+		}
 		v.Lanes = append(v.Lanes, p)
 		v.LaneAliases = append(v.LaneAliases, "") // EOS has no faceplate alias but the name
 	}
@@ -366,14 +383,21 @@ func laneMode(lanes []devicemodel.Port) string {
 func (c *Collector) lanePlan(cage int, desired []devicemodel.PortDesired, controllerOnly bool) (*devicemodel.Snapshot, planResult, error) {
 	c.mu.Lock()
 	snap, lanes, down := c.last, c.lanes[cage], c.cageDown[cage]
+	unread := c.laneLayouts[cage] != c.laneLayoutsLast[cage]
 	c.mu.Unlock()
 	if snap == nil {
 		return nil, planResult{}, fmt.Errorf("arista-eos: no snapshot yet")
+	}
+	if unread && len(lanes) >= 2 {
+		// This lane switch's push re-split the cage and the switch has not
+		// been read since: the lanes are planned once it has, a cycle later.
+		return snap, planResult{}, nil
 	}
 	if len(lanes) < 2 {
 		return nil, planResult{}, fmt.Errorf("arista-eos: cage %d is not split", cage)
 	}
 	scoped := *snap
+	sc := planScope{cage: cage, cageDown: down, controllerOnly: controllerOnly}
 	// The module sits in the cage: its lanes take their FEC on auto from it
 	// (fec.go), though the lane switch reports it on its cable port.
 	scoped.Ports = slices.Clone(lanes)
@@ -384,8 +408,102 @@ func (c *Collector) lanePlan(cage int, desired []devicemodel.PortDesired, contro
 		for i := range scoped.Ports {
 			scoped.Ports[i].Optic, scoped.Ports[i].Present = p.Optic, p.Present
 		}
+		sc.cageIf, sc.cageCaps, sc.cageOptic, sc.cagePort = p.IfName, p.SpeedCaps, p.Optic, p
 	}
-	return &scoped, c.plan(&scoped, desired, planScope{cage: cage, cageDown: down, controllerOnly: controllerOnly}), nil
+	return &scoped, c.plan(&scoped, desired, sc), nil
+}
+
+// splitPorts is the port count of the split mode whose lane speed mbps is
+// on a QSFP28 cage of the 7160: 2 at 50G (`50gfull` on /1 and /3), 4 at
+// 25G; 0 for any other speed (10G is a lane speed of four lanes, which a
+// lane switch does not set: every lane of a cage runs one speed).
+func splitPorts(mbps int) int {
+	switch mbps {
+	case 50000:
+		return 2
+	case 25000:
+		return 4
+	}
+	return 0
+}
+
+// laneResplit moves a lane switch's cage between 4x25G and 2x50G by its
+// lanes' forced speeds (docs/drivers/breakout.md 16.15), the commands
+// captured on the 7160 (module-layout-20261117/): `speed forced 50gfull` on
+// /1 and then /3 is 2x50G (on /1 alone /3 and /4 errdisable), `speed forced
+// 25gfull` on /1 and /3 is 4x25G again (the hidden /2 and /4 keep their
+// own speed lines). ok is false when the lanes ask for no other mode;
+// speeds of two modes at once, a lane in an aggregate or a mirror, a cage
+// whose module does not run the mode, or a cage that cannot run it are
+// refused with a note (and nothing else the lanes ask for is held up).
+// Auto on every lane changes nothing; a join is the cage's speed on this
+// switch.
+func (c *Collector) laneResplit(lanes []devicemodel.Port, desired []devicemodel.PortDesired, sc planScope, note func(string, ...any)) ([]string, bool) {
+	cur := len(lanes)
+	want, first := 0, 0
+	var asked []string
+	for _, d := range desired {
+		if d.SpeedMbps == 0 || d.Index < 1 || d.Index > 4 {
+			continue
+		}
+		n := splitPorts(d.SpeedMbps)
+		if n == 0 {
+			continue // noted as a lane speed the cage does not run
+		}
+		asked = append(asked, fmt.Sprintf("lane %d %d Mb/s", d.Index, d.SpeedMbps))
+		switch {
+		case want == 0:
+			want, first = n, d.SpeedMbps
+		case want != n:
+			want = -1
+		}
+	}
+	if want == 0 || want == cur {
+		return nil, false
+	}
+	if want < 0 {
+		note("cage %d: the lane switch asks for %s, which no one split mode of the cage runs together; the cage's mode is left as it is", sc.cage, strings.Join(asked, ", "))
+		return nil, false
+	}
+	hold := func(why string) ([]string, bool) {
+		note("cage %d: %s needs %dx%dG (now %d lanes), but %s; the cage's mode is left as it is", sc.cage, strings.Join(asked, ", "), want, first/1000, cur, why)
+		return nil, false
+	}
+	if !slices.Contains(sc.cageCaps, first) || sc.cageIf == "" {
+		return hold(fmt.Sprintf("the cage does not run %d Mb/s (%v)", first, sc.cageCaps))
+	}
+	for _, d := range desired {
+		if d.LAG > 0 || d.MirrorSource > 0 {
+			return hold("a lane is in an aggregate or a mirror session; take it out first")
+		}
+	}
+	for _, l := range lanes {
+		if l.LAG != "" || l.MirrorFrom != 0 {
+			return hold("a lane is in an aggregate or a mirror session; take it out first")
+		}
+	}
+	if o := sc.cageOptic; o != nil {
+		c.mu.Lock()
+		in := fecInputs{rows: c.fecRows, types: c.ifTypes, codes: c.eeprom, stale: c.eepromStale}
+		c.mu.Unlock()
+		media := o.MediaType
+		if media == "" {
+			media = in.types[sc.cageIf+"/1"]
+		}
+		if m, ok := moduleOf(in, sc.cage, media); ok {
+			if runs, known := modulelayout.Runs(m); known && !slices.ContainsFunc(runs, func(r modulelayout.Layout) bool { return r.Ports == want }) {
+				return hold(fmt.Sprintf("the module %q runs %v, and the switch's own speed rule would put it back", media, runs))
+			}
+		}
+	}
+	kw := speedKeyword(first)
+	if kw == "" {
+		return hold("EOS has no forced form of that speed")
+	}
+	return []string{
+		"interface " + sc.cageIf + "/1", "speed forced " + kw,
+		"interface " + sc.cageIf + "/3", "speed forced " + kw,
+	}, true
 }
 
 // ApplyLanes implements devicemodel.LaneProvider: the plan of ApplyPorts,
@@ -408,8 +526,25 @@ func (c *Collector) ApplyLanes(ctx context.Context, cage int, desired []devicemo
 	if c.Log != nil {
 		c.Log.Printf("eos apply (cage %d lanes): %s", cage, strings.Join(pr.cmds, " | "))
 	}
-	if err := c.t.Configure(ctx, cmds); err != nil {
+	err = c.t.Configure(ctx, cmds)
+	if pr.resplit {
+		// Counted whether or not the batch got through: the next collect
+		// shows what the switch did (Lanes, the loops' fresh ports, and
+		// lanePlan waiting for that collect). The admin speeds are a
+		// startup read: re-read them.
+		c.mu.Lock()
+		if c.laneLayouts == nil {
+			c.laneLayouts = map[int]int{}
+		}
+		c.laneLayouts[cage]++
+		c.refresh = true
+		c.mu.Unlock()
+	}
+	if err != nil {
 		return 0, fmt.Errorf("eos apply (cage %d lanes, %d changes): %w", cage, pr.changed, err)
+	}
+	if pr.resplit {
+		return pr.changed, nil
 	}
 	c.mu.Lock()
 	if l := c.lanes[cage]; len(l) > 0 {

@@ -83,8 +83,10 @@ func TestLanesOfASplitCage(t *testing.T) {
 		if l.Index != i+1 || l.IfName != name || len(l.Interfaces) != 1 || l.Interfaces[0] != name || l.Lanes != 1 {
 			t.Errorf("lane %d: index %d ifname %q interfaces %v lanes %d", i+1, l.Index, l.IfName, l.Interfaces, l.Lanes)
 		}
-		if len(l.SpeedCaps) != 1 || l.SpeedCaps[0] != 25000 || l.Media != devicemodel.MediaSFP28 || l.AdminSpeed != 25000 {
-			t.Errorf("lane %d: caps %v media %v admin %d, want the one lane speed 25000, SFP28", i+1, l.SpeedCaps, l.Media, l.AdminSpeed)
+		// The one lane speed the cage runs split four ways, and 50G: a
+		// forced one re-splits the cage to 2x50G (breakout.md 16.15).
+		if len(l.SpeedCaps) != 2 || l.SpeedCaps[0] != 25000 || l.SpeedCaps[1] != 50000 || l.Media != devicemodel.MediaSFP28 || l.AdminSpeed != 25000 {
+			t.Errorf("lane %d: caps %v media %v admin %d, want 25000 and 50000, SFP28", i+1, l.SpeedCaps, l.Media, l.AdminSpeed)
 		}
 		if l.Up || !l.Enabled || l.LAGID != 0 || l.MirrorFrom != 0 || l.Optic != nil || l.Fault != "" {
 			t.Errorf("lane %d: up %v enabled %v lag %d mirror %d optic %v fault %q", i+1, l.Up, l.Enabled, l.LAGID, l.MirrorFrom, l.Optic, l.Fault)
