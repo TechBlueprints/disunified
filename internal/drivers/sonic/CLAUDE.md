@@ -1488,7 +1488,11 @@ was restarted.
   and your deb would replace it (2026-11-17: a main-based deb went over a
   sibling's unmerged build; put back by hand). (The
   convention lived only in session briefs until 2026-11-15; one session
-  used a different file name.)
+  used a different file name.) **To wait for a cycle in the journal**,
+  look for `inform interval now` (the controller moves the interval at
+  almost every inform): a reconcile that writes nothing logs no
+  `reconciled` line after the first for its push, so a wait on that line
+  hangs (2026-11-18).
 - **A cage left up as a non-edge port (looped, or facing a switch) for more
   than about five minutes gets pinned to `stp.edge=disabled`.** That is the
   controller's Auto STP Edge (`docs/drivers/sonic.md` §11.23.3). It does
