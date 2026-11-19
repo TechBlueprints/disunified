@@ -230,6 +230,9 @@ func seedOverrides(snap *devicemodel.Snapshot, nets []Network, existing []map[st
 	}
 	for _, p := range snap.Ports {
 		o := byIdx[p.Index]
+		if p.Reserved {
+			continue // the same port when the layout comes back: its config stays
+		}
 		if p.IfName == "" && !p.Present {
 			// A free slot: disabled, and nothing else left over.
 			if o != nil && isDisabledOverride(o) && !releaseOverride(o) {

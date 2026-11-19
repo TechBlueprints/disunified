@@ -107,6 +107,10 @@ func Snapshot(v devicemodel.LaneView, up Uplink) *devicemodel.Snapshot {
 		snap.Ports = append(snap.Ports, devicemodel.Port{
 			Index: i, Lanes: 1, Media: devicemodel.MediaSFP28, Enabled: true,
 			STPState: "disabled", STPRole: "disabled",
+			// The lane comes back when the cage is re-split to four
+			// lanes: its controller config is kept, not seeded disabled
+			// as a free slot's (breakout.md 16.15).
+			Reserved: true,
 		})
 	}
 	// The cable is the lane switch's link to its parent: it is up while

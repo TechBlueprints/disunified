@@ -99,7 +99,7 @@ func (c *Client) Provision(ctx context.Context, mac string, snap *devicemodel.Sn
 	}
 	// Released slots: drop whatever config the controller kept for them.
 	for _, p := range snap.Ports {
-		if p.IfName == "" && !p.Present {
+		if p.IfName == "" && !p.Present && !p.Reserved {
 			if o, ok := overrides[p.Index]; ok && releaseOverride(o) {
 				changed = true
 				res.Cleared++

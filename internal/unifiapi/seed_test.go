@@ -222,3 +222,18 @@ func TestSeedLeavesADisabledGuestAlone(t *testing.T) {
 		t.Errorf("second pass seeded %d", seeded)
 	}
 }
+
+// A reserved slot (a lane switch's lanes 3-4 while its cage runs 2x50G,
+// docs/drivers/breakout.md 16.15) is the same lane when the cage is
+// re-split to four: its override is neither released nor seeded disabled.
+// Live, before the flag, the 2x50G seed disabled lanes 3-4 and the re-split
+// back brought them up admin down (2026-11-18, DX010 cage 26).
+func TestSeedKeepsReservedSlots(t *testing.T) {
+	nets := []Network{{ID: "n1", VLAN: 1}, {ID: "n10", VLAN: 10}}
+	lane := map[string]any{"port_idx": float64(3), "name": "Eth26/3", "forward": "customize", "native_networkconf_id": "n10", "tagged_vlan_mgmt": "auto"}
+	slot := devicemodel.Port{Index: 3, Enabled: true, Reserved: true}
+	got, seeded, _ := seedOverrides(&devicemodel.Snapshot{Ports: []devicemodel.Port{slot}}, nets, []map[string]any{lane}, nil)
+	if seeded != 0 || len(got) != 1 || got[0]["forward"] != "customize" || got[0]["native_networkconf_id"] != "n10" {
+		t.Errorf("reserved slot: seeded=%d %v", seeded, got)
+	}
+}

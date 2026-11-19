@@ -953,7 +953,13 @@ type Port struct {
 	Dot1XAuthorized []string
 
 	Present bool // an optic/cable is present (always true for copper)
-	Enabled bool // administratively up
+	// Reserved: an empty slot the device brings back as the same port when
+	// its layout changes back (a lane switch's lanes 3-4 while its cage runs
+	// 2x50G, docs/drivers/breakout.md 16.15). The provision neither clears
+	// nor disables its controller config, as it does a free slot's: the
+	// lane comes back with its own settings.
+	Reserved bool
+	Enabled  bool // administratively up
 	// Fault is the vendor fault state keeping the port down, e.g.
 	// "errdisabled: speed-misconfigured"; "" = none. When the device's own
 	// protection shut the port down, the text carries the cause as one of:
