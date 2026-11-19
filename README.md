@@ -105,8 +105,9 @@ What each driver does today:
   by itself when the cage is split, names it `<parent's UniFi name>-cage<N>`
   and forgets it again when the cage is joined. **Its IP address in UniFi is
   made up on purpose**: a link-local address, `169.254.<1 + fifth byte of
-  its MAC>.<last byte of its MAC>` (the last byte is the cage number, so
-  cage 3 may show `169.254.51.3`). Nothing answers there. It cannot report
+  its MAC>.<last byte of its MAC>` (the last byte is the cage number: a lane
+  switch with the MAC `02:00:00:00:10:03`, cage 3, shows `169.254.17.3`).
+  Nothing answers there. It cannot report
   its parent's address, because the controller refuses every save of a
   statically addressed device while another adopted device reports the
   same address; reach the hardware at the parent switch's address
