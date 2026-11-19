@@ -27,6 +27,7 @@ control (the controller's config applied back to the device).
 | APC Smart-UPS (Modbus TCP on its SmartConnect port) | `apc-ups` | `USPDA2B` ("UPS 2U Pro"; `USWDA25` "UPS 2U" also works) | SMTL1500RM3UC, UPS 15.5 |
 | APC Back-UPS Pro network model (its NMC's web pages) | `apc-backups` | `USPDA2B` ("UPS 2U Pro") | BG500, UPS 05.3, NMC AOS 6.0.1 |
 | Community SONiC switch (Redis tables + `config` CLI; the bridge over SSH, or on the switch itself) | `sonic` | `USWF07D` ("ECS Core") | Celestica Seastone DX010 on this repo's patched 202511 image, with the bridge running on the switch; the SONiC virtual switch on 202505 |
+| A breakout cable's cage on an Arista or SONiC switch above (the "lane switch": four lanes and the cable) | `breakout` | `USFXG` ("USW Flex XG") | cage 3 of the DX010 and cage 50 of the 7160, both adopted by the bridge itself |
 
 "Verified on" means exactly that one device. What each driver has and has
 not been tried on, and what a pull request needs to extend it (a PVE 8 node,
@@ -96,6 +97,21 @@ What each driver does today:
   groups as outlets (the switched ones controllable through the card's
   two-step form), and the card's own address through config.ini
   ([`docs/drivers/apc-backups.md`](docs/drivers/apc-backups.md)).
+- **`breakout`** — the lane switch. A cage split by a breakout cable on a
+  bridged Arista or SONiC switch is presented as a five-port switch of its
+  own, placed under that cage's port: four lanes and the cable as its
+  uplink. It has no device behind it; it is a view of the parent switch's
+  cage, read and written through the parent's bridge. The parent adopts it
+  by itself when the cage is split, names it `<parent's UniFi name>-cage<N>`
+  and forgets it again when the cage is joined. **Its IP address in UniFi is
+  made up on purpose**: a link-local address, `169.254.<1 + fifth byte of
+  its MAC>.<last byte of its MAC>` (the last byte is the cage number: a lane
+  switch with the MAC `02:00:00:00:10:03`, cage 3, shows `169.254.17.3`).
+  Nothing answers there. It cannot report
+  its parent's address, because the controller refuses every save of a
+  statically addressed device while another adopted device reports the
+  same address; reach the hardware at the parent switch's address
+  ([`docs/drivers/breakout.md`](docs/drivers/breakout.md)).
 - **`apc-pdu`** — an APC switched rack PDU, whose outlets become outlets the
   controller can see, name and switch. The card has no API, so the driver uses
   two transports: SNMPv1 to read identity and outlet state and to switch an
